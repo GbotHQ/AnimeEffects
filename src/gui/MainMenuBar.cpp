@@ -20,7 +20,7 @@
 namespace gui {
 //-------------------------------------------------------------------------------------------------
 QDomDocument getVideoExportDocument() {
-    QFile file("./data/encode/VideoEncode.txt");
+    auto file = QFile("./data/encode/VideoEncode.txt");
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug() << file.errorString();
