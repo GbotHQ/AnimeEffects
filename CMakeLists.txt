@@ -12,6 +12,10 @@ set(CMAKE_CXX_STANDARD 20)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(get_cpm)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+else()
+    set(B_PRODUCTION_MODE ON)
+endif()
 CPMAddPackage("gh:batterycenter/embed#v1.2.19")
 
 include(GNUInstallDirs)
