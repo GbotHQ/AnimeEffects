@@ -36,6 +36,7 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mAbstractCursor(),
     mDriver(),
     mProjectTabBar(),
+    mViewportBackground(QColor(64, 64, 64)),
     mUsingTablet(false),
     mViewSetting(),
     mCanvasMover(),
@@ -170,6 +171,13 @@ void MainDisplayWidget::resetCamera() {
 
 void MainDisplayWidget::setProjectTabBar(ProjectTabBar* aTabBar) { mProjectTabBar = aTabBar; }
 
+void MainDisplayWidget::setViewportBackground(const QColor& aColor) {
+    if (mViewportBackground != aColor) {
+        mViewportBackground = aColor;
+        this->updateRender();
+    }
+}
+
 void MainDisplayWidget::updateRender() { this->update(); }
 
 void MainDisplayWidget::initializeGL() {
@@ -276,7 +284,7 @@ void MainDisplayWidget::paintGL() {
 
     // setup
     gl::Util::setViewportAsActualPixels(deviceSize());
-    gl::Util::clearColorBuffer(0.25f, 0.25f, 0.25f, 1.0f);
+    gl::Util::clearColorBuffer(mViewportBackground.redF(), mViewportBackground.greenF(), mViewportBackground.blueF(), 1.0f);
     gl::Util::resetRenderState();
     GL_CHECK_ERROR();
 
@@ -311,7 +319,7 @@ void MainDisplayWidget::paintGL() {
 
     if (mViewSetting.cutImagesByTheFrame && mProject) {
         XC_PTR_ASSERT(mRenderInfo);
-        gl::Util::clearColorBuffer(0.25f, 0.25f, 0.25f, 1.0f);
+        gl::Util::clearColorBuffer(mViewportBackground.redF(), mViewportBackground.greenF(), mViewportBackground.blueF(), 1.0f);
 
         auto imageQuad = mRenderInfo->camera.screenImageQuadangle();
         const QSize screenSize = mRenderInfo->camera.screenSize();
