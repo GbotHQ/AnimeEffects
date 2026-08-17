@@ -100,7 +100,7 @@ static constexpr int kTailwindLight[] = {
     /* kAccentHover       */ 3,
     /* kAccentText        */ 9,
     /* kFloaterBody       */ 0,
-    /* kFloaterEdge       */ 1,
+    /* kFloaterEdge       */ 2, // popup border; tracks hairline
 };
 static_assert(sizeof(kTailwindLight) / sizeof(kTailwindLight[0]) == kTokenCount,
               "kTailwindLight must have one column per TokenRole");
@@ -129,7 +129,7 @@ static constexpr int kTailwindDark[] = {
     /* kAccentHover       */ 6,
     /* kAccentText        */ 1,
     /* kFloaterBody       */ 9,
-    /* kFloaterEdge       */ 8,
+    /* kFloaterEdge       */ 8, // normal edge; the body is the sunken surface
 };
 static_assert(sizeof(kTailwindDark) / sizeof(kTailwindDark[0]) == kTokenCount,
               "kTailwindDark must have one column per TokenRole");
@@ -184,7 +184,9 @@ struct Colors {
                           // max-contrast (white in dark, black in light)
     QColor floaterBody;   // menu/combo popup panel: dark stays sunken, light
                           // flips to white (the proxy rounds the corners)
-    QColor floaterEdge;   // popup panel edge
+    QColor floaterEdge;   // popup panel edge: light tracks the hairline token
+                          // (borders match separators), dark keeps its own
+                          // edge — the body is the sunken surface
 
     bool isDark; // which elevation model the tokens were computed with
 
