@@ -19,22 +19,13 @@ float invert (const int min, const int max, const float value) {
 
 BezierCurveEditor::BezierCurveEditor(QWidget *parent, util::Easing::CubicBezier* cubicBezier, QVector<QDoubleSpinBox*> spins, int* pro):
     QWidget(parent), m_dragging(false), m_selectedPoint(0) {
-    const theme::Colors c = theme::Colors::current();
-    m_curvePen.setColor(c.text);
     m_curvePen.setWidth(2);
     bezier = cubicBezier;
     progress = pro;
 
     spinBoxes = std::move(spins);
-    m_colors[0] = c.text;
-    m_colors[1] = c.accentBright;
-    m_colors[2] = c.accentBright;
-    m_colors[3] = c.text;
-
-    for (int i = 0; i < NUM_POINTS; i++) {
-        m_pens[i] = QPen(m_colors[i]);
-        m_brushes[i] = QBrush(m_colors[i]);
-    }
+    // tangent-handle hover feedback needs move events without a button down
+    setMouseTracking(true);
 }
 
 BezierCurveEditor::~BezierCurveEditor() = default;
@@ -43,8 +34,9 @@ void BezierCurveEditor::mousePressEvent(QMouseEvent *event)
 {
     for(int i = 0; i < NUM_POINTS; i++) {
         if (i != StartPoint && i != EndPoint) {
-            if(distance(m_points[i], event->pos()) <= POINT_RADIUS) {
+            if(distance(m_points[i], event->pos()) <= HIT_RADIUS) {
                 m_selectedPoint = i;
+                m_hoveredPoint = i;
                 m_dragging = true;
                 break;
             }
@@ -54,11 +46,35 @@ void BezierCurveEditor::mousePressEvent(QMouseEvent *event)
 
 void BezierCurveEditor::mouseMoveEvent(QMouseEvent *event)
 {
+    // hover follows the cursor; while dragging it stays on the grabbed
+    // handle (which may sit past the clamp while the cursor drifts)
+    const int hovered = m_dragging ? m_selectedPoint : handleAt(event->pos());
+    if (hovered != m_hoveredPoint) {
+        m_hoveredPoint = hovered;
+        setCursor(hovered >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    }
     if(m_dragging) {
         m_points[m_selectedPoint] = event->pos();
     }
     *progress = 0;
     update();
+}
+
+void BezierCurveEditor::leaveEvent(QEvent *)
+{
+    if (m_hoveredPoint >= 0) {
+        m_hoveredPoint = -1;
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+}
+
+int BezierCurveEditor::handleAt(const QPoint& aPos) const {
+    for (int i = 0; i < NUM_POINTS; i++) {
+        if (i == StartPoint || i == EndPoint) continue;
+        if (distance(m_points[i], aPos) <= HIT_RADIUS) return i;
+    }
+    return -1;
 }
 
 void BezierCurveEditor::mouseReleaseEvent(QMouseEvent *)
@@ -109,28 +125,42 @@ void BezierCurveEditor::paintEvent(QPaintEvent *)
             box->blockSignals(false);
         }
     }
-    //
-    QPainter painter(this);
+    const theme::Colors& c = theme::Colors::current();
 
+    QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
+    // Canvas: recessed rounded container (8px = the standard container
+    // rounding, same as the popup panels).
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(c.recessed);
+    painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8.0, 8.0);
+
+    // Tangent guides: dashed hairline from each curve anchor to its handle.
+    painter.setPen(QPen(c.hairline, 1.0, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(m_points[StartPoint], m_points[ControlPoint1]);
+    painter.drawLine(m_points[EndPoint], m_points[ControlPoint2]);
+
+    // Curve.
+    m_curvePen.setColor(c.text);
     painter.setPen(m_curvePen);
     QPainterPath path;
     path.moveTo(m_points[StartPoint]);
     path.cubicTo(m_points[ControlPoint1], m_points[ControlPoint2], m_points[EndPoint]);
     painter.drawPath(path);
 
+    // Endpoint anchors: filled dots.
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(c.text);
+    painter.drawEllipse(m_points[StartPoint], 3.0, 3.0);
+    painter.drawEllipse(m_points[EndPoint], 3.0, 3.0);
+
+    // Tangent handles: accent fill, accentHover when hovered. The visual
+    // radius (POINT_RADIUS) is smaller than the grab radius (HIT_RADIUS).
     for (int i = 0; i < NUM_POINTS; i++) {
-        if (i == StartPoint || i == EndPoint) {
-            m_brushes[i].setStyle(Qt::BrushStyle::NoBrush);
-            painter.setPen(m_pens[i]);
-            painter.setBrush(m_brushes[i]);
-            painter.drawEllipse(m_points[i], 3.0, 3.0);
-        }
-        else{
-            painter.setPen(m_pens[i]);
-            painter.setBrush(m_brushes[i]);
-            painter.drawEllipse(m_points[i], POINT_RADIUS, POINT_RADIUS);
-        }
+        if (i == StartPoint || i == EndPoint) continue;
+        painter.setBrush(i == m_hoveredPoint ? c.accentHover : c.accent);
+        painter.drawEllipse(m_points[i], POINT_RADIUS, POINT_RADIUS);
     }
 }

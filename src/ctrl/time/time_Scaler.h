@@ -23,7 +23,10 @@ namespace time {
 
         void setMaxFrame(int aMaxFrame);
         void setFps(int aFps);
-        void update(int aWheelDelta);
+        // Applies a wheel notch; returns false when the zoom was already at
+        // the floor or ceiling, i.e. the wheel changed nothing.
+        bool update(int aWheelDelta);
+        int pixelsPerFrame() const { return mIndex + 1; }
         int pixelWidth(int aFrame) const;
         int maxPixelWidth() const;
         int frame(int aPixelWidth) const;
