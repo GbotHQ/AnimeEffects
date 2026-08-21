@@ -781,10 +781,11 @@ void TimeLineEditorWidget::onSelectRangeTriggered(int rangeType) {
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
-    int frame = -1;
+    int frame = 0;
+    bool hasFrame = false;
     bool isDifferent = false;
     for(auto target: targets){
-        if(frame == -1){ frame = target.pos.key()->frame();}
+        if(!hasFrame){ frame = target.pos.key()->frame(); hasFrame = true; }
         if(target.pos.key()->frame() != frame){ isDifferent = true; }
     }
     return isDifferent;
