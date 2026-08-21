@@ -1,6 +1,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPainterPath>
 #include <QFontMetrics>
 #include <algorithm>
 #include "core/TimeKeyExpans.h"
@@ -32,10 +33,10 @@ TimeCursor::TimeCursor(QWidget* aParent):
 
 void TimeCursor::setCursorPos(const QPoint& aPos, int aHeight) {
     const QFontMetrics fm(font());
-    const int badgeWidth = fm.horizontalAdvance(mFrameText) + kBadgePadding * 2;
+    const int badgeWidth = fm.horizontalAdvance(mFrameText) + ctrl::TimeLineEditor::kPillPadding * 2;
     // The playhead line sits in the middle of the widget; widen the widget as
-    // needed so the frame-number badge fits around the line. aPos.y() is the
-    // ruler header's top, so the badge lands exactly on the numbers row.
+    // needed so the frame-number pill fits around the line. aPos.y() is the
+    // ruler header's top, so the pill lands exactly on the numbers row.
     mLineX = std::max(1, badgeWidth / 2);
 
     QRect rect;
@@ -56,20 +57,25 @@ void TimeCursor::paintEvent(QPaintEvent* aEvent) {
     QPainter painter;
     painter.begin(this);
 
-    // Playhead line: starts at the bottom of the frame-number row (the badge
+    // Playhead line: starts at the bottom of the frame-number row (the pill
     // covers the row above it) and runs down the tracks.
     painter.setPen(QPen(mEdgeColor, 1));
     painter.drawLine(mLineX, ctrl::TimeLineEditor::kNumberHeight, mLineX, this->geometry().height());
 
-    // Frame-number badge covering only the numbers row: a solid
-    // ruler-background rect that hides the ruler's own numbers, with the
-    // current frame in the highlight color.
+    // Frame-number pill on the numbers row: an accentBright rounded pill —
+    // the playhead's identity. It must read on the plain ruler AND on the
+    // temporary playback window's band, so it is token-driven (accentBright
+    // fill + max-contrast text), not base-on-base like the old badge.
     if (!mFrameText.isEmpty()) {
         const QFontMetrics fm(font());
         const int textWidth = fm.horizontalAdvance(mFrameText);
-        const int badgeWidth = textWidth + kBadgePadding * 2;
-        const QRect badge(mLineX - badgeWidth / 2, 0, badgeWidth, ctrl::TimeLineEditor::kNumberHeight);
-        painter.fillRect(badge, mBadgeColor);
+        const int pillWidth = textWidth + ctrl::TimeLineEditor::kPillPadding * 2;
+        const QRect pill(mLineX - pillWidth / 2, 0, pillWidth, ctrl::TimeLineEditor::kNumberHeight);
+        QPainterPath path;
+        path.addRoundedRect(
+            QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
+        );
+        painter.fillPath(path, mBadgeColor);
         // Draw the number with the exact same rect and alignment as the ruler
         // numbers (time_Renderer::renderHeader) so it sits in the same row.
         const QRect numberRect(
@@ -253,7 +259,13 @@ void TimeLineEditorWidget::updateTimeCursorPos() {
         auto pos = mEditor->currentTimeCursorPos();
         const core::TimeFormat format(util::Range(0, mEditor->maxFrame()), mEditor->fps());
         const QString frameText = format.frameToString(mEditor->currentFrame().get(), mEditor->timeFormatType());
-        mTimeCursor.setHeaderInfo(frameText, mTimelineTheme.headerBackgroundColor());
+        // The playhead pill is token-driven (accentBright fill, max-contrast
+        // text, accentBright line): it must read on the plain ruler AND on
+        // the temporary window's band, and follow accent hue changes, so the
+        // QSS-substituted colors do not drive it.
+        mTimeCursor.setHeaderInfo(frameText, theme::Colors::current().accentBright);
+        mTimeCursor.setNumberColor(theme::Colors::current().accentBrightText);
+        mTimeCursor.setEdgeColor(theme::Colors::current().accentBright);
         // The playhead overlays the viewport: pinned to the top (on the fixed
         // ruler) and following the content horizontally.
         const QPoint viewportPos(mCamera->leftTopPos().toPoint().x() + pos.x(), 0);
