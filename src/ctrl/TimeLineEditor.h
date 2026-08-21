@@ -81,6 +81,9 @@ public:
 
     core::TimeFormatType timeFormatType() const { return timelineFormat; }
     int fps() const { return mFps; }
+    // The frame->pixel scale; the ruler (TimeRuler) and the renderer share
+    // it for ticks, numbers and the playback-window band.
+    const time::Scaler& timeScale() const { return mTimeScale; }
 
     UpdateFlags updateCursor(const core::AbstractCursor& aCursor, Qt::KeyboardModifiers aModifiers);
     bool updateWheel(int aDelta, bool aInvertScaling);

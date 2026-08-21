@@ -62,6 +62,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ThinSplitter.cpp ThinSplitter.h
     TimeLineEditorWidget.cpp TimeLineEditorWidget.h
     TimeLineWidget.cpp TimeLineWidget.h
+    TimeRuler.cpp TimeRuler.h
     ToolWidget.cpp ToolWidget.h
     ViaPoint.cpp ViaPoint.h
     exportdiag.cpp exportdiag.h
