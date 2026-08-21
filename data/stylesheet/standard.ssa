@@ -158,8 +158,11 @@ QCheckBox::indicator:indeterminate
 
 QCheckBox::indicator:disabled
 {
-    background-color: @recessed@;
-    border: 0.04em solid @recessed@;
+    /* Keep the resting box: disabling must not repaint surfaces (the
+       label text grays via QCheckBox:disabled), so a disabled checkbox
+       reads as its normal self without the check interaction. */
+    background-color: @raised@;
+    border: 0.04em solid @outline@;
 }
 
 QRadioButton
@@ -214,7 +217,9 @@ QRadioButton::indicator:checked:pressed
 QRadioButton::indicator:checked:disabled
 {
     outline: none;
-    border-image: url(@icondir@/radio_checked_disabled.svg);
+    /* Keep the resting accent dot: disabling must not repaint surfaces
+       (the label text grays via QRadioButton:disabled). */
+    border-image: url(@icondir@/radio_checked.svg);
 }
 
 QRadioButton::indicator:unchecked:disabled
