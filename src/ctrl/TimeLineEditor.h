@@ -49,8 +49,10 @@ public:
     static constexpr int kPillRadius = 3;
 
     // The temporary playback window: an ephemeral ruler gesture (shift-drag)
-    // that overrides the project frame range for playback until cleared
-    // (shift-click). Inactive when end < start; set() normalizes, so a live
+    // that overrides the project frame range for the playback clock until
+    // cleared (shift-click, or the context menu). It is clamped into the
+    // project frame range by the gesture; navigation is free and never
+    // clamps to it. Inactive when end < start; set() normalizes, so a live
     // drag may pass through any press/release order.
     struct PlayWindow {
         int start = 0;
@@ -86,16 +88,19 @@ public:
     core::Frame currentFrame() const;
     // The temporary playback window (inactive when empty). The renderer draws
     // its band and brackets; playbackRange() folds it into the effective
-    // range. Only the ruler gesture (updateCursor) mutates it.
+    // range. The ruler gesture (updateCursor) and clearPlayWindow() mutate it.
     const PlayWindow& playWindow() const { return mPlayWindow; }
+    // Dismisses the temporary playback window (the context menu's clear
+    // action, mirroring the shift-click gesture).
+    void clearPlayWindow() { mPlayWindow.clear(); }
     // The project's frame range: the timeline's playable extent. The
     // temporary playback window overrides it while active (playbackRange()).
     util::Range frameRange() const { return mFrameRange; }
     // The effective playback range: the temporary window overrides the
-    // project frame range while active. The playhead (time::Current) clamps
-    // to it, so every navigation path (transport buttons, keyboard, the
-    // playback tick, scrubbing) respects the window through that one point;
-    // the renderer fades outside it.
+    // project frame range while active. It bounds the playback clock (the
+    // tick wraps and stops against it) and the ruler's fade basis; manual
+    // navigation (scrub, transport, keyboard) is free of it — the playhead
+    // never clamps.
     util::Range playbackRange() const {
         return mPlayWindow.active() ? util::Range(mPlayWindow.start, mPlayWindow.end) : mFrameRange;
     }

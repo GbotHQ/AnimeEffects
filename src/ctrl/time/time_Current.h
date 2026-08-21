@@ -3,24 +3,23 @@
 
 #include <QPoint>
 #include "core/Frame.h"
-#include "util/Range.h"
 
 namespace ctrl {
 namespace time {
 
     class Scaler;
 
-    // The playhead. It is bounded by the effective playback range (the
-    // project frame range, or the temporary window while it overrides): both
-    // setFrame (transport, keyboard, the playback tick) and setHandlePos
-    // (dragging, scrubbing) clamp into the range passed per call, so every
-    // playhead movement respects the active range through this one point.
-    // The scale itself never clamps — keys and the view may live anywhere.
+    // The playhead. Like the scale and the keys, it is not clamped to any
+    // range — it may sit on any frame (negative, past the project end), so
+    // navigation (scrub, header seek, keyboard stepping, transport) is free
+    // and never fights the temporary playback window. The window only
+    // constrains the playback clock (TimeLineWidget::onPlayBackUpdated),
+    // which wraps and stops against the effective range on its own.
     class Current {
     public:
         Current(int aLeftMargin);
-        void setFrame(const Scaler& aScale, const util::Range& aRange, core::Frame aFrame);
-        void setHandlePos(const Scaler& aScale, const util::Range& aRange, const QPoint& aPos);
+        void setFrame(const Scaler& aScale, core::Frame aFrame);
+        void setHandlePos(const Scaler& aScale, const QPoint& aPos);
         void update(const Scaler& aScale);
         core::Frame frame() const { return mFrame; }
         QPoint handlePos() const { return mPos; }

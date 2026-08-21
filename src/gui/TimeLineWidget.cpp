@@ -438,10 +438,10 @@ void TimeLineWidget::onPlayBackUpdated() {
         const core::Frame curFrame = currentFrame();
 
         // The effective playback range (the temporary window overrides the
-        // project frame range while active): playback stays inside
-        // [playStart, playEnd]. Scrubbing is bounded by the same range
-        // through the playhead's clamp; only the playback clock also wraps
-        // and stops here.
+        // project frame range while active): the playback clock stays inside
+        // [playStart, playEnd]. Navigation is free (the playhead never
+        // clamps), so the tick clamps its own result — without this, a
+        // delayed timer tick could push the playhead past the end.
         const util::Range range = mInner->playbackRange();
         const int playStart = range.min();
         const int playEnd = range.max();
@@ -480,8 +480,12 @@ void TimeLineWidget::onPlayBackUpdated() {
             }
         }
 
-        setFrame(core::Frame(static_cast<int>(nextFrame)));
-        mLastFrame = core::Frame(static_cast<int>(nextFrame));
+        // The clock is the one path bound by the effective range: clamp the
+        // result (a timer that ran late may compute past playEnd) so the
+        // playhead never visibly overshoots the window.
+        const int clamped = qBound(playStart, static_cast<int>(nextFrame), playEnd);
+        setFrame(core::Frame(clamped));
+        mLastFrame = core::Frame(clamped);
     }
 }
 

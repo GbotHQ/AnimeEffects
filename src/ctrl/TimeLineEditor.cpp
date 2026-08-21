@@ -62,7 +62,7 @@ void TimeLineEditor::setFrameRange(const util::Range& aRange) {
     mTimeScale.setFrameEnd(mFrameRange.max());
     // The playhead starts at the range's first frame (0 for the default
     // [0, frameEnd] range).
-    mTimeCurrent.setFrame(mTimeScale, mFrameRange, Frame(mFrameRange.min()));
+    mTimeCurrent.setFrame(mTimeScale, Frame(mFrameRange.min()));
 }
 
 void TimeLineEditor::setProject(Project* aProject) {
@@ -178,7 +178,12 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
         // click dismisses it. It takes precedence over the playhead handle
         // and the header seek.
         if (shift && aCursor.screenPos().y() < kHeaderHeight) {
-            mWindowAnchorFrame = mTimeScale.frame(worldPoint.x() - kTimeLineMargin);
+            // The window is clamped into the project frame range: playback
+            // previews frames the project owns, never content beyond its
+            // extent (which stays reachable through free navigation).
+            mWindowAnchorFrame = qBound(
+                mFrameRange.min(), mTimeScale.frame(worldPoint.x() - kTimeLineMargin), mFrameRange.max()
+            );
             mWindowDragged = false;
             mState = State_SetWindow;
         } else if ((aCursor.screenPos() - handlePos).length() < mTimeCurrent.handleRange()) {
@@ -186,7 +191,10 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
             mState = State_MoveCurrent;
             flags |= UpdateFlag_ModView;
         } else if (aCursor.screenPos().y() < kHeaderHeight) {
-            mTimeCurrent.setHandlePos(mTimeScale, playbackRange(), aCursor.worldPos().toPoint());
+            // Navigation is free: a header click seeks to the clicked frame
+            // even when the temporary playback window is active (the window
+            // only constrains the playback clock, not the playhead).
+            mTimeCurrent.setHandlePos(mTimeScale, aCursor.worldPos().toPoint());
             mState = State_MoveCurrent;
             flags |= UpdateFlag_ModView;
             flags |= UpdateFlag_ModFrame;
@@ -236,11 +244,14 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
         }
     } else if (aCursor.emitsLeftDraggedEvent()) {
         if (mState == State_SetWindow) {
-            mPlayWindow.set(mWindowAnchorFrame, mTimeScale.frame(worldPoint.x() - kTimeLineMargin));
+            mPlayWindow.set(
+                mWindowAnchorFrame,
+                qBound(mFrameRange.min(), mTimeScale.frame(worldPoint.x() - kTimeLineMargin), mFrameRange.max())
+            );
             mWindowDragged = true;
             flags |= UpdateFlag_ModView;
         } else if (mState == State_MoveCurrent) {
-            mTimeCurrent.setHandlePos(mTimeScale, playbackRange(), aCursor.worldPos().toPoint());
+            mTimeCurrent.setHandlePos(mTimeScale, aCursor.worldPos().toPoint());
             flags |= UpdateFlag_ModView;
             flags |= UpdateFlag_ModFrame;
         } else if (mState == State_MoveKeys) {
@@ -884,7 +895,7 @@ bool TimeLineEditor::updateWheel(int aDelta, bool aInvertScaling) {
     return true;
 }
 
-void TimeLineEditor::setFrame(Frame aFrame) { mTimeCurrent.setFrame(mTimeScale, playbackRange(), aFrame); }
+void TimeLineEditor::setFrame(Frame aFrame) { mTimeCurrent.setFrame(mTimeScale, aFrame); }
 
 Frame TimeLineEditor::currentFrame() const { return mTimeCurrent.frame(); }
 
