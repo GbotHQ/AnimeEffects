@@ -7,15 +7,13 @@ namespace time {
     //-------------------------------------------------------------------------------------------------
     Current::Current(int aLeftMargin): mLeftMargin(aLeftMargin), mFrame(0), mPos() { mPos.setY(11); }
 
-    void Current::setFrame(const Scaler& aScale, const util::Range& aRange, core::Frame aFrame) {
+    void Current::setFrame(const Scaler& aScale, core::Frame aFrame) {
         mFrame = aFrame;
-        mFrame.clamp(aRange.min(), aRange.max());
         mPos.setX(mLeftMargin + aScale.pixelWidth(mFrame.get()));
     }
 
-    void Current::setHandlePos(const Scaler& aScale, const util::Range& aRange, const QPoint& aPos) {
+    void Current::setHandlePos(const Scaler& aScale, const QPoint& aPos) {
         mFrame.set(aScale.frame(aPos.x() - mLeftMargin));
-        mFrame.clamp(aRange.min(), aRange.max());
         mPos.setX(mLeftMargin + aScale.pixelWidth(mFrame.get()));
     }
 
