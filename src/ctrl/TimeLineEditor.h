@@ -71,6 +71,13 @@ public:
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
     void setFrameRange(const util::Range& aRange);
+    // True when a widget-space Y lies on the ruler strip: the top
+    // kHeaderHeight pixels. The ruler is pinned at the widget top by the
+    // viewport-fixed paint, and input positions (mouse events forwarded from
+    // the widget, context-menu requests) share that space, so this single
+    // predicate backs the window gesture, the header seek and the ruler's
+    // context menu — no call site re-derives the geometry.
+    bool isOnRuler(int aWidgetY) const { return aWidgetY < kHeaderHeight; }
 
     core::TimeFormatType timeFormatType() const { return timelineFormat; }
     int fps() const { return mFps; }
