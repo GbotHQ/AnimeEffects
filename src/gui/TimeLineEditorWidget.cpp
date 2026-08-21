@@ -121,13 +121,6 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     mEditor.reset(new ctrl::TimeLineEditor());
     this->setMouseTracking(true);
     this->setContextMenuPolicy(Qt::CustomContextMenu);
-    // The temporary playback window has no visible button: hover help is the
-    // only always-on hint for the shift-drag gesture and the shift-click
-    // clear. The context menu's "Clear playback window" action covers the
-    // active state.
-    this->setToolTip(
-        tr("Shift-drag on the ruler: temporary playback window\nShift-click on the ruler: clear it")
-    );
 
     this->connect(this, &QWidget::customContextMenuRequested, this, &TimeLineEditorWidget::onContextMenuRequested);
 
@@ -419,6 +412,24 @@ void TimeLineEditorWidget::onProjectAttributeModified(core::ProjectEvent&, bool)
 }
 
 void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
+    // The ruler's context menu is reserved for the temporary playback
+    // window: it shows only while a window is active, and only when the
+    // click is on the ruler itself — the window lives there, so its clear
+    // action sits next to it, and the track menu stays key-focused.
+    if (aPos.y() < ctrl::TimeLineEditor::kHeaderHeight) {
+        if (!mEditor->playWindow().active())
+            return;
+        QMenu menu(this);
+        auto* clearWindow = menu.addAction(tr("Clear playback window"));
+        clearWindow->connect(clearWindow, &QAction::triggered, [this]() {
+            mEditor->clearPlayWindow();
+            this->update();
+        });
+        menu.exec(this->mapToGlobal(aPos));
+        this->update();
+        return;
+    }
+
     QMenu menu(this);
 
     mTargets = core::TimeLineEvent();
@@ -441,17 +452,6 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
         menu.addAction(mDeleteKey);
     } else {
         menu.addAction(mPasteKey);
-    }
-    // The temporary playback window (an ephemeral ruler gesture) needs a
-    // discoverable way out beyond the shift-click: offer the clear action
-    // while it is active, on any timeline context menu.
-    if (mEditor->playWindow().active()) {
-        menu.addSeparator();
-        auto* clearWindow = menu.addAction(tr("Clear playback window"));
-        clearWindow->connect(clearWindow, &QAction::triggered, [this]() {
-            mEditor->clearPlayWindow();
-            this->update();
-        });
     }
     menu.exec(this->mapToGlobal(aPos));
     this->update();
