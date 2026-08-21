@@ -71,10 +71,6 @@ namespace prop {
     CheckItem::CheckItem(QWidget* aParent): mBox(), mStamp(), mSignal(true), mIsEnable(true) {
         mBox = new QCheckBox(aParent);
         mBox->setFocusPolicy(Qt::NoFocus);
-        // An unnamed checkbox would match QWidget:disabled's recessed
-        // background while playback disables the panel; keep it flat (see
-        // propertywidget.ssa).
-        mBox->setObjectName("checkItemBox");
 
         mStamp = mBox->isChecked();
 

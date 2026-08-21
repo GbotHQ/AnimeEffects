@@ -20,10 +20,6 @@ namespace prop {
         // shrinks to the header band via the layout.
         mHeader = new HeaderButton(aTitle, aGUIResources, "propertyPanelHeader", this, 14);
         mContent = new QWidget(this);
-        // The section body must stay flat on the backboard in every state:
-        // an unnamed QWidget would inherit QWidget:disabled's recessed
-        // background when playback disables the panel (see propertywidget.ssa).
-        mContent->setObjectName("propertyPanelContent");
         mLayout = new QVBoxLayout(mContent);
         // 4px column gap so the subsections read as distinct rows; the
         // sections' own breathing (form bottom margin) adds on top
