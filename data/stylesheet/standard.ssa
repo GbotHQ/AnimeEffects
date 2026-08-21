@@ -97,7 +97,12 @@ QWidget
 QWidget:disabled
 {
     color: @textDisabled@;
-    background-color: @recessed@;
+    /* No background repaint here: disabling (e.g. the properties panel
+       while playing) must keep every surface's resting color, otherwise
+       every unnamed/transparent widget — section bodies, checkboxes,
+       plain containers — flips to @recessed@ in one go. The disabled
+       state reads through grayed text, grayed icons and the per-widget
+       :disabled rules below (buttons, indicators, menu items). */
 }
 
 QCheckBox
@@ -271,9 +276,9 @@ QMenu
 }
 
 /* QMenu::paintEvent passes State_None, so the QSS treats the panel as
-   :disabled and QWidget:disabled's @recessed@ background would win the merge
-   and paint a square body. Same specificity, later in the sheet: keep it
-   non-drawable so the proxy draws the rounded panel. */
+   :disabled. Keep it non-drawable so the proxy draws the rounded panel
+   (QWidget:disabled no longer paints a background, but the QMenu base
+   rule's own fill would still paint a square body over the proxy). */
 QMenu:disabled
 {
     background: none;
@@ -612,6 +617,15 @@ QComboBox
 
 QComboBox:editable
 {
+    background-color: @raised@;
+}
+
+QComboBox:disabled
+{
+    /* Non-editable combos have no background rule of their own, so the
+       default palette's disabled group (a light gray) would otherwise
+       replace the raised field when a dialog disables one (e.g. an
+       unsupported pixel format). The disabled state only grays text. */
     background-color: @raised@;
 }
 
