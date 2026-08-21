@@ -415,8 +415,10 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
     // The ruler's context menu is reserved for the temporary playback
     // window: it shows only while a window is active, and only when the
     // click is on the ruler itself — the window lives there, so its clear
-    // action sits next to it, and the track menu stays key-focused.
-    if (aPos.y() < ctrl::TimeLineEditor::kHeaderHeight) {
+    // action sits next to it, and the track menu stays key-focused. The
+    // ruler region is the editor's predicate, the same one the gesture
+    // machinery uses.
+    if (mEditor->isOnRuler(aPos.y())) {
         if (!mEditor->playWindow().active())
             return;
         QMenu menu(this);

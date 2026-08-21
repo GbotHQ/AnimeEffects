@@ -177,7 +177,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
         // anchors it (nothing shows yet), the first drag materializes it, a
         // click dismisses it. It takes precedence over the playhead handle
         // and the header seek.
-        if (shift && aCursor.screenPos().y() < kHeaderHeight) {
+        if (shift && isOnRuler(aCursor.screenPos().y())) {
             // The window is clamped into the project frame range: playback
             // previews frames the project owns, never content beyond its
             // extent (which stays reachable through free navigation).
@@ -190,7 +190,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
             // playhead: handle or header click moves the current frame
             mState = State_MoveCurrent;
             flags |= UpdateFlag_ModView;
-        } else if (aCursor.screenPos().y() < kHeaderHeight) {
+        } else if (isOnRuler(aCursor.screenPos().y())) {
             // Navigation is free: a header click seeks to the clicked frame
             // even when the temporary playback window is active (the window
             // only constrains the playback clock, not the playhead).
