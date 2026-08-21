@@ -98,6 +98,7 @@ TimeLineWidget::TimeLineWidget(
 ):
     QWidget(aParent),
     mGUIResources(aResources),
+    mViaPoint(aViaPoint),
     mProject(),
     mAnimator(aAnimator),
     mInner(),
@@ -112,6 +113,7 @@ TimeLineWidget::TimeLineWidget(
     mScrollbarDragAnchorX(0),
     mScrollbarDragRatio(0),
     mIsPanning(false),
+    mPanByKey(false),
     mPanGrabPos(),
     mPanStartTransform(),
     mTimer(),
@@ -150,6 +152,31 @@ TimeLineWidget::TimeLineWidget(
         updateCamera();
     });
     mHorizontalScrollBar->installEventFilter(this);
+
+    // The ruler drives the same cursor machinery as the track surface; its
+    // frame changes (header seek / playhead drag) must notify the playback
+    // chain like the surface's do.
+    this->connect(mInner, &TimeLineEditorWidget::rulerFrameChanged, this, [this]() { onFrameUpdated(); });
+
+    // Pan by key: the same configurable MoveCanvas binding the viewport pans
+    // with (space by default). Holding it and left-dragging pans the timeline
+    // like middle-drag does; the ruler is told too, so a space+left press on
+    // the strip pans instead of seeking.
+    {
+        auto key = mViaPoint.keyCommandMap()->get("MoveCanvas");
+        if (key) {
+            key->addListener(
+                [this]() {
+                    mPanByKey = true;
+                    mInner->setPanKeyHeld(true);
+                },
+                [this]() {
+                    mPanByKey = false;
+                    mInner->setPanKeyHeld(false);
+                }
+            );
+        }
+    }
 
     mGUIResources.onThemeChanged.connect(this, &TimeLineWidget::onThemeUpdated);
 
@@ -525,7 +552,12 @@ void TimeLineWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 }
 
 void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
-    if (aEvent->button() == Qt::MiddleButton) {
+    // Middle-drag always pans; holding the MoveCanvas key (space by default,
+    // configurable) makes left-drag pan too — the same keybind the viewport
+    // uses, so the timeline follows the user's pan preference.
+    const bool panPress =
+        aEvent->button() == Qt::MiddleButton || (mPanByKey && aEvent->button() == Qt::LeftButton);
+    if (panPress) {
         mPanGrabPos = aEvent->position().toPoint();
         mPanStartTransform = viewportTransform();
         mIsPanning = true;
@@ -539,7 +571,7 @@ void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void TimeLineWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
-    if (mIsPanning && aEvent->button() == Qt::MiddleButton) {
+    if (mIsPanning && (aEvent->button() == Qt::MiddleButton || aEvent->button() == Qt::LeftButton)) {
         mIsPanning = false;
         unsetCursor();
         aEvent->accept();

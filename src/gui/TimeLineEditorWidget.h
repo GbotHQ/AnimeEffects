@@ -8,6 +8,7 @@
 #include "ctrl/TimeLineEditor.h"
 #include "gui/ViaPoint.h"
 #include "gui/GUIResources.h"
+#include "gui/TimeRuler.h"
 #include "KeyCommandMap.h"
 
 namespace gui {
@@ -56,6 +57,10 @@ class TimeLineEditorWidget: public QWidget {
 public:
     TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent);
 
+    // Ruler gestures (seek / playback-window drag) move the current frame;
+    // TimeLineWidget forwards this to its onFrameUpdated signal.
+    Q_SIGNAL void rulerFrameChanged();
+
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
 
@@ -75,6 +80,15 @@ public:
     QSize getEditorSize() const;
 
     core::Frame currentFrame() const;
+    // The controller the surface renders; TimeRuler drives it through the
+    // same updateCursor entry point as the track input path.
+    ctrl::TimeLineEditor* editor() const { return mEditor.data(); }
+    // The MoveCanvas key (space by default) is held: the ruler lets a
+    // left-press propagate to the timeline's pan instead of seeking.
+    void setPanKeyHeld(bool aHeld) {
+        if (mTimeRuler)
+            mTimeRuler->setPanKeyHeld(aHeld);
+    }
     // The effective playback range (project range or the temporary window
     // override); TimeLineWidget's playback tick and the playhead clamp use it.
     util::Range playbackRange() const { return mEditor->playbackRange(); }
@@ -113,6 +127,7 @@ private:
     void updateSize();
     void updateLinesRecursive(QTreeWidgetItem* aItem);
     virtual void paintEvent(QPaintEvent* aEvent);
+    virtual void resizeEvent(QResizeEvent* aEvent);
     void onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo);
     void onTreeRestructured(core::ObjectTreeEvent& aEvent, bool aUndo);
     void onProjectAttributeModified(core::ProjectEvent& aEvent, bool aUndo);
@@ -133,6 +148,9 @@ private:
     QScopedPointer<ctrl::TimeLineEditor> mEditor;
     const core::CameraInfo* mCamera;
     TimeCursor mTimeCursor;
+    // The ruler strip: a real widget with its own paint and input, layered
+    // under the playhead (TimeCursor) and over the track surface.
+    QScopedPointer<TimeRuler> mTimeRuler;
 
     //@todo Implement deserializer to put timeevent data into a bytebuffer or plain text
 
