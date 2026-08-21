@@ -958,19 +958,17 @@ void TimeLineEditor::render(
     const int bgn = mTimeScale.frame(cullRect.left() - margin - 5);
     const int end = mTimeScale.frame(cullRect.right() - margin + 5);
 
-    time::Renderer renderer(aPainter, aCamera, aTheme, timelineFormat);
+    time::Renderer renderer(aPainter, aCamera, aTheme);
     renderer.setMargin(margin);
     renderer.setRange(util::Range(bgn, end));
     renderer.setTimeScale(mTimeScale);
-    renderer.setActiveRange(playbackRange());
     renderer.setProjectRange(mFrameRange);
     renderer.setPlayWindow(mPlayWindow);
 
     renderer.renderLines(mRows, camRect, cullRect);
-    // Range hairlines paint under the header and the marquee: they mark the
-    // frame range's edges through the tracks without competing with either.
+    // Range hairlines paint under the marquee: they mark the frame range's
+    // edges through the tracks without competing with it.
     renderer.renderRangeMarkers(camRect);
-    renderer.renderHeader(kHeaderHeight, mFps);
     // renderer.renderHandle(mTimeCurrent.handlePos(), mTimeCurrent.handleRange());
 
     if (mState == State_EncloseKeys && mMarquee.isActive()) {
