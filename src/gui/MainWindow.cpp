@@ -1104,6 +1104,7 @@ void MainWindow::onExportTriggered() {
     genParam.nativeFPS = mCurrent->attribute().fps();
     // I hate you gcc
     frameExportRange fer;
+    fer.firstFrame = mCurrent->attribute().frameRange().min();
     fer.lastFrame = mCurrent->attribute().frameRange().max();
     genParam.nativeFrameRange = fer;
     // Get generics
@@ -1577,6 +1578,7 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
     genParam.exportWithAudio = !mCurrent->pConf->empty();
     genParam.useCustomParam = false;
     frameExportRange fer;
+    fer.firstFrame = mCurrent->attribute().frameRange().min();
     fer.lastFrame = mCurrent->attribute().frameRange().max();
     genParam.nativeFrameRange = fer;
     genParam.exportAllFrames = true;
