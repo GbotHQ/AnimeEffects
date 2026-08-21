@@ -920,9 +920,12 @@ int TimeLineEditor::anchorPixelAfterScale(int aContentPixel, int aOldSpacing) co
     // The zoom anchor is the content pixel under the mouse, scaled exactly (no
     // frame rounding, no range clamp). Anchoring a frame instead would snap
     // the edge frame to the cursor when the mouse sits outside the frame range.
+    // The half-spacing bias rounds half-up for positive content; negative
+    // content must round away from zero instead (truncation toward zero would
+    // anchor one pixel off on the left of frame 0).
     const int newSpacing = mTimeScale.pixelsPerFrame();
-    const qint64 scaled =
-        (static_cast<qint64>(aContentPixel) - kTimeLineMargin) * newSpacing + aOldSpacing / 2;
+    const qint64 num = (static_cast<qint64>(aContentPixel) - kTimeLineMargin) * newSpacing;
+    const qint64 scaled = num >= 0 ? num + aOldSpacing / 2 : num - aOldSpacing / 2;
     return kTimeLineMargin + static_cast<int>(scaled / aOldSpacing);
 }
 
@@ -944,6 +947,7 @@ void TimeLineEditor::render(
     renderer.setRange(util::Range(bgn, end));
     renderer.setTimeScale(mTimeScale);
     renderer.setActiveRange(playbackRange());
+    renderer.setProjectRange(mFrameRange);
     renderer.setPlayWindow(mPlayWindow);
 
     renderer.renderLines(mRows, camRect, cullRect);
