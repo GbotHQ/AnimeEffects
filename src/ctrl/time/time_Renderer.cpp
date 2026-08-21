@@ -201,6 +201,24 @@ namespace time {
             const QString firstNumber = timeFormat.frameToString(firstFrame, timeFormatVar);
             const int firstNumberWidth = numberWidth * firstNumber.size();
 
+            // Number labels never come closer than this gap: without a
+            // margin, adjacent numbers (a boundary label and a nearby major)
+            // read as one.
+            constexpr int kNumberMargin = 8;
+
+            // A narrow range's two boundary labels can come within the margin
+            // (or overlap); collapse them into one "first–last" label
+            // centered between the ticks, mirroring how the playback
+            // window's pills collapse. The ticks still mark both edges.
+            const bool boundaryLabelsCollide = firstLabelActive && lastLabelActive &&
+                (firstLabelCenter + (firstNumberWidth >> 1) + kNumberMargin >=
+                 lastLabelCenter - (lastNumberWidth >> 1));
+            const QString mergedNumber = boundaryLabelsCollide
+                ? firstNumber + QString::fromUtf8("\u2013") + lastNumber
+                : QString();
+            const int mergedNumberWidth = numberWidth * mergedNumber.size();
+            const int mergedLabelCenter = (firstLabelCenter + lastLabelCenter) / 2;
+
             for (int i = mRange.min(); i <= mRange.max(); ++i) {
                 // The boundary labels own their frames: when the range's
                 // first/last frame label is active (the frame is off-major),
@@ -238,25 +256,33 @@ namespace time {
                 if (attr.showNumber) {
                     QString number = timeFormat.frameToString(i, timeFormatVar);
                     const int width = static_cast<int>(numberWidth * number.size());
-                    // A neighbor label never overlaps the range's boundary
-                    // labels: the first and last frame's numbers always win
-                    // the space they occupy. The test is symmetric — a label
-                    // yields only when it actually crosses the boundary
-                    // label's span, on either side (a one-sided test would
-                    // swallow every label past the end).
+                    // A neighbor label never comes within kNumberMargin of
+                    // the range's boundary labels: without a gap, adjacent
+                    // numbers read as one. The boundary label wins the space
+                    // it occupies — its own span when the labels are apart,
+                    // the collapsed "first–last" span when the range is too
+                    // narrow for both. The test is symmetric — a label yields
+                    // only when it actually enters the reserved span, on
+                    // either side (a one-sided test would swallow every label
+                    // past the end).
                     if (endLabelInView && i != lastFrame) {
                         const int left = pos.x() - (width >> 1);
-                        const int endRight = lastLabelCenter + (lastNumberWidth >> 1);
-                        const int endLeft = lastLabelCenter - (lastNumberWidth >> 1);
-                        if (left < endRight && pos.x() + (width >> 1) > endLeft)
-                            continue;
-                    }
-                    if (firstLabelInView && i != firstFrame) {
-                        const int left = pos.x() - (width >> 1);
-                        const int firstRight = firstLabelCenter + (firstNumberWidth >> 1);
-                        const int firstLeft = firstLabelCenter - (firstNumberWidth >> 1);
-                        if (left < firstRight && pos.x() + (width >> 1) > firstLeft)
-                            continue;
+                        const int right = pos.x() + (width >> 1);
+                        const int m = kNumberMargin;
+                        if (boundaryLabelsCollide) {
+                            const int center = mergedLabelCenter;
+                            const int half = (mergedNumberWidth >> 1) + m;
+                            if (left < center + half && right > center - half)
+                                continue;
+                        } else {
+                            if (left < lastLabelCenter + (lastNumberWidth >> 1) + m &&
+                                right > lastLabelCenter - (lastNumberWidth >> 1) - m)
+                                continue;
+                            if (firstLabelInView && i != firstFrame &&
+                                left < firstLabelCenter + (firstNumberWidth >> 1) + m &&
+                                right > firstLabelCenter - (firstNumberWidth >> 1) - m)
+                                continue;
+                        }
                     }
                     QColor numberColor = kBrush.color();
                     if (!inRange)
@@ -271,63 +297,73 @@ namespace time {
                 }
             }
 
+            // The boundary ticks mark both edges at major prominence; each
+            // recedes with the out-of-range content while a playback window
+            // overrides the range.
             if (firstLabelActive) {
-                // The range's first frame reads as a major even off the grid;
-                // while a playback window overrides the range it recedes with
-                // the out-of-range content, like the end label.
-                const bool inRange = mActiveRange.contains(firstFrame);
-                const qreal firstAlpha = inRange ? 1.0 : 0.4;
-
+                const qreal firstAlpha = mActiveRange.contains(firstFrame) ? 1.0 : 0.4;
                 const QPoint pos(lt.x() + firstAttr.grid.x(), rb.y());
 
                 QColor tickColor = kBrush.color();
                 tickColor.setAlphaF(0.85 * firstAlpha);
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
-
-                // The loop skips this frame while the label is active, so the
-                // number is always ours here (the yield rule keeps numbered
-                // neighbors away from the slot).
-                QColor numberColor = kBrush.color();
-                numberColor.setAlphaF(firstAlpha);
-                mPainter.setPen(QPen(numberColor, 1));
-                const int width = numberWidth * firstNumber.size();
-                const int left = pos.x() - (width >> 1);
-                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                const QRect rect(
-                    QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                );
-                mPainter.drawText(rect, firstNumber);
             }
-
             if (lastLabelActive) {
-                // The end label marks the range's last frame; while a
-                // playback window overrides the range, it recedes with the
-                // rest of the out-of-range content instead of holding full
-                // brightness.
-                const bool inRange = mActiveRange.contains(lastFrame);
-                const qreal endAlpha = inRange ? 1.0 : 0.4;
-
+                const qreal lastAlpha = mActiveRange.contains(lastFrame) ? 1.0 : 0.4;
                 const QPoint pos(lt.x() + lastAttr.grid.x(), rb.y());
 
                 QColor tickColor = kBrush.color();
-                tickColor.setAlphaF(0.85 * endAlpha);
+                tickColor.setAlphaF(0.85 * lastAlpha);
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
+            }
 
-                // The loop skips this frame while the label is active, so the
-                // number is always ours here (the yield rule keeps numbered
-                // neighbors away from the slot).
+            // The loop skips the boundary frames while their labels are
+            // active, so the numbers are always ours here (the yield rule
+            // keeps numbered neighbors away from the reserved slots). A
+            // range too narrow for both labels collapses into one
+            // "first–last" label, like the playback window's pills.
+            if (boundaryLabelsCollide) {
+                const bool inRange = mActiveRange.contains(firstFrame) && mActiveRange.contains(lastFrame);
+                const qreal mergedAlpha = inRange ? 1.0 : 0.4;
+
                 QColor numberColor = kBrush.color();
-                numberColor.setAlphaF(endAlpha);
+                numberColor.setAlphaF(mergedAlpha);
                 mPainter.setPen(QPen(numberColor, 1));
-                const int width = numberWidth * lastNumber.size();
-                const int left = pos.x() - (width >> 1);
+                const int left = mergedLabelCenter - (mergedNumberWidth >> 1);
                 const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
                 const QRect rect(
-                    QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                    QPoint(left, top), QPoint(left + mergedNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
                 );
-                mPainter.drawText(rect, lastNumber);
+                mPainter.drawText(rect, mergedNumber);
+            } else {
+                if (firstLabelActive) {
+                    const qreal firstAlpha = mActiveRange.contains(firstFrame) ? 1.0 : 0.4;
+
+                    QColor numberColor = kBrush.color();
+                    numberColor.setAlphaF(firstAlpha);
+                    mPainter.setPen(QPen(numberColor, 1));
+                    const int left = firstLabelCenter - (firstNumberWidth >> 1);
+                    const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                    const QRect rect(
+                        QPoint(left, top), QPoint(left + firstNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                    );
+                    mPainter.drawText(rect, firstNumber);
+                }
+                if (lastLabelActive) {
+                    const qreal lastAlpha = mActiveRange.contains(lastFrame) ? 1.0 : 0.4;
+
+                    QColor numberColor = kBrush.color();
+                    numberColor.setAlphaF(lastAlpha);
+                    mPainter.setPen(QPen(numberColor, 1));
+                    const int left = lastLabelCenter - (lastNumberWidth >> 1);
+                    const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                    const QRect rect(
+                        QPoint(left, top), QPoint(left + lastNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                    );
+                    mPainter.drawText(rect, lastNumber);
+                }
             }
 
             // The playback window overlays the ruler content: the translucent
