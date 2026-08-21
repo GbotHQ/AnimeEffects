@@ -113,8 +113,12 @@ namespace time {
         // Unbounded inverse of pixelWidth: a mouse position outside the frame
         // range maps to an out-of-range frame, so keys can be created, moved
         // and selected beyond the range. The playback range (Current) clamps
-        // its own values; this scale never does.
-        return (aPixelWidth + ((mIndex + 1) >> 1)) / (mIndex + 1);
+        // its own values; this scale never does. Rounding is symmetric around
+        // 0: the positive half-up rule (p + s/2)/s truncates toward zero for
+        // negative pixels, mapping frame -2's tick (px -4, spacing 2) to -1;
+        // negative pixels round away from zero instead.
+        const int s = mIndex + 1;
+        return aPixelWidth >= 0 ? (aPixelWidth + (s >> 1)) / s : (aPixelWidth - (s >> 1)) / s;
     }
 
     int Scaler::frameEnd() const { return mFrameEnd; }

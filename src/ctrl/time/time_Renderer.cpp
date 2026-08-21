@@ -111,14 +111,15 @@ namespace time {
     }
 
     void Renderer::renderRangeMarkers(const QRect& aCameraRect) {
-        // Vertical hairlines at the first and last frame: continue the ruler's
-        // boundary ticks down through the track area. The ruler already marks
-        // the range ends (frame 0's tick, and the specially-labeled last
-        // frame's tick), so the lines start where those ticks end — at the
-        // ruler's bottom hairline — and run to the bottom of the viewport.
+        // Vertical hairlines at the frame range's first and last frame:
+        // continue the ruler's boundary ticks down through the track area.
+        // The ruler already marks the range ends (the first frame's tick, and
+        // the specially-labeled last frame's tick), so the lines start where
+        // those ticks end — at the ruler's bottom hairline — and run to the
+        // bottom of the viewport.
         const int top = aCameraRect.top() + ctrl::TimeLineEditor::kHeaderHeight;
-        const int x0 = mMargin;
-        const int x1 = mMargin + mScale->maxPixelWidth();
+        const int x0 = mMargin + mScale->pixelWidth(mProjectRange.min());
+        const int x1 = mMargin + mScale->pixelWidth(mProjectRange.max());
         // A degenerate 0-frame range collapses both markers onto the same
         // pixel (x0 == x1); drawing twice would darken the line.
         if (x0 == x1)
