@@ -17,6 +17,7 @@
 #include "gui/MouseSettingDialog.h"
 #include "util/NetworkUtil.h"
 #include <algorithm>
+#include <limits>
 #ifdef Q_OS_WINDOWS
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -709,16 +710,17 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
         }
         form->addRow(tr("Canvas size"), sizeLayout);
 
-        // frame range: two linked spinboxes (start, end)
+        // frame range: two linked spinboxes (start, end); either bound may
+        // be negative (pre-roll frames before 0 are a valid project extent)
         {
             auto layout = new QHBoxLayout();
             mStartBox = new QSpinBox();
-            mStartBox->setRange(0, 0x7FFFFFFF);
+            mStartBox->setRange(std::numeric_limits<int>::min(), 0x7FFFFFFF);
             mStartBox->setValue(curRange.min());
             layout->addWidget(mStartBox);
 
             mEndBox = new QSpinBox();
-            mEndBox->setRange(1, 0x7FFFFFFF);
+            mEndBox->setRange(std::numeric_limits<int>::min(), 0x7FFFFFFF);
             mEndBox->setValue(curRange.max());
             layout->addWidget(mEndBox);
 
@@ -757,7 +759,7 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
 }
 
 bool ProjectSettingDialog::confirmFrameRangeUpdating(const util::Range& aNewRange) const {
-    XC_ASSERT(aNewRange.max() > 0);
+    XC_ASSERT(aNewRange.min() <= aNewRange.max()); // the linked spinboxes keep start <= end
 
     auto curRange = mProject.attribute().frameRange();
     const auto* tree = mProject.objectTree().topNode();

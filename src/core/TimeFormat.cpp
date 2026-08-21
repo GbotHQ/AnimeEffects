@@ -1,5 +1,17 @@
 #include "TimeFormat.h"
 
+namespace {
+
+// Floor division for positive divisors: frame-to-second decomposition must
+// round toward negative infinity, not toward zero (C++ division truncates),
+// so negative frames count down through -1, -2, ... instead of colliding at
+// "0" with the frames just before 0.
+int floorDiv(int aValue, int aDivisor) {
+    return aValue >= 0 ? aValue / aDivisor : (aValue - aDivisor + 1) / aDivisor;
+}
+
+} // namespace
+
 namespace core {
 
 TimeFormat::TimeFormat(util::Range aRange, int aFps) {
@@ -13,64 +25,53 @@ QString TimeFormat::frameToString(const int aFrame, const TimeFormatType aTimeFo
         return QString::number(aFrame + 1);
 
     case TimeFormatType_Relative_FPS: {
-        QString number = QString("%1").arg(aFrame / mFps, 0);
-        return number;
+        // The whole second this frame belongs to, floored so negative frames
+        // count down monotonically (-1..-23 -> -1, -24..-47 -> -2).
+        return QString::number(floorDiv(aFrame, mFps));
     }
 
     case TimeFormatType_Seconds_Frames: { // (SS:FF)
-        double min = 0.0;
-        double max = 60.0;
+        // Seconds are a floor decomposition (SS carries into negatives, FF
+        // stays in [0, 59]): -1 frame reads "-1:59", i.e. one frame before 0.
+        const int seconds = floorDiv(aFrame, 60);
+        const int frames = static_cast<int>(util::MathUtil::cycle(aFrame, 0.0, 60.0));
 
-        double nMin = 0;
-        double nMax = 1;
-
-        double seconds = util::MathUtil::remap(aFrame, min, max, nMin, nMax);
-
-        QString n = QString("%1:%2")
-                        .arg(static_cast<int>(seconds))
-                        .arg(static_cast<int>(util::MathUtil::cycle(aFrame, 0.0, 60.0)), 2, 10, QLatin1Char('0'));
-
-        return n;
+        return QString("%1:%2").arg(seconds).arg(frames, 2, 10, QLatin1Char('0'));
     }
 
     case TimeFormatType_Timecode_SMPTE: { // (HH:MM:SS:FF)
-        double min = 0.0;
-        double max = 60.0;
+        // Negative frames display with a leading '-' and the magnitude
+        // decomposed (HH:MM:SS from |frame|, FF = |frame| mod 60), the
+        // conventional negative timecode reading: -1 frame -> "-0:0:0:1".
+        const qint64 absFrame = qAbs(static_cast<qint64>(aFrame));
+        const double ms = util::MathUtil::remap(absFrame, 0.0, 60.0, 0.0, 1000.0);
 
-        double nMin = 0;
-        double nMax = 1000.0;
+        const DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
 
-        double ms = util::MathUtil::remap(aFrame, min, max, nMin, nMax);
+        const QString text = QString("%1:%2:%3:%4")
+                                 .arg(timeStruct.hours)
+                                 .arg(timeStruct.minutes)
+                                 .arg(timeStruct.seconds)
+                                 .arg(static_cast<int>(util::MathUtil::cycle(absFrame, 0.0, 60.0)));
 
-        DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
-
-        QString n = QString("%1:%2:%3:%4")
-                        .arg(timeStruct.hours)
-                        .arg(timeStruct.minutes)
-                        .arg(timeStruct.seconds)
-                        .arg(static_cast<int>(util::MathUtil::cycle(aFrame, 0.0, 60.0)));
-
-        return n;
+        return aFrame < 0 ? QString("-") + text : text;
     }
 
     case TimeFormatType_Timecode_HHMMSSmmm: { // (HH:MM:SS:mmm)
-        double min = 0.0;
-        double max = 60.0;
+        // Same sign-prefix convention as SMPTE: the magnitude decomposes,
+        // a leading '-' marks negative frames.
+        const qint64 absFrame = qAbs(static_cast<qint64>(aFrame));
+        const double ms = util::MathUtil::remap(absFrame, 0.0, 60.0, 0.0, 1000.0);
 
-        double nMin = 0;
-        double nMax = 1000.0;
+        const DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
 
-        double ms = util::MathUtil::remap(aFrame, min, max, nMin, nMax);
+        const QString text = QString("%1:%2:%3:%4")
+                                 .arg(timeStruct.hours)
+                                 .arg(timeStruct.minutes)
+                                 .arg(timeStruct.seconds)
+                                 .arg(timeStruct.milliseconds);
 
-        DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
-
-        QString n = QString("%1:%2:%3:%4")
-                        .arg(timeStruct.hours)
-                        .arg(timeStruct.minutes)
-                        .arg(timeStruct.seconds)
-                        .arg(timeStruct.milliseconds);
-
-        return n;
+        return aFrame < 0 ? QString("-") + text : text;
     }
 
     default:
@@ -80,7 +81,7 @@ QString TimeFormat::frameToString(const int aFrame, const TimeFormatType aTimeFo
 
 
 DDHHMMSSmmm TimeFormat::msToDDHHMMSSmmm(double ms) {
-    int d = 0, h = 0, m = 0, s = 0, mi = 0;
+    int d = 0, h = 0, mi = 0, s = 0;
     // Days to milli
     if (ms >= 86400 * 1000) {
         d = qFloor(ms / 1000 / 60 / 60 / 24);
@@ -104,7 +105,7 @@ DDHHMMSSmmm TimeFormat::msToDDHHMMSSmmm(double ms) {
     DDHHMMSSmmm timeStruct;
     timeStruct.days = d;
     timeStruct.hours = h;
-    timeStruct.minutes = m;
+    timeStruct.minutes = mi;
     timeStruct.seconds = s;
     timeStruct.milliseconds = static_cast<int>(ms);
 

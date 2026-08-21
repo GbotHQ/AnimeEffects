@@ -171,7 +171,7 @@ bool ProjectLoader::readGlobalBlock(util::LEStreamReader& aIn, core::Project& aP
     // height
     const uint32 height = aIn.readUInt32();
     // frame range end (the historical "max frame" slot)
-    const uint32 frameEnd = aIn.readUInt32();
+    uint32 frameEnd = aIn.readUInt32();
     // fps
     const uint32 fps = aIn.readUInt32();
     // loop
@@ -189,10 +189,13 @@ bool ProjectLoader::readGlobalBlock(util::LEStreamReader& aIn, core::Project& aP
 
     // A corrupt file may carry a start past the end (every file <= 0.10 has
     // start 0, so only hand-edited or damaged files can invert the range);
-    // fall back to [0, end] rather than letting a negative range break the
+    // swap to a valid range rather than letting a negative range break the
     // loop span, the row geometry and the playhead clamp.
-    if (frameStart > frameEnd)
-        frameStart = 0;
+    if (frameStart > frameEnd) {
+        const uint32 tmp = frameStart;
+        frameStart = frameEnd;
+        frameEnd = tmp;
+    }
 
     // set values
     aProject.attribute().setImageSize(QSize((int)width, (int)height));

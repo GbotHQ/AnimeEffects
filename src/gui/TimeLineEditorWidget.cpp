@@ -856,7 +856,9 @@ void TimeLineEditorWidget::onSelectSpacingTriggered() {
     verticalLayout->addWidget(label);
 
     auto frameSpacing = new QSpinBox(diag);
-    frameSpacing->setMaximum(mProject->attribute().frameRange().max());
+    // Spacing selects every Nth frame within the project's frame range: the
+    // span, not the (possibly negative) end frame, bounds it.
+    frameSpacing->setMaximum(qMax(1, mProject->attribute().frameRange().diff()));
     frameSpacing->setMinimum(1);
     frameSpacing->setValue(1);
     frameSpacing->setObjectName("frameSpacing");
