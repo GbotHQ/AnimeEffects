@@ -179,7 +179,7 @@ namespace time {
             // the yield rule must not depend on which path drew it (alignment
             // changes with zoom; gating on it made neighbor labels pop in and
             // out with the view).
-            const int lastFrame = mScale->maxFrame();
+            const int lastFrame = mScale->frameEnd();
             const auto lastAttr = mScale->attribute(lastFrame);
             const bool endLabelInView = lastFrame >= mRange.min() && lastFrame <= mRange.max();
             const bool lastLabelActive = endLabelInView && lastAttr.grid.y() < 10;
@@ -199,16 +199,13 @@ namespace time {
                             : attr.grid.y() >= 8  ? 0.65
                             : attr.grid.y() >= 6  ? 0.45
                                                   : 0.25;
-                // Ticks outside the active range recede further: the tier
-                // structure stays, but a fixed extra dim makes the range
-                // edge read at a glance. The active range is the project's
-                // frame range [0, lastFrame] — or, while a temporary
-                // playback window is set, the window itself (it overrides
-                // the frame range for playback). The boundary frames
-                // themselves keep full tier brightness.
-                const bool inRange = mPlayWindow.active()
-                    ? (i >= mPlayWindow.start && i <= mPlayWindow.end)
-                    : (i >= 0 && i <= lastFrame);
+                // Ticks outside the active playback range recede further:
+                // the tier structure stays, but a fixed extra dim makes the
+                // range edge read at a glance. The active range is the
+                // project frame range — or the temporary playback window
+                // while it overrides — and the boundary frames themselves
+                // keep full tier brightness.
+                const bool inRange = mActiveRange.contains(i);
                 if (!inRange)
                     alpha *= 0.4;
                 QColor tickColor = kBrush.color();
@@ -245,13 +242,12 @@ namespace time {
             }
 
             if (lastLabelActive) {
-                // The end label marks the project's last frame; while a
+                // The end label marks the range's last frame; while a
                 // playback window overrides the range, it recedes with the
-                // rest of the out-of-window content instead of holding full
+                // rest of the out-of-range content instead of holding full
                 // brightness.
-                const bool inWindow =
-                    !mPlayWindow.active() || (lastFrame >= mPlayWindow.start && lastFrame <= mPlayWindow.end);
-                const qreal endAlpha = inWindow ? 1.0 : 0.4;
+                const bool inRange = mActiveRange.contains(lastFrame);
+                const qreal endAlpha = inRange ? 1.0 : 0.4;
 
                 const QPoint pos(lt.x() + lastAttr.grid.x(), rb.y());
 

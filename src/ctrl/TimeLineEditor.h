@@ -68,6 +68,7 @@ public:
 
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
+    void setFrameRange(const util::Range& aRange);
 
     core::TimeFormatType timeFormatType() const { return timelineFormat; }
     int fps() const { return mFps; }
@@ -83,17 +84,29 @@ public:
     void render(QPainter& aPainter, const core::CameraInfo& aCamera, theme::TimeLine& aTheme, const QRect& aCullRect) const;
 
     core::Frame currentFrame() const;
-    int maxFrame() const { return mTimeMax; }
-    // The temporary playback window (inactive when empty). Playback reads it
-    // every tick to bound the playhead; the renderer fades and highlights
-    // from it. Only the ruler gesture (updateCursor) mutates it.
+    // The temporary playback window (inactive when empty). The renderer draws
+    // its band and brackets; playbackRange() folds it into the effective
+    // range. Only the ruler gesture (updateCursor) mutates it.
     const PlayWindow& playWindow() const { return mPlayWindow; }
+    // The project's frame range: the timeline's playable extent. The
+    // temporary playback window overrides it while active (playbackRange()).
+    util::Range frameRange() const { return mFrameRange; }
+    // The effective playback range: the temporary window overrides the
+    // project frame range while active. The playhead (time::Current) clamps
+    // to it, so every navigation path (transport buttons, keyboard, the
+    // playback tick, scrubbing) respects the window through that one point;
+    // the renderer fades outside it.
+    util::Range playbackRange() const {
+        return mPlayWindow.active() ? util::Range(mPlayWindow.start, mPlayWindow.end) : mFrameRange;
+    }
     QSize modelSpaceSize() const;
     QPoint currentTimeCursorPos() const;
 
-    // The frame range's end on the content axis (px): the left margin gutter
-    // plus the last frame's scale position. Frame 0's tick sits at the
-    // margin; the range spans [0, frameEndPixel].
+    // The frame range's extent on the content axis (px): the left margin
+    // gutter plus the scale position of the range's start/end frames. The
+    // range spans [frameStartPixel, frameEndPixel]; the scrollbar track adds
+    // one margin past each end.
+    int frameStartPixel() const;
     int frameEndPixel() const;
     int pixelsPerFrame() const;
     // New-scale position of the content point under the mouse, computed
@@ -111,7 +124,6 @@ private:
     enum State { State_Standby, State_MoveCurrent, State_MoveKeys, State_EncloseKeys, State_SetWindow, State_TERM };
     enum MarqueeMode { Marquee_Replace, Marquee_Add, Marquee_Subtract };
 
-    void setMaxFrame(int aValue);
     void clearState();
     void clearSelection();
     bool beginMoveKeys();
@@ -120,7 +132,7 @@ private:
 
     QVector<TimeLineRow> mRows;
     const core::ObjectNode* mSelectingRow;
-    int mTimeMax;
+    util::Range mFrameRange;
     int mFps;
     State mState;
     time::Current mTimeCurrent;
