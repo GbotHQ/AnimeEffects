@@ -24,11 +24,6 @@ namespace prop {
         // hacks.
         mHeader = new HeaderButton(aTitle, aGUIResources, "keyGroupHeader", this, 12);
         mBody = new QWidget(this);
-        // The body must stay flat on the backboard in every state: unnamed,
-        // QWidget:disabled's recessed background would paint the whole
-        // section sunken while playback disables the panel (see
-        // propertywidget.ssa).
-        mBody->setObjectName("keyGroupBody");
 
         // Fields share one column and grow proportionally with the panel
         // (expanding-policy widgets fill the column; multi-field rows split
