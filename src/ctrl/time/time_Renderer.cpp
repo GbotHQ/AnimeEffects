@@ -128,8 +128,11 @@ namespace time {
         // The design system's 1px section-separator token — the same line
         // family as the ruler hairline the markers start from and the row
         // seams they cross — at 40% opacity so the guides recede behind the
-        // track content.
-        mPainter.setPen(QPen(withAlpha(theme::Colors::current().hairline, 102), 1));
+        // track content. While a temporary playback window overrides the
+        // range, the markers drop to 25%: they no longer gate playback, and
+        // the window's own brackets carry the boundary reading.
+        const int markerAlpha = mPlayWindow.active() ? 64 : 102;
+        mPainter.setPen(QPen(withAlpha(theme::Colors::current().hairline, markerAlpha), 1));
         mPainter.setBrush(Qt::NoBrush);
         mPainter.drawLine(x0, top, x0, aCameraRect.bottom());
         mPainter.drawLine(x1, top, x1, aCameraRect.bottom());
@@ -196,11 +199,16 @@ namespace time {
                             : attr.grid.y() >= 8  ? 0.65
                             : attr.grid.y() >= 6  ? 0.45
                                                   : 0.25;
-                // Ticks outside the frame range [0, lastFrame] recede further:
-                // the tier structure stays, but a fixed extra dim makes the
-                // range edge read at a glance. The boundary frames themselves
-                // keep full tier brightness.
-                const bool inRange = i >= 0 && i <= lastFrame;
+                // Ticks outside the active range recede further: the tier
+                // structure stays, but a fixed extra dim makes the range
+                // edge read at a glance. The active range is the project's
+                // frame range [0, lastFrame] — or, while a temporary
+                // playback window is set, the window itself (it overrides
+                // the frame range for playback). The boundary frames
+                // themselves keep full tier brightness.
+                const bool inRange = mPlayWindow.active()
+                    ? (i >= mPlayWindow.start && i <= mPlayWindow.end)
+                    : (i >= 0 && i <= lastFrame);
                 if (!inRange)
                     alpha *= 0.4;
                 QColor tickColor = kBrush.color();
@@ -237,17 +245,27 @@ namespace time {
             }
 
             if (lastLabelActive) {
+                // The end label marks the project's last frame; while a
+                // playback window overrides the range, it recedes with the
+                // rest of the out-of-window content instead of holding full
+                // brightness.
+                const bool inWindow =
+                    !mPlayWindow.active() || (lastFrame >= mPlayWindow.start && lastFrame <= mPlayWindow.end);
+                const qreal endAlpha = inWindow ? 1.0 : 0.4;
+
                 const QPoint pos(lt.x() + lastAttr.grid.x(), rb.y());
 
                 QColor tickColor = kBrush.color();
-                tickColor.setAlphaF(0.85);
+                tickColor.setAlphaF(0.85 * endAlpha);
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
 
                 // The loop already labels this frame when it falls on a
                 // tier B/C multiple; otherwise the end number is ours.
                 if (!lastAttr.showNumber) {
-                    mPainter.setPen(QPen(kBrush, 1));
+                    QColor numberColor = kBrush.color();
+                    numberColor.setAlphaF(endAlpha);
+                    mPainter.setPen(QPen(numberColor, 1));
                     const int width = numberWidth * lastNumber.size();
                     const int left = pos.x() - (width >> 1);
                     const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
@@ -257,7 +275,108 @@ namespace time {
                     mPainter.drawText(rect, lastNumber);
                 }
             }
+
+            // The playback window overlays the ruler content: the translucent
+            // band washes ticks and numbers, the bracket stems and label
+            // pills sit on top (the playhead widget paints above all of it).
+            renderPlayWindow(cameraRect, aHeight, aFps);
         }
+    }
+
+    void Renderer::renderPlayWindow(const QRect& aCameraRect, int aHeight, int aFps) {
+        if (!mPlayWindow.active())
+            return;
+
+        // Window edges on the content axis: the start frame's tick and the
+        // tick of the frame AFTER the end. The window spans whole frames, so
+        // the end frame's right edge is the next frame's tick (the same
+        // convention as the range marker's x1 = margin + maxPixelWidth).
+        const int x0 = mMargin + mScale->attribute(mPlayWindow.start).grid.x();
+        const int x1 = mMargin + mScale->attribute(mPlayWindow.end + 1).grid.x();
+        if (x1 <= x0)
+            return;
+
+        const int top = aCameraRect.top();
+        const theme::Colors& c = theme::Colors::current();
+
+        // The translucent band washes the ruler content inside the window,
+        // clipped to the visible ruler (off-view pills are clipped by the
+        // widget itself).
+        const int c0 = qMax(x0, aCameraRect.left());
+        const int c1 = qMin(x1, aCameraRect.right() + 1);
+        if (c1 > c0) {
+            mPainter.setPen(Qt::NoPen);
+            mPainter.setBrush(c.windowBand);
+            mPainter.drawRect(QRect(c0, top, c1 - c0, aHeight));
+        }
+
+        // Bracket stems: 2px, rising to the label pill's top and running to
+        // the ruler bottom, so the arm and the stem share a full edge and
+        // read as one bracket.
+        const QRect stemL(x0, top, 2, aHeight);
+        const QRect stemR(x1 - 2, top, 2, aHeight);
+        mPainter.setPen(Qt::NoPen);
+        mPainter.setBrush(c.windowEdge);
+        mPainter.drawRect(stemL);
+        mPainter.drawRect(stemR);
+
+        // Label pills: the frame number is the bracket's horizontal arm,
+        // attached to the stem's inner face. Rounded on the outer corners,
+        // square on the face against the stem, so the joint stays
+        // continuous. Two pills that would collide collapse into one
+        // centered "a–b" label; the stems remain the edge.
+        const core::TimeFormat timeFormat(mRange, aFps);
+        const QString sL = timeFormat.frameToString(mPlayWindow.start, timeFormatVar);
+        const QString sR = timeFormat.frameToString(mPlayWindow.end, timeFormatVar);
+        const QFontMetrics fm(mPainter.font());
+        const int wL = fm.horizontalAdvance(sL) + ctrl::TimeLineEditor::kPillPadding * 2;
+        const int wR = fm.horizontalAdvance(sR) + ctrl::TimeLineEditor::kPillPadding * 2;
+        const QRect pillL(x0 + 2, top, wL, ctrl::TimeLineEditor::kNumberHeight);
+        const QRect pillR(x1 - 2 - wR, top, wR, ctrl::TimeLineEditor::kNumberHeight);
+
+        mPainter.setRenderHint(QPainter::Antialiasing, true);
+        mPainter.setPen(Qt::NoPen);
+        mPainter.setBrush(c.windowEdge);
+        if (pillL.right() >= pillR.left()) {
+            const QString merged = sL + QString::fromUtf8("\u2013") + sR;
+            const int w = fm.horizontalAdvance(merged) + ctrl::TimeLineEditor::kPillPadding * 2;
+            const QRect pill((x0 + x1) / 2 - w / 2, top, w, ctrl::TimeLineEditor::kNumberHeight);
+            mPainter.drawRoundedRect(
+                QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
+            );
+            drawPillText(pill, merged, c.windowText, top);
+        } else {
+            mPainter.drawRoundedRect(
+                QRectF(pillL), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
+            );
+            mPainter.drawRoundedRect(
+                QRectF(pillR), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
+            );
+            // Square the inner corners (the faces against the stems) by
+            // overdrawing the rounded slivers with the pill color, so the
+            // bracket joint reads continuous.
+            const int r = ctrl::TimeLineEditor::kPillRadius;
+            mPainter.fillRect(QRect(pillL.x(), pillL.y(), r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillL.x(), pillL.bottom() - r, r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillR.right() - r, pillR.y(), r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillR.right() - r, pillR.bottom() - r, r, r), c.windowEdge);
+            drawPillText(pillL, sL, c.windowText, top);
+            drawPillText(pillR, sR, c.windowText, top);
+        }
+        mPainter.setRenderHint(QPainter::Antialiasing, false);
+    }
+
+    void Renderer::drawPillText(const QRect& aPill, const QString& aText, const QColor& aColor, int aTop) {
+        const QFontMetrics fm(mPainter.font());
+        const int textWidth = fm.horizontalAdvance(aText);
+        // The exact same rect convention as the ruler numbers (top-aligned
+        // at kNumberTop), so the pill text lines up with them precisely.
+        const QRect numberRect(
+            aPill.center().x() - textWidth / 2, aTop + ctrl::TimeLineEditor::kNumberTop, textWidth,
+            ctrl::TimeLineEditor::kNumberHeight
+        );
+        mPainter.setPen(QPen(aColor, 1));
+        mPainter.drawText(numberRect, aText);
     }
 
     void Renderer::renderHandle(const QPoint& aPoint, int aRange) {
