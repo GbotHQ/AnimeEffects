@@ -188,6 +188,19 @@ namespace time {
             const QString lastNumber = timeFormat.frameToString(lastFrame, timeFormatVar);
             const int lastNumberWidth = numberWidth * lastNumber.size();
 
+            // The project's first frame mirrors the end label: off the scale
+            // grid it reads as a major tick with its number, and numbered
+            // neighbors yield to it the same way. For the default range this
+            // is frame 0, which is always on a major (0 mod every step), so
+            // the block is inert.
+            const int firstFrame = mProjectRange.min();
+            const auto firstAttr = mScale->attribute(firstFrame);
+            const bool firstLabelInView = firstFrame >= mRange.min() && firstFrame <= mRange.max();
+            const bool firstLabelActive = firstLabelInView && firstAttr.grid.y() < 10;
+            const int firstLabelCenter = lt.x() + firstAttr.grid.x();
+            const QString firstNumber = timeFormat.frameToString(firstFrame, timeFormatVar);
+            const int firstNumberWidth = numberWidth * firstNumber.size();
+
             for (int i = mRange.min(); i <= mRange.max(); ++i) {
                 auto attr = mScale->attribute(i);
                 if (attr.grid.y() <= 0) continue;
@@ -217,16 +230,24 @@ namespace time {
                 if (attr.showNumber) {
                     QString number = timeFormat.frameToString(i, timeFormatVar);
                     const int width = static_cast<int>(numberWidth * number.size());
-                    // A neighbor label never overlaps the end label: the last
-                    // frame's number always wins the space it occupies. The
-                    // test is symmetric — a label yields only when it actually
-                    // crosses the end label's span, on either side (a
-                    // one-sided test would swallow every label past the end).
+                    // A neighbor label never overlaps the range's boundary
+                    // labels: the first and last frame's numbers always win
+                    // the space they occupy. The test is symmetric — a label
+                    // yields only when it actually crosses the boundary
+                    // label's span, on either side (a one-sided test would
+                    // swallow every label past the end).
                     if (endLabelInView && i != lastFrame) {
                         const int left = pos.x() - (width >> 1);
                         const int endRight = lastLabelCenter + (lastNumberWidth >> 1);
                         const int endLeft = lastLabelCenter - (lastNumberWidth >> 1);
                         if (left < endRight && pos.x() + (width >> 1) > endLeft)
+                            continue;
+                    }
+                    if (firstLabelInView && i != firstFrame) {
+                        const int left = pos.x() - (width >> 1);
+                        const int firstRight = firstLabelCenter + (firstNumberWidth >> 1);
+                        const int firstLeft = firstLabelCenter - (firstNumberWidth >> 1);
+                        if (left < firstRight && pos.x() + (width >> 1) > firstLeft)
                             continue;
                     }
                     QColor numberColor = kBrush.color();
@@ -239,6 +260,36 @@ namespace time {
                         QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
                     );
                     mPainter.drawText(rect, number);
+                }
+            }
+
+            if (firstLabelActive) {
+                // The range's first frame reads as a major even off the grid;
+                // while a playback window overrides the range it recedes with
+                // the out-of-range content, like the end label.
+                const bool inRange = mActiveRange.contains(firstFrame);
+                const qreal firstAlpha = inRange ? 1.0 : 0.4;
+
+                const QPoint pos(lt.x() + firstAttr.grid.x(), rb.y());
+
+                QColor tickColor = kBrush.color();
+                tickColor.setAlphaF(0.85 * firstAlpha);
+                mPainter.setPen(QPen(tickColor, 1));
+                mPainter.drawLine(pos, pos + QPoint(0, -10));
+
+                // The loop already labels this frame when it falls on a
+                // tier B/C multiple; otherwise the start number is ours.
+                if (!firstAttr.showNumber) {
+                    QColor numberColor = kBrush.color();
+                    numberColor.setAlphaF(firstAlpha);
+                    mPainter.setPen(QPen(numberColor, 1));
+                    const int width = numberWidth * firstNumber.size();
+                    const int left = pos.x() - (width >> 1);
+                    const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                    const QRect rect(
+                        QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                    );
+                    mPainter.drawText(rect, firstNumber);
                 }
             }
 
