@@ -1242,6 +1242,10 @@ void MainWindow::onExportTriggered() {
     wSB.unblock(); hSB.unblock();
     exportUI->fpsSpinBox->setValue(genParam.nativeFPS);
     exportUI->lastFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameRange.max());
+    // The suggested export range starts at the project range's first frame
+    // (the last frame box was set above); frames before it are pre-roll the
+    // animation doesn't own.
+    exportUI->firstFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameRange.min());
     // Connections, these below are to force a refresh and to avoid any weird bugs or memory leaks
     connect(exportWidget, &QDialog::destroyed, [=](){
         regenerateWidget();
