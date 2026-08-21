@@ -93,6 +93,7 @@ private:
     void onThemeUpdated(theme::Theme&);
 
     GUIResources& mGUIResources;
+    ViaPoint& mViaPoint;
     util::LinkPointer<core::Project> mProject;
     core::Animator& mAnimator;
     TimeLineEditorWidget* mInner;
@@ -116,6 +117,10 @@ private:
     int mScrollbarDragAnchorX;
     double mScrollbarDragRatio;
     bool mIsPanning;
+    // The MoveCanvas key (space by default, configurable like the viewport's
+    // pan) is held: left-drag pans instead of selecting/scrubbing. Mirrors
+    // MainDisplayWidget's mMovingCanvasByKey.
+    bool mPanByKey;
     QPoint mPanGrabPos;
     QPoint mPanStartTransform;
 
