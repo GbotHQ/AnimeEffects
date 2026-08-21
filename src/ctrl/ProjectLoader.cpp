@@ -180,12 +180,19 @@ bool ProjectLoader::readGlobalBlock(util::LEStreamReader& aIn, core::Project& aP
     // reserved: the frame range start lives in the first 4 bytes (zero in
     // every format <= 0.10, so those files load as [0, frameEnd]); the rest
     // stays reserved and zero.
-    const uint32 frameStart = aIn.readUInt32();
+    uint32 frameStart = aIn.readUInt32();
     if (!aIn.skipZeroArea(47 - 4))
         return false;
 
     if (aIn.isFailed())
         return false;
+
+    // A corrupt file may carry a start past the end (every file <= 0.10 has
+    // start 0, so only hand-edited or damaged files can invert the range);
+    // fall back to [0, end] rather than letting a negative range break the
+    // loop span, the row geometry and the playhead clamp.
+    if (frameStart > frameEnd)
+        frameStart = 0;
 
     // set values
     aProject.attribute().setImageSize(QSize((int)width, (int)height));
