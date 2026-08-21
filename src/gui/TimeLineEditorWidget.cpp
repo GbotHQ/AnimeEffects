@@ -249,6 +249,11 @@ void TimeLineEditorWidget::setProject(core::Project* aProject) {
 
     mEditor->setProject(aProject);
     updateSize();
+    // The project owns the ruler's content (frame range, fps, play window):
+    // the surface repaint alone leaves the strip stale until the next
+    // camera update.
+    if (mTimeRuler)
+        mTimeRuler->update();
 }
 
 void TimeLineEditorWidget::setFrame(core::Frame aFrame) {
@@ -450,6 +455,10 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
         clearWindow->connect(clearWindow, &QAction::triggered, [this]() {
             mEditor->clearPlayWindow();
             this->update();
+            // The window's band and pills are the ruler's paint; the surface
+            // repaint alone would leave them on screen until the next move.
+            if (mTimeRuler)
+                mTimeRuler->update();
         });
         menu.exec(this->mapToGlobal(aPos));
         this->update();
