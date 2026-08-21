@@ -41,7 +41,11 @@ QLineEdit:focus {
 QComboBox:disabled,
 QAbstractSpinBox:disabled,
 QLineEdit:disabled {
-    background-color: @recessed@;
+    /* keep the resting raised surface: disabling (playback) must not
+       repaint the field, only drop its interactivity and gray its text.
+       Without this, QWidget:disabled's recessed background would win over
+       the base rule (higher specificity) and paint the field sunken. */
+    background-color: @raised@;
 }
 
 QComboBox::drop-down {
@@ -215,6 +219,20 @@ QFrame#propertyPanel {
     margin: 0;
     padding-top: 0.1875em;
     padding-bottom: 0.625em;
+}
+/* The panels'/groups' content bodies are plain QWidgets with no default
+   background; an unnamed body would match QWidget:disabled and paint the
+   whole section recessed while playback disables the panel. Keep them
+   flat on the backboard in every state, like their frames. */
+QWidget#propertyPanelContent,
+QWidget#keyGroupBody,
+QWidget#attrGroupBody {
+    background-color: transparent;
+}
+/* The field checkboxes sit on the section bodies and keep their surface
+   when disabled (playback) for the same reason as the bodies above. */
+QCheckBox#checkItemBox {
+    background-color: transparent;
 }
 QAbstractButton#propertyPanelHeader QLabel {
     background-color: transparent;
