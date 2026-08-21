@@ -35,6 +35,10 @@ namespace time {
         // outside it, and the range markers recede while the window is
         // active. The window's own visuals come from setPlayWindow.
         void setActiveRange(const util::Range& aRange) { mActiveRange = aRange; }
+        // The project frame range: the range markers sit at its first and
+        // last frame's ticks. The temporary window dims the markers while it
+        // overrides; it does not move them.
+        void setProjectRange(const util::Range& aRange) { mProjectRange = aRange; }
         // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
         // the header draws its band and brackets, the range markers dim.
         void setPlayWindow(const ctrl::TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
@@ -56,8 +60,9 @@ namespace time {
         const core::CameraInfo& mCamera;
         const theme::TimeLine& mTheme;
         int mMargin;
-        util::Range mRange;       // the visible frame range (culling)
-        util::Range mActiveRange; // the effective playback range (fade basis)
+        util::Range mRange;        // the visible frame range (culling)
+        util::Range mActiveRange;  // the effective playback range (fade basis)
+        util::Range mProjectRange; // the project frame range (range markers)
         const Scaler* mScale;
         ctrl::TimeLineEditor::PlayWindow mPlayWindow;
         const core::TimeFormatType timeFormatVar;
