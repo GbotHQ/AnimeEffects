@@ -264,8 +264,13 @@ namespace time {
                     // narrow for both. The test is symmetric — a label yields
                     // only when it actually enters the reserved span, on
                     // either side (a one-sided test would swallow every label
-                    // past the end).
-                    if (endLabelInView && i != lastFrame) {
+                    // past the end). Each boundary reserves its slot whenever
+                    // it is in view: the first label's test must not ride on
+                    // the end label's visibility (the end can be scrolled out
+                    // while the start is still on screen).
+                    const bool yieldToLast = endLabelInView && i != lastFrame;
+                    const bool yieldToFirst = firstLabelInView && i != firstFrame;
+                    if (yieldToLast || yieldToFirst) {
                         const int left = pos.x() - (width >> 1);
                         const int right = pos.x() + (width >> 1);
                         const int m = kNumberMargin;
@@ -275,10 +280,11 @@ namespace time {
                             if (left < center + half && right > center - half)
                                 continue;
                         } else {
-                            if (left < lastLabelCenter + (lastNumberWidth >> 1) + m &&
+                            if (yieldToLast &&
+                                left < lastLabelCenter + (lastNumberWidth >> 1) + m &&
                                 right > lastLabelCenter - (lastNumberWidth >> 1) - m)
                                 continue;
-                            if (firstLabelInView && i != firstFrame &&
+                            if (yieldToFirst &&
                                 left < firstLabelCenter + (firstNumberWidth >> 1) + m &&
                                 right > firstLabelCenter - (firstNumberWidth >> 1) - m)
                                 continue;
@@ -400,16 +406,6 @@ namespace time {
             mPainter.drawRect(QRect(c0, top, c1 - c0, aHeight));
         }
 
-        // Bracket stems: 2px, rising to the label pill's top and running to
-        // the ruler bottom, so the arm and the stem share a full edge and
-        // read as one bracket.
-        const QRect stemL(x0, top, 2, aHeight);
-        const QRect stemR(x1 - 2, top, 2, aHeight);
-        mPainter.setPen(Qt::NoPen);
-        mPainter.setBrush(c.windowEdge);
-        mPainter.drawRect(stemL);
-        mPainter.drawRect(stemR);
-
         // Label pills: the frame number is the bracket's horizontal arm,
         // attached to the stem's inner face. Rounded on the outer corners,
         // square on the face against the stem, so the joint stays
@@ -456,6 +452,20 @@ namespace time {
             drawPillText(pillL, sL, c.windowText, top);
             drawPillText(pillR, sR, c.windowText, top);
         }
+
+        // Bracket stems: 2px, running from the label pill's top to the ruler
+        // bottom. Drawn AFTER the pills so a merged pill wider than the
+        // window (always true for a 1-frame window) cannot cover the edges —
+        // the stems stay the window's boundary, with the label floating
+        // between them. In the two-pill case the pills sit flush against the
+        // stems' inner faces, so painting the stems last changes nothing.
+        const QRect stemL(x0, top, 2, aHeight);
+        const QRect stemR(x1 - 2, top, 2, aHeight);
+        mPainter.setPen(Qt::NoPen);
+        mPainter.setBrush(c.windowEdge);
+        mPainter.drawRect(stemL);
+        mPainter.drawRect(stemR);
+
         mPainter.setRenderHint(QPainter::Antialiasing, false);
     }
 
