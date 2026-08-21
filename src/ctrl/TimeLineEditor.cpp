@@ -136,6 +136,11 @@ void TimeLineEditor::updateProjectAttribute() {
     if (mProject) {
         const util::Range newRange = mProject->attribute().frameRange();
         if (mFrameRange != newRange) {
+            // The window is a viewport gesture over the current project's
+            // frame range; a range change invalidates it (like a project
+            // switch), so a stale window cannot override playback outside
+            // the newly configured range.
+            mPlayWindow.clear();
             setFrameRange(newRange);
 
             const int newRowRight = kTimeLineMargin + mTimeScale.pixelWidth(newRange.max());
