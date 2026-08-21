@@ -209,8 +209,13 @@ namespace time {
             // A narrow range's two boundary labels can come within the margin
             // (or overlap); collapse them into one "first–last" label
             // centered between the ticks, mirroring how the playback
-            // window's pills collapse. The ticks still mark both edges.
-            const bool boundaryLabelsCollide = firstLabelActive && lastLabelActive &&
+            // window's pills collapse. The collision test ignores grid
+            // alignment: an on-major boundary (frame 0, or any multiple of
+            // the major step) is drawn by the tick loop itself, but it still
+            // occupies the same slot and must collapse the same way — a
+            // range [0, 5] reads "0–5", not a lone "5" eating the start.
+            // The ticks still mark both edges.
+            const bool boundaryLabelsCollide = firstLabelInView && endLabelInView &&
                 (firstLabelCenter + (firstNumberWidth >> 1) + kNumberMargin >=
                  lastLabelCenter - (lastNumberWidth >> 1));
             const QString mergedNumber = boundaryLabelsCollide
@@ -221,11 +226,14 @@ namespace time {
 
             for (int i = mRange.min(); i <= mRange.max(); ++i) {
                 // The boundary labels own their frames: when the range's
-                // first/last frame label is active (the frame is off-major),
-                // the loop's tier tick would stack under the boundary's major
-                // tick — skip the frame entirely, the boundary block below
-                // draws both the tick and the number.
-                if ((i == firstFrame && firstLabelActive) || (i == lastFrame && lastLabelActive))
+                // first/last frame label is active (the frame is off-major)
+                // or the labels are merged, the loop's tier tick would stack
+                // under the boundary's major tick — skip the frame entirely,
+                // the boundary block below draws both the tick and the
+                // number. On-major boundaries keep their loop tick only when
+                // they are not merged.
+                if ((i == firstFrame && (boundaryLabelsCollide || firstLabelActive)) ||
+                    (i == lastFrame && (boundaryLabelsCollide || lastLabelActive)))
                     continue;
 
                 auto attr = mScale->attribute(i);
@@ -305,8 +313,12 @@ namespace time {
 
             // The boundary ticks mark both edges at major prominence; each
             // recedes with the out-of-range content while a playback window
-            // overrides the range.
-            if (firstLabelActive) {
+            // overrides the range. A merged label owns both edges, so both
+            // ticks draw even when one boundary frame is on-major (its loop
+            // tick was skipped).
+            const bool drawFirstTick = boundaryLabelsCollide || firstLabelActive;
+            const bool drawLastTick = boundaryLabelsCollide || lastLabelActive;
+            if (drawFirstTick) {
                 const qreal firstAlpha = mActiveRange.contains(firstFrame) ? 1.0 : 0.4;
                 const QPoint pos(lt.x() + firstAttr.grid.x(), rb.y());
 
@@ -315,7 +327,7 @@ namespace time {
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
             }
-            if (lastLabelActive) {
+            if (drawLastTick) {
                 const qreal lastAlpha = mActiveRange.contains(lastFrame) ? 1.0 : 0.4;
                 const QPoint pos(lt.x() + lastAttr.grid.x(), rb.y());
 
@@ -406,11 +418,23 @@ namespace time {
             mPainter.drawRect(QRect(c0, top, c1 - c0, aHeight));
         }
 
+        // Bracket stems: 2px, running from the label pill's top to the ruler
+        // bottom, drawn UNDER the pills: a merged pill wider than the window
+        // (always true for a 1-frame window) overflows past the stems, and a
+        // stem painted on top would cut through the label's glyphs. The pill
+        // wins the space; the stems stay visible below it.
+        const QRect stemL(x0, top, 2, aHeight);
+        const QRect stemR(x1 - 2, top, 2, aHeight);
+        mPainter.setPen(Qt::NoPen);
+        mPainter.setBrush(c.windowEdge);
+        mPainter.drawRect(stemL);
+        mPainter.drawRect(stemR);
+
         // Label pills: the frame number is the bracket's horizontal arm,
         // attached to the stem's inner face. Rounded on the outer corners,
         // square on the face against the stem, so the joint stays
         // continuous. Two pills that would collide collapse into one
-        // centered "a–b" label; the stems remain the edge.
+        // centered "a–b" label.
         const core::TimeFormat timeFormat(mRange, aFps);
         const QString sL = timeFormat.frameToString(mPlayWindow.start, timeFormatVar);
         const QString sR = timeFormat.frameToString(mPlayWindow.end, timeFormatVar);
@@ -452,19 +476,6 @@ namespace time {
             drawPillText(pillL, sL, c.windowText, top);
             drawPillText(pillR, sR, c.windowText, top);
         }
-
-        // Bracket stems: 2px, running from the label pill's top to the ruler
-        // bottom. Drawn AFTER the pills so a merged pill wider than the
-        // window (always true for a 1-frame window) cannot cover the edges —
-        // the stems stay the window's boundary, with the label floating
-        // between them. In the two-pill case the pills sit flush against the
-        // stems' inner faces, so painting the stems last changes nothing.
-        const QRect stemL(x0, top, 2, aHeight);
-        const QRect stemR(x1 - 2, top, 2, aHeight);
-        mPainter.setPen(Qt::NoPen);
-        mPainter.setBrush(c.windowEdge);
-        mPainter.drawRect(stemL);
-        mPainter.drawRect(stemR);
 
         mPainter.setRenderHint(QPainter::Antialiasing, false);
     }
