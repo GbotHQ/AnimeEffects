@@ -122,6 +122,14 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     this->setMouseTracking(true);
     this->setContextMenuPolicy(Qt::CustomContextMenu);
 
+    // The ruler strip: own paint and own input, over the track surface and
+    // under the playhead (raised below so its pill overlays the window pills).
+    mTimeRuler.reset(new TimeRuler(*this, this));
+    mTimeRuler->setGeometry(0, 0, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
+    mTimeRuler->show();
+    mTimeCursor.raise();
+    this->connect(mTimeRuler.data(), &TimeRuler::frameChanged, this, &TimeLineEditorWidget::rulerFrameChanged);
+
     this->connect(this, &QWidget::customContextMenuRequested, this, &TimeLineEditorWidget::onContextMenuRequested);
 
     {
@@ -192,31 +200,31 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     {
         auto key = mKeyCommandMap.get("Copy");
         if (key)
-            key->invoker = [=]() {
+            key->addListener([=]() {
                 mTargets = core::TimeLineEvent();
                 mEditor->retrieveSelectionTargets(mTargets);
                 mCopyKey->trigger();
-            };
+            });
     }
     {
         auto key = mKeyCommandMap.get("Paste");
         if (key)
-            key->invoker = [=]() {
+            key->addListener([=]() {
                 if (!mCopyTargets.targets().isEmpty()) {
                     mPastePos = this->mapFromGlobal(QCursor::pos());
                     mPasteKey->trigger();
                 }
-            };
+            });
     }
     {
         auto key = mKeyCommandMap.get("Delete");
         if (key)
-            key->invoker = [=]() {
+            key->addListener([=]() {
                 mTargets = core::TimeLineEvent();
                 if (mEditor->retrieveSelectionTargets(mTargets)) {
                     mDeleteKey->trigger();
                 }
-            };
+            });
     }
 }
 
@@ -267,11 +275,11 @@ void TimeLineEditorWidget::updateTimeCursorPos() {
         // The playhead pill overlaps the ruler numbers, and the moving child
         // only repaints its own old rect on the parent: any number straddling
         // that partial region's edge would be painted clipped mid-glyph (the
-        // pill's new opaque face makes the cut visible). Repaint the whole
-        // numbers row so the header is always complete around the playhead;
-        // Qt coalesces this with the child-rect update into one full-strip
-        // region. The strip is 22px, so a per-playback-tick repaint is cheap.
-        this->update(QRect(0, 0, this->width(), ctrl::TimeLineEditor::kHeaderHeight));
+        // pill's new opaque face makes the cut visible). The ruler is its own
+        // widget now, so it repaints its full strip; the strip is 22px, so a
+        // per-playback-tick repaint is cheap.
+        if (mTimeRuler)
+            mTimeRuler->update();
         // The playhead overlays the viewport: pinned to the top (on the fixed
         // ruler) and following the content horizontally.
         const QPoint viewportPos(mCamera->leftTopPos().toPoint().x() + pos.x(), 0);
@@ -283,6 +291,14 @@ void TimeLineEditorWidget::updateCamera(const core::CameraInfo& aCamera) {
     mCamera = &aCamera;
     updateSize();
     updateTimeCursorPos();
+    if (mTimeRuler)
+        mTimeRuler->setCamera(&aCamera);
+}
+
+void TimeLineEditorWidget::resizeEvent(QResizeEvent* aEvent) {
+    QWidget::resizeEvent(aEvent);
+    if (mTimeRuler)
+        mTimeRuler->setGeometry(0, 0, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
 }
 
 void TimeLineEditorWidget::updateLines(QTreeWidgetItem* aTopNode) {
@@ -369,6 +385,8 @@ void TimeLineEditorWidget::updateProjectAttribute() {
 void TimeLineEditorWidget::updateTheme(theme::Theme& aTheme) {
     Q_UNUSED(aTheme) // TODO
     mTimelineTheme.reset();
+    if (mTimeRuler)
+        mTimeRuler->updateTheme();
     updateTimeCursorPos();
 }
 QSize TimeLineEditorWidget::getEditorSize() const {
@@ -389,10 +407,16 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
     if (mCamera) {
         // The surface is viewport-fixed; the content translates by the view
         // origin. Everything then lands at its viewport position — fixed UI
-        // (ruler) included — and nothing is clipped by the frame range.
+        // included — and nothing is clipped by the frame range.
         const QPoint origin = mCamera->leftTopPos().toPoint();
         painter.translate(origin);
         mEditor->render(painter, *mCamera, mTimelineTheme, aEvent->rect().translated(-origin));
+        // The hairline under the ruler separates it from the track area. It
+        // sits on the first track row (y = kHeaderHeight), below the ruler
+        // widget, and stays fixed like the strip it frames.
+        painter.translate(-origin);
+        painter.setPen(QPen(QBrush(mTimelineTheme.rulerLineColor()), 1));
+        painter.drawLine(0, ctrl::TimeLineEditor::kHeaderHeight, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
     }
     painter.end();
 }
