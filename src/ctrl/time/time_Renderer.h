@@ -30,8 +30,13 @@ namespace time {
         void setMargin(int aMargin) { mMargin = aMargin; }
         void setRange(const util::Range& aRange) { mRange = aRange; }
         void setTimeScale(const Scaler& aScale) { mScale = &aScale; }
+        // The effective playback range (the project frame range, or the
+        // temporary window while it overrides): the ruler fades everything
+        // outside it, and the range markers recede while the window is
+        // active. The window's own visuals come from setPlayWindow.
+        void setActiveRange(const util::Range& aRange) { mActiveRange = aRange; }
         // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
-        // the header fades and highlights from it, the range markers dim.
+        // the header draws its band and brackets, the range markers dim.
         void setPlayWindow(const ctrl::TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
 
         void renderLines(const QVector<TimeLineRow>& aRows, const QRect& aCameraRect, const QRect& aCullRect);
@@ -51,7 +56,8 @@ namespace time {
         const core::CameraInfo& mCamera;
         const theme::TimeLine& mTheme;
         int mMargin;
-        util::Range mRange;
+        util::Range mRange;       // the visible frame range (culling)
+        util::Range mActiveRange; // the effective playback range (fade basis)
         const Scaler* mScale;
         ctrl::TimeLineEditor::PlayWindow mPlayWindow;
         const core::TimeFormatType timeFormatVar;

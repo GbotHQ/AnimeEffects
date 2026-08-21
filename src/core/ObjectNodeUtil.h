@@ -46,6 +46,7 @@ namespace ObjectNodeUtil {
     float getInitialWorldDepth(ObjectNode& aNode);
 
     bool thereAreSomeKeysExceedingFrame(const ObjectNode* aRootNode, int aMaxFrame);
+    bool thereAreSomeKeysBeforeFrame(const ObjectNode* aRootNode, int aMinFrame);
 
     void collectRenderClippees(
         ObjectNode& aNode, std::vector<Renderer::SortUnit>& aDest, const TimeCacheAccessor& aAccessor,
