@@ -51,17 +51,18 @@ class ProjectSettingDialog: public EasyDialog {
 public:
     ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& aProject, QWidget* aParent);
     QSize canvasSize() const { return {mWidthBox->value(), mHeightBox->value()}; }
-    int maxFrame() const { return mMaxFrameBox->value(); }
+    util::Range frameRange() const { return util::Range(mStartBox->value(), mEndBox->value()); }
     bool loop() const { return mLoopBox->isChecked(); }
     int fps() const { return mFPSBox->value(); }
 
 private:
-    bool confirmMaxFrameUpdating(int aNewMaxFrame) const;
+    bool confirmFrameRangeUpdating(const util::Range& aNewRange) const;
     ViaPoint& mViaPoint;
     core::Project& mProject;
     QSpinBox* mWidthBox;
     QSpinBox* mHeightBox;
-    QSpinBox* mMaxFrameBox;
+    QSpinBox* mStartBox;
+    QSpinBox* mEndBox;
     QCheckBox* mLoopBox;
     QSpinBox* mFPSBox;
 };

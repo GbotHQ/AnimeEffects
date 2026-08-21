@@ -97,9 +97,12 @@ void TargetWidget::onPlayBackButtonPushed(PlayBackWidget::PushType aType) {
     } else if (aType == PlayBackWidget::PushType_StepBack) {
         mTimeLine->setFrame(currentFrame().added(-1));
     } else if (aType == PlayBackWidget::PushType_Rewind) {
+        // The playhead clamps into the effective playback range, so rewind
+        // lands on the range's first frame (the temporary window's start
+        // while it overrides).
         mTimeLine->setFrame(core::Frame(0));
     } else if (aType == PlayBackWidget::PushType_Fast) {
-        mTimeLine->setFrame(core::Frame(mProject->attribute().maxFrame()));
+        mTimeLine->setFrame(core::Frame(mProject->attribute().frameRange().max()));
     } else if (aType == PlayBackWidget::PushType_Options) {
         openAnimationSettings();
     } else if (aType == PlayBackWidget::PushType_Loop) {
@@ -112,7 +115,7 @@ void TargetWidget::openAnimationSettings() {
         return;
 
     const int curFPS = mProject->attribute().fps();
-    const int curMaxFrame = mProject->attribute().maxFrame();
+    const util::Range curRange = mProject->attribute().frameRange();
     const bool curLoop = mPlayBack->isLoopChecked();
 
     QScopedPointer<AnimationSettingDialog> dialog(new AnimationSettingDialog(*mProject, curLoop, this));
@@ -121,9 +124,9 @@ void TargetWidget::openAnimationSettings() {
         return;
 
     const int newFPS = dialog->fps();
-    const int newMaxFrame = dialog->maxFrame();
+    const util::Range newRange = dialog->frameRange();
     const bool newLoop = dialog->isLoopChecked();
-    if (curFPS == newFPS && curMaxFrame == newMaxFrame && curLoop == newLoop)
+    if (curFPS == newFPS && curRange == newRange && curLoop == newLoop)
         return;
 
     // One undo step covers every change made in the dialog, matching the
@@ -136,7 +139,7 @@ void TargetWidget::openAnimationSettings() {
         auto command = new cmnd::Delegatable(
             [=]() {
                 projectPtr->attribute().setFps(newFPS);
-                projectPtr->attribute().setMaxFrame(newMaxFrame);
+                projectPtr->attribute().setFrameRange(newRange);
                 mPlayBack->checkLoop(newLoop);
                 mTimeLine->setPlayBackLoop(newLoop);
                 auto event = core::ProjectEvent::loopChangeEvent(*projectPtr);
@@ -145,7 +148,7 @@ void TargetWidget::openAnimationSettings() {
             },
             [=]() {
                 projectPtr->attribute().setFps(curFPS);
-                projectPtr->attribute().setMaxFrame(curMaxFrame);
+                projectPtr->attribute().setFrameRange(curRange);
                 mPlayBack->checkLoop(curLoop);
                 mTimeLine->setPlayBackLoop(curLoop);
                 auto event = core::ProjectEvent::loopChangeEvent(*projectPtr);

@@ -46,11 +46,11 @@ ExportDialog::ExportDialog(core::Project& aProject, const QString& aPath, QWidge
     XC_ASSERT(mCommonParam.size.height() > 0);
 
     auto time = mProject.currentTimeInfo();
-    mCommonParam.frame = util::Range(0, time.frameMax);
+    mCommonParam.frame = time.frameRange;
     mCommonParam.fps = time.fps;
 
     mSize = mProject.attribute().imageSize();
-    mFrameMax = mProject.currentTimeInfo().frameMax;
+    mFrameMax = time.frameRange.max();
 }
 
 void ExportDialog::pushSizeBox(QFormLayout& aLayout) {
