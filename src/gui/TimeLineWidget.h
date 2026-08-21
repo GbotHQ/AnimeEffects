@@ -43,6 +43,11 @@ public:
     void setPlayBackLoop(bool aDoesLoop);
     void setFrame(core::Frame aFrame);
     core::Frame currentFrame() const;
+    // The effective playback range (project frame range, or the temporary
+    // playback window while it overrides): transport shortcuts land on its
+    // bounds, not the project range's, so they stay consistent with the
+    // window even when it extends past the project range.
+    util::Range playbackRange() const { return mInner->playbackRange(); }
 
     util::Signaler<void()> onCursorUpdated;
     util::Signaler<void()> onFrameUpdated;

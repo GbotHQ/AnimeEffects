@@ -758,12 +758,14 @@ void MainWindow::onPlayPauseTriggered() {
 
 void MainWindow::onMovementTriggered(const QString& frameMovement) {
     if (frameMovement == "Last") {
-        // The playhead clamps into the effective playback range, so "last"
-        // lands on the range's end (the temporary window's end while it
-        // overrides).
-        mTarget->timeLineWidget().setFrame(core::Frame(mCurrent->attribute().frameRange().max()));
+        // Land on the effective playback range's end (the temporary window's
+        // end while it overrides) — the project range's max would fall short
+        // when the window extends past it.
+        mTarget->timeLineWidget().setFrame(core::Frame(mTarget->timeLineWidget().playbackRange().max()));
     } else {
-        mTarget->timeLineWidget().setFrame(core::Frame(0));
+        // Land on the effective playback range's start (the temporary
+        // window's start while it overrides); the playhead clamps into it.
+        mTarget->timeLineWidget().setFrame(core::Frame(mTarget->timeLineWidget().playbackRange().min()));
     }
 }
 

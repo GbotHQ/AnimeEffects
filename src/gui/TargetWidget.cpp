@@ -97,12 +97,15 @@ void TargetWidget::onPlayBackButtonPushed(PlayBackWidget::PushType aType) {
     } else if (aType == PlayBackWidget::PushType_StepBack) {
         mTimeLine->setFrame(currentFrame().added(-1));
     } else if (aType == PlayBackWidget::PushType_Rewind) {
-        // The playhead clamps into the effective playback range, so rewind
-        // lands on the range's first frame (the temporary window's start
-        // while it overrides).
-        mTimeLine->setFrame(core::Frame(0));
+        // Land on the effective playback range's start (the temporary
+        // window's start while it overrides) — Frame(0) would stay at 0 when
+        // the window starts negative.
+        mTimeLine->setFrame(core::Frame(mTimeLine->playbackRange().min()));
     } else if (aType == PlayBackWidget::PushType_Fast) {
-        mTimeLine->setFrame(core::Frame(mProject->attribute().frameRange().max()));
+        // Land on the effective playback range's end (the temporary window's
+        // end while it overrides) — the project range's max would fall short
+        // when the window extends past it.
+        mTimeLine->setFrame(core::Frame(mTimeLine->playbackRange().max()));
     } else if (aType == PlayBackWidget::PushType_Options) {
         openAnimationSettings();
     } else if (aType == PlayBackWidget::PushType_Loop) {
