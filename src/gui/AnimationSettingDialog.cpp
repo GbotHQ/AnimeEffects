@@ -4,6 +4,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QMessageBox>
+#include <limits>
 
 namespace gui {
 
@@ -29,16 +30,18 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
         form->addRow(tr("Loop animation"), layout);
     }
     {
-        // Frame range: two linked spinboxes. The end cannot drop below the
-        // start, and neither side may cut across a key (validated on OK).
+        // Frame range: two linked spinboxes. Either bound may be negative
+        // (pre-roll frames before 0 are a valid project extent); the end
+        // cannot drop below the start, and neither side may cut across a key
+        // (validated on OK).
         auto layout = new QHBoxLayout();
         mStartBox = new QSpinBox();
-        mStartBox->setRange(0, 0x7fffffff);
+        mStartBox->setRange(std::numeric_limits<int>::min(), 0x7fffffff);
         mStartBox->setValue(curRange.min());
         layout->addWidget(mStartBox);
 
         mEndBox = new QSpinBox();
-        mEndBox->setRange(1, 0x7fffffff);
+        mEndBox->setRange(std::numeric_limits<int>::min(), 0x7fffffff);
         mEndBox->setValue(curRange.max());
         layout->addWidget(mEndBox);
 

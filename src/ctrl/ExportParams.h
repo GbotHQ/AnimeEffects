@@ -1373,7 +1373,7 @@ public:
                 QString posAsStr = QString::fromStdString(std::to_string(offset));
                 // We clamp the maximum audio duration to the max project frame
                 bool lastFrameLargerThanMax = audio.endFrame > frameCount;
-                int durInFrames = lastFrameLargerThanMax? abs(frame - frameCount): abs(audio.endFrame - audio.startFrame);
+                int durInFrames = lastFrameLargerThanMax? qMax(0, frameCount - frame): abs(audio.endFrame - audio.startFrame);
                 double duration = ((static_cast<float>(durInFrames) / static_cast<float>(mProject.currentTimeInfo().fps)));
                 QString durAsStr = QString::fromStdString(std::to_string(duration));
                 // Get volume

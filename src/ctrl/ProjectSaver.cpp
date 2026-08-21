@@ -77,7 +77,7 @@ bool ProjectSaver::writeGlobalBlock(util::StreamWriter& aOut, const core::Projec
     const util::Range frameRange = aProject.attribute().frameRange();
     const int fps = aProject.attribute().fps();
     const bool loop = aProject.attribute().loop();
-    XC_ASSERT(frameRange.max() > 0);
+    XC_ASSERT(frameRange.min() <= frameRange.max()); // negative ranges are valid
     XC_ASSERT(fps > 0);
 
     // block signature
