@@ -202,6 +202,14 @@ namespace time {
             const int firstNumberWidth = numberWidth * firstNumber.size();
 
             for (int i = mRange.min(); i <= mRange.max(); ++i) {
+                // The boundary labels own their frames: when the range's
+                // first/last frame label is active (the frame is off-major),
+                // the loop's tier tick would stack under the boundary's major
+                // tick — skip the frame entirely, the boundary block below
+                // draws both the tick and the number.
+                if ((i == firstFrame && firstLabelActive) || (i == lastFrame && lastLabelActive))
+                    continue;
+
                 auto attr = mScale->attribute(i);
                 if (attr.grid.y() <= 0) continue;
 
@@ -277,20 +285,19 @@ namespace time {
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
 
-                // The loop already labels this frame when it falls on a
-                // tier B/C multiple; otherwise the start number is ours.
-                if (!firstAttr.showNumber) {
-                    QColor numberColor = kBrush.color();
-                    numberColor.setAlphaF(firstAlpha);
-                    mPainter.setPen(QPen(numberColor, 1));
-                    const int width = numberWidth * firstNumber.size();
-                    const int left = pos.x() - (width >> 1);
-                    const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                    const QRect rect(
-                        QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                    );
-                    mPainter.drawText(rect, firstNumber);
-                }
+                // The loop skips this frame while the label is active, so the
+                // number is always ours here (the yield rule keeps numbered
+                // neighbors away from the slot).
+                QColor numberColor = kBrush.color();
+                numberColor.setAlphaF(firstAlpha);
+                mPainter.setPen(QPen(numberColor, 1));
+                const int width = numberWidth * firstNumber.size();
+                const int left = pos.x() - (width >> 1);
+                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                const QRect rect(
+                    QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                );
+                mPainter.drawText(rect, firstNumber);
             }
 
             if (lastLabelActive) {
@@ -308,20 +315,19 @@ namespace time {
                 mPainter.setPen(QPen(tickColor, 1));
                 mPainter.drawLine(pos, pos + QPoint(0, -10));
 
-                // The loop already labels this frame when it falls on a
-                // tier B/C multiple; otherwise the end number is ours.
-                if (!lastAttr.showNumber) {
-                    QColor numberColor = kBrush.color();
-                    numberColor.setAlphaF(endAlpha);
-                    mPainter.setPen(QPen(numberColor, 1));
-                    const int width = numberWidth * lastNumber.size();
-                    const int left = pos.x() - (width >> 1);
-                    const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-                    const QRect rect(
-                        QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-                    );
-                    mPainter.drawText(rect, lastNumber);
-                }
+                // The loop skips this frame while the label is active, so the
+                // number is always ours here (the yield rule keeps numbered
+                // neighbors away from the slot).
+                QColor numberColor = kBrush.color();
+                numberColor.setAlphaF(endAlpha);
+                mPainter.setPen(QPen(numberColor, 1));
+                const int width = numberWidth * lastNumber.size();
+                const int left = pos.x() - (width >> 1);
+                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                const QRect rect(
+                    QPoint(left, top), QPoint(left + width + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                );
+                mPainter.drawText(rect, lastNumber);
             }
 
             // The playback window overlays the ruler content: the translucent
