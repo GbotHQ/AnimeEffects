@@ -42,6 +42,29 @@ public:
     // Ruler number text geometry, relative to the header top.
     static constexpr int kNumberTop = -1;
     static constexpr int kNumberHeight = 14;
+    // Playback-window label pills (bracket arms and the playhead badge):
+    // horizontal padding and corner radius, shared by time_Renderer and
+    // gui::TimeCursor so every pill looks identical.
+    static constexpr int kPillPadding = 5;
+    static constexpr int kPillRadius = 3;
+
+    // The temporary playback window: an ephemeral ruler gesture (shift-drag)
+    // that overrides the project frame range for playback until cleared
+    // (shift-click). Inactive when end < start; set() normalizes, so a live
+    // drag may pass through any press/release order.
+    struct PlayWindow {
+        int start = 0;
+        int end = -1; // end < start -> inactive
+        bool active() const { return start <= end; }
+        void set(int aStart, int aEnd) {
+            start = qMin(aStart, aEnd);
+            end = qMax(aStart, aEnd);
+        }
+        void clear() {
+            start = 0;
+            end = -1;
+        }
+    };
 
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
@@ -61,6 +84,10 @@ public:
 
     core::Frame currentFrame() const;
     int maxFrame() const { return mTimeMax; }
+    // The temporary playback window (inactive when empty). Playback reads it
+    // every tick to bound the playhead; the renderer fades and highlights
+    // from it. Only the ruler gesture (updateCursor) mutates it.
+    const PlayWindow& playWindow() const { return mPlayWindow; }
     QSize modelSpaceSize() const;
     QPoint currentTimeCursorPos() const;
 
@@ -81,7 +108,7 @@ public:
     util::LinkPointer<core::Project> mProject;
 
 private:
-    enum State { State_Standby, State_MoveCurrent, State_MoveKeys, State_EncloseKeys, State_TERM };
+    enum State { State_Standby, State_MoveCurrent, State_MoveKeys, State_EncloseKeys, State_SetWindow, State_TERM };
     enum MarqueeMode { Marquee_Replace, Marquee_Add, Marquee_Subtract };
 
     void setMaxFrame(int aValue);
@@ -110,6 +137,8 @@ private:
     core::TimeLineEvent mPreGestureSelection;
     core::TimeLineEvent::Target mPressedTarget; // plain-press target, for click-collapse
     bool mPressedTargetValid;
+    PlayWindow mPlayWindow;   // the temporary playback window (ruler gesture)
+    int mWindowAnchorFrame;   // frame where the window gesture pressed
 };
 
 } // namespace ctrl

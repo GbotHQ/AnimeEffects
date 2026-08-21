@@ -8,6 +8,7 @@
 #include "core/CameraInfo.h"
 #include "core/ObjectNode.h"
 #include "core/TimeFormat.h"
+#include "ctrl/TimeLineEditor.h"
 #include "ctrl/TimeLineRow.h"
 #include "ctrl/time/time_Scaler.h"
 #include "gui/theme/TimeLine.h"
@@ -29,10 +30,14 @@ namespace time {
         void setMargin(int aMargin) { mMargin = aMargin; }
         void setRange(const util::Range& aRange) { mRange = aRange; }
         void setTimeScale(const Scaler& aScale) { mScale = &aScale; }
+        // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
+        // the header fades and highlights from it, the range markers dim.
+        void setPlayWindow(const ctrl::TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
 
         void renderLines(const QVector<TimeLineRow>& aRows, const QRect& aCameraRect, const QRect& aCullRect);
         void renderRangeMarkers(const QRect& aCameraRect);
         void renderHeader(int aHeight, int aFps);
+        void renderPlayWindow(const QRect& aCameraRect, int aHeight, int aFps);
         void renderHandle(const QPoint& aPoint, int aRange);
         void renderSelectionRange(const QRect& aRect);
 
@@ -40,6 +45,7 @@ namespace time {
         void drawTimeCurrent();
         void drawKeys(const core::ObjectNode* aNode, const TimeLineRow& aRow);
         void drawChildKeys(const core::ObjectNode* aNode, const QPoint& aPos);
+        void drawPillText(const QRect& aPill, const QString& aText, const QColor& aColor, int aTop);
 
         QPainter& mPainter;
         const core::CameraInfo& mCamera;
@@ -47,6 +53,7 @@ namespace time {
         int mMargin;
         util::Range mRange;
         const Scaler* mScale;
+        ctrl::TimeLineEditor::PlayWindow mPlayWindow;
         const core::TimeFormatType timeFormatVar;
     };
 

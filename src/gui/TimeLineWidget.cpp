@@ -434,15 +434,31 @@ void TimeLineWidget::onPlayBackUpdated() {
     if (!mAnimator.isSuspended()) {
         const double oneFrameTime = getOneFrameTime();
         const core::Frame curFrame = currentFrame();
+
+        // The temporary playback window overrides the project frame range
+        // while it is active: playback stays inside [playStart, playEnd].
+        // Scrubbing is unconstrained; only the playback clock is bounded.
+        const auto& win = mInner->playWindow();
+        const int playStart = win.active() ? win.start : 0;
+        const int playEnd = win.active() ? win.end : mInner->maxFrame();
+
         double nextFrame = static_cast<double>(curFrame.getDecimal()) + 1.0;
 
-        if (mDoesLoop && nextFrame > mInner->maxFrame()) {
-            nextFrame = 0.0;
-            mBeginFrame.set(0);
+        if (nextFrame < playStart) {
+            // Playback may start outside the window (or with the window set
+            // mid-flight): jump into it instead of playing up to it.
+            nextFrame = playStart;
+            mBeginFrame.set(playStart);
+            mElapsed.restart();
+            mTimer.setInterval(static_cast<int>(oneFrameTime));
+        } else if (mDoesLoop && nextFrame > playEnd) {
+            nextFrame = playStart;
+            mBeginFrame.set(playStart);
             mElapsed.restart();
             mTimer.setInterval(static_cast<int>(oneFrameTime));
         } else {
-            if (curFrame.get() == mInner->maxFrame()) {
+            // >= (not ==) so a playhead scrubbed past the end still stops.
+            if (curFrame.get() >= playEnd) {
                 mProject->animator().stop();
             }
             if (mLastFrame == curFrame) {
