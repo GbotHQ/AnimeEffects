@@ -758,7 +758,10 @@ void MainWindow::onPlayPauseTriggered() {
 
 void MainWindow::onMovementTriggered(const QString& frameMovement) {
     if (frameMovement == "Last") {
-        mTarget->timeLineWidget().setFrame(core::Frame(mCurrent->attribute().maxFrame()));
+        // The playhead clamps into the effective playback range, so "last"
+        // lands on the range's end (the temporary window's end while it
+        // overrides).
+        mTarget->timeLineWidget().setFrame(core::Frame(mCurrent->attribute().frameRange().max()));
     } else {
         mTarget->timeLineWidget().setFrame(core::Frame(0));
     }
@@ -1089,7 +1092,7 @@ void MainWindow::onExportTriggered() {
     exportUI = new ExportWidgetUI;
     // Set up UI
     exportWidget->setParent(this, Qt::Window);
-    exportUI->setupUi(exportWidget, mGUIResources, mCurrent->attribute().maxFrame());
+    exportUI->setupUi(exportWidget, mGUIResources, mCurrent->attribute().frameRange().max());
     // Initialize gpDiag
     gpDiag->setAttribute(Qt::WA_DeleteOnClose,true);
     gpDiag->setParent(exportWidget, Qt::Window);
@@ -1101,7 +1104,7 @@ void MainWindow::onExportTriggered() {
     genParam.nativeFPS = mCurrent->attribute().fps();
     // I hate you gcc
     frameExportRange fer;
-    fer.lastFrame = mCurrent->attribute().maxFrame();
+    fer.lastFrame = mCurrent->attribute().frameRange().max();
     genParam.nativeFrameRange = fer;
     // Get generics
     QVariant aspectRatioV = settings.value("export_aspect_ratio");
@@ -1235,7 +1238,7 @@ void MainWindow::onExportTriggered() {
     exportUI->heightSpinBox->setValue(genParam.nativeHeight);
     wSB.unblock(); hSB.unblock();
     exportUI->fpsSpinBox->setValue(genParam.nativeFPS);
-    exportUI->lastFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameMax);
+    exportUI->lastFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameRange.max());
     // Connections, these below are to force a refresh and to avoid any weird bugs or memory leaks
     connect(exportWidget, &QDialog::destroyed, [=](){
         regenerateWidget();
@@ -1574,7 +1577,7 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
     genParam.exportWithAudio = !mCurrent->pConf->empty();
     genParam.useCustomParam = false;
     frameExportRange fer;
-    fer.lastFrame = mCurrent->attribute().maxFrame();
+    fer.lastFrame = mCurrent->attribute().frameRange().max();
     genParam.nativeFrameRange = fer;
     genParam.exportAllFrames = true;
     genParam.exportRange = {fer};

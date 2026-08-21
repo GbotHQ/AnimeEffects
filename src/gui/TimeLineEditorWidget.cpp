@@ -252,12 +252,10 @@ void TimeLineEditorWidget::setFrame(core::Frame aFrame) {
 
 core::Frame TimeLineEditorWidget::currentFrame() const { return mEditor->currentFrame(); }
 
-int TimeLineEditorWidget::maxFrame() const { return mEditor->maxFrame(); }
-
 void TimeLineEditorWidget::updateTimeCursorPos() {
     if (mCamera) {
         auto pos = mEditor->currentTimeCursorPos();
-        const core::TimeFormat format(util::Range(0, mEditor->maxFrame()), mEditor->fps());
+        const core::TimeFormat format(mEditor->frameRange(), mEditor->fps());
         const QString frameText = format.frameToString(mEditor->currentFrame().get(), mEditor->timeFormatType());
         // The playhead pill is token-driven (accentBright fill, max-contrast
         // text, accentBright line): it must read on the plain ruler AND on
@@ -375,6 +373,10 @@ void TimeLineEditorWidget::updateTheme(theme::Theme& aTheme) {
 }
 QSize TimeLineEditorWidget::getEditorSize() const {
     return mEditor->modelSpaceSize();
+}
+
+int TimeLineEditorWidget::frameStartPixel() const {
+    return mEditor->frameStartPixel();
 }
 
 int TimeLineEditorWidget::frameEndPixel() const {
@@ -854,7 +856,7 @@ void TimeLineEditorWidget::onSelectSpacingTriggered() {
     verticalLayout->addWidget(label);
 
     auto frameSpacing = new QSpinBox(diag);
-    frameSpacing->setMaximum(mProject->attribute().maxFrame());
+    frameSpacing->setMaximum(mProject->attribute().frameRange().max());
     frameSpacing->setMinimum(1);
     frameSpacing->setValue(1);
     frameSpacing->setObjectName("frameSpacing");
