@@ -266,6 +266,14 @@ void TimeLineEditorWidget::updateTimeCursorPos() {
         mTimeCursor.setHeaderInfo(frameText, theme::Colors::current().accentBright);
         mTimeCursor.setNumberColor(theme::Colors::current().accentBrightText);
         mTimeCursor.setEdgeColor(theme::Colors::current().accentBright);
+        // The playhead pill overlaps the ruler numbers, and the moving child
+        // only repaints its own old rect on the parent: any number straddling
+        // that partial region's edge would be painted clipped mid-glyph (the
+        // pill's new opaque face makes the cut visible). Repaint the whole
+        // numbers row so the header is always complete around the playhead;
+        // Qt coalesces this with the child-rect update into one full-strip
+        // region. The strip is 22px, so a per-playback-tick repaint is cheap.
+        this->update(QRect(0, 0, this->width(), ctrl::TimeLineEditor::kHeaderHeight));
         // The playhead overlays the viewport: pinned to the top (on the fixed
         // ruler) and following the content horizontally.
         const QPoint viewportPos(mCamera->leftTopPos().toPoint().x() + pos.x(), 0);

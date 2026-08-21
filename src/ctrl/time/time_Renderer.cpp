@@ -354,12 +354,15 @@ namespace time {
             );
             // Square the inner corners (the faces against the stems) by
             // overdrawing the rounded slivers with the pill color, so the
-            // bracket joint reads continuous.
+            // bracket joint reads continuous. The cut pixels run to
+            // right()/bottom() inclusive, so the right/bottom overdraws
+            // start at -r+1 (right()-r / bottom()-r would miss the last
+            // pixel row/column and leave the corner visibly rounded).
             const int r = ctrl::TimeLineEditor::kPillRadius;
             mPainter.fillRect(QRect(pillL.x(), pillL.y(), r, r), c.windowEdge);
-            mPainter.fillRect(QRect(pillL.x(), pillL.bottom() - r, r, r), c.windowEdge);
-            mPainter.fillRect(QRect(pillR.right() - r, pillR.y(), r, r), c.windowEdge);
-            mPainter.fillRect(QRect(pillR.right() - r, pillR.bottom() - r, r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillL.x(), pillL.bottom() - r + 1, r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillR.right() - r + 1, pillR.y(), r, r), c.windowEdge);
+            mPainter.fillRect(QRect(pillR.right() - r + 1, pillR.bottom() - r + 1, r, r), c.windowEdge);
             drawPillText(pillL, sL, c.windowText, top);
             drawPillText(pillR, sR, c.windowText, top);
         }
