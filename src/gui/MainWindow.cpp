@@ -288,62 +288,62 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     {
         auto key = mKeyCommandMap->get("Undo");
         if (key)
-            key->invoker = [=]() { this->onUndoTriggered(); };
+            key->addListener([=]() { this->onUndoTriggered(); });
     }
     {
         auto key = mKeyCommandMap->get("Redo");
         if (key)
-            key->invoker = [=]() { this->onRedoTriggered(); };
+            key->addListener([=]() { this->onRedoTriggered(); });
     }
     {
         auto key = mKeyCommandMap->get("SaveProject");
         if (key)
-            key->invoker = [=]() { this->onSaveProjectTriggered(); };
+            key->addListener([=]() { this->onSaveProjectTriggered(); });
     }
     {
         auto key = mKeyCommandMap->get("PlayPause");
         if (key)
-            key->invoker = [=]() { this->onPlayPauseTriggered(); };
+            key->addListener([=]() { this->onPlayPauseTriggered(); });
     }
     {
         auto key = mKeyCommandMap->get("ToggleDocks");
         if (key)
-            key->invoker = [=]() { this->onDockToggle(); };
+            key->addListener([=]() { this->onDockToggle(); });
     }
     {
         auto key = mKeyCommandMap->get("ToggleRepeat");
         if (key)
-            key->invoker = [=]() { this->onLoopToggle(); };
+            key->addListener([=]() { this->onLoopToggle(); });
     }
     {
         auto key = mKeyCommandMap->get("MoveRight");
         if (key)
-            key->invoker = [=]() { this->onDisplacementTriggered(1); };
+            key->addListener([=]() { this->onDisplacementTriggered(1); });
     }
     {
         auto key = mKeyCommandMap->get("MoveLeft");
         if (key)
-            key->invoker = [=]() { this->onDisplacementTriggered(-1); };
+            key->addListener([=]() { this->onDisplacementTriggered(-1); });
     }
     {
         auto key = mKeyCommandMap->get("MoveToInit");
         if (key)
-            key->invoker = [=]() { this->onMovementTriggered("Init"); };
+            key->addListener([=]() { this->onMovementTriggered("Init"); });
     }
     {
         auto key = mKeyCommandMap->get("MoveToLast");
         if (key)
-            key->invoker = [=]() { this->onMovementTriggered("Last"); };
+            key->addListener([=]() { this->onMovementTriggered("Last"); });
     }
     {
         auto key = mKeyCommandMap->get("MoveFrameLeft");
         if(key)
-            key->invoker = [=]() {this->onMoveFrameTriggered(false);};
+            key->addListener([=]() {this->onMoveFrameTriggered(false);});
     }
     {
         auto key = mKeyCommandMap->get("MoveFrameRight");
         if(key)
-            key->invoker = [=]() {this->onMoveFrameTriggered(true);};
+            key->addListener([=]() {this->onMoveFrameTriggered(true);});
     }
 #endif
 
