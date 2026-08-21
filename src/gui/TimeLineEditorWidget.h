@@ -30,8 +30,6 @@ public:
     void setEdgeColor(const QColor& edgeColor);
 
 private:
-    static constexpr int kBadgePadding = 3;
-
     QColor mNumberColor;
     QColor mEdgeColor;
     QString mFrameText;
@@ -78,6 +76,9 @@ public:
 
     core::Frame currentFrame() const;
     int maxFrame() const;
+    // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
+    // TimeLineWidget reads it on every playback tick to bound the playhead.
+    const ctrl::TimeLineEditor::PlayWindow& playWindow() const { return mEditor->playWindow(); }
 
     QColor headerContentColor() const;
     void setHeaderContentColor(const QColor& headerContentColor);
