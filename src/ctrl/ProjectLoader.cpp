@@ -170,15 +170,18 @@ bool ProjectLoader::readGlobalBlock(util::LEStreamReader& aIn, core::Project& aP
     const uint32 width = aIn.readUInt32();
     // height
     const uint32 height = aIn.readUInt32();
-    // max frame
-    const uint32 maxFrame = aIn.readUInt32();
+    // frame range end (the historical "max frame" slot)
+    const uint32 frameEnd = aIn.readUInt32();
     // fps
     const uint32 fps = aIn.readUInt32();
     // loop
     const uint8 loop = aIn.readByte();
 
-    // reserved
-    if (!aIn.skipZeroArea(47))
+    // reserved: the frame range start lives in the first 4 bytes (zero in
+    // every format <= 0.10, so those files load as [0, frameEnd]); the rest
+    // stays reserved and zero.
+    const uint32 frameStart = aIn.readUInt32();
+    if (!aIn.skipZeroArea(47 - 4))
         return false;
 
     if (aIn.isFailed())
@@ -186,7 +189,7 @@ bool ProjectLoader::readGlobalBlock(util::LEStreamReader& aIn, core::Project& aP
 
     // set values
     aProject.attribute().setImageSize(QSize((int)width, (int)height));
-    aProject.attribute().setMaxFrame(maxFrame);
+    aProject.attribute().setFrameRange(util::Range((int)frameStart, (int)frameEnd));
     aProject.attribute().setFps(fps);
     aProject.attribute().setLoop((bool)loop);
     return true;

@@ -160,6 +160,26 @@ namespace ObjectNodeUtil {
         return false;
     }
 
+    bool thereAreSomeKeysBeforeFrame(const ObjectNode* aRootNode, int aMinFrame) {
+        ObjectNode::ConstIterator nodeItr(aRootNode);
+        while (nodeItr.hasNext()) {
+            const ObjectNode* node = nodeItr.next();
+            XC_PTR_ASSERT(node);
+            if (!node->timeLine())
+                continue;
+
+            for (int i = 0; i < TimeKeyType_TERM; ++i) {
+                auto& map = node->timeLine()->map((TimeKeyType)i);
+                for (auto keyItr = map.begin(); keyItr != map.end(); ++keyItr) {
+                    if (keyItr.key() < aMinFrame) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     void collectRenderClippees(
         ObjectNode& aNode, std::vector<Renderer::SortUnit>& aDest, const TimeCacheAccessor& aAccessor,
         const TimeInfo& aTime

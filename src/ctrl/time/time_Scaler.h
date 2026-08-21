@@ -21,7 +21,7 @@ namespace time {
 
         Scaler();
 
-        void setMaxFrame(int aMaxFrame);
+        void setFrameEnd(int aFrameEnd);
         void setFps(int aFps);
         // Applies a wheel delta; returns false when the zoom is already
         // clamped at the floor or ceiling and the delta had no room to act.
@@ -32,13 +32,13 @@ namespace time {
         int pixelWidth(int aFrame) const;
         int maxPixelWidth() const;
         int frame(int aPixelWidth) const;
-        int maxFrame() const;
+        int frameEnd() const;
         Attribute attribute(int aFrame) const;
 
     private:
         int majorStep(int aSpacing) const;
 
-        int mMaxFrame;
+        int mFrameEnd;
         int mFps;
         std::vector<int> mLadder;
         int mWheel;
