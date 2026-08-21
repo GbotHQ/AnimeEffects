@@ -11,9 +11,10 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
     EasyDialog(tr("Animation settings"), aParent),
     mProject(aProject),
     mLoopBox(nullptr),
-    mMaxFrameBox(nullptr),
+    mStartBox(nullptr),
+    mEndBox(nullptr),
     mFPSBox(nullptr) {
-    const int curMaxFrame = aProject.attribute().maxFrame();
+    const util::Range curRange = aProject.attribute().frameRange();
     const int curFPS = aProject.attribute().fps();
 
     auto form = new QFormLayout();
@@ -28,12 +29,28 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
         form->addRow(tr("Loop animation"), layout);
     }
     {
+        // Frame range: two linked spinboxes. The end cannot drop below the
+        // start, and neither side may cut across a key (validated on OK).
         auto layout = new QHBoxLayout();
-        mMaxFrameBox = new QSpinBox();
-        mMaxFrameBox->setRange(1, 0x7fffffff);
-        mMaxFrameBox->setValue(curMaxFrame);
-        layout->addWidget(mMaxFrameBox);
-        form->addRow(tr("Maximum frame count"), layout);
+        mStartBox = new QSpinBox();
+        mStartBox->setRange(0, 0x7fffffff);
+        mStartBox->setValue(curRange.min());
+        layout->addWidget(mStartBox);
+
+        mEndBox = new QSpinBox();
+        mEndBox->setRange(1, 0x7fffffff);
+        mEndBox->setValue(curRange.max());
+        layout->addWidget(mEndBox);
+
+        mStartBox->setMaximum(mEndBox->value());
+        mEndBox->setMinimum(mStartBox->value());
+        mStartBox->connect(mStartBox, &QSpinBox::valueChanged, [=](int aValue) {
+            mEndBox->setMinimum(aValue);
+        });
+        mEndBox->connect(mEndBox, &QSpinBox::valueChanged, [=](int aValue) {
+            mStartBox->setMaximum(aValue);
+        });
+        form->addRow(tr("Frame range"), layout);
     }
     {
         auto layout = new QHBoxLayout();
@@ -48,12 +65,23 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
 
     this->setOkCancel([=](int aIndex) -> bool {
         if (aIndex == 0) {
-            const int newMaxFrame = this->mMaxFrameBox->value();
-            if (newMaxFrame < mProject.attribute().maxFrame() &&
-                core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(mProject.objectTree().topNode(), newMaxFrame)) {
+            const util::Range newRange = this->frameRange();
+            const util::Range curRange = mProject.attribute().frameRange();
+            const auto* tree = mProject.objectTree().topNode();
+            // Shrinking the end below a key, or raising the start above one,
+            // would cut the key out of the range: reject it.
+            if (newRange.max() < curRange.max() &&
+                core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(tree, newRange.max())) {
                 QMessageBox::warning(nullptr, tr("Operation Error"),
                     tr("Frame value cannot be set.") + "\n" +
                     tr("One or more keys exceed the specified frame value."));
+                return false;
+            }
+            if (newRange.min() > curRange.min() &&
+                core::ObjectNodeUtil::thereAreSomeKeysBeforeFrame(tree, newRange.min())) {
+                QMessageBox::warning(nullptr, tr("Operation Error"),
+                    tr("Frame value cannot be set.") + "\n" +
+                    tr("One or more keys precede the specified frame value."));
                 return false;
             }
         }

@@ -67,17 +67,19 @@ public:
     void updateProjectAttribute();
     void updateTheme(theme::Theme&);
 
-    // The frame range's end on the content axis (px): the left margin gutter
-    // plus the last frame's scale position. Frame 0's tick sits at the
-    // margin; the range spans [0, frameEndPixel].
+    // The frame range's extent on the content axis (px): the left margin
+    // gutter plus the scale position of the range's start/end frames.
+    int frameStartPixel() const;
     int frameEndPixel() const;
 
     QSize getEditorSize() const;
 
     core::Frame currentFrame() const;
-    int maxFrame() const;
+    // The effective playback range (project range or the temporary window
+    // override); TimeLineWidget's playback tick and the playhead clamp use it.
+    util::Range playbackRange() const { return mEditor->playbackRange(); }
     // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
-    // TimeLineWidget reads it on every playback tick to bound the playhead.
+    // the renderer draws its band and brackets.
     const ctrl::TimeLineEditor::PlayWindow& playWindow() const { return mEditor->playWindow(); }
 
     QColor headerContentColor() const;

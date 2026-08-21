@@ -675,12 +675,13 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
     mProject(aProject),
     mWidthBox(),
     mHeightBox(),
-    mMaxFrameBox(),
+    mStartBox(),
+    mEndBox(),
     mLoopBox(),
     mFPSBox() {
     // create inner widgets
     auto curSize = mProject.attribute().imageSize();
-    auto curMaxFrame = mProject.attribute().maxFrame();
+    auto curRange = mProject.attribute().frameRange();
     auto curLoop = mProject.attribute().loop();
     auto curFPS = mProject.attribute().fps();
 
@@ -708,11 +709,29 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
         }
         form->addRow(tr("Canvas size"), sizeLayout);
 
-        // maximum frame count
-        mMaxFrameBox = new QSpinBox();
-        mMaxFrameBox->setRange(1, 0x7FFFFFFF);
-        mMaxFrameBox->setValue(curMaxFrame);
-        form->addRow(tr("Max frame count"), mMaxFrameBox);
+        // frame range: two linked spinboxes (start, end)
+        {
+            auto layout = new QHBoxLayout();
+            mStartBox = new QSpinBox();
+            mStartBox->setRange(0, 0x7FFFFFFF);
+            mStartBox->setValue(curRange.min());
+            layout->addWidget(mStartBox);
+
+            mEndBox = new QSpinBox();
+            mEndBox->setRange(1, 0x7FFFFFFF);
+            mEndBox->setValue(curRange.max());
+            layout->addWidget(mEndBox);
+
+            mStartBox->setMaximum(mEndBox->value());
+            mEndBox->setMinimum(mStartBox->value());
+            mStartBox->connect(mStartBox, &QSpinBox::valueChanged, [=](int aValue) {
+                mEndBox->setMinimum(aValue);
+            });
+            mEndBox->connect(mEndBox, &QSpinBox::valueChanged, [=](int aValue) {
+                mStartBox->setMaximum(aValue);
+            });
+            form->addRow(tr("Frame range"), layout);
+        }
 
         // loop animation
         mLoopBox = new QCheckBox();
@@ -730,28 +749,35 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
 
     this->setOkCancel([=](int aIndex) -> bool {
         if (aIndex == 0) {
-            return this->confirmMaxFrameUpdating(this->mMaxFrameBox->value());
+            return this->confirmFrameRangeUpdating(this->frameRange());
         }
         return true;
     });
     this->fixSize();
 }
 
-bool ProjectSettingDialog::confirmMaxFrameUpdating(int aNewMaxFrame) const {
-    XC_ASSERT(aNewMaxFrame > 0);
+bool ProjectSettingDialog::confirmFrameRangeUpdating(const util::Range& aNewRange) const {
+    XC_ASSERT(aNewRange.max() > 0);
 
-    auto curMaxFrame = mProject.attribute().maxFrame();
-    if (curMaxFrame <= aNewMaxFrame)
-        return true;
-
-    if (!core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(mProject.objectTree().topNode(), aNewMaxFrame)) {
-        return true;
+    auto curRange = mProject.attribute().frameRange();
+    const auto* tree = mProject.objectTree().topNode();
+    // Growing the range never blocks; shrinking the end below a key, or
+    // raising the start above one, would cut the key out of the range.
+    if (aNewRange.max() < curRange.max() &&
+        core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(tree, aNewRange.max())) {
+        auto message1 = tr("Frame value cannot be set.");
+        auto message2 = tr("One or more keys exceed the specified frame value.");
+        QMessageBox::warning(nullptr, tr("Operation Error"), message1 + "\n" + message2);
+        return false;
     }
-
-    auto message1 = tr("Frame value cannot be set.");
-    auto message2 = tr("One or more keys exceed the specified frame value.");
-    QMessageBox::warning(nullptr, tr("Operation Error"), message1 + "\n" + message2);
-    return false;
+    if (aNewRange.min() > curRange.min() &&
+        core::ObjectNodeUtil::thereAreSomeKeysBeforeFrame(tree, aNewRange.min())) {
+        auto message1 = tr("Frame value cannot be set.");
+        auto message2 = tr("One or more keys precede the specified frame value.");
+        QMessageBox::warning(nullptr, tr("Operation Error"), message1 + "\n" + message2);
+        return false;
+    }
+    return true;
 }
 
 void MainMenuBar::onProjectSettingsTriggered() {
@@ -759,7 +785,7 @@ void MainMenuBar::onProjectSettingsTriggered() {
         return;
 
     auto curSize = mProject->attribute().imageSize();
-    auto curMaxFrame = mProject->attribute().maxFrame();
+    auto curRange = mProject->attribute().frameRange();
     auto curLoop = mProject->attribute().loop();
     auto curFPS = mProject->attribute().fps();
 
@@ -799,24 +825,23 @@ void MainMenuBar::onProjectSettingsTriggered() {
             mProject->commandStack().push(command);
         }
 
-        // max frame count
-        const int newMaxFrame = dialog->maxFrame();
-        XC_ASSERT(newMaxFrame > 0);
-        if (curMaxFrame != newMaxFrame) {
-            cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("Change the max frame"));
+        // frame range
+        const util::Range newRange = dialog->frameRange();
+        if (curRange != newRange) {
+            cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("Change the frame range"));
 
             core::Project* projectPtr = mProject;
             auto command = new cmnd::Delegatable(
                 [=]() {
-                    projectPtr->attribute().setMaxFrame(newMaxFrame);
-                    auto event = core::ProjectEvent::maxFrameChangeEvent(*projectPtr);
+                    projectPtr->attribute().setFrameRange(newRange);
+                    auto event = core::ProjectEvent::frameRangeChangeEvent(*projectPtr);
                     projectPtr->onProjectAttributeModified(event, false);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 },
                 [=]() {
-                    projectPtr->attribute().setMaxFrame(curMaxFrame);
-                    auto event = core::ProjectEvent::maxFrameChangeEvent(*projectPtr);
+                    projectPtr->attribute().setFrameRange(curRange);
+                    auto event = core::ProjectEvent::frameRangeChangeEvent(*projectPtr);
                     projectPtr->onProjectAttributeModified(event, true);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();

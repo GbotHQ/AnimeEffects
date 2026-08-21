@@ -225,13 +225,14 @@ void TimeLineWidget::setViewTransform(const QPoint& aViewportTransform) {
 }
 
 void TimeLineWidget::projectHorizontalScrollBar() {
-    // One axis everywhere: content pixels, 1 unit = 1 px. Frame 0's tick sits
-    // at the left margin gutter (kTimeLineMargin); the last frame's tick and
-    // range marker sit at margin + its scale position (frameEndPixel, the
-    // renderer's range-marker x1 convention). The view's scroll position
-    // v = -offset is the content position at the view's left edge.
+    // One axis everywhere: content pixels, 1 unit = 1 px. The range's first
+    // frame's tick sits at the left margin gutter (kTimeLineMargin); the last
+    // frame's tick and range marker sit at margin + its scale position
+    // (frameEndPixel, the renderer's range-marker x1 convention). The view's
+    // scroll position v = -offset is the content position at the view's left
+    // edge.
     //
-    //   frameRange = [frameStart, frameEnd]     = [0, frameEndPixel]
+    //   frameRange = [frameStartPixel, frameEndPixel]
     //   viewport   = [viewportStart, viewportEnd] = [v, v + W]
     //   track = [min(frameStart, viewportStart), max(frameEnd, viewportEnd)]
     //   value = viewportStart;  pageStep = viewportEnd - viewportStart
@@ -242,10 +243,11 @@ void TimeLineWidget::projectHorizontalScrollBar() {
     // TimelineScrollBar), so it is flush left when viewportStart <=
     // frameStart and flush right when viewportEnd >= frameEnd — symmetric.
     // frameEnd is the last frame's position PLUS the trailing margin: a
-    // fixed 24px, the same token as the left gutter before frame 0's tick,
-    // so flush-right leaves a full margin of empty track after the last
-    // frame (the centered number overhangs it slightly; that is accepted).
-    const int frameStart = 0;
+    // fixed 24px, the same token as the leading gutter before the first
+    // frame's tick, so flush-right leaves a full margin of empty track after
+    // the last frame (the centered number overhangs it slightly; that is
+    // accepted).
+    const int frameStart = mInner->frameStartPixel();
     const int frameEnd = mInner->frameEndPixel() + ctrl::TimeLineEditor::kTimeLineMargin;
     const int windowWidth = mInner->width();
 
@@ -435,12 +437,14 @@ void TimeLineWidget::onPlayBackUpdated() {
         const double oneFrameTime = getOneFrameTime();
         const core::Frame curFrame = currentFrame();
 
-        // The temporary playback window overrides the project frame range
-        // while it is active: playback stays inside [playStart, playEnd].
-        // Scrubbing is unconstrained; only the playback clock is bounded.
-        const auto& win = mInner->playWindow();
-        const int playStart = win.active() ? win.start : 0;
-        const int playEnd = win.active() ? win.end : mInner->maxFrame();
+        // The effective playback range (the temporary window overrides the
+        // project frame range while active): playback stays inside
+        // [playStart, playEnd]. Scrubbing is bounded by the same range
+        // through the playhead's clamp; only the playback clock also wraps
+        // and stops here.
+        const util::Range range = mInner->playbackRange();
+        const int playStart = range.min();
+        const int playEnd = range.max();
 
         double nextFrame = static_cast<double>(curFrame.getDecimal()) + 1.0;
 
@@ -488,8 +492,8 @@ void TimeLineWidget::onThemeUpdated(theme::Theme& aTheme) {
 
 void TimeLineWidget::onProjectAttributeUpdated() {
     mInner->updateProjectAttribute();
-    // maxFrame may have changed: the union track and page step follow the
-    // frame range's extent, so re-project (updateSize is repaint-only now).
+    // The frame range may have changed: the union track and page step follow
+    // its extent, so re-project (updateSize is repaint-only now).
     projectHorizontalScrollBar();
 }
 
