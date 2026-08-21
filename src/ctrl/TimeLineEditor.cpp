@@ -19,7 +19,8 @@
 using namespace core;
 
 namespace {
-    constexpr int kDefaultMaxFrame = 600;
+    constexpr int kDefaultFrameCount = 600;
+    const util::Range kDefaultFrameRange(0, kDefaultFrameCount);
 
 } // namespace
 
@@ -30,7 +31,7 @@ TimeLineEditor::TimeLineEditor():
     mProject(),
     mRows(),
     mSelectingRow(),
-    mTimeMax(),
+    mFrameRange(),
     mState(State_Standby),
     mFps(60),
     mTimeCurrent(kTimeLineMargin),
@@ -52,15 +53,16 @@ TimeLineEditor::TimeLineEditor():
 
     mTimeScale.setFps(mFps);
 
-    // reset max frame
-    setMaxFrame(kDefaultMaxFrame);
+    // reset frame range
+    setFrameRange(kDefaultFrameRange);
 }
 
-void TimeLineEditor::setMaxFrame(int aValue) {
-    mTimeMax = aValue;
-    mTimeScale.setMaxFrame(mTimeMax);
-    mTimeCurrent.setMaxFrame(mTimeMax);
-    mTimeCurrent.setFrame(mTimeScale, Frame(0));
+void TimeLineEditor::setFrameRange(const util::Range& aRange) {
+    mFrameRange = aRange;
+    mTimeScale.setFrameEnd(mFrameRange.max());
+    // The playhead starts at the range's first frame (0 for the default
+    // [0, frameEnd] range).
+    mTimeCurrent.setFrame(mTimeScale, mFrameRange, Frame(mFrameRange.min()));
 }
 
 void TimeLineEditor::setProject(Project* aProject) {
@@ -72,11 +74,11 @@ void TimeLineEditor::setProject(Project* aProject) {
 
     if (aProject) {
         mProject = aProject->pointee();
-        setMaxFrame(mProject->attribute().maxFrame());
+        setFrameRange(mProject->attribute().frameRange());
         mFps = mProject->attribute().fps();
         mTimeScale.setFps(mFps);
     } else {
-        setMaxFrame(kDefaultMaxFrame);
+        setFrameRange(kDefaultFrameRange);
     }
 }
 
@@ -106,8 +108,10 @@ void TimeLineEditor::clearSelection() {
 }
 
 void TimeLineEditor::pushRow(ObjectNode* aNode, util::Range aWorldTB, bool aClosedFolder) {
-    constexpr int left = kTimeLineMargin;
-    const int right = left + mTimeScale.maxPixelWidth();
+    // The lane spans the frame range on the content axis: from the range's
+    // first frame's tick to the last frame's tick.
+    const int left = kTimeLineMargin + mTimeScale.pixelWidth(mFrameRange.min());
+    const int right = left + mTimeScale.pixelWidth(mFrameRange.diff());
     const QRect rect(QPoint(left, aWorldTB.min()), QPoint(right, aWorldTB.max()));
     mRows.push_back(TimeLineRow(aNode, rect, aClosedFolder, aNode == mSelectingRow));
 }
@@ -128,14 +132,16 @@ void TimeLineEditor::updateKey() {
 }
 
 void TimeLineEditor::updateProjectAttribute() {
-    clearState(); // fps/maxFrame changes keep the targets valid
+    clearState(); // fps/range changes keep the targets valid
     if (mProject) {
-        const int newMaxFrame = mProject->attribute().maxFrame();
-        if (mTimeMax != newMaxFrame) {
-            setMaxFrame(newMaxFrame);
+        const util::Range newRange = mProject->attribute().frameRange();
+        if (mFrameRange != newRange) {
+            setFrameRange(newRange);
 
-            const int newRowRight = kTimeLineMargin + mTimeScale.maxPixelWidth();
+            const int newRowRight = kTimeLineMargin + mTimeScale.pixelWidth(newRange.max());
+            const int newRowLeft = kTimeLineMargin + mTimeScale.pixelWidth(newRange.min());
             for (auto& row : mRows) {
+                row.rect.setLeft(newRowLeft);
                 row.rect.setRight(newRowRight);
             }
         }
@@ -175,7 +181,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
             mState = State_MoveCurrent;
             flags |= UpdateFlag_ModView;
         } else if (aCursor.screenPos().y() < kHeaderHeight) {
-            mTimeCurrent.setHandlePos(mTimeScale, aCursor.worldPos().toPoint());
+            mTimeCurrent.setHandlePos(mTimeScale, playbackRange(), aCursor.worldPos().toPoint());
             mState = State_MoveCurrent;
             flags |= UpdateFlag_ModView;
             flags |= UpdateFlag_ModFrame;
@@ -229,7 +235,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
             mWindowDragged = true;
             flags |= UpdateFlag_ModView;
         } else if (mState == State_MoveCurrent) {
-            mTimeCurrent.setHandlePos(mTimeScale, aCursor.worldPos().toPoint());
+            mTimeCurrent.setHandlePos(mTimeScale, playbackRange(), aCursor.worldPos().toPoint());
             flags |= UpdateFlag_ModView;
             flags |= UpdateFlag_ModFrame;
         } else if (mState == State_MoveKeys) {
@@ -873,7 +879,7 @@ bool TimeLineEditor::updateWheel(int aDelta, bool aInvertScaling) {
     return true;
 }
 
-void TimeLineEditor::setFrame(Frame aFrame) { mTimeCurrent.setFrame(mTimeScale, aFrame); }
+void TimeLineEditor::setFrame(Frame aFrame) { mTimeCurrent.setFrame(mTimeScale, playbackRange(), aFrame); }
 
 Frame TimeLineEditor::currentFrame() const { return mTimeCurrent.frame(); }
 
@@ -891,8 +897,15 @@ QSize TimeLineEditor::modelSpaceSize() const {
 
 QPoint TimeLineEditor::currentTimeCursorPos() const { return mTimeCurrent.handlePos(); }
 
+int TimeLineEditor::frameStartPixel() const {
+    // The range's first frame on the content axis: the left margin gutter
+    // plus its scale position. The scrollbar track adds one more margin past
+    // this, so flush-left leaves the tick and its number breathing room.
+    return kTimeLineMargin + mTimeScale.pixelWidth(mFrameRange.min());
+}
+
 int TimeLineEditor::frameEndPixel() const {
-    // The last frame's position on the content axis: the left margin gutter
+    // The range's last frame on the content axis: the left margin gutter
     // plus its scale position (the renderer's range-marker x1 uses the same
     // convention). The scrollbar track adds one more margin past this, so
     // flush-right leaves the tick and its number breathing room.
@@ -930,6 +943,7 @@ void TimeLineEditor::render(
     renderer.setMargin(margin);
     renderer.setRange(util::Range(bgn, end));
     renderer.setTimeScale(mTimeScale);
+    renderer.setActiveRange(playbackRange());
     renderer.setPlayWindow(mPlayWindow);
 
     renderer.renderLines(mRows, camRect, cullRect);

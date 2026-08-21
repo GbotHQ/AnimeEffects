@@ -1155,7 +1155,7 @@ public:
         if (0 < mIndex && mParam.generalParams.framesToBeExported.last() < frame) {
             return false;
         }
-        if (mOriginTimeInfo.frameMax < static_cast<int>(frame)) {
+        if (mOriginTimeInfo.frameRange.max() < static_cast<int>(frame)) {
             return false;
         }
         aDst.frame = core::Frame::fromDecimal(static_cast<float>(frame));
@@ -1349,7 +1349,7 @@ public:
             log.append("----------||||-----------");
             log.append("Original audio stream size: " + QString::number(mProject.pConf->size()));
             log.append(QString::number(validStreams.size()) + " valid audio stream(s) detected.");
-            int frameCount = mProject.currentTimeInfo().frameMax;
+            int frameCount = mProject.currentTimeInfo().frameRange.max();
             int index = 1;
             reporter->show();
             // TODO: Add error handling

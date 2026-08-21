@@ -32,11 +32,13 @@ namespace ctrl {
 namespace time {
 
     //-------------------------------------------------------------------------------------------------
-    Scaler::Scaler(): mMaxFrame(), mFps(60), mLadder(), mWheel(kWheelValue), mIndex(1) {
+    Scaler::Scaler(): mFrameEnd(), mFps(60), mLadder(), mWheel(kWheelValue), mIndex(1) {
         setFps(mFps);
     }
 
-    void Scaler::setMaxFrame(int aMaxFrame) { mMaxFrame = aMaxFrame; }
+    // The last frame of the project frame range; the scale maps every frame
+    // linearly (keys may live anywhere), the end only sizes the content.
+    void Scaler::setFrameEnd(int aFrameEnd) { mFrameEnd = aFrameEnd; }
 
     void Scaler::setFps(int aFps) {
         mFps = std::max(1, aFps);
@@ -105,7 +107,7 @@ namespace time {
         return (mIndex + 1) * aFrame;
     }
 
-    int Scaler::maxPixelWidth() const { return pixelWidth(mMaxFrame); }
+    int Scaler::maxPixelWidth() const { return pixelWidth(mFrameEnd); }
 
     int Scaler::frame(int aPixelWidth) const {
         // Unbounded inverse of pixelWidth: a mouse position outside the frame
@@ -115,7 +117,7 @@ namespace time {
         return (aPixelWidth + ((mIndex + 1) >> 1)) / (mIndex + 1);
     }
 
-    int Scaler::maxFrame() const { return mMaxFrame; }
+    int Scaler::frameEnd() const { return mFrameEnd; }
 
     Scaler::Attribute Scaler::attribute(int aFrame) const {
         Attribute attr;

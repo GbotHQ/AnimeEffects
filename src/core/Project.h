@@ -8,6 +8,7 @@
 #include "util/LifeLink.h"
 #include "util/Signaler.h"
 #include "util/NonCopyable.h"
+#include "util/Range.h"
 #include "thr/Paralleler.h"
 #include "cmnd/Stack.h"
 #include "core/ObjectTree.h"
@@ -29,8 +30,12 @@ public:
         Attribute();
         void setImageSize(const QSize& aSize) { mImageSize = aSize; }
         const QSize& imageSize() const { return mImageSize; }
-        void setMaxFrame(int aFrame) { mMaxFrame = aFrame; }
-        int maxFrame() const { return mMaxFrame; }
+        // The project's frame range (inclusive). Everything playback-related
+        // (transport, the playhead, the playback tick) is bounded by it; the
+        // temporary playback window (ctrl::TimeLineEditor) overrides it while
+        // active.
+        void setFrameRange(const util::Range& aRange) { mFrameRange = aRange; }
+        const util::Range& frameRange() const { return mFrameRange; }
         void setFps(int aFps) { mFps = aFps; }
         int fps() const { return mFps; }
         void setLoop(bool aLoop) { mLoop = aLoop; }
@@ -38,7 +43,7 @@ public:
 
     private:
         QSize mImageSize;
-        int mMaxFrame;
+        util::Range mFrameRange;
         int mFps;
         bool mLoop;
     };
