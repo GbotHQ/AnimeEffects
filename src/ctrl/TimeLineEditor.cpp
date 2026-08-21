@@ -46,7 +46,8 @@ TimeLineEditor::TimeLineEditor():
     mPressedTarget(),
     mPressedTargetValid(false),
     mPlayWindow(),
-    mWindowAnchorFrame(0) {
+    mWindowAnchorFrame(0),
+    mWindowDragged(false) {
     mRows.reserve(64);
 
     mTimeScale.setFps(mFps);
@@ -96,6 +97,7 @@ void TimeLineEditor::clearState() {
     mPreGestureSelection = core::TimeLineEvent();
     mPressedTarget = core::TimeLineEvent::Target();
     mPressedTargetValid = false;
+    mWindowDragged = false;
 }
 
 void TimeLineEditor::clearSelection() {
@@ -161,13 +163,13 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
         const QVector2D handlePos(mTimeCurrent.handlePos());
 
         // Shift on the ruler is the temporary playback window gesture: press
-        // anchors it, drag extends it, a click clears it. It takes
-        // precedence over the playhead handle and the header seek.
+        // anchors it (nothing shows yet), the first drag materializes it, a
+        // click dismisses it. It takes precedence over the playhead handle
+        // and the header seek.
         if (shift && aCursor.screenPos().y() < kHeaderHeight) {
             mWindowAnchorFrame = mTimeScale.frame(worldPoint.x() - kTimeLineMargin);
-            mPlayWindow.set(mWindowAnchorFrame, mWindowAnchorFrame);
+            mWindowDragged = false;
             mState = State_SetWindow;
-            flags |= UpdateFlag_ModView;
         } else if ((aCursor.screenPos() - handlePos).length() < mTimeCurrent.handleRange()) {
             // playhead: handle or header click moves the current frame
             mState = State_MoveCurrent;
@@ -224,6 +226,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
     } else if (aCursor.emitsLeftDraggedEvent()) {
         if (mState == State_SetWindow) {
             mPlayWindow.set(mWindowAnchorFrame, mTimeScale.frame(worldPoint.x() - kTimeLineMargin));
+            mWindowDragged = true;
             flags |= UpdateFlag_ModView;
         } else if (mState == State_MoveCurrent) {
             mTimeCurrent.setHandlePos(mTimeScale, aCursor.worldPos().toPoint());
@@ -247,9 +250,11 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
         }
     } else if (aCursor.emitsLeftReleasedEvent()) {
         if (mState == State_SetWindow) {
-            // A shift-click (press and release on the same frame) dismisses
-            // the window; a drag keeps it.
-            if (mPlayWindow.start == mPlayWindow.end && mPlayWindow.start == mWindowAnchorFrame)
+            // A shift-click (press and release without dragging) dismisses
+            // the window; a drag keeps what it set. The window only ever
+            // materializes on the first drag, so a plain shift-press shows
+            // nothing while held.
+            if (!mWindowDragged)
                 mPlayWindow.clear();
             mState = State_Standby;
             flags |= UpdateFlag_ModView;

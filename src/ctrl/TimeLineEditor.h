@@ -139,6 +139,7 @@ private:
     bool mPressedTargetValid;
     PlayWindow mPlayWindow;   // the temporary playback window (ruler gesture)
     int mWindowAnchorFrame;   // frame where the window gesture pressed
+    bool mWindowDragged;      // the gesture moved past a click (drag vs click)
 };
 
 } // namespace ctrl
