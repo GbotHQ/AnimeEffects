@@ -10,6 +10,14 @@ int floorDiv(int aValue, int aDivisor) {
     return aValue >= 0 ? aValue / aDivisor : (aValue - aDivisor + 1) / aDivisor;
 }
 
+// Floor-decompose a frame at aFps into whole seconds + the frame within that
+// second. Frame-within-second stays in [0, aFps-1] even for negative frames
+// (-1 @ 24fps -> -1s, 23f), matching how negative frames count down.
+void decomposeSecondsFrames(int aFrame, int aFps, int& aSeconds, int& aFrames) {
+    aSeconds = floorDiv(aFrame, aFps);
+    aFrames = aFrame - aSeconds * aFps;
+}
+
 } // namespace
 
 namespace core {
@@ -29,53 +37,73 @@ QString TimeFormat::frameToString(const int aFrame, const TimeFormatType aTimeFo
         return QString::number(aFrame);
 
     case TimeFormatType_Relative_FPS: {
-        // The whole second this frame belongs to, floored so negative frames
-        // count down monotonically (-1..-23 -> -1, -24..-47 -> -2).
-        return QString::number(floorDiv(aFrame, mFps));
+        // Fractional seconds: the frame's exact time at the project fps
+        // (frame 30 @ 24fps reads "1.25"). Always two decimals and no
+        // trailing-zero trim, so the label width is constant while scrubbing
+        // instead of jumping (1.25 -> 1.3 -> 1.35). 2 decimals still
+        // distinguishes adjacent frames at any practical fps (1/fps >= 0.01
+        // up to 100fps).
+        return QString::number(aFrame / (double)mFps, 'f', 2);
     }
 
-    case TimeFormatType_Seconds_Frames: { // (SS:FF)
-        // Seconds are a floor decomposition (SS carries into negatives, FF
-        // stays in [0, 59]): -1 frame reads "-1:59", i.e. one frame before 0.
-        const int seconds = floorDiv(aFrame, 60);
-        const int frames = static_cast<int>(util::MathUtil::cycle(aFrame, 0.0, 60.0));
-
-        return QString("%1:%2").arg(seconds).arg(frames, 2, 10, QLatin1Char('0'));
+    case TimeFormatType_Seconds_Frames: { // (SS+FF)
+        // fps-aware "seconds+frames": a frame at aFps decomposes so FF stays
+        // in [0, aFps-1] (24fps -> 0..23). The frame field is separated from
+        // the time units with '+', not ':'. SS carries into negatives exactly
+        // like SS+FF above, so -1 frame reads "-1+23" (one frame before 0).
+        int seconds, frames;
+        decomposeSecondsFrames(aFrame, mFps, seconds, frames);
+        return QString("%1+%2").arg(seconds).arg(frames, 2, 10, QLatin1Char('0'));
     }
 
-    case TimeFormatType_Timecode_SMPTE: { // (HH:MM:SS:FF)
-        // Negative frames display with a leading '-' and the magnitude
-        // decomposed (HH:MM:SS from |frame|, FF = |frame| mod 60), the
-        // conventional negative timecode reading: -1 frame -> "-0:0:0:1".
-        const qint64 absFrame = qAbs(static_cast<qint64>(aFrame));
-        const double ms = util::MathUtil::remap(absFrame, 0.0, 60.0, 0.0, 1000.0);
-
-        const DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
-
-        const QString text = QString("%1:%2:%3:%4")
-                                 .arg(timeStruct.hours)
-                                 .arg(timeStruct.minutes)
-                                 .arg(timeStruct.seconds)
-                                 .arg(static_cast<int>(util::MathUtil::cycle(absFrame, 0.0, 60.0)));
-
-        return aFrame < 0 ? QString("-") + text : text;
+    case TimeFormatType_Timecode_SMPTE: { // (HH:MM:SS+FF)
+        // fps-aware SMPTE timecode, 'HH:MM:SS+FF'. The hours field is dropped
+        // when it is 00 (the timecode starts at minutes), and every remaining
+        // field is zero-padded so the width is stable while scrubbing. The
+        // frame field is separated from the time units with '+'. Negative
+        // frames get a leading '-', so -1 frame @ 24fps reads "-00:00+01".
+        const int sign = aFrame < 0 ? -1 : 1;
+        const int absFrame = qAbs(aFrame);
+        int seconds, frames;
+        decomposeSecondsFrames(absFrame, mFps, seconds, frames);
+        const int hh = seconds / 3600;
+        const int mm = (seconds / 60) % 60;
+        const int ss = seconds % 60;
+        const QString framesText = QString("%1").arg(frames, 2, 10, QLatin1Char('0'));
+        const QString text = hh > 0
+            ? QString("%1:%2:%3+%4")
+                  .arg(hh, 2, 10, QLatin1Char('0'))
+                  .arg(mm, 2, 10, QLatin1Char('0'))
+                  .arg(ss, 2, 10, QLatin1Char('0'))
+                  .arg(framesText)
+            : QString("%1:%2+%3")
+                  .arg(mm, 2, 10, QLatin1Char('0'))
+                  .arg(ss, 2, 10, QLatin1Char('0'))
+                  .arg(framesText);
+        return sign < 0 ? QString("-") + text : text;
     }
 
     case TimeFormatType_Timecode_HHMMSSmmm: { // (HH:MM:SS:mmm)
-        // Same sign-prefix convention as SMPTE: the magnitude decomposes,
-        // a leading '-' marks negative frames.
+        // fps-aware milliseconds: the frame is converted at the project fps,
+        // so 24 frames @ 24fps reads "00:01:000" (one second), not 400ms.
+        // The hours field is dropped when it is 00, and minutes/seconds
+        // (2-digit) and milliseconds (3-digit) are zero-padded for a stable
+        // width while scrubbing.
+        const int sign = aFrame < 0 ? -1 : 1;
         const qint64 absFrame = qAbs(static_cast<qint64>(aFrame));
-        const double ms = util::MathUtil::remap(absFrame, 0.0, 60.0, 0.0, 1000.0);
-
+        const double ms = absFrame * 1000.0 / mFps;
         const DDHHMMSSmmm timeStruct = msToDDHHMMSSmmm(ms);
-
-        const QString text = QString("%1:%2:%3:%4")
-                                 .arg(timeStruct.hours)
-                                 .arg(timeStruct.minutes)
-                                 .arg(timeStruct.seconds)
-                                 .arg(timeStruct.milliseconds);
-
-        return aFrame < 0 ? QString("-") + text : text;
+        const QString text = timeStruct.hours > 0
+            ? QString("%1:%2:%3:%4")
+                  .arg(timeStruct.hours, 2, 10, QLatin1Char('0'))
+                  .arg(timeStruct.minutes, 2, 10, QLatin1Char('0'))
+                  .arg(timeStruct.seconds, 2, 10, QLatin1Char('0'))
+                  .arg(timeStruct.milliseconds, 3, 10, QLatin1Char('0'))
+            : QString("%1:%2:%3")
+                  .arg(timeStruct.minutes, 2, 10, QLatin1Char('0'))
+                  .arg(timeStruct.seconds, 2, 10, QLatin1Char('0'))
+                  .arg(timeStruct.milliseconds, 3, 10, QLatin1Char('0'));
+        return sign < 0 ? QString("-") + text : text;
     }
 
     default:

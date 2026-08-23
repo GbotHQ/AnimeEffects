@@ -588,28 +588,28 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="207"/>
-        <source>Frame number (from 0)</source>
-        <translation>帧数（从0开始）</translation>
+        <source>Frame number</source>
+        <translation>帧号</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="209"/>
         <source>Frame number (from 1)</source>
-        <translation>帧数（从1开始）</translation>
+        <translation type="vanished">帧数（从1开始）</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="211"/>
-        <source>Relative to FPS (1.0 = 60.0)</source>
-        <translation>相对FPS (1.0 = 60.0)</translation>
+        <source>Seconds</source>
+        <translation>秒</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="213"/>
-        <source>Seconds : Frame</source>
-        <translation>秒 : 帧</translation>
+        <source>Seconds + Frame (SS+FF)</source>
+        <translation>秒 + 帧 (SS+FF)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="215"/>
-        <source>Timecode (SMPTE) (HH:MM:SS:FF)</source>
-        <translation>时间编码(SMPTE) (HH:MM:SS:FF)</translation>
+        <source>Timecode (SMPTE) (HH:MM:SS+FF)</source>
+        <translation>时间编码(SMPTE) (HH:MM:SS+FF)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="217"/>
@@ -1354,8 +1354,8 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="328"/>
-        <source>Timeline format (needs restart)</source>
-        <translation>时间轴格式（需重启）</translation>
+        <source>Timeline format</source>
+        <translation>时间轴格式</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="344"/>
