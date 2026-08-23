@@ -53,3 +53,22 @@ target_link_libraries(rightclick_transient_selection PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     cmnd core ctrl gl img thr util pugixml
 )
+
+# Regression test for the custom-bezier easing solver swap (WebKit UnitBezier
+# port) and its control-point solver cache. See easing_regression.cpp.
+find_package(Threads REQUIRED)
+add_executable(easing_regression easing_regression.cpp)
+target_include_directories(easing_regression PRIVATE ..)
+target_compile_definitions(easing_regression PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(easing_regression PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    util
+    Threads::Threads
+)
