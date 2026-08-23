@@ -3,6 +3,7 @@
 #include <QStyle>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QSettings>
 #include "gui/TimeLineWidget.h"
 #include "gui/theme/Colors.h"
 
@@ -467,8 +468,7 @@ void TimeLineWidget::onPlayBackUpdated() {
         // The effective playback range (the temporary window overrides the
         // project frame range while active): the playback clock stays inside
         // [playStart, playEnd]. Navigation is free (the playhead never
-        // clamps), so the tick clamps its own result — without this, a
-        // delayed timer tick could push the playhead past the end.
+        // clamps), so the tick clamps its own result.
         const util::Range range = mInner->playbackRange();
         const int playStart = range.min();
         const int playEnd = range.max();
@@ -477,7 +477,7 @@ void TimeLineWidget::onPlayBackUpdated() {
 
         if (nextFrame < playStart) {
             // Playback may start outside the window (or with the window set
-            // mid-flight): jump into it instead of playing up to it.
+            // mid-flight): jump to the window start.
             nextFrame = playStart;
             mBeginFrame.set(playStart);
             mElapsed.restart();
@@ -529,6 +529,18 @@ void TimeLineWidget::onProjectAttributeUpdated() {
 }
 
 void TimeLineWidget::triggerOnTimeFormatChanged() {
+    // The setting is applied live rather than on the next launch: re-read it
+    // into the editor so the ruler, playhead pill and window pills all
+    // re-render with the new representation.
+    if (mInner) {
+        if (auto* editor = mInner->editor()) {
+            QSettings settings;
+            const auto format = static_cast<core::TimeFormatType>(
+                settings.value("generalsettings/ui/timeformat", int(core::TimeFormatType_Frames_From0)).toInt()
+            );
+            editor->setTimeFormatType(format);
+        }
+    }
     onTimeFormatChanged();
     updateCamera();
 }

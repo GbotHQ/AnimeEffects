@@ -37,8 +37,14 @@ namespace time {
         // the range markers dim while it is active.
         void setPlayWindow(const ctrl::TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
 
+        // The track background: fills, lane separators, type labels and the
+        // row seams. Keys are a separate pass (renderKeys) so background
+        // layers like the range markers can paint between them.
         void renderLines(const QVector<TimeLineRow>& aRows, const QRect& aCameraRect, const QRect& aCullRect);
         void renderRangeMarkers(const QRect& aCameraRect);
+        // Key graphics for every row: child-key summaries on closed folders
+        // and the per-lane key shapes.
+        void renderKeys(const QVector<TimeLineRow>& aRows, const QRect& aCullRect);
         void renderHandle(const QPoint& aPoint, int aRange);
         void renderSelectionRange(const QRect& aRect);
 

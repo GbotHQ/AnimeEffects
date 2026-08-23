@@ -464,9 +464,19 @@
 <context>
     <name>GeneralSettingsDialog</name>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="80"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="83"/>
         <source>None</source>
-        <translation>Ninguna</translation>
+        <translation type="vanished">Ninguna</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="83"/>
+        <source>Floor</source>
+        <translation>Piso</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="85"/>
+        <source>Round</source>
+        <translation>Redondeo</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="82"/>
@@ -4092,7 +4102,17 @@ Save anyway?</source>
     <message>
         <location filename="../../src/util/Easing.cpp" line="26"/>
         <source>None</source>
-        <translation>Ninguna</translation>
+        <translation type="vanished">Ninguna</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="26"/>
+        <source>Floor</source>
+        <translation>Piso</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="52"/>
+        <source>Round</source>
+        <translation>Redondeo</translation>
     </message>
     <message>
         <location filename="../../src/util/Easing.cpp" line="28"/>

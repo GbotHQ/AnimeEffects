@@ -184,6 +184,10 @@ namespace prop {
         mSignal = true;
     }
 
+    // The combo is built from util::Easing's shared display-order helpers
+    // (stepped holds lead, then the analytic curves, then "Custom"), so the
+    // display order lives in one place rather than being re-encoded here.
+
     //-------------------------------------------------------------------------------------------------
     EasingItem::EasingItem(QWidget* aParent, GUIResources* mGUIResources):
         mLayout(), mBox(), mDBox(), mStamp(), mGUIResources(mGUIResources), mSignal(true) {
@@ -216,7 +220,9 @@ namespace prop {
             }
         });
 
-        mBox[0]->addItems(util::Easing::getTypeNameList());
+        for (int i = 0; i < util::Easing::displayCount(); ++i) {
+            mBox[0]->addItem(util::Easing::getTypeName(util::Easing::typeAtDisplayIndex(i)));
+        }
         mBox[1]->addItems(
             QStringList() << "In"
                           << "Out"
@@ -244,7 +250,7 @@ namespace prop {
             refreshIcon();
         });
         mCustomEasing->connect(mCustomEasing, &QToolButton::clicked, [=]() {
-            mBox[0]->setCurrentIndex(util::Easing::Type_Custom);
+            mBox[0]->setCurrentIndex(util::Easing::displayIndexOf(util::Easing::Type_Custom));
             auto* splineWidgetClass = new Ui_splineWidget();
             auto* splineWidget = new QDialog();
             auto* cubicBezier = new util::Easing::CubicBezier(mCubicBezier);
@@ -302,7 +308,7 @@ namespace prop {
 
     util::Easing::Param EasingItem::value() const {
         util::Easing::Param param;
-        param.type = (util::Easing::Type)mBox[0]->currentIndex();
+        param.type = util::Easing::typeAtDisplayIndex(mBox[0]->currentIndex());
         param.range = (util::Easing::Range)mBox[1]->currentIndex();
         param.weight = mDBox->value();
         param.cubicBezier = mCubicBezier;
@@ -311,7 +317,10 @@ namespace prop {
 
     void EasingItem::setValue(util::Easing::Param aValue, bool aSignal) {
         mSignal = aSignal;
-        mBox[0]->setCurrentIndex(aValue.type);
+        const int typeIndex = util::Easing::displayIndexOf(aValue.type);
+        // A blank/out-of-order type falls back to Linear; the combo itself is
+        // always in display order so the fallback index is valid.
+        mBox[0]->setCurrentIndex(typeIndex >= 0 ? typeIndex : util::Easing::displayIndexOf(util::Easing::Type_Linear));
         mBox[1]->setCurrentIndex(aValue.range);
         mDBox->setValue(aValue.weight);
         mCubicBezier = aValue.cubicBezier;

@@ -184,6 +184,12 @@ int entryPoint(int argc, char* argv[]) {
         QApplication::setFont(appFont);
     }
 
+    // set organization and application name for the application setting
+    // (BEFORE computing paths below: QStandardPaths::CacheLocation derives
+    // the dir from these, and QSettings uses them too)
+    QCoreApplication::setOrganizationName("AnimeEffectsProject");
+    QCoreApplication::setApplicationName("AnimeEffects");
+
     const QString stdCacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     const QString cacheDir = !stdCacheDir.isEmpty() ? stdCacheDir : (appDir + "/cache");
 
@@ -194,10 +200,6 @@ int entryPoint(int argc, char* argv[]) {
     // set fatal error handler
     static AEErrorHandler aeErrorHandler;
     gXCErrorHandler = &aeErrorHandler;
-
-    // set organization and application name for the application setting
-    QCoreApplication::setOrganizationName("AnimeEffectsProject");
-    QCoreApplication::setApplicationName("AnimeEffects");
 
 
     // language

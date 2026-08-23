@@ -22,7 +22,11 @@ TimeFormat::TimeFormat(util::Range aRange, int aFps) {
 QString TimeFormat::frameToString(const int aFrame, const TimeFormatType aTimeFormatType) const {
     switch (aTimeFormatType) {
     case TimeFormatType_Frames_From1:
-        return QString::number(aFrame + 1);
+        // Frames are natively user-facing 1-based now (the default range
+        // starts at 1), so adding 1 would read every frame one too high.
+        // Both From0 and From1 show the actual frame number; the From1
+        // label is retained for backward compatibility with saved settings.
+        return QString::number(aFrame);
 
     case TimeFormatType_Relative_FPS: {
         // The whole second this frame belongs to, floored so negative frames

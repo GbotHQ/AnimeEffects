@@ -51,6 +51,7 @@ public:
     QTimer* autosaveTimer;
 public slots:
     void autoSave();
+    void onGeneralSettingsApplied();
 
 public:
     void onNewProjectTriggered();
@@ -83,7 +84,10 @@ private:
     virtual void closeEvent(QCloseEvent* aEvent);
 
     void resetProjectRefs(core::Project* aProject);
-    bool processProjectSaving(core::Project& aProject, bool aRename = false);
+    bool processProjectSaving(core::Project& aProject, bool aRename = false, bool aSilent = false, bool aStopPlayback = true);
+    void updateAutosaveState();
+    void offerRecoveryCopies();
+    void openRecoveryCopy(const QString& aFilePath);
     int confirmProjectClosing(const QVector<core::Project*>& aProjects);
     int confirmProjectClosing(const QString& aMessage);
     bool closeProjects(const QVector<core::Project*>& aProjects);
