@@ -207,6 +207,9 @@ namespace prop {
             mLayout->addWidget(mBox[i], 0, i);
             mBox[i]->connect(mBox[i], util::SelectArgs<int>::from(&QComboBox::currentIndexChanged), [=]() {
                 this->onEditingFinished();
+                if (i == 0) {
+                    this->updateWeightEnabled();
+                }
                 mBox[i]->clearFocus();
             });
         }
@@ -259,10 +262,12 @@ namespace prop {
             if (result == QDialog::Accepted) {
                 mCubicBezier = *cubicBezier;
                 onValueUpdated(mStamp, value());
+                mStamp = value();
             }
         });
 
         mStamp = value();
+        updateWeightEnabled();
     }
 
     EasingItem::~EasingItem() {
@@ -294,8 +299,9 @@ namespace prop {
         for (int i = 0; i < 2; ++i) {
             mBox[i]->setEnabled(aEnable);
         }
-        mDBox->setEnabled(aEnable);
         mCustomEasing->setEnabled(aEnable);
+        mItemEnabled = aEnable;
+        updateWeightEnabled();
     }
 
     void EasingItem::setItemVisible(bool aVisible) {
@@ -326,6 +332,20 @@ namespace prop {
         mCubicBezier = aValue.cubicBezier;
         mStamp = aValue;
         mSignal = true;
+        updateWeightEnabled();
+    }
+
+    void EasingItem::updateWeightEnabled() {
+        const util::Easing::Type type = util::Easing::typeAtDisplayIndex(mBox[0]->currentIndex());
+        mDBox->setEnabled(mItemEnabled && weightApplicable(type));
+    }
+
+    bool EasingItem::weightApplicable(const util::Easing::Type aType) {
+        // The curve<->linear blend is a no-op for the stepped holds (Floor/Round)
+        // and Linear, and for Custom the handles already span every reachable
+        // shape (weight is exactly y_i' = w*y_i + (1-w)*x_i), so it is disabled
+        // there too. Mirrors the blend condition in util::Easing::calculate.
+        return util::Easing::Type_Sine <= aType && aType < util::Easing::Type_Custom;
     }
 
     //-------------------------------------------------------------------------------------------------
