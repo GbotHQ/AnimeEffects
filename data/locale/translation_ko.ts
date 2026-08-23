@@ -580,28 +580,28 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="207"/>
-        <source>Frame number (from 0)</source>
-        <translation>프레임 번호 (0부터)</translation>
+        <source>Frame number</source>
+        <translation>프레임 번호</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="209"/>
         <source>Frame number (from 1)</source>
-        <translation>프레임 번호 (1부터)</translation>
+        <translation type="vanished">프레임 번호 (1부터)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="211"/>
-        <source>Relative to FPS (1.0 = 60.0)</source>
-        <translation>FPS 기준 (1.0 = 60.0)</translation>
+        <source>Seconds</source>
+        <translation>초</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="213"/>
-        <source>Seconds : Frame</source>
-        <translation>초 : 프레임</translation>
+        <source>Seconds + Frame (SS+FF)</source>
+        <translation>초 + 프레임 (SS+FF)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="215"/>
-        <source>Timecode (SMPTE) (HH:MM:SS:FF)</source>
-        <translation>타임코드 (SMPTE) (HH:MM:SS:FF)</translation>
+        <source>Timecode (SMPTE) (HH:MM:SS+FF)</source>
+        <translation>타임코드 (SMPTE) (HH:MM:SS+FF)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="217"/>
@@ -1223,8 +1223,8 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="328"/>
-        <source>Timeline format (needs restart)</source>
-        <translation>타임라인 형식 (재시작 필요)</translation>
+        <source>Timeline format</source>
+        <translation>타임라인 형식</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="344"/>

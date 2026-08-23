@@ -21,7 +21,7 @@ const core::TimeFormatType kTimeFormatOrder[] = {
     core::TimeFormatType_Frames_From0,       // Frame number
     core::TimeFormatType_Relative_FPS,       // Seconds (frame/fps)
     core::TimeFormatType_Seconds_Frames,     // Seconds : Frame
-    core::TimeFormatType_Timecode_SMPTE,     // HH:MM:SS:FF
+    core::TimeFormatType_Timecode_SMPTE,     // HH:MM:SS+FF
     core::TimeFormatType_Timecode_HHMMSSmmm, // HH:MM:SS:mmm
 };
 const int kTimeFormatOrderCount = int(sizeof(kTimeFormatOrder) / sizeof(kTimeFormatOrder[0]));
@@ -158,11 +158,13 @@ QString indexToTimeFormat(int aComboIndex) {
     case core::TimeFormatType_Frames_From0:
         return QCoreApplication::translate("GeneralSettingsDialog", "Frame number");
     case core::TimeFormatType_Relative_FPS:
-        return QCoreApplication::translate("GeneralSettingsDialog", "Relative to FPS (1.0 = 60.0)");
+        // Shows the frame's exact time in seconds (frame / fps), fractional.
+        return QCoreApplication::translate("GeneralSettingsDialog", "Seconds");
     case core::TimeFormatType_Seconds_Frames:
-        return QCoreApplication::translate("GeneralSettingsDialog", "Seconds : Frame");
+        // SS+FF: whole seconds + frame-within-second, at the project fps.
+        return QCoreApplication::translate("GeneralSettingsDialog", "Seconds + Frame (SS+FF)");
     case core::TimeFormatType_Timecode_SMPTE:
-        return QCoreApplication::translate("GeneralSettingsDialog", "Timecode (SMPTE) (HH:MM:SS:FF)");
+        return QCoreApplication::translate("GeneralSettingsDialog", "Timecode (SMPTE) (HH:MM:SS+FF)");
     case core::TimeFormatType_Timecode_HHMMSSmmm:
         return QCoreApplication::translate("GeneralSettingsDialog", "Timecode (HH:MM:SS:mmm)");
     default:

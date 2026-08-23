@@ -584,28 +584,28 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="207"/>
-        <source>Frame number (from 0)</source>
-        <translation>Номер кадра (с 0)</translation>
+        <source>Frame number</source>
+        <translation>Номер кадра</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="209"/>
         <source>Frame number (from 1)</source>
-        <translation>Номер кадра (с 1)</translation>
+        <translation type="vanished">Номер кадра (с 1)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="211"/>
-        <source>Relative to FPS (1.0 = 60.0)</source>
-        <translation>Относительно FPS (1.0 = 60.0)</translation>
+        <source>Seconds</source>
+        <translation>Секунды</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="213"/>
-        <source>Seconds : Frame</source>
-        <translation>Секунды : Кадр</translation>
+        <source>Seconds + Frame (SS+FF)</source>
+        <translation>Секунды + Кадр (SS+FF)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="215"/>
-        <source>Timecode (SMPTE) (HH:MM:SS:FF)</source>
-        <translation>Тайм-код (SMPTE) (ЧЧ:ММ:СС:КК)</translation>
+        <source>Timecode (SMPTE) (HH:MM:SS+FF)</source>
+        <translation>Тайм-код (SMPTE) (ЧЧ:ММ:СС+КК)</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="217"/>
@@ -1243,8 +1243,8 @@
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="328"/>
-        <source>Timeline format (needs restart)</source>
-        <translation>Формат шкалы времени (требуется перезапуск)</translation>
+        <source>Timeline format</source>
+        <translation>Формат временной шкалы</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="344"/>

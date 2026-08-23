@@ -109,11 +109,12 @@ void TimeLineEditor::clearSelection() {
 }
 
 void TimeLineEditor::pushRow(ObjectNode* aNode, util::Range aWorldTB, bool aClosedFolder) {
-    // The lane spans the frame range on the content axis: from the range's
-    // first frame's tick to the last frame's tick.
-    const int left = kTimeLineMargin + mTimeScale.pixelWidth(mFrameRange.min());
-    const int right = left + mTimeScale.pixelWidth(mFrameRange.diff());
-    const QRect rect(QPoint(left, aWorldTB.min()), QPoint(right, aWorldTB.max()));
+    // The lane's vertical band on the content axis. Only top/height are read
+    // (vertical-band culling and keyHeight); the rect's x/width are unused —
+    // the lane fill, seams and labels key off the camera rect, keys render at
+    // margin + spacing*frame, and hit-testing uses frame ranges. Keep a fixed
+    // gutter x so the rect does not read as encoding a horizontal span.
+    const QRect rect(kTimeLineMargin, aWorldTB.min(), 1, aWorldTB.diff() + 1);
     mRows.push_back(TimeLineRow(aNode, rect, aClosedFolder, aNode == mSelectingRow));
 }
 
@@ -143,13 +144,6 @@ void TimeLineEditor::updateProjectAttribute() {
             // the newly configured range.
             mPlayWindow.clear();
             setFrameRange(newRange);
-
-            const int newRowRight = kTimeLineMargin + mTimeScale.pixelWidth(newRange.max());
-            const int newRowLeft = kTimeLineMargin + mTimeScale.pixelWidth(newRange.min());
-            for (auto& row : mRows) {
-                row.rect.setLeft(newRowLeft);
-                row.rect.setRight(newRowRight);
-            }
         }
 
         const int newFps = mProject->attribute().fps();
@@ -900,11 +894,6 @@ bool TimeLineEditor::updateWheel(int aDelta, bool aInvertScaling) {
         return false;
 
     mTimeCurrent.update(mTimeScale);
-
-    const int lineWidth = mTimeScale.maxPixelWidth();
-    for (TimeLineRow& row : mRows) {
-        row.rect.setWidth(lineWidth);
-    }
     return true;
 }
 
