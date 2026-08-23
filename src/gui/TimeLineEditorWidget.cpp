@@ -147,33 +147,22 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
             mCopyToClipboard, &QAction::triggered, this, &TimeLineEditorWidget::onCopyCBTriggered
         );
 
-        // This is as annoying as you think it is, but I'm too lazy to think of a better way to do this and since no
-        // other easing functions will be supported this will do.
+        // Entries bind their easing type explicitly so the menu order is free
+        // to group the stepped holds apart from the serialized enum order.
         mSelectEasing = new QMenu(tr("Change key(s) easing to"), this);
         {
-            auto* none = new QAction(tr("None"), this);
-            auto* linear = new QAction(tr("Linear"), this);
-            auto* sine = new QAction(tr("Sine"), this);
-            auto* quad = new QAction(tr("Quad"), this);
-            auto* cubic = new QAction(tr("Cubic"), this);
-            auto* quart = new QAction(tr("Quart"), this);
-            auto* quint = new QAction(tr("Quint"), this);
-            auto* expo = new QAction(tr("Expo"), this);
-            auto* circ = new QAction(tr("Circ"), this);
-            auto* back = new QAction(tr("Back"), this);
-            auto* elastic = new QAction(tr("Elastic"), this);
-            auto* bounce = new QAction(tr("Bounce"), this);
-
-            QVector<QAction*> easings{
-            none, linear, sine, quad, cubic, quart, quint, expo, circ, back, elastic, bounce,
-            };
-            int x = 0;
-            for(auto easing: easings) {
-                mSelectEasing->addAction(easing);
-                mSelectEasing->connect(easing, &QAction::triggered, [=] {
-                    onSelectEasingTriggered(x);
+            // The entries come from util::Easing's shared display-order table
+            // and their labels from getTypeName (one translation source).
+            // Custom is set through the spline dialog, so it is skipped here.
+            for (int i = 0; i < util::Easing::displayCount(); ++i) {
+                const auto type = util::Easing::typeAtDisplayIndex(i);
+                if (type == util::Easing::Type_Custom)
+                    continue;
+                auto* action = new QAction(util::Easing::getTypeName(type), this);
+                mSelectEasing->addAction(action);
+                mSelectEasing->connect(action, &QAction::triggered, [this, type] {
+                    onSelectEasingTriggered(static_cast<int>(type));
                 });
-                x++;
             }
         }
         mSelectRange = new QMenu(tr("Change key(s) range to"), this);
@@ -186,7 +175,7 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
             int x = 0;
             for (auto range: ranges) {
                 mSelectRange->addAction(range);
-                mSelectEasing->connect(range, &QAction::triggered, [=] {
+                mSelectRange->connect(range, &QAction::triggered, [=] {
                     onSelectRangeTriggered(x);
                 });
                 x++;
@@ -211,7 +200,17 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
         if (key)
             key->addListener([=]() {
                 if (!mCopyTargets.targets().isEmpty()) {
-                    mPastePos = this->mapFromGlobal(QCursor::pos());
+                    // Anchor keyboard paste at the playhead, not the mouse:
+                    // QCursor::pos() is a screen coordinate, and mapped into
+                    // this widget it only denotes a frame while the cursor
+                    // actually hovers the timeline. Elsewhere (viewport,
+                    // object tree) it maps to an arbitrary frame, so Ctrl+V
+                    // looked like it pasted at random. The context menu keeps
+                    // its own click-position anchor (onContextMenuRequested).
+                    const auto& scale = mEditor->timeScale();
+                    const int x =
+                        scale.pixelWidth(mEditor->currentFrame().get()) + ctrl::TimeLineEditor::kTimeLineMargin;
+                    mPastePos = QPoint(x, 0);
                     mPasteKey->trigger();
                 }
             });
@@ -277,12 +276,8 @@ void TimeLineEditorWidget::updateTimeCursorPos() {
         mTimeCursor.setHeaderInfo(frameText, theme::Colors::current().accentBright);
         mTimeCursor.setNumberColor(theme::Colors::current().accentBrightText);
         mTimeCursor.setEdgeColor(theme::Colors::current().accentBright);
-        // The playhead pill overlaps the ruler numbers, and the moving child
-        // only repaints its own old rect on the parent: any number straddling
-        // that partial region's edge would be painted clipped mid-glyph (the
-        // pill's new opaque face makes the cut visible). The ruler is its own
-        // widget now, so it repaints its full strip; the strip is 22px, so a
-        // per-playback-tick repaint is cheap.
+        // The playhead pill overlays the ruler numbers, so repaint the full
+        // ruler strip (22px) each tick.
         if (mTimeRuler)
             mTimeRuler->update();
         // The playhead overlays the viewport: pinned to the top (on the fixed
@@ -467,10 +462,20 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
 
     QMenu menu(this);
 
-    mTargets = core::TimeLineEvent();
-    const bool clickedOnKey = mEditor->selectKeysAt(mTargets, aPos);
+    // customContextMenuRequested delivers surface coordinates, but every
+    // editor query below runs in model space: rows are pushed there
+    // (updateLinesRecursive shifts them by the view origin) and mouse
+    // events land there through AbstractCursor's toWorldPos. Feeding raw
+    // surface coordinates silently missed every key whenever the view was
+    // scrolled — no highlight, no key actions — and anchored paste at a
+    // shifted frame. The ruler check above stays in surface space on
+    // purpose: the ruler strip is pinned to the widget top.
+    const QPoint worldPos = mCamera ? mCamera->toWorldPos(QPointF(aPos)).toPoint() : aPos;
 
-    mPastePos = aPos;
+    mTargets = core::TimeLineEvent();
+    const bool clickedOnKey = mEditor->selectKeysAt(mTargets, worldPos);
+
+    mPastePos = worldPos;
     mPasteKey->setEnabled(mCopyTargets.hasAnyTargets());
 
     // The key menu applies when the click is on a key or when there is a
@@ -489,6 +494,11 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
         menu.addAction(mPasteKey);
     }
     menu.exec(this->mapToGlobal(aPos));
+    // A right-click on an unselected key lent it a temporary selection for
+    // this menu only; the previous selection is not restored, so drop the
+    // temporary selection now that the interaction is over, then repaint so
+    // the highlight clears.
+    mEditor->endTemporarySelection();
     this->update();
 }
 

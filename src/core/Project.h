@@ -1,9 +1,8 @@
 #ifndef CORE_PROJECT_H
 #define CORE_PROJECT_H
 
-#include <QSize>
-#include <QString>
-#include <QScopedPointer>
+#include <QUuid>
+#include <functional>
 #include <functional>
 #include "util/LifeLink.h"
 #include "util/Signaler.h"
@@ -86,6 +85,11 @@ public:
     const thr::Paralleler& paralleler() const { return *mParalleler; }
 
     Hook* hook() { return mHook.data(); }
+    // Per-project identity, used for transient cache artifacts (the crash-
+    // recovery copies). Stable for the lifetime of this object and unique
+    // across sessions, so two nameless tabs never collide and repeated
+    // autosaves overwrite the same file.
+    const QUuid& id() const { return mId; }
 
     util::Signaler<void(TimeLineEvent&, bool)> onTimeLineModified;
     util::Signaler<void(ObjectNode&, bool)> onNodeAttributeModified;
@@ -102,6 +106,7 @@ private:
     util::LifeLink mLifeLink;
     QString mFileName;
     Attribute mAttribute;
+    QUuid mId;
 
     QScopedPointer<thr::Paralleler> mParalleler;
     ResourceHolder mResourceHolder;

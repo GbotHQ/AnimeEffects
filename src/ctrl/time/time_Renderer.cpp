@@ -26,7 +26,6 @@ namespace time {
 
         for (const TimeLineRow& row : aRows) {
             const QRect rect = row.rect;
-            const QPoint cpos(mMargin, rect.bottom());
 
             // Rows are culled by their vertical band only: the horizontal
             // view extent is never bounded by the frame range, so lanes stay
@@ -41,8 +40,8 @@ namespace time {
             // There is no performance reason to bound them to the content.
             const QRect band(QPoint(aCameraRect.left(), rect.top()), QPoint(aCameraRect.right(), rect.bottom()));
 
-            // draw line (fill only — the 1px border is one hairline per seam
-            // below; per-row outlines would double the shared boundary)
+            // draw line (fill only; the 1px border is a separate hairline
+            // pass below, one per seam)
             mPainter.setPen(Qt::NoPen);
             mPainter.setBrush(row.selecting ? kBrushBodySelect : kBrushBody);
             mPainter.drawRect(band);
@@ -81,12 +80,6 @@ namespace time {
                 }
             }
 
-            // draw child keys
-            if (row.closedFolder) {
-                drawChildKeys(row.node, cpos);
-            }
-            // draw keys
-            drawKeys(row.node, row);
         }
 
         // 1px borders: one hairline per seam (each row's top) plus the last
@@ -119,8 +112,8 @@ namespace time {
         const int top = aCameraRect.top() + ctrl::TimeLineEditor::kHeaderHeight;
         const int x0 = mMargin + mScale->pixelWidth(mProjectRange.min());
         const int x1 = mMargin + mScale->pixelWidth(mProjectRange.max());
-        // A degenerate 0-frame range collapses both markers onto the same
-        // pixel (x0 == x1); drawing twice would darken the line.
+        // A degenerate range (min == max) collapses both markers onto one
+        // pixel; skip the double draw.
         if (x0 == x1)
             return;
 
@@ -136,6 +129,24 @@ namespace time {
         mPainter.setBrush(Qt::NoBrush);
         mPainter.drawLine(x0, top, x0, aCameraRect.bottom());
         mPainter.drawLine(x1, top, x1, aCameraRect.bottom());
+    }
+
+    void Renderer::renderKeys(const QVector<TimeLineRow>& aRows, const QRect& aCullRect) {
+        mPainter.setRenderHint(QPainter::Antialiasing);
+        for (const TimeLineRow& row : aRows) {
+            const QRect rect = row.rect;
+            // same vertical-band culling as the background pass above
+            if (rect.bottom() < aCullRect.top() || aCullRect.bottom() < rect.top())
+                continue;
+            if (!row.node || !row.node->timeLine())
+                continue;
+
+            const QPoint cpos(mMargin, rect.bottom());
+            if (row.closedFolder) {
+                drawChildKeys(row.node, cpos);
+            }
+            drawKeys(row.node, row);
+        }
     }
 
     void Renderer::renderHandle(const QPoint& aPoint, int aRange) {
@@ -177,7 +188,9 @@ namespace time {
         if (aNode && aNode->timeLine()) {
             const TimeLine& timeLine = *(aNode->timeLine());
             const int validNum = timeLine.validTypeCount();
-            const int left = aRow.rect.left();
+            // Keys sit at their absolute frame position (margin + spacing*frame),
+            // the same base the playhead, ruler ticks and child keys use.
+            const int left = mMargin;
             const bool isSlimmed = aNode->isSlimmedDown();
             int validIndex = 0;
 

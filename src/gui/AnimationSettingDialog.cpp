@@ -32,8 +32,9 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
     {
         // Frame range: two linked spinboxes. Either bound may be negative
         // (pre-roll frames before 0 are a valid project extent); the end
-        // cannot drop below the start, and neither side may cut across a key
-        // (validated on OK).
+        // cannot drop below the start. Keys may live outside the range — the
+        // range is a playback/export bound, not a constraint on key positions
+        // — so every valid start <= end change is accepted.
         auto layout = new QHBoxLayout();
         mStartBox = new QSpinBox();
         mStartBox->setRange(std::numeric_limits<int>::min(), 0x7fffffff);
@@ -66,28 +67,10 @@ AnimationSettingDialog::AnimationSettingDialog(core::Project& aProject, bool aCu
 
     this->setMainLayout(form);
 
-    this->setOkCancel([=](int aIndex) -> bool {
-        if (aIndex == 0) {
-            const util::Range newRange = this->frameRange();
-            const util::Range curRange = mProject.attribute().frameRange();
-            const auto* tree = mProject.objectTree().topNode();
-            // Shrinking the end below a key, or raising the start above one,
-            // would cut the key out of the range: reject it.
-            if (newRange.max() < curRange.max() &&
-                core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(tree, newRange.max())) {
-                QMessageBox::warning(nullptr, tr("Operation Error"),
-                    tr("Frame value cannot be set.") + "\n" +
-                    tr("One or more keys exceed the specified frame value."));
-                return false;
-            }
-            if (newRange.min() > curRange.min() &&
-                core::ObjectNodeUtil::thereAreSomeKeysBeforeFrame(tree, newRange.min())) {
-                QMessageBox::warning(nullptr, tr("Operation Error"),
-                    tr("Frame value cannot be set.") + "\n" +
-                    tr("One or more keys precede the specified frame value."));
-                return false;
-            }
-        }
+    this->setOkCancel([=](int) -> bool {
+        // Keys may live outside the frame range — the range is a
+        // playback/export bound, not a constraint on key positions — so every
+        // range change is valid.
         return true;
     });
     this->fixSize();
