@@ -42,6 +42,11 @@ public:
         float y1 = 0.0f;
         float x2 = 1.0f / 3.0f;
         float y2 = 1.0f;
+        // Control points are compared by value (set/read via the editor or
+        // serialization), so a plain float compare is the right test.
+        bool operator==(const CubicBezier& aRhs) const {
+            return x1 == aRhs.x1 && y1 == aRhs.y1 && x2 == aRhs.x2 && y2 == aRhs.y2;
+        }
     };
 
     struct Param {
