@@ -20,7 +20,7 @@ using namespace core;
 
 namespace {
     constexpr int kDefaultFrameCount = 600;
-    const util::Range kDefaultFrameRange(0, kDefaultFrameCount);
+    const util::Range kDefaultFrameRange(1, kDefaultFrameCount);
 
 } // namespace
 
@@ -46,6 +46,7 @@ TimeLineEditor::TimeLineEditor():
     mPreGestureSelection(),
     mPressedTarget(),
     mPressedTargetValid(false),
+    mSelectionTemporary(false),
     mPlayWindow(),
     mWindowAnchorFrame(0),
     mWindowDragged(false) {
@@ -60,8 +61,8 @@ TimeLineEditor::TimeLineEditor():
 void TimeLineEditor::setFrameRange(const util::Range& aRange) {
     mFrameRange = aRange;
     mTimeScale.setFrameEnd(mFrameRange.max());
-    // The playhead starts at the range's first frame (0 for the default
-    // [0, frameEnd] range).
+    // The playhead starts at the range's first frame (1 for the default
+    // [1, frameEnd] range — frames are user-facing and 1-indexed).
     mTimeCurrent.setFrame(mTimeScale, Frame(mFrameRange.min()));
 }
 
@@ -124,11 +125,11 @@ void TimeLineEditor::updateRowSelection(const ObjectNode* aRepresent) {
 }
 
 void TimeLineEditor::updateKey() {
-    // any timeline modification can invalidate the stored targets (keys
-    // moved, removed or recreated), so the selection follows the change
-    if (!mOnUpdatingKey) {
-        clearSelection();
-    }
+    // a timeline modification can leave stored targets stale (keys moved,
+    // removed or recreated): follow the moves, drop the dead entries, and
+    // keep the rest. Data-only edits like easing changes leave every entry
+    // valid, so they keep the selection.
+    mSelection.refresh();
 }
 
 void TimeLineEditor::updateProjectAttribute() {
@@ -273,10 +274,11 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
     } else if (aCursor.emitsLeftReleasedEvent()) {
         if (mState == State_SetWindow) {
             // A shift-click (press and release without dragging) dismisses
-            // the window; a drag keeps what it set. The window only ever
-            // materializes on the first drag, so a plain shift-press shows
-            // nothing while held.
-            if (!mWindowDragged)
+            // the window; a drag keeps what it set. A drag that collapses to
+            // a single frame (start == end, easy at max zoom) is likewise a
+            // click in disguise — keep it, and a 1-frame active window would
+            // gate playback to that one frame while rendering nothing.
+            if (!mWindowDragged || mPlayWindow.start == mPlayWindow.end)
                 mPlayWindow.clear();
             mState = State_Standby;
             flags |= UpdateFlag_ModView;
@@ -284,7 +286,7 @@ TimeLineEditor::UpdateFlags TimeLineEditor::updateCursor(const AbstractCursor& a
             // keys moved: re-resolve the selection to their new frames so
             // later copy/delete/move target the right keys
             if (mMoveRef) {
-                mSelection.reindex();
+                mSelection.refresh();
                 mMoveRef = nullptr;
             } else if (mPressedTargetValid) {
                 // a plain click (no drag) always leaves exactly the clicked
@@ -396,16 +398,28 @@ bool TimeLineEditor::selectKeysAt(TimeLineEvent& aEvent, const QPoint& aPos) {
     if (mSelection.contains(target)) {
         // right-click on a selected key: operate on the whole selection
         mSelection.assign(aEvent);
-    } else {
-        // right-click on an unselected key: select it and operate on it
-        TimeLineEvent single;
-        single.pushTarget(*hit.node, hit.pos);
-        mSelection.set(single);
-        mSelection.assign(aEvent);
+        return true;
     }
+
+    // right-click on an unselected key: clear the current selection and lend
+    // the clicked key a temporary selection for the lifetime of the context
+    // menu — it shows the highlight and every menu action consumes it. The
+    // previous selection is NOT restored; endTemporarySelection() drops the
+    // temporary selection once the menu closes.
+    TimeLineEvent single;
+    single.pushTarget(*hit.node, hit.pos);
+    mSelection.set(single);
+    mSelectionTemporary = true;
+    mSelection.assign(aEvent);
     return true;
 }
 
+void TimeLineEditor::endTemporarySelection() {
+    if (!mSelectionTemporary)
+        return;
+    mSelection.clear();
+    mSelectionTemporary = false;
+}
 bool TimeLineEditor::retrieveSelectionTargets(TimeLineEvent& aEvent) const {
     if (mSelection.empty())
         return false;
@@ -888,7 +902,6 @@ bool TimeLineEditor::updateWheel(int aDelta, bool aInvertScaling) {
     mTimeCurrent.update(mTimeScale);
 
     const int lineWidth = mTimeScale.maxPixelWidth();
-
     for (TimeLineRow& row : mRows) {
         row.rect.setWidth(lineWidth);
     }
@@ -933,12 +946,9 @@ int TimeLineEditor::pixelsPerFrame() const {
 }
 
 int TimeLineEditor::anchorPixelAfterScale(int aContentPixel, int aOldSpacing) const {
-    // The zoom anchor is the content pixel under the mouse, scaled exactly (no
-    // frame rounding, no range clamp). Anchoring a frame instead would snap
-    // the edge frame to the cursor when the mouse sits outside the frame range.
-    // The half-spacing bias rounds half-up for positive content; negative
-    // content must round away from zero instead (truncation toward zero would
-    // anchor one pixel off on the left of frame 0).
+    // The zoom anchor is the content pixel under the mouse, scaled exactly
+    // (no frame rounding, no range clamp). The half-spacing bias rounds
+    // half-up for positive content and away from zero for negative.
     const int newSpacing = mTimeScale.pixelsPerFrame();
     const qint64 num = (static_cast<qint64>(aContentPixel) - kTimeLineMargin) * newSpacing;
     const qint64 scaled = num >= 0 ? num + aOldSpacing / 2 : num - aOldSpacing / 2;
@@ -966,9 +976,10 @@ void TimeLineEditor::render(
     renderer.setPlayWindow(mPlayWindow);
 
     renderer.renderLines(mRows, camRect, cullRect);
-    // Range hairlines paint under the marquee: they mark the frame range's
-    // edges through the tracks without competing with it.
+    // Range hairlines are part of the track background: they paint over the
+    // fills and seams, but under the key graphics they must never cover.
     renderer.renderRangeMarkers(camRect);
+    renderer.renderKeys(mRows, cullRect);
     // renderer.renderHandle(mTimeCurrent.handlePos(), mTimeCurrent.handleRange());
 
     if (mState == State_EncloseKeys && mMarquee.isActive()) {

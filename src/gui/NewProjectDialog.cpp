@@ -16,7 +16,7 @@ NewProjectDialog::NewProjectDialog(QWidget* aParent):
     EasyDialog(tr("New Project Dialog"), aParent), mFileName(), mAttribute(), mSpecifiesCanvasSize() {
     // initialize attribute
     {
-        mAttribute.setFrameRange(util::Range(0, 60 * 10));
+        mAttribute.setFrameRange(util::Range(1, 60 * 10));
         mAttribute.setImageSize(QSize(512, 512));
     }
 
@@ -63,7 +63,8 @@ QWidget* NewProjectDialog::createOption() {
         frame->setValue(mAttribute.frameRange().max());
 
         this->connect(frame, &QSpinBox::editingFinished, [=]() {
-            this->mAttribute.setFrameRange(util::Range(0, frame->value()));
+            // 1-indexed: the frame-count value N is frames 1..N.
+            this->mAttribute.setFrameRange(util::Range(1, frame->value()));
         });
 
         form->addRow(tr("Frame count"), frame);

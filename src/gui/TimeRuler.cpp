@@ -108,9 +108,7 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
 
         // The project's first frame mirrors the end label: off the scale
         // grid it reads as a major tick with its number, and numbered
-        // neighbors yield to it the same way. For the default range this
-        // is frame 0, which is always on a major (0 mod every step), so
-        // the block is inert.
+        // neighbors yield to it the same way.
         const int firstFrame = mEditor->frameRange().min();
         const auto firstAttr = scale.attribute(firstFrame);
         const bool firstLabelInView = firstFrame >= aVisibleRange.min() && firstFrame <= aVisibleRange.max();
@@ -128,11 +126,10 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         // (or overlap); collapse them into one "first–last" label
         // centered between the ticks, mirroring how the playback
         // window's pills collapse. The collision test ignores grid
-        // alignment: an on-major boundary (frame 0, or any multiple of
-        // the major step) is drawn by the tick loop itself, but it still
-        // occupies the same slot and must collapse the same way — a
-        // range [0, 5] reads "0–5", not a lone "5" eating the start.
-        // The ticks still mark both edges.
+        // alignment: an on-major boundary is drawn by the tick loop
+        // itself, but it still occupies the same slot and must collapse
+        // the same way — a range [1, 5] reads "1–5", not a lone "5"
+        // eating the start. The ticks still mark both edges.
         const bool boundaryLabelsCollide = firstLabelInView && endLabelInView &&
             (firstLabelCenter + (firstNumberWidth >> 1) + kNumberMargin >=
              lastLabelCenter - (lastNumberWidth >> 1));
@@ -316,14 +313,16 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     if (!window.active())
         return;
 
-    // Window edges on the content axis: the start frame's tick and the
-    // tick of the frame AFTER the end. The window spans whole frames, so
-    // the end frame's right edge is the next frame's tick (the same
-    // convention as the range marker's x1 = margin + maxPixelWidth).
+    // Window edges on the content axis: the start frame's tick and the end
+    // frame's tick. A frame is a point at its tick (its key and number sit
+    // at `margin + spacing*frame`), so the inclusive window [start, end]
+    // spans the tick-points start..end: the band is [tick(start), tick(end)]
+    // and the end bracket lands on frame `end`'s tick — the same convention
+    // as the range marker at the last frame's tick (pixelWidth(max)).
     const ctrl::time::Scaler& scale = mEditor->timeScale();
     const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
     const int x0 = margin + scale.attribute(window.start).grid.x();
-    const int x1 = margin + scale.attribute(window.end + 1).grid.x();
+    const int x1 = margin + scale.attribute(window.end).grid.x();
     if (x1 <= x0)
         return;
 
@@ -334,7 +333,7 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     // clipped to the visible ruler (off-view pills are clipped by the
     // widget itself).
     const int c0 = qMax(x0, aCameraRect.left());
-    const int c1 = qMin(x1, aCameraRect.right() + 1);
+    const int c1 = qMin(x1 + 1, aCameraRect.right() + 1);
     if (c1 > c0) {
         aPainter.setPen(Qt::NoPen);
         aPainter.setBrush(c.windowBand);
@@ -350,7 +349,7 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     aPainter.setBrush(c.windowEdge);
     const int stemBottom = top + ctrl::TimeLineEditor::kHeaderHeight;
     aPainter.drawRect(QRect(x0, top, 2, stemBottom - top));
-    aPainter.drawRect(QRect(x1 - 2, top, 2, stemBottom - top));
+    aPainter.drawRect(QRect(x1 - 1, top, 2, stemBottom - top));
 
     // Label pills: the frame number is the bracket's horizontal arm,
     // attached to the stem's inner face. Rounded on the outer corners,
@@ -364,7 +363,7 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     const int wL = fm.horizontalAdvance(sL) + ctrl::TimeLineEditor::kPillPadding * 2;
     const int wR = fm.horizontalAdvance(sR) + ctrl::TimeLineEditor::kPillPadding * 2;
     const QRect pillL(x0 + 2, top, wL, ctrl::TimeLineEditor::kNumberHeight);
-    const QRect pillR(x1 - 2 - wR, top, wR, ctrl::TimeLineEditor::kNumberHeight);
+    const QRect pillR(x1 - 1 - wR, top, wR, ctrl::TimeLineEditor::kNumberHeight);
 
     aPainter.setRenderHint(QPainter::Antialiasing, true);
     aPainter.setPen(Qt::NoPen);

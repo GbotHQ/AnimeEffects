@@ -2,6 +2,19 @@
 #include <QtMath>
 #include "util/EasingName.h"
 
+namespace {
+// Picker display order, mirrored by the Easing::display* helpers. The enum
+// ordinal is serialization order; this is the order pickers show (stepped
+// holds first, then the analytic curves, then the bezier "Custom").
+constexpr util::Easing::Type kEasingDisplayOrder[] = {
+    util::Easing::Type_Floor, util::Easing::Type_Round, util::Easing::Type_Linear, util::Easing::Type_Sine,
+    util::Easing::Type_Quad, util::Easing::Type_Cubic, util::Easing::Type_Quart, util::Easing::Type_Quint,
+    util::Easing::Type_Expo, util::Easing::Type_Circ, util::Easing::Type_Back, util::Easing::Type_Elastic,
+    util::Easing::Type_Bounce, util::Easing::Type_Custom,
+};
+constexpr int kEasingDisplayOrderCount = int(sizeof(kEasingDisplayOrder) / sizeof(kEasingDisplayOrder[0]));
+} // namespace
+
 namespace util {
 
 //-------------------------------------------------------------------------------------------------
@@ -18,12 +31,30 @@ bool Easing::Param::isValidParam() const {
 bool Easing::Param::operator==(const Param& aRhs) const {
     return type == aRhs.type && range == aRhs.range && weight == aRhs.weight;
 }
+//-------------------------------------------------------------------------------------------------
+int Easing::displayIndexOf(const Type aType) {
+    for (int i = 0; i < kEasingDisplayOrderCount; ++i) {
+        if (kEasingDisplayOrder[i] == aType)
+            return i;
+    }
+    return -1;
+}
+
+Easing::Type Easing::typeAtDisplayIndex(const int aIndex) {
+    if (0 <= aIndex && aIndex < kEasingDisplayOrderCount)
+        return kEasingDisplayOrder[aIndex];
+    return Type_Linear;
+}
+
+int Easing::displayCount() { return kEasingDisplayOrderCount; }
+
+//-------------------------------------------------------------------------------------------------
 
 //-------------------------------------------------------------------------------------------------
 QString Easing::getTypeName(const Type aType) {
     switch (aType) {
-    case Type_None:
-        return EasingName::tr("None");
+    case Type_Floor:
+        return EasingName::tr("Floor");
     case Type_Linear:
         return EasingName::tr("Linear");
     case Type_Sine:
@@ -48,6 +79,8 @@ QString Easing::getTypeName(const Type aType) {
         return EasingName::tr("Bounce");
     case Type_Custom:
         return EasingName::tr("Custom");
+    case Type_Round:
+        return EasingName::tr("Round");
     default:
         return "";
     }
@@ -75,8 +108,8 @@ Easing::Type Easing::easingToEnum(QString easing) {
     else {
         aEasing = easing;
     }
-    if (aEasing == "None")
-        return Type_None;
+    if (aEasing == "Floor" || aEasing == "None") // "None" is the legacy name
+        return Type_Floor;
     if (aEasing == "Linear")
         return Type_Linear;
     if (aEasing == "Sine")
@@ -99,6 +132,8 @@ Easing::Type Easing::easingToEnum(QString easing) {
         return Type_Elastic;
     if (aEasing == "Bounce")
         return Type_Bounce;
+    if (aEasing == "Round")
+        return Type_Round;
     if (aEasing == "Custom")
         return Type_Custom;
     return Type_Linear;
@@ -123,16 +158,6 @@ Easing::Range Easing::rangeToEnum(QString range) {
     // Default range is InOut, defined as "All" by Hidefuku
 }
 
-
-//-------------------------------------------------------------------------------------------------
-QStringList Easing::getTypeNameList() {
-    QStringList list;
-    for (int i = 0; i < Type_TERM; ++i) {
-        list.append(getTypeName((Type)i));
-    }
-    return list;
-}
-
 //-------------------------------------------------------------------------------------------------
 float Easing::calculate(
     const Type aType, const Range aRange, const float t, const float b, const float c, const float d) {
@@ -149,8 +174,12 @@ float Easing::calculate(
     }
 
     switch (aType) {
-    case Type_None:
+    case Type_Floor:
         return b;
+    case Type_Round:
+        // Stepped hold with a rounded frame: flip to the target value once
+        // the normalized progress reaches the interval midpoint.
+        return t / d < 0.5f ? b : b + c;
     case Type_Linear:
         return c * (t / d) + b;
     case Type_Sine:
@@ -226,7 +255,7 @@ float Easing::calculate(const Param& aParam, const float t, const float b, const
         return calculateBezier(aParam, t, b, c, d);
     }
     const float result = calculate(aParam.type, aParam.range, t, b, c, d);
-    if (aParam.type > Type_Linear) {
+    if (Type_Sine <= aParam.type && aParam.type < Type_Custom) {
         return result * aParam.weight + (c * (t / d) + b) * (1.0f - aParam.weight);
     }
     return result;

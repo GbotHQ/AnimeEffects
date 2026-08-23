@@ -132,12 +132,10 @@ namespace time {
         // step (step / least prime factor) — the rung directly below the
         // major in the divisor chain: 24 -> 12, 30 -> 15, 15 -> 5, 49 -> 7.
         // It sits at roughly half the major's on-screen spacing (majors stay
-        // at 72-128px, so the rung lands 36-64px, near the 48px target), it
-        // divides the major step by construction so ticks always align (a
-        // truncated half, 15 -> 7, would misalign with 0, 7, 14, 15), and an
-        // even major beyond 128px cannot occur — its own half-rung would be a
-        // closer major candidate. Prime steps have no intermediate; the
-        // per-frame tier below is the only other minor level (two minors max).
+        // at 72-128px, so the rung lands 36-64px, near the 48px target) and
+        // divides the major step by construction, so ticks always align.
+        // Prime steps have no intermediate; the per-frame tier below is the
+        // only other minor level (two minors max).
         const int step = majorStep(spacing);
         const int tier = step / leastPrimeFactor(step);
 
