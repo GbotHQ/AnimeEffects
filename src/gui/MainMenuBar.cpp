@@ -326,6 +326,9 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
                     this->mGUIResources.setTheme(generalSettingsDialog->theme());
                 if (generalSettingsDialog->accentHasChanged())
                     this->mGUIResources.setAccent(generalSettingsDialog->accent());
+                // Autosave enable/delay are applied live (start/stop/re-arm
+                // the timer) rather than waiting for the next app launch.
+                mViaPoint.onGeneralSettingsChanged();
             }
         });
 
@@ -760,25 +763,8 @@ ProjectSettingDialog::ProjectSettingDialog(ViaPoint& aViaPoint, core::Project& a
 
 bool ProjectSettingDialog::confirmFrameRangeUpdating(const util::Range& aNewRange) const {
     XC_ASSERT(aNewRange.min() <= aNewRange.max()); // the linked spinboxes keep start <= end
-
-    auto curRange = mProject.attribute().frameRange();
-    const auto* tree = mProject.objectTree().topNode();
-    // Growing the range never blocks; shrinking the end below a key, or
-    // raising the start above one, would cut the key out of the range.
-    if (aNewRange.max() < curRange.max() &&
-        core::ObjectNodeUtil::thereAreSomeKeysExceedingFrame(tree, aNewRange.max())) {
-        auto message1 = tr("Frame value cannot be set.");
-        auto message2 = tr("One or more keys exceed the specified frame value.");
-        QMessageBox::warning(nullptr, tr("Operation Error"), message1 + "\n" + message2);
-        return false;
-    }
-    if (aNewRange.min() > curRange.min() &&
-        core::ObjectNodeUtil::thereAreSomeKeysBeforeFrame(tree, aNewRange.min())) {
-        auto message1 = tr("Frame value cannot be set.");
-        auto message2 = tr("One or more keys precede the specified frame value.");
-        QMessageBox::warning(nullptr, tr("Operation Error"), message1 + "\n" + message2);
-        return false;
-    }
+    // Keys may live outside the frame range — the range is a playback/export
+    // bound, not a constraint on key positions — so every range change is valid.
     return true;
 }
 

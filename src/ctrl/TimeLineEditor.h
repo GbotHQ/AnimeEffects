@@ -53,7 +53,8 @@ public:
     // cleared (shift-click, or the context menu). It is clamped into the
     // project frame range by the gesture; navigation is free and never
     // clamps to it. Inactive when end < start; set() normalizes, so a live
-    // drag may pass through any press/release order.
+    // drag may pass through any press/release order. `end` is the window's
+    // inclusive last frame (the range is [start, end]).
     struct PlayWindow {
         int start = 0;
         int end = -1; // end < start -> inactive
@@ -80,6 +81,10 @@ public:
     bool isOnRuler(int aWidgetY) const { return aWidgetY < kHeaderHeight; }
 
     core::TimeFormatType timeFormatType() const { return timelineFormat; }
+    // Applied live when the timeline-format setting changes (the ruler, the
+    // playhead pill and the playback-window pills all re-read it next paint),
+    // instead of requiring an app restart.
+    void setTimeFormatType(core::TimeFormatType aType) { timelineFormat = aType; }
     int fps() const { return mFps; }
     // The frame->pixel scale; the ruler (TimeRuler) and the renderer share
     // it for ticks, numbers and the playback-window band.
@@ -110,7 +115,8 @@ public:
     // project frame range while active. It bounds the playback clock (the
     // tick wraps and stops against it) and the ruler's fade basis; manual
     // navigation (scrub, transport, keyboard) is free of it — the playhead
-    // never clamps.
+    // never clamps. Both the window and the project range are inclusive of
+    // their last frame.
     util::Range playbackRange() const {
         return mPlayWindow.active() ? util::Range(mPlayWindow.start, mPlayWindow.end) : mFrameRange;
     }
@@ -127,7 +133,16 @@ public:
     // New-scale position of the content point under the mouse, computed
     // pixel-exact from the old scale (see implementation for why).
     int anchorPixelAfterScale(int aContentPixel, int aOldSpacing) const;
+    // Context-menu key targeting. selectKeysAt() resolves the key under
+    // aPos into aEvent. A click on an already-selected key operates on the
+    // whole selection; right-clicking an UNSELECTED key clears the current
+    // selection and lends the clicked key a temporary selection for the
+    // lifetime of the right-click menu (the highlight included, every menu
+    // action consumes it) — the previous selection is NOT restored.
+    // endTemporarySelection() drops the temporary selection once the menu
+    // closes, leaving nothing selected.
     bool selectKeysAt(core::TimeLineEvent& aEvent, const QPoint& aPos);
+    void endTemporarySelection();
     bool retrieveSelectionTargets(core::TimeLineEvent& aEvent) const;
     static QString pasteCbKeys(gui::obj::Item* objItem, util::LifeLink::Pointee<core::Project> project, bool isFolder);
     static QList<core::TimeKey*> getTypesFromCb(util::LifeLink::Pointee<core::Project> project, core::ObjectNode *node);
@@ -157,6 +172,7 @@ private:
     QSettings mSettings;
     core::TimeFormatType timelineFormat = static_cast<core::TimeFormatType>(mSettings.value("generalsettings/ui/timeformat").toInt());
     TimeLineUtil::MoveFrameOfKey* mMoveRef;
+    bool mSelectionTemporary; // right-click lent selection active; dropped on menu close
     int mMoveFrame;
     int mPressFrame;       // frame where the current gesture pressed
     bool mOnUpdatingKey;

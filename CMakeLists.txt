@@ -29,6 +29,7 @@ add_subdirectory(src/core)
 add_subdirectory(src/ctrl)
 add_subdirectory(src/gui)
 add_subdirectory(src/deps/pugixml)
+add_subdirectory(tests)
 
 if(APPLE)
     set_target_properties( ${PROJECT_NAME}

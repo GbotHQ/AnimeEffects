@@ -1,8 +1,10 @@
 #include <QApplication>
 #include <qstandardpaths.h>
+#include <algorithm>
 #include "MainWindow.h"
 #include "gui/GeneralSettingDialog.h"
 #include "util/NetworkUtil.h"
+#include "util/Easing.h"
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QPixmap>
@@ -11,8 +13,38 @@
 namespace {
 
 constexpr int kLanguageTypeCount = 7;
-const int kTimeFormatTypeCount = 6;
-const int kEasingTypeCount = 12;
+// Timeline format picker order. Frames_From1 is dropped from the UI (with
+// frames natively 1-indexed it is identical to Frames_From0), but the enum
+// value is kept so previously saved settings still load — they map to the
+// "Frame number" entry.
+const core::TimeFormatType kTimeFormatOrder[] = {
+    core::TimeFormatType_Frames_From0,       // Frame number
+    core::TimeFormatType_Relative_FPS,       // Seconds (frame/fps)
+    core::TimeFormatType_Seconds_Frames,     // Seconds : Frame
+    core::TimeFormatType_Timecode_SMPTE,     // HH:MM:SS:FF
+    core::TimeFormatType_Timecode_HHMMSSmmm, // HH:MM:SS:mmm
+};
+const int kTimeFormatOrderCount = int(sizeof(kTimeFormatOrder) / sizeof(kTimeFormatOrder[0]));
+
+core::TimeFormatType timeFormatTypeAt(int aComboIndex) {
+    if (0 <= aComboIndex && aComboIndex < kTimeFormatOrderCount)
+        return kTimeFormatOrder[aComboIndex];
+    return core::TimeFormatType_Frames_From0;
+}
+
+int timeFormatComboIndexOf(core::TimeFormatType aType) {
+    if (aType == core::TimeFormatType_Frames_From1) // alias of Frames_From0
+        return timeFormatComboIndexOf(core::TimeFormatType_Frames_From0);
+    for (int i = 0; i < kTimeFormatOrderCount; ++i) {
+        if (kTimeFormatOrder[i] == aType)
+            return i;
+    }
+    return 0;
+}
+// The default-easing combo shows every DisplayOrder entry except Type_Custom
+// (a global default carries no bezier control points); derived from the
+// shared table so it can never drift from the picker order.
+const int kEasingTypeCount = util::Easing::displayCount() - 1;
 const int kRangeTypeCount = 3;
 
 int languageToIndex(const QString& aLanguage) {
@@ -33,35 +65,6 @@ int languageToIndex(const QString& aLanguage) {
     return 0;
 }
 
-int easingToIndex(const QString& aEasing) {
-    if (aEasing == "None")
-        return 0;
-    if (aEasing == "Linear")
-        return 1;
-    if (aEasing == "Sine")
-        return 2;
-    if (aEasing == "Quad")
-        return 3;
-    if (aEasing == "Cubic")
-        return 4;
-    if (aEasing == "Quart")
-        return 5;
-    if (aEasing == "Quint")
-        return 6;
-    if (aEasing == "Expo")
-        return 7;
-    if (aEasing == "Circ")
-        return 8;
-    if (aEasing == "Back")
-        return 9;
-    if (aEasing == "Elastic")
-        return 10;
-    if (aEasing == "Bounce")
-        return 11;
-    return 1;
-    // Default easing is Linear
-}
-
 int rangeToIndex(const QString& aRange) {
     if (aRange == "In")
         return 0;
@@ -73,65 +76,14 @@ int rangeToIndex(const QString& aRange) {
     // Default range is InOut, it is referenced as "All" by Hidefuku
 }
 
-QString indexToEasing(int aIndex, bool translated = true) {
-    if (translated) {
-        switch (aIndex) {
-        case 0:
-            return QCoreApplication::translate("GeneralSettingsDialog", "None");
-        case 1:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Linear");
-        case 2:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Sine");
-        case 3:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Quad");
-        case 4:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Cubic");
-        case 5:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Quart");
-        case 6:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Quint");
-        case 7:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Expo");
-        case 8:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Circ");
-        case 9:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Back");
-        case 10:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Elastic");
-        case 11:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Bounce");
-        default:
-            return QCoreApplication::translate("GeneralSettingsDialog", "Linear");
-        }
-    }
-    switch (aIndex) {
-    case 0:
-        return QString("None");
-    case 1:
-        return QString("Linear");
-    case 2:
-        return QString("Sine");
-    case 3:
-        return QString("Quad");
-    case 4:
-        return QString("Cubic");
-    case 5:
-        return QString("Quart");
-    case 6:
-        return QString("Quint");
-    case 7:
-        return QString("Expo");
-    case 8:
-        return QString("Circ");
-    case 9:
-        return QString("Back");
-    case 10:
-        return QString("Elastic");
-    case 11:
-        return QString("Bounce");
-    default:
-        return QString("Linear");
-    }
+QString indexToEasing(int aIndex) {
+    // The combo lists the shared display order minus Custom (a default easing
+    // carries no bezier control points); an out-of-range index falls back to
+    // Linear. The label comes from getTypeName (one translation source).
+    util::Easing::Type type = util::Easing::typeAtDisplayIndex(aIndex);
+    if (type == util::Easing::Type_Custom)
+        type = util::Easing::Type_Linear;
+    return util::Easing::getTypeName(type);
 }
 
 QString indexToRange(int aRange, bool translated = true) {
@@ -201,19 +153,17 @@ QString indexToLanguage(int aIndex, bool translated = true) {
 }
 } // namespace
 
-QString indexToTimeFormat(int aIndex) {
-    switch (aIndex) {
-    case core::TimeFormatType::TimeFormatType_Frames_From0:
-        return QCoreApplication::translate("GeneralSettingsDialog", "Frame number (from 0)");
-    case core::TimeFormatType::TimeFormatType_Frames_From1:
-        return QCoreApplication::translate("GeneralSettingsDialog", "Frame number (from 1)");
-    case core::TimeFormatType::TimeFormatType_Relative_FPS:
+QString indexToTimeFormat(int aComboIndex) {
+    switch (timeFormatTypeAt(aComboIndex)) {
+    case core::TimeFormatType_Frames_From0:
+        return QCoreApplication::translate("GeneralSettingsDialog", "Frame number");
+    case core::TimeFormatType_Relative_FPS:
         return QCoreApplication::translate("GeneralSettingsDialog", "Relative to FPS (1.0 = 60.0)");
-    case core::TimeFormatType::TimeFormatType_Seconds_Frames:
+    case core::TimeFormatType_Seconds_Frames:
         return QCoreApplication::translate("GeneralSettingsDialog", "Seconds : Frame");
-    case core::TimeFormatType::TimeFormatType_Timecode_SMPTE:
+    case core::TimeFormatType_Timecode_SMPTE:
         return QCoreApplication::translate("GeneralSettingsDialog", "Timecode (SMPTE) (HH:MM:SS:FF)");
-    case core::TimeFormatType::TimeFormatType_Timecode_HHMMSSmmm:
+    case core::TimeFormatType_Timecode_HHMMSSmmm:
         return QCoreApplication::translate("GeneralSettingsDialog", "Timecode (HH:MM:SS:mmm)");
     default:
         return "";
@@ -245,14 +195,30 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         }
 
         auto easing = settings.value("generalsettings/easing");
-        mInitialEasingIndex = easing.isValid() ? easingToIndex(easing.toString()) : easingToIndex("Linear");
+        if (easing.isValid()) {
+            // Saved as the enum value since the shared-table refactor; older
+            // settings stored the canonical name — accept both.
+            util::Easing::Type type = (easing.metaType().id() == QMetaType::QString)
+                ? util::Easing::easingToEnum(easing.toString())
+                : static_cast<util::Easing::Type>(easing.toInt());
+            mInitialEasingIndex = util::Easing::displayIndexOf(type);
+            if (type == util::Easing::Type_Custom || mInitialEasingIndex < 0 ||
+                mInitialEasingIndex >= kEasingTypeCount) {
+                mInitialEasingIndex = util::Easing::displayIndexOf(util::Easing::Type_Linear);
+            }
+        } else {
+            mInitialEasingIndex = util::Easing::displayIndexOf(util::Easing::Type_Linear);
+        }
 
         auto range = settings.value("generalsettings/range");
         mInitialRangeIndex = range.isValid() ? rangeToIndex(range.toString()) : rangeToIndex("All");
 
         auto timeScale = settings.value("generalsettings/ui/timeformat");
         if (timeScale.isValid()) {
-            mInitialTimeFormatIndex = timeScale.toInt();
+            // Stored as the enum value; map it (the legacy Frames_From1
+            // included) to a picker index.
+            mInitialTimeFormatIndex =
+                timeFormatComboIndexOf(static_cast<core::TimeFormatType>(timeScale.toInt()));
         }
 
         auto theme = settings.value("generalsettings/ui/theme");
@@ -276,7 +242,7 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         bAutoSave = isAutoSave.isValid()? isAutoSave.toBool() : true;
 
         auto isAutoSaveDelay = settings.value("generalsettings/projects/autosaveDelay");
-        mAutoSaveDelay = isAutoSaveDelay.isValid() ? isAutoSaveDelay.toInt() : 5;
+        mAutoSaveDelay = isAutoSaveDelay.isValid() ? std::max(1, isAutoSaveDelay.toInt()) : 5;
 
         auto isAutoCbCopy = settings.value("generalsettings/keys/autocb");
         bAutoCbCopy = !isAutoCbCopy.isValid()? isAutoCbCopy.toBool() : false;
@@ -321,11 +287,11 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         form->addRow(tr("Default keyframe range"), mRangeBox);
 
         mTimeFormatBox = new QComboBox();
-        for (int i = 0; i < kTimeFormatTypeCount; ++i) {
+        for (int i = 0; i < kTimeFormatOrderCount; ++i) {
             mTimeFormatBox->addItem(indexToTimeFormat(i));
         }
         mTimeFormatBox->setCurrentIndex(mInitialTimeFormatIndex);
-        form->addRow(tr("Timeline format (needs restart)"), mTimeFormatBox);
+        form->addRow(tr("Timeline format"), mTimeFormatBox);
 
 
         // Theme: a segmented control on a recessed track; the active choice
@@ -401,6 +367,7 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         projectSaving->addRow(tr("Automatically save your project"), mAutoSave);
 
         mAutoSaveDelayBox = new QSpinBox();
+        mAutoSaveDelayBox->setRange(1, 999); // 0 would make the timer fire continuously
         mAutoSaveDelayBox->setValue(mAutoSaveDelay);
         projectSaving->addRow(tr("Time (in minutes) between autosaves"), mAutoSaveDelayBox);
 
@@ -897,13 +864,19 @@ void GeneralSettingDialog::saveSettings() {
         settings.setValue("generalsettings/language", indexToLanguage(mLanguageBox->currentIndex(), false));
 
     if (easingHasChanged()) {
-        settings.setValue("generalsettings/easing", indexToEasing(mEasingBox->currentIndex(), false));
+        // Store the enum value (locale-independent, and backward-compatible:
+        // older name strings still load via easingToEnum).
+        settings.setValue(
+            "generalsettings/easing", int(util::Easing::typeAtDisplayIndex(mEasingBox->currentIndex()))
+        );
     }
     if (rangeHasChanged()) {
         settings.setValue("generalsettings/range", indexToRange(mRangeBox->currentIndex(), false));
     }
     if (timeFormatHasChanged()) {
-        settings.setValue("generalsettings/ui/timeformat", mTimeFormatBox->currentIndex());
+        // Store the enum value (not the picker index) so a saved format is
+        // stable even if the picker order changes; load maps it back.
+        settings.setValue("generalsettings/ui/timeformat", int(timeFormatTypeAt(mTimeFormatBox->currentIndex())));
     }
     if (themeHasChanged()) {
         settings.setValue("generalsettings/ui/theme", theme());

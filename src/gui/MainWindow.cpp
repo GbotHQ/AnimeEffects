@@ -24,10 +24,16 @@ class EventSuspender {
     QWriteLocker mRenderingLocker;
 
 public:
-    EventSuspender(gui::MainDisplayWidget& aMainDisplay, gui::TargetWidget& aTarget):
+    EventSuspender(gui::MainDisplayWidget& aMainDisplay, gui::TargetWidget& aTarget, bool aStopPlayback = true):
         mRenderingLocker(&aMainDisplay.renderingLock()) {
-        // stop animation
-        aTarget.stop();
+        // Manual saves stop playback so the serialized state is stable. The
+        // autosave path keeps playback running: the frame timer is starved
+        // for the duration of the save anyway (single UI thread), and
+        // stopping would leave the animation paused until the user re-presses
+        // play — a surprise on every autosave tick.
+        if (aStopPlayback) {
+            aTarget.stop();
+        }
     }
 };
 
@@ -37,6 +43,7 @@ namespace gui {
 
 MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocaleParam  aLocaleParam):
     QMainWindow(nullptr),
+    autosaveTimer(nullptr),
     mSystem(aSystem),
     mGUIResources(aResources),
     mViaPoint(this),
@@ -348,32 +355,90 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 #endif
 
     // autosave
-
-    QSettings settings;
-    bool autosave = settings.value("generalsettings/projects/enableAutosave").isValid() &&
-        settings.value("generalsettings/projects/enableAutosave").toBool();
-
-    if (autosave) {
-        autosaveTimer = new QTimer(this);
-        connect(autosaveTimer, SIGNAL(timeout()), this, SLOT(autoSave()));
-        autosaveTimer->start();
-    }
+    // The settings dialog applies autosave changes live through
+    // onGeneralSettingsApplied; the timer is (re)configured centrally here.
+    mViaPoint.onGeneralSettingsChanged.connect(this, &MainWindow::onGeneralSettingsApplied);
+    updateAutosaveState();
 }
 
 MainWindow::~MainWindow() { closeAllProjects(); }
 
-void MainWindow::autoSave() {
+void MainWindow::onGeneralSettingsApplied() { updateAutosaveState(); }
+
+void MainWindow::updateAutosaveState() {
     QSettings settings;
-    int autoDelay = settings.value("generalsettings/projects/autosaveDelay").isValid()
-        ? settings.value("generalsettings/projects/autosaveDelay").toInt()
-        : 5;
-    autosaveTimer->setInterval(autoDelay * 60000);
-    if (mCurrent && !mCurrent->isNameless() && mCurrent->isModified()) {
-        mViaPoint.pushLog(
-            "Automatically saved project: " + QFileInfo(mCurrent->fileName()).fileName(), ctrl::UILogType_Info
-        );
-        // qDebug() << "Interval of " + QString(std::to_string(autoDelay*60000).c_str()) + " milliseconds has elapsed.";
-        processProjectSaving(*mCurrent);
+    // Missing key defaults ON, matching the GeneralSettingsDialog checkbox.
+    const QVariant enabledVar = settings.value("generalsettings/projects/enableAutosave");
+    const bool enabled = !enabledVar.isValid() || enabledVar.toBool();
+    const QVariant delayVar = settings.value("generalsettings/projects/autosaveDelay");
+    int delayMin = delayVar.isValid() ? delayVar.toInt() : 5;
+    if (delayMin < 1) {
+        delayMin = 1; // 0 would arm a continuously-firing timer
+    }
+
+    if (enabled) {
+        if (!autosaveTimer) {
+            autosaveTimer = new QTimer(this);
+            connect(autosaveTimer, SIGNAL(timeout()), this, SLOT(autoSave()));
+        }
+        // start() arms a fresh countdown; on a running timer it restarts it.
+        autosaveTimer->start(delayMin * 60000);
+    } else if (autosaveTimer) {
+        autosaveTimer->stop();
+    }
+}
+
+void MainWindow::autoSave() {
+    if (!autosaveTimer) {
+        return;
+    }
+
+    QSettings settings;
+    const QVariant enabledVar = settings.value("generalsettings/projects/enableAutosave");
+    if (!enabledVar.isValid() || !enabledVar.toBool()) {
+        autosaveTimer->stop();
+        return;
+    }
+
+    const QVariant delayVar = settings.value("generalsettings/projects/autosaveDelay");
+    int autoDelay = delayVar.isValid() ? delayVar.toInt() : 5;
+    if (autoDelay < 1) {
+        autoDelay = 1;
+    }
+    // Re-arm so the next autosave is a full interval after this one, not
+    // relative to app launch or the last manual save.
+    autosaveTimer->start(autoDelay * 60000);
+
+    // Save every modified project — not just the active tab. Background tabs
+    // otherwise never get autosaved, losing work on a crash.
+    for (int i = 0; i < mSystem.projectCount(); ++i) {
+        core::Project* project = mSystem.project(i);
+        if (!project || !project->isModified()) {
+            continue;
+        }
+
+        if (project->isNameless()) {
+            // Never-saved projects get a recovery copy in the app cache. The
+            // project stays unsaved (dirty flag and Save As prompt remain);
+            // the log line names the file so it can be reopened after a crash.
+            EventSuspender suspender(*mMainDisplay, *mTarget, false);
+            QString recoveryPath;
+            auto result = mSystem.saveRecoveryCopy(*project, recoveryPath);
+            if (result) {
+                mViaPoint.pushLog("Automatically saved unsaved project to: " + recoveryPath, ctrl::UILogType_Info);
+            } else {
+                mViaPoint.pushLog(
+                    "Failed to automatically save unsaved project: " + result.message, ctrl::UILogType_Warn
+                );
+            }
+        } else {
+            const QString label = QFileInfo(project->fileName()).fileName();
+            if (processProjectSaving(*project, false, true, false)) {
+                mViaPoint.pushLog("Automatically saved project: " + label, ctrl::UILogType_Info);
+            } else {
+                mViaPoint.pushLog("Failed to automatically save project: " + label, ctrl::UILogType_Warn);
+            }
+        }
     }
 }
 
@@ -395,6 +460,10 @@ void MainWindow::showWithSettings() {
 #else
     this->showMaximized();
 #endif
+
+    // Offer crash-recovery of unsaved projects from a previous session once
+    // the window is up; the prompt needs a visible parent.
+    QTimer::singleShot(0, this, [this]() { offerRecoveryCopies(); });
 }
 
 void MainWindow::saveCurrentSettings(int aResultCode) {
@@ -679,6 +748,9 @@ void MainWindow::closeProjectTab(core::Project& aProject) {
     const auto closeProject = &aProject;
     mProjectTabBar->removeProject(*closeProject);
     resetProjectRefs(nullptr); ///@note update mCurrent
+    // A closed tab's autosave copy is stale — saved projects already cleared
+    // it, discarded ones should not linger as litter in the app cache.
+    mSystem.clearRecoveryCopy(*closeProject);
     mSystem.closeProject(*closeProject);
 
     if (mProjectTabBar->currentProject()) {
@@ -945,9 +1017,79 @@ void MainWindow::onOpenRecentTriggered(QString aFileName) {
     }
 }
 
-bool MainWindow::processProjectSaving(core::Project& aProject, bool aRename) {
+void MainWindow::offerRecoveryCopies() {
+    // Drop incomplete recovery writes first so they are never offered or
+    // re-swept each launch; nothing here is a real project file.
+    mSystem.sweepStaleRecoveryTmp();
+    const QStringList paths = mSystem.recoveryCopyPaths();
+    if (paths.isEmpty()) {
+        return;
+    }
+
+    for (const QString& path : paths) {
+        const auto answer = QMessageBox::question(
+            this,
+            tr("Recover unsaved project?"),
+            tr("AnimeEffects found an unsaved project from a previous session:\n%1\n\nOpen it?").arg(
+                QDir::toNativeSeparators(path)
+            ),
+            QMessageBox::Open | QMessageBox::Discard,
+            QMessageBox::Open
+        );
+        if (answer == QMessageBox::Open) {
+            openRecoveryCopy(path);
+        } else if (answer == QMessageBox::Discard) {
+            // Only an explicit Discard deletes the copy. Closing the prompt
+            // (window X / Alt-F4) yields NoButton, and that must leave the
+            // file so the work is still offered at the next launch.
+            mSystem.removeRecoveryCopy(path);
+        }
+    }
+}
+
+void MainWindow::openRecoveryCopy(const QString& aFilePath) {
     // stop animation and main display rendering
     EventSuspender suspender(*mMainDisplay, *mTarget);
+
+    // clear old project
+    resetProjectRefs(nullptr);
+
+    // try loading
+    ctrl::System::LoadResult result;
+    {
+        menu::ProgressReporter progress(false, this);
+        result = mSystem.openProject(aFilePath, new ProjectHook(), progress, false);
+    }
+
+    if (result) {
+        // The recovery file is a crash artifact: keep the project unsaved so
+        // Save prompts for a real location instead of writing into the cache
+        // (the tab shows "New Project" and Save As asks for a path). The
+        // images themselves are embedded in the file, so the copy reopens
+        // fully; only the file-watch/re-import path metadata degrades.
+        result.project->setFileName("");
+        resetProjectRefs(result.project);
+        mProjectTabBar->pushProject(*result.project);
+
+        mMainDisplay->resetCamera();
+        mDriverHolder->driver()->updateFrame();
+        mDriverHolder->driver()->updateProjectAttribute();
+
+        // Recovered: the copy has served its purpose.
+        mSystem.removeRecoveryCopy(aFilePath);
+    } else {
+        QMessageBox::warning(nullptr, tr("Loading Error"), result.messages());
+
+        if (mProjectTabBar->currentProject()) {
+            resetProjectRefs(mProjectTabBar->currentProject());
+        }
+        // Keep the recovery file: opening failed, the user may retry.
+    }
+}
+
+bool MainWindow::processProjectSaving(core::Project& aProject, bool aRename, bool aSilent, bool aStopPlayback) {
+    // stop animation and main display rendering
+    EventSuspender suspender(*mMainDisplay, *mTarget, aStopPlayback);
 
     if (aProject.isNameless() || aRename) {
         QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "", "ProjectFile (*.anie)");
@@ -964,13 +1106,20 @@ bool MainWindow::processProjectSaving(core::Project& aProject, bool aRename) {
     }
 
     // save
-    auto result = mSystem.saveProject(aProject);
+    auto result = mSystem.saveProject(aProject, !aSilent);
     if (!result) {
-        QMessageBox::warning(nullptr, "Saving Error", result.message);
+        if (aSilent) {
+            // Autosave must never block the user with a modal dialog.
+            mViaPoint.pushLog("Failed to save project: " + result.message, ctrl::UILogType_Warn);
+        } else {
+            QMessageBox::warning(nullptr, "Saving Error", result.message);
+        }
         return false; // failed
     }
 
     mProjectTabBar->updateTabNames();
+    // The project now has (or keeps) a real file — its recovery copy is stale.
+    mSystem.clearRecoveryCopy(aProject);
     return true;
 }
 

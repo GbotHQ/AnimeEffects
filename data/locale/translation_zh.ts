@@ -464,9 +464,19 @@
 <context>
     <name>GeneralSettingsDialog</name>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="80"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="83"/>
         <source>None</source>
-        <translation>无</translation>
+        <translation type="vanished">无</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="83"/>
+        <source>Floor</source>
+        <translation>向下取整</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="85"/>
+        <source>Round</source>
+        <translation>四舍五入</translation>
     </message>
     <message>
         <location filename="../../src/gui/GeneralSettingDialog.cpp" line="82"/>
@@ -4056,7 +4066,17 @@ Save anyway?</source>
     <message>
         <location filename="../../src/util/Easing.cpp" line="26"/>
         <source>None</source>
-        <translation>无</translation>
+        <translation type="vanished">无</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="26"/>
+        <source>Floor</source>
+        <translation>向下取整</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="52"/>
+        <source>Round</source>
+        <translation>四舍五入</translation>
     </message>
     <message>
         <location filename="../../src/util/Easing.cpp" line="28"/>
