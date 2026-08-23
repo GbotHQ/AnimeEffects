@@ -447,14 +447,21 @@ bool BoneKey::deserialize(Deserializer& aIn) {
     // each binding caches
     for (int i = 0; i < bindingCacheCount; ++i) {
         mBindingCaches.push_back(BindingCache());
-        BindingCache* cache = &(mBindingCaches.back());
+        const int bindingIndex = i;
 
         // node
         {
+            // Capture the index, not the pointer: QList<BindingCache> stores
+            // values inline and a later push_back() in this loop reallocates
+            // the buffer, leaving a pointer into it dangling by the time
+            // IDSolver::solve() invokes this lambda (after the whole
+            // deserialize). Resolving through mBindingCaches[bindingIndex] at
+            // solve-time is always valid: the list is fully built by then and
+            // the element order matches the push order.
             auto solver = [=](void* aPtr) {
                 ObjectNode* node = (ObjectNode*)aPtr;
                 if (node)
-                    cache->node = node;
+                    mBindingCaches[bindingIndex].node = node;
             };
             if (!aIn.orderIDData(solver)) {
                 return aIn.errored("invalid binding cache reference id");
@@ -462,10 +469,10 @@ bool BoneKey::deserialize(Deserializer& aIn) {
         }
 
         // bone index
-        aIn.read(cache->boneIndex);
+        aIn.read(mBindingCaches[bindingIndex].boneIndex);
 
         // inner matrix
-        aIn.read(cache->innerMtx);
+        aIn.read(mBindingCaches[bindingIndex].innerMtx);
 
         if (aIn.failure()) {
             return aIn.errored("stream error");
