@@ -1,6 +1,7 @@
 #include "Easing.h"
 #include <QtMath>
 #include "util/EasingName.h"
+#include "util/UnitBezier.h"
 
 namespace {
 // Picker display order, mirrored by the Easing::display* helpers. The enum
@@ -29,7 +30,8 @@ bool Easing::Param::isValidParam() const {
 }
 
 bool Easing::Param::operator==(const Param& aRhs) const {
-    return type == aRhs.type && range == aRhs.range && weight == aRhs.weight;
+    return type == aRhs.type && range == aRhs.range && weight == aRhs.weight &&
+        cubicBezier == aRhs.cubicBezier;
 }
 //-------------------------------------------------------------------------------------------------
 int Easing::displayIndexOf(const Type aType) {
@@ -207,46 +209,24 @@ float Easing::calculate(
     }
 #undef RETURN_BY_EASING_FUNCTION
 }
-// TODO: KILL THIS WITH FIRE
-// Get cubic bezier
-double cubicBezier(const double t, const double p0, const double p1, const double p2, const double p3) {
-    const double mt = 1 - t;
-    return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
-}
-
-// Get derivative for Newton-Raphson
-double cubicBezierDerivative(const double t, const double p0, const double p1, const double p2, const double p3) {
-    const double mt = 1 - t;
-    return 3 * mt * mt * (p1 - p0) + 6 * mt * t * (p2 - p1) + 3 * t * t * (p3 - p2);
-}
-
-// Solve x(t) = x using Newton-Raphson to get t
-double solveTForX(const double x, const double x1, const double x2, const double epsilon = 1e-6) {
-    double t = x; // Initial guess
-    constexpr int iter = 6; // Max iterations
-    for (int i = 0; i < iter; ++i) {
-        const double xt = cubicBezier(t, 0.0, x1, x2, 1.0);
-        const double dx = cubicBezierDerivative(t, 0.0, x1, x2, 1.0);
-        if (std::abs(dx) < 1e-8) break;
-        double tNext = t - (xt - x) / dx;
-        if (std::abs(tNext - t) < epsilon) break;
-        t = std::clamp(tNext, -2.0, 2.0);
-    }
-    return t;
-}
-
-double cubicBezierEasedPercent(const double percent, const double x1, const double y1, const double x2, const double y2) {
-    const double t = solveTForX(percent, x1, x2);
-    return cubicBezier(t, 0.0, y1, y2, 1.0);
-}
 
 float calculateBezier(const Easing::Param& aParam, const float t, const float b, const float c, const float d) {
     auto [x1, y1, x2, y2] = aParam.cubicBezier;
-    // Initial linear extrapolation
-    const float result = c * (t / d) + b * aParam.weight + (c * (t / d) + b) * (1.0f - aParam.weight);
-    // Modify linear using a custom bezier curve
-    const auto bezier = cubicBezierEasedPercent(result, x1, y1, x2, y2);
-    return static_cast<float>(bezier);
+    // Normalized progress (frame offset / duration). This is the x fed to the
+    // curve; it must NOT depend on weight.
+    const float x = t / d;
+    // The solver is built per evaluation: constructing a UnitBezier is 11 Horner
+    // evals plus a handful of multiplies, and this keeps Easing stateless (no
+    // cache, no shared mutable state on the frame path).
+    const UnitBezier bezier(x1, y1, x2, y2);
+    // The unit cubic solve returns the curve value; scale onto the key range.
+    // Weight is deliberately NOT applied here: a custom bezier is exactly the
+    // drawn curve, and its handles already span every shape weight could reach,
+    // so the control is disabled in the UI (EasingItem::weightApplicable).
+    // Keeping weight out of the math means a stale weight on a Custom key
+    // (a value left over from another easing type, or one read from a saved
+    // file) can never silently skew a drawn curve.
+    return b + c * static_cast<float>(bezier.solve(x, UnitBezier::kBezierEpsilon));
 }
 
 float Easing::calculate(const Param& aParam, const float t, const float b, const float c, const float d) {

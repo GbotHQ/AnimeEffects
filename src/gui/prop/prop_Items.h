@@ -158,6 +158,11 @@ namespace prop {
 
     private:
         void onEditingFinished();
+        // Enable the weight spin only for easing types where the curve<->linear
+        // blend is meaningful: disabled for Floor/Round/Linear and for Custom
+        // (whose handles already span every reachable shape).
+        void updateWeightEnabled();
+        static bool weightApplicable(util::Easing::Type aType);
 
         QGridLayout* mLayout;
         std::array<QComboBox*, 2> mBox;
@@ -168,6 +173,7 @@ namespace prop {
         GUIResources* mGUIResources;
         util::SlotId mThemeSlot;
         bool mSignal;
+        bool mItemEnabled = true;
     };
 
     //-------------------------------------------------------------------------------------------------
