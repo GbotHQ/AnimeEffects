@@ -64,7 +64,7 @@ inline constexpr int kTailwindNeutralRow = 20; // the achromatic neutral row
 enum TokenRole {
     kBase, kRecessed, kRaised, kRaisedHover, kActive, kActiveHover,
     kHairline, kHairlineHover, kOutline, kHandleBorder, kFocus, kHover,
-    kText, kTextMuted, kTextDisabled, kIcon,
+    kText, kTextMuted, kTextMutedDim, kTextDisabled, kIcon,
     kSelection, kSelectionText, kTextSelection, kAccent, kAccentSwatch, kAccentBright, kAccentHover, kAccentText,
     kFloaterBody, kFloaterEdge,
     kRecessedGuideLine, // dashed interactive guides on the recessed canvas
@@ -105,6 +105,14 @@ static constexpr int kTailwindLight[] = {
     /* kHover             */ 4,
     /* kText              */ 9,
     /* kTextMuted         */ 5,
+    /* kTextMutedDim      */ 6, // neutral-600 (#525252): one step dimmer than
+                                // light textMuted (col 5 = #737373), so muted
+                                // picker labels/glyphs read dimmer than the
+                                // standard muted text. (In the dark theme this
+                                // token reads neutral-500 #737373 — see the
+                                // dark table — which is where the mock's
+                                // --text-muted lives; the picker is only
+                                // compared in dark.)
     /* kTextDisabled      */ 4,
     /* kIcon              */ 9,
     /* kSelection         */ 3,
@@ -145,6 +153,10 @@ static constexpr int kTailwindDark[] = {
     /* kHover             */ 5,
     /* kText              */ 1,
     /* kTextMuted         */ 4,
+    /* kTextMutedDim      */ 5, // neutral-500 (#737373): a step dimmer than
+                                // textMuted (dark col 4 = neutral-400). The
+                                // mock's muted text is #737373, so muted
+                                // picker elements read this dim token.
     /* kTextDisabled      */ 5,
     /* kIcon              */ 2,
     /* kSelection         */ 7,
@@ -243,6 +255,11 @@ struct Colors {
     QColor hover;         // hover border, splitter drag, scrollbar pill active (neutral)
     QColor text;          // primary text
     QColor textMuted;     // secondary text
+    QColor textMutedDim;  // one step dimmer than textMuted: muted picker
+                          // labels/glyphs. The mock's --text-muted is
+                          // #737373, but the dark theme's textMuted reads
+                          // cleaner (neutral-400), so muted elements that
+                          // must match the mock use this dim token.
     QColor textDisabled;  // disabled text
     QColor icon;          // resting content on buttons (icons, pill text):
                           // dimmer than `text` so the active state reads
@@ -313,6 +330,7 @@ struct Colors {
             paletteColor(n[kTailwindLight[kHover]]),       // hover
             paletteColor(n[kTailwindLight[kText]]),        // text
             paletteColor(n[kTailwindLight[kTextMuted]]),   // textMuted
+            paletteColor(n[kTailwindLight[kTextMutedDim]]), // textMutedDim
             paletteColor(n[kTailwindLight[kTextDisabled]]), // textDisabled
             paletteColor(n[kTailwindLight[kIcon]]),        // icon
             // selection: the accent fill at a fixed 40% opacity — a
@@ -373,6 +391,7 @@ struct Colors {
             paletteColor(n[kTailwindDark[kHover]]),       // hover
             paletteColor(n[kTailwindDark[kText]]),        // text
             paletteColor(n[kTailwindDark[kTextMuted]]),   // textMuted
+            paletteColor(n[kTailwindDark[kTextMutedDim]]), // textMutedDim
             paletteColor(n[kTailwindDark[kTextDisabled]]), // textDisabled
             paletteColor(n[kTailwindDark[kIcon]]),        // icon
             paletteColor(a[kTailwindDark[kSelection]], 0.40), // selection

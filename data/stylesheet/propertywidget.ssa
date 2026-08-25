@@ -257,3 +257,35 @@ QPushButton#customEasing:hover {
 QPushButton#customEasing:pressed {
     background-color: @active@;
 }
+
+/* Easing curve chip (EasingItem): a raised, clickable summary of the key's
+   easing — glyph + name + caret — that opens the easing picker popover.
+   Without this rule the button falls back to the dock floor (base) behind
+   its label, which read as a bare @base@ background behind the text. */
+QToolButton#easingChip {
+    background-color: @raised@;
+    border: 1px solid @raised@;
+    border-radius: 0.25em;
+    padding: 0em 0.5em 0em 0.4em;
+    text-align: left;
+}
+
+QToolButton#easingChip:hover {
+    background-color: @raisedHover@;
+    border: 1px solid @hover@;
+}
+
+QToolButton#easingChip:pressed {
+    background-color: @active@;
+    border: 1px solid @active@;
+}
+
+QToolButton#easingChip:disabled {
+    background-color: @recessed@;
+    border: 1px solid @recessed@;
+}
+
+QLabel#easingChipName {
+    background: transparent;
+    color: @text@;
+}

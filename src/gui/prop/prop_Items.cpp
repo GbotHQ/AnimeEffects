@@ -1,11 +1,18 @@
 #include <QDebug>
 #include <QCursor>
+#include <QPainter>
+#include <QTimer>
 #include <QHeaderView>
 #include <QStandardItem>
 #include <QApplication>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QWindow>
+#include <cstdio>
 #include "util/SelectArgs.h"
 #include "cmnd/ScopedMacro.h"
 #include "gui/prop/prop_Items.h"
+#include "gui/prop/EasingPickWidget.h"
 #include "GUIResources.h"
 #include "util/Easing.h"
 #include <QDialog>
@@ -184,90 +191,110 @@ namespace prop {
         mSignal = true;
     }
 
-    // The combo is built from util::Easing's shared display-order helpers
-    // (stepped holds lead, then the analytic curves, then "Custom"), so the
-    // display order lives in one place rather than being re-encoded here.
+    // The chip's down-caret matches the rest of the panel's carets (group
+    // headers, combos): the phosphor caret-down chevron, not the mock's solid
+    // triangle. Drawn as a round-capped V so it reads identically at 8-12px.
+    class ChipCaret : public QWidget {
+    public:
+        explicit ChipCaret(QWidget* aParent): QWidget(aParent) {
+            setFixedSize(10, 10);
+        }
+    protected:
+        void paintEvent(QPaintEvent*) override {
+            QPainter pt(this);
+            pt.setRenderHint(QPainter::Antialiasing, true);
+            // Phosphor caret-down (caret-down.svg): a V swept by a 16-unit
+            // round-capped stroke in a 256 viewBox. Fit the glyph bbox
+            // (centerline x[53.66,202.34] +- 8, y[90.34,164.69] +- 8) into the
+            // widget, preserving the glyph's own ~1.8:1 aspect so it never
+            // squashes into a blobby arrow at this small size.
+            const QRectF vb(45.66, 82.34, 164.68, 90.35);
+            const qreal s = qMin(width() / vb.width(), height() / vb.height());
+            const qreal ox = (width() - vb.width() * s) / 2.0 - vb.x() * s;
+            const qreal oy = (height() - vb.height() * s) / 2.0 - vb.y() * s;
+            auto map = [&](qreal x, qreal y) { return QPointF(ox + x * s, oy + y * s); };
+            QPen pen(theme::Colors::current().textMuted, 16 * s);
+            pen.setCapStyle(Qt::RoundCap);
+            pen.setJoinStyle(Qt::RoundJoin);
+            QPolygonF v;
+            v << map(53.66, 90.34) << map(128.0, 164.69) << map(202.34, 90.34);
+            pt.drawPolyline(v);
+        }
+    };
+
+    // The mock's chip labels (mock.js LABEL): the four primaries wear the
+    // user vocabulary, the rest keep the engine name; directional curves add
+    // the range with the mock's en-dash "In–Out".
+    QString chipBaseLabel(util::Easing::Type aType) {
+        switch (aType) {
+        case util::Easing::Type_Floor: return QString("Hold");
+        case util::Easing::Type_Round: return QString("Step");
+        case util::Easing::Type_Cubic: return QString("Ease");
+
+        default: return util::Easing::getTypeName(aType);
+        }
+    }
+
+    QString chipRangeLabel(util::Easing::Range aRange) {
+        return aRange == util::Easing::Range_InOut ? QString("In\u2013Out")
+               : util::Easing::getRangeName(aRange);
+    }
 
     //-------------------------------------------------------------------------------------------------
     EasingItem::EasingItem(QWidget* aParent, GUIResources* mGUIResources):
-        mLayout(), mBox(), mDBox(), mStamp(), mGUIResources(mGUIResources), mSignal(true) {
-        mLayout = new QGridLayout();
-        // The stylesheet makes the default grid spacing collapse to 0; keep
-        // the 2px gap the other multi-field rows use (Combo2DItem).
-        mLayout->setSpacing(2);
+        mChip(), mChipGlyph(), mChipName(), mChipDelta(), mChipCaret(), mPicker(), mStamp(), mGUIResources(mGUIResources) {
+        // A chip (glyph + name + delta + caret) that opens the shape-first
+        // picker popover. Exposed as itemWidget() so the KeyGroup row caps it
+        // at 70% of the field column like the sibling combo/integer rows (a
+        // full-column itemLayout avoided that cap and read too wide). Height
+        // matches the field-row standard: the combo/spin siblings settle at
+        // 24px (propertywidget.ssa), so 30px was a row taller than its peers.
+        mChip = new QToolButton(aParent);
+        mChip->setObjectName("easingChip");
+        mChip->setCursor(Qt::PointingHandCursor);
+        mChip->setToolTip(QCoreApplication::tr("Easing"));
+        mChip->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        mChip->setFixedHeight(24);
+        QHBoxLayout* chipLay = new QHBoxLayout(mChip);
+        chipLay->setContentsMargins(6, 0, 8, 0);
+        chipLay->setSpacing(8);
+        mChipGlyph = new CurveGlyph(mChip);
+        mChipGlyph->setObjectName("easingChipGlyph");
+        mChipGlyph->setFixedSize(20, 20);
+        chipLay->addWidget(mChipGlyph);
+        mChipName = new QLabel(mChip);
+        mChipName->setObjectName("easingChipName");
+        chipLay->addWidget(mChipName, 1);
+        mChipDelta = new QLabel(mChip);
+        mChipDelta->setObjectName("easingChipDelta");
+        chipLay->addWidget(mChipDelta);
+        mChipCaret = new ChipCaret(mChip);
+        chipLay->addWidget(mChipCaret);
 
-        // The two logical columns split the shared field column 50/50; the
-        // Custom button spans columns 1-3 and fills its half.
-        mLayout->setColumnStretch(0, 1);
-        mLayout->setColumnStretch(1, 1);
+        // The picker popover: a floating Qt::Popup (top-level native window).
+        // Rounded corners need a translucent backing — on X11/Wayland the
+        // compositor composites it; on Windows the masked rounded paint in
+        // paintEvent clips the corner cut. The widget itself sets the flags in
+        // its ctor (see EasingPickWidget), so setting them here too is a no-op.
+        mPicker = new EasingPickWidget(mStamp);
+        mPicker->setWindowFlags(mPicker->windowFlags() | Qt::Popup | Qt::FramelessWindowHint);
+        mPicker->setAttribute(Qt::WA_TranslucentBackground, true);
+        mPicker->hide();
 
-        for (int i = 0; i < 2; ++i) {
-            mBox[i] = new QComboBox(aParent);
-            mBox[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            mLayout->addWidget(mBox[i], 0, i);
-            mBox[i]->connect(mBox[i], util::SelectArgs<int>::from(&QComboBox::currentIndexChanged), [=]() {
-                this->onEditingFinished();
-                if (i == 0) {
-                    this->updateWeightEnabled();
-                }
-                mBox[i]->clearFocus();
-            });
-        }
-
-        mDBox = new DoubleSpinBox(aParent);
-        mLayout->addWidget(mDBox, 1, 0);
-        mDBox->connect(mDBox, &QAbstractSpinBox::editingFinished, [=]() {
-            this->onEditingFinished();
-            if (!mDBox->mTriggeredByArrows) {
-                mDBox->clearFocus();
-            }
+        mChip->connect(mChip, &QToolButton::clicked, [this] { openPopover(); });
+        // EasingItem is not a QObject, so use the functor form (connection is
+        // tied to the sender's lifetime, and mPicker is deleted in ~EasingItem).
+        mPicker->connect(mPicker, &EasingPickWidget::applied,
+                         [this](util::Easing::Param aNext) { applyParam(aNext); });
+        mPicker->connect(mPicker, &EasingPickWidget::cancelled, [this] {
+            mPicker->hide();
+            updateChip();
         });
 
-        for (int i = 0; i < util::Easing::displayCount(); ++i) {
-            mBox[0]->addItem(util::Easing::getTypeName(util::Easing::typeAtDisplayIndex(i)));
-        }
-        mBox[1]->addItems(
-            QStringList() << "In"
-                          << "Out"
-                          << "All"
-        );
-        mDBox->setRange(0.0f, 1.0f);
-        mDBox->setSingleStep(0.1);
-
-        // Custom spline
-        mCustomEasing = new QPushButton;
-        // objectName lets propertywidget.ssa style its height to match the fields
-        mCustomEasing->setObjectName("customEasing");
-        mCustomEasing->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        // col 1 only (no span): a span across cols 1-3 left two empty columns
-        // whose 2px gaps trailed 4px of space after the row-0 combos
-        mLayout->addWidget(mCustomEasing, 1, 1);
-        mCustomEasing->setIcon(mGUIResources->icon("ease"));
-        mCustomEasing->setText(QCoreApplication::tr("Custom"));
-        mCustomEasing->setToolTip(QCoreApplication::tr("Bezier editor"));
-
-        // The "Custom" glyph is a runtime-tinted icon (same mechanism as the
-        // tool panels / speaker: onThemeChanged -> re-fetch). Without this the
-        // button keeps the old theme's pixmap cache after a switch.
         mThemeSlot = mGUIResources->onThemeChanged.connect([this](theme::Theme&) {
             refreshIcon();
         });
-        mCustomEasing->connect(mCustomEasing, &QToolButton::clicked, [=]() {
-            mBox[0]->setCurrentIndex(util::Easing::displayIndexOf(util::Easing::Type_Custom));
-            auto* splineWidgetClass = new Ui_splineWidget();
-            auto* splineWidget = new QDialog();
-            auto* cubicBezier = new util::Easing::CubicBezier(mCubicBezier);
-            splineWidgetClass->setupUi(splineWidget, mGUIResources, cubicBezier);
-            const auto result = splineWidget->exec();
-            if (result == QDialog::Accepted) {
-                mCubicBezier = *cubicBezier;
-                onValueUpdated(mStamp, value());
-                mStamp = value();
-            }
-        });
-
-        mStamp = value();
-        updateWeightEnabled();
+        updateChip();
     }
 
     EasingItem::~EasingItem() {
@@ -277,75 +304,155 @@ namespace prop {
         if (mGUIResources) {
             mGUIResources->onThemeChanged.disconnect(mThemeSlot);
         }
+        delete mPicker; // top-level popup: not parented, owned here
     }
 
     void EasingItem::refreshIcon() {
-        // loadIcons() rebuilt the icon map with freshly tinted glyphs;
-        // assign a new QIcon so the SVG engine re-renders from the new file.
-        mCustomEasing->setIcon(mGUIResources->icon("ease"));
-        mCustomEasing->update();
+        // The chip glyph paints from theme::Colors::current() at render time;
+        // re-render it for the current theme.
+        updateChip();
     }
 
-    void EasingItem::onEditingFinished() {
-        if (mStamp != value()) {
-            if (onValueUpdated && mSignal) {
-                onValueUpdated(mStamp, value());
-            }
-            mStamp = value();
+    void EasingItem::updateChip() {
+        mChipGlyph->setParam(mStamp);
+        const theme::Colors& c = theme::Colors::current();
+        // The mock's .chip .glyph wears the accent; the name stays plain text.
+        mChipGlyph->setGlyphColor(c.accentBright);
+        // Names per the mock (mock.js feelDescribe): the primaries wear the
+        // user vocabulary (Hold/Step/Ease), directional curves add the range
+        // ("In–Out"), Custom stands alone.
+        QString name = chipBaseLabel(mStamp.type);
+        const bool dirShow =
+            util::Easing::Type_Sine <= mStamp.type && mStamp.type < util::Easing::Type_Custom;
+        if (dirShow) {
+            name += " " + chipRangeLabel(mStamp.range);
         }
+        mChipName->setText(name);
+        // The mock's .delta shows the blend percentage only where a weight
+        // meaningfully blends the curve with linear (Sine..Bounce, < 100%).
+        const bool blendShow = dirShow && mStamp.weight < 1.0f;
+        mChipDelta->setText(blendShow
+            ? QString::number(qRound(mStamp.weight * 100.0f)) + "%"
+            : QString());
+        mChipCaret->update();
+    }
+
+    void EasingItem::openPopover() {
+        // 0-opacity first-frame trick: the Popup's live height is DPI-correct
+        // only after its native window is realized (a hidden popup's
+        // heightForWidth/sizeHint is stale — hidden 477 vs live 488 on this
+        // host; user saw 407→489). Show the tall Custom at opacity 0 for one
+        // frame so Qt sizes the native window live, then flip back to the
+        // requested mode at opacity 1. At that point liveCustomHeight() ==
+        // geometry().height() is authoritative — use it to reserve Custom
+        // height once, nudge up if it would clip, and let Custom grow down in
+        // place. (The popup opens flush at chip.bottom, gap 0.)
+        const util::Easing::Param requested = mStamp;
+        const bool wasCustom = requested.type == util::Easing::Type_Custom;
+        if (!wasCustom) {
+            util::Easing::Param c = requested;
+            c.type = util::Easing::Type_Custom;
+            mPicker->setValue(c);
+        } else {
+            mPicker->setValue(requested);
+        }
+        const QPoint anchor = mChip->mapToGlobal(QPoint(0, mChip->height()));
+        const QScreen* scr = mChip->screen();
+        if (!scr) scr = QGuiApplication::primaryScreen();
+        const QRect avail = scr ? scr->availableGeometry() : QRect();
+        int left = anchor.x();
+        if (!avail.isNull()) {
+            const int w = mPicker->width() > 0 ? mPicker->width() : 300;
+            if (left + w > avail.right() + 1) left = avail.right() + 1 - w;
+            if (left < avail.left()) left = avail.left();
+        }
+        // Realize the native window at the tall Custom height (0 opacity).
+        mPicker->setWindowOpacity(0.0);
+        // Treat the popup as a transient child of the app window. A popup with
+        // no transient parent is left to the WM/compositor, which will nudge a
+        // growing popup to keep it on-screen — that is the "menu nudges to the
+        // right on mode switch" drift (the chip sits near the right screen
+        // edge, so a rightward slide is the closest on-screen adjustment). On
+        // X11 the popup is still override-redirect (unmanaged, so this is a
+        // no-op there); on Wayland it stops the compositor relocating it.
+        mPicker->winId();
+        if (auto* ph = mPicker->windowHandle()) {
+            if (auto* top = mChip->window()) {
+                if (auto* wh = top->windowHandle())
+                    ph->setTransientParent(wh);
+            }
+        }
+        mPicker->move(left, anchor.y());
+        mPicker->show();
+        mPicker->raise();
+        // Two ticks: the live geometry is realized by then. We are STILL in
+        // Custom here, so reserve the Custom (tallest) height — reading it
+        // after flipping back to the requested mode gave the normal height and
+        // let the tall Custom panel clip off the bottom of the screen.
+        QTimer::singleShot(0, mPicker, [this, requested, wasCustom, avail, left, anchor]() {
+            if (!mPicker->isVisible()) return;
+            QTimer::singleShot(0, mPicker, [this, requested, wasCustom, avail, left, anchor]() {
+                if (!mPicker->isVisible()) return;
+                // Reserve the tallest (Custom) height so the popup never needs
+                // to be relocated when switching to Custom. The height is a
+                // KNOWN constant, not a measured one — the previous measurement
+                // (liveCustomHeight / heightForWidth / sizeHint) oscillated
+                // 476/478/510 and was nowhere near the real ~489. Use the
+                // deterministic constant and let the popup grow down in place.
+                const int reserveH = EasingPickWidget::kCustomHeight;
+                int top = anchor.y();
+                if (!avail.isNull() && reserveH > 0) {
+                    if (top + reserveH > avail.bottom() + 1)
+                        top = qMax(avail.top(), avail.bottom() + 1 - reserveH);
+                }
+                fprintf(stderr, "[EasingPop] reserve: isCustom=%d h=%d anchor.y=%d top=%d avail.bottom=%d\n",
+                        (int)wasCustom, reserveH, anchor.y(), top, avail.bottom());
+                // Now flip back to the requested mode (sizes the normal panel).
+                if (!wasCustom) mPicker->setValue(requested);
+                QTimer::singleShot(0, mPicker, [this, left, top]() {
+                    if (!mPicker->isVisible()) return;
+                    // Pin the anchor once; every later refit re-asserts it so
+                    // the popup can never drift to the right on a mode switch.
+                    // top is reserved for the tallest (Custom) height, so
+                    // switching to Custom grows the popup down in place.
+                    mPicker->move(left, top);
+                    mPicker->setAnchorPoint(QPoint(left, top));
+                    fprintf(stderr, "[EasingPop] placed: move(%d,%d) geometry=(%d,%d,%d,%d)\n",
+                            left, top, mPicker->geometry().x(), mPicker->geometry().y(),
+                            mPicker->width(), mPicker->height());
+                    mPicker->setWindowOpacity(1.0);
+                });
+            });
+        });
+    }
+
+    void EasingItem::applyParam(util::Easing::Param aNext) {
+        if (onValueUpdated) {
+            onValueUpdated(mStamp, aNext);
+        }
+        mStamp = aNext;
+        mPicker->hide();
+        updateChip();
     }
 
     void EasingItem::setItemEnabled(bool aEnable) {
-        for (int i = 0; i < 2; ++i) {
-            mBox[i]->setEnabled(aEnable);
-        }
-        mCustomEasing->setEnabled(aEnable);
+        mChip->setEnabled(aEnable);
         mItemEnabled = aEnable;
-        updateWeightEnabled();
     }
 
     void EasingItem::setItemVisible(bool aVisible) {
-        for (int i = 0; i < 2; ++i) {
-            mBox[i]->setVisible(aVisible);
-        }
-        mDBox->setVisible(aVisible);
-        mCustomEasing->setVisible(aVisible);
+        mChip->setVisible(aVisible);
     }
 
     util::Easing::Param EasingItem::value() const {
-        util::Easing::Param param;
-        param.type = util::Easing::typeAtDisplayIndex(mBox[0]->currentIndex());
-        param.range = (util::Easing::Range)mBox[1]->currentIndex();
-        param.weight = mDBox->value();
-        param.cubicBezier = mCubicBezier;
-        return param;
+        return mStamp;
     }
 
     void EasingItem::setValue(util::Easing::Param aValue, bool aSignal) {
-        mSignal = aSignal;
-        const int typeIndex = util::Easing::displayIndexOf(aValue.type);
-        // A blank/out-of-order type falls back to Linear; the combo itself is
-        // always in display order so the fallback index is valid.
-        mBox[0]->setCurrentIndex(typeIndex >= 0 ? typeIndex : util::Easing::displayIndexOf(util::Easing::Type_Linear));
-        mBox[1]->setCurrentIndex(aValue.range);
-        mDBox->setValue(aValue.weight);
-        mCubicBezier = aValue.cubicBezier;
+        Q_UNUSED(aSignal); // the picker applies only on user Apply
         mStamp = aValue;
-        mSignal = true;
-        updateWeightEnabled();
-    }
-
-    void EasingItem::updateWeightEnabled() {
-        const util::Easing::Type type = util::Easing::typeAtDisplayIndex(mBox[0]->currentIndex());
-        mDBox->setEnabled(mItemEnabled && weightApplicable(type));
-    }
-
-    bool EasingItem::weightApplicable(const util::Easing::Type aType) {
-        // The curve<->linear blend is a no-op for the stepped holds (Floor/Round)
-        // and Linear, and for Custom the handles already span every reachable
-        // shape (weight is exactly y_i' = w*y_i + (1-w)*x_i), so it is disabled
-        // there too. Mirrors the blend condition in util::Easing::calculate.
-        return util::Easing::Type_Sine <= aType && aType < util::Easing::Type_Custom;
+        mPicker->setValue(aValue);
+        updateChip();
     }
 
     //-------------------------------------------------------------------------------------------------
