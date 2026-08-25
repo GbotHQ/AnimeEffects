@@ -7,7 +7,7 @@
 #ifdef Q_OS_WINDOWS
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <windows.h>
 #endif
 #include "gl/Global.h"
 #include "gl/DeviceInfo.h"
