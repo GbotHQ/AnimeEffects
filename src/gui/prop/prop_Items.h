@@ -15,11 +15,16 @@
 #include <QTreeView>
 #include <QCheckBox>
 #include <QLineEdit>
+#include <QToolButton>
+#include <QLabel>
 #include "util/Easing.h"
 #include "gui/prop/prop_ItemBase.h"
 
 namespace gui {
 namespace prop {
+
+    class EasingPickWidget;
+    class CurveGlyph;
 
     template<typename SpinBoxType>
     void stepByHelper(SpinBoxType* spinBox, int steps);
@@ -142,37 +147,31 @@ namespace prop {
         EasingItem(QWidget* aParent, GUIResources* mGUIResources);
         virtual ~EasingItem();
 
-        QComboBox& comboBox(int aIndex) { return *mBox.at(aIndex); }
-        const QComboBox& comboBox(int aIndex) const { return *mBox.at(aIndex); }
-
         util::Easing::Param value() const;
         void setValue(util::Easing::Param aValue, bool aSignal);
 
-        virtual QLayout* itemLayout() { return mLayout; }
+        virtual QWidget* itemWidget() { return mChip; }
         virtual void setItemEnabled(bool aEnable);
         virtual void setItemVisible(bool aVisible);
-        // Re-fetch the runtime-tinted "Custom" glyph after a theme change.
+        // Re-render the chip glyph/name after a theme change.
         void refreshIcon();
 
         UpdateType onValueUpdated;
 
     private:
-        void onEditingFinished();
-        // Enable the weight spin only for easing types where the curve<->linear
-        // blend is meaningful: disabled for Floor/Round/Linear and for Custom
-        // (whose handles already span every reachable shape).
-        void updateWeightEnabled();
-        static bool weightApplicable(util::Easing::Type aType);
+        void updateChip();
+        void openPopover();
+        void applyParam(util::Easing::Param aNext);
 
-        QGridLayout* mLayout;
-        std::array<QComboBox*, 2> mBox;
-        util::Easing::CubicBezier mCubicBezier;
-        DoubleSpinBox* mDBox;
+        QToolButton* mChip;
+        CurveGlyph* mChipGlyph;
+        QLabel* mChipName;
+        QLabel* mChipDelta;
+        QWidget* mChipCaret;
+        EasingPickWidget* mPicker;
         util::Easing::Param mStamp;
-        QPushButton* mCustomEasing;
         GUIResources* mGUIResources;
         util::SlotId mThemeSlot;
-        bool mSignal;
         bool mItemEnabled = true;
     };
 
