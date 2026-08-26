@@ -44,8 +44,16 @@ AppStyle::AppStyle(QStyle* aBaseStyle): QProxyStyle(aBaseStyle) {}
 bool AppStyle::eventFilter(QObject* aWatched, QEvent* aEvent) {
     if (aWatched && aWatched->isWidgetType()) {
         auto* w = static_cast<QWidget*>(aWatched);
+        // Only QMenu gets the rounded mask. The combo drop-down
+        // (QComboBoxPrivateContainer) must NOT: Qt's
+        // QComboBoxPrivateContainer::paintEvent draws the popup panel
+        // (PE_PanelMenu → the rounded floaterBody) only when mask().isEmpty()
+        // is true. Stamp a mask on it and QMenu-like panel paint is skipped,
+        // leaving the drop-down transparent. Its own rounded corners come from
+        // the translucent window + the rounded PE_PanelMenu path — the same
+        // mechanism QMenu uses — so the combo needs no mask.
         if ((aEvent->type() == QEvent::Resize || aEvent->type() == QEvent::Show)
-            && (qobject_cast<QMenu*>(w) || w->inherits("QComboBoxPrivateContainer"))) {
+            && qobject_cast<QMenu*>(w)) {
             // Rounded mask fallback for compositors that don't composite true
             // translucency on Qt::Popup (notably Windows). Cheap QBitmap mask;
             // also serves as offscreen/test fallback. Radius matches
