@@ -1,9 +1,14 @@
+#include <QIcon>
 #include "gui/prop/EasingPickWidget.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QAbstractSpinBox>
 #include <QLineEdit>
+#include <QStyleOptionSlider>
+#include <functional>
+#include <QLinearGradient>
 #include "gui/AppStyle.h"
 #include "gui/prop/bezierCurveEditor.h"
 #include <cmath>
@@ -15,6 +20,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include "gui/theme/Colors.h"
+#include "gui/theme/Icons.h"
 
 namespace gui {
 namespace prop {
@@ -64,27 +70,9 @@ util::Easing::Param mkParam(util::Easing::Type aType, util::Easing::Range aRange
     return p;
 }
 
-// A slider that owns the mouse grab for the duration of a drag. Inside the
-// app the picker is a Qt::Popup; a popup steals the pointer grab (it's
-// watching for the click-outside that dismisses it), so once the cursor
-// leaves the popup rect a plain QSlider stops receiving moves and the drag
-// stalls. An explicit widget-level grab keeps every move flowing to the
-// slider until release. A normal-window slider (e.g. the volume slider)
-// needs this only because nothing there steals the implicit press grab.
-class GrabSlider : public QSlider {
-public:
-    using QSlider::QSlider;
-
-protected:
-    void mousePressEvent(QMouseEvent* aEvent) override {
-        grabMouse();
-        QSlider::mousePressEvent(aEvent);
-    }
-    void mouseReleaseEvent(QMouseEvent* aEvent) override {
-        QSlider::mouseReleaseEvent(aEvent);
-        if (mouseGrabber() == this) releaseMouse();
-    }
-};
+// The blend slider is now a plain self-driving QWidget (BlendControl, defined
+// below at file scope) — the SAME mechanism as the bezier editor. See the
+// BlendControl definition and the comment just above it.
 
 QString rgba(QColor c, double aAlpha) {
     c.setAlphaF(aAlpha);
@@ -93,10 +81,10 @@ QString rgba(QColor c, double aAlpha) {
 
 const theme::Colors& C() { return theme::Colors::current(); }
 
-// Close ✕ — a thin drawn X matching the mock's SVG glyph. The Unicode "✕"
-// text glyph renders ~5px and off-center at 12px; a 10px drawn X with round
-// caps matches the reference (10x10 bbox, ~1.5px stroke, centered in a 22px
-// button). Reads #popover-close QSS for the hover raised background.
+// Close ✕ — the phosphor "x" glyph, loaded as the tinted theme icon
+// (theme::iconDir()/x.svg, muted at rest, x_hover.svg/text on hover). Reads
+// #popover-close QSS for the hover raised background. Rendered at 14px centered
+// in the 22px button.
 class CloseGlyph : public QToolButton {
 public:
     explicit CloseGlyph(QWidget* aParent = nullptr)
@@ -105,38 +93,27 @@ public:
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::NoFocus);
         setFixedSize(22, 22);
+        setIconSize(QSize(14, 14));
         setAutoRaise(true);
-        setText(QString()); // no text glyph; we draw the X
+        setText(QString()); // icon glyph
+        updateIcon(false);
     }
 
 protected:
-    void paintEvent(QPaintEvent* aEvent) override {
-        QToolButton::paintEvent(aEvent); // QSS bg (transparent / hover raised)
-        // The exact Phosphor "x" icon, taken from the canonical
-        // phosphor-icons/core ASSETS set (assets/regular/x.svg), NOT the raw
-        // set (raw/regular/x.svg is two <line> strokes). The assets glyph is
-        // a single filled path with fill="currentColor", viewBox 0 0 256 256.
-        // The mock renders it as a 14x14 <svg> centered in the 22x22 button
-        // (variant-a-gauge.html's .btn-ghost), so scale to the 14px icon box.
-        QPainter pt(this);
-        pt.setRenderHint(QPainter::Antialiasing, true);
-        const theme::Colors& c = theme::Colors::current();
-        // Hover brightens to the text color (matches .btn-ghost:hover), rest
-        // is the mock's --text-muted (#737373) — the dim token, since the dark
-        // theme's textMuted (#a3a3a3) is too bright.
-        const QColor col = underMouse() ? c.text : c.textMutedDim;
-        static const QByteArray kSvgTmpl = QByteArrayLiteral(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 256 256\""
-            " fill=\"currentColor\"><path d=\"M205.66,194.34a8,8,0,0,1-11.32,"
-            "11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,"
-            "50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,"
-            "1,11.32,11.32L139.31,128Z\"/></svg>");
-        QByteArray svg = kSvgTmpl;
-        svg.replace("currentColor", col.name(QColor::HexRgb).toUtf8());
-        QSvgRenderer r(svg);
-        const qreal s = 14.0;
-        const qreal ox = (width() - s) / 2.0, oy = (height() - s) / 2.0;
-        r.render(&pt, QRectF(ox, oy, s, s));
+    void enterEvent(QEnterEvent* aEvent) override {
+        QToolButton::enterEvent(aEvent);
+        updateIcon(true);
+    }
+    void leaveEvent(QEvent* aEvent) override {
+        QToolButton::leaveEvent(aEvent);
+        updateIcon(false);
+    }
+
+private:
+    void updateIcon(bool aHover) {
+        // x.svg (muted) at rest, x_hover.svg (text) on hover.
+        const QString stem = aHover ? QStringLiteral("x_hover") : QStringLiteral("x");
+        setIcon(QIcon(theme::iconDir() + "/" + stem + ".svg"));
     }
 };
 
@@ -171,6 +148,127 @@ private:
 };
 
 } // namespace
+
+// BlendControl — the blending weight slider, drawn and driven by this widget
+// itself rather than by QSlider. It gates its drag on its own mDown flag, not
+// on event->buttons(): Qt's popup path re-targets an outside move with
+// buttons() = NoButton (dropping the held LeftButton), so a buttons() check
+// would never fire once the cursor leaves the popup and the drag would freeze.
+// It self-paints and self-drives (no QSlider state machine, no grabMouse, no
+// activateWindow), matching the bezier editor's drag mechanism.
+class BlendControl : public QWidget {
+public:
+    explicit BlendControl(QWidget* aParent = nullptr) : QWidget(aParent) {
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setMouseTracking(true);
+    }
+    void setRange(int aMin, int aMax) { mMin = aMin; mMax = aMax; }
+    int value() const { return mValue; }
+    void setValue(int v) {
+        v = qBound(mMin, v, mMax);
+        if (v == mValue) return;
+        mValue = v;
+        if (onValueChanged) onValueChanged(v);
+        update();
+    }
+    bool isDown() const { return mDown; }
+
+    std::function<void(int)> onValueChanged; // live change (chip / preview)
+    std::function<void()> onPressed;         // begin a coalesced gesture
+    std::function<void()> onReleased;        // end a coalesced gesture
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter pt(this);
+        pt.setRenderHint(QPainter::Antialiasing, true);
+        const theme::Colors& c = theme::Colors::current();
+        const QRectF rc = QRectF(contentsRect());
+        const qreal trackY = rc.center().y() - kTrackThickness / 2.0;
+        const QRectF track(rc.left(), trackY, rc.width(), kTrackThickness);
+        const qreal tr = kTrackThickness / 2.0;
+
+        pt.setPen(Qt::NoPen);
+        // 4px recessed -> accent-bright gradient track (the mock's range input).
+        QLinearGradient grad(track.topLeft(), track.topRight());
+        grad.setColorAt(0.0, c.recessed);
+        grad.setColorAt(1.0, c.accentBright);
+        pt.setBrush(grad);
+        pt.drawRoundedRect(track, tr, tr);
+
+        // 14px round knob: white fill + 2px accent-bright border (border-box).
+        const QPointF kp(headCenter(), rc.center().y());
+        pt.setBrush(c.text);
+        pt.drawEllipse(kp, kHeadRadius - 1.0, kHeadRadius - 1.0);
+        QPen pen(c.accentBright);
+        pen.setWidthF(2.0);
+        pt.setPen(pen);
+        pt.setBrush(Qt::NoBrush);
+        pt.drawEllipse(kp, kHeadRadius - 1.0, kHeadRadius - 1.0);
+    }
+    void mousePressEvent(QMouseEvent* aEvent) override {
+        if (aEvent->button() == Qt::LeftButton) {
+            mDown = true;
+            if (onPressed) onPressed();
+            setValue(valueFromPixel(aEvent->position().toPoint().x()));
+            aEvent->accept();
+            return;
+        }
+        QWidget::mousePressEvent(aEvent);
+    }
+    void mouseMoveEvent(QMouseEvent* aEvent) override {
+        // Gate on mDown ONLY — the same as the bezier editor's m_dragging.
+        // Qt's popup path re-targets an outside move with buttons() = NoButton
+        // (it drops the held LeftButton for re-delivered moves), so requiring
+        // buttons() & LeftButton here would never fire once the cursor leaves
+        // the popup and the drag freezes at the leave value. mDown is the
+        // authoritative "we are dragging" state.
+        if (mDown) {
+            setValue(valueFromPixel(aEvent->position().toPoint().x()));
+            aEvent->accept();
+            return;
+        }
+        QWidget::mouseMoveEvent(aEvent);
+    }
+    void mouseReleaseEvent(QMouseEvent* aEvent) override {
+        if (mDown) {
+            mDown = false;
+            setValue(valueFromPixel(aEvent->position().toPoint().x()));
+            if (onReleased) onReleased();
+            aEvent->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(aEvent);
+    }
+    void hideEvent(QHideEvent* aEvent) override {
+        // The popup can close mid-drag (e.g. the release is swallowed when it
+        // happens outside the popup / other Qt windows), so the release that
+        // would clear mDown never arrives. Cancel the drag state on hide so the
+        // control doesn't think it's still dragging when the popup reopens.
+        mDown = false;
+        QWidget::hideEvent(aEvent);
+    }
+
+private:
+    static constexpr int kTrackThickness = 4; // == AppStyle track
+    static constexpr int kHeadDiameter = 14;  // == AppStyle knob (2*7)
+    static constexpr qreal kHeadRadius = 7.0;
+    int mMin = 0, mMax = 100;
+    int mValue = 100;
+    bool mDown = false;
+
+    qreal headCenter() const {
+        const QRectF rc = QRectF(contentsRect());
+        const qreal span = qMax<qreal>(1.0, rc.width() - kHeadDiameter);
+        const qreal f = mMax > mMin ? qreal(mValue - mMin) / qreal(mMax - mMin) : 0.0;
+        return rc.left() + kHeadRadius + f * span;
+    }
+    int valueFromPixel(int aX) const {
+        const QRectF rc = QRectF(contentsRect());
+        const qreal span = qMax<qreal>(1.0, rc.width() - kHeadDiameter);
+        const qreal f = qBound(0.0, (aX - (rc.left() + kHeadRadius)) / span, 1.0);
+        return mMin + qRound(f * qreal(mMax - mMin));
+    }
+};
 
 // ---------------------------------------------------------------------------
 // FlowLayout — minimal flex-wrap: place left->right, wrap when the row fills,
@@ -231,38 +329,31 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// CurveGlyph
+// paintEasingCurve + CurveGlyph
 // ---------------------------------------------------------------------------
-CurveGlyph::CurveGlyph(QWidget* aParent) : QWidget(aParent) {
-    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-}
-void CurveGlyph::setParam(const util::Easing::Param& aParam) { mParam = aParam; update(); }
-void CurveGlyph::setGlyphColor(const QColor& aColor) { mColor = aColor; update(); }
-void CurveGlyph::setStrokeWidth(double aWidth) { mStrokeWidth = aWidth; update(); }
-
-void CurveGlyph::paintEvent(QPaintEvent*) {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    const qreal w = width(), h = height();
+void paintEasingCurve(QPainter& p, const QRectF& aRect,
+                      const util::Easing::Param& aParam,
+                      const QColor& aColor, qreal aStrokeWidth) {
+    const qreal w = aRect.width(), h = aRect.height();
     if (w <= 1 || h <= 1) return;
 
     // Reference (curveD in mock.js) computes the path in a 100x100 viewBox
     // with pad=2 and value axis [kVMIN,kVMAX], then non-uniformly scales to
-    // the widget via preserveAspectRatio="none". Reproduce that scaling.
+    // the target rect via preserveAspectRatio="none". Reproduce that scaling.
     constexpr double VW = 100.0, VH = 100.0;
     const double pad = 2.0, span = VH - 2.0 * pad;
     const double x0 = pad, x1 = VW - pad;
     auto toScreen = [&](double vx, double vy) {
-        return QPointF(vx * w / VW, vy * h / VH);
+        return QPointF(aRect.x() + vx * w / VW, aRect.y() + vy * h / VH);
     };
 
-    QPen pen(mColor.isValid() ? mColor : palette().color(QPalette::WindowText));
-    pen.setWidthF(mStrokeWidth);
+    QPen pen(aColor);
+    pen.setWidthF(aStrokeWidth);
     pen.setCapStyle(Qt::RoundCap);
     pen.setJoinStyle(Qt::RoundJoin);
     p.setPen(pen);
 
-    if (mParam.type == util::Easing::Type_Floor) {
+    if (aParam.type == util::Easing::Type_Floor) {
         const double y0 = pad + (kVMAX - 0.0) / (kVMAX - kVMIN) * span;
         const double y1 = pad + (kVMAX - 1.0) / (kVMAX - kVMIN) * span;
         QPainterPath path;
@@ -278,7 +369,7 @@ void CurveGlyph::paintEvent(QPaintEvent*) {
     bool first = true;
     for (int i = 0; i <= N; ++i) {
         const double x = (double)i / N;
-        const double y = util::Easing::calculate(mParam, x, 0.0f, 1.0f, 1.0f);
+        const double y = util::Easing::calculate(aParam, x, 0.0f, 1.0f, 1.0f);
         const double vx = x0 + x * (x1 - x0);
         const double vy = pad + (kVMAX - y) / (kVMAX - kVMIN) * span;
         const QPointF s = toScreen(vx, vy);
@@ -286,6 +377,21 @@ void CurveGlyph::paintEvent(QPaintEvent*) {
         else path.lineTo(s);
     }
     p.drawPath(path);
+}
+
+CurveGlyph::CurveGlyph(QWidget* aParent) : QWidget(aParent) {
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+}
+void CurveGlyph::setParam(const util::Easing::Param& aParam) { mParam = aParam; update(); }
+void CurveGlyph::setGlyphColor(const QColor& aColor) { mColor = aColor; update(); }
+void CurveGlyph::setStrokeWidth(double aWidth) { mStrokeWidth = aWidth; update(); }
+
+void CurveGlyph::paintEvent(QPaintEvent*) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    paintEasingCurve(p, QRectF(0, 0, width(), height()), mParam,
+                     mColor.isValid() ? mColor : palette().color(QPalette::WindowText),
+                     mStrokeWidth);
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +406,7 @@ EasingPickWidget::~EasingPickWidget() {
 }
 
 EasingPickWidget::EasingPickWidget(const util::Easing::Param& aInitial, QWidget* aParent)
-    : QFrame(aParent), mDraft(aInitial), mInitial(aInitial) {
+    : QFrame(aParent), mDraft(aInitial), mApplied(aInitial) {
     setObjectName("popover");
     setFixedWidth(kPopoverWidth);
     // Rounded corners need a real-alpha window: a Qt::Popup (top-level) plus
@@ -323,7 +429,6 @@ EasingPickWidget::EasingPickWidget(const util::Easing::Param& aInitial, QWidget*
     root->addWidget(buildHeader());
     mBody = buildBody();
     root->addWidget(mBody);
-    root->addWidget(buildFooter());
 
     // Live motion preview: animate the pipeline fill with the current easing.
     // mAnimTimer was declared but never created/connected — that's why the
@@ -331,6 +436,21 @@ EasingPickWidget::EasingPickWidget(const util::Easing::Param& aInitial, QWidget*
     mAnimTimer = new QTimer(this);
     mAnimTimer->setInterval(16); // ~60fps
     connect(mAnimTimer, &QTimer::timeout, this, &EasingPickWidget::animStep);
+
+    // Session undo/redo (per-step inside the popup) + one commit on close.
+    // The popup records its own draft history; the model is only written once,
+    // in hideEvent, so the whole menu session is a single undo step. Continuous
+    // gestures (blend slider / bezier handle) are coalesced into one history
+    // entry so undo steps back a whole drag, not each tick. The blend slider's
+    // gesture start/stop arrive through BlendControl callbacks (onPressed /
+    // onReleased) wired in buildBlend.
+    // The bezier editor mutates the draft while a tangent handle is dragged;
+    // beginGesture snapshots the pre-drag curve, endGesture folds the drag into
+    // one history entry.
+    if (mBezierEditor) {
+        connect(mBezierEditor, &BezierCurveEditor::dragStarted, this, &EasingPickWidget::beginGesture);
+        connect(mBezierEditor, &BezierCurveEditor::editingFinished, this, &EasingPickWidget::endGesture);
+    }
 
     applyAppearance();
     refresh();
@@ -366,7 +486,6 @@ void EasingPickWidget::applyAppearance() {
     QString q;
     q += "QFrame#popover { background: " + c.base.name() + "; }\n";
     q += "QWidget#popover-head { border-bottom: 1px solid " + c.hairline.name() + "; }\n";
-    q += "QWidget#foot { border-top: 1px solid " + c.hairline.name() + "; }\n";
     q += "QLabel#popover-title { font-size: 12px; font-weight: 600; color: " + text + "; }\n";
     q += "QToolButton#popover-close { background: transparent; border: 0; border-radius: 4px; color: " + muted + "; font-size: 12px; }\n";
     q += "QToolButton#popover-close:hover { color: " + text + "; background: " + c.raised.name() + "; }\n";
@@ -376,10 +495,6 @@ void EasingPickWidget::applyAppearance() {
     q += "QToolButton[easingRole=\"tile\"] { background: transparent; border: 0; border-radius: 5px; color: " + muted + "; }\n";
     q += "QToolButton[easingRole=\"tile\"]:hover { background: " + c.raised.name() + "; color: " + text + "; }\n";
     q += "QToolButton[easingRole=\"tile\"]:checked { background: " + rgba(c.accent, 0.22) + "; color: " + bright + "; }\n";
-    q += "QPushButton[role=\"cancel\"] { background: " + c.raised.name() + "; border: 1px solid " + c.raised.name() + "; border-radius: 4px; color: " + text + "; font-size: 11px; padding: 0 12px; }\n";
-    q += "QPushButton[role=\"cancel\"]:hover { background: " + c.raisedHover.name() + "; border-color: " + c.hover.name() + "; }\n";
-    q += "QPushButton[role=\"apply\"] { background: " + c.accent.name() + "; border: 1px solid " + c.accent.name() + "; border-radius: 4px; color: " + accentText + "; font-size: 11px; padding: 0 12px; }\n";
-    q += "QPushButton[role=\"apply\"]:hover { background: " + c.accentHover.name() + "; border-color: " + c.accentHover.name() + "; }\n";
     q += "QPushButton[role=\"bact\"] { background: " + c.raised.name() + "; border: 0; border-radius: 4px; color: " + muted + "; font-size: 10px; padding: 5px; }\n";
     q += "QPushButton[role=\"bact\"]:hover { background: " + c.raisedHover.name() + "; color: " + text + "; }\n";
     // bezier inputs (labeled fields, mock .fl/.fi): the app field standard —
@@ -429,7 +544,7 @@ QWidget* EasingPickWidget::buildHeader() {
     // the hover background.
     CloseGlyph* close = new CloseGlyph(head);
     close->setToolTip(tr("Close"));
-    connect(close, &QToolButton::clicked, this, &EasingPickWidget::cancel);
+    connect(close, &QToolButton::clicked, this, [this] { emit dismissed(); });
     l->addWidget(close);
     return head;
 }
@@ -453,9 +568,9 @@ QWidget* EasingPickWidget::buildBody() {
     mNormalPanel = new QWidget(body);
     // The popup is fixed to a per-mode height (kNormalHeight). Make this panel
     // fill the body's leftover height so the tile grid sits just below the
-    // header and the blend slider is pushed to the bottom (end-aligned, above
-    // the footer), with the surplus as a gap between them — instead of the
-    // blend getting centered in the middle of a stretched panel.
+    // header and the blend slider is pushed to the bottom (end-aligned), with
+    // the surplus as a gap between them — instead of the blend getting centered
+    // in the middle of a stretched panel.
     mNormalPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     QVBoxLayout* n = new QVBoxLayout(mNormalPanel);
     n->setContentsMargins(0, 0, 0, 0);
@@ -583,20 +698,19 @@ QWidget* EasingPickWidget::buildBlend() {
     mBlendLinear->setGlyphColor(C().textMutedDim);
     l->addWidget(mBlendLinear);
 
-    mBlendInput = new GrabSlider(Qt::Horizontal, wrap);
+    mBlendInput = new BlendControl(wrap);
     mBlendInput->setObjectName("blend-input");
     mBlendInput->setRange(0, 100);
     mBlendInput->setValue(100);
     mBlendInput->setFixedHeight(kSliderHead); // >= 2*knobRadius so the knob isn't clipped
-    // The repo's blend slider is drawn by the AppStyle proxy (CC_Slider): a
-    // gradient track and a round accent knob, matching the reference mock.
-    // Set the style directly so the proxy (not the app-wide QSS) renders it.
-    mSliderStyle = new AppStyle(QApplication::style());
-    mBlendInput->setStyle(mSliderStyle);
+    // BlendControl paints itself (here, not via AppStyle) and drives its own
+    // drag, matching the bezier editor's mechanism. It reports a live value
+    // change, and gesture start/stop, through std::function callbacks.
+    mBlendInput->onValueChanged = [this](int v) { setWeight(v / 100.0f); };
+    mBlendInput->onPressed = [this] { beginGesture(); };
+    mBlendInput->onReleased = [this] { endGesture(); };
     mBlendInput->setCursor(Qt::PointingHandCursor);
     mBlendInput->setFocusPolicy(Qt::NoFocus);
-    connect(mBlendInput, &QSlider::valueChanged, this,
-            [this](int v) { setWeight(v / 100.0f); });
     l->addWidget(mBlendInput, 1);
 
     mBlendCurve = new CurveGlyph(wrap);
@@ -613,37 +727,6 @@ QWidget* EasingPickWidget::buildBlend() {
     mBlendVal->setStyleSheet("font-size:10px;color:" + C().textMutedDim.name() + ";");
     l->addWidget(mBlendVal);
     return wrap;
-}
-
-QWidget* EasingPickWidget::buildFooter() {
-    // QFrame + WA_StyledBackground so the QSS #foot { border-top } hairline
-    // (separating the footer from the body) renders.
-    QFrame* foot = new QFrame(this);
-    mFoot = foot;
-    foot->setObjectName("foot");
-    foot->setAttribute(Qt::WA_StyledBackground, true);
-    foot->setFixedHeight(48); // on the 4px grid (was flex ~46)
-    QHBoxLayout* l = new QHBoxLayout(foot);
-    l->setContentsMargins(12, 12, 12, 12); // center the 24px buttons in the 48px footer
-    l->setSpacing(6);
-    l->addStretch(1);
-    mBtnCancel = new QPushButton(tr("Cancel"), foot);
-    mBtnCancel->setObjectName("btn-cancel");
-    mBtnCancel->setProperty("role", "cancel");
-    mBtnCancel->setFixedHeight(24);
-    connect(mBtnCancel, &QPushButton::clicked, this, &EasingPickWidget::cancel);
-    l->addWidget(mBtnCancel);
-    mBtnApply = new QPushButton(tr("Apply"), foot);
-    mBtnApply->setObjectName("btn-apply");
-    mBtnApply->setProperty("role", "apply");
-    mBtnApply->setFixedHeight(24);
-    mBtnApply->setDefault(true);
-    connect(mBtnApply, &QPushButton::clicked, this, [this] {
-        mInitial = mDraft;
-        emit applied(mDraft);
-    });
-    l->addWidget(mBtnApply);
-    return foot;
 }
 
 QWidget* EasingPickWidget::buildBezierPanel() {
@@ -732,8 +815,12 @@ QWidget* EasingPickWidget::buildBezierPanel() {
         const double v[4] = { parts[0].toDouble(&ok[0]), parts[1].toDouble(&ok[1]),
                               parts[2].toDouble(&ok[2]), parts[3].toDouble(&ok[3]) };
         if (!(ok[0] && ok[1] && ok[2] && ok[3])) return;
+        const util::Easing::Param old = mDraft;
         mDraft.cubicBezier = { (float)v[0], (float)v[1], (float)v[2], (float)v[3] };
+        if (mDraft == old) return;
+        pushState(old); // paste is a discrete edit
         renderBezier();
+        emit changed(mDraft);
     });
     acts->addWidget(copy);
     acts->addWidget(paste);
@@ -742,52 +829,110 @@ QWidget* EasingPickWidget::buildBezierPanel() {
     // The popup is fixed to kCustomHeight (taller than the bezier panel's
     // natural height), and the bezier content should NOT stretch to fill — it
     // stays at its natural size (editor 256 + spins + actions) with the surplus
-    // as a gap at the bottom. The panel itself is Expanding (reaches the
-    // footer); this stretch keeps its content packed at the top.
+    // as a gap at the bottom. The panel itself is Expanding (reaches the bottom
+    // of the popup); this stretch keeps its content packed at the top.
     l->addStretch(1);
     return panel;
 }
 
 void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
+    const util::Easing::Param old = mDraft;
     util::Easing::CubicBezier& b = mDraft.cubicBezier;
     if (aIndex == 0) b.x1 = (float)aValue;
     else if (aIndex == 1) b.y1 = (float)aValue;
     else if (aIndex == 2) b.x2 = (float)aValue;
     else b.y2 = (float)aValue;
+    if (mDraft == old) return;
+    pushState(old); // typed bezier value is a discrete edit
     // Sync the handle points from the new bezier so the paint event's
     // write-back keeps it (otherwise it reverts to a stale control point).
     if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
+    emit changed(mDraft);
 }
 
 // ---- interactions ----------------------------------------------------------
 void EasingPickWidget::setType(util::Easing::Type aType) {
+    const util::Easing::Param old = mDraft;
     mDraft.type = aType;
+    if (mDraft == old) return;
+    pushState(old); // discrete edit: one undo step
     refresh();
+    emit changed(mDraft);
 }
 void EasingPickWidget::setRange(util::Easing::Range aRange) {
+    const util::Easing::Param old = mDraft;
     if (mDraft.type == util::Easing::Type_Custom)
         mDraft.type = util::Easing::Type_Cubic;
     mDraft.range = aRange;
+    if (mDraft == old) return;
+    pushState(old);
     refresh();
+    emit changed(mDraft);
 }
 void EasingPickWidget::setWeight(float aWeight) {
+    const util::Easing::Param old = mDraft;
     mDraft.weight = aWeight;
+    if (mDraft == old) return;
     refresh();
+    // Blend is a continuous control: report the live value (chip / preview) but
+    // let endGesture() fold the whole drag into a single undo-history entry.
+    emit changed(mDraft);
 }
 void EasingPickWidget::setCustom() {
+    const util::Easing::Param old = mDraft;
     mDraft.type = util::Easing::Type_Custom;
+    if (mDraft == old) return;
+    pushState(old);
     refresh();
     renderBezier();
+    emit changed(mDraft);
 }
-void EasingPickWidget::setValue(const util::Easing::Param& aParam, bool aSignal) {
+void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
+    // Programmatic load (a new key's easing, or the open measurement dance):
+    // reset the draft, the committed baseline, and the session history as one
+    // clean slate so nothing is emitted or committed.
     mDraft = aParam;
+    mApplied = aParam;
+    mUndo.clear();
+    mRedo.clear();
+    mGestureActive = false;
     refresh();
-    Q_UNUSED(aSignal);
 }
-void EasingPickWidget::cancel() {
-    mDraft = mInitial;
+
+// ---- session undo/redo -----------------------------------------------------
+void EasingPickWidget::pushState(const util::Easing::Param& aState) {
+    mUndo.push_back(aState);
+    mRedo.clear();
+}
+
+void EasingPickWidget::beginGesture() {
+    // Snapshot the pre-drag draft so endGesture can coalesce the whole drag.
+    // Do not record yet: a press-without-move must not leave a history entry.
+    mGestureStart = mDraft;
+    mGestureActive = true;
+}
+
+void EasingPickWidget::endGesture() {
+    if (!mGestureActive) return;
+    mGestureActive = false;
+    if (mDraft != mGestureStart) pushState(mGestureStart); // one entry per drag
+    emit changed(mDraft); // ensure derived views see the final draft
+}
+
+void EasingPickWidget::undo() {
+    if (mUndo.isEmpty()) return;
+    mRedo.push_back(mDraft);
+    mDraft = mUndo.takeLast();
     refresh();
-    emit cancelled();
+    emit changed(mDraft);
+}
+
+void EasingPickWidget::redo() {
+    if (mRedo.isEmpty()) return;
+    mUndo.push_back(mDraft);
+    mDraft = mRedo.takeLast();
+    refresh();
+    emit changed(mDraft);
 }
 
 // ---- render -----------------------------------------------------------------
@@ -866,6 +1011,21 @@ void EasingPickWidget::moveEvent(QMoveEvent* aEvent) {
     // picker_pos_probe gate asserts the left edge never drifts.
 }
 bool EasingPickWidget::eventFilter(QObject* aWatched, QEvent* aEvent) {
+    // Session undo/redo: Ctrl+Z / Ctrl+Shift+Z anywhere in the popup (including
+    // while a spinbox has focus) steps the draft history. The app's own Ctrl+Z
+    // is an ApplicationShortcut that does not fire while this popup (a
+    // Qt::Popup) is open, so we own the keys here; the filter runs before the
+    // focused widget handles them, so it also beats a focused spinbox (whose
+    // own text-undo we deliberately pre-empt).
+    if (aEvent->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(aEvent);
+        const bool ctrl = (ke->modifiers() & Qt::ControlModifier) && !(ke->modifiers() & Qt::AltModifier);
+        if (ctrl && ke->key() == Qt::Key_Z) {
+            if (ke->modifiers() & Qt::ShiftModifier) redo();
+            else undo();
+            return true;
+        }
+    }
     if (aEvent->type() == QEvent::MouseButtonPress) {
         // A press on a spinbox lands on the spinbox or its internal line edit;
         // either way it's a click on the field and must keep focus.
@@ -890,6 +1050,35 @@ bool EasingPickWidget::eventFilter(QObject* aWatched, QEvent* aEvent) {
     return QFrame::eventFilter(aWatched, aEvent);
 }
 
+void EasingPickWidget::mouseMoveEvent(QMouseEvent* aEvent) {
+    // Qt's popup path (QWidgetWindow::handleMouseEvent) re-targets a mouse move
+    // to the popup itself once the cursor leaves the popup rect — dropping it
+    // from the pressed child (the blend slider), so a drag "loses" the moment it
+    // crosses the popup's edge. When the slider is mid-drag, forward the move to
+    // it so the value keeps tracking outside. (The forwarded event is rebuilt in
+    // the slider's local coords; the slider must not grab the mouse, see below.)
+    forwardBlendCursorEvent(aEvent);
+}
+
+void EasingPickWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
+    // Same popup-path redirect also steals the release, which would leave the
+    // slider "down" forever. Forward it so isSliderDown() resets cleanly.
+    forwardBlendCursorEvent(aEvent);
+}
+
+void EasingPickWidget::forwardBlendCursorEvent(QMouseEvent* aEvent) {
+    if (!mBlendInput || !mBlendInput->isDown()) {
+        if (aEvent->type() == QEvent::MouseMove) QFrame::mouseMoveEvent(aEvent);
+        else QFrame::mouseReleaseEvent(aEvent);
+        return;
+    }
+    QMouseEvent f(aEvent->type(),
+                  mBlendInput->mapFromGlobal(aEvent->globalPosition().toPoint()),
+                  aEvent->scenePosition(), aEvent->globalPosition(),
+                  aEvent->button(), aEvent->buttons(), aEvent->modifiers());
+    QApplication::sendEvent(mBlendInput, &f);
+}
+
 void EasingPickWidget::showEvent(QShowEvent* aEvent) {
     QFrame::showEvent(aEvent);
     if (mAnimTimer) mAnimTimer->start();
@@ -906,6 +1095,20 @@ void EasingPickWidget::hideEvent(QHideEvent* aEvent) {
     // so a reopen's 0-opacity dance doesn't briefly re-assert a stale position
     // (openPopover re-establishes it at the end of the dance).
     mHasAnchor = false;
+
+    // Apply-on-close: the whole session commits to the model as ONE undo step
+    // here (not per edit), so fiddling in the menu collapses to a single
+    // "change easing" in the history. Only commit if the draft actually moved.
+    // hideEvent fires for both the ✕ and an outside-click dismiss of the popup.
+    if (mDraft != mApplied) {
+        mApplied = mDraft;
+        emit applied(mDraft);
+    }
+
+    // Discard the session history for the next open.
+    mUndo.clear();
+    mRedo.clear();
+    mGestureActive = false;
 }
 
 void EasingPickWidget::animStep() {
@@ -1005,7 +1208,7 @@ void EasingPickWidget::paintEvent(QPaintEvent* aEvent) {
         p.setBrush(Qt::NoBrush);
         p.drawPath(path);
     }
-    // Paint children (header/body/footer/tiles) over the rounded body.
+    // Paint children (header/body/tiles) over the rounded body.
     // Block recursion: QFrame::paintEvent would re-enter this override.
     {
         QPaintEvent ev(aEvent->rect());
