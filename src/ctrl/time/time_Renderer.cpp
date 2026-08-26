@@ -266,7 +266,7 @@ namespace time {
                     mPainter.setBrush(isFocused ? kBrushKeyBody2 : kBrushKeyBody1);
 
                     auto attr = mScale->attribute(itr.key());
-                    QPointF pos(left + attr.grid.x() + 0.5, height + 0.5f);
+                    QPointF pos(left + attr.pos + 0.5, height + 0.5f);
 
                     if (isSlimmed) {
                         /*
@@ -318,7 +318,7 @@ namespace time {
                     while (itr != map.end() && itr.key() <= mRange.max()) {
                         auto attr = mScale->attribute(itr.key());
                         QPointF pos[3];
-                        pos[0] = QPointF(aPos.x() + attr.grid.x() + 0.5, aPos.y());
+                        pos[0] = QPointF(aPos.x() + attr.pos + 0.5, aPos.y());
                         pos[1] = pos[0] + QPointF(keyRadiusChild, keyRadiusChildPoly * -1);
                         pos[2] = pos[0] + QPointF(keyRadiusChild * -1, keyRadiusChildPoly * -1);
                         mPainter.drawConvexPolygon(pos, 3);
