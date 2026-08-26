@@ -19,6 +19,13 @@ Rectangle {
     implicitWidth: dialogWidth
     implicitHeight: dialogHeight
 
+    // Session undo/redo: step the dialog's own draft history while the popup is
+    // open. The whole session still commits to the model as one undo step on
+    // close. A focused TextInput consumes Ctrl+Z for text-undo, so these only
+    // fire when the user isn't typing.
+    Shortcut { sequence: "Ctrl+Z"; onActivated: model.undo() }
+    Shortcut { sequence: "Ctrl+Shift+Z"; onActivated: model.redo() }
+
     // Background layer (below everything): a click anywhere on the empty body
     // drops focus from any value field being edited.
     MouseArea {
@@ -130,10 +137,10 @@ Rectangle {
                     step: 1
                     value: model.frameStart
                     mouseGrabber: scrubGrab
-                    onCommitted: (value) => { model.frameStart = Math.round(value) }
-                    // The popup is reused (shown/hidden, never recreated), and a
+                    onChanged: (value) => { model.frameStart = Math.round(value) }
+                    // The popup is reused (shown/hidden, never recreated) and a
                     // scrub writes `value` directly, dropping the `value: model.*`
-                    // binding. Re-sync from the model on every model change (incl.
+                    // binding; re-sync from the model on every model change (incl.
                     // each showAt) so the field can't show a stale value on reopen.
                     Connections {
                         target: model
@@ -148,7 +155,7 @@ Rectangle {
                     step: 1
                     value: model.frameEnd
                     mouseGrabber: scrubGrab
-                    onCommitted: (value) => { model.frameEnd = Math.round(value) }
+                    onChanged: (value) => { model.frameEnd = Math.round(value) }
                     Connections {
                         target: model
                         function onFrameEndChanged() { endBox.value = model.frameEnd }
@@ -164,7 +171,7 @@ Rectangle {
                 step: 1
                 value: model.fps
                 mouseGrabber: scrubGrab
-                onCommitted: (value) => { model.fps = Math.round(value) }
+                onChanged: (value) => { model.fps = Math.round(value) }
                 Connections {
                     target: model
                     function onFpsChanged() { fpsBox.value = model.fps }
