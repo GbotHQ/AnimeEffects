@@ -789,15 +789,11 @@ void MainMenuBar::onProjectSettingsTriggered() {
             auto command = new cmnd::Delegatable(
                 [=]() {
                     projectPtr->attribute().setImageSize(newSize);
-                    auto event = core::ProjectEvent::imageSizeChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, false);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 },
                 [=]() {
                     projectPtr->attribute().setImageSize(curSize);
-                    auto event = core::ProjectEvent::imageSizeChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, true);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 }
@@ -814,15 +810,11 @@ void MainMenuBar::onProjectSettingsTriggered() {
             auto command = new cmnd::Delegatable(
                 [=]() {
                     projectPtr->attribute().setFrameRange(newRange);
-                    auto event = core::ProjectEvent::frameRangeChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, false);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 },
                 [=]() {
                     projectPtr->attribute().setFrameRange(curRange);
-                    auto event = core::ProjectEvent::frameRangeChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, true);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 }
@@ -839,15 +831,11 @@ void MainMenuBar::onProjectSettingsTriggered() {
             auto command = new cmnd::Delegatable(
                 [=]() {
                     projectPtr->attribute().setLoop(newLoop);
-                    auto event = core::ProjectEvent::loopChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, false);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 },
                 [=]() {
                     projectPtr->attribute().setLoop(curLoop);
-                    auto event = core::ProjectEvent::loopChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, true);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 }
@@ -865,15 +853,11 @@ void MainMenuBar::onProjectSettingsTriggered() {
             auto command = new cmnd::Delegatable(
                 [=]() {
                     projectPtr->attribute().setFps(newFPS);
-                    auto event = core::ProjectEvent::fpsChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, false);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 },
                 [=]() {
                     projectPtr->attribute().setFps(curFPS);
-                    auto event = core::ProjectEvent::fpsChangeEvent(*projectPtr);
-                    projectPtr->onProjectAttributeModified(event, true);
                     this->onProjectAttributeUpdated();
                     this->onVisualUpdated();
                 }
