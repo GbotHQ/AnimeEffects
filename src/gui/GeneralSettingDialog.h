@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QFormLayout>
 #include "gui/EasyDialog.h"
+#include "gui/MouseSetting.h"
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QComboBox>
@@ -12,13 +13,15 @@
 
 namespace gui {
 
+class ViaPoint;
+
 class GeneralSettingDialog: public EasyDialog {
     Q_OBJECT
 public:
-    GeneralSettingDialog(GUIResources& aGUIResources, QWidget* aParent);
+    GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent);
     QFormLayout* createTab(const QString& aTitle, QFormLayout* aForm);
     void selectTab(int aIndex) {
-        // General - 0 ; Project settings - 1 ; FFmpeg settings - 2 ; Animation keys - 3 ; Keybindings - 4
+        // General - 0 ; QoL - 1 ; FFmpeg - 2 ; Keyboard - 3 ; Mouse - 4
         mTabs->setCurrentIndex(aIndex);
     }
     bool easingHasChanged();
@@ -35,6 +38,7 @@ public:
     bool ignoreWarningsHasChanged();
     bool cbCopyHasChanged();
     bool keyDelayHasChanged();
+    bool mouseHasChanged();
     QString theme();
     theme::AccentColor accent();
     bool accentHasChanged();
@@ -51,9 +55,6 @@ private:
 
     void mResetRecents();
     QPushButton* mResetButton;
-
-    void mResetKeybinds();
-    QPushButton* mResetKeybindsButton;
 
     int mInitialEasingIndex;
     QComboBox* mEasingBox;
@@ -103,7 +104,13 @@ private:
     QPushButton* selectFromExe;
     QPushButton* autoSetup;
 
+    MouseSetting mInitialMouseValues;
+    QCheckBox* mInvertMainViewScalingBox;
+    QCheckBox* mInvertTimeLineScalingBox;
+    QCheckBox* mMiddleMouseMoveCanvas;
+
     GUIResources& mGUIResources;
+    ViaPoint& mViaPoint;
 };
 } // namespace gui
 
