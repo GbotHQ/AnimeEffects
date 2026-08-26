@@ -22,8 +22,16 @@ public:
     void mouseMoveEvent(QMouseEvent *);
     void mouseReleaseEvent(QMouseEvent *);
     void leaveEvent(QEvent *);
+    void hideEvent(QHideEvent*) override;
 
     signals:
+    // Emitted when a tangent-handle drag starts (a handle is grabbed). The
+    // owner (the easing picker popup) uses it to snapshot the pre-drag curve so
+    // the whole drag folds into one undo-history entry.
+    void dragStarted();
+    // Emitted when a tangent-handle drag ends. The owner uses it to coalesce
+    // the drag into one undo-history entry (rather than one per pointer move).
+    void editingFinished();
 
     public slots:
 
