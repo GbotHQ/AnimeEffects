@@ -53,8 +53,10 @@ AnimationSettingDialog::AnimationSettingDialog(QWidget* aParent)
     // the visual chrome (rounded body, border, header + close) is drawn by the
     // Qt Quick scene. This widget just provides the transparent top-level
     // backing, an alpha channel, a transparent scene clear color, and a rounded
-    // window mask so the transparent corners pass clicks through.
-    setWindowFlags(Qt::Popup);
+    // window mask so the transparent corners pass clicks through. Frameless is
+    // redundant for a Qt::Popup, but on some platforms (Windows) the translucent
+    // popup needs it to composite the rounded corners correctly.
+    setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground, true);
 
     // The model starts at neutral values; showAt() sets the real project state
@@ -127,10 +129,12 @@ int AnimationSettingDialog::fps() const { return mModel->fps(); }
 
 void AnimationSettingDialog::beginScrub() {
     mScrubActive = true;
+    mModel->beginGesture();
 }
 
 void AnimationSettingDialog::endScrub() {
     mScrubActive = false;
+    mModel->endGesture();
 }
 
 void AnimationSettingDialog::mouseMoveEvent(QMouseEvent* aEvent) {
@@ -169,20 +173,22 @@ void AnimationSettingDialog::mouseReleaseEvent(QMouseEvent* aEvent) {
 
 void AnimationSettingDialog::hideEvent(QHideEvent* aEvent) {
     // The popup can close on a release that lands outside it, so the release
-    // that ends a scrub never arrives; clear the flag either way (the QML
-    // MouseArea's own onCanceled also resets its scrubbing state).
+    // that ends a scrub never arrives; reset the scrub/gesture either way (the
+    // QML MouseArea's own onCanceled also resets its scrubbing state).
     mScrubActive = false;
+    mModel->endGesture();
+    // Commit the whole session as one change (the owner pushes a single undo
+    // command; it no-ops if nothing changed since open).
+    emit applied();
     QWidget::hideEvent(aEvent);
 }
 
 void AnimationSettingDialog::showAt(const QPoint& aAnchor, const util::Range& aRange, int aFps, bool aLoop) {
-    // Reset the model to the passed-in state so a reused popup reflects the
-    // current values on each open (the caller has already reset its apply-live
-    // baseline, so the resulting changed() no-ops).
-    mModel->setFrameStart(aRange.min());
-    mModel->setFrameEnd(aRange.max());
-    mModel->setFps(aFps);
-    mModel->setLoop(aLoop);
+    // Reset the working state and drop the session history so a reused popup
+    // reflects the current values on each open (the caller has already captured
+    // this state as the undo baseline, so the resulting changed() live-apply is
+    // a no-op).
+    mModel->reset(aRange.min(), aRange.max(), aFps, aLoop);
     // A reused scene may have cached the theme on a prior open; re-notify so the
     // QML re-reads the current palette (reflecting a theme change made between
     // openings).
