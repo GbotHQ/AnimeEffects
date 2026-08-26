@@ -39,8 +39,12 @@ public:
     // reserves one margin past the last frame (see TimeLineWidget). A single
     // 24px token keeps both sides symmetric.
     static constexpr int kTimeLineMargin = 24;
-    // Ruler number text geometry, relative to the header top.
-    static constexpr int kNumberTop = -1;
+    // Ruler number text geometry, relative to the header top. The number text
+    // top edge; ALL consumers (the ruler numbers, the playhead badge text and
+    // the playback-window pill text) read this so the three number rows stay
+    // aligned. It sits 1px below the header top, with the 14px text height
+    // settling in the middle of the 22px header.
+    static constexpr int kNumberTop = 1;
     static constexpr int kNumberHeight = 14;
     // Playback-window label pills (bracket arms and the playhead badge):
     // horizontal padding and corner radius, shared by time_Renderer and
@@ -148,6 +152,15 @@ public:
     static QList<core::TimeKey*> getTypesFromCb(util::LifeLink::Pointee<core::Project> project, core::ObjectNode *node);
     bool pasteCopiedKeys(core::TimeLineEvent& aEvent, const QPoint& aWorldPos);
     void deleteCheckedKeys(core::TimeLineEvent& aEvent);
+    // The "creation selects its output" rule. Call this after new keys are
+    // created (a push/copy notification): the current selection is cleared and
+    // replaced with exactly the created keys carried by aEvent. Gesture and
+    // temporary-selection state are dropped so a stale press/marquee/temporary
+    // loan cannot anchor future drags on the fresh selection. No-op when aEvent
+    // carries no live explicit-key targets (e.g. a default-key payload or a
+    // stale index), so a malformed event can never inject null keys into the
+    // selection.
+    void selectCreatedKeys(const core::TimeLineEvent& aEvent);
     util::LinkPointer<core::Project> mProject;
 
 private:
