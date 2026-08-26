@@ -24,7 +24,7 @@ namespace gui {
 namespace prop {
 
     class EasingPickWidget;
-    class CurveGlyph;
+    class EasingChip;
 
     template<typename SpinBoxType>
     void stepByHelper(SpinBoxType* spinBox, int steps);
@@ -150,9 +150,9 @@ namespace prop {
         util::Easing::Param value() const;
         void setValue(util::Easing::Param aValue, bool aSignal);
 
-        virtual QWidget* itemWidget() { return mChip; }
-        virtual void setItemEnabled(bool aEnable);
-        virtual void setItemVisible(bool aVisible);
+        virtual QWidget* itemWidget() override;
+        virtual void setItemEnabled(bool aEnable) override;
+        virtual void setItemVisible(bool aVisible) override;
         // Re-render the chip glyph/name after a theme change.
         void refreshIcon();
 
@@ -160,14 +160,10 @@ namespace prop {
 
     private:
         void updateChip();
+        void updateChip(const util::Easing::Param& aValue); // render the chip from an explicit value (live)
         void openPopover();
-        void applyParam(util::Easing::Param aNext);
 
-        QToolButton* mChip;
-        CurveGlyph* mChipGlyph;
-        QLabel* mChipName;
-        QLabel* mChipDelta;
-        QWidget* mChipCaret;
+        EasingChip* mChip;
         EasingPickWidget* mPicker;
         util::Easing::Param mStamp;
         GUIResources* mGUIResources;

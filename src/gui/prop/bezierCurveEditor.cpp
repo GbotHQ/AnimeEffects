@@ -67,6 +67,7 @@ void BezierCurveEditor::mousePressEvent(QMouseEvent *event)
                 m_hoveredPoint = i;
                 m_dragging = true;
                 setCursor(Qt::PointingHandCursor);
+                emit dragStarted();
                 break;
             }
         }
@@ -100,6 +101,19 @@ void BezierCurveEditor::leaveEvent(QEvent *)
     }
 }
 
+void BezierCurveEditor::hideEvent(QHideEvent* aEvent)
+{
+    // The popup can close mid-drag (a release lost outside the popup / other Qt
+    // windows), so the release that would clear m_dragging never arrives. Cancel
+    // the drag/hover state on hide so the handles don't stay "grabbed" when the
+    // popup reopens.
+    m_dragging = false;
+    m_selectedPoint = -1;
+    m_hoveredPoint = -1;
+    setCursor(Qt::ArrowCursor);
+    QWidget::hideEvent(aEvent);
+}
+
 int BezierCurveEditor::handleAt(const QPoint& aPos) const {
     for (int i = 0; i < NUM_POINTS; i++) {
         if (i == StartPoint || i == EndPoint) continue;
@@ -110,6 +124,7 @@ int BezierCurveEditor::handleAt(const QPoint& aPos) const {
 
 void BezierCurveEditor::mouseReleaseEvent(QMouseEvent *event)
 {
+    const bool wasDragging = m_dragging;
     m_dragging = false;
     // A drag may end with the cursor far outside the grabbed handle (the
     // handle clamps to the canvas while the cursor keeps going); the hover
@@ -122,6 +137,7 @@ void BezierCurveEditor::mouseReleaseEvent(QMouseEvent *event)
         setCursor(hovered >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
     }
     update();
+    if (wasDragging) emit editingFinished();
 }
 
 void BezierCurveEditor::resizeEvent(QResizeEvent *)

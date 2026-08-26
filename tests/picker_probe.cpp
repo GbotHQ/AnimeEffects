@@ -72,7 +72,10 @@ int main(int argc, char** argv) {
             segHNoResize > segHDefault ? "SEG STRETCHES" : "seg ok");
 
     // ---- #4 slider knob clip: measure the KNOB's painted top margin ----
-    QSlider* slider = w.findChild<QSlider*>("blend-input");
+    // The blend control is a plain self-driving QWidget (BlendControl), not a
+    // QSlider, so find it as a QWidget and read its value via the popup draft.
+    QWidget* slider = w.findChild<QWidget*>("blend-input");
+    auto blendVal = [&] { return qRound(w.value().weight * 100.0f); };
     // Render the actual slider widget and measure the knob's vertical extent
     // vs the widget bounds — the naive sH<14 check missed that the knob sits
     // flush at the widget top (no margin) and its top edge gets cut.
@@ -99,12 +102,12 @@ int main(int argc, char** argv) {
                 clipped ? "CLIPPED" : "OK (fully painted, inside bounds)");
     } else {
         fprintf(stderr, "#4 knob: widgetH=%d knob NOT FOUND (value=%d)  -> %s\n",
-                sH, slider->value(), sH < 15 ? "CLIPS" : "fits");
+                sH, blendVal(), sH < 15 ? "CLIPS" : "fits");
     }
 
     // ---- #5 drag outside: press the handle, move outside the widget ----
     QPoint center = slider->rect().center();
-    const int oldVal = slider->value();
+    const int oldVal = blendVal();
     // press at the current handle, then drag far above the widget.
     QMouseEvent press(QEvent::MouseButtonPress, center, slider->mapToGlobal(center),
                       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
@@ -116,30 +119,34 @@ int main(int argc, char** argv) {
     QMouseEvent rel(QEvent::MouseButtonRelease, outside, slider->mapToGlobal(outside),
                     Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(slider, &rel);
-    const int afterVal = slider->value();
+    const int afterVal = blendVal();
     fprintf(stderr, "#5 drag-outside: old=%d after=%d -> %s\n", oldVal, afterVal,
             afterVal != oldVal ? "TRACKS" : "STOPS");
 
     // #5b: the app wraps the picker as a Qt::Popup — drag the slider and move
-    // the mouse OUTSIDE the popup while the button is held. A Qt::Popup grabs
-    // the mouse and can lose the drag; this is the case the user hit.
+    // the mouse OUTSIDE the popup while the button is held. The blend control
+    // maps value purely from the x pixel, so the outside move is HORIZONTAL
+    // (well past the popup's right edge) to actually change the value. Note
+    // sendEvent bypasses QWidgetWindow::handleMouseEvent, so this verifies the
+    // control's own drag handling; the real popup-path re-target is covered by
+    // picker_qpa_probe (xcb).
     w.setWindowFlag(Qt::Popup, true);
     w.hide(); w.show(); app.processEvents();
-    QSlider* s2 = w.findChild<QSlider*>("blend-input");
+    QWidget* s2 = w.findChild<QWidget*>("blend-input");
     const QPoint c2 = s2->rect().center();
-    const int old2 = s2->value();
+    const int old2 = blendVal();
     QMouseEvent p2(QEvent::MouseButtonPress, c2, s2->mapToGlobal(c2),
                    Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(s2, &p2);
-    QPoint out2(c2.x(), c2.y() - s2->height() - 40);
+    QPoint out2(c2.x() + s2->width() + 40, c2.y());
     QMouseEvent m2(QEvent::MouseMove, out2, s2->mapToGlobal(out2),
                    Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(s2, &m2);
     QMouseEvent r2(QEvent::MouseButtonRelease, out2, s2->mapToGlobal(out2),
                    Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(s2, &r2);
-    fprintf(stderr, "#5b popup-drag-outside: old=%d after=%d -> %s\n", old2, s2->value(),
-            s2->value() != old2 ? "TRACKS" : "LOST");
+    fprintf(stderr, "#5b popup-drag-outside: old=%d after=%d -> %s\n", old2, blendVal(),
+            blendVal() != old2 ? "TRACKS" : "LOST");
 
     // ---- #6 bezier spin input: set the spin value, check it lands in bezier ----
     w.setCustom();
