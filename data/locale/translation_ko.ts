@@ -1495,6 +1495,30 @@ In the following screen you can instruct AnimeEffects to download and install it
         <source>FFmpeg was unable to generate palettes, please troubleshoot.</source>
         <translation>FFmpeg가 팔레트를 생성하지 못했습니다. 문제를 해결하세요.</translation>
     </message>
+<message>
+        <source>Inverse canvas scrolling</source>
+        <translation>캔버스 스크롤 반전</translation>
+    </message>
+<message>
+        <source>Inverse timeline scrolling</source>
+        <translation>타임라인 스크롤 반전</translation>
+    </message>
+<message>
+        <source>Middle mouse moves canvas</source>
+        <translation>가운데 마우스 버튼으로 캔버스 이동</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>gui::GifExportDialog</name>
@@ -1528,6 +1552,22 @@ In the following screen you can instruct AnimeEffects to download and install it
         <location filename="../../src/gui/KeyBindingDialog.cpp" line="71"/>
         <source>Key Bindings</source>
         <translation>키 바인딩</translation>
+    </message>
+    <message>
+        <source>Reset keybinds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset keybindings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values? This will discard any custom bindings.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2222,29 +2262,7 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation>시스템에 FFmpeg를 설치하거나, AnimeEffects를 설치한 폴더의 &quot;/tools&quot; 아래에 FFmpeg 실행 파일을 넣으세요.</translation>
     </message>
 </context>
-<context>
-    <name>gui::MouseSettingDialog</name>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="9"/>
-        <source>Mouse Settings</source>
-        <translation>마우스 설정</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="26"/>
-        <source>Inverse canvas scrolling</source>
-        <translation>캔버스 스크롤 반전</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="30"/>
-        <source>Inverse timeline scrolling</source>
-        <translation>타임라인 스크롤 반전</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="34"/>
-        <source>Middle mouse moves canvas</source>
-        <translation>가운데 마우스 버튼으로 캔버스 이동</translation>
-    </message>
-</context>
+
 <context>
     <name>gui::NewProjectDialog</name>
     <message>

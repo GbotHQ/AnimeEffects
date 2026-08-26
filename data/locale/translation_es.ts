@@ -1680,6 +1680,30 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <source>Keybindings</source>
         <translation>Combinaciones de teclas</translation>
     </message>
+<message>
+        <source>Inverse canvas scrolling</source>
+        <translation>Desplazamiento del lienzo inverso</translation>
+    </message>
+<message>
+        <source>Inverse timeline scrolling</source>
+        <translation>Desplazamiento de la línea de tiempo inversa</translation>
+    </message>
+<message>
+        <source>Middle mouse moves canvas</source>
+        <translation>El botón central del ratón mueve el lienzo</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>gui::GifExportDialog</name>
@@ -1713,6 +1737,22 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <location filename="../../src/gui/KeyBindingDialog.cpp" line="71"/>
         <source>Key Bindings</source>
         <translation>Combinaciones de teclas</translation>
+    </message>
+    <message>
+        <source>Reset keybinds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset keybindings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values? This will discard any custom bindings.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2473,29 +2513,7 @@ En la siguiente pantalla puedes indicarle a AnimeEffects que lo descargue e inst
         <translation>Instala FFmpeg en el sistema, o coloca un ejecutable de FFmpeg bajo &quot;/tools&quot; en la carpeta donde instalaste AnimeEffects.</translation>
     </message>
 </context>
-<context>
-    <name>gui::MouseSettingDialog</name>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="9"/>
-        <source>Mouse Settings</source>
-        <translation>Ajustes del ratón</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="26"/>
-        <source>Inverse canvas scrolling</source>
-        <translation>Desplazamiento del lienzo inverso</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="30"/>
-        <source>Inverse timeline scrolling</source>
-        <translation>Desplazamiento de la línea de tiempo inversa</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="34"/>
-        <source>Middle mouse moves canvas</source>
-        <translation>El botón central del ratón mueve el lienzo</translation>
-    </message>
-</context>
+
 <context>
     <name>gui::NewProjectDialog</name>
     <message>
