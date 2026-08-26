@@ -1680,6 +1680,30 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <source>Keybindings</source>
         <translation>キーバインド</translation>
     </message>
+<message>
+        <source>Inverse canvas scrolling</source>
+        <translation>タイムラインの拡縮を逆にする</translation>
+    </message>
+<message>
+        <source>Inverse timeline scrolling</source>
+        <translation>タイムラインの拡縮を逆にする</translation>
+    </message>
+<message>
+        <source>Middle mouse moves canvas</source>
+        <translation>マウス中ボタンでキャンバスを移動</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>gui::GifExportDialog</name>
@@ -1713,6 +1737,22 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <location filename="../../src/gui/KeyBindingDialog.cpp" line="71"/>
         <source>Key Bindings</source>
         <translation>ショートカットキー設定</translation>
+    </message>
+    <message>
+        <source>Reset keybinds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset keybindings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values? This will discard any custom bindings.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2473,29 +2513,7 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation>FFmpegをシステムにインストールするか、AnimeEffectsをインストールしたフォルダの「/tools」以下にFFmpegの実行ファイルを置いてください。</translation>
     </message>
 </context>
-<context>
-    <name>gui::MouseSettingDialog</name>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="9"/>
-        <source>Mouse Settings</source>
-        <translation>マウス設定</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="26"/>
-        <source>Inverse canvas scrolling</source>
-        <translation>タイムラインの拡縮を逆にする</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="30"/>
-        <source>Inverse timeline scrolling</source>
-        <translation>タイムラインの拡縮を逆にする</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="34"/>
-        <source>Middle mouse moves canvas</source>
-        <translation>マウス中ボタンでキャンバスを移動</translation>
-    </message>
-</context>
+
 <context>
     <name>gui::NewProjectDialog</name>
     <message>

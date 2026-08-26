@@ -1670,6 +1670,30 @@ Check FFmpeg palette generation 🗸</source>
         <source>Keybindings</source>
         <translation>快捷键</translation>
     </message>
+<message>
+        <source>Inverse canvas scrolling</source>
+        <translation>反向画布滚动</translation>
+    </message>
+<message>
+        <source>Inverse timeline scrolling</source>
+        <translation>反转时间轴滚动</translation>
+    </message>
+<message>
+        <source>Middle mouse moves canvas</source>
+        <translation>鼠标中键移动画布</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>gui::GifExportDialog</name>
@@ -1703,6 +1727,22 @@ Check FFmpeg palette generation 🗸</source>
         <location filename="../../src/gui/KeyBindingDialog.cpp" line="71"/>
         <source>Key Bindings</source>
         <translation>快捷键</translation>
+    </message>
+    <message>
+        <source>Reset keybinds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset keybindings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values? This will discard any custom bindings.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2439,29 +2479,7 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation>在系统中安装FFmpeg，或者在安装AnimeEffects的文件夹中的&quot;/tools &quot;下放置一个FFmpeg可执行文件。</translation>
     </message>
 </context>
-<context>
-    <name>gui::MouseSettingDialog</name>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="9"/>
-        <source>Mouse Settings</source>
-        <translation>滚轮设置</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="26"/>
-        <source>Inverse canvas scrolling</source>
-        <translation>反向画布滚动</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="30"/>
-        <source>Inverse timeline scrolling</source>
-        <translation>反转时间轴滚动</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="34"/>
-        <source>Middle mouse moves canvas</source>
-        <translation>鼠标中键移动画布</translation>
-    </message>
-</context>
+
 <context>
     <name>gui::NewProjectDialog</name>
     <message>

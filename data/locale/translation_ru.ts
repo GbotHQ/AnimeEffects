@@ -1531,6 +1531,30 @@ In the following screen you can instruct AnimeEffects to download and install it
         <source>Keybindings</source>
         <translation>Сочетания клавиш</translation>
     </message>
+<message>
+        <source>Inverse canvas scrolling</source>
+        <translation>Инвертировать прокрутку холста</translation>
+    </message>
+<message>
+        <source>Inverse timeline scrolling</source>
+        <translation>Инвертировать прокрутку шкалы времени</translation>
+    </message>
+<message>
+        <source>Middle mouse moves canvas</source>
+        <translation>Перемещение холста средней кнопкой мыши</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mouse</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>gui::GifExportDialog</name>
@@ -1564,6 +1588,22 @@ In the following screen you can instruct AnimeEffects to download and install it
         <location filename="../../src/gui/KeyBindingDialog.cpp" line="71"/>
         <source>Key Bindings</source>
         <translation>Сочетания клавиш</translation>
+    </message>
+    <message>
+        <source>Reset keybinds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset keybindings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset all keybindings to their default values? This will discard any custom bindings.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2258,29 +2298,7 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation>Установите FFmpeg в системе или поместите исполняемый файл FFmpeg в папку &quot;/tools&quot; в каталоге, куда установлен AnimeEffects.</translation>
     </message>
 </context>
-<context>
-    <name>gui::MouseSettingDialog</name>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="9"/>
-        <source>Mouse Settings</source>
-        <translation>Настройки мыши</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="26"/>
-        <source>Inverse canvas scrolling</source>
-        <translation>Инвертировать прокрутку холста</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="30"/>
-        <source>Inverse timeline scrolling</source>
-        <translation>Инвертировать прокрутку шкалы времени</translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MouseSettingDialog.cpp" line="34"/>
-        <source>Middle mouse moves canvas</source>
-        <translation>Перемещение холста средней кнопкой мыши</translation>
-    </message>
-</context>
+
 <context>
     <name>gui::NewProjectDialog</name>
     <message>
