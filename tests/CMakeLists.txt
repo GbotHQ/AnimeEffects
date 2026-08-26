@@ -54,6 +54,26 @@ target_link_libraries(rightclick_transient_selection PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# Contract test for the "creation selects its output" rule: pushing/copying a
+# key (via the project timeline-modified signal) replaces the current selection
+# with the created keys, and never does so on an undo or a non-creation event.
+# See creation_select_keys.cpp.
+add_executable(creation_select_keys creation_select_keys.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(creation_select_keys PRIVATE ..)
+target_compile_definitions(creation_select_keys PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(creation_select_keys PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # Regression test for the custom-bezier easing solver swap (WebKit UnitBezier
 # port) and its control-point solver cache. See easing_regression.cpp.
 find_package(Threads REQUIRED)
