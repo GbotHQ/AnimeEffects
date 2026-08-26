@@ -171,3 +171,42 @@ target_link_libraries(picker_pos_probe PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     util
 )
+
+# Observable project attribute: setting an attribute value drives
+# onProjectAttributeModified (and an unchanged set does not), so a settings
+# dialog can apply a value live and scope undo to a separate command grain. See
+# attribute_observable.cpp.
+add_executable(attribute_observable attribute_observable.cpp)
+target_include_directories(attribute_observable PRIVATE ..)
+target_compile_definitions(attribute_observable PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(attribute_observable PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Animation-settings ViewModel session undo/redo: discrete edits record one
+# step, a scrub gesture coalesces into one, and reset() clears history per open.
+# See anim_settings_undo.cpp.
+add_executable(anim_settings_undo
+    anim_settings_undo.cpp
+    ../src/gui/qml/AnimationSettingViewModel.cpp
+    ../src/gui/qml/AnimationSettingViewModel.h)
+target_include_directories(anim_settings_undo PRIVATE .. ../src ../src/gui)
+target_compile_definitions(anim_settings_undo PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(anim_settings_undo PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+)
