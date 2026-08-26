@@ -18,7 +18,7 @@ endif()
 include(GNUInstallDirs)
 # You need to add the Qt directory to your path, otherwise you'll have a very bad time
 # On MacOS Tahoe please remove AGL from the framework list when linking
-find_package(Qt6 REQUIRED COMPONENTS Core5Compat Core Gui OpenGL OpenGLWidgets Svg Xml Concurrent Widgets Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core5Compat Core Gui OpenGL OpenGLWidgets Svg Xml Concurrent Widgets Multimedia Quick Qml QuickWidgets)
 # Get sources
 add_subdirectory(src/util)
 add_subdirectory(src/thr)

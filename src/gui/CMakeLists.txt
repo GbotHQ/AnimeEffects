@@ -114,9 +114,22 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     prop/splineWidget.h
         prop/bezierCurveEditor.h
         prop/bezierCurveEditor.cpp
+    qml/QmlTheme.cpp qml/QmlTheme.h
+    qml/AnimationSettingViewModel.cpp qml/AnimationSettingViewModel.h
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
     ..
+)
+
+# Compile the Qt Quick scenes used by migrated dialogs into the binary
+# resource (so they ship in the packaged build) and validate them at build
+# time via qmlcachegen.
+qt_add_qml_module(${PROJECT_NAME}
+    URI AnimeEffects.Dialogs
+    VERSION 1.0
+    QML_FILES
+        qml/ScrubSpinBox.qml
+        qml/AnimationSettingDialog.qml
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
@@ -131,6 +144,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         Qt6::Core Qt6::Core5Compat Qt6::Widgets
         Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
         Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+        Qt6::Quick Qt6::Qml Qt6::QuickWidgets
         cmnd core ctrl gl img thr util
 )
 
