@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "MainWindow.h"
 #include "gui/GeneralSettingDialog.h"
+#include "gui/ViaPoint.h"
 #include "util/NetworkUtil.h"
 #include "util/Easing.h"
 #include <QComboBox>
@@ -175,8 +176,8 @@ QString indexToTimeFormat(int aComboIndex) {
 
 namespace gui {
 
-GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget* aParent):
-    EasyDialog(tr("General Settings"), aParent),
+GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent):
+    EasyDialog(tr("Settings"), aParent),
     mTabs(new QTabWidget(this)),
     mInitialLanguageIndex(),
     mLanguageBox(),
@@ -186,7 +187,12 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
     mAccentGroup(),
     mInitialThemeKey("dark"),
     mThemeGroup(),
-    mGUIResources(aGUIResources) {
+    mInitialMouseValues(),
+    mInvertMainViewScalingBox(),
+    mInvertTimeLineScalingBox(),
+    mMiddleMouseMoveCanvas(),
+    mGUIResources(aGUIResources),
+    mViaPoint(aViaPoint) {
     // read current settings
     {
         QSettings settings;
@@ -261,6 +267,8 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
 
         auto isAutoShowMesh = settings.value("generalsettings/tools/autoshowmesh");
         bAutoShowMesh = isAutoShowMesh.isValid()? isAutoShowMesh.toBool() : false;
+
+        mInitialMouseValues.load();
     }
 
     auto form = new QFormLayout();
@@ -421,22 +429,6 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         mKeyDelayBox->setRange(0, 10000);
         mKeyDelayBox->setValue(mKeyDelay);
         keybindingSettings->addRow(tr("Global keybind delay (ms)"), mKeyDelayBox);
-
-        mResetKeybindsButton = new QPushButton(tr("Reset keybinds"));
-        mResetKeybindsButton->setToolTip(tr("Reset all keybinds, a restart is required."));
-        connect(mResetKeybindsButton, &QPushButton::clicked, [=]() {
-            QSettings settings;
-            settings.setValue("keybindReset",
-                !settings.value("keybindReset").isValid() || !settings.value("keybindReset").toBool()
-            );
-            MainWindow::showInfoPopup(
-                tr("Keybinds reset status"),
-                settings.value("keybindReset").toBool() ? tr("The keybinds will be reset when you restart.")
-                                                        : tr("The keybinds will not be reset when you restart."),
-                "Info"
-            );
-        });
-        keybindingSettings->addRow(mResetKeybindsButton);
     }
 
     auto ffmpegSettings = new QFormLayout();
@@ -645,10 +637,26 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, QWidget*
         ffmpegSettings->addRow(autoSetup);
     }
 
+    auto mouseSettings = new QFormLayout();
+    {
+        mInvertMainViewScalingBox = new QCheckBox();
+        mInvertMainViewScalingBox->setChecked(mInitialMouseValues.invertMainViewScaling);
+        mouseSettings->addRow(tr("Inverse canvas scrolling"), mInvertMainViewScalingBox);
+
+        mInvertTimeLineScalingBox = new QCheckBox();
+        mInvertTimeLineScalingBox->setChecked(mInitialMouseValues.invertTimeLineScaling);
+        mouseSettings->addRow(tr("Inverse timeline scrolling"), mInvertTimeLineScalingBox);
+
+        mMiddleMouseMoveCanvas = new QCheckBox();
+        mMiddleMouseMoveCanvas->setChecked(mInitialMouseValues.middleMouseMoveCanvas);
+        mouseSettings->addRow(tr("Middle mouse moves canvas"), mMiddleMouseMoveCanvas);
+    }
+
     createTab(tr("General"), form);
     createTab(tr("QoL"), projectSaving);
     createTab(tr("FFmpeg"), ffmpegSettings);
-    createTab(tr("Keybindings"), keybindingSettings);
+    createTab(tr("Keyboard"), keybindingSettings);
+    createTab(tr("Mouse"), mouseSettings);
 
 
     this->setMainWidget(mTabs, false);
@@ -860,6 +868,14 @@ bool GeneralSettingDialog::ffmpegCheck(const QString& ffmpeg, GeneralSettingDial
 
 bool GeneralSettingDialog::keyDelayHasChanged() { return mKeyDelay != mKeyDelayBox->value(); }
 
+bool GeneralSettingDialog::mouseHasChanged() {
+    MouseSetting currentValues;
+    currentValues.invertMainViewScaling = mInvertMainViewScalingBox->isChecked();
+    currentValues.invertTimeLineScaling = mInvertTimeLineScalingBox->isChecked();
+    currentValues.middleMouseMoveCanvas = mMiddleMouseMoveCanvas->isChecked();
+    return mInitialMouseValues != currentValues;
+}
+
 void GeneralSettingDialog::saveSettings() {
     QSettings settings;
     if (languageHasChanged())
@@ -910,6 +926,14 @@ void GeneralSettingDialog::saveSettings() {
     }
     if (keyDelayHasChanged()) {
         settings.setValue("generalsettings/keybindings/keyDelay", mKeyDelayBox->value());
+    }
+    if (mouseHasChanged()) {
+        MouseSetting newValues;
+        newValues.invertMainViewScaling = mInvertMainViewScalingBox->isChecked();
+        newValues.invertTimeLineScaling = mInvertTimeLineScalingBox->isChecked();
+        newValues.middleMouseMoveCanvas = mMiddleMouseMoveCanvas->isChecked();
+        newValues.save();
+        mViaPoint.mouseSetting() = newValues;
     }
 }
 } // namespace gui

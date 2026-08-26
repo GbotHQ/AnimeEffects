@@ -1230,7 +1230,7 @@ void MainWindow::onExportTriggered() {
     QSettings settings;
     // FFmpeg Check
     QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, this);
+    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
     bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
     if (!ffmpegWorks) {
         GeneralSettingDialog::ffmpegCheckFailed(aDiag);
@@ -1786,7 +1786,7 @@ void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
         return;
     // FFmpeg Check
     QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, this);
+    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
     bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
     if (!ffmpegWorks) {
         GeneralSettingDialog::ffmpegCheckFailed(aDiag);
