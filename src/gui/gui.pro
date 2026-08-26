@@ -129,7 +129,6 @@ SOURCES += \
     GeneralSettingDialog.cpp \
     ResourceTreeWidget.cpp \
     tool/tool_PosePanel.cpp \
-    MouseSettingDialog.cpp \
     MouseSetting.cpp
 
 HEADERS += \
@@ -209,7 +208,6 @@ HEADERS += \
     ResourceTreeWidget.h \
     LocaleParam.h \
     tool/tool_PosePanel.h \
-    MouseSettingDialog.h \
     MouseSetting.h
 
 FORMS +=

@@ -14,7 +14,6 @@
 #include "gui/EasyDialog.h"
 #include "gui/KeyBindingDialog.h"
 #include "gui/GeneralSettingDialog.h"
-#include "gui/MouseSettingDialog.h"
 #include "util/NetworkUtil.h"
 #include <algorithm>
 #include <limits>
@@ -312,12 +311,11 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     auto preferenceMenu = new QMenu(tr("Preferences"), this);
     {
-        auto general = new QAction(tr("General settings"), this);
-        auto mouse = new QAction(tr("Mouse settings"), this);
+        auto general = new QAction(tr("Settings"), this);
         auto keyBind = new QAction(tr("Keybindings"), this);
 
         connect(general, &QAction::triggered, [&](bool) {
-            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, this);
+            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, aViaPoint, this);
             QScopedPointer<GeneralSettingDialog> dialog(generalSettingsDialog);
             if (dialog->exec() == QDialog::DialogCode::Accepted) {
                 if (generalSettingsDialog->timeFormatHasChanged())
@@ -332,11 +330,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             }
         });
 
-        connect(mouse, &QAction::triggered, [&](bool) {
-            QScopedPointer<MouseSettingDialog> dialog(new MouseSettingDialog(aViaPoint, this));
-            dialog->exec();
-        });
-
         connect(keyBind, &QAction::triggered, [&](bool) {
             XC_PTR_ASSERT(aViaPoint.keyCommandMap());
             QScopedPointer<KeyBindingDialog> dialog(new KeyBindingDialog(*aViaPoint.keyCommandMap(), this));
@@ -344,7 +337,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         });
 
         preferenceMenu->addAction(general);
-        preferenceMenu->addAction(mouse);
         preferenceMenu->addAction(keyBind);
     }
 
