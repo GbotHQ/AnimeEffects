@@ -1,5 +1,7 @@
 #include "ctrl/time/time_Scaler.h"
 
+#include <QtGlobal> // qint64, qAbs
+
 namespace {
 static const int kWheelValue = 120;
 // Wheel zoom range in mIndex notches: 0..15 -> 1..16 px per frame —
@@ -126,7 +128,7 @@ namespace time {
     Scaler::Attribute Scaler::attribute(int aFrame) const {
         Attribute attr;
         const int spacing = mIndex + 1; // on-screen pixels per frame
-        attr.grid.setX(spacing * aFrame);
+        attr.pos = spacing * aFrame;
 
         // One intermediate level: the largest proper divisor of the major
         // step (step / least prime factor) — the rung directly below the
@@ -140,22 +142,18 @@ namespace time {
         const int tier = step / leastPrimeFactor(step);
 
         if (aFrame % step == 0) {
-            attr.grid.setY(10);
+            attr.level = TickLevel::Major;
             attr.showNumber = true;
         } else if (tier > 1 && aFrame % tier == 0 &&
                    static_cast<qint64>(spacing) * tier >= 16) {
-            attr.grid.setY(8);
-            // Same room-to-read rule as the per-frame tier: an 8px tick needs
-            // >= 2x its height of gap, or it smears into a band (square-ish
-            // FPS like 121 -> 11-frame rung would otherwise be unreadable).
-            // Number a tick tier only once it has room on screen, so zooming in
-            // reveals progressively finer frame numbers.
+            // Number the intermediate tier only once it has room on screen,
+            // so zooming in reveals progressively finer frame numbers.
+            attr.level = TickLevel::Intermediate;
             attr.showNumber = (static_cast<qint64>(spacing) * tier >= kNumberSpacing);
         } else {
             // Per-frame minor ticks only once frames have room to read as
-            // distinct lines (gap >= tick height); any closer and they smear
-            // into a solid band.
-            attr.grid.setY(spacing >= 6 ? 3 : 0);
+            // distinct lines; any closer and they smear into a solid band.
+            attr.level = spacing >= 6 ? TickLevel::Minor : TickLevel::None;
             attr.showNumber = false;
         }
         return attr;

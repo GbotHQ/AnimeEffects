@@ -133,6 +133,30 @@ void TimeLineEditor::updateKey() {
     mSelection.refresh();
 }
 
+void TimeLineEditor::selectCreatedKeys(const core::TimeLineEvent& aEvent) {
+    // Only live explicit-key targets map to real timeline keys. Rebuild the
+    // event through pos.isExist() so a stale index (a notification that named a
+    // frame the key no longer occupies) can never inject a null-key entry into
+    // the selection — it is simply skipped. Default-key payloads
+    // (kDefaultKeyIndex) carry nothing selectable in the lane maps, so they
+    // leave the current selection untouched rather than clearing it.
+    core::TimeLineEvent live;
+    for (const core::TimeLineEvent::Target& target : aEvent.targets()) {
+        if (target.pos.isExist()) {
+            live.pushTarget(*target.node, target.pos);
+        }
+    }
+    if (live.targets().isEmpty())
+        return;
+
+    // Replace the whole selection with the created keys, then drop gesture and
+    // temporary-selection state so a stale press/marquee target or a right-click
+    // temporary loan cannot anchor future drags on the fresh selection.
+    mSelection.set(live);
+    mSelectionTemporary = false;
+    clearState();
+}
+
 void TimeLineEditor::updateProjectAttribute() {
     clearState(); // fps/range changes keep the targets valid
     if (mProject) {
@@ -629,84 +653,83 @@ QString TimeLineEditor::pasteCbKeys(gui::obj::Item* objItem, util::LifeLink::Poi
 
     if (!keyList.empty()) {
         int pastedKeys = 0;
-        for (int x = 0; x < keyList.size(); x++) {
-            TimeKey* keyframe = keyList[x];
-            int newFrame = keyframe->frame();
-            TimeKeyType type = keyframe->type();
-            TimeLine* timeLine = objItem->node().timeLine();
-            // invalid frame
-            if (newFrame < 0) { frameLessThanZero++; }
-            else {
-                if (timeLine->hasTimeKey(type, newFrame)) { timelineHasKey++; }
+        // One undo step + one notification for the whole paste. A per-key macro
+        // fragments the undo history, and with a single-aggregate "creation
+        // selects its output" rule it would only ever select the last pasted
+        // key. The notifier names each created key at its real frame.
+        cmnd::Stack& stack = project.address->commandStack();
+        auto notifier = new TimeLineUtil::Notifier(*project.address);
+        notifier->event().setType(TimeLineEvent::Type_PushKey);
+        {
+            cmnd::ScopedMacro macro(stack, CmndName::tr("Paste clipboard keys"));
+            macro.grabListener(notifier);
+
+            for (int x = 0; x < keyList.size(); x++) {
+                TimeKey* keyframe = keyList[x];
+                int newFrame = keyframe->frame();
+                TimeKeyType type = keyframe->type();
+                TimeLine* timeLine = objItem->node().timeLine();
+                // invalid frame
+                if (newFrame < 0) { frameLessThanZero++; }
                 else {
-                    if (type == TimeKeyType_FFD) {
-                        // find area key and mesh
-                        auto [aKey, aMesh] = gui::ObjectTreeWidget::getAreaMeshImpl(objItem->node(), keyframe->frame());
-                        TimeKey* areaKey = aKey;
-                        LayerMesh* areaMesh = aMesh;
-                        timeLine->current().setFFDMesh(areaMesh);
-                        timeLine->current().setFFDMeshParent(areaKey);
-                        // connect to parent mesh
-                        aKey->children().pushBack(keyframe);
-                        /*
-                        auto imgKey = gui::ObjectTreeWidget::getImageKey(objItem->node(), keyframe->frame());
-                        if (aKey->type() != TimeKeyType_Image) {
-                            imgKey->children().pushBack(keyframe);
-                        }*/
+                    if (timeLine->hasTimeKey(type, newFrame)) { timelineHasKey++; }
+                    else {
+                        if (type == TimeKeyType_FFD) {
+                            // find area key and mesh
+                            auto [aKey, aMesh] =
+                                gui::ObjectTreeWidget::getAreaMeshImpl(objItem->node(), keyframe->frame());
+                            TimeKey* areaKey = aKey;
+                            LayerMesh* areaMesh = aMesh;
+                            timeLine->current().setFFDMesh(areaMesh);
+                            timeLine->current().setFFDMeshParent(areaKey);
+                            // connect to parent mesh
+                            aKey->children().pushBack(keyframe);
+                        }
+                        // Announce the created key at its actual frame. The old
+                        // code named the loop index x, which never matched a key
+                        // in the lane map and left follow-up consumers (and the
+                        // created-key selection) pointing at nothing.
+                        notifier->event().pushTarget(objItem->node(), TimeKeyPos(*timeLine, type, newFrame));
+
+                        QHash<const TimeKey*, TimeKey*> parentHash;
+                        struct ChildInfo {
+                            TimeKey* key;
+                            TimeKey* parent;
+                        };
+                        QList<ChildInfo> childList;
+                        auto line = timeLine;
+                        XC_PTR_ASSERT(line);
+
+                        auto copiedKey = keyframe;
+                        XC_PTR_ASSERT(copiedKey);
+                        auto parentKey = copiedKey->parent();
+
+                        TimeKey* newKey = copiedKey->createClone();
+
+                        newKey->setFrame(newFrame);
+
+                        stack.push(new cmnd::GrabNewObject<TimeKey>(newKey));
+                        stack.push(line->createPusher(type, newFrame, newKey));
+
+                        if (newKey->canHoldChild()) {
+                            parentHash[copiedKey] = newKey;
+                        }
+                        if (parentKey) {
+                            ChildInfo info = {newKey, parentKey};
+                            childList.push_back(info);
+                        }
+
+                        // connect to parents
+                        for (auto child : childList) {
+                            auto parent = child.parent;
+                            // if the parent was also copied, connect to a new parent key.
+                            auto it = parentHash.find(parent);
+                            if (it != parentHash.end())
+                                parent = it.value();
+                            stack.push(new cmnd::PushBackTree<TimeKey>(&parent->children(), child.key));
+                        }
+                        pastedKeys++;
                     }
-                    // a key already exists.
-                    // @todo something more fancy
-                    cmnd::Stack& stack = project.address->commandStack();
-                    // create notifier
-                    auto notifier = new TimeLineUtil::Notifier(*project.address);
-                    TimeLineEvent tEvnt = TimeLineEvent();
-                    tEvnt.pushTarget(objItem->node(), TimeKeyPos(*timeLine, keyframe->type(), x));
-                    tEvnt.setType(TimeLineEvent::Type_PushKey);
-                    notifier->event() = tEvnt;
-                    notifier->event().setType(TimeLineEvent::Type_PushKey);
-
-                    // push paste keys command
-                    cmnd::ScopedMacro macro(stack, CmndName::tr("Paste clipboard key"));
-                    macro.grabListener(notifier);
-
-                    QHash<const TimeKey*, TimeKey*> parentHash;
-                    struct ChildInfo {
-                        TimeKey* key;
-                        TimeKey* parent;
-                    };
-                    QList<ChildInfo> childList;
-                    auto line = timeLine;
-                    XC_PTR_ASSERT(line);
-
-                    auto copiedKey = keyframe;
-                    XC_PTR_ASSERT(copiedKey);
-                    auto parentKey = copiedKey->parent();
-
-                    TimeKey* newKey = copiedKey->createClone();
-
-                    newKey->setFrame(newFrame);
-
-                    stack.push(new cmnd::GrabNewObject<TimeKey>(newKey));
-                    stack.push(line->createPusher(type, newFrame, newKey));
-
-                    if (newKey->canHoldChild()) {
-                        parentHash[copiedKey] = newKey;
-                    }
-                    if (parentKey) {
-                        ChildInfo info = {newKey, parentKey};
-                        childList.push_back(info);
-                    }
-
-                    // connect to parents
-                    for (auto child : childList) {
-                        auto parent = child.parent;
-                        // if the parent was also copied, connect to a new parent key.
-                        auto it = parentHash.find(parent);
-                        if (it != parentHash.end())
-                            parent = it.value();
-                        stack.push(new cmnd::PushBackTree<TimeKey>(&parent->children(), child.key));
-                    }
-                    pastedKeys++;
                 }
             }
         }
@@ -804,9 +827,11 @@ bool TimeLineEditor::pasteCopiedKeys(TimeLineEvent& aEvent, const QPoint& aWorld
     {
         cmnd::Stack& stack = mProject->commandStack();
 
-        // create notifier
+        // create notifier. The notification must name the *created* keys (at
+        // their new frames), not the copied-from targets, so consumers — the
+        // "creation selects its output" rule and any modifier that follows the
+        // paste — resolve to the keys that were actually added.
         auto notifier = new TimeLineUtil::Notifier(*mProject);
-        notifier->event() = aEvent;
         notifier->event().setType(TimeLineEvent::Type_CopyKey);
 
         // push paste keys command
@@ -837,6 +862,8 @@ bool TimeLineEditor::pasteCopiedKeys(TimeLineEvent& aEvent, const QPoint& aWorld
             stack.push(new cmnd::GrabNewObject<TimeKey>(newKey));
             stack.push(line->createPusher(type, newFrame, newKey));
 
+            notifier->event().pushTarget(*target.node, type, newFrame);
+
             if (newKey->canHoldChild()) {
                 parentMap[copiedKey] = newKey;
             }
@@ -857,7 +884,6 @@ bool TimeLineEditor::pasteCopiedKeys(TimeLineEvent& aEvent, const QPoint& aWorld
     }
     mOnUpdatingKey = false;
 
-    clearSelection();
     return true;
 }
 

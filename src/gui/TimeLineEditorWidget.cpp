@@ -57,10 +57,15 @@ void TimeCursor::paintEvent(QPaintEvent* aEvent) {
     QPainter painter;
     painter.begin(this);
 
+    // The playhead pill wraps the number-text row. Its top edge rides one
+    // pixel below the number text's top (kNumberTop + 1) so the pill and the
+    // ruler numbers shift together as kNumberTop moves.
+    const int pillTop = ctrl::TimeLineEditor::kNumberTop + 1;
+
     // Playhead line: starts at the bottom of the frame-number row (the pill
     // covers the row above it) and runs down the tracks.
     painter.setPen(QPen(mEdgeColor, 1));
-    painter.drawLine(mLineX, ctrl::TimeLineEditor::kNumberHeight, mLineX, this->geometry().height());
+    painter.drawLine(mLineX, pillTop + ctrl::TimeLineEditor::kNumberHeight, mLineX, this->geometry().height());
 
     // Frame-number pill on the numbers row: an accentBright rounded pill —
     // the playhead's identity. It must read on the plain ruler AND on the
@@ -70,7 +75,7 @@ void TimeCursor::paintEvent(QPaintEvent* aEvent) {
         const QFontMetrics fm(font());
         const int textWidth = fm.horizontalAdvance(mFrameText);
         const int pillWidth = textWidth + ctrl::TimeLineEditor::kPillPadding * 2;
-        const QRect pill(mLineX - pillWidth / 2, 0, pillWidth, ctrl::TimeLineEditor::kNumberHeight);
+        const QRect pill(mLineX - pillWidth / 2, pillTop, pillWidth, ctrl::TimeLineEditor::kNumberHeight);
         QPainterPath path;
         path.addRoundedRect(
             QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
@@ -421,11 +426,20 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
     painter.end();
 }
 
-void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent&, bool) {
+void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo) {
     if (!mOnPasting) {
         mCopyTargets = core::TimeLineEvent();
     }
     mEditor->updateKey();
+    // Creating keys always selects its output: clear the prior selection and
+    // keep only the keys a push/copy just created. An undo/redo that REMOVES
+    // keys (aUndo=true) must not select a notification over keys that are no
+    // longer in their lane — refresh() already dropped them, so only select on
+    // a forward (exec/redo) creation.
+    if (!aUndo &&
+        (aEvent.type() == core::TimeLineEvent::Type_PushKey || aEvent.type() == core::TimeLineEvent::Type_CopyKey)) {
+        mEditor->selectCreatedKeys(aEvent);
+    }
     this->update();
 }
 

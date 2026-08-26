@@ -9,6 +9,28 @@
 
 namespace gui {
 
+namespace {
+
+// Tick appearance, keyed by the Scaler's classification. The Scaler decides
+// *which* frames get a tick and *how prominent* it is (TickLevel); this file
+// owns how a tier is drawn — its length and its alpha. Keeping both in one
+// table means a tier's length and alpha change here, and the painter never
+// has to recover a tier from a pixel length.
+using TickLevel = ctrl::time::Scaler::TickLevel;
+constexpr int kTickLength = 5; // all tiers share one tick length
+
+qreal tickAlpha(TickLevel aLevel) {
+    switch (aLevel) {
+        case TickLevel::Major:        return 0.85;
+        case TickLevel::Intermediate: return 0.60;
+        case TickLevel::Minor:        return 0.20;
+        case TickLevel::None:         return 0.0;
+    }
+    return 0.0;
+}
+
+} // namespace
+
 //-------------------------------------------------------------------------------------------------
 TimeRuler::TimeRuler(TimeLineEditorWidget& aSurface, QWidget* aParent):
     QWidget(aParent),
@@ -101,8 +123,10 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         const int lastFrame = scale.frameEnd();
         const auto lastAttr = scale.attribute(lastFrame);
         const bool endLabelInView = lastFrame >= aVisibleRange.min() && lastFrame <= aVisibleRange.max();
-        const bool lastLabelActive = endLabelInView && lastAttr.grid.y() < 10;
-        const int lastLabelCenter = lt.x() + lastAttr.grid.x();
+        // The boundary label owns the range edge whenever the frame isn't
+        // already drawn as a full numbered major tick by the loop.
+        const bool lastLabelActive = endLabelInView && lastAttr.level != TickLevel::Major;
+        const int lastLabelCenter = lt.x() + lastAttr.pos;
         const QString lastNumber = timeFormat.frameToString(lastFrame, mEditor->timeFormatType());
         const int lastNumberWidth = numberWidth * lastNumber.size();
 
@@ -112,8 +136,8 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         const int firstFrame = mEditor->frameRange().min();
         const auto firstAttr = scale.attribute(firstFrame);
         const bool firstLabelInView = firstFrame >= aVisibleRange.min() && firstFrame <= aVisibleRange.max();
-        const bool firstLabelActive = firstLabelInView && firstAttr.grid.y() < 10;
-        const int firstLabelCenter = lt.x() + firstAttr.grid.x();
+        const bool firstLabelActive = firstLabelInView && firstAttr.level != TickLevel::Major;
+        const int firstLabelCenter = lt.x() + firstAttr.pos;
         const QString firstNumber = timeFormat.frameToString(firstFrame, mEditor->timeFormatType());
         const int firstNumberWidth = numberWidth * firstNumber.size();
 
@@ -154,16 +178,13 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
                 continue;
 
             auto attr = scale.attribute(i);
-            if (attr.grid.y() <= 0) continue;
+            if (attr.level == TickLevel::None) continue;
 
-            QPoint pos(lt.x() + attr.grid.x(), rb.y());
+            QPoint pos(lt.x() + attr.pos, rb.y());
 
             // Fade the tick tiers so minor blips recede and even the
             // numbered major ticks stay a step below full brightness.
-            qreal alpha = attr.grid.y() >= 10 ? 0.85
-                        : attr.grid.y() >= 8  ? 0.65
-                        : attr.grid.y() >= 6  ? 0.45
-                                              : 0.25;
+            qreal alpha = tickAlpha(attr.level);
             // Ticks outside the active playback range recede further:
             // the tier structure stays, but a fixed extra dim makes the
             // range edge read at a glance. The active range is the
@@ -176,7 +197,7 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
             QColor tickColor = kBrush.color();
             tickColor.setAlphaF(alpha);
             aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -attr.grid.y()));
+            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
 
             if (attr.showNumber) {
                 QString number = timeFormat.frameToString(i, mEditor->timeFormatType());
@@ -237,21 +258,21 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         const bool drawLastTick = boundaryLabelsCollide || lastLabelActive;
         if (drawFirstTick) {
             const qreal firstAlpha = activeRange.contains(firstFrame) ? 1.0 : 0.4;
-            const QPoint pos(lt.x() + firstAttr.grid.x(), rb.y());
+            const QPoint pos(lt.x() + firstAttr.pos, rb.y());
 
             QColor tickColor = kBrush.color();
-            tickColor.setAlphaF(0.85 * firstAlpha);
+            tickColor.setAlphaF(tickAlpha(TickLevel::Major) * firstAlpha);
             aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -10));
+            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
         }
         if (drawLastTick) {
             const qreal lastAlpha = activeRange.contains(lastFrame) ? 1.0 : 0.4;
-            const QPoint pos(lt.x() + lastAttr.grid.x(), rb.y());
+            const QPoint pos(lt.x() + lastAttr.pos, rb.y());
 
             QColor tickColor = kBrush.color();
-            tickColor.setAlphaF(0.85 * lastAlpha);
+            tickColor.setAlphaF(tickAlpha(TickLevel::Major) * lastAlpha);
             aPainter.setPen(QPen(tickColor, 1));
-            aPainter.drawLine(pos, pos + QPoint(0, -10));
+            aPainter.drawLine(pos, pos + QPoint(0, -kTickLength));
         }
 
         // The loop skips the boundary frames while their labels are
@@ -321,13 +342,17 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     // as the range marker at the last frame's tick (pixelWidth(max)).
     const ctrl::time::Scaler& scale = mEditor->timeScale();
     const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
-    const int x0 = margin + scale.attribute(window.start).grid.x();
-    const int x1 = margin + scale.attribute(window.end).grid.x();
+    const int x0 = margin + scale.attribute(window.start).pos;
+    const int x1 = margin + scale.attribute(window.end).pos;
     if (x1 <= x0)
         return;
 
     const int top = aCameraRect.top();
     const theme::Colors& c = theme::Colors::current();
+    // The bracket stems and label pills wrap the number-text row, so their top
+    // edge rides one pixel below the number text's top (kNumberTop + 1) and
+    // moves with it. The translucent band stays at the header top.
+    const int pillTop = top + ctrl::TimeLineEditor::kNumberTop + 1;
 
     // The translucent band washes the ruler content inside the window,
     // clipped to the visible ruler (off-view pills are clipped by the
@@ -348,8 +373,8 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     aPainter.setPen(Qt::NoPen);
     aPainter.setBrush(c.windowEdge);
     const int stemBottom = top + ctrl::TimeLineEditor::kHeaderHeight;
-    aPainter.drawRect(QRect(x0, top, 2, stemBottom - top));
-    aPainter.drawRect(QRect(x1 - 1, top, 2, stemBottom - top));
+    aPainter.drawRect(QRect(x0, pillTop, 2, stemBottom - pillTop));
+    aPainter.drawRect(QRect(x1 - 1, pillTop, 2, stemBottom - pillTop));
 
     // Label pills: the frame number is the bracket's horizontal arm,
     // attached to the stem's inner face. Rounded on the outer corners,
@@ -362,8 +387,8 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     const QFontMetrics fm(aPainter.font());
     const int wL = fm.horizontalAdvance(sL) + ctrl::TimeLineEditor::kPillPadding * 2;
     const int wR = fm.horizontalAdvance(sR) + ctrl::TimeLineEditor::kPillPadding * 2;
-    const QRect pillL(x0 + 2, top, wL, ctrl::TimeLineEditor::kNumberHeight);
-    const QRect pillR(x1 - 1 - wR, top, wR, ctrl::TimeLineEditor::kNumberHeight);
+    const QRect pillL(x0 + 2, pillTop, wL, ctrl::TimeLineEditor::kNumberHeight);
+    const QRect pillR(x1 - 1 - wR, pillTop, wR, ctrl::TimeLineEditor::kNumberHeight);
 
     aPainter.setRenderHint(QPainter::Antialiasing, true);
     aPainter.setPen(Qt::NoPen);
@@ -371,7 +396,7 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     if (pillL.right() >= pillR.left()) {
         const QString merged = sL + QString::fromUtf8("\u2013") + sR;
         const int w = fm.horizontalAdvance(merged) + ctrl::TimeLineEditor::kPillPadding * 2;
-        const QRect pill((x0 + x1) / 2 - w / 2, top, w, ctrl::TimeLineEditor::kNumberHeight);
+        const QRect pill((x0 + x1) / 2 - w / 2, pillTop, w, ctrl::TimeLineEditor::kNumberHeight);
         aPainter.drawRoundedRect(
             QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
         );
