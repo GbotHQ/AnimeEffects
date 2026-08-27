@@ -174,9 +174,10 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Ship the few genuinely-external assets next to the executable: the sample
-# project document and the runtime config (encode presets, locale preference
-# defaults). Everything else is embedded into the binary (see assets.qrc).
+# Ship the sample project document next to the executable. It is a debug/dev
+# fixture (auto-opened under QT_DEBUG). Everything else - icons, stylesheets,
+# fonts, shaders, translations, encode presets, locale defaults - is embedded
+# into the binary (see assets.qrc) or lives in QSettings.
 message("Copying data")
 if (APPLE)
     set(AE_DATA_SUBDIR AnimeEffects.app/Contents/MacOS/data)
@@ -188,15 +189,9 @@ if (CMAKE_CONFIGURATION_TYPES)
 else ()
     set(AE_DATA_DEST ${CMAKE_CURRENT_BINARY_DIR}/${AE_DATA_SUBDIR})
 endif ()
-file(GLOB _external_encode ${CMAKE_SOURCE_DIR}/assets/encode/*.txt)
-file(GLOB _external_locale ${CMAKE_SOURCE_DIR}/assets/locale/preference*.txt)
 add_custom_target(copy_data
     COMMAND ${CMAKE_COMMAND} -E rm -rf ${AE_DATA_DEST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/encode
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/locale
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/assets/sample.psd ${AE_DATA_DEST}/sample.psd
-    COMMAND ${CMAKE_COMMAND} -E copy ${_external_encode} ${AE_DATA_DEST}/encode
-    COMMAND ${CMAKE_COMMAND} -E copy ${_external_locale} ${AE_DATA_DEST}/locale
 )
 message("Data copied")
 add_dependencies(${PROJECT_NAME} copy_data)
