@@ -3983,4 +3983,28 @@ Save anyway?</source>
         <source>Frames per second</source>
         <translation>Кадров в секунду</translation>
     </message></context>
+    <context>
+        <name>AnimeEffects.Dialogs</name>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+            <source>Animation settings</source>
+            <translation>Настройки анимации</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+            <source>Loop animation</source>
+            <translation>Зациклить анимацию</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+            <source>Frame range</source>
+            <translation>Диапазон кадров</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+            <source>Frames per second</source>
+            <translation>Кадров в секунду</translation>
+        </message>
+    </context>
+
 </TS>

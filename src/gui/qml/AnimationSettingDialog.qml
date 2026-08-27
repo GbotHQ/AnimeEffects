@@ -1,3 +1,10 @@
+// All qsTr() strings in this module live under one stable, module-scoped
+// translation context (AnimeEffects.Dialogs) rather than the default filename
+// context, so the entries are rename-safe and never collide with the C++
+// context of the sibling widget class (gui::AnimationSettingDialog). The
+// translation catalog lives in data/locale/translation_<locale>.{ts,qm}.
+pragma Translator: "AnimeEffects.Dialogs"
+
 import QtQuick
 import QtQuick.Layouts
 

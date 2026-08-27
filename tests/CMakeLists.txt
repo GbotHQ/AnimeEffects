@@ -230,3 +230,23 @@ target_link_libraries(anim_settings_undo PRIVATE
     Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
 )
+
+# QML-module i18n: the Animation settings dialog's qsTr() strings must resolve
+# through the SAME QTranslator the app installs on QCoreApplication, using the
+# module's explicit pragma Translator context (AnimeEffects.Dialogs). Verifies
+# the catalog content under that context AND that a QML qsTr() under the same
+# pragma renders the translation at runtime. See anim_setting_i18n.cpp. Run
+# from the repo root:
+#   QT_QPA_PLATFORM=offscreen ./build/tests/Debug/anim_setting_i18n ja
+add_executable(anim_setting_i18n anim_setting_i18n.cpp)
+target_include_directories(anim_setting_i18n PRIVATE ..)
+target_compile_definitions(anim_setting_i18n PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(anim_setting_i18n PRIVATE
+    Qt6::Core Qt6::Gui
+    Qt6::Qml Qt6::Quick
+)

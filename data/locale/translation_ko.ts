@@ -3927,4 +3927,28 @@ Save anyway?</source>
         <source>Frames per second</source>
         <translation>초당 프레임</translation>
     </message></context>
+    <context>
+        <name>AnimeEffects.Dialogs</name>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+            <source>Animation settings</source>
+            <translation>애니메이션 설정</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+            <source>Loop animation</source>
+            <translation>애니메이션 반복</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+            <source>Frame range</source>
+            <translation>프레임 범위</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+            <source>Frames per second</source>
+            <translation>초당 프레임</translation>
+        </message>
+    </context>
+
 </TS>
