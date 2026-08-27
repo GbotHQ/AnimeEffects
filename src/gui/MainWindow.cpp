@@ -1784,20 +1784,27 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
 void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
     if (!mCurrent)
         return;
-    // FFmpeg Check
-    QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
-    bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
-    if (!ffmpegWorks) {
-        GeneralSettingDialog::ffmpegCheckFailed(aDiag);
-        return;
+
+    const QString suffix = aFormat.name;
+    const bool isGif = suffix == "gif";
+
+    // Only the legacy GIF pipeline still shells out to the external ffmpeg
+    // binary (its palettegen/paletteuse pass). All other video exports are
+    // encoded in-process via the linked libav*, so they no longer require an
+    // ffmpeg executable on the system.
+    if (isGif) {
+        QString ffmpeg = GeneralSettingDialog::getFFmpeg();
+        auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
+        bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
+        if (!ffmpegWorks) {
+            GeneralSettingDialog::ffmpegCheckFailed(aDiag);
+            return;
+        }
     }
     // stop animation and main display rendering
     EventSuspender suspender(*mMainDisplay, *mTarget);
 
-    const QString suffix = aFormat.name;
     const QString targetVideos = "Videos (*." + suffix + ")";
-    const bool isGif = suffix == "gif";
 
     // get export file name
     QString fileName = QFileDialog::getSaveFileName(
