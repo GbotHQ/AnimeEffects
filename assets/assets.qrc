@@ -101,5 +101,6 @@
     <file>shaders/PartialScreenCopyingFrag.glsl</file>
     <file>shaders/PartialScreenCopyingVert.glsl</file>
     <file>shaders/TestBlurVert.glsl</file>
+    <file>encode/VideoEncode.txt</file>
   </qresource>
 </RCC>
