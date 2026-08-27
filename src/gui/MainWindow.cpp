@@ -1208,7 +1208,94 @@ void updateSettings(QVariant *var, QSettings *settings, const QStringList& value
     }
 }
 
+// Convert the app's audio config vector into media::AudioMixer tracks.
+static QVector<media::AudioMixer::Track> toAudioTracks(const std::vector<audioConfig>& aStreams) {
+    QVector<media::AudioMixer::Track> tracks;
+    tracks.reserve(int(aStreams.size()));
+    for (const auto& ac : aStreams) {
+        media::AudioMixer::Track t;
+        t.path = ac.audioPath.absoluteFilePath();
+        t.startFrame = ac.startFrame;
+        t.endFrame = ac.endFrame;
+        t.volume = AudioPlaybackWidget::getVol(ac.volume);
+        t.enabled = true;
+        tracks.push_back(t);
+    }
+    return tracks;
+}
+
+// Translate an exportParam video export into ctrl::Exporter params. Returns
+// false if the container has no embedded preset (so the caller keeps the legacy
+// projectExporter path). Only the default/automatic cases are translated here;
+// custom-param / forced-intermediate exports stay on the legacy path.
+static bool translateVideoExport(exportParam& exParam, const std::vector<audioConfig>& aValidStreams,
+                                 ctrl::Exporter::CommonParam& aCommon,
+                                 ctrl::Exporter::VideoParam& aVideo,
+                                 QVector<media::AudioMixer::Track>& aAudio) {
+    auto& g = exParam.generalParams;
+    if (exParam.videoParams.format == availableVideoFormats::gif)
+        return false; // GIF stays on the legacy CLI palette path for now
+    if (g.useCustomParam || g.useIntermediate || g.usePost || g.forcePipe)
+        return false; // legacy custom-intermediate/post machinery
+    if (g.exportRange.size() > 1)
+        return false; // ctrl::Exporter is single-range; keep multi-range on the legacy path
+    const QString container = getFormatAsString(exportTarget::video, (int)exParam.videoParams.format);
+    ctrl::VideoFormat fmt = ctrl::VideoFormat::find(container);
+    if (fmt.name.isEmpty())
+        return false; // no embedded preset for this container (e.g. mkv)
+
+    aCommon.path = g.osExportTarget;
+    aCommon.size = QSize(g.exportWidth, g.exportHeight);
+    // A single contiguous export range; the project-native range otherwise.
+    int first = g.nativeFrameRange.firstFrame, last = g.nativeFrameRange.lastFrame;
+    if (!g.exportRange.isEmpty()) {
+        first = g.exportRange.first().firstFrame;
+        last = g.exportRange.first().lastFrame;
+        if (first > last) std::swap(first, last);
+    }
+    aCommon.frame = util::Range(first, last);
+    aCommon.fps = g.fps > 0 ? g.fps : (g.nativeFPS > 0 ? g.nativeFPS : 24);
+
+    aVideo.format = fmt;
+    // Map the Auto/default encoder to the container default (codecIndex=-1);
+    // otherwise find the codec by the encoder's libav name.
+    aVideo.codecIndex = -1;
+    aVideo.colorIndex = 0;
+    aVideo.bps = g.bitrate; // kbps (the exporter converts to bits/sec)
+    const QString px = getFormatAsString(exportTarget::pxFmt, (int)exParam.videoParams.pixelFormat);
+    aVideo.pixfmt = (px == QLatin1String("Auto") || px.isEmpty()) ? QString() : px;
+
+    aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
+    return true;
+}
+
 void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widget, const std::vector<audioConfig>& validAudioStreams){
+    // Non-GIF video exports with an embedded preset run through the in-process
+    // media engine (ctrl::Exporter). Image/GIF/multi-range/non-preset/custom
+    // exports fall back to the legacy projectExporter (CLI) until Phase 5.
+    const bool isGif = exParam.exportType == exportTarget::video &&
+                       exParam.videoParams.format == availableVideoFormats::gif;
+    if (!isGif && exParam.exportType == exportTarget::video) {
+        ctrl::Exporter::CommonParam cparam;
+        ctrl::Exporter::VideoParam vparam;
+        QVector<media::AudioMixer::Track> audioTracks;
+        if (translateVideoExport(exParam, validAudioStreams, cparam, vparam, audioTracks)) {
+            menu::LoggableProgressReporter progress(true, widget);
+            ctrl::Exporter exporter(*mCurrent);
+            exporter.setOverwriteConfirmer([](const QString&) -> bool { return true; });
+            exporter.setProgressReporter(progress);
+            exporter.setAudioTracks(audioTracks);
+            auto result = exporter.execute(cparam, vparam);
+            if (!result) {
+                progress.cancel();
+                if (result.code != ctrl::Exporter::ResultCode_Canceled)
+                    QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
+            }
+            return;
+        }
+        // fall through to the legacy path for non-preset/complex video
+    }
+
     qDebug("Creating FFmpeg object");
     auto* ffmpeg = new ffmpeg::ffmpegObject();
     projectExporter::Exporter exporter(*mCurrent, widget, exParam, *ffmpeg);
