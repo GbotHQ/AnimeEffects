@@ -17,9 +17,9 @@
 // machinery (theme::Colors / theme::iconDir via QmlTheme) and the widget shell
 // into what is purely a translation test.
 //
-// argv[1] = locale (es|ja|ko|ru|zh), argv[2] = .qm dir. Defaults to the build
-// output dir (AE_I18N_QM_DIR), where release_translations writes the .qm — they
-// are build artifacts and are never loaded from the committed source data/.
+// argv[1] = locale (es|ja|ko|ru|zh), argv[2] = .qm dir for the fallback file
+// load. The catalog now ships embedded under :/i18n (see the qt_add_resources in
+// the test CMake); the build output dir (AE_I18N_QM_DIR) is only a fallback.
 // e.g.  QT_QPA_PLATFORM=offscreen ./build/tests/Debug/anim_setting_i18n ja
 #include <QGuiApplication>
 #include <QQmlEngine>
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
 
 #ifndef AE_I18N_QM_DIR
-#define AE_I18N_QM_DIR "data/locale" // fallback if the build didn't pass one
+#define AE_I18N_QM_DIR "assets/locale" // fallback if the build didn't pass one
 #endif
     const QString dataDir = argc > 2 ? QString::fromLocal8Bit(argv[2]) : QLatin1String(AE_I18N_QM_DIR);
     // Locales to verify: all five, or a single one via argv[1].
@@ -85,8 +85,13 @@ int main(int argc, char** argv) {
         }
 
         // Load & install the same catalog the app installs on QCoreApplication.
+        // The production path is embedded under :/i18n (built by
+        // release_translations and embedded by the tests' qt_add_resources);
+        // fall back to the build output dir so a plain file load still works
+        // when the resource isn't linked in.
         QTranslator tr;
-        if (!tr.load(QLatin1String("translation_") + loc, dataDir)) {
+        if (!tr.load(QLatin1String("translation_") + loc, QLatin1String(":/i18n"))
+            && !tr.load(QLatin1String("translation_") + loc, dataDir)) {
             std::fprintf(stderr, "FAIL: cannot load '%s/translation_%s.qm' (cwd=%s)\n",
                          qPrintable(dataDir), qPrintable(loc), qPrintable(QDir::currentPath()));
             return 2;

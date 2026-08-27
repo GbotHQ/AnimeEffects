@@ -2,7 +2,8 @@
 // translation context (AnimeEffects.Dialogs) rather than the default filename
 // context, so the entries are rename-safe and never collide with the C++
 // context of the sibling widget class (gui::AnimationSettingDialog). The
-// translation catalog lives in data/locale/translation_<locale>.{ts,qm}.
+// translation catalog is generated from assets/locale/translation_<locale>.ts
+// and the .qm are embedded into the binary at :/i18n.
 pragma Translator: "AnimeEffects.Dialogs"
 
 import QtQuick
