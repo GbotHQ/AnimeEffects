@@ -21,7 +21,7 @@ namespace gui {
 class MainMenuBar: public QMenuBar {
     Q_OBJECT
 public:
-    MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent);
+    MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent, QString aDataDir);
     void setProject(core::Project* aProject);
     void setShowResourceWindow(bool aShow) const;
     QStringList recentfiles;
@@ -43,6 +43,7 @@ private:
     QVector<QAction*> mProjectActions;
     QList<ctrl::VideoFormat> mVideoFormats;
     GUIResources& mGUIResources;
+    QString mDataDir;
 };
 
 //-------------------------------------------------------------------------------------------------
