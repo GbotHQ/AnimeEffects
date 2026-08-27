@@ -1,6 +1,7 @@
 #include "media/VideoEncoder.h"
 
 #include <QList>
+#include <QVector>
 #include <cstring>
 
 extern "C" {
@@ -9,6 +10,9 @@ extern "C" {
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/samplefmt.h>
+#include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }
 
@@ -64,6 +68,19 @@ bool codecSupportsPixFmt(const AVCodec* aCodec, AVPixelFormat aFmt) {
     return false;
 }
 
+// Modern (FFmpeg 8) way to ask a codec for its first supported audio sample
+// format (replaces the deprecated AVCodec::sample_fmts).
+AVSampleFormat codecSampleFmt(const AVCodec* aCodec) {
+    const void* out = nullptr;
+    int n = 0;
+    if (::avcodec_get_supported_config(nullptr, aCodec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, &out, &n) < 0)
+        return AV_SAMPLE_FMT_FLT;
+    const enum AVSampleFormat* list = static_cast<const enum AVSampleFormat*>(out);
+    if (!list)
+        return AV_SAMPLE_FMT_FLT;
+    return list[0];
+}
+
 } // namespace
 
 // pimpl: keep libav* types out of the public header.
@@ -75,6 +92,17 @@ struct VideoEncoder::Impl {
     AVFrame* mFrame = nullptr;
     AVPixelFormat mPixFmt = AV_PIX_FMT_NONE;
     bool mClosed = true;
+
+    // Optional audio stream (interleaved float, set via setAudio()).
+    AVCodecContext* mAudioCtx = nullptr;
+    AVStream* mAudioStream = nullptr;
+    SwrContext* mAudioSwr = nullptr; // interleaved FLT -> codec sample_fmt
+    AVSampleFormat mAudioFmt = AV_SAMPLE_FMT_NONE;
+    QVector<float> mAudio; // interleaved
+    int mAudioChannels = 0;
+    int mAudioRate = 0;
+    qint64 mAudioCount = 0; // per channel
+    QString mAudioCodec;
 };
 
 VideoEncoder::VideoEncoder() : mImpl(new Impl()) {}
@@ -185,6 +213,14 @@ bool VideoEncoder::open(const Config& aConfig) {
     mImpl->mStream->avg_frame_rate = AVRational{ aConfig.fps, 1 };
     mImpl->mStream->r_frame_rate = AVRational{ aConfig.fps, 1 };
 
+    // Optional audio stream (muxed in the same pass). Configured before the
+    // container header so it is written with both streams.
+    if (!aConfig.audioCodec.isEmpty() && aConfig.audioChannels > 0 && aConfig.audioSampleRate > 0) {
+        if (!openAudio(aConfig)) {
+            return false;
+        }
+    }
+
     // Open the output container.
     if (::avio_open(&mImpl->mFmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
         mError = "could not open output file: " + aConfig.outputPath;
@@ -292,15 +328,146 @@ bool VideoEncoder::writeAll(const QList<QImage>& aFrames, const Config& aConfig)
     return close();
 }
 
+bool VideoEncoder::openAudio(const Config& aConfig) {
+    const AVCodec* audioCodec = ::avcodec_find_encoder_by_name(aConfig.audioCodec.toUtf8().constData());
+    if (!audioCodec) {
+        mError = "audio encoder not found: " + aConfig.audioCodec;
+        return false;
+    }
+    mImpl->mAudioCtx = ::avcodec_alloc_context3(audioCodec);
+    if (!mImpl->mAudioCtx) { mError = "could not allocate audio codec context"; return false; }
+
+    const int rate = aConfig.audioSampleRate;
+    const int ch = aConfig.audioChannels;
+
+    mImpl->mAudioCtx->sample_fmt = codecSampleFmt(audioCodec);
+    mImpl->mAudioCtx->sample_rate = rate;
+    AVChannelLayout layout{};
+    ::av_channel_layout_default(&layout, ch);
+    ::av_channel_layout_copy(&mImpl->mAudioCtx->ch_layout, &layout);
+    ::av_channel_layout_uninit(&layout);
+    if (aConfig.audioBitrate > 0)
+        mImpl->mAudioCtx->bit_rate = aConfig.audioBitrate;
+    mImpl->mAudioCtx->time_base = AVRational{ 1, rate };
+
+    if (::avcodec_open2(mImpl->mAudioCtx, audioCodec, nullptr) < 0) {
+        mError = "could not open audio encoder: " + aConfig.audioCodec;
+        return false;
+    }
+
+    // Convert the AudioMixer's interleaved float into the codec's sample
+    // format (AAC wants planar fltp; opus will take packed flt/s16).
+    AVChannelLayout inL{};
+    ::av_channel_layout_default(&inL, ch);
+    if (::swr_alloc_set_opts2(&mImpl->mAudioSwr, &mImpl->mAudioCtx->ch_layout,
+                              mImpl->mAudioCtx->sample_fmt, rate,
+                              &inL, AV_SAMPLE_FMT_FLT, rate, 0, nullptr) < 0 ||
+        ::swr_init(mImpl->mAudioSwr) < 0) {
+        ::av_channel_layout_uninit(&inL);
+        mError = "could not init audio resampler";
+        return false;
+    }
+    ::av_channel_layout_uninit(&inL);
+    mImpl->mAudioFmt = mImpl->mAudioCtx->sample_fmt;
+
+    mImpl->mAudioStream = ::avformat_new_stream(mImpl->mFmt, nullptr);
+    if (!mImpl->mAudioStream) { mError = "could not create audio stream"; return false; }
+    mImpl->mAudioStream->id = mImpl->mFmt->nb_streams - 1;
+    if (::avcodec_parameters_from_context(mImpl->mAudioStream->codecpar, mImpl->mAudioCtx) < 0) {
+        mError = "could not copy audio codec parameters"; return false;
+    }
+    mImpl->mAudioStream->time_base = mImpl->mAudioCtx->time_base;
+
+    mImpl->mAudioChannels = ch;
+    mImpl->mAudioRate = rate;
+    mImpl->mAudioCodec = aConfig.audioCodec;
+    return true;
+}
+
+bool VideoEncoder::setAudio(const float* aInterleaved, int aChannels, int aSampleRate,
+                            qint64 aSampleCountPerChannel) {
+    if (!mOpened || !mImpl->mAudioCtx) { mError = "audio not configured (set audioCodec/channels/rate)"; return false; }
+    if (aChannels != mImpl->mAudioChannels || aSampleRate != mImpl->mAudioRate) {
+        mError = "audio sample rate/channels do not match the configured stream";
+        return false;
+    }
+    if (aSampleCountPerChannel <= 0 || aChannels <= 0) { mError = "empty audio data"; return false; }
+    const qint64 total = aSampleCountPerChannel * aChannels;
+    mImpl->mAudio.assign(aInterleaved, aInterleaved + total);
+    mImpl->mAudioCount = aSampleCountPerChannel;
+    return true;
+}
+
+bool VideoEncoder::hasAudio() const { return mImpl->mAudioCtx != nullptr; }
+
+bool VideoEncoder::writeAudio() {
+    if (!mImpl->mAudioCtx || mImpl->mAudioCount <= 0)
+        return true; // no audio to write
+
+    const int frameSize = mImpl->mAudioCtx->frame_size > 0 ? mImpl->mAudioCtx->frame_size : 1024;
+    const int ch = mImpl->mAudioChannels;
+
+    // Pad the interleaved buffer up to a whole number of encoder frames so the
+    // last (partial) frame is filled with silence (AAC needs full frames).
+    const qint64 aligned = (mImpl->mAudioCount + frameSize - 1) / frameSize * frameSize;
+    QVector<float> padded(qsizetype(aligned) * ch, 0.0f);
+    std::memcpy(padded.data(), mImpl->mAudio.constData(),
+                size_t(mImpl->mAudioCount) * ch * sizeof(float));
+
+    AVFrame* aframe = ::av_frame_alloc();
+    if (!aframe) { mError = "could not allocate audio frame"; return false; }
+    aframe->format = mImpl->mAudioFmt;
+    aframe->nb_samples = frameSize;
+    aframe->sample_rate = mImpl->mAudioRate;
+    ::av_channel_layout_copy(&aframe->ch_layout, &mImpl->mAudioCtx->ch_layout);
+    if (::av_frame_get_buffer(aframe, 0) < 0) {
+        ::av_frame_free(&aframe);
+        mError = "could not allocate audio frame buffer";
+        return false;
+    }
+
+    bool ok = true;
+    const qint64 totalFrames = aligned / frameSize;
+    for (qint64 f = 0; f < totalFrames && ok; ++f) {
+        if (::av_frame_make_writable(aframe) < 0) { mError = "audio frame not writable"; ok = false; break; }
+        const uint8_t* inArr[1] = { reinterpret_cast<const uint8_t*>(padded.constData() + f * frameSize * ch) };
+        const int n = ::swr_convert(mImpl->mAudioSwr, aframe->data, frameSize,
+                                    inArr, frameSize);
+        if (n < 0) { mError = "audio resample failed"; ok = false; break; }
+        aframe->nb_samples = n;
+        aframe->pts = f;
+
+        AVPacket* pkt = ::av_packet_alloc();
+        if (::avcodec_send_frame(mImpl->mAudioCtx, aframe) >= 0) {
+            int ret;
+            while ((ret = ::avcodec_receive_packet(mImpl->mAudioCtx, pkt)) >= 0) {
+                ::av_packet_rescale_ts(pkt, mImpl->mAudioCtx->time_base, mImpl->mAudioStream->time_base);
+                pkt->stream_index = mImpl->mAudioStream->index;
+                if (::av_interleaved_write_frame(mImpl->mFmt, pkt) < 0) { mError = "could not write audio packet"; ok = false; }
+                ::av_packet_unref(pkt);
+                if (!ok) break;
+            }
+            if (ok && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) { mError = "audio receive error"; ok = false; }
+        }
+        ::av_packet_free(&pkt);
+    }
+
+    ::av_frame_free(&aframe);
+    return ok;
+}
+
 bool VideoEncoder::close() {
     if (!mOpened && mImpl->mClosed)
         return true;
 
     bool ok = true;
     if (mOpened) {
-        // Flush the encoder (send NULL, drain until EOF).
+        // Flush the video encoder (send NULL, drain until EOF).
         ::avcodec_send_frame(mImpl->mCtx, nullptr);
         ok = drainEncoder();
+        // Encode + mux the buffered audio (if any).
+        if (ok && !writeAudio())
+            ok = false;
         if (::av_write_trailer(mImpl->mFmt) < 0)
             ok = false;
     }
@@ -312,6 +479,8 @@ bool VideoEncoder::close() {
 void VideoEncoder::cleanup() {
     if (mImpl->mFrame) { ::av_frame_free(&mImpl->mFrame); }
     if (mImpl->mSws) { ::sws_freeContext(mImpl->mSws); mImpl->mSws = nullptr; }
+    if (mImpl->mAudioSwr) { ::swr_free(&mImpl->mAudioSwr); mImpl->mAudioSwr = nullptr; }
+    if (mImpl->mAudioCtx) { ::avcodec_free_context(&mImpl->mAudioCtx); mImpl->mAudioCtx = nullptr; }
     if (mImpl->mFmt) {
         if (mImpl->mFmt->pb) { ::avio_closep(&mImpl->mFmt->pb); }
         if (mImpl->mCtx) { ::avcodec_free_context(&mImpl->mCtx); }
@@ -320,6 +489,9 @@ void VideoEncoder::cleanup() {
     }
     mImpl->mCtx = nullptr;
     mImpl->mStream = nullptr;
+    mImpl->mAudioStream = nullptr;
+    mImpl->mAudio.clear();
+    mImpl->mAudioCount = 0;
     mImpl->mPixFmt = AV_PIX_FMT_NONE;
     mImpl->mClosed = true;
     mOpened = false;

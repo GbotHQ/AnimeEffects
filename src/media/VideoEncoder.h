@@ -27,6 +27,13 @@ public:
         QString pixFmt;        // requested target ("yuv420p","yuva420p","rgba","yuv444p"); "" = auto per codec
         bool transparent = false; // hint to prefer an alpha-capable pixel format
         int quality = -1;      // optional encoder quality hint (e.g. libx264 -crf); -1 = default
+
+        // Optional audio stream (muxed alongside video in one pass).
+        // Set audioChannels > 0 + audioSampleRate > 0 + audioCodec to enable.
+        QString audioCodec;    // "aac" (mp4/mov/mkv), "libopus" (webm), ...
+        int audioChannels = 0;
+        int audioSampleRate = 0;
+        int audioBitrate = 128000;
     };
 
     VideoEncoder();
@@ -38,6 +45,13 @@ public:
     bool open(const Config& aConfig);
     bool write(const QImage& aFrame); // returns false on error; caller should stop
     bool close();                     // flush encoder + write trailer; returns true if the file is valid
+
+    // Provide the pre-mixed interleaved float audio (from AudioMixer) to mux as
+    // one audio stream on close(). Channels/rate must match the Config. Must be
+    // called after open(), before close(). Returns false on parameter mismatch.
+    bool setAudio(const float* aInterleaved, int aChannels, int aSampleRate,
+                  qint64 aSampleCountPerChannel);
+    bool hasAudio() const;
 
     // Convenience: open -> write each frame in order -> close. Returns false if
     // any step failed (error() gives the reason).
@@ -55,6 +69,8 @@ private:
     bool allocInputFrame();
     bool writeFrame(const QImage& aFrame);
     bool drainEncoder();
+    bool openAudio(const Config& aConfig); // set up the audio stream + codec at open()
+    bool writeAudio();                     // encode + mux the buffered audio at close()
     void cleanup();
 
     struct Impl; // opaque pimpl keeps the libav* types out of this header

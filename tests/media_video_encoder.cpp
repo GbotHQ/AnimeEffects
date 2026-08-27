@@ -14,11 +14,14 @@
 #include <QImage>
 #include <QList>
 #include <QDir>
+#include <QFile>
 #include <QTextStream>
 #include <QByteArray>
+#include <QtMath>
 
 #include "media/VideoEncoder.h"
 #include "media/FFmpegHelpers.h"
+#include "media/AudioMixer.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -262,6 +265,118 @@ static bool run_container_coverage() {
     return all;
 }
 
+// Open a media file and report whether it has video + audio streams, and the
+// RMS energy of the decoded audio (so we know the audio stream is not silent).
+static bool probeStreams(const QString& path, bool* hasVideo, bool* hasAudio, double* audioRms) {
+    *hasVideo = *hasAudio = false;
+    *audioRms = 0.0;
+    AVFormatContext* fmt = nullptr;
+    if (::avformat_open_input(&fmt, path.toUtf8().constData(), nullptr, nullptr) < 0)
+        return false;
+    ::avformat_find_stream_info(fmt, nullptr);
+    const int vs = ::av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    const int as = ::av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    *hasVideo = vs >= 0;
+    *hasAudio = as >= 0;
+
+    if (as >= 0) {
+        const AVCodec* dec = ::avcodec_find_decoder(fmt->streams[as]->codecpar->codec_id);
+        AVCodecContext* ctx = ::avcodec_alloc_context3(dec);
+        ::avcodec_parameters_to_context(ctx, fmt->streams[as]->codecpar);
+        ::avcodec_open2(ctx, dec, nullptr);
+        AVFrame* fr = ::av_frame_alloc();
+        AVPacket* pk = ::av_packet_alloc();
+        double sum = 0.0;
+        int n = 0;
+        const int limit = 200000;
+        while (::av_read_frame(fmt, pk) >= 0) {
+            if (pk->stream_index == as) {
+                ::avcodec_send_packet(ctx, pk);
+                while (::avcodec_receive_frame(ctx, fr) >= 0) {
+                    const int ch = fr->ch_layout.nb_channels > 0 ? fr->ch_layout.nb_channels : 1;
+                    const bool planar = ::av_sample_fmt_is_planar(static_cast<AVSampleFormat>(fr->format));
+                    if (planar) {
+                        for (int c = 0; c < ch && n < limit; ++c) {
+                            const float* d = reinterpret_cast<const float*>(fr->extended_data[c]);
+                            for (int i = 0; i < fr->nb_samples && n < limit; ++i, ++n)
+                                sum += double(d[i]) * d[i];
+                        }
+                    } else {
+                        const float* d = reinterpret_cast<const float*>(fr->extended_data[0]);
+                        for (int i = 0; i < fr->nb_samples * ch && n < limit; ++i, ++n)
+                            sum += double(d[i]) * d[i];
+                    }
+                    if (n >= limit) break;
+                }
+            }
+            ::av_packet_unref(pk);
+            if (n >= limit) break;
+        }
+        ::av_frame_free(&fr);
+        ::av_packet_free(&pk);
+        ::avcodec_free_context(&ctx);
+        *audioRms = n > 0 ? std::sqrt(sum / n) : 0.0;
+    }
+    ::avformat_close_input(&fmt);
+    return true;
+}
+
+// Mux a video stream (frames) + one audio stream (from AudioMixer) in a single
+// pass, and verify both streams + that the audio is non-silent.
+static bool run_video_audio_mux() {
+    const QString out = QDir::temp().filePath("ae_v3_mux.mp4");
+    const QString wav = QDir::temp().filePath("ae_v3_tone.wav");
+
+    // Generate a stereo 48k sine WAV (1 s), then mix it as the audio track.
+    const int rate = 48000;
+    QFile wf(wav);
+    if (wf.open(QIODevice::WriteOnly)) {
+        const int n = rate; // 1 s of samples
+        const int block = 4; // stereo 16-bit
+        auto w32 = [&](quint32 v) { wf.write(reinterpret_cast<const char*>(&v), 4); };
+        auto w16 = [&](quint16 v) { wf.write(reinterpret_cast<const char*>(&v), 2); };
+        wf.write("RIFF", 4); w32(quint32(36 + n * block)); wf.write("WAVE", 4);
+        wf.write("fmt ", 4); w32(16); w16(1); w16(2); w32(quint32(rate));
+        w32(quint32(rate * block)); w16(quint16(block)); w16(16);
+        wf.write("data", 4); w32(quint32(n * block));
+        for (int i = 0; i < n; ++i) {
+            const qint16 v = qint16(0.5 * std::sin(2.0 * 3.14159265358979323846 * 440.0 * i / rate) * 32767.0);
+            w16(quint16(v)); w16(quint16(v));
+        }
+    }
+
+    media::AudioMixer::Track tr; tr.path = wav; tr.startFrame = 0; tr.volume = 1.0f;
+    media::AudioMixer mx;
+    media::AudioMixer::Config acfg;
+    acfg.fps = 24; acfg.totalFrames = 24; acfg.sampleRate = rate; acfg.channels = 2;
+    check(mx.mix({ tr }, acfg), "video+audio: audio mix succeeds");
+
+    const QList<QImage> frames = { makeFrame(160, 120, 0), makeFrame(160, 120, 1), makeFrame(160, 120, 2) };
+
+    media::VideoEncoder enc;
+    media::VideoEncoder::Config cfg;
+    cfg.outputPath = out; cfg.container = "mp4"; cfg.codec = "libx264";
+    cfg.width = 160; cfg.height = 120; cfg.fps = 24; cfg.pixFmt = "yuv420p";
+    cfg.audioCodec = "aac"; cfg.audioChannels = 2; cfg.audioSampleRate = rate; cfg.audioBitrate = 128000;
+    check(enc.open(cfg), "video+audio: open with audio succeeds");
+    bool wrote = true;
+    for (const QImage& f : frames) if (!enc.write(f)) { wrote = false; break; }
+    check(wrote, "video+audio: video frames written");
+    check(enc.setAudio(mx.samples(), mx.channels(), mx.sampleRate(), mx.sampleCount()),
+          "video+audio: setAudio succeeds");
+    check(enc.close(), "video+audio: close succeeds");
+
+    bool hasV = false, hasA = false;
+    double rms = 0.0;
+    probeStreams(out, &hasV, &hasA, &rms);
+    check(hasV, "video+audio: output has a video stream");
+    check(hasA, "video+audio: output has an audio stream");
+    check(rms > 1e-3, "video+audio: audio stream is non-silent (RMS > 1e-3)");
+
+    QFile::remove(out); QFile::remove(wav);
+    return true;
+}
+
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     QTextStream(stdout) << "=== V1 media::VideoEncoder suite ===\n";
@@ -271,6 +386,7 @@ int main(int argc, char** argv) {
     run_bad_params();
     run_odd_size_norm();
     run_container_coverage();
+    run_video_audio_mux();
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }
