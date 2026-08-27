@@ -50,7 +50,7 @@ LocaleDecider::LocaleDecider(): mLocaleParam(), mTranslator(), mHasTranslator() 
     }
 
     if (!locAbb.isEmpty()) {
-        if (mTranslator.load("translation_" + locAbb, "data/locale")) {
+        if (mTranslator.load("translation_" + locAbb, ":/i18n")) {
             mHasTranslator = true;
         }
     }

@@ -174,8 +174,9 @@ int entryPoint(int argc, char* argv[]) {
     // Register the bundled font so the Geist family resolves on every
     // platform instead of falling back to a system font (the digit glyphs
     // have tabular widths baked in, so number fields never shift layout).
+    // The fonts are embedded into the binary (see assets/assets.qrc).
     {
-        const QDir fontsDir(resourceDir + "/fonts");
+        const QDir fontsDir(":/fonts");
         for (const QString& file : fontsDir.entryList(QStringList() << "*.ttf", QDir::Files)) {
             QFontDatabase::addApplicationFont(fontsDir.absoluteFilePath(file));
         }
@@ -207,8 +208,10 @@ int entryPoint(int argc, char* argv[]) {
     if (locale->translator()) { QCoreApplication::installTranslator(locale->translator()); }
 
     {
-        // load constant gui resources
-        QScopedPointer<gui::GUIResources> resources(new gui::GUIResources(resourceDir));
+        // load constant gui resources; the theme reads its icons/stylesheet
+        // from the embedded :/ resources (see assets/assets.qrc), not the
+        // external data folder.
+        QScopedPointer<gui::GUIResources> resources(new gui::GUIResources(QStringLiteral(":")));
 
         // create system logic core
         QScopedPointer<ctrl::System> system(new ctrl::System(resourceDir, cacheDir));
