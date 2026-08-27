@@ -4221,4 +4221,28 @@ Save anyway?</source>
         <source>Frames per second</source>
         <translation>Fotogramas por segundo</translation>
     </message></context>
+    <context>
+        <name>AnimeEffects.Dialogs</name>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+            <source>Animation settings</source>
+            <translation>Configuración de animación</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+            <source>Loop animation</source>
+            <translation>Reproducir en bucle</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+            <source>Frame range</source>
+            <translation>Rango de fotogramas</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+            <source>Frames per second</source>
+            <translation>Fotogramas por segundo</translation>
+        </message>
+    </context>
+
 </TS>
