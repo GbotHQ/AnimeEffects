@@ -355,6 +355,11 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
                 tr("An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs)."
                    "<br />Licensed under the GPL v3.0 and powered by various open source libraries.");
             msgStr.append(
+                tr("<br /><br />Video/audio encoding uses the FFmpeg libraries "
+                   "(https://ffmpeg.org), which are licensed under the GNU Lesser GPL "
+                   "v2.1+ (or GPL, depending on the build). Their corresponding source "
+                   "is available as required by that license."));
+            msgStr.append(
                 tr("<br /><br />Contributors:<br />"
                 "[Hidefuku](https://github.com/hidefuku), "
                 "[Yukusai](https://github.com/p-yukusai), "
