@@ -26,8 +26,8 @@
 
 namespace gui {
 //-------------------------------------------------------------------------------------------------
-QDomDocument getVideoExportDocument(const QString& aDataDir) {
-    QFile file(aDataDir + "/encode/VideoEncode.txt");
+QDomDocument getVideoExportDocument() {
+    QFile file(":/encode/VideoEncode.txt");
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug() << file.errorString();
@@ -598,7 +598,7 @@ void MainMenuBar::setProject(core::Project* aProject) {
 void MainMenuBar::loadVideoFormats() {
     using util::TextUtil;
 
-    QDomDocument doc = getVideoExportDocument(mDataDir);
+    QDomDocument doc = getVideoExportDocument();
     QDomElement domRoot = doc.firstChildElement("video_encode");
 
     // for each format
