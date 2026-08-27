@@ -200,9 +200,9 @@ int entryPoint(int argc, char* argv[]) {
     gXCErrorHandler = &aeErrorHandler;
 
 
-    // language: the .qm are embedded under :/i18n; the locale preference
-    // defaults live in the (explicitly resolved) external data dir.
-    QScopedPointer<gui::LocaleDecider> locale(new gui::LocaleDecider(resourceDir));
+    // language: the .qm are embedded under :/i18n; the locale font defaults
+    // live in QSettings.
+    QScopedPointer<gui::LocaleDecider> locale(new gui::LocaleDecider());
     if (locale->translator()) { QCoreApplication::installTranslator(locale->translator()); }
 
     {
