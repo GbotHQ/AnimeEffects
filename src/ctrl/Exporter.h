@@ -21,6 +21,7 @@
 #include "core/DestinationTexturizer.h"
 #include "ctrl/VideoFormat.h"
 #include "media/VideoEncoder.h"
+#include "media/AudioMixer.h"
 
 namespace ctrl {
 
@@ -83,6 +84,15 @@ public:
     void setOverwriteConfirmer(const OverwriteConfirmer& aConfirmer);
     void setProgressReporter(util::IProgressReporter& aReporter);
     void setUILogger(ctrl::UILogger& aLogger);
+
+    // Supply the multi-track audio to mix and mux alongside the video. Call
+    // before execute(); ignored for image/GIF exports. The tracks are in
+    // PROJECT frame coordinates; they are shifted into the export window (the
+    // exported frame 0 == the export range's minimum frame) at mix time.
+    // sampleRate/channels are the mix target (e.g. 48000 stereo).
+    void setAudioTracks(const QVector<media::AudioMixer::Track>& aTracks,
+                        int aSampleRate = 48000, int aChannels = 2);
+    bool hasAudio() const { return mHasAudio; }
 
     Result execute(const CommonParam& aCommon, const ImageParam& aImage);
     Result execute(const CommonParam& aCommon, const GifParam& aGif);
@@ -151,6 +161,10 @@ private:
 
     FFMpeg mFFMpeg;
     media::VideoEncoder mVideoEncoder;
+    QVector<media::AudioMixer::Track> mAudioTracks;
+    int mAudioSampleRate = 48000;
+    int mAudioChannels = 2;
+    bool mHasAudio = false;
     bool mExporting;
     int mIndex;
     int mDigitCount;

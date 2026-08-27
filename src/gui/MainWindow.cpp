@@ -1850,6 +1850,24 @@ void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
     exporter.setProgressReporter(progress);
     exporter.setUILogger(progress);
 
+    // Include the project's multi-track audio on video exports: it is mixed and
+    // muxed in-process (linked libav*) with the video in one pass.
+    if (!isGif) {
+        const auto validAudio = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+        QVector<media::AudioMixer::Track> audioTracks;
+        audioTracks.reserve(int(validAudio.size()));
+        for (const auto& ac : validAudio) {
+            media::AudioMixer::Track t;
+            t.path = ac.audioPath.absoluteFilePath();
+            t.startFrame = ac.startFrame;
+            t.endFrame = ac.endFrame;
+            t.volume = AudioPlaybackWidget::getVol(ac.volume);
+            t.enabled = true;
+            audioTracks.push_back(t);
+        }
+        exporter.setAudioTracks(audioTracks);
+    }
+
     // execute
     auto result = isGif ? exporter.execute(cparam, gparam) : exporter.execute(cparam, vparam);
 

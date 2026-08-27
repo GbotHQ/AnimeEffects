@@ -5,6 +5,7 @@
 #include "gl/Global.h"
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
+#include "media/FFmpegHelpers.h"
 
 namespace ctrl {
 //-------------------------------------------------------------------------------------------------
@@ -170,6 +171,14 @@ void Exporter::setProgressReporter(util::IProgressReporter& aReporter) { mProgre
 
 void Exporter::setUILogger(UILogger& aLogger) { mUILogger = &aLogger; }
 
+void Exporter::setAudioTracks(const QVector<media::AudioMixer::Track>& aTracks,
+                              int aSampleRate, int aChannels) {
+    mAudioTracks = aTracks;
+    mAudioSampleRate = aSampleRate > 0 ? aSampleRate : 48000;
+    mAudioChannels = aChannels > 0 ? aChannels : 2;
+    mHasAudio = !mAudioTracks.isEmpty();
+}
+
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const ImageParam& aImage) {
     // check param
     if (!aCommon.isValid()) {
@@ -289,6 +298,29 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
             return Result(ResultCode_FFMpegFailedToStart, mLog);
         }
         cfg.outputPath = outPath;
+
+        // Configure the audio stream (muxed in the same pass) when tracks were
+        // supplied AND the container supports a standard audio codec we have.
+        // This keeps AVI/Ogg exports video-only rather than failing on an
+        // audio codec the container can't carry.
+        if (mHasAudio) {
+            const QString container = aVideo.format.name;
+            static const QStringList audioContainers = {
+                QStringLiteral("mp4"), QStringLiteral("mov"),
+                QStringLiteral("webm"), QStringLiteral("mkv"), QStringLiteral("matroska"),
+            };
+            if (audioContainers.contains(container)) {
+                const QString audioCodec = container == QLatin1String("webm")
+                                               ? QStringLiteral("libopus")
+                                               : QStringLiteral("aac");
+                if (media::ffmpeg::encoderAvailable(audioCodec.toUtf8().constData())) {
+                    cfg.audioCodec = audioCodec;
+                    cfg.audioChannels = mAudioChannels;
+                    cfg.audioSampleRate = mAudioSampleRate;
+                    cfg.audioBitrate = 128000;
+                }
+            }
+        }
 
         if (!mVideoEncoder.open(cfg)) {
             mLog = "Video encoder error.\n" + mVideoEncoder.error();
@@ -538,6 +570,31 @@ Exporter::Result Exporter::finish() {
 
     if (mExporting) {
         if (mVideoExporting) {
+            // Mix the supplied multi-track audio (in project frames) into the
+            // export window and mux it with the video in the same pass.
+            if (mHasAudio) {
+                media::AudioMixer mixer;
+                media::AudioMixer::Config acfg;
+                acfg.fps = mCommonParam.fps;
+                acfg.totalFrames = mCommonParam.frame.diff() + 1; // export length
+                acfg.sampleRate = mAudioSampleRate;
+                acfg.channels = mAudioChannels;
+                QVector<media::AudioMixer::Track> tracks = mAudioTracks;
+                const int minFrame = mCommonParam.frame.min();
+                for (auto& t : tracks) {
+                    t.startFrame -= minFrame;
+                    if (t.endFrame > 0)
+                        t.endFrame -= minFrame;
+                }
+                if (mixer.mix(tracks, acfg)) {
+                    mVideoEncoder.setAudio(mixer.samples(), mixer.channels(),
+                                           mixer.sampleRate(), mixer.sampleCount());
+                } else {
+                    mLog = "Audio mixing error.\n" + mixer.error();
+                    result = Result(ResultCode_FFMpegError, mLog);
+                }
+            }
+
             if (!mVideoEncoder.close()) {
                 mLog = "Video encoder error.\n" + mVideoEncoder.error();
                 result = Result(ResultCode_FFMpegError, mLog);
