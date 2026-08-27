@@ -32,6 +32,8 @@ jobs:
         shell: bash
         run: |
           brew install ninja vulkan-headers coreutils
+          # The exporter links FFmpeg (libav*) directly.
+          brew install ffmpeg
       - name: Build AnimeEffects
         shell: bash
         run: |
