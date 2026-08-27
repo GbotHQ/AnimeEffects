@@ -22,6 +22,7 @@
 #include "media/VideoEncoder.h"
 #include "media/FFmpegHelpers.h"
 #include "media/AudioMixer.h"
+#include "media/GifEncoder.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -419,6 +420,23 @@ static bool run_make_config() {
     return true;
 }
 
+// In-process GIF encode (media::GifEncoder): valid .gif, correct frame count/dims.
+static bool run_gif() {
+    const QList<QImage> frames = { makeFrame(64, 48, 0), makeFrame(64, 48, 1), makeFrame(64, 48, 2) };
+    const QString out = QDir::temp().filePath("ae_gif.gif");
+    media::GifEncoder g;
+    media::GifEncoder::Config c;
+    c.outputPath = out; c.fps = 10; c.transparent = false;
+    QString err;
+    check(g.encode(frames, c, &err), "gif encode succeeds");
+    check(QFile::exists(out) && QFile(out).size() > 0, "gif file exists + non-empty");
+    int w = 0, h = 0, fps = 0;
+    const QList<QImage> dec = decodeFrames(out, &w, &h, &fps);
+    check(w == 64 && h == 48 && dec.size() == 3, "gif decodes to 3 frames at 64x48");
+    QFile::remove(out);
+    return true;
+}
+
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     QTextStream(stdout) << "=== V1 media::VideoEncoder suite ===\n";    run_lossless_roundtrip();
@@ -429,6 +447,7 @@ int main(int argc, char** argv) {
     run_container_coverage();
     run_video_audio_mux();
     run_make_config();
+    run_gif();
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }

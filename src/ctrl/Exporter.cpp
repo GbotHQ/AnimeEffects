@@ -6,6 +6,7 @@
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
 #include "media/FFmpegHelpers.h"
+#include "media/GifEncoder.h"
 
 namespace ctrl {
 //-------------------------------------------------------------------------------------------------
@@ -205,42 +206,33 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const ImageParam&
 }
 
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const GifParam& aGif) {
-    const QString outFile = QFileInfo(aCommon.path).absoluteFilePath();
-    const QString workFile = outFile + "videocache.mp4";
-    const QString palette = outFile + "palettecache.png";
-
-    CommonParam commonParam = aCommon;
-    VideoParam videoParam;
-
-    if (aGif.optimizePalette) {
-        commonParam.path = workFile;
-        videoParam.bps = aGif.intermediateBps;
-    } else {
-        videoParam.bps = 0;
+    // check param
+    if (!aCommon.isValid()) {
+        mLog = "Invalid common parameters.";
+        return Result(ResultCode_InvalidOperation, mLog);
     }
 
-    {
-        auto result = execute(commonParam, videoParam);
-        if (!result)
-            return result;
+    // check file overwriting
+    mOverwriteConfirmation = false;
+    QFileInfo filePath(aCommon.path);
+    if (!checkOverwriting(filePath)) {
+        mLog = "Exporting was canceled.";
+        mIsCanceled = true;
+        return Result(ResultCode_Canceled, mLog);
     }
 
-    if (aGif.optimizePalette) {
+    mCommonParam = aCommon;
+    mOriginTimeInfo = mProject.currentTimeInfo();
+    mLog.clear();
+    mIsCanceled = false;
 
-        auto waiter = [=]() -> bool { return true; };
-        if (mFFMpeg.execute(" -i " + workFile + " -vf palettegen -y " + palette, waiter)) {
-            mFFMpeg.execute(" -i " + workFile + " -i " + palette + " -lavfi paletteuse -y " + outFile, waiter);
-        }
-
-        QFile::remove(workFile);
-        QFile::remove(palette);
-
-        if (mFFMpeg.errorOccurred()) {
-            mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
-            return Result(ResultCode_FFMpegError, mLog);
-        }
-    }
-    return Result(ResultCode_Success, "Success.");
+    // In-process GIF: render every frame into a list, then encode + mux a .gif
+    // with media::GifEncoder (the legacy ffmpeg CLI palettegen/paletteuse
+    // subprocess is gone). optimizePalette/intermediateBps are no longer used —
+    // the encoder always builds an adaptive palette.
+    mCollectFrames = true;
+    mGifFrames.clear();
+    return execute();
 }
 
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam& aVideo) {
@@ -542,6 +534,12 @@ bool Exporter::update() {
 }
 
 bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
+    // GIF mode: accumulate the rendered frames (encoded in finish()).
+    if (mCollectFrames) {
+        mGifFrames.append(aFboImage);
+        return true;
+    }
+
     // decide file path
     QFileInfo filePath;
     if (!decideImagePath(aIndex, filePath)) {
@@ -569,7 +567,20 @@ Exporter::Result Exporter::finish() {
     Result result(ResultCode_Success, "Success.");
 
     if (mExporting) {
-        if (mVideoExporting) {
+        if (mCollectFrames) {
+            // Encode the collected frames with the in-process GifEncoder.
+            media::GifEncoder gif;
+            media::GifEncoder::Config gcfg;
+            gcfg.outputPath = mCommonParam.path;
+            gcfg.fps = mCommonParam.fps > 0 ? mCommonParam.fps : 15;
+            QString gerr;
+            if (!gif.encode(mGifFrames, gcfg, &gerr)) {
+                mLog = "GIF encoder error.\n" + gerr;
+                result = Result(ResultCode_FFMpegError, mLog);
+            }
+            mCollectFrames = false;
+            mGifFrames.clear();
+        } else if (mVideoExporting) {
             // Mix the supplied multi-track audio (in project frames) into the
             // export window and mux it with the video in the same pass.
             if (mHasAudio) {

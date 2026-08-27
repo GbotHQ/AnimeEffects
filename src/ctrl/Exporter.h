@@ -6,6 +6,8 @@
 #include <functional>
 #include <QString>
 #include <QSize>
+#include <QList>
+#include <QImage>
 #include <QFileInfo>
 #include <QProcess>
 #include <QOpenGLFramebufferObject>
@@ -158,6 +160,10 @@ private:
     const char* mVideoInCodec;
     int mVideoInCodecQuality;
     bool mVideoExporting;
+    // GIF path: collect rendered frames (no live encoder) and encode with the
+    // in-process media::GifEncoder (replaces the legacy CLI palette subprocess).
+    bool mCollectFrames = false;
+    QList<QImage> mGifFrames;
 
     FFMpeg mFFMpeg;
     media::VideoEncoder mVideoEncoder;

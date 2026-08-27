@@ -49,6 +49,8 @@ add_library(media STATIC
     VideoEncoder.h
     AudioMixer.cpp
     AudioMixer.h
+    GifEncoder.cpp
+    GifEncoder.h
 )
 target_include_directories(media PUBLIC
     # Resolve "media/FFmpegHelpers.h" the same way the app resolves
