@@ -320,3 +320,21 @@ target_link_libraries(media_audio_mixer PRIVATE
     Qt6::Core
     media
 )
+
+# V3 — export preset compatibility matrix. Parses assets/encode/VideoEncode.txt
+# and asserts every preset maps to an available libav encoder and a supported
+# pixel format (the compatibility gate). Headless. See media_preset_matrix.cpp.
+add_executable(media_preset_matrix media_preset_matrix.cpp)
+target_include_directories(media_preset_matrix PRIVATE ..)
+target_compile_definitions(media_preset_matrix PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_VIDEOENCODE_PATH="${CMAKE_SOURCE_DIR}/assets/encode/VideoEncode.txt"
+)
+target_link_libraries(media_preset_matrix PRIVATE
+    Qt6::Core
+    Qt6::Xml
+    media
+)

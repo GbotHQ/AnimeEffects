@@ -30,6 +30,18 @@ bool encoderAvailable(const char* aEncoderName);
 // against what the linked build actually provides.
 QStringList availableVideoEncoders();
 
+// Resolve a preset encoder name to a libav encoder that actually exists in the
+// linked build, applying known aliases first (e.g. "theora" -> "libtheora").
+// Returns the encoder name if it is available, or an empty string if not.
+// This is how presets stay authorable in friendly names while the exporter
+// uses libav* encoder names.
+QString resolveEncoderName(const QString& aName);
+
+// True iff the named encoder (resolved via resolveEncoderName) reports the
+// given pixel format as supported. Used to validate a preset's pixfmt list
+// against the linked build (the compatibility gate).
+bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFmt);
+
 } // namespace ffmpeg
 } // namespace media
 
