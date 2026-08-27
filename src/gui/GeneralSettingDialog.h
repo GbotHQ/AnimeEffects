@@ -18,7 +18,7 @@ class ViaPoint;
 class GeneralSettingDialog: public EasyDialog {
     Q_OBJECT
 public:
-    GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent);
+    GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent, QString aDataDir);
     QFormLayout* createTab(const QString& aTitle, QFormLayout* aForm);
     void selectTab(int aIndex) {
         // General - 0 ; QoL - 1 ; FFmpeg - 2 ; Keyboard - 3 ; Mouse - 4
@@ -111,6 +111,7 @@ private:
 
     GUIResources& mGUIResources;
     ViaPoint& mViaPoint;
+    QString mDataDir;
 };
 } // namespace gui
 

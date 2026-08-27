@@ -6,7 +6,7 @@
 
 namespace gui {
 
-LocaleDecider::LocaleDecider(): mLocaleParam(), mTranslator(), mHasTranslator() {
+LocaleDecider::LocaleDecider(const QString& aDataDir): mDataDir(aDataDir), mLocaleParam(), mTranslator(), mHasTranslator() {
     QString locAbb;
 
     {
@@ -66,7 +66,7 @@ LocaleDecider::LocaleDecider(): mLocaleParam(), mTranslator(), mHasTranslator() 
 
         const QString preference = locAbb.isEmpty() ? "preference" : "preference_" + locAbb;
 
-        QFile file("./data/locale/" + preference + ".txt");
+        QFile file(mDataDir + "/locale/" + preference + ".txt");
         if (file.open(QIODevice::ReadOnly)) {
             QTextStream in(&file);
             while (!in.atEnd()) {
