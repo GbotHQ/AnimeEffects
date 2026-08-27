@@ -268,3 +268,20 @@ qt_add_resources(anim_setting_i18n "translations"
         ${PROJECT_BINARY_DIR}/src/gui/translation_zh.qm
 )
 add_dependencies(anim_setting_i18n release_translations)
+
+# V0 — build/link gate for the media (libav*) rearchitecture. Links the `media`
+# module directly (GL-free) and asserts the libav* libraries link + report a
+# usable encoder set, and whether GPL encoders (libx264/libx265) are available.
+# Headless; no QApplication. See media_link_probe.cpp.
+add_executable(media_link_probe media_link_probe.cpp)
+target_include_directories(media_link_probe PRIVATE ..)
+target_compile_definitions(media_link_probe PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(media_link_probe PRIVATE
+    Qt6::Core
+    media
+)
