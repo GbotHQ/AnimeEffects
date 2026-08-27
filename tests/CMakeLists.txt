@@ -245,8 +245,12 @@ target_compile_definitions(anim_setting_i18n PRIVATE
     AE_MINOR_VERSION=7
     AE_MICRO_VERSION=1
     USE_GL_CORE_PROFILE
+    # .qm are build artifacts (release_translations); load them from the build
+    # output dir, never from the committed source data/.
+    AE_I18N_QM_DIR="${PROJECT_BINARY_DIR}/src/gui"
 )
 target_link_libraries(anim_setting_i18n PRIVATE
     Qt6::Core Qt6::Gui
     Qt6::Qml Qt6::Quick
 )
+add_dependencies(anim_setting_i18n release_translations)

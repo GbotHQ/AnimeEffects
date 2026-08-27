@@ -17,9 +17,10 @@
 // machinery (theme::Colors / theme::iconDir via QmlTheme) and the widget shell
 // into what is purely a translation test.
 //
-// argv[1] = locale (es|ja|ko|ru|zh), argv[2] = data dir (default: data/locale).
-// Run from the repo root, e.g.
-//   QT_QPA_PLATFORM=offscreen ./build/tests/Debug/anim_setting_i18n ja
+// argv[1] = locale (es|ja|ko|ru|zh), argv[2] = .qm dir. Defaults to the build
+// output dir (AE_I18N_QM_DIR), where release_translations writes the .qm — they
+// are build artifacts and are never loaded from the committed source data/.
+// e.g.  QT_QPA_PLATFORM=offscreen ./build/tests/Debug/anim_setting_i18n ja
 #include <QGuiApplication>
 #include <QQmlEngine>
 #include <QQmlComponent>
@@ -64,7 +65,10 @@ int localeIndex(const QString& loc) {
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
 
-    const QString dataDir = argc > 2 ? QString::fromLocal8Bit(argv[2]) : QLatin1String("data/locale");
+#ifndef AE_I18N_QM_DIR
+#define AE_I18N_QM_DIR "data/locale" // fallback if the build didn't pass one
+#endif
+    const QString dataDir = argc > 2 ? QString::fromLocal8Bit(argv[2]) : QLatin1String(AE_I18N_QM_DIR);
     // Locales to verify: all five, or a single one via argv[1].
     QList<QString> locales = { QStringLiteral("es"), QStringLiteral("ja"), QStringLiteral("ko"),
                                QStringLiteral("ru"), QStringLiteral("zh") };
