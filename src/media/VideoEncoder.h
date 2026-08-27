@@ -63,6 +63,17 @@ public:
     // Even-nudge for YUV planar sizes (yuv420p requires even dimensions).
     static QSize normalizedSize(const QSize& aSize, const QString& aPixFmt);
 
+    // Build a validated Config from export-preset fields (no encoding). Resolves
+    // the encoder name (friendly -> libav, with aliases), normalizes the
+    // container ("mkv" -> "matroska"), converts bitrate (kbps) to bits/sec, and
+    // picks a pixel format the encoder supports (honoring the transparent hint).
+    // On failure (e.g. encoder absent in the linked build) the returned Config
+    // has an empty codec and *aError, if given, is set.
+    static Config makeConfig(const QString& aContainer, const QString& aCodec,
+                             const QString& aPixFmt, bool aTransparent,
+                             int aWidth, int aHeight, int aFps, int aBitrateKbps,
+                             QString* aError = nullptr);
+
 private:
     bool openMuxer();
     bool openCodec();

@@ -377,16 +377,58 @@ static bool run_video_audio_mux() {
     return true;
 }
 
+// Verify the preset -> VideoEncoder::Config bridge (makeConfig) that the
+// exporter uses, including a live encode from a makeConfig-built config.
+static bool run_make_config() {
+    QString err;
+    auto c = media::VideoEncoder::makeConfig("mp4", "libx264", "yuv420p", false,
+                                             320, 240, 24, 2000, &err);
+    check(c.codec == QLatin1String("libx264") && c.bitrate == 2000 * 1000 &&
+              c.pixFmt == QLatin1String("yuv420p") && c.container == QLatin1String("mp4"),
+          "makeConfig: mp4/libx264/yuv420p maps (codec, bitrate kbps->bps, pixFmt, container)");
+    check(err.isEmpty(), "makeConfig: no error for a valid preset");
+
+    auto t = media::VideoEncoder::makeConfig("ogv", "theora", "yuv420p", false,
+                                             320, 240, 24, 0, &err);
+    check(t.codec == QLatin1String("libtheora"),
+          "makeConfig: friendly alias theora -> libtheora");
+
+    auto tr = media::VideoEncoder::makeConfig("mp4", "libx264", "", true,
+                                              320, 240, 24, 0, &err);
+    // The transparent hint flows through; the actual alpha format is chosen at
+    // encoder open() (the build's libx264 may not report yuva420p here).
+    check(tr.transparent, "makeConfig: transparent hint passes through");
+
+    QString err2;
+    auto bad = media::VideoEncoder::makeConfig("mp4", "definitely_not_a_codec", "", false,
+                                               320, 240, 24, 0, &err2);
+    check(bad.codec.isEmpty() && !err2.isEmpty(),
+          "makeConfig: unknown encoder rejected (empty codec + error)");
+
+    // Live: build a config via makeConfig, then encode + decode-verify.
+    auto cfg = media::VideoEncoder::makeConfig("mp4", "libx264", "yuv420p", false,
+                                               64, 64, 10, 1000, &err);
+    cfg.outputPath = QDir::temp().filePath("ae_v4_cfg.mp4");
+    media::VideoEncoder enc;
+    const QList<QImage> frames = { makeFrame(64, 64, 0), makeFrame(64, 64, 1) };
+    check(enc.writeAll(frames, cfg), "makeConfig-built config encodes successfully");
+    int w = 0, h = 0, fps = 0;
+    const QList<QImage> dec = decodeFrames(cfg.outputPath, &w, &h, &fps);
+    check(dec.size() == 2 && w == 64 && h == 64, "makeConfig-built config decodes correctly");
+    QFile::remove(cfg.outputPath);
+    return true;
+}
+
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
-    QTextStream(stdout) << "=== V1 media::VideoEncoder suite ===\n";
-    run_lossless_roundtrip();
+    QTextStream(stdout) << "=== V1 media::VideoEncoder suite ===\n";    run_lossless_roundtrip();
     run_mp4_x264();
     run_single_frame();
     run_bad_params();
     run_odd_size_norm();
     run_container_coverage();
     run_video_audio_mux();
+    run_make_config();
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }

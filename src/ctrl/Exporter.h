@@ -20,6 +20,7 @@
 #include "core/FilterFrame.h"
 #include "core/DestinationTexturizer.h"
 #include "ctrl/VideoFormat.h"
+#include "media/VideoEncoder.h"
 
 namespace ctrl {
 
@@ -149,6 +150,7 @@ private:
     bool mVideoExporting;
 
     FFMpeg mFFMpeg;
+    media::VideoEncoder mVideoEncoder;
     bool mExporting;
     int mIndex;
     int mDigitCount;

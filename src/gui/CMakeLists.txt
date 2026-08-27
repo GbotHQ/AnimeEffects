@@ -148,7 +148,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
         Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
         Qt6::Quick Qt6::Qml Qt6::QuickWidgets
-        cmnd core ctrl gl img thr util
+        cmnd core ctrl gl img thr util media
 )
 
 # i18n (Qt LinguistTools, loaded in the root CMakeLists): regenerates the

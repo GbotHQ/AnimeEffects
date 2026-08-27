@@ -256,38 +256,8 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
     mLog.clear();
     mIsCanceled = false;
 
-#if 0
     {
-        const QString out = " \"" + filePath.absoluteFilePath() + "\"";
-        //const QString ifps = " -r " + QString::number(mCommonParam.fps);
-        //const QString ofps = ifps;
-        const QString ifps = " -framerate " + QString::number(mCommonParam.fps);
-        const QString ofps = " -r " + QString::number(mCommonParam.fps);
-        const QString icodec = " -vcodec png";
-        //const QString icodec = " -vcodec ppm";
-        const QString ocodec =
-                !aVideo.codec.isEmpty() ? " -vcodec " + aVideo.codec : "";
-        const QString obps =
-                aVideo.bps > 0 ? " -b:v " + QString::number(aVideo.bps) : "";
-        const QString thrs = ""; //" -threads 8";
-
-        QString argments =
-                QString(" -y") + /// overwrite files without asking
-                " -f image2pipe" +
-                ifps + icodec + " -i -" +
-                obps + ofps + ocodec + thrs + out;
-
-        if (!mFFMpeg.start(argments))
-        {
-            mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
-            return mFFMpeg.errorCode() == QProcess::FailedToStart ?
-                        Result(ResultCode_FFMpegFailedToStart, mLog) :
-                        Result(ResultCode_FFMpegError, mLog);
-        }
-    }
-#else
-    {
-        QString outPath = filePath.absoluteFilePath();
+        const QString outPath = filePath.absoluteFilePath();
 
         VideoCodec videoCodec;
         if (aVideo.codecIndex != -1) {
@@ -295,57 +265,36 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         } else {
             videoCodec.icodec = aVideo.format.icodec;
         }
-        auto colorIndex = videoCodec.colorspace ? aVideo.colorIndex : 0;
 
-        mVideoInCodecQuality = -1;
-        if (videoCodec.icodec == "png") {
-            mVideoInCodec = "PNG";
-            mVideoInCodecQuality = 90;
-        } else if (videoCodec.icodec == "ppm") {
-            mVideoInCodec = "PPM";
-        } else if (videoCodec.icodec == "jpg") {
-            mVideoInCodec = "JPG";
-        } else if (videoCodec.icodec == "jpeg") {
-            mVideoInCodec = "JPEG";
-        } else if (videoCodec.icodec == "bmp") {
-            mVideoInCodec = "BMP";
-        } else {
-            videoCodec.icodec = "png";
-            mVideoInCodec = "PNG";
-            mVideoInCodecQuality = 90;
+        // The `icodec`/`command`/colorspace fields are CLI-subprocess artifacts:
+        // the in-process encoder consumes QImage frames directly, so only the
+        // encoder name, pixel format, container and the transparent hint matter.
+        QString codecName = videoCodec.name;
+        if (codecName.isEmpty()) {
+            // No specific codec chosen: fall back to a sensible default per container.
+            codecName = aVideo.format.name == QLatin1String("webm") ? QStringLiteral("libvpx-vp9")
+                      : aVideo.format.name == QLatin1String("avi")  ? QStringLiteral("mpeg4")
+                      : aVideo.format.name == QLatin1String("ogv")  ? QStringLiteral("libtheora")
+                                                                    : QStringLiteral("libx264");
         }
 
-        // qDebug() << "videoCodec : " << videoCodec.command;
-        if (videoCodec.command.isEmpty()) {
-            videoCodec.command = "-y -f image2pipe -framerate $ifps -i - -b:v $obps -r $ofps $opath";
+        QString encoderError;
+        media::VideoEncoder::Config cfg = media::VideoEncoder::makeConfig(
+            aVideo.format.name, codecName, aVideo.pixfmt, videoCodec.transparent,
+            mCommonParam.size.width(), mCommonParam.size.height(), mCommonParam.fps,
+            aVideo.bps, &encoderError);
+
+        if (cfg.codec.isEmpty()) {
+            mLog = "Video encoder error.\n" + encoderError;
+            return Result(ResultCode_FFMpegFailedToStart, mLog);
         }
+        cfg.outputPath = outPath;
 
-        videoCodec.command.replace(QRegularExpression("\\$ifps(\\s|$)"), QString::number(mCommonParam.fps) + "\\1");
-        videoCodec.command.replace(QRegularExpression("\\$icodec(\\s|$)"), videoCodec.icodec + "\\1");
-        videoCodec.command.replace(QRegularExpression("\\$obps(\\s|$)"), QString::number(aVideo.bps * 1000) + "\\1");
-        videoCodec.command.replace(QRegularExpression("\\$ofps(\\s|$)"), QString::number(mCommonParam.fps) + "\\1");
-        videoCodec.command.replace(QRegularExpression("\\$ocodec(\\s|$)"), videoCodec.name + "\\1");
-        videoCodec.command.replace(QRegularExpression("\\$opath(\\s|$)"), outPath.replace(" ", "%20"));
-        videoCodec.command.replace(QRegularExpression("\\$pixfmt(\\s|$)"), aVideo.pixfmt + "\\1");
-        videoCodec.command.replace(
-            QRegularExpression("\\$arg_colorfilter(\\s|$)"),
-            (colorIndex == 0 ? QString("-vf colormatrix=bt601:bt709") : QString("")) + "\\1"
-        );
-        videoCodec.command.replace(
-            QRegularExpression("\\$arg_colorspace(\\s|$)"),
-            QString("-colorspace ") + (colorIndex == 0 ? QString("bt709") : QString("smpte170m")) + "\\1"
-        );
-        // videoCodec.command.replace("\\", "");
-
-        // qDebug() << videoCodec.command;
-
-        if (!mFFMpeg.start(videoCodec.command)) {
-            mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
-            return mFFMpeg.errorCode() == QProcess::FailedToStart ? Result(ResultCode_FFMpegFailedToStart, mLog)
-                                                                  : Result(ResultCode_FFMpegError, mLog);
+        if (!mVideoEncoder.open(cfg)) {
+            mLog = "Video encoder error.\n" + mVideoEncoder.error();
+            return Result(ResultCode_FFMpegFailedToStart, mLog);
         }
     }
-#endif
 
     return execute();
 }
@@ -568,16 +517,10 @@ bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
     }
 
     if (mVideoExporting) {
-        QByteArray byteArray;
-        QBuffer buffer(&byteArray);
-        buffer.open(QIODevice::ReadWrite);
-        aFboImage.save(&buffer, mVideoInCodec, mVideoInCodecQuality);
-        // aFboImage.save(&buffer, "PPM");
-        buffer.close();
-        mFFMpeg.write(byteArray);
-
-        if (mFFMpeg.errorOccurred()) {
-            mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
+        // Feed the frame to the in-process encoder (no intermediate raster,
+        // no CLI subprocess).
+        if (!mVideoEncoder.write(aFboImage)) {
+            mLog = "Video encoder error.\n" + mVideoEncoder.error();
             return false;
         }
     } else {
@@ -595,13 +538,8 @@ Exporter::Result Exporter::finish() {
 
     if (mExporting) {
         if (mVideoExporting) {
-            auto success = mFFMpeg.finish([=]() -> bool {
-                // update log if necessary
-                this->updateLog();
-                return true;
-            });
-            if (!success) {
-                mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
+            if (!mVideoEncoder.close()) {
+                mLog = "Video encoder error.\n" + mVideoEncoder.error();
                 result = Result(ResultCode_FFMpegError, mLog);
             }
         }

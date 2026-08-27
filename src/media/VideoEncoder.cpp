@@ -1,4 +1,5 @@
 #include "media/VideoEncoder.h"
+#include "media/FFmpegHelpers.h"
 
 #include <QList>
 #include <QVector>
@@ -116,6 +117,37 @@ QSize VideoEncoder::normalizedSize(const QSize& aSize, const QString& aPixFmt) {
         if (s.height() % 2 != 0) s.setHeight(s.height() + 1);
     }
     return s;
+}
+
+VideoEncoder::Config VideoEncoder::makeConfig(const QString& aContainer, const QString& aCodec,
+                                              const QString& aPixFmt, bool aTransparent,
+                                              int aWidth, int aHeight, int aFps, int aBitrateKbps,
+                                              QString* aError) {
+    Config c;
+    c.container = (aContainer == QLatin1String("mkv")) ? QStringLiteral("matroska") : aContainer;
+    c.width = aWidth;
+    c.height = aHeight;
+    c.fps = aFps;
+    c.bitrate = aBitrateKbps > 0 ? aBitrateKbps * 1000 : 0; // preset bitrate is kbps
+    c.transparent = aTransparent;
+
+    const QString enc = ::media::ffmpeg::resolveEncoderName(aCodec);
+    if (enc.isEmpty()) {
+        if (aError) *aError = "encoder not available in this build: " + aCodec;
+        return c; // codec stays empty -> callers reject
+    }
+    c.codec = enc;
+
+    // Pixel format: honor the preset's explicit list if the encoder supports it,
+    // otherwise prefer an alpha-capable format when transparency is requested.
+    if (!aPixFmt.isEmpty() && ::media::ffmpeg::encoderSupportsPixFormat(enc, aPixFmt)) {
+        c.pixFmt = aPixFmt;
+    } else if (aTransparent && ::media::ffmpeg::encoderSupportsPixFormat(enc, QStringLiteral("rgba"))) {
+        c.pixFmt = QStringLiteral("rgba");
+    } else if (aTransparent && ::media::ffmpeg::encoderSupportsPixFormat(enc, QStringLiteral("yuva420p"))) {
+        c.pixFmt = QStringLiteral("yuva420p");
+    }
+    return c;
 }
 
 bool VideoEncoder::open(const Config& aConfig) {
@@ -385,8 +417,7 @@ bool VideoEncoder::openAudio(const Config& aConfig) {
 }
 
 bool VideoEncoder::setAudio(const float* aInterleaved, int aChannels, int aSampleRate,
-                            qint64 aSampleCountPerChannel) {
-    if (!mOpened || !mImpl->mAudioCtx) { mError = "audio not configured (set audioCodec/channels/rate)"; return false; }
+                            qint64 aSampleCountPerChannel) {    if (!mOpened || !mImpl->mAudioCtx) { mError = "audio not configured (set audioCodec/channels/rate)"; return false; }
     if (aChannels != mImpl->mAudioChannels || aSampleRate != mImpl->mAudioRate) {
         mError = "audio sample rate/channels do not match the configured stream";
         return false;
