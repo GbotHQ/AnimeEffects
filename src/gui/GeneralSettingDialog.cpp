@@ -728,43 +728,33 @@ bool GeneralSettingDialog::accentHasChanged() {
 
 
 QString GeneralSettingDialog::getFFmpeg() {
-    QFileInfo ffmpeg_file;
-    QString ffmpeg;
-    if (util::NetworkUtil::os() == "win") { ffmpeg_file = QFileInfo("./tools/ffmpeg.exe"); }
-    else { ffmpeg_file = QFileInfo("./tools/ffmpeg"); }
-    const auto file = util::NetworkUtil::os() == "win" ? "ffmpeg.exe" : "ffmpeg";
-    auto appdata = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
-    auto anieFolder = QDir(appdata.absolutePath() + "/AnimeEffects");
-    if (!ffmpeg_file.exists() || !ffmpeg_file.isExecutable()) {
-        qDebug() << "FFmpeg not found, attempting backup...";
-        ffmpeg_file = QFileInfo(anieFolder.absolutePath() + "/" + file);
-        ffmpeg = ffmpeg_file.absoluteFilePath();
-        if (!anieFolder.exists() || !QFileInfo(anieFolder.absolutePath()).isReadable()) {
-            qDebug() << "AnimeEffects not found in appdata, attempting backup...";
-            appdata = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
-            anieFolder = QDir(appdata.absolutePath() + "/AnimeEffects");
-            ffmpeg_file = QFileInfo(anieFolder.absolutePath() + "/" + file);
-            ffmpeg = ffmpeg_file.absoluteFilePath();
-            if (!anieFolder.exists() || !QFileInfo(anieFolder.absolutePath()).isReadable()) {
-                qDebug() << "AnimeEffects not found in documents, attempting back up...";
-                appdata = QApplication::applicationDirPath();
-                ffmpeg_file = QFileInfo(appdata.absolutePath() + "/" + file);
-                ffmpeg = ffmpeg_file.absoluteFilePath();
-                if (!appdata.exists() || !ffmpeg_file.isReadable()) {
-                    qDebug() << "AnimeEffects not found in appdir, stopping...";
-                    ffmpeg = "ffmpeg";
-                }
-                else { qDebug("FFmpeg found in appdir, initializing..."); }
-            }
-            else{ qDebug("FFmpeg found in documents, initializing..."); }
-        } else { qDebug("FFmpeg found in appdata, initializing..."); }
+    // Prefer a bundled / auto-downloaded ffmpeg (for consistency and
+    // portability); fall back to the system's ffmpeg on PATH. Search each
+    // location for an actual executable file (not just a readable folder) and
+    // return the first hit; the bare name is last so it resolves via PATH when
+    // the app runs it. Paths are built from applicationDirPath() (not a CWD-
+    // relative ./tools, which this app must not depend on).
+    const bool isWin = util::NetworkUtil::os() == "win";
+    const QString exeName = isWin ? QStringLiteral("ffmpeg.exe") : QStringLiteral("ffmpeg");
+    const QString root = QApplication::applicationDirPath();
+    const QString appdata = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+
+    const QStringList candidates = {
+        root + QStringLiteral("/tools/") + exeName,                // bundled next to the exe
+        appdata + QStringLiteral("/AnimeEffects/") + exeName,      // auto-download target
+        documents + QStringLiteral("/AnimeEffects/") + exeName,    // auto-download fallback
+        root + QStringLiteral("/") + exeName                       // co-located in the app dir
+    };
+    for (const QString& cand : candidates) {
+        const QFileInfo f(cand);
+        if (f.exists() && f.isFile() && f.isExecutable()) {
+            qDebug() << "FFmpeg found at:" << cand;
+            return cand;
+        }
     }
-    else {
-        qDebug() << "FFmpeg found in tools, initializing...";
-        ffmpeg = ffmpeg_file.absoluteFilePath();
-    }
-    qDebug() << "FFmpeg at: " << ffmpeg;
-    return ffmpeg;
+    qDebug() << "FFmpeg not found in bundled/auto-downloaded locations; falling back to PATH";
+    return exeName; // bare name; QProcess resolves it via PATH
 }
 void GeneralSettingDialog::ffmpegCheckFailed(GeneralSettingDialog* aDialog) {
     QMessageBox message;
