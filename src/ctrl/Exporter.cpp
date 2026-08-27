@@ -43,95 +43,6 @@ Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {}
 Exporter::VideoParam::VideoParam(): format(), codecIndex(-1), colorIndex(), bps(), pixfmt() {}
 
 //-------------------------------------------------------------------------------------------------
-Exporter::FFMpeg::FFMpeg(): mProcess(), mFinished(), mErrorOccurred(), mErrorString(), mErrorCode(), mLogs() {}
-
-bool Exporter::FFMpeg::start(const QString& aArgments) {
-#if defined(Q_OS_WIN)
-    const QFileInfo localEncoderInfo("./tools/ffmpeg.exe");
-    const bool hasLocalEncoder = localEncoderInfo.exists() && localEncoderInfo.isExecutable();
-    const QString program = hasLocalEncoder ? QString(".\\tools\\ffmpeg") : QString("ffmpeg");
-#else
-    const QFileInfo localEncoderInfo("./tools/ffmpeg");
-    const bool hasLocalEncoder = localEncoderInfo.exists() && localEncoderInfo.isExecutable();
-    const QString program = hasLocalEncoder ? QString("./tools/ffmpeg") : QString("ffmpeg");
-#endif
-
-    mFinished = false;
-    mErrorOccurred = false;
-    mErrorString.clear();
-    mProcess.reset(new QProcess(nullptr));
-    mProcess->setProcessChannelMode(QProcess::MergedChannels);
-
-    auto process = mProcess.data();
-    mProcess->connect(process, &QProcess::readyRead, [=]() {
-        if (this->mProcess) {
-            this->mLogs.push_back(QString(this->mProcess->readAll().data()));
-            // qDebug() << QString(process->readAll().data());
-        }
-    });
-
-    mProcess->connect(process, &QProcess::errorOccurred, [=](QProcess::ProcessError aCode) {
-        this->mErrorOccurred = true;
-        this->mErrorCode = aCode;
-        if (this->mProcess) {
-            this->mErrorString = this->mProcess->errorString();
-        }
-    });
-    mProcess->connect(
-        process,
-        util::SelectArgs<int, QProcess::ExitStatus>::from(&QProcess::finished),
-        [=](int, QProcess::ExitStatus) { this->mFinished = true; }
-    );
-
-    // TODO improve the arguments build process
-    QStringList arguments = aArgments.split(' ');
-    arguments.replaceInStrings("%20", " ");
-    if (arguments.contains("")) {
-        arguments.removeAt(arguments.indexOf(""));
-    }
-    qDebug() << "arguments : " << arguments;
-    mProcess->start(program, arguments, QIODevice::ReadWrite);
-    // qDebug() << mProcess->readAll().data();
-    return !mErrorOccurred;
-}
-
-void Exporter::FFMpeg::write(const QByteArray& aBytes) {
-    XC_ASSERT(mProcess);
-    mProcess->write(aBytes);
-}
-
-bool Exporter::FFMpeg::finish(const std::function<bool()>& aWaiter) {
-    static const int kMSec = 100;
-    XC_ASSERT(mProcess);
-
-    mProcess->closeWriteChannel();
-
-    while (!mProcess->waitForFinished(kMSec)) {
-        if (!aWaiter() || mFinished || mErrorOccurred)
-            break;
-    }
-
-    auto exitStatus = mProcess->exitStatus();
-    qDebug() << "exit status" << exitStatus;
-    qDebug() << "exit code" << mProcess->exitCode();
-
-    mProcess.reset();
-    return (exitStatus == QProcess::NormalExit);
-}
-
-bool Exporter::FFMpeg::execute(const QString& aArgments, const std::function<bool()>& aWaiter) {
-    if (!start(aArgments))
-        return false;
-    if (!finish(aWaiter))
-        return false;
-    return true;
-}
-
-QString Exporter::FFMpeg::popLog() {
-    QString log = mLogs.join("");
-    mLogs.clear();
-    return log;
-}
 
 //-------------------------------------------------------------------------------------------------
 Exporter::Exporter(core::Project& aProject):
@@ -150,7 +61,6 @@ Exporter::Exporter(core::Project& aProject):
     mVideoInCodec(),
     mVideoInCodecQuality(),
     mVideoExporting(),
-    mFFMpeg(),
     mExporting(false),
     mIndex(0),
     mDigitCount(0),
@@ -366,12 +276,6 @@ Exporter::Result Exporter::execute() {
                 return Result(ResultCode_Canceled, mLog);
             }
         }
-    }
-
-    if (mFFMpeg.errorOccurred()) {
-        mLog = "FFmpeg error occurred.\n" + mFFMpeg.errorString();
-        return mFFMpeg.errorCode() == QProcess::FailedToStart ? Result(ResultCode_FFMpegFailedToStart, mLog)
-                                                              : Result(ResultCode_FFMpegError, mLog);
     }
 
     return finish();
@@ -699,12 +603,8 @@ int Exporter::getDigitCount(const util::Range& aRange, int aFps, int aFpsOrigin)
 }
 
 void Exporter::updateLog() {
-    if (mUILogger && mVideoExporting) {
-        auto log = mFFMpeg.popLog();
-        if (!log.isEmpty()) {
-            mUILogger->pushLog(log, ctrl::UILogType_Info);
-        }
-    }
+    // In-process media encoding has no subprocess log to surface.
+    Q_UNUSED(mUILogger);
 }
 
 } // namespace ctrl

@@ -9,7 +9,6 @@
 #include <QList>
 #include <QImage>
 #include <QFileInfo>
-#include <QProcess>
 #include <QOpenGLFramebufferObject>
 #include "util/Range.h"
 #include "util/IProgressReporter.h"
@@ -107,27 +106,6 @@ private:
     typedef std::unique_ptr<QOpenGLFramebufferObject> FramebufferPtr;
     typedef std::list<FramebufferPtr> FramebufferList;
 
-    class FFMpeg {
-    public:
-        FFMpeg();
-        bool start(const QString& aArgments);
-        void write(const QByteArray& aBytes);
-        bool finish(const std::function<bool()>& aWaiter);
-        bool execute(const QString& aArgments, const std::function<bool()>& aWaiter);
-        bool errorOccurred() const { return mErrorOccurred; }
-        QString errorString() const { return mErrorString; }
-        QProcess::ProcessError errorCode() const { return mErrorCode; }
-        QString popLog();
-
-    private:
-        QScopedPointer<QProcess> mProcess;
-        bool mFinished;
-        bool mErrorOccurred;
-        QString mErrorString;
-        QProcess::ProcessError mErrorCode;
-        QStringList mLogs;
-    };
-
     int mTick = 0;
     Result execute();
     Result start();
@@ -165,10 +143,8 @@ private:
     bool mCollectFrames = false;
     QList<QImage> mGifFrames;
 
-    FFMpeg mFFMpeg;
     media::VideoEncoder mVideoEncoder;
-    QVector<media::AudioMixer::Track> mAudioTracks;
-    int mAudioSampleRate = 48000;
+    QVector<media::AudioMixer::Track> mAudioTracks;    int mAudioSampleRate = 48000;
     int mAudioChannels = 2;
     bool mHasAudio = false;
     bool mExporting;
