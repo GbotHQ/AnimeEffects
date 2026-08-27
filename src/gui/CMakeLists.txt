@@ -148,13 +148,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # i18n (Qt LinguistTools, loaded in the root CMakeLists): regenerates the
-# translation sources under data/locale/translation_<locale>.ts (via the
+# translation sources under assets/locale/translation_<locale>.ts (via the
 # update_translations target) and builds the .qm (via release_translations).
 # The .qm are written to the build dir and copied into the shipped data/locale
 # by copy_data below, so translators only ever edit the committed .ts.
 qt_add_translations(${PROJECT_NAME}
     TS_FILE_BASE translation
-    TS_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/data/locale
+    TS_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/assets/locale
     QM_FILES_OUTPUT_VARIABLE qm_files
 )
 
@@ -181,7 +181,7 @@ else ()
 endif ()
 add_custom_target(copy_data
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${AE_DATA_DEST}
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data ${AE_DATA_DEST}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets ${AE_DATA_DEST}
         # Ship the build-produced .qm (built by release_translations) into
         # data/locale; the committed .ts are the only translation source.
         COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/locale
