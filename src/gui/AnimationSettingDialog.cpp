@@ -61,7 +61,10 @@ AnimationSettingDialog::AnimationSettingDialog(QWidget* aParent)
 
     // The model starts at neutral values; showAt() sets the real project state
     // on every open (this is a pure view — it never holds a project reference).
-    mModel = new AnimationSettingViewModel(0, 0, 0, false, this);
+    // The placeholder must satisfy the model's fps >= 1 invariant (the model
+    // clamps writers to >= 1 and asserts a valid fps), even though it is
+    // overwritten before the scene is shown.
+    mModel = new AnimationSettingViewModel(0, 0, 1, false, this);
     mTheme = new QmlTheme(this);
 
     mQuick = new ScrubQuickWidget(this);
