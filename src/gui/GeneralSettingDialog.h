@@ -102,7 +102,6 @@ private:
 
     QPushButton* ffmpegTroubleshoot;
     QPushButton* selectFromExe;
-    QPushButton* autoSetup;
 
     MouseSetting mInitialMouseValues;
     QCheckBox* mInvertMainViewScalingBox;
