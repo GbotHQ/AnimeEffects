@@ -138,6 +138,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
         AE_MICRO_VERSION=1
     USE_GL_CORE_PROFILE
     $<$<CONFIG:Debug>:QT_DEBUG>
+    # Path to the bundled sample project (a debug/dev fixture auto-opened under
+    # QT_DEBUG); it is not shipped in any runtime data directory.
+    AE_SAMPLE_PSD="${CMAKE_SOURCE_DIR}/assets/sample.psd"
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -173,26 +176,3 @@ install(TARGETS ${PROJECT_NAME}
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-
-# Ship the sample project document next to the executable. It is a debug/dev
-# fixture (auto-opened under QT_DEBUG). Everything else - icons, stylesheets,
-# fonts, shaders, translations, encode presets, locale defaults - is embedded
-# into the binary (see assets.qrc) or lives in QSettings.
-message("Copying data")
-if (APPLE)
-    set(AE_DATA_SUBDIR AnimeEffects.app/Contents/MacOS/data)
-else ()
-    set(AE_DATA_SUBDIR data)
-endif ()
-if (CMAKE_CONFIGURATION_TYPES)
-    set(AE_DATA_DEST ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${AE_DATA_SUBDIR})
-else ()
-    set(AE_DATA_DEST ${CMAKE_CURRENT_BINARY_DIR}/${AE_DATA_SUBDIR})
-endif ()
-add_custom_target(copy_data
-    COMMAND ${CMAKE_COMMAND} -E rm -rf ${AE_DATA_DEST}
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/assets/sample.psd ${AE_DATA_DEST}/sample.psd
-)
-message("Data copied")
-add_dependencies(${PROJECT_NAME} copy_data)
-

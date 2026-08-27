@@ -105,15 +105,14 @@ static void cpuid_vendor_id(char vendor[VENDOR_ID_LEN]) {
 
 #endif
 //-------------------------------------------------------------------------------------------------
-MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent, QString aDataDir):
+MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent):
     QMenuBar(aParent),
     mProcess(),
     mViaPoint(aViaPoint),
     mProject(),
     mProjectActions(),
     mVideoFormats(),
-    mGUIResources(aGUIResources),
-    mDataDir(std::move(aDataDir)) {
+    mGUIResources(aGUIResources) {
     // load the list of video formats from a setting file.
     loadVideoFormats();
 
@@ -316,7 +315,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         auto keyBind = new QAction(tr("Keybindings"), this);
 
         connect(general, &QAction::triggered, [&](bool) {
-            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, aViaPoint, this, mDataDir);
+            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, aViaPoint, this);
             QScopedPointer<GeneralSettingDialog> dialog(generalSettingsDialog);
             if (dialog->exec() == QDialog::DialogCode::Accepted) {
                 if (generalSettingsDialog->timeFormatHasChanged())
@@ -518,8 +517,11 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             auto nonAscii = QRegularExpression("[^\\x00-\\x7F]+");
             QString hasUnicode = QApplication::applicationFilePath().contains(nonAscii) ? "True" : "False";
             detail += tr("Location Has Unicode: ") + hasUnicode + "\n";
-            // Write Check
-            QFile file(QApplication::applicationDirPath() + R"(\data\shader\TestBlurVert.glsl)");
+            // Write Check: the app's writable storage is the cache (and
+            // QSettings); probe the cache dir rather than the old co-located
+            // data dir (which no longer exists).
+            QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
+            QFile file(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/.writeTest");
             bool isWritable = true;
             if (!file.open(QIODevice::WriteOnly)) {
                 isWritable = false;
