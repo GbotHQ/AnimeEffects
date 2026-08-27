@@ -9,7 +9,7 @@ namespace gui {
 
 class LocaleDecider {
 public:
-    LocaleDecider();
+    LocaleDecider(const QString& aDataDir);
     const QString& fontFamily() const { return mLocaleParam.fontFamily; }
     const QString& fontSize() const { return mLocaleParam.fontSize; }
     LocaleParam localeParam() const { return mLocaleParam; }
@@ -17,6 +17,7 @@ public:
     QTranslator* translator() { return mHasTranslator ? &mTranslator : nullptr; }
 
 private:
+    QString mDataDir;
     LocaleParam mLocaleParam;
     QTranslator mTranslator;
     bool mHasTranslator;

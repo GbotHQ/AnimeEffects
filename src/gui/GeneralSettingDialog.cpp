@@ -176,7 +176,7 @@ QString indexToTimeFormat(int aComboIndex) {
 
 namespace gui {
 
-GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent):
+GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent, QString aDataDir):
     EasyDialog(tr("Settings"), aParent),
     mTabs(new QTabWidget(this)),
     mInitialLanguageIndex(),
@@ -192,7 +192,8 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint
     mInvertTimeLineScalingBox(),
     mMiddleMouseMoveCanvas(),
     mGUIResources(aGUIResources),
-    mViaPoint(aViaPoint) {
+    mViaPoint(aViaPoint),
+    mDataDir(std::move(aDataDir)) {
     // read current settings
     {
         QSettings settings;
@@ -823,11 +824,11 @@ bool GeneralSettingDialog::ffmpegCheck(const QString& ffmpeg, GeneralSettingDial
         ffmpegNotif.setWindowTitle(tr("FFmpeg doesn't export"));
         ffmpegNotif.setText(tr("FFmpeg was unable to export, please troubleshoot."));
         ffmpegNotif.setDetailedText(
-            "File exists: " + QString(QFileInfo::exists("./data/icons/file.png")? "True" : "False") +
-            "\nFile readable: " + QString(QFileInfo("./data/icons/file.png").isReadable()? "True" : "False") +
-            "\nFile writeable: " + QString(QFileInfo("./data/icons/file.png").isWritable()? "True" : "False") +
-            "\nFolder writeable: " + QString(QDir("./data/icons/").exists() ? "True" : "False") +
-            "\nFolder readable: " + QString(QDir("./data/icons/").isReadable() ? "True" : "False")
+            "Data dir: " + generalSettingsDialog->mDataDir +
+            "\nData dir exists: " + QString(QFileInfo::exists(generalSettingsDialog->mDataDir)? "True" : "False") +
+            "\nData dir readable: " + QString(QDir(generalSettingsDialog->mDataDir).isReadable()? "True" : "False") +
+            "\nData dir writeable: " + QString(QFileInfo(generalSettingsDialog->mDataDir).isWritable()? "True" : "False") +
+            "\nVideoEncode.txt exists: " + QString(QFileInfo::exists(generalSettingsDialog->mDataDir + "/encode/VideoEncode.txt")? "True" : "False")
             );
         ffmpegNotif.addButton(QMessageBox::Ok);
         ffmpegNotif.exec();

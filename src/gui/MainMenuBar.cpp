@@ -26,8 +26,8 @@
 
 namespace gui {
 //-------------------------------------------------------------------------------------------------
-QDomDocument getVideoExportDocument() {
-    QFile file("./data/encode/VideoEncode.txt");
+QDomDocument getVideoExportDocument(const QString& aDataDir) {
+    QFile file(aDataDir + "/encode/VideoEncode.txt");
 
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qDebug() << file.errorString();
@@ -105,14 +105,15 @@ static void cpuid_vendor_id(char vendor[VENDOR_ID_LEN]) {
 
 #endif
 //-------------------------------------------------------------------------------------------------
-MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent):
+MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent, QString aDataDir):
     QMenuBar(aParent),
     mProcess(),
     mViaPoint(aViaPoint),
     mProject(),
     mProjectActions(),
     mVideoFormats(),
-    mGUIResources(aGUIResources) {
+    mGUIResources(aGUIResources),
+    mDataDir(std::move(aDataDir)) {
     // load the list of video formats from a setting file.
     loadVideoFormats();
 
@@ -315,7 +316,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         auto keyBind = new QAction(tr("Keybindings"), this);
 
         connect(general, &QAction::triggered, [&](bool) {
-            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, aViaPoint, this);
+            auto generalSettingsDialog = new GeneralSettingDialog(mGUIResources, aViaPoint, this, mDataDir);
             QScopedPointer<GeneralSettingDialog> dialog(generalSettingsDialog);
             if (dialog->exec() == QDialog::DialogCode::Accepted) {
                 if (generalSettingsDialog->timeFormatHasChanged())
@@ -597,7 +598,7 @@ void MainMenuBar::setProject(core::Project* aProject) {
 void MainMenuBar::loadVideoFormats() {
     using util::TextUtil;
 
-    QDomDocument doc = getVideoExportDocument();
+    QDomDocument doc = getVideoExportDocument(mDataDir);
     QDomElement domRoot = doc.firstChildElement("video_encode");
 
     // for each format
