@@ -129,47 +129,13 @@ int entryPoint(int argc, char* argv[]) {
     XC_DEBUG_REPORT() << "exe path =" << app.applicationFilePath();
 
     // application path
-    #ifdef Q_OS_DARWIN
-    QString cur = app.applicationDirPath();
-    if (!QDir(cur + "/.AECache").exists() || !QDir(cur + "/.AECache/data").exists()) {
-        if (!QDir(cur + "/.AECache").exists()) {
-            void (QDir().mkdir(cur + "/.AECache"));
-        }
-        QFile::copy(cur + "/data", QDir::homePath() + "/.AECache/data");
-    }
-    QDir::setCurrent(QDir::homePath() + "./AECache");
-    //app.setAttribute(Qt::AA_DontUseNativeDialogs);
-    #endif
-
     #if defined(Q_OS_DARWIN)
     const QString appDir = app.applicationDirPath();
     QApplication::addLibraryPath(appDir + "/Contents/MacOS");
     QApplication::addLibraryPath(appDir + "/../PlugIns/");
-    QApplication::addLibraryPath(appDir + "/Contents/MacOS/data");
     #else
     const QString appDir = QApplication::applicationDirPath();
     #endif
-    QString resourceDir(appDir + "/data");
-    QDir dataDir = QDir(resourceDir);
-    if(!dataDir.exists() || !dataDir.isReadable() || dataDir.absoluteFilePath("sample.psd").isEmpty()){
-        QString newResDir;
-        QSettings settings;
-        QVariant customDataFolder = settings.value("customDataFolder");
-        if(customDataFolder.isValid()){
-            QDir cdf = QDir(customDataFolder.toString());
-            if(cdf.exists() && !cdf.isEmpty()){
-                newResDir = customDataFolder.toString();
-            }
-        }
-        if(newResDir.isEmpty() || !QDir(newResDir).exists() || dataDir.absoluteFilePath("sample.psd").isEmpty()){
-            newResDir = QFileDialog::getExistingDirectory(app.activeWindow(), QCoreApplication::translate("data_load", "Unable to locate data folder, please select it"),
-                                                appDir,
-                                                QFileDialog::ShowDirsOnly
-                                                | QFileDialog::DontResolveSymlinks);
-            settings.setValue("customDataFolder", newResDir);
-        }
-        resourceDir = newResDir;
-    }
 
     // Register the bundled font so the Geist family resolves on every
     // platform instead of falling back to a system font (the digit glyphs
@@ -212,10 +178,10 @@ int entryPoint(int argc, char* argv[]) {
         QScopedPointer<gui::GUIResources> resources(new gui::GUIResources(QStringLiteral(":")));
 
         // create system logic core
-        QScopedPointer<ctrl::System> system(new ctrl::System(resourceDir, cacheDir));
+        QScopedPointer<ctrl::System> system(new ctrl::System(cacheDir));
 
         // create main window
-        QScopedPointer<gui::MainWindow> mainWindow(new gui::MainWindow(*system, *resources, locale->localeParam(), resourceDir));
+        QScopedPointer<gui::MainWindow> mainWindow(new gui::MainWindow(*system, *resources, locale->localeParam()));
 
         qDebug() << "show main window";
         // show main window
@@ -229,8 +195,7 @@ int entryPoint(int argc, char* argv[]) {
 
 #ifdef QT_DEBUG
         qDebug() << "Launching debug project";
-        const QString testPath = resourceDir + "/sample.psd";
-        mainWindow->testNewProject(testPath);
+        mainWindow->testNewProject(QStringLiteral(AE_SAMPLE_PSD));
 #endif
         // assoc handle
         auto arguments = QCoreApplication::arguments();

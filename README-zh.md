@@ -81,7 +81,6 @@ cmake --build build --config Release
 cd build/src/gui/Release
 mkdir -p appdir
 cp AnimeEffects appdir
-cp -R ../data appdir/data
 cp -R ../../../../dist appdir/dist
 cp ../../../../dist/AnimeEffects.png appdir
 find appdir/
@@ -106,7 +105,6 @@ cmake --build build --config Release
 cd build/src/gui/Release
 mkdir .\AnimeEffects-Windows-x64
 windeployqt --dir .\AnimeEffects-Windows-x64 .\AnimeEffects.exe
-Copy-Item -Path "..\data" -Destination ".\AnimeEffects-Windows-x64\" -recurse -Force
 Copy-Item ".\AnimeEffects.exe" ".\AnimeEffects-Windows-x64\"
 ```
 
@@ -128,7 +126,6 @@ cmake --build build --config Release
 cd build/src/gui/Release
 mkdir -p appdir/usr/lib
 cp -R AnimeEffects.app appdir/AnimeEffects.app
-cp -R ../data appdir/data
 cp -R ../../../../dist appdir/dist
 find appdir/
 cd appdir
