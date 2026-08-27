@@ -76,30 +76,30 @@
     <file>icons/undock_hover.svg</file>
     <file>icons/undock.svg</file>
     <file>icons/up_arrow.svg</file>
-    <file>stylesheet/dialogbutton.ssa</file>
-    <file>stylesheet/modetabbar.ssa</file>
-    <file>stylesheet/playbackwidget.ssa</file>
-    <file>stylesheet/propertywidget.ssa</file>
-    <file>stylesheet/standard.ssa</file>
-    <file>stylesheet/timelinewidget.ssa</file>
-    <file>stylesheet/toolwidget.ssa</file>
+    <file>stylesheets/dialogbutton.ssa</file>
+    <file>stylesheets/modetabbar.ssa</file>
+    <file>stylesheets/playbackwidget.ssa</file>
+    <file>stylesheets/propertywidget.ssa</file>
+    <file>stylesheets/standard.ssa</file>
+    <file>stylesheets/timelinewidget.ssa</file>
+    <file>stylesheets/toolwidget.ssa</file>
     <file>fonts/Geist-Bold.ttf</file>
     <file>fonts/Geist-Medium.ttf</file>
     <file>fonts/Geist-Regular.ttf</file>
     <file>fonts/Geist-SemiBold.ttf</file>
-    <file>shader/ClipperWritingFrag.glsl</file>
-    <file>shader/ClipperWritingVert.glsl</file>
-    <file>shader/FFDBlurVert.glsl</file>
-    <file>shader/FFDEraseVert.glsl</file>
-    <file>shader/FFDFocusVertexVert.glsl</file>
-    <file>shader/FreeFormDeformVert.glsl</file>
-    <file>shader/GridDrawingFrag.glsl</file>
-    <file>shader/GridDrawingVert.glsl</file>
-    <file>shader/LayerDrawingFrag.glsl</file>
-    <file>shader/LayerDrawingVert.glsl</file>
-    <file>shader/MeshTransformVert.glsl</file>
-    <file>shader/PartialScreenCopyingFrag.glsl</file>
-    <file>shader/PartialScreenCopyingVert.glsl</file>
-    <file>shader/TestBlurVert.glsl</file>
+    <file>shaders/ClipperWritingFrag.glsl</file>
+    <file>shaders/ClipperWritingVert.glsl</file>
+    <file>shaders/FFDBlurVert.glsl</file>
+    <file>shaders/FFDEraseVert.glsl</file>
+    <file>shaders/FFDFocusVertexVert.glsl</file>
+    <file>shaders/FreeFormDeformVert.glsl</file>
+    <file>shaders/GridDrawingFrag.glsl</file>
+    <file>shaders/GridDrawingVert.glsl</file>
+    <file>shaders/LayerDrawingFrag.glsl</file>
+    <file>shaders/LayerDrawingVert.glsl</file>
+    <file>shaders/MeshTransformVert.glsl</file>
+    <file>shaders/PartialScreenCopyingFrag.glsl</file>
+    <file>shaders/PartialScreenCopyingVert.glsl</file>
+    <file>shaders/TestBlurVert.glsl</file>
   </qresource>
 </RCC>
