@@ -115,6 +115,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
         prop/bezierCurveEditor.cpp
     qml/QmlTheme.cpp qml/QmlTheme.h
     qml/AnimationSettingViewModel.cpp qml/AnimationSettingViewModel.h
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
     ..
@@ -150,25 +151,33 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # i18n (Qt LinguistTools, loaded in the root CMakeLists): regenerates the
 # translation sources under assets/locale/translation_<locale>.ts (via the
 # update_translations target) and builds the .qm (via release_translations).
-# The .qm are written to the build dir and copied into the shipped data/locale
-# by copy_data below, so translators only ever edit the committed .ts.
+# The .qm are embedded into the binary under :/i18n below, so the translator
+# resolves them regardless of where the executable lives; translators only
+# ever edit the committed .ts.
 qt_add_translations(${PROJECT_NAME}
     TS_FILE_BASE translation
     TS_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/assets/locale
     QM_FILES_OUTPUT_VARIABLE qm_files
 )
+# Embed the build-produced .qm (they are build artifacts, not source) under
+# :/i18n so the app stays self-contained for its translations.
+qt_add_resources(${PROJECT_NAME} "translations"
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}"
+    FILES ${qm_files}
+)
+# rcc needs the .qm present when it runs; they are produced by lrelease.
+add_dependencies(${PROJECT_NAME} release_translations)
 
 install(TARGETS ${PROJECT_NAME}
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Ship the few genuinely-external assets next to the executable: the sample
+# project document and the runtime config (encode presets, locale preference
+# defaults). Everything else is embedded into the binary (see assets.qrc).
 message("Copying data")
-# the app chdirs to its executable directory (Main.cpp: QDir::setCurrent(appDir))
-# and opens ./data from there, so data must sit next to the exe. Multi-config
-# generators put the exe in a per-config subdir, hence $<CONFIG>. Wipe the
-# destination first so deleted source files do not linger (copy_directory only
-# ever adds/updates).
 if (APPLE)
     set(AE_DATA_SUBDIR AnimeEffects.app/Contents/MacOS/data)
 else ()
@@ -179,16 +188,16 @@ if (CMAKE_CONFIGURATION_TYPES)
 else ()
     set(AE_DATA_DEST ${CMAKE_CURRENT_BINARY_DIR}/${AE_DATA_SUBDIR})
 endif ()
+file(GLOB _external_encode ${CMAKE_SOURCE_DIR}/assets/encode/*.txt)
+file(GLOB _external_locale ${CMAKE_SOURCE_DIR}/assets/locale/preference*.txt)
 add_custom_target(copy_data
-        COMMAND ${CMAKE_COMMAND} -E rm -rf ${AE_DATA_DEST}
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets ${AE_DATA_DEST}
-        # Ship the build-produced .qm (built by release_translations) into
-        # data/locale; the committed .ts are the only translation source.
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/locale
-        COMMAND ${CMAKE_COMMAND} -E copy ${qm_files} ${AE_DATA_DEST}/locale
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${AE_DATA_DEST}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/encode
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${AE_DATA_DEST}/locale
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/assets/sample.psd ${AE_DATA_DEST}/sample.psd
+    COMMAND ${CMAKE_COMMAND} -E copy ${_external_encode} ${AE_DATA_DEST}/encode
+    COMMAND ${CMAKE_COMMAND} -E copy ${_external_locale} ${AE_DATA_DEST}/locale
 )
 message("Data copied")
-# Build the .qm before shipping them.
-add_dependencies(copy_data release_translations)
 add_dependencies(${PROJECT_NAME} copy_data)
 

@@ -253,4 +253,18 @@ target_link_libraries(anim_setting_i18n PRIVATE
     Qt6::Core Qt6::Gui
     Qt6::Qml Qt6::Quick
 )
+# Mirror the app: the .qm are build artifacts embedded under :/i18n, so the
+# test exercises the same resource path the app loads at runtime (not just a
+# raw file from the build dir).
+qt_add_resources(anim_setting_i18n "translations"
+    PREFIX "/i18n"
+    BASE "${PROJECT_BINARY_DIR}/src/gui"
+    FILES
+        ${PROJECT_BINARY_DIR}/src/gui/translation_en.qm
+        ${PROJECT_BINARY_DIR}/src/gui/translation_es.qm
+        ${PROJECT_BINARY_DIR}/src/gui/translation_ja.qm
+        ${PROJECT_BINARY_DIR}/src/gui/translation_ko.qm
+        ${PROJECT_BINARY_DIR}/src/gui/translation_ru.qm
+        ${PROJECT_BINARY_DIR}/src/gui/translation_zh.qm
+)
 add_dependencies(anim_setting_i18n release_translations)
