@@ -195,16 +195,14 @@ int entryPoint(int argc, char* argv[]) {
     const QString cacheDir = !stdCacheDir.isEmpty() ? stdCacheDir : (appDir + "/cache");
 
 
-    // initialize current
-    QDir::setCurrent(appDir);
-
     // set fatal error handler
     static AEErrorHandler aeErrorHandler;
     gXCErrorHandler = &aeErrorHandler;
 
 
-    // language
-    QScopedPointer<gui::LocaleDecider> locale(new gui::LocaleDecider());
+    // language: the .qm are embedded under :/i18n; the locale preference
+    // defaults live in the (explicitly resolved) external data dir.
+    QScopedPointer<gui::LocaleDecider> locale(new gui::LocaleDecider(resourceDir));
     if (locale->translator()) { QCoreApplication::installTranslator(locale->translator()); }
 
     {
@@ -217,7 +215,7 @@ int entryPoint(int argc, char* argv[]) {
         QScopedPointer<ctrl::System> system(new ctrl::System(resourceDir, cacheDir));
 
         // create main window
-        QScopedPointer<gui::MainWindow> mainWindow(new gui::MainWindow(*system, *resources, locale->localeParam()));
+        QScopedPointer<gui::MainWindow> mainWindow(new gui::MainWindow(*system, *resources, locale->localeParam(), resourceDir));
 
         qDebug() << "show main window";
         // show main window

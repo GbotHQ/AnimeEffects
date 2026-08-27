@@ -34,7 +34,7 @@ class MainWindow: public QMainWindow {
     Q_OBJECT
 
 public:
-    MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocaleParam  aLocaleParam);
+    MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocaleParam  aLocaleParam, QString aDataDir);
     ~MainWindow();
 
     void showWithSettings();
@@ -126,6 +126,7 @@ private:
     QScopedPointer<DriverHolder> mDriverHolder;
     core::Project* mCurrent;
     LocaleParam mLocaleParam;
+    QString mDataDir;
     void onMoveFrameTriggered(bool moveRight);
 };
 
