@@ -41,7 +41,7 @@ public:
 
 namespace gui {
 
-MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocaleParam  aLocaleParam, QString aDataDir):
+MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocaleParam  aLocaleParam):
     QMainWindow(nullptr),
     autosaveTimer(nullptr),
     mSystem(aSystem),
@@ -55,8 +55,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     mTool(),
     mResourceDialog(),
     mCurrent(),
-    mLocaleParam(std::move(aLocaleParam)),
-    mDataDir(std::move(aDataDir)) {
+    mLocaleParam(std::move(aLocaleParam)) {
     // setup default opengl format
     {
         QSurfaceFormat format;
@@ -108,7 +107,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create main menu bar
     {
-        mMainMenuBar = new MainMenuBar(*this, mViaPoint, mGUIResources, this, mDataDir);
+        mMainMenuBar = new MainMenuBar(*this, mViaPoint, mGUIResources, this);
         mViaPoint.setMainMenuBar(mMainMenuBar);
         this->setMenuBar(mMainMenuBar);
     }
@@ -1231,7 +1230,7 @@ void MainWindow::onExportTriggered() {
     QSettings settings;
     // FFmpeg Check
     QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this, mDataDir);
+    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
     bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
     if (!ffmpegWorks) {
         GeneralSettingDialog::ffmpegCheckFailed(aDiag);
@@ -1787,7 +1786,7 @@ void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
         return;
     // FFmpeg Check
     QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this, mDataDir);
+    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
     bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
     if (!ffmpegWorks) {
         GeneralSettingDialog::ffmpegCheckFailed(aDiag);

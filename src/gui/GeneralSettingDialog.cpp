@@ -176,7 +176,7 @@ QString indexToTimeFormat(int aComboIndex) {
 
 namespace gui {
 
-GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent, QString aDataDir):
+GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint& aViaPoint, QWidget* aParent):
     EasyDialog(tr("Settings"), aParent),
     mTabs(new QTabWidget(this)),
     mInitialLanguageIndex(),
@@ -192,8 +192,7 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint
     mInvertTimeLineScalingBox(),
     mMiddleMouseMoveCanvas(),
     mGUIResources(aGUIResources),
-    mViaPoint(aViaPoint),
-    mDataDir(std::move(aDataDir)) {
+    mViaPoint(aViaPoint) {
     // read current settings
     {
         QSettings settings;
@@ -824,11 +823,8 @@ bool GeneralSettingDialog::ffmpegCheck(const QString& ffmpeg, GeneralSettingDial
         ffmpegNotif.setWindowTitle(tr("FFmpeg doesn't export"));
         ffmpegNotif.setText(tr("FFmpeg was unable to export, please troubleshoot."));
         ffmpegNotif.setDetailedText(
-            "Data dir: " + generalSettingsDialog->mDataDir +
-            "\nData dir exists: " + QString(QFileInfo::exists(generalSettingsDialog->mDataDir)? "True" : "False") +
-            "\nData dir readable: " + QString(QDir(generalSettingsDialog->mDataDir).isReadable()? "True" : "False") +
-            "\nData dir writeable: " + QString(QFileInfo(generalSettingsDialog->mDataDir).isWritable()? "True" : "False") +
-            "\nVideoEncode.txt exists: " + QString(QFileInfo::exists(generalSettingsDialog->mDataDir + "/encode/VideoEncode.txt")? "True" : "False")
+            "FFmpeg: " + ffmpeg +
+            "\nExport presets are embedded in the binary (:/encode/VideoEncode.txt)."
             );
         ffmpegNotif.addButton(QMessageBox::Ok);
         ffmpegNotif.exec();
