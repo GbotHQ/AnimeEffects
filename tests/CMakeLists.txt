@@ -285,3 +285,21 @@ target_link_libraries(media_link_probe PRIVATE
     Qt6::Core
     media
 )
+
+# V1 — media::VideoEncoder correctness + edge cases. Uses the `media` module
+# (libav*) to encode and round-trips output back through the same linked
+# decode path, asserting pixel-exact lossless fidelity + structural/metadata
+# edge cases. Headless (offscreen). See media_video_encoder.cpp.
+add_executable(media_video_encoder media_video_encoder.cpp)
+target_include_directories(media_video_encoder PRIVATE ..)
+target_compile_definitions(media_video_encoder PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(media_video_encoder PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    media
+)

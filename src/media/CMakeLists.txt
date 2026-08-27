@@ -3,7 +3,7 @@ project(anime_media)
 # The media library owns all FFmpeg linkage. It is deliberately GL-free (and
 # mostly QCoreApplication-free) so it can be unit-tested headless; it only
 # needs Qt Core for QString/QStringList.
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 find_package(PkgConfig REQUIRED)
 
 # Link the standard FFmpeg libav* modules. On Fedora, pkg-config resolves
@@ -45,6 +45,8 @@ endif()
 add_library(media STATIC
     FFmpegHelpers.cpp
     FFmpegHelpers.h
+    VideoEncoder.cpp
+    VideoEncoder.h
 )
 target_include_directories(media PUBLIC
     # Resolve "media/FFmpegHelpers.h" the same way the app resolves
@@ -53,6 +55,7 @@ target_include_directories(media PUBLIC
 )
 target_link_libraries(media PUBLIC
     Qt6::Core
+    Qt6::Gui
     PkgConfig::LIBFMT PkgConfig::AVUTIL PkgConfig::SWSCALE PkgConfig::SWRESAMP
     FFmpeg::avcodec
 )
