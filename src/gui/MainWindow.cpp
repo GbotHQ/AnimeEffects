@@ -1228,85 +1228,102 @@ static QVector<media::AudioMixer::Track> toAudioTracks(const std::vector<audioCo
 // false if the container has no embedded preset (so the caller keeps the legacy
 // projectExporter path). Only the default/automatic cases are translated here;
 // custom-param / forced-intermediate exports stay on the legacy path.
-static bool translateVideoExport(exportParam& exParam, const std::vector<audioConfig>& aValidStreams,
-                                 ctrl::Exporter::CommonParam& aCommon,
+static QString defaultVideoCodec(const QString& aContainer) {
+    if (aContainer == QLatin1String("webm")) return QStringLiteral("libvpx-vp9");
+    if (aContainer == QLatin1String("avi"))  return QStringLiteral("mpeg4");
+    if (aContainer == QLatin1String("ogv"))  return QStringLiteral("libtheora");
+    return QStringLiteral("libx264"); // mp4/mov/mkv/other
+}
+
+// Fill the video-specific bits of a ctrl::Exporter::VideoParam from an exportParam.
+// Container can be any export target (embedded preset or a container-default codec).
+static void translateVideoExport(exportParam& exParam, const std::vector<audioConfig>& aValidStreams,
                                  ctrl::Exporter::VideoParam& aVideo,
                                  QVector<media::AudioMixer::Track>& aAudio) {
     auto& g = exParam.generalParams;
-    if (exParam.videoParams.format == availableVideoFormats::gif)
-        return false; // GIF stays on the legacy CLI palette path for now
-    if (g.useCustomParam || g.useIntermediate || g.usePost || g.forcePipe)
-        return false; // legacy custom-intermediate/post machinery
-    if (g.exportRange.size() > 1)
-        return false; // ctrl::Exporter is single-range; keep multi-range on the legacy path
     const QString container = getFormatAsString(exportTarget::video, (int)exParam.videoParams.format);
     ctrl::VideoFormat fmt = ctrl::VideoFormat::find(container);
-    if (fmt.name.isEmpty())
-        return false; // no embedded preset for this container (e.g. mkv)
-
-    aCommon.path = g.osExportTarget;
-    aCommon.size = QSize(g.exportWidth, g.exportHeight);
-    // A single contiguous export range; the project-native range otherwise.
-    int first = g.nativeFrameRange.firstFrame, last = g.nativeFrameRange.lastFrame;
-    if (!g.exportRange.isEmpty()) {
-        first = g.exportRange.first().firstFrame;
-        last = g.exportRange.first().lastFrame;
-        if (first > last) std::swap(first, last);
+    if (fmt.name.isEmpty()) {
+        // No embedded preset (e.g. "mkv"): build a minimal format whose default
+        // codec is the container default (the exporter/'makeConfig' resolves it).
+        fmt.name = container;
+        fmt.label = container;
+        fmt.icodec = QStringLiteral("ppm");
     }
-    aCommon.frame = util::Range(first, last);
-    aCommon.fps = g.fps > 0 ? g.fps : (g.nativeFPS > 0 ? g.nativeFPS : 24);
-
     aVideo.format = fmt;
-    // Map the Auto/default encoder to the container default (codecIndex=-1);
-    // otherwise find the codec by the encoder's libav name.
-    aVideo.codecIndex = -1;
+    aVideo.codecIndex = -1;    // container default encoder
     aVideo.colorIndex = 0;
-    aVideo.bps = g.bitrate; // kbps (the exporter converts to bits/sec)
+    aVideo.bps = g.bitrate;    // kbps (the exporter converts to bits/sec)
     const QString px = getFormatAsString(exportTarget::pxFmt, (int)exParam.videoParams.pixelFormat);
     aVideo.pixfmt = (px == QLatin1String("Auto") || px.isEmpty()) ? QString() : px;
-
     aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
-    return true;
 }
 
 void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widget, const std::vector<audioConfig>& validAudioStreams){
-    // Non-GIF video exports with an embedded preset run through the in-process
-    // media engine (ctrl::Exporter). Image/GIF/multi-range/non-preset/custom
-    // exports fall back to the legacy projectExporter (CLI) until Phase 5.
+    // All full-export dialog exports now run through the single in-process
+    // ctrl::Exporter (linked libav*): video, image sequence, and GIF. The legacy
+    // projectExporter::Exporter + ffmpeg:: CLI machinery is no longer used.
+    auto& g = exParam.generalParams;
+    const bool isImage = exParam.exportType == exportTarget::image;
     const bool isGif = exParam.exportType == exportTarget::video &&
                        exParam.videoParams.format == availableVideoFormats::gif;
-    if (!isGif && exParam.exportType == exportTarget::video) {
-        ctrl::Exporter::CommonParam cparam;
-        ctrl::Exporter::VideoParam vparam;
-        QVector<media::AudioMixer::Track> audioTracks;
-        if (translateVideoExport(exParam, validAudioStreams, cparam, vparam, audioTracks)) {
-            menu::LoggableProgressReporter progress(true, widget);
-            ctrl::Exporter exporter(*mCurrent);
-            exporter.setOverwriteConfirmer([](const QString&) -> bool { return true; });
-            exporter.setProgressReporter(progress);
-            exporter.setAudioTracks(audioTracks);
-            auto result = exporter.execute(cparam, vparam);
-            if (!result) {
-                progress.cancel();
-                if (result.code != ctrl::Exporter::ResultCode_Canceled)
-                    QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
-            }
-            return;
-        }
-        // fall through to the legacy path for non-preset/complex video
+
+    // Common parameters (path differs per target below).
+    ctrl::Exporter::CommonParam cparam;
+    cparam.size = QSize(g.exportWidth, g.exportHeight);
+    cparam.fps = g.fps > 0 ? g.fps : (g.nativeFPS > 0 ? g.nativeFPS : 24);
+    int first = g.nativeFrameRange.firstFrame, last = g.nativeFrameRange.lastFrame;
+    if (!g.exportRange.isEmpty()) {
+        first = g.exportRange.first().firstFrame;
+        last = g.exportRange.last().lastFrame;
+        if (first > last) std::swap(first, last);
+    }
+    cparam.frame = util::Range(first, last);
+
+    ctrl::Exporter exporter(*mCurrent);
+    exporter.setOverwriteConfirmer([widget](const QString& aPath) -> bool {
+        QMessageBox m(QMessageBox::Question, QObject::tr("File exists"),
+                      QObject::tr("The file \"%1\" already exists. Overwrite?").arg(aPath),
+                      QMessageBox::Ok | QMessageBox::Cancel, widget);
+        return m.exec() == QMessageBox::Ok;
+    });
+    menu::LoggableProgressReporter progress(true, widget);
+    exporter.setProgressReporter(progress);
+
+    if (isImage) {
+        ctrl::Exporter::ImageParam iparam;
+        cparam.path = g.exportDirectory.absolutePath();
+        iparam.name = QFileInfo(g.fileName).baseName();
+        iparam.suffix = getFormatAsString(exportTarget::image, (int)exParam.imageParams.format);
+        iparam.quality = g.imageExportQuality;
+        auto res = exporter.execute(cparam, iparam);
+        if (!res && !exporter.isCanceled())
+            QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
+        return;
     }
 
-    qDebug("Creating FFmpeg object");
-    auto* ffmpeg = new ffmpeg::ffmpegObject();
-    projectExporter::Exporter exporter(*mCurrent, widget, exParam, *ffmpeg);
-    // If piped build piped argument, TODO is to account for this
-    if(exParam.generalParams.forcePipe || !exParam.generalParams.useCustomParam) {
-        ffmpeg->argument = ffmpeg::buildArgument(exParam);
+    if (isGif) {
+        ctrl::Exporter::GifParam gparam;
+        cparam.path = g.osExportTarget;
+        gparam.optimizePalette = true;  // the in-process encoder always optimizes
+        gparam.intermediateBps = 0;
+        auto res = exporter.execute(cparam, gparam);
+        if (!res && !exporter.isCanceled())
+            QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
+        return;
     }
-    qDebug("FFmpeg object created, rendering...");
-    auto exportResult = exporter.renderAndExport(exParam.generalParams.exportWithAudio, validAudioStreams);
-    projectExporter::Exporter::generateMessageBox(&exporter.export_obj, &exportResult, &exParam);
+
+    // Video.
+    cparam.path = g.osExportTarget;
+    ctrl::Exporter::VideoParam vparam;
+    QVector<media::AudioMixer::Track> audioTracks;
+    translateVideoExport(exParam, validAudioStreams, vparam, audioTracks);
+    exporter.setAudioTracks(audioTracks);
+    auto res = exporter.execute(cparam, vparam);
+    if (!res && !exporter.isCanceled())
+        QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
 }
+
 
 void MainWindow::onExportTriggered() {
     if (!mCurrent) { return; }
@@ -1315,14 +1332,6 @@ void MainWindow::onExportTriggered() {
     EventSuspender suspender(*mMainDisplay, *mTarget);
     QGuiApplication::setOverrideCursor(QCursor(Qt::BusyCursor));
     QSettings settings;
-    // FFmpeg Check
-    QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-    auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
-    bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
-    if (!ffmpegWorks) {
-        GeneralSettingDialog::ffmpegCheckFailed(aDiag);
-        return;
-    }
     // Initialize export diag
     exporting = true;
     // Avoid weird bugs
@@ -1875,19 +1884,6 @@ void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
     const QString suffix = aFormat.name;
     const bool isGif = suffix == "gif";
 
-    // Only the legacy GIF pipeline still shells out to the external ffmpeg
-    // binary (its palettegen/paletteuse pass). All other video exports are
-    // encoded in-process via the linked libav*, so they no longer require an
-    // ffmpeg executable on the system.
-    if (isGif) {
-        QString ffmpeg = GeneralSettingDialog::getFFmpeg();
-        auto* aDiag = new GeneralSettingDialog(mGUIResources, mViaPoint, this);
-        bool ffmpegWorks = GeneralSettingDialog::ffmpegCheck(ffmpeg, aDiag);
-        if (!ffmpegWorks) {
-            GeneralSettingDialog::ffmpegCheckFailed(aDiag);
-            return;
-        }
-    }
     // stop animation and main display rendering
     EventSuspender suspender(*mMainDisplay, *mTarget);
 

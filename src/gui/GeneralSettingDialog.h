@@ -42,9 +42,6 @@ public:
     QString theme();
     theme::AccentColor accent();
     bool accentHasChanged();
-    static QString getFFmpeg();
-    static bool ffmpegCheck(const QString& ffmpeg, GeneralSettingDialog* generalSettingsDialog);
-    static void ffmpegCheckFailed(GeneralSettingDialog* aDialog);
 private:
     void saveSettings();
 
@@ -99,9 +96,6 @@ private:
 
     bool bAutoShowMesh;
     QCheckBox* mAutoShowMesh;
-
-    QPushButton* ffmpegTroubleshoot;
-    QPushButton* selectFromExe;
 
     MouseSetting mInitialMouseValues;
     QCheckBox* mInvertMainViewScalingBox;
