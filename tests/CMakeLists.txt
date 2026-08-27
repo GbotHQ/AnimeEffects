@@ -338,3 +338,23 @@ target_link_libraries(media_preset_matrix PRIVATE
     Qt6::Xml
     media
 )
+
+# End-to-end export harness: offscreen (GL via a QOpenGLWidget) render of a
+# minimal project -> ctrl::Exporter -> a real mp4, verified with ffprobe. This
+# is the end-to-end gate for the media/export rearchitecture. Headless.
+add_executable(media_exporter_e2e media_exporter_e2e.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(media_exporter_e2e PRIVATE ..)
+target_compile_definitions(media_exporter_e2e PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(media_exporter_e2e PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    media cmnd core ctrl gl img thr util pugixml
+)
