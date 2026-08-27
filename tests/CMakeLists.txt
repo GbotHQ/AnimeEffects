@@ -303,3 +303,20 @@ target_link_libraries(media_video_encoder PRIVATE
     Qt6::Gui
     media
 )
+
+# V2 — media::AudioMixer multi-track correctness + edge cases. Uses the `media`
+# module (libav*) to decode/mix real PCM WAV tracks, asserting the mixed output
+# against the analytic sum (offsets/volumes/overlap) plus edge cases and rate
+# conversion. Headless. See media_audio_mixer.cpp.
+add_executable(media_audio_mixer media_audio_mixer.cpp)
+target_include_directories(media_audio_mixer PRIVATE ..)
+target_compile_definitions(media_audio_mixer PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(media_audio_mixer PRIVATE
+    Qt6::Core
+    media
+)
