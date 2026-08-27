@@ -4219,4 +4219,28 @@ Save anyway?</source>
         <source>Frames per second</source>
         <translation>フレーム毎秒</translation>
     </message></context>
+    <context>
+        <name>AnimeEffects.Dialogs</name>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+            <source>Animation settings</source>
+            <translation>アニメーション設定</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+            <source>Loop animation</source>
+            <translation>ループ再生</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+            <source>Frame range</source>
+            <translation>フレーム範囲</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+            <source>Frames per second</source>
+            <translation>フレーム毎秒</translation>
+        </message>
+    </context>
+
 </TS>

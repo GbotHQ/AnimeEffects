@@ -4185,4 +4185,28 @@ Save anyway?</source>
         <source>Frames per second</source>
         <translation>每秒帧数</translation>
     </message></context>
+    <context>
+        <name>AnimeEffects.Dialogs</name>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+            <source>Animation settings</source>
+            <translation>动画设置</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+            <source>Loop animation</source>
+            <translation>循环动画</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+            <source>Frame range</source>
+            <translation>帧范围</translation>
+        </message>
+        <message>
+            <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+            <source>Frames per second</source>
+            <translation>每秒帧数</translation>
+        </message>
+    </context>
+
 </TS>
