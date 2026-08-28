@@ -46,6 +46,20 @@ else()
                    "(default/LGPL; libx264/libx265 may be ABSENT)")
 endif()
 
+option(AE_ALLOW_FREE_CODECS_ONLY "Build with the free/LGPL codec set only (no libx264/libx265)" OFF)
+
+# The default export presets (mp4/mov/mkv/vp9...) rely on the GPL x264/x265
+# encoders. Make the codec set EXPLICIT so a build can't silently degrade (e.g.
+# mp4 -> mpeg4 when x264 is absent). Either point AE_FFMPEG_GPL_AVCODEC at a GPL
+# libavcodec, or explicitly accept the reduced free-only codec set.
+if(NOT AE_ALLOW_FREE_CODECS_ONLY AND NOT AE_FFMPEG_GPL_AVCODEC)
+    message(FATAL_ERROR
+        "The default H.264/H.265 export presets need a GPL FFmpeg build "
+        "(libx264/libx265). Set AE_FFMPEG_GPL_AVCODEC=/path/to/GPL/libavcodec.so "
+        "for the full codec set, or pass -DAE_ALLOW_FREE_CODECS_ONLY=ON to accept "
+        "the reduced free/LGPL codec set (mp4 falls back to mpeg4, no x264/x265).")
+endif()
+
 add_library(media STATIC
     FFmpegHelpers.cpp
     FFmpegHelpers.h

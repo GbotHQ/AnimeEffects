@@ -38,7 +38,11 @@ jobs:
         shell: bash
         run: |
           echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-          cmake -S . -B build -G "Ninja Multi-Config"
+          # The export presets need an explicit codec mode. Homebrew ffmpeg is a full
+          # GPL build (has libx264), so AE_ALLOW_FREE_CODECS_ONLY is a harmless gate
+          # here (the linked lib still provides x264); it just disables the strict
+          # "must be GPL" configure error. Phase 7 will switch to a pinned GPL build.
+          cmake -S . -B build -G "Ninja Multi-Config" -DAE_ALLOW_FREE_CODECS_ONLY=ON
           cmake --build build --config Release
           cd build/src/gui/Release
           mkdir appdir
