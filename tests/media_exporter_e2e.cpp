@@ -323,6 +323,12 @@ int main(int argc, char** argv) {
         QDir(imgDir).removeRecursively();
     }
 
+    // NOTE: the Exporter is a ONE-SHOT object — the app builds a fresh one per
+    // export. Reusing it for a 2nd export crashes (it's not the idempotency of
+    // EasyTextureDrawer::init(), which IS fixed, but deeper one-shot state in the
+    // exporter/encoder). init() being idempotent is still a safe, correct
+    // improvement; the exporter itself is not reusable by design.
+
     // Audio is exercised at the unit level (V2) + the video+audio mux case in
     // media_video_encoder (V1); the real-path harness stays video/gif/image to
     // keep the GL + .anie load fast and deterministic.
