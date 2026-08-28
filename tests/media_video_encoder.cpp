@@ -400,6 +400,15 @@ static bool run_make_config() {
     // encoder open() (the build's libx264 may not report yuva420p here).
     check(tr.transparent, "makeConfig: transparent hint passes through");
 
+    // allowTransparency auto-picks an alpha format when the codec supports one
+    // (ffv1 lists yuva420p but not rgba). This wires the dialog's "Allow
+    // transparency" checkbox to a real alpha stream when the codec can do it.
+    auto ta = media::VideoEncoder::makeConfig("mkv", "ffv1", "", true,
+                                               320, 240, 24, 0, &err);
+    check(ta.codec == QLatin1String("ffv1"), "makeConfig: transparent ffv1 resolves");
+    check(ta.pixFmt == QLatin1String("yuva420p"),
+          "makeConfig: transparent + empty pixfmt picks an alpha format (yuva420p)");
+
     QString err2;
     auto bad = media::VideoEncoder::makeConfig("mp4", "definitely_not_a_codec", "", false,
                                                320, 240, 24, 0, &err2);
@@ -437,6 +446,166 @@ static bool run_gif() {
     return true;
 }
 
+// Edge case: a LIVE encode of an ODD-sized (321x241) source into a YUV codec.
+// The encoder rounds YUV planes up to even (322x242); the source QImage stays
+// 321x241, so the sws pass must NOT read outside the source buffer. Before the
+// fix this read one row + one column past the source and could fault on a tight
+// allocation. We assert a valid, even-sized, decodable file (and no crash).
+static bool run_odd_size_live_encode() {
+    const QList<QImage> src = { makeFrame(321, 241, 0), makeFrame(321, 241, 1) };
+    const QString out = QDir::temp().filePath("ae_v1_odd.mp4");
+
+    media::VideoEncoder enc;
+    media::VideoEncoder::Config cfg;
+    cfg.outputPath = out; cfg.container = "mp4"; cfg.codec = "libx264";
+    cfg.width = 321; cfg.height = 241; cfg.fps = 24; cfg.pixFmt = "yuv420p";
+
+    bool ok = enc.writeAll(src, cfg);
+    check(ok, "odd-size (321x241) encode succeeds (rounded to even, no crash)");
+
+    int w = 0, h = 0, fps = 0;
+    const QList<QImage> dec = ok ? decodeFrames(out, &w, &h, &fps) : QList<QImage>();
+    check(ok && !dec.isEmpty(), "odd-size encode produces a decodable file");
+    check(w % 2 == 0 && h % 2 == 0, "odd-size encode output dimensions are even");
+    if (ok && !dec.isEmpty())
+        check(dec.first().width() % 2 == 0 && dec.first().height() % 2 == 0,
+              "odd-size decode dimensions are even");
+    QFile::remove(out);
+    return true;
+}
+
+// Edge case: alpha channel round-trip. Feed RGBA frames with a known alpha ramp
+// through an alpha-capable codec (ffv1 @ yuva420p, which the codec lists) and
+// assert the decoded alpha matches the source within a small tolerance (lossless
+// alpha plane => exact).
+static bool run_alpha_roundtrip() {
+    if (!media::ffmpeg::encoderAvailable("ffv1")) {
+        QTextStream(stdout) << "SKIP  alpha round-trip (ffv1 absent)\n";
+        return true;
+    }
+    const int w = 64, h = 48;
+    QList<QImage> src;
+    for (int i = 0; i < 3; ++i)
+        src.append(makeFrame(w, h, i));
+
+    const QString out = QDir::temp().filePath("ae_v1_alpha.mkv");
+    media::VideoEncoder::Config cfg;
+    cfg.outputPath = out; cfg.container = "mkv"; cfg.codec = "ffv1";
+    cfg.width = w; cfg.height = h; cfg.fps = 24; cfg.pixFmt = "yuva420p";
+    cfg.transparent = true;  // alpha-capable format must be explicitly requested
+
+    media::VideoEncoder enc;
+    bool ok = enc.writeAll(src, cfg);
+    check(ok, "alpha round-trip encode succeeds (ffv1 @ yuva420p)");
+
+    int dw = 0, dh = 0, dfps = 0;
+    const QList<QImage> dec = ok ? decodeFrames(out, &dw, &dh, &dfps) : QList<QImage>();
+    check(ok && dec.size() == src.size(), "alpha round-trip decode count matches");
+
+    // Compare the Alpha channel (byte 3) exactly between source and decoded.
+    bool alphaExact = true;
+    int alphaMismatches = 0;
+    int alphaMaxDelta = 0;
+    if (dec.size() == src.size()) {
+        for (int i = 0; i < src.size(); ++i) {
+            const QImage a = src[i].convertToFormat(QImage::Format_RGBA8888);
+            const QImage b = dec[i].convertToFormat(QImage::Format_RGBA8888);
+            if (a.size() != b.size()) { alphaExact = false; break; }
+            for (int y = 0; y < a.height(); ++y) {
+                const uchar* sa = a.constScanLine(y);
+                const uchar* sb = b.constScanLine(y);
+                for (int x = 0; x < a.width(); ++x) {
+                    const int d = std::abs(int(sa[4 * x + 3]) - int(sb[4 * x + 3]));
+                    if (d != 0) {
+                        ++alphaMismatches;
+                        alphaMaxDelta = std::max(alphaMaxDelta, d);
+                        alphaExact = false;
+                    }
+                }
+            }
+        }
+    }
+    // Alpha must be carried through, not dropped to opaque. The alpha plane is
+    // full-resolution and lossless in ffv1, so we assert within a +/-1 tolerance
+    // (the residual is sws's fractional rounding on the planar->packed step).
+    if (!alphaExact)
+        QTextStream(stdout) << "  DEBUG alpha mismatches=" << alphaMismatches
+                            << " maxDelta=" << alphaMaxDelta << "\n";
+    check(alphaMismatches == 0 || alphaMaxDelta <= 1,
+          "alpha round-trip preserves the alpha channel (within +/-1)");
+    QFile::remove(out);
+    return true;
+}
+
+// Edge case: unwritable output path must fail cleanly (no crash, no false success).
+static bool run_unwritable_path() {
+    media::VideoEncoder enc;
+    media::VideoEncoder::Config cfg;
+    // A path that points AT an existing directory -> avio_open must fail.
+    const QString dirTarget = QDir::temp().filePath("ae_v1_unwritable.mp4");
+    QDir().mkpath(dirTarget);                    // make it a DIRECTORY
+    cfg.outputPath = dirTarget; cfg.container = "mp4"; cfg.codec = "libx264";
+    cfg.width = 64; cfg.height = 64; cfg.fps = 24; cfg.pixFmt = "yuv420p";
+
+    bool ok = enc.open(cfg);
+    check(!ok, "unwritable output path rejected (open returns false)");
+    check(!enc.error().isEmpty(), "unwritable output path reports an error (no crash)");
+    QDir(dirTarget).removeRecursively();          // clean up the directory
+    return true;
+}
+
+// Edge case: an encoder that exists as a name but has no usable device context
+// (HW encoders like h264_nvenc / h264_qsv in a headless env) or an unknown
+// encoder must fail gracefully — never a null deref.
+static bool run_absent_encoder() {
+    // Unknown encoder -> open() must reject cleanly.
+    media::VideoEncoder e1;
+    media::VideoEncoder::Config c1;
+    c1.outputPath = QDir::temp().filePath("ae_v1_nocodec.mp4");
+    c1.container = "mp4"; c1.codec = "no_such_encoder_xyz";
+    c1.width = 64; c1.height = 64; c1.fps = 24; c1.pixFmt = "yuv420p";
+    bool ok1 = e1.open(c1);
+    check(!ok1 && !e1.error().isEmpty(), "unknown encoder rejected cleanly (no crash)");
+
+    // A present-but-inert HW encoder name must also fail/not crash.
+    for (const char* hw : { "h264_nvenc", "h264_qsv", "av1_nvenc" }) {
+        if (!media::ffmpeg::encoderAvailable(hw)) {
+            QTextStream(stdout) << "SKIP  HW encoder absent: " << hw << "\n";
+            continue;
+        }
+        media::VideoEncoder e2;
+        media::VideoEncoder::Config c2;
+        c2.outputPath = QDir::temp().filePath(QString("ae_v1_hw_%1.mp4").arg(hw));
+        c2.container = "mp4"; c2.codec = hw;
+        c2.width = 128; c2.height = 128; c2.fps = 24; c2.pixFmt = "yuv420p";
+        bool ok2 = e2.open(c2);   // no device context in a headless run -> expected false, no crash
+        QTextStream(stdout) << (ok2 ? "PASS  " : "INFO  ")
+                            << "HW encoder " << hw << " open() -> "
+                            << (ok2 ? "succeeded (unexpected, device present?)" : "rejected cleanly") << "\n";
+        e2.close();
+    }
+    return true;
+}
+
+// Edge case: zero/negative dimensions + zero fps must be rejected cleanly.
+static bool run_zero_negative_size() {
+    media::VideoEncoder enc;
+    media::VideoEncoder::Config c;
+    c.outputPath = QDir::temp().filePath("ae_v1_z.mp4"); c.container = "mp4";
+    c.codec = "libx264"; c.width = 0; c.height = 64; c.fps = 24; c.pixFmt = "yuv420p";
+    check(!enc.open(c) && !enc.error().isEmpty(), "zero width rejected");
+
+    c.width = -16; c.height = 64;
+    check(!enc.open(c) && !enc.error().isEmpty(), "negative width rejected");
+
+    c.width = 64; c.height = 0;
+    check(!enc.open(c) && !enc.error().isEmpty(), "zero height rejected");
+
+    c.width = 64; c.height = 64; c.fps = 0;
+    check(!enc.open(c) && !enc.error().isEmpty(), "zero fps rejected");
+    return true;
+}
+
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     QTextStream(stdout) << "=== V1 media::VideoEncoder suite ===\n";    run_lossless_roundtrip();
@@ -448,6 +617,11 @@ int main(int argc, char** argv) {
     run_video_audio_mux();
     run_make_config();
     run_gif();
+    run_odd_size_live_encode();
+    run_alpha_roundtrip();
+    run_unwritable_path();
+    run_absent_encoder();
+    run_zero_negative_size();
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }

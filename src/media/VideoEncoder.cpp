@@ -162,9 +162,14 @@ bool VideoEncoder::open(const Config& aConfig) {
     if (aConfig.codec.isEmpty()) { mError = "no codec selected"; return false; }
     if (aConfig.outputPath.isEmpty()) { mError = "no output path"; return false; }
 
+    // After this point the encoder owns libav* resources; on any failure it must
+    // release them (otherwise a failed open leaks the half-constructed contexts —
+    // the destructor can't tell a never-opened encoder from a failed one).
+    auto fail = [&](const QString& aMsg) { mError = aMsg; cleanup(); return false; };
+
     // Determine target pixel format.
     const AVCodec* codec = ::avcodec_find_encoder_by_name(aConfig.codec.toUtf8().constData());
-    if (!codec) { mError = "encoder not found: " + aConfig.codec; return false; }
+    if (!codec) { return fail("encoder not found: " + aConfig.codec); }
 
     AVPixelFormat pixFmt = AV_PIX_FMT_NONE;
     if (!aConfig.pixFmt.isEmpty()) {
@@ -193,22 +198,23 @@ bool VideoEncoder::open(const Config& aConfig) {
 
     // Muxer. The container name may be an alias that isn't a registered muxer
     // (e.g. "mkv" vs "matroska"); if the named muxer fails, fall back to
-    // guessing the muxer from the output file extension.
-    const char* container = aConfig.container.isEmpty() ? nullptr
-                                                       : aConfig.container.toUtf8().constData();
+    // guessing the muxer from the output file extension. Bind the UTF-8 buffer
+    // to a local so the `container` pointer is not dangling (a temporary
+    // QByteArray from toUtf8() would be destroyed at the end of this statement).
+    const QByteArray containerBytes = aConfig.container.toUtf8();
+    const char* container = aConfig.container.isEmpty() ? nullptr : containerBytes.constData();
     if (::avformat_alloc_output_context2(&mImpl->mFmt, nullptr, container,
                                          aConfig.outputPath.toUtf8().constData()) < 0) {
         mImpl->mFmt = nullptr;
         if (::avformat_alloc_output_context2(&mImpl->mFmt, nullptr, nullptr,
                                              aConfig.outputPath.toUtf8().constData()) < 0) {
-            mError = "could not allocate muxer for " + aConfig.outputPath;
-            return false;
+            return fail("could not allocate muxer for " + aConfig.outputPath);
         }
     }
 
     // Codec context.
     mImpl->mCtx = ::avcodec_alloc_context3(codec);
-    if (!mImpl->mCtx) { mError = "could not allocate codec context"; return false; }
+    if (!mImpl->mCtx) { return fail("could not allocate codec context"); }
 
     mImpl->mCtx->width = width;
     mImpl->mCtx->height = height;
@@ -227,17 +233,16 @@ bool VideoEncoder::open(const Config& aConfig) {
     }
 
     if (::avcodec_open2(mImpl->mCtx, codec, nullptr) < 0) {
-        mError = "could not open encoder: " + aConfig.codec;
-        return false;
+        return fail("could not open encoder: " + aConfig.codec);
     }
     mImpl->mPixFmt = pixFmt;
 
     // Stream.
     mImpl->mStream = ::avformat_new_stream(mImpl->mFmt, nullptr);
-    if (!mImpl->mStream) { mError = "could not create stream"; return false; }
+    if (!mImpl->mStream) { return fail("could not create stream"); }
     mImpl->mStream->id = mImpl->mFmt->nb_streams - 1;
     if (::avcodec_parameters_from_context(mImpl->mStream->codecpar, mImpl->mCtx) < 0) {
-        mError = "could not copy codec parameters"; return false;
+        return fail("could not copy codec parameters");
     }
     mImpl->mStream->time_base = mImpl->mCtx->time_base;
     // Make the real framerate discoverable to decoders/players (avg_frame_rate
@@ -249,35 +254,32 @@ bool VideoEncoder::open(const Config& aConfig) {
     // container header so it is written with both streams.
     if (!aConfig.audioCodec.isEmpty() && aConfig.audioChannels > 0 && aConfig.audioSampleRate > 0) {
         if (!openAudio(aConfig)) {
-            return false;
+            return fail(mError);
         }
     }
 
     // Open the output container.
     if (::avio_open(&mImpl->mFmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
-        mError = "could not open output file: " + aConfig.outputPath;
-        return false;
+        return fail("could not open output file: " + aConfig.outputPath);
     }
     if (::avformat_write_header(mImpl->mFmt, nullptr) < 0) {
-        mError = "could not write container header";
-        return false;
+        return fail("could not write container header");
     }
 
     // Format converter: QImage is normalized to RGBA before sws.
     mImpl->mSws = ::sws_getContext(width, height, AV_PIX_FMT_RGBA,
                                    width, height, pixFmt, SWS_BILINEAR,
                                    nullptr, nullptr, nullptr);
-    if (!mImpl->mSws) { mError = "could not create swscale context"; return false; }
+    if (!mImpl->mSws) { return fail("could not create swscale context"); }
 
     // Allocate the input frame.
     mImpl->mFrame = ::av_frame_alloc();
-    if (!mImpl->mFrame) { mError = "could not allocate frame"; return false; }
+    if (!mImpl->mFrame) { return fail("could not allocate frame"); }
     mImpl->mFrame->format = pixFmt;
     mImpl->mFrame->width = width;
     mImpl->mFrame->height = height;
     if (::av_frame_get_buffer(mImpl->mFrame, 32) < 0) {
-        mError = "could not allocate frame buffer";
-        return false;
+        return fail("could not allocate frame buffer");
     }
 
     mImpl->mClosed = false;
@@ -294,6 +296,26 @@ bool VideoEncoder::writeFrame(const QImage& aFrame) {
     QImage rgba = aFrame.convertToFormat(QImage::Format_RGBA8888);
     const int width = mImpl->mCtx->width;
     const int height = mImpl->mCtx->height;
+
+    // The encoder may have rounded a YUV frame dimension up to an even size
+    // (normalizedSize). If the caller fed an odd-sized QImage, the sws/direct
+    // source must be padded to the exact frame size so we never read outside
+    // the source buffer. Edge-replicate the last row/column for the extra
+    // pixels (deterministic, no uninitialized data).
+    if (rgba.width() != width || rgba.height() != height) {
+        const int srcW = rgba.width();
+        const int srcH = rgba.height();
+        QImage padded(width, height, QImage::Format_RGBA8888);
+        for (int y = 0; y < height; ++y) {
+            const uchar* sy = rgba.constScanLine(std::min(y, srcH - 1));
+            uchar* dy = padded.scanLine(y);
+            for (int x = 0; x < width; ++x) {
+                const uchar* sp = sy + 4 * std::min(x, srcW - 1);
+                std::memcpy(dy + 4 * x, sp, 4);
+            }
+        }
+        rgba = padded;
+    }
 
     if (::av_frame_make_writable(mImpl->mFrame) < 0) {
         mError = "could not make frame writable";

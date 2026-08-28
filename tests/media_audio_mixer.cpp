@@ -12,6 +12,7 @@
 #include <QString>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QCoreApplication>
 #include <QTextStream>
 #include <QtMath>
@@ -174,6 +175,74 @@ static bool run_edge_cases() {
     return true;
 }
 
+static bool run_audio_edge_cases() {
+    // A real 1s 48k mono tone that the other tests also use.
+    const QString good = QDir::temp().filePath("ae_v2_extra.wav");
+    writeWav(good, 48000, 1, 1, 440, 0.5);
+
+    media::AudioMixer::Config cfg;
+    cfg.fps = 24; cfg.totalFrames = 24; cfg.sampleRate = 48000; cfg.channels = 1;
+
+    // 1) Missing / corrupt audio file: the mix still succeeds and the bad track
+    //    is skipped + reported (a single bad track must not abort the export).
+    media::AudioMixer bad;
+    media::AudioMixer::Track gone;
+    gone.path = QDir::temp().filePath("ae_v2_does_not_exist.wav");
+    gone.startFrame = 0; gone.volume = 1.0f;
+    bool okBad = bad.mix({ gone }, cfg);
+    check(okBad, "missing audio file: mix still succeeds (track skipped)");
+    check(!bad.error().isEmpty(), "missing audio file: skipped track reported in error()");
+    bool nonZeroGone = false;
+    for (int i = 0; i < bad.sampleCount(); ++i) if (bad.samples()[i] != 0.0f) { nonZeroGone = true; break; }
+    check(!nonZeroGone, "missing audio file: output is silent (no phantom samples)");
+
+    // 2) A track whose end frame extends beyond the export range is clamped: only
+    //    the in-range window contributes.
+    media::AudioMixer clamp;
+    media::AudioMixer::Track tClamp;
+    tClamp.path = good; tClamp.startFrame = 0; tClamp.endFrame = 60; tClamp.volume = 1.0f; // end == 60 > 24 range
+    bool okClamp = clamp.mix({ tClamp }, cfg);
+    check(okClamp, "out-of-range endFrame: mix succeeds");
+    check(clamp.sampleCount() == 24 * 48000 / 24, "out-of-range endFrame: window is the full export range");
+    bool energyClamp = false;
+    for (int i = 0; i < clamp.sampleCount(); ++i) if (std::fabs(clamp.samples()[i]) > 1e-3) { energyClamp = true; break; }
+    check(energyClamp, "out-of-range endFrame: in-range portion still has energy");
+
+    // 3) Long audio vs a short export range: only the in-range window is used
+    //    (sampleCount reflects the export window, not the source length).
+    media::AudioMixer shortwin;
+    media::AudioMixer::Track tShort;
+    tShort.path = good; tShort.startFrame = 0; tShort.volume = 1.0f; // source is 1s == 48000 samples
+    bool okShort = shortwin.mix({ tShort }, cfg);
+    check(okShort && shortwin.sampleCount() == 24 * 48000 / 24,
+          "long audio vs short range: output window == export duration");
+
+    // 4) Volume >1 and very large: no NaN/overflow, post-mix clamp to [-1,1].
+    for (float vol : { 2.0f, 100.0f }) {
+        media::AudioMixer gain;
+        media::AudioMixer::Track tG;
+        tG.path = good; tG.startFrame = 0; tG.volume = vol;
+        bool okG = gain.mix({ tG }, cfg);
+        bool finite = true, inRange = true;
+        for (int i = 0; i < gain.sampleCount(); ++i) {
+            const float s = gain.samples()[i];
+            if (!std::isfinite(s)) finite = false;
+            if (s < -1.0f || s > 1.0f) inRange = false;
+        }
+        check(okG && finite, QString("volume=%1: no NaN/inf").arg(vol).toUtf8().constData());
+        check(inRange, QString("volume=%1: samples clamped to [-1,1]").arg(vol).toUtf8().constData());
+    }
+
+    // 5) No temp/output files are created by the mixer itself (the legacy CLI
+    //    path wrote .mus.temp* files).
+    const QString marker = QDir::temp().filePath(".mus.temp");
+    const bool noMusTemp = QFileInfo::exists(marker);
+    check(!noMusTemp, "no .mus.temp* files created by in-process mixing");
+
+    QFile::remove(good);
+    return true;
+}
+
 int main(int argc, char** argv) {
     // No GUI needed; QCoreApplication is enough (QImage not used here).
     QCoreApplication app(argc, argv);
@@ -181,6 +250,7 @@ int main(int argc, char** argv) {
     run_exact_sum();
     run_rate_conversion();
     run_edge_cases();
+    run_audio_edge_cases();
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }

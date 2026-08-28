@@ -82,10 +82,14 @@ bool AudioMixer::mix(const QVector<Track>& aTracks, const Config& aConfig) {
         const float* src = trackSamples.constData();
         for (qint64 i = 0; i < toAdd * mChannels; ++i)
             dst[i] += src[i] * gain;
-
-        if (decodeErrors > 0)
-            mError = QString::number(decodeErrors) + " audio track(s) failed to decode and were skipped";
     }
+
+    // Report decode failures that were skipped. This must be OUTSIDE the loop:
+    // a decode failure takes the `continue` path above, which would otherwise
+    // skip this assignment when every track fails (leaving error() empty even
+    // though tracks were dropped).
+    if (decodeErrors > 0)
+        mError = QString::number(decodeErrors) + " audio track(s) failed to decode and were skipped";
 
     // Post-mix clamp to the float sample range so a later s16/aac encoder never
     // sees out-of-range values.
