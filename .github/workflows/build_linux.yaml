@@ -20,6 +20,17 @@ jobs:
           apt install -y libgl1-mesa-dev file libvulkan-dev openssl python3 python3-pip libxcb-cursor0 libxrandr2
           # The exporter links FFmpeg (libav*) directly; the dev headers/libs are
           # needed to build and linuxdeployqt bundles the shared libs at runtime.
+          #
+          # FFmpeg coupling / GPL note (see src/media/CMakeLists.txt):
+          #  * pkg-config's default libavcodec here is the LGPL "free" build, which
+          #    does NOT contain the GPL x264/x265 encoders the H.264/H.265 presets
+          #    want. The export defaults therefore silently depend on WHICH libav* is
+          #    linked. To make the shipped encoder set deterministic, Phase 7 builds
+          #    FFmpeg from pinned source with --enable-gpl and points
+          #    AE_FFMPEG_GPL_AVCODEC at it.
+          #  * The app's Qt Multimedia (Qt 6.9 here) FFmpeg backend loads its OWN
+          #    FFmpeg major; the app's directly-linked libav* must be the SAME major
+          #    (soname) or both get loaded and clash. Keep them in lockstep.
           apt install -y libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev
       - name: Get Python and install qt dependencies
         run: |

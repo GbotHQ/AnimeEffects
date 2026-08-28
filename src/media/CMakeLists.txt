@@ -34,12 +34,16 @@ if(AE_FFMPEG_GPL_AVCODEC AND EXISTS "${AE_FFMPEG_GPL_AVCODEC}")
         INTERFACE_INCLUDE_DIRECTORIES "${AVCODEC_PC_INCLUDE_DIRS}"
         IMPORTED_NO_SONAME TRUE
     )
+    message(STATUS "media: linking GPL libavcodec ${AE_FFMPEG_GPL_AVCODEC} "
+                   "(libx264/libx265 available)")
 else()
     add_library(FFmpeg::avcodec INTERFACE IMPORTED)
     set_target_properties(FFmpeg::avcodec PROPERTIES
         INTERFACE_LINK_LIBRARIES PkgConfig::AVCODEC_PC
         INTERFACE_INCLUDE_DIRECTORIES "${AVCODEC_PC_INCLUDE_DIRS}"
     )
+    message(STATUS "media: linking pkg-config libavcodec "
+                   "(default/LGPL; libx264/libx265 may be ABSENT)")
 endif()
 
 add_library(media STATIC
