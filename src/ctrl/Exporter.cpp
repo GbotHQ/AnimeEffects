@@ -37,7 +37,9 @@ bool Exporter::CommonParam::isValid() const {
 Exporter::ImageParam::ImageParam(): name(), suffix("png"), quality(-1) {}
 
 //-------------------------------------------------------------------------------------------------
-Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {}
+Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {
+    // palettePath defaults to empty (adaptive palette).
+}
 
 //-------------------------------------------------------------------------------------------------
 Exporter::VideoParam::VideoParam(): format(), codecIndex(-1), colorIndex(), bps(), pixfmt(), codec(), transparent(false) {}
@@ -138,8 +140,11 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const GifParam& a
 
     // In-process GIF: render every frame into a list, then encode + mux a .gif
     // with media::GifEncoder (the legacy ffmpeg CLI palettegen/paletteuse
-    // subprocess is gone). optimizePalette/intermediateBps are no longer used —
-    // the encoder always builds an adaptive palette.
+    // subprocess is gone). optimizePalette/intermediateBps are no longer used.
+    // A user-supplied palettePath (a PNG whose pixels are the palette) is fed
+    // through to the encoder; otherwise it builds an adaptive palette.
+    mGifPalettePath = aGif.palettePath;
+    mGifTransparent = aGif.transparent;
     mCollectFrames = true;
     mGifFrames.clear();
     return execute();
@@ -492,6 +497,8 @@ Exporter::Result Exporter::finish() {
             media::GifEncoder::Config gcfg;
             gcfg.outputPath = mCommonParam.path;
             gcfg.fps = mCommonParam.fps > 0 ? mCommonParam.fps : 15;
+            gcfg.transparent = mGifTransparent; // honor alpha if requested
+            gcfg.palettePath = mGifPalettePath; // empty => adaptive palette
             QString gerr;
             if (!gif.encode(mGifFrames, gcfg, &gerr)) {
                 mLog = "GIF encoder error.\n" + gerr;

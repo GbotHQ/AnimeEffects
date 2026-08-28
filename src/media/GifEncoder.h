@@ -20,6 +20,9 @@ public:
         int fps = 15;           // frame delay is 100/fps centiseconds
         bool transparent = false;
         int loop = 0;           // 0 = infinite; -1 = no loop
+        QString palettePath;    // optional: a PNG whose pixels ARE the 256-color
+                                // palette (the ffmpeg paletteuse convention).
+                                // Empty = build an adaptive palette from frames.
     };
 
     GifEncoder() = default;

@@ -1,6 +1,8 @@
 #include "media/GifEncoder.h"
 
+#include <QImageReader>
 #include <QHash>
+#include <QSet>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -18,6 +20,15 @@ namespace media {
 namespace {
 
 constexpr int kPaletteCount = 256;
+
+// Fill any palette slots beyond the supplied colors with grays so the palette
+// is always a complete 256 entries (a must for the pal8 GIF encoder).
+void fillRemainingGray(QVector<quint32>& aPalette, int aStart) {
+    for (int i = aStart; i < kPaletteCount; ++i) {
+        const int v = (i - 1) * 255 / (kPaletteCount - 2);
+        aPalette[i] = 0xFF000000u | (quint32(v) << 16) | (quint32(v) << 8) | quint32(v);
+    }
+}
 
 // Build a 256-entry uint32_t palette (0xAARRGGBB) from the frames, adaptive:
 // keep the kPaletteCount most frequent opaque colors; if transparency is on,
@@ -64,11 +75,52 @@ void buildPalette(const QList<QImage>& aFrames, bool aTransparent,
         if (paletteIndex >= kPaletteCount) break;
         aPalette[paletteIndex++] = c.first;
     }
-    // Fill any remaining slots with grays so the palette is complete.
-    for (; paletteIndex < kPaletteCount; ++paletteIndex) {
-        const int v = (paletteIndex - 1) * 255 / (kPaletteCount - 2);
-        aPalette[paletteIndex] = 0xFF000000u | (quint32(v) << 16) | (quint32(v) << 8) | quint32(v);
+    fillRemainingGray(aPalette, paletteIndex);
+}
+
+// Load a user-supplied palette PNG. Its pixels ARE the palette (the ffmpeg
+// paletteuse convention): each distinct opaque pixel color becomes one entry.
+// If transparency is requested (or the PNG contains a fully-transparent pixel),
+// entry 0 is reserved as the transparent index.
+bool loadPaletteFromPng(const QString& aPath, bool aTransparent,
+                        QVector<quint32>& aPalette, bool& aHasTransparent) {
+    QImageReader reader(aPath);
+    reader.setAutoTransform(true);
+    QImage pal = reader.read();
+    if (pal.isNull()) return false; // caller sets a readable-error message
+
+    pal = pal.convertToFormat(QImage::Format_RGBA8888);
+    QSet<quint32> seen;
+    bool palHasTransparent = false;
+    for (int y = 0; y < pal.height(); ++y) {
+        const uchar* line = pal.constBits() + y * pal.bytesPerLine();
+        for (int x = 0; x < pal.width(); ++x) {
+            const uchar r = line[4*x+0], g = line[4*x+1], b = line[4*x+2], a = line[4*x+3];
+            if (a < 128) { palHasTransparent = true; continue; }
+            const quint32 rgb = (quint32(r) << 16) | (quint32(g) << 8) | quint32(b);
+            if (seen.contains(rgb)) continue;
+            seen.insert(rgb);
+            if (seen.size() > kPaletteCount) break; // too many colors; keep first 256
+        }
+        if (seen.size() > kPaletteCount) break;
     }
+
+    aPalette.fill(0, kPaletteCount);
+    aHasTransparent = aTransparent || palHasTransparent;
+    int paletteIndex = 0;
+    if (aHasTransparent) {
+        aPalette[0] = 0x00000000;
+        paletteIndex = 1;
+    }
+    // Deterministic order (sorted by RGB) so a given PNG always maps identically.
+    QList<quint32> colors = seen.values();
+    std::sort(colors.begin(), colors.end());
+    for (const quint32 rgb : colors) {
+        if (paletteIndex >= kPaletteCount) break;
+        aPalette[paletteIndex++] = 0xFF000000u | rgb;
+    }
+    fillRemainingGray(aPalette, paletteIndex);
+    return true;
 }
 
 // Build a 32x32x32 LUT mapping quantized RGB -> nearest palette index.
@@ -110,7 +162,15 @@ bool GifEncoder::encode(const QList<QImage>& aFrames, const Config& aConfig, QSt
 
     QVector<quint32> palette;
     bool alpha = false;
-    buildPalette(aFrames, aConfig.transparent, palette, alpha);
+    if (!aConfig.palettePath.isEmpty()) {
+        if (!loadPaletteFromPng(aConfig.palettePath, aConfig.transparent, palette, alpha)) {
+            mError = "could not load palette: " + aConfig.palettePath;
+            if (aError) *aError = mError;
+            return false;
+        }
+    } else {
+        buildPalette(aFrames, aConfig.transparent, palette, alpha);
+    }
     QVector<uchar> lut;
     buildLut(palette, lut);
 

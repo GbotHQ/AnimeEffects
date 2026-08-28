@@ -13,6 +13,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QList>
+#include <QColor>
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
@@ -57,6 +58,12 @@ static QImage makeFrame(int w, int h, int idx) {
             line[4 * x + 3] = uchar(255 - ((x + y) % 256));                        // A (ramp)
         }
     }
+    return img;
+}
+
+static QImage makeSolid(int w, int h, const QColor& c) {
+    QImage img(w, h, QImage::Format_RGBA8888);
+    img.fill(c);
     return img;
 }
 
@@ -585,7 +592,53 @@ static bool run_gif() {
     return true;
 }
 
-// Edge case: a LIVE encode of an ODD-sized (321x241) source into a YUV codec.
+// Custom palette: a PNG whose pixels ARE the palette (paletteuse convention).
+// The encoder must use those exact colors instead of an adaptive palette, and a
+// fully-transparent pixel in the PNG reserves the transparent index.
+static bool run_custom_palette_gif() {
+    // Build a small palette PNG: 4 columns => the colors red/green/blue/white,
+    // plus a fully-transparent pixel to reserve a transparent entry.
+    const QString palPng = QDir::temp().filePath("ae_custom_pal.png");
+    QImage palImg(3, 2, QImage::Format_RGBA8888);
+    palImg.fill(Qt::transparent);
+    // Row 0: red, green, blue. Row 1: white, (transparent pixel stays), spare.
+    palImg.setPixelColor(0, 0, QColor(255, 0, 0, 255));
+    palImg.setPixelColor(1, 0, QColor(0, 255, 0, 255));
+    palImg.setPixelColor(2, 0, QColor(0, 0, 255, 255));
+    palImg.setPixelColor(0, 1, QColor(255, 255, 255, 255));
+    // (1,1) is transparent (alpha 0) already.
+    check(palImg.save(palPng, "PNG"), "custom-palette: palette PNG saved");
+
+    // Frames whose colors are drawn ONLY from that palette (red/white/blue).
+    const QList<QImage> frames = {
+        makeSolid(16, 16, QColor(255, 0, 0)),
+        makeSolid(16, 16, QColor(0, 0, 255)),
+        makeSolid(16, 16, QColor(255, 255, 255)),
+    };
+    const QString out = QDir::temp().filePath("ae_custom_pal.gif");
+    media::GifEncoder g;
+    media::GifEncoder::Config c;
+    c.outputPath = out; c.fps = 10; c.palettePath = palPng; c.transparent = true;
+    QString err;
+    check(g.encode(frames, c, &err), "custom-palette: gif encode succeeds");
+    check(QFile::exists(out) && QFile(out).size() > 0, "custom-palette: gif file exists + non-empty");
+    int w = 0, h = 0, fps = 0;
+    const QList<QImage> dec = decodeFrames(out, &w, &h, &fps);
+    check(w == 16 && h == 16 && dec.size() == 3, "custom-palette: gif decodes to 3 frames at 16x16");
+
+    // Invalid palette path must fail cleanly, not silently adapt.
+    media::GifEncoder g2;
+    media::GifEncoder::Config c2;
+    c2.outputPath = QDir::temp().filePath("ae_custom_bad.gif");
+    c2.fps = 10; c2.palettePath = QDir::temp().filePath("ae_missing_palette.png");
+    QString err2;
+    check(!g2.encode(frames, c2, &err2), "custom-palette: missing palette path rejected cleanly");
+    check(!err2.isEmpty(), "custom-palette: missing palette reports an error");
+
+    QFile::remove(palPng);
+    QFile::remove(out);
+    return true;
+}
 // The encoder rounds YUV planes up to even (322x242); the source QImage stays
 // 321x241, so the sws pass must NOT read outside the source buffer. Before the
 // fix this read one row + one column past the source and could fault on a tight
@@ -756,6 +809,7 @@ int main(int argc, char** argv) {
     run_video_audio_mux();
     run_make_config();
     run_gif();
+    run_custom_palette_gif();
     run_vp9_webm_alpha();
     run_png_anim_alpha();
     run_odd_size_live_encode();

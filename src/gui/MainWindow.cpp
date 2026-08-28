@@ -1309,8 +1309,15 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     if (isGif) {
         ctrl::Exporter::GifParam gparam;
         cparam.path = g.osExportTarget;
-        gparam.optimizePalette = true;  // the in-process encoder always optimizes
+        gparam.optimizePalette = true;  // legacy no-op; the in-process encoder always builds a palette
         gparam.intermediateBps = 0;
+        // Custom palette: the UI collects a PNG whose pixels ARE the palette
+        // (the paletteuse convention). Feed it to the encoder; otherwise it
+        // builds an adaptive palette from the rendered frames.
+        gparam.transparent = g.allowTransparency;
+        gparam.palettePath = (g.useCustomPalette && g.palettePath.exists())
+                                 ? g.palettePath.absolutePath()
+                                 : QString();
         auto res = exporter.execute(cparam, gparam);
         if (!res && !exporter.isCanceled())
             QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());

@@ -71,8 +71,10 @@ public:
 
     struct GifParam {
         GifParam();
-        bool optimizePalette;
-        int intermediateBps;
+        bool optimizePalette;   // legacy no-op (the in-process encoder always builds a palette)
+        int intermediateBps;    // legacy no-op
+        QString palettePath;    // optional PNG palette (pixels are the colors); empty = adaptive
+        bool transparent = false; // honor alpha (reserve a transparent palette entry)
     };
 
     struct ImageParam {
@@ -145,6 +147,8 @@ private:
     // in-process media::GifEncoder (replaces the legacy CLI palette subprocess).
     bool mCollectFrames = false;
     QList<QImage> mGifFrames;
+    QString mGifPalettePath;   // optional custom palette PNG (empty = adaptive)
+    bool mGifTransparent = false; // honor alpha on GIF (reserve a transparent entry)
 
     media::VideoEncoder mVideoEncoder;
     QVector<media::AudioMixer::Track> mAudioTracks;    int mAudioSampleRate = 48000;
