@@ -40,7 +40,7 @@ Exporter::ImageParam::ImageParam(): name(), suffix("png"), quality(-1) {}
 Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {}
 
 //-------------------------------------------------------------------------------------------------
-Exporter::VideoParam::VideoParam(): format(), codecIndex(-1), colorIndex(), bps(), pixfmt() {}
+Exporter::VideoParam::VideoParam(): format(), codecIndex(-1), colorIndex(), bps(), pixfmt(), codec(), transparent(false) {}
 
 //-------------------------------------------------------------------------------------------------
 
@@ -171,33 +171,48 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         const QString outPath = filePath.absoluteFilePath();
 
         VideoCodec videoCodec;
-        if (aVideo.codecIndex != -1) {
+        if (aVideo.codecIndex != -1 && !aVideo.format.codecs.isEmpty())
             videoCodec = aVideo.format.codecs.at(aVideo.codecIndex);
-        } else {
-            videoCodec.icodec = aVideo.format.icodec;
+
+        // Codec: explicit override > preset codec > a muxer-aware container
+        // default. The explicit override lets the dialog's per-container encoder
+        // choice be honored instead of always falling back to the container
+        // default. (command/colorspace/icodec are CLI-subprocess artifacts; the
+        // in-process encoder consumes only name/pixfmt/transparent.)
+        QString codecName = aVideo.codec;
+        if (codecName.isEmpty() && !videoCodec.name.isEmpty())
+            codecName = videoCodec.name;
+        if (codecName.isEmpty()) {
+            codecName = media::ffmpeg::defaultCodecForContainer(aVideo.format.name);
+            if (codecName.isEmpty()) {
+                mLog = "No available video encoder can carry the '" + aVideo.format.name + "' container.";
+                return Result(ResultCode_EncoderOpenFailed, mLog);
+            }
         }
 
-        // The `icodec`/`command`/colorspace fields are CLI-subprocess artifacts:
-        // the in-process encoder consumes QImage frames directly, so only the
-        // encoder name, pixel format, container and the transparent hint matter.
-        QString codecName = videoCodec.name;
+        // Resolve friendly names (e.g. "h264" -> "libx264") and verify the muxer
+        // can actually hold this codec before we open the encoder. This turns a
+        // container/codec mismatch into a clean rejection instead of a confusing
+        // muxer failure at write time.
+        codecName = media::ffmpeg::resolveEncoderName(codecName);
         if (codecName.isEmpty()) {
-            // No specific codec chosen: fall back to a sensible default per container.
-            codecName = aVideo.format.name == QLatin1String("webm") ? QStringLiteral("libvpx-vp9")
-                      : aVideo.format.name == QLatin1String("avi")  ? QStringLiteral("mpeg4")
-                      : aVideo.format.name == QLatin1String("ogv")  ? QStringLiteral("libtheora")
-                                                                    : QStringLiteral("libx264");
+            mLog = "Encoder not available in this build: " + aVideo.codec;
+            return Result(ResultCode_EncoderOpenFailed, mLog);
+        }
+        if (!media::ffmpeg::muxerSupportsCodec(aVideo.format.name, codecName)) {
+            mLog = "The '" + aVideo.format.name + "' container cannot carry the " + codecName + " video codec.";
+            return Result(ResultCode_EncoderOpenFailed, mLog);
         }
 
         QString encoderError;
         media::VideoEncoder::Config cfg = media::VideoEncoder::makeConfig(
-            aVideo.format.name, codecName, aVideo.pixfmt, videoCodec.transparent,
+            aVideo.format.name, codecName, aVideo.pixfmt, videoCodec.transparent || aVideo.transparent,
             mCommonParam.size.width(), mCommonParam.size.height(), mCommonParam.fps,
             aVideo.bps, &encoderError);
 
         if (cfg.codec.isEmpty()) {
             mLog = "Video encoder error.\n" + encoderError;
-            return Result(ResultCode_FFMpegFailedToStart, mLog);
+            return Result(ResultCode_EncoderOpenFailed, mLog);
         }
         cfg.outputPath = outPath;
 
@@ -226,7 +241,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
 
         if (!mVideoEncoder.open(cfg)) {
             mLog = "Video encoder error.\n" + mVideoEncoder.error();
-            return Result(ResultCode_FFMpegFailedToStart, mLog);
+            return Result(ResultCode_EncoderOpenFailed, mLog);
         }
     }
 
@@ -480,7 +495,7 @@ Exporter::Result Exporter::finish() {
             QString gerr;
             if (!gif.encode(mGifFrames, gcfg, &gerr)) {
                 mLog = "GIF encoder error.\n" + gerr;
-                result = Result(ResultCode_FFMpegError, mLog);
+                result = Result(ResultCode_EncodeError, mLog);
             }
             mCollectFrames = false;
             mGifFrames.clear();
@@ -506,13 +521,13 @@ Exporter::Result Exporter::finish() {
                                            mixer.sampleRate(), mixer.sampleCount());
                 } else {
                     mLog = "Audio mixing error.\n" + mixer.error();
-                    result = Result(ResultCode_FFMpegError, mLog);
+                    result = Result(ResultCode_EncodeError, mLog);
                 }
             }
 
             if (!mVideoEncoder.close()) {
                 mLog = "Video encoder error.\n" + mVideoEncoder.error();
-                result = Result(ResultCode_FFMpegError, mLog);
+                result = Result(ResultCode_EncodeError, mLog);
             }
         }
 

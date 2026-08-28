@@ -34,9 +34,9 @@ public:
         ResultCode_Success,
         ResultCode_Canceled,
         ResultCode_InvalidOperation,
-        ResultCode_FFMpegFailedToStart,
-        ResultCode_FFMpegError,
-        ResultCode_UnclassfiedError,
+        ResultCode_EncoderOpenFailed,   // encoder could not be opened for the target/codec
+        ResultCode_EncodeError,         // write/encode/mux error mid-export
+        ResultCode_UnclassfiedError,    // (kept as-is; original spelling)
         ResultCode_TERM
     };
 
@@ -60,10 +60,13 @@ public:
     struct VideoParam {
         VideoParam();
         VideoFormat format;
-        int codecIndex;
-        int colorIndex;
-        int bps;
-        QString pixfmt;
+        int codecIndex;    // index into format.codecs, or -1
+        int colorIndex;    // colorspace box index (set by the quick-export dialog); exporter
+                           // does not apply colorspace yet (see the UI follow-up)
+        int bps;           // bitrate in kbps (exporter converts to bits/sec)
+        QString pixfmt;    // e.g. "yuv420p"; empty = per-codec auto
+        QString codec;     // explicit encoder (friendly or libav name); empty = Auto/default
+        bool transparent;  // honor alpha when the codec/container allow it
     };
 
     struct GifParam {

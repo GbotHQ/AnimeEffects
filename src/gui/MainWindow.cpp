@@ -1224,15 +1224,19 @@ static QVector<media::AudioMixer::Track> toAudioTracks(const std::vector<audioCo
     return tracks;
 }
 
-// Translate an exportParam video export into ctrl::Exporter params. Returns
-// false if the container has no embedded preset (so the caller keeps the legacy
-// projectExporter path). Only the default/automatic cases are translated here;
-// custom-param / forced-intermediate exports stay on the legacy path.
-static QString defaultVideoCodec(const QString& aContainer) {
-    if (aContainer == QLatin1String("webm")) return QStringLiteral("libvpx-vp9");
-    if (aContainer == QLatin1String("avi"))  return QStringLiteral("mpeg4");
-    if (aContainer == QLatin1String("ogv"))  return QStringLiteral("libtheora");
-    return QStringLiteral("libx264"); // mp4/mov/mkv/other
+// Map the dialog's per-container encoder combo to the raw friendly encoder name
+// (e.g. "x264"), or "" for Auto so the exporter picks a muxer-aware default.
+static QString videoCodecForContainer(const exportParam& exParam, const QString& aContainer) {
+    const defaultEncoders& e = exParam.videoParams.encoders;
+    QString friendly;
+    if (aContainer == QLatin1String("avi"))       friendly = aviEnc[(int)e.avi];
+    else if (aContainer == QLatin1String("mkv"))       friendly = mkvEnc[(int)e.mkv];
+    else if (aContainer == QLatin1String("mov"))       friendly = movEnc[(int)e.mov];
+    else if (aContainer == QLatin1String("mp4"))       friendly = mp4Enc[(int)e.mp4];
+    else if (aContainer == QLatin1String("webm"))      friendly = webmEnc[(int)e.webm];
+    if (friendly.isEmpty() || friendly == QLatin1String("Auto") || friendly == QLatin1String("auto"))
+        return QString();
+    return friendly;
 }
 
 // Fill the video-specific bits of a ctrl::Exporter::VideoParam from an exportParam.
@@ -1245,15 +1249,15 @@ static void translateVideoExport(exportParam& exParam, const std::vector<audioCo
     ctrl::VideoFormat fmt = ctrl::VideoFormat::find(container);
     if (fmt.name.isEmpty()) {
         // No embedded preset (e.g. "mkv"): build a minimal format whose default
-        // codec is the container default (the exporter/'makeConfig' resolves it).
+        // codec the exporter resolves via a muxer-aware container default.
         fmt.name = container;
         fmt.label = container;
-        fmt.icodec = QStringLiteral("ppm");
     }
     aVideo.format = fmt;
-    aVideo.codecIndex = -1;    // container default encoder
-    aVideo.colorIndex = 0;
-    aVideo.bps = g.bitrate;    // kbps (the exporter converts to bits/sec)
+    aVideo.codecIndex = -1;              // container default unless overridden below
+    aVideo.codec = videoCodecForContainer(exParam, container); // friendly name or "" (Auto)
+    aVideo.transparent = g.allowTransparency;
+    aVideo.bps = g.bitrate;              // kbps (the exporter converts to bits/sec)
     const QString px = getFormatAsString(exportTarget::pxFmt, (int)exParam.videoParams.pixelFormat);
     aVideo.pixfmt = (px == QLatin1String("Auto") || px.isEmpty()) ? QString() : px;
     aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
@@ -1965,7 +1969,7 @@ void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
         progress.cancel();
 
         if (result.code == ctrl::Exporter::ResultCode_Canceled) {
-        } else if (result.code == ctrl::Exporter::ResultCode_FFMpegFailedToStart) {
+        } else if (result.code == ctrl::Exporter::ResultCode_EncoderOpenFailed) {
             QMessageBox message;
             message.setIcon(QMessageBox::Warning);
             message.setText(tr("FFmpeg was not found."));

@@ -1,12 +1,14 @@
 #include "media/FFmpegHelpers.h"
 
 #include <QHash>
+#include <QDir>
 #include <algorithm>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/pixfmt.h>
+#include <libavformat/avformat.h>
 }
 
 namespace media {
@@ -42,12 +44,65 @@ QStringList availableVideoEncoders() {
 }
 
 QString resolveEncoderName(const QString& aName) {
-    // Friendly preset names that differ from the libav encoder name.
+    // Friendly names (from the export-preset and the dialog's per-container
+    // encoder combos) that differ from the libav encoder name. Names that are
+    // already libav encoder names pass through unchanged.
     static const QHash<QString, QString> aliases = {
         { QStringLiteral("theora"), QStringLiteral("libtheora") },
+        { QStringLiteral("x264"),    QStringLiteral("libx264") },
+        { QStringLiteral("x265"),    QStringLiteral("libx265") },
+        { QStringLiteral("h264"),    QStringLiteral("libx264") },
+        { QStringLiteral("vp8"),     QStringLiteral("libvpx") },
+        { QStringLiteral("vp9"),     QStringLiteral("libvpx-vp9") },
+        { QStringLiteral("av1"),     QStringLiteral("libaom-av1") },
+        { QStringLiteral("mpeg2"),   QStringLiteral("mpeg2video") },
     };
     const QString candidate = aliases.value(aName, aName);
     return encoderAvailable(candidate.toUtf8().constData()) ? candidate : QString();
+}
+
+// True iff the given container's muxer (e.g. "mp4", "webm", "mkv") can carry the
+// named encoder's codec. Uses avformat_query_codec against the allocated muxer,
+// so a requested codec that a container can't hold is REJECTED up front instead
+// of surfacing as a confusing avformat_write_header failure.
+bool muxerSupportsCodec(const QString& aContainer, const QString& aEncoderName) {
+    const AVCodec* codec = ::avcodec_find_encoder_by_name(aEncoderName.toUtf8().constData());
+    if (!codec)
+        return false;
+    AVFormatContext* oc = nullptr;
+    const QByteArray fname = QDir::temp().filePath("ae_codec_probe.tmp").toUtf8();
+    // "mkv" is not a registered muxer name (ffmpeg uses "matroska").
+    const QByteArray container =
+        (aContainer == QLatin1String("mkv")) ? QByteArrayLiteral("matroska")
+                                             : aContainer.toUtf8();
+    if (::avformat_alloc_output_context2(&oc, nullptr, container.constData(),
+                                         fname.constData()) < 0) {
+        return false;
+    }
+    const AVOutputFormat* ofmt = oc ? oc->oformat : nullptr;
+    const int r = ofmt ? ::avformat_query_codec(ofmt, codec->id, FF_COMPLIANCE_NORMAL) : 0;
+    ::avformat_free_context(oc);
+    return r > 0;
+}
+
+// Pick a default video encoder the given container's muxer can actually carry
+// (and that the linked libav* build provides), in priority order. Returns an
+// empty string if none of the candidates fit, so the caller can reject cleanly
+// instead of muxing a codec the container can't hold.
+QString defaultCodecForContainer(const QString& aContainer) {
+    static const char* kCandidates[] = {
+        "libx264",       "libx265",   "libvpx-vp9", "libvpx",
+        "mpeg4",         "libtheora", "ffv1",       "huffyuv",
+        "prores_ks",     "utvideo",
+    };
+    const QByteArray container = aContainer.toUtf8();
+    for (const char* name : kCandidates) {
+        if (!encoderAvailable(name))
+            continue;
+        if (muxerSupportsCodec(aContainer, QString::fromUtf8(name)))
+            return QString::fromUtf8(name);
+    }
+    return QString();
 }
 
 bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFmt) {

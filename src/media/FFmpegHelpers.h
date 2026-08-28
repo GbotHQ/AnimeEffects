@@ -42,6 +42,15 @@ QString resolveEncoderName(const QString& aName);
 // against the linked build (the compatibility gate).
 bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFmt);
 
+// True iff the container's muxer (e.g. "mp4", "webm") can carry the named
+// encoder's codec. Used to reject a container/codec mismatch up front rather
+// than failing confusingly at mux time.
+bool muxerSupportsCodec(const QString& aContainer, const QString& aEncoderName);
+
+// Pick a default video encoder the container's muxer can carry (and the linked
+// build provides), in priority order. Empty string if none fit -> caller rejects.
+QString defaultCodecForContainer(const QString& aContainer);
+
 } // namespace ffmpeg
 } // namespace media
 

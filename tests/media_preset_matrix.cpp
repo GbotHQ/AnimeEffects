@@ -81,6 +81,61 @@ int main(int argc, char** argv) {
     }
 
     check(codecs > 0, "preset file contains codecs");
+
+    // Friendly per-container encoder names (from the dialog combos) resolve to
+    // real libav encoder names. This is what lets the exporter honor a user's
+    // per-container encoder override instead of always using the container default.
+    struct NameCase { const char* in; const char* out; };
+    const NameCase names[] = {
+        { "x264", "libx264" }, { "x265", "libx265" }, { "h264", "libx264" },
+        { "vp8", "libvpx" }, { "vp9", "libvpx-vp9" }, { "theora", "libtheora" },
+        { "mpeg2", "mpeg2video" },
+    };
+    bool namesOk = true;
+    for (const auto& n : names) {
+        const QString r = media::ffmpeg::resolveEncoderName(QString::fromUtf8(n.in));
+        if (r != QLatin1String(n.out)) {
+            QTextStream(stdout) << "  DEBUG resolveEncoderName(" << n.in << ")=" << r
+                                << " expected " << n.out << "\n";
+            namesOk = false;
+        }
+    }
+    check(namesOk, "friendly encoder names resolve to libav names");
+
+    // Container -> default-codec correctness. The exporter picks the default via
+    // defaultCodecForContainer (muxer-aware), so the chosen codec MUST be one the
+    // muxer can carry (this is what prevents a mis-mux like H.264 into a webp or
+    // apng container). For each container the dialog offers, assert the default is
+    // non-empty AND muxer-valid, OR (for exotic containers the in-process path
+    // can't encode) empty so the exporter rejects cleanly.
+    struct C { const char* container; bool expectDefault; };
+    const C containers[] = {
+        { "mp4",  true }, { "mov", true }, { "mkv", true }, { "webm", true },
+        { "avi",  true }, { "ogv", true }, { "gif", false },
+        { "webp", false }, { "apng", false }, { "flv", true }, { "swf", false },
+        { "f4v",  true }, { "mp2", false },
+    };
+    for (const C& c : containers) {
+        const QString codec = media::ffmpeg::defaultCodecForContainer(QString::fromUtf8(c.container));
+        const bool valid = !codec.isEmpty() &&
+            media::ffmpeg::muxerSupportsCodec(QString::fromUtf8(c.container), codec) &&
+            !media::ffmpeg::resolveEncoderName(codec).isEmpty();
+        if (c.expectDefault)
+            check(valid, qPrintable(QString("default codec for %1 is muxer-valid").arg(c.container)));
+        else
+            check(!valid || codec.isEmpty(),
+                  qPrintable(QString("default codec for %1 is empty (rejects cleanly)").arg(c.container)));
+    }
+
+    // Known-incompatible explicit combos must be rejected up front (this is the
+    // rejection path that replaces a confusing muxer write error).
+    check(!media::ffmpeg::muxerSupportsCodec("webm", "prores_ks"),
+          "webm cannot carry prores_ks (rejected)");
+    check(!media::ffmpeg::muxerSupportsCodec("mp4", "libtheora"),
+          "mp4 cannot carry libtheora (rejected)");
+    check(!media::ffmpeg::muxerSupportsCodec("apng", "libx264"),
+          "apng cannot carry libx264 (rejected)");
+
     QTextStream(stdout) << "=== analyzed " << codecs << " codecs ===\n";
     return failures == 0 ? 0 : 1;
 }
