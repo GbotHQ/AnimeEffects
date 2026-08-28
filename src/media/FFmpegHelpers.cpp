@@ -93,7 +93,7 @@ QString defaultCodecForContainer(const QString& aContainer) {
     static const char* kCandidates[] = {
         "libx264",       "libx265",   "libvpx-vp9", "libvpx",
         "mpeg4",         "libtheora", "ffv1",       "huffyuv",
-        "prores_ks",     "utvideo",
+        "prores_ks",     "utvideo",   "apng",       "libwebp",
     };
     const QByteArray container = aContainer.toUtf8();
     for (const char* name : kCandidates) {

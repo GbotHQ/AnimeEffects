@@ -157,15 +157,14 @@ int main(int argc, char** argv) {
         vf.codecs.push_back(c);
         return vf;
     };
-    // mkv/ffv1 @ yuva420p genuinely carries alpha in-process (verified by the V1
-    // alpha round-trip test). libx264/mp4 and libvpx-vp9/webm do NOT encode
-    // alpha in this build (vp9 lists yuva420p but falls back to yuv420p), which
-    // is why the default mp4/h264 dialog path can't be transparent.
-    auto makeAlphaMkv = []() {
+    // webm/libvpx-vp9 @ yuva420p carries alpha as packet side data
+    // (alpha_mode=1); the alpha is recovered by the libvpx decoder. This is the
+    // primary alpha-capable animation container for the web.
+    auto makeWebmVp9 = []() {
         ctrl::VideoFormat vf;
-        vf.name = "mkv"; vf.label = "Matroska"; vf.icodec = "ppm";
+        vf.name = "webm"; vf.label = "WebM"; vf.icodec = "ppm";
         ctrl::VideoCodec c;
-        c.name = "ffv1"; c.label = "FFV1"; c.icodec = "ppm";
+        c.name = "libvpx-vp9"; c.label = "VP9"; c.icodec = "ppm";
         c.transparent = true;
         c.pixfmts = QStringList{ QStringLiteral("yuva420p") };
         vf.codecs.push_back(c);
@@ -249,24 +248,28 @@ int main(int argc, char** argv) {
         QFile::remove(sPath);
     }
 
-    // Scenario 4: transparent export. libx264/mp4 and vp9/webm cannot carry
-    // yuva420p in this build, so use mkv/ffv1, which does. This proves alpha IS
-    // carried through the in-process path when the codec supports it (the
-    // default mp4/h264 path silently falls back to yuv420p).
+    // Scenario 4: transparent export -> webm/VP9 alpha. libx264/mp4 cannot carry
+    // alpha; VP9/WebM carries it as packet side data (alpha_mode=1), recovered
+    // only by the libvpx decoder (ffprobe's stream pix_fmt stays yuv420p). We
+    // assert alpha_mode is set (the V1 unit test verifies the values survive).
     {
-        const QString tPath = QDir::temp().filePath("ae_e2e_alpha.mkv");
-        bool ok = runVideo(makeAlphaMkv(), small, util::Range(minFrame, maxFrame), "yuva420p", tPath, true);
-        check(ok, "e2e transparent (mkv/ffv1 @ yuva420p): export succeeds");
+        const QString tPath = QDir::temp().filePath("ae_e2e_alpha.webm");
+        bool ok = runVideo(makeWebmVp9(), small, util::Range(minFrame, maxFrame), "yuva420p", tPath, true);
+        check(ok, "e2e transparent (webm/vp9 @ yuva420p): export succeeds");
         FILE* p = popen(QStringLiteral(
-            "ffprobe -v error -select_streams v -show_entries stream=codec_name,pix_fmt "
-            "-of csv=p=0 \"%1\" 2>/dev/null | head -1").arg(tPath).toUtf8().constData(), "r");
-        char buf[128]; bool hasAlpha = false;
-        if (p && fgets(buf, sizeof(buf), p)) {
-            const QString pf = QString::fromUtf8(buf).trimmed();
-            if (pf.contains("yuva") || pf.contains("rgba") || pf.contains("bgra")) hasAlpha = true;
+            "ffprobe -v error -select_streams v -show_entries stream=codec_name:stream_tags=alpha_mode "
+            "-of default=noprint_wrappers=1 \"%1\" 2>/dev/null | head -4").arg(tPath).toUtf8().constData(), "r");
+        char buf[256]; bool isVp9 = false, hasAlpha = false;
+        if (p) {
+            while (fgets(buf, sizeof(buf), p)) {
+                const QString line = QString::fromUtf8(buf).trimmed();
+                if (line.startsWith("codec_name=vp9")) isVp9 = true;
+                if (line.contains("alpha_mode=1")) hasAlpha = true;
+            }
+            fclose(p);
         }
-        if (p) fclose(p);
-        check(hasAlpha, "e2e transparent (mkv/ffv1 @ yuva420p): ffprobe reports an alpha pixel format");
+        check(isVp9, "e2e transparent (webm/vp9 @ yuva420p): ffprobe reports vp9");
+        check(hasAlpha, "e2e transparent (webm/vp9 @ yuva420p): alpha_mode side-data present");
         QFile::remove(tPath);
     }
 

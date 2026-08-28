@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
     const C containers[] = {
         { "mp4",  true }, { "mov", true }, { "mkv", true }, { "webm", true },
         { "avi",  true }, { "ogv", true }, { "gif", false },
-        { "webp", false }, { "apng", false }, { "flv", true }, { "swf", false },
+        { "webp", true }, { "apng", true }, { "flv", true }, { "swf", false },
         { "f4v",  true }, { "mp2", false },
     };
     for (const C& c : containers) {
