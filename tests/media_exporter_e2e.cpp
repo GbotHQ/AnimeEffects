@@ -171,8 +171,11 @@ int main(int argc, char** argv) {
         return vf;
     };
 
-    // The app creates a NEW ctrl::Exporter per export (EasyTextureDrawer is not
-    // idempotent, so an exporter must not be reused). Mimic that here.
+    // The app creates a NEW ctrl::Exporter per export. Reusing a single exporter
+    // is NOT supported: the second start()'s createFramebuffers crashes inside
+    // QOpenGLFramebufferObject (a pre-existing GL framebuffer-lifecycle issue,
+    // unrelated to the in-process media layer, which a single VideoEncoder
+    // instance reuses cleanly across cycles — see the V1 suite). Mimic the app.
     auto makeExporter = [&]() {
         std::unique_ptr<ctrl::Exporter> ex(new ctrl::Exporter(project));
         ex->setOverwriteConfirmer([](const QString&) -> bool { return true; });
@@ -221,8 +224,12 @@ int main(int argc, char** argv) {
         check((bool)r, "e2e mp4: native-size export succeeds");
         check(QFile::exists(out) && QFile(out).size() > 0, "e2e mp4: file exists + non-empty");
         int w = 0, h = 0;
-        check(ffprobeVideo(out, &w, &h) && w == nativeW && h == nativeH,
-              "e2e mp4: ffprobe video stream at native dims");
+        // YUV dimensions round odd natives up to even (documented encoder
+        // behavior), so compare against the even-rounded size.
+        const int expW = nativeW + (nativeW & 1);
+        const int expH = nativeH + (nativeH & 1);
+        check(ffprobeVideo(out, &w, &h) && w == expW && h == expH,
+              "e2e mp4: ffprobe video stream at (even-rounded) native dims");
         QFile::remove(out);
     }
 
@@ -322,12 +329,6 @@ int main(int argc, char** argv) {
         check(pngs.size() >= 1, "e2e image-seq: at least one frame written");
         QDir(imgDir).removeRecursively();
     }
-
-    // NOTE: the Exporter is a ONE-SHOT object — the app builds a fresh one per
-    // export. Reusing it for a 2nd export crashes (it's not the idempotency of
-    // EasyTextureDrawer::init(), which IS fixed, but deeper one-shot state in the
-    // exporter/encoder). init() being idempotent is still a safe, correct
-    // improvement; the exporter itself is not reusable by design.
 
     // Audio is exercised at the unit level (V2) + the video+audio mux case in
     // media_video_encoder (V1); the real-path harness stays video/gif/image to

@@ -817,6 +817,26 @@ int main(int argc, char** argv) {
     run_unwritable_path();
     run_absent_encoder();
     run_zero_negative_size();
+    // A single media::VideoEncoder can be reused across multiple export cycles
+    // (open/write/close, then open/write/close again on the same instance). The
+    // media layer is independently reusable; ctrl::Exporter's GL-side reuse
+    // crash is a separate, pre-existing framebuffer-lifecycle issue. This locks
+    // in the media-only half of that guarantee (see the e2e harness comment).
+    {
+        const QString o1 = QDir::temp().filePath("ae_reuse1.mp4");
+        const QString o2 = QDir::temp().filePath("ae_reuse2.mp4");
+        media::VideoEncoder enc;
+        auto go = [&](const QString& out) {
+            media::VideoEncoder::Config cfg;
+            cfg.outputPath = out; cfg.container = "mp4"; cfg.codec = "libx264";
+            cfg.width = 64; cfg.height = 48; cfg.fps = 24; cfg.pixFmt = "yuv420p";
+            QList<QImage> frames = { makeFrame(64, 48, 0), makeFrame(64, 48, 1) };
+            return enc.writeAll(frames, cfg);
+        };
+        bool a = go(o1); QFile::remove(o1);
+        bool b = go(o2); QFile::remove(o2);
+        check(a && b, "media::VideoEncoder reuse: 2 export cycles on one instance");
+    }
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }
