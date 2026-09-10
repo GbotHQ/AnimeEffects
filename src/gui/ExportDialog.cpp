@@ -47,11 +47,21 @@ ExportDialog::ExportDialog(core::Project& aProject, const QString& aPath, QWidge
     XC_ASSERT(mCommonParam.size.height() > 0);
 
     auto time = mProject.currentTimeInfo();
-    mCommonParam.frame = time.frameRange;
+    setFrameRange(time.frameRange);
     mCommonParam.fps = time.fps;
 
     mSize = mProject.attribute().imageSize();
     mFrameMax = time.frameRange.max();
+}
+
+util::Range ExportDialog::frameRange() const {
+    if (mCommonParam.selection.ranges.isEmpty()) return util::Range(0, 0);
+    const ctrl::FrameRange& r = mCommonParam.selection.ranges.first();
+    return util::Range(r.first, r.last);
+}
+
+void ExportDialog::setFrameRange(const util::Range& aRange) {
+    mCommonParam.selection = ctrl::FrameSelection::fromRange(aRange.min(), aRange.max());
 }
 
 void ExportDialog::pushSizeBox(QFormLayout& aLayout) {
@@ -142,31 +152,35 @@ void ExportDialog::pushFrameBox(QFormLayout& aLayout) {
     // start frame (negative allowed: a project may start before frame 0)
     auto start = new QSpinBox();
     start->setRange(std::numeric_limits<int>::min(), mFrameMax);
-    start->setValue(mCommonParam.frame.min());
+    start->setValue(frameRange().min());
     setMinMaxOptionWidth(start);
 
     // end frame
     auto end = new QSpinBox();
     end->setRange(std::numeric_limits<int>::min(), mFrameMax);
-    end->setValue(mCommonParam.frame.max());
+    end->setValue(frameRange().max());
     setMinMaxOptionWidth(end);
 
     this->connect(start, &QSpinBox::editingFinished, [=]() {
         const int v = start->value();
-        this->mCommonParam.frame.setMin(v);
-        if (this->mCommonParam.frame.max() < v) {
+        util::Range r = frameRange();
+        r.setMin(v);
+        if (r.max() < v) {
             end->setValue(v);
-            this->mCommonParam.frame.setMax(v);
+            r.setMax(v);
         }
+        setFrameRange(r);
     });
 
     this->connect(end, &QSpinBox::editingFinished, [=]() {
         const int v = end->value();
-        this->mCommonParam.frame.setMax(v);
-        if (v < this->mCommonParam.frame.min()) {
+        util::Range r = frameRange();
+        r.setMax(v);
+        if (v < r.min()) {
             start->setValue(v);
-            this->mCommonParam.frame.setMin(v);
+            r.setMin(v);
         }
+        setFrameRange(r);
     });
 
     aLayout.addRow(tr("Initial frame"), start);

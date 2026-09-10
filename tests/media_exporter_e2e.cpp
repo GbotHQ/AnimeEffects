@@ -188,7 +188,9 @@ int main(int argc, char** argv) {
                         const QString& aPath, bool aExpectSuccess) -> bool {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
         ctrl::Exporter::CommonParam cp;
-        cp.path = aPath; cp.size = aSize; cp.frame = aFrame; cp.fps = fps;
+        cp.path = aPath; cp.size = aSize;
+        cp.selection = ctrl::FrameSelection::fromRange(aFrame.min(), aFrame.max());
+        cp.fps = fps;
         ctrl::Exporter::VideoParam vp;
         vp.format = aFmt;
         vp.codecIndex = 0; vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = aPixFmt;
@@ -217,7 +219,7 @@ int main(int argc, char** argv) {
     {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
         ctrl::Exporter::CommonParam cp;
-        cp.path = out; cp.size = QSize(nativeW, nativeH); cp.frame = util::Range(minFrame, maxFrame); cp.fps = fps;
+        cp.path = out; cp.size = QSize(nativeW, nativeH); cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::VideoParam vp;
         vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = "yuv420p";
         auto r = ex->execute(cp, vp);
@@ -294,7 +296,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
         const QString gPath = QDir::temp().filePath("ae_e2e.gif");
         ctrl::Exporter::CommonParam cp;
-        cp.path = gPath; cp.size = small; cp.frame = util::Range(minFrame, maxFrame); cp.fps = fps;
+        cp.path = gPath; cp.size = small; cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::GifParam gp;
         gp.optimizePalette = true; gp.intermediateBps = 0;
         auto r = ex->execute(cp, gp);
@@ -319,15 +321,134 @@ int main(int argc, char** argv) {
         QDir(imgDir).removeRecursively();
         QDir().mkpath(imgDir);
         ctrl::Exporter::CommonParam cp;
-        cp.path = imgDir; cp.size = small; cp.frame = util::Range(minFrame, maxFrame); cp.fps = fps;
+        cp.path = imgDir; cp.size = small; cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::ImageParam ip;
         ip.name = "ae_e2e_frame"; ip.suffix = "png"; ip.quality = 90;
         auto r = ex->execute(cp, ip);
         check((bool)r, "e2e image-seq: export succeeds");
         QDir d(imgDir);
         const QStringList pngs = d.entryList(QStringList{ "*.png" }, QDir::Files);
-        check(pngs.size() >= 1, "e2e image-seq: at least one frame written");
+        const int expected = maxFrame - minFrame + 1;
+        const QString msg = QStringLiteral("e2e image-seq: one file per selected frame (expected %1, got %2)")
+                                .arg(expected).arg(pngs.size());
+        const QByteArray msgBytes = msg.toUtf8();
+        check(pngs.size() == expected, msgBytes.constData());
         QDir(imgDir).removeRecursively();
+    }
+
+    // Scenario 8: MULTI-RANGE selection. A selection is a LIST of ranges, so a
+    // gap between them must not be exported: [a,a] + [a+2,a+3] is 3 frames,
+    // whereas collapsing it to the span [a..a+3] writes 4. The image-sequence
+    // path makes the count directly observable, one file per rendered frame.
+    {
+        const int spanEnd = minFrame + 3;
+        if (project.attribute().frameRange().max() < spanEnd) {
+            check(false, "e2e multi-range: project is too short for this scenario");
+        } else {
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            const QString mrDir = QDir::temp().filePath("ae_e2e_multirange");
+            QDir(mrDir).removeRecursively();
+            QDir().mkpath(mrDir);
+            ctrl::Exporter::CommonParam cp;
+            cp.path = mrDir; cp.size = small; cp.fps = fps;
+            ctrl::FrameSelection sel;
+            sel.ranges.append(ctrl::FrameRange{ minFrame, minFrame });
+            sel.ranges.append(ctrl::FrameRange{ minFrame + 2, spanEnd });
+            cp.selection = sel;
+            ctrl::Exporter::ImageParam ip;
+            ip.name = "ae_e2e_mr"; ip.suffix = "png"; ip.quality = 90;
+            auto r = ex->execute(cp, ip);
+            check((bool)r, "e2e multi-range: export succeeds");
+            const QStringList pngs = QDir(mrDir).entryList(QStringList{ "*.png" }, QDir::Files);
+            const QString msg = QStringLiteral("e2e multi-range: [a,a]+[a+2,a+3] writes 3 frames, not the 4 of one span (got %1)")
+                                    .arg(pngs.size());
+            const QByteArray msgBytes = msg.toUtf8();
+            check(pngs.size() == 3, msgBytes.constData());
+            QDir(mrDir).removeRecursively();
+        }
+    }
+
+    // Scenario 9: audio THROUGH THE EXPORTER. Nothing covered this before (only
+    // MainWindow calls setAudioTracks), and this round changed how the audio
+    // window is derived from the selection and added a refusal for gapped
+    // selections — so both need a gate: 9a for the ordinary case, 9b for the
+    // refusal. Without 9a a regression that silently drops audio would pass.
+    {
+        auto ffprobeHasAudio = [](const QString& aPath) -> bool {
+            const QString cmd = QStringLiteral(
+                "ffprobe -v error -select_streams a -show_entries stream=codec_name "
+                "-of csv=p=0 \"%1\"").arg(aPath);
+            FILE* p = popen(cmd.toUtf8().constData(), "r");
+            if (!p) return false;
+            char buf[256] = {0};
+            const bool got = fgets(buf, sizeof(buf), p) != nullptr;
+            pclose(p);
+            return got && QString::fromUtf8(buf).trimmed().size() > 0;
+        };
+
+        // A 1s 16-bit mono PCM WAV, so the mixer has something to decode.
+        const QString wav = QDir::temp().filePath("ae_e2e_tone.wav");
+        {
+            QFile f(wav);
+            if (f.open(QIODevice::WriteOnly)) {
+                const int rate = 48000, samples = rate;
+                const int dataBytes = samples * 2;
+                QByteArray h;
+                auto put32 = [&](quint32 v) {
+                    h.append(char(v & 0xff)); h.append(char((v >> 8) & 0xff));
+                    h.append(char((v >> 16) & 0xff)); h.append(char((v >> 24) & 0xff));
+                };
+                auto put16 = [&](quint16 v) { h.append(char(v & 0xff)); h.append(char((v >> 8) & 0xff)); };
+                h.append("RIFF"); put32(36 + dataBytes); h.append("WAVE");
+                h.append("fmt "); put32(16); put16(1); put16(1);
+                put32(rate); put32(rate * 2); put16(2); put16(16);
+                h.append("data"); put32(dataBytes);
+                f.write(h);
+                f.write(QByteArray(dataBytes, '\0'));
+                f.close();
+            }
+        }
+
+        media::AudioMixer::Track tr;
+        tr.path = wav; tr.startFrame = minFrame; tr.endFrame = 0;
+        tr.volume = 1.0f; tr.enabled = true;
+
+        {   // 9a: contiguous selection + audio still exports, and the audio lands
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            const QString out = QDir::temp().filePath("ae_e2e_audio.mp4");
+            QFile::remove(out);
+            ctrl::Exporter::CommonParam cp;
+            cp.path = out; cp.size = small; cp.fps = fps;
+            cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame);
+            ctrl::Exporter::VideoParam vp;
+            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.bps = 1000; vp.pixfmt = "yuv420p";
+            ex->setAudioTracks(QVector<media::AudioMixer::Track>{ tr });
+            auto r = ex->execute(cp, vp);
+            check((bool)r, "e2e audio: contiguous selection + audio exports");
+            check(ffprobeHasAudio(out), "e2e audio: the output carries an audio stream");
+            QFile::remove(out);
+        }
+
+        {   // 9b: a gapped selection with audio is refused, not mis-mixed
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            ctrl::Exporter::CommonParam cp;
+            const QString gapOut = QDir::temp().filePath("ae_e2e_audio_gap.mp4");
+            QFile::remove(gapOut);
+            cp.path = gapOut; cp.size = small; cp.fps = fps;
+            ctrl::FrameSelection sel;
+            sel.ranges.append(ctrl::FrameRange{ minFrame, minFrame });
+            sel.ranges.append(ctrl::FrameRange{ minFrame + 2, minFrame + 3 });
+            cp.selection = sel;
+            ctrl::Exporter::VideoParam vp;
+            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.bps = 1000; vp.pixfmt = "yuv420p";
+            ex->setAudioTracks(QVector<media::AudioMixer::Track>{ tr });
+            auto r = ex->execute(cp, vp);
+            check(!r, "e2e audio: a gapped selection with audio is refused, not mis-mixed");
+            check(!QFile::exists(gapOut), "e2e audio: the refused export writes no file");
+        }
+        QFile::remove(wav);
     }
 
     // Audio is exercised at the unit level (V2) + the video+audio mux case in

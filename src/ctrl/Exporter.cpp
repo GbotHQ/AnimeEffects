@@ -15,10 +15,10 @@ Exporter::Result::Result(): code(ResultCode_TERM) {}
 Exporter::Result::Result(ResultCode aCode, const QString& aMessage): code(aCode), message(aMessage) {}
 
 //-------------------------------------------------------------------------------------------------
-Exporter::CommonParam::CommonParam(): path(), size(), frame(), fps() {}
+Exporter::CommonParam::CommonParam(): path(), size(), selection(), fps() {}
 
 bool Exporter::CommonParam::isValid() const {
-    if (frame.diff() < 0) {
+    if (selection.isEmpty()) {
         return false;
     }
 
@@ -152,6 +152,16 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
     // check param
     if (!aCommon.isValid()) {
         mLog = "Invalid common parameters.";
+        return Result(ResultCode_InvalidOperation, mLog);
+    }
+
+    // The audio mixer takes ONE window, so a selection with gaps cannot be mixed
+    // correctly yet. Refuse before rendering rather than write audio taken from a
+    // window the user did not ask for. (Concatenating the selected segments is the
+    // follow-up; until then the limitation is stated, not hidden.)
+    if (mHasAudio && aCommon.selection.rangeCount() > 1) {
+        mLog = "Audio export needs a single continuous frame range, but this export "
+               "selects several. Export each range separately, or turn audio off.";
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
@@ -303,7 +313,11 @@ Exporter::Result Exporter::start() {
     // reset value
     mIndex = 0;
     mProgress = 0.0f;
-    mDigitCount = getDigitCount(mCommonParam.frame, mCommonParam.fps, mOriginTimeInfo.fps);
+    // Flatten the selection once: every frame that will be rendered, in output
+    // order. updateTime() indexes this instead of assuming min() + n, which is
+    // what made several ranges export as one span.
+    mSelectedFrames = mCommonParam.selection.indices();
+    mDigitCount = getDigitCount((int)mSelectedFrames.size(), mCommonParam.fps, mOriginTimeInfo.fps);
 
     // initialize graphics
     {
@@ -338,20 +352,30 @@ Exporter::Result Exporter::start() {
 bool Exporter::updateTime(core::TimeInfo& aDst) {
     aDst = mOriginTimeInfo;
 
-    const int range = mCommonParam.frame.diff() + 1;
+    // Output frame mIndex maps onto a position in the flattened selection,
+    // scaled by the fps ratio (the export fps need not match the project's).
     const double current = (mIndex * mOriginTimeInfo.fps) / (double)mCommonParam.fps;
-    const double frame = mCommonParam.frame.min() + current;
+    const int base = (int)current;
+    const int count = (int)mSelectedFrames.size();
 
-    // end of export
-    if (0 < mIndex && mCommonParam.frame.max() < frame) {
+    // end of export (same boundary as before: a fractional overshoot past the
+    // last selected frame ends the run rather than emitting a tail frame)
+    if (base >= count || (0 < mIndex && current > (double)(count - 1))) {
         return false;
     }
-    if (mOriginTimeInfo.frameRange.max() < (int)frame) {
+    if (mOriginTimeInfo.frameRange.max() < mSelectedFrames[base]) {
         return false;
     }
+
+    // Interpolate toward the NEXT SELECTED frame, not the next project frame:
+    // with several ranges the following output frame is not frame + 1.
+    const double frac = current - base;
+    const int next = std::min(base + 1, count - 1);
+    const double frame = mSelectedFrames[base]
+                         + frac * (double)(mSelectedFrames[next] - mSelectedFrames[base]);
 
     aDst.frame = core::Frame::fromDecimal(frame);
-    mProgress = (float)current / range;
+    mProgress = (float)current / (double)count;
 
     // to next index
     ++mIndex;
@@ -511,11 +535,13 @@ Exporter::Result Exporter::finish() {
                 media::AudioMixer mixer;
                 media::AudioMixer::Config acfg;
                 acfg.fps = mCommonParam.fps;
-                acfg.totalFrames = mCommonParam.frame.diff() + 1; // export length
+                // A single window: contiguous by construction, because a
+                // selection with gaps is refused before rendering starts.
+                acfg.totalFrames = mCommonParam.selection.total(); // export length
                 acfg.sampleRate = mAudioSampleRate;
                 acfg.channels = mAudioChannels;
                 QVector<media::AudioMixer::Track> tracks = mAudioTracks;
-                const int minFrame = mCommonParam.frame.min();
+                const int minFrame = mCommonParam.selection.ranges.first().first;
                 for (auto& t : tracks) {
                     t.startFrame -= minFrame;
                     if (t.endFrame > 0)
@@ -614,9 +640,9 @@ bool Exporter::checkOverwriting(const QFileInfo& aPath) {
     return true;
 }
 
-int Exporter::getDigitCount(const util::Range& aRange, int aFps, int aFpsOrigin) {
+int Exporter::getDigitCount(int aFrameCount, int aFps, int aFpsOrigin) {
     int digitCount = 1;
-    double count = (aFps * (aRange.diff() + 1)) / (double)aFpsOrigin;
+    double count = (aFps * aFrameCount) / (double)aFpsOrigin;
     for (; count >= 10.0; count *= 0.1)
         ++digitCount;
     return std::max(digitCount, 4);

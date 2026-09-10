@@ -1280,13 +1280,22 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     ctrl::Exporter::CommonParam cparam;
     cparam.size = QSize(g.exportWidth, g.exportHeight);
     cparam.fps = g.fps > 0 ? g.fps : (g.nativeFPS > 0 ? g.nativeFPS : 24);
-    int first = g.nativeFrameRange.firstFrame, last = g.nativeFrameRange.lastFrame;
+    // Every range the user selected, in the order they are listed. This used to
+    // collapse them to [first of the first .. last of the last], so a gap was
+    // exported as if it had been selected: ranges 0-10 + 50-60 wrote 61 frames
+    // instead of 22. The exporter now takes the list.
     if (!g.exportRange.isEmpty()) {
-        first = g.exportRange.first().firstFrame;
-        last = g.exportRange.last().lastFrame;
-        if (first > last) std::swap(first, last);
+        ctrl::FrameSelection selection;
+        for (const frameExportRange& r : g.exportRange) {
+            const int a = std::min(r.firstFrame, r.lastFrame);
+            const int b = std::max(r.firstFrame, r.lastFrame);
+            selection.ranges.append(ctrl::FrameRange{a, b});
+        }
+        cparam.selection = selection;
+    } else {
+        cparam.selection = ctrl::FrameSelection::fromRange(g.nativeFrameRange.firstFrame,
+                                                          g.nativeFrameRange.lastFrame);
     }
-    cparam.frame = util::Range(first, last);
 
     ctrl::Exporter exporter(*mCurrent);
     exporter.setOverwriteConfirmer([widget](const QString& aPath) -> bool {

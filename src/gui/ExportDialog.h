@@ -21,6 +21,12 @@ public:
     const ctrl::Exporter::CommonParam& commonParam() const { return mCommonParam; }
     ctrl::Exporter::CommonParam& commonParam() { return mCommonParam; }
 
+    // The quick dialogs expose one start/end frame pair, so they own a single
+    // contiguous range. It is stored in CommonParam as a one-range
+    // FrameSelection (which is how the exporter expresses any selection).
+    util::Range frameRange() const;
+    void setFrameRange(const util::Range& aRange);
+
 protected:
     void pushSizeBox(QFormLayout& aLayout);
     void pushFrameBox(QFormLayout& aLayout);

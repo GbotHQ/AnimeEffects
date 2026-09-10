@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QOpenGLFramebufferObject>
 #include "util/Range.h"
+#include "ctrl/ExportTarget.h"   // FrameSelection
 #include "util/IProgressReporter.h"
 #include "ctrl/UILogger.h"
 #include "gl/EasyTextureDrawer.h"
@@ -52,7 +53,12 @@ public:
         CommonParam();
         QString path;
         QSize size;
-        util::Range frame;
+        // WHICH frames to render, in output order. Several ranges are rendered
+        // back to back and the gaps are NOT exported. This was a single
+        // util::Range, which is why several ranges collapsed into one span and
+        // frames the user had excluded were written anyway. A single contiguous
+        // export is just FrameSelection::fromRange(min, max).
+        FrameSelection selection;
         int fps;
         bool isValid() const;
     };
@@ -121,7 +127,7 @@ private:
     void destroyFramebuffers();
     void createFramebuffers(const QSize& aOriginSize, const QSize& aExportSize);
     void setTextureParam(QOpenGLFramebufferObject& aFbo);
-    static int getDigitCount(const util::Range& aRange, int aFps, int aFpsOrigin);
+    static int getDigitCount(int aFrameCount, int aFps, int aFpsOrigin);
     bool decideImagePath(int aIndex, QFileInfo& aPath);
     bool checkOverwriting(const QFileInfo& aPath);
     void updateLog();
@@ -139,6 +145,9 @@ private:
     ctrl::UILogger* mUILogger;
 
     CommonParam mCommonParam;
+    // The selection flattened to project frame numbers, in output order, built
+    // once in start(). updateTime() indexes this instead of assuming min()+n.
+    QList<int> mSelectedFrames;
     ImageParam mImageParam;
     bool mVideoExporting;
     // GIF path: collect rendered frames (no live encoder) and encode with the
