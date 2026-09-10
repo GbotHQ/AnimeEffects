@@ -23,7 +23,17 @@ target_link_libraries(bonekey_regression PRIVATE
 
 # Round-trip project loader/saver harness (open -> serialize -> reload -> close).
 # Takes .anie paths on the command line; used to exercise real project files.
-add_executable(roundtrip roundtrip_main.cpp)
+#
+# It needs the embedded resources: loading a project initialises GL, which reads
+# :/shaders/*.glsl. Without assets.qrc the harness dies with
+# "XC_FATAL FileIO Error No such file or directory :/shaders/MeshTransformVert.glsl"
+# on the first real project — i.e. the one tool whose job is to round-trip real
+# projects could not open one. The sibling GL harness (media_exporter_e2e) has
+# always embedded them; this one was left behind when the assets moved from a
+# data directory on disk into the binary.
+add_executable(roundtrip roundtrip_main.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
 target_include_directories(roundtrip PRIVATE ..)
 target_compile_definitions(roundtrip PRIVATE
     AE_MAJOR_VERSION=1
