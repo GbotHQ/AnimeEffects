@@ -235,7 +235,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
     }
 
     // Filled by MainWindow once the panels are constructed.
-    viewMenu = new QMenu(tr("View"), this);
+    viewMenu = new QMenu(tr("Panels"), this);
 
     auto preferenceMenu = new QMenu(tr("Preferences"), this);
     {

@@ -143,6 +143,9 @@ const QSet<QString>& activeVariantNames() {
         "plus-bold", "minus-bold", "navigation-arrow", "link", "broadcast",
         "paint-brush", "eraser", "pencil-simple", "hardness-1", "hardness-2",
         "hardness-3", "crosshair",
+        // menu rows: a checkable entry shows the glyph on the selected row's
+        // accent fill, so it needs the max-contrast tint there
+        "check-bold",
     };
     return s;
 }

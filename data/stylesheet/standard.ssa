@@ -326,24 +326,34 @@ QMenu::indicator
     subcontrol-position: center left;
 }
 
+/**
+ *  A menu row marks its state with the check glyph alone. The boxed
+ *  checkbox_* icons are wrong here - a menu is not a form, so an unchecked
+ *  row drew an empty box and a checked one a filled box, and tinted with the
+ *  accent that read as a purple square rather than a checkmark. The
+ *  transparent placeholder holds the glyph column so titles stay aligned
+ *  whether or not a row is checked.
+ */
 QMenu::indicator:non-exclusive:unchecked
 {
-    border-image: url(@icondir@/checkbox_unchecked_disabled.svg);
+    image: url(@icondir@/transparent.svg);
 }
 
 QMenu::indicator:non-exclusive:unchecked:selected
 {
-    border-image: url(@icondir@/checkbox_unchecked_disabled.svg);
+    image: url(@icondir@/transparent.svg);
 }
 
 QMenu::indicator:non-exclusive:checked
 {
-    border-image: url(@icondir@/checkbox_checked.svg);
+    image: url(@icondir@/check-bold.svg);
 }
 
+/* on the selected row the check sits on the accent fill, so it takes the
+   max-contrast tint (-active) rather than the text color */
 QMenu::indicator:non-exclusive:checked:selected
 {
-    border-image: url(@icondir@/checkbox_checked.svg);
+    image: url(@icondir@/check-bold-active.svg);
 }
 
 QMenu::indicator:exclusive:unchecked
