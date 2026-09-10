@@ -862,6 +862,10 @@ int main(int argc, char* argv[]) {
     run_throughput_gate();
     run_audio_is_derived();
     run_fit_to_cap();
+    // run_live_encode() was defined but never called, so this section had never
+    // actually run and its assertions were not part of the count that "passed".
+    // Everything the suite claims to check has to be reachable from main.
+    run_live_encode();
 
     QTextStream(stdout) << "\n" << (failures ? "FAILURES: " : "ALL PASS ") << failures << "\n";
     return failures ? 1 : 0;
