@@ -1,3 +1,8 @@
+# The tests are first-party code, so they use the project warning policy
+# (see ae_enable_warnings in the top-level CMakeLists.txt): a test whose
+# sections can silently not run is a test that reads as coverage.
+ae_enable_warnings()
+
 # Regression test for the BoneKey::deserialize use-after-free (dangling
 # &mBindingCaches.back() captured into a deferred IDSolver lambda that runs
 # after the QList reallocates). Self-contained; see bonekey_regression.cpp.
