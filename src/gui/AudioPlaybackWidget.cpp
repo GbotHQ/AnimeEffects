@@ -78,6 +78,7 @@ bool AudioPlaybackWidget::serialize(std::vector<audioConfig>* pConf, const QStri
         track["Name"] = audioConfig.audioName;
         track["Path"] = audioConfig.audioPath.absoluteFilePath();
         track["Playback"] = audioConfig.playbackEnable;
+        track["Export"] = audioConfig.exportEnable;
         track["Volume"] = audioConfig.volume;
         track["StartFrame"] = audioConfig.startFrame;
         track["EndFrame"] = audioConfig.endFrame;
@@ -102,6 +103,10 @@ bool AudioPlaybackWidget::deserialize(const QJsonObject& pConf, std::vector<audi
             deserialized.at(x).audioName = pConf[QString::number(x)].toObject()["Name"].toString();
             deserialized.at(x).audioPath = QFileInfo(pConf[QString::number(x)].toObject()["Path"].toString());
             deserialized.at(x).playbackEnable = pConf[QString::number(x)].toObject()["Playback"].toBool();
+            // Older projects predate per-track export control; default to on so
+            // behaviour is unchanged for them.
+            const QJsonValue exp = pConf[QString::number(x)].toObject()["Export"];
+            deserialized.at(x).exportEnable = exp.isBool() ? exp.toBool() : true;
             deserialized.at(x).volume = pConf[QString::number(x)].toObject()["Volume"].toInt();
             deserialized.at(x).startFrame = pConf[QString::number(x)].toObject()["StartFrame"].toInt();
             deserialized.at(x).endFrame = pConf[QString::number(x)].toObject()["EndFrame"].toInt();
