@@ -93,14 +93,9 @@ struct GeneralParams {
     bool allowTransparency = true;
     bool loop = true;
     bool exportWithAudio = false;
-    bool useCustomParam = false;
-    bool useIntermediate = true;
-    bool usePost = true;
     bool useCustomPalette = false;
     QDir palettePath = QDir();
     QVector<frameExportRange> exportRange = QVector<frameExportRange>();
-    QString customInterCommand = "";
-    QString customPostCommand = "";
     QVector<int> framesToBeExported = QVector<int>();
     frameExportRange nativeFrameRange = frameExportRange();
     bool exportAllFrames = false;

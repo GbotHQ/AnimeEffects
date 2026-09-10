@@ -47,7 +47,6 @@ public:
     QScrollArea *globalParamScroll;
     QWidget *globalParamScrollContents;
     QGridLayout *gridLayout_2;
-    QCheckBox *intermediateParamCheckBox;
     QRadioButton *keepAspectRatio;
     QLabel *lastFrameLabel;
     QLabel *exportTypeLabel;
@@ -72,8 +71,6 @@ public:
     QPushButton *setWidthNative;
     QFrame *renderLine1;
     QFrame *exportLine2;
-    QCheckBox *postParamCheckBox;
-    QLabel *paramsLabel;
     QSpinBox *widthSpinBox;
     QLabel *heightLabel;
     QLabel *exportingLabel;
@@ -95,25 +92,8 @@ public:
     QLabel *imageQualityLabel;
     QSpinBox *imageQualitySpinbox;
     QPushButton *setImageQualityToAuto;
-    QCheckBox *allowParamsCheckBox;
     QSpinBox * fpsSpinBox;
     QToolButton *selectPalettePathButton;
-    QWidget *customParam;
-    QVBoxLayout *verticalLayout_5;
-    QGridLayout *customParamLayout;
-    QLabel *intermediateLabel;
-    QLabel *postLabel;
-    QFrame *customLine;
-    QPushButton *addPresetToIntermediate;
-    QPushButton * addPresetToPost;
-    QLabel *presetLabel;
-    QComboBox *presetCombo;
-    QPushButton *removePreset;
-    QTextEdit *postParamTextEdit;
-    QToolButton *savePostParamAsPreset;
-    QTextEdit *intermediateParamTextEdit;
-    QToolButton *saveIntermediateParamAsPreset;
-    QLabel *commandsLabel;
     QHBoxLayout *exportLayout;
     QPushButton *exportButton;
     QPushButton *cancelButton;
@@ -172,12 +152,7 @@ public:
         globalParamScrollContents->setGeometry(QRect(0, 0, 471, 567));
         gridLayout_2 = new QGridLayout(globalParamScrollContents);
         gridLayout_2->setObjectName(QString::fromUtf8("gridLayout_2"));
-        intermediateParamCheckBox = new QCheckBox(globalParamScrollContents);
-        intermediateParamCheckBox->setObjectName(QString::fromUtf8("intermediateParamCheckBox"));
-        intermediateParamCheckBox->setChecked(true);
-        intermediateParamCheckBox->setAutoExclusive(false);
 
-        gridLayout_2->addWidget(intermediateParamCheckBox, 18, 1, 1, 1);
 
         keepAspectRatio = new QRadioButton(globalParamScrollContents);
         keepAspectRatio->setObjectName(QString::fromUtf8("keepAspectRatio"));
@@ -305,17 +280,8 @@ public:
 
         gridLayout_2->addWidget(exportLine2, 8, 2, 1, 1);
 
-        postParamCheckBox = new QCheckBox(globalParamScrollContents);
-        postParamCheckBox->setObjectName(QString::fromUtf8("postParamCheckBox"));
-        postParamCheckBox->setChecked(true);
-        postParamCheckBox->setAutoExclusive(false);
 
-        gridLayout_2->addWidget(postParamCheckBox, 18, 2, 1, 1);
 
-        paramsLabel = new QLabel(globalParamScrollContents);
-        paramsLabel->setObjectName(QString::fromUtf8("paramsLabel"));
-
-        gridLayout_2->addWidget(paramsLabel, 18, 0, 1, 1);
 
         widthSpinBox = new QSpinBox(globalParamScrollContents);
         widthSpinBox->setObjectName(QString::fromUtf8("widthSpinBox"));
@@ -463,11 +429,7 @@ public:
 
         gridLayout_2->addWidget(imageQualityLabel, 12, 0, 1, 1);
 
-        allowParamsCheckBox = new QCheckBox(globalParamScrollContents);
-        allowParamsCheckBox->setObjectName(QString::fromUtf8("allowParamsCheckBox"));
-        allowParamsCheckBox->setChecked(true);
 
-        gridLayout_2->addWidget(allowParamsCheckBox, 17, 0, 1, 3);
 
         fpsSpinBox = new QSpinBox(globalParamScrollContents);
         fpsSpinBox->setObjectName(QString::fromUtf8("fpsSpinBox"));
@@ -535,98 +497,6 @@ public:
         gridLayout_2->addWidget(destinationFacts, 27, 0, 1, 3);
 
         settingsTab->addTab(globalParam, QString());
-        customParam = new QWidget();
-        customParam->setObjectName(QString::fromUtf8("customParam"));
-        verticalLayout_5 = new QVBoxLayout(customParam);
-        verticalLayout_5->setObjectName(QString::fromUtf8("verticalLayout_5"));
-        customParamLayout = new QGridLayout();
-        customParamLayout->setObjectName(QString::fromUtf8("customParamLayout"));
-        intermediateLabel = new QLabel(customParam);
-        intermediateLabel->setObjectName(QString::fromUtf8("intermediateLabel"));
-        QSizePolicy sizePolicy8(QSizePolicy::Maximum, QSizePolicy::Preferred);
-        sizePolicy8.setHorizontalStretch(0);
-        sizePolicy8.setVerticalStretch(0);
-        sizePolicy8.setHeightForWidth(intermediateLabel->sizePolicy().hasHeightForWidth());
-        intermediateLabel->setSizePolicy(sizePolicy8);
-        intermediateLabel->setWordWrap(true);
-
-        customParamLayout->addWidget(intermediateLabel, 1, 0, 1, 1);
-
-        postLabel = new QLabel(customParam);
-        postLabel->setObjectName(QString::fromUtf8("postLabel"));
-
-        customParamLayout->addWidget(postLabel, 3, 0, 1, 1);
-
-        customLine = new QFrame(customParam);
-        customLine->setObjectName(QString::fromUtf8("customLine"));
-        customLine->setFrameShape(QFrame::HLine);
-        customLine->setFrameShadow(QFrame::Sunken);
-
-        customParamLayout->addWidget(customLine, 5, 0, 1, 3);
-
-        addPresetToIntermediate = new QPushButton(customParam);
-        addPresetToIntermediate->setObjectName(QString::fromUtf8("addPresetToIntermediate"));
-
-        customParamLayout->addWidget(addPresetToIntermediate, 7, 1, 1, 1);
-
-        addPresetToPost = new QPushButton(customParam);
-        addPresetToPost->setObjectName(QString::fromUtf8("addPresetToPost"));
-
-        customParamLayout->addWidget(addPresetToPost, 7, 2, 1, 1);
-
-        presetLabel = new QLabel(customParam);
-        presetLabel->setObjectName(QString::fromUtf8("presetLabel"));
-
-        customParamLayout->addWidget(presetLabel, 6, 0, 1, 1);
-
-        presetCombo = new QComboBox(customParam);
-        presetCombo->setObjectName(QString::fromUtf8("presetCombo"));
-
-        customParamLayout->addWidget(presetCombo, 6, 1, 1, 3);
-
-        removePreset = new QPushButton(customParam);
-        removePreset->setObjectName(QString::fromUtf8("removePreset"));
-
-        customParamLayout->addWidget(removePreset, 7, 3, 1, 1);
-
-        postParamTextEdit = new QTextEdit(customParam);
-        postParamTextEdit->setObjectName(QString::fromUtf8("postParamTextEdit"));
-        QSizePolicy sizePolicy9(QSizePolicy::MinimumExpanding, QSizePolicy::Expanding);
-        sizePolicy9.setHorizontalStretch(0);
-        sizePolicy9.setVerticalStretch(0);
-        sizePolicy9.setHeightForWidth(postParamTextEdit->sizePolicy().hasHeightForWidth());
-        postParamTextEdit->setSizePolicy(sizePolicy9);
-
-        customParamLayout->addWidget(postParamTextEdit, 3, 1, 1, 3);
-
-        savePostParamAsPreset = new QToolButton(customParam);
-        savePostParamAsPreset->setObjectName(QString::fromUtf8("savePostParamAsPreset"));
-        sizePolicy3.setHeightForWidth(savePostParamAsPreset->sizePolicy().hasHeightForWidth());
-        savePostParamAsPreset->setSizePolicy(sizePolicy3);
-
-        customParamLayout->addWidget(savePostParamAsPreset, 4, 1, 1, 3);
-
-        intermediateParamTextEdit = new QTextEdit(customParam);
-        intermediateParamTextEdit->setObjectName(QString::fromUtf8("intermediateParamTextEdit"));
-
-        customParamLayout->addWidget(intermediateParamTextEdit, 1, 1, 1, 3);
-
-        saveIntermediateParamAsPreset = new QToolButton(customParam);
-        saveIntermediateParamAsPreset->setObjectName(QString::fromUtf8("saveIntermediateParamAsPreset"));
-        sizePolicy3.setHeightForWidth(saveIntermediateParamAsPreset->sizePolicy().hasHeightForWidth());
-        saveIntermediateParamAsPreset->setSizePolicy(sizePolicy3);
-
-        customParamLayout->addWidget(saveIntermediateParamAsPreset, 2, 1, 1, 3);
-
-        commandsLabel = new QLabel(customParam);
-        commandsLabel->setObjectName(QString::fromUtf8("commandsLabel"));
-
-        customParamLayout->addWidget(commandsLabel, 0, 0, 1, 4);
-
-
-        verticalLayout_5->addLayout(customParamLayout);
-
-        settingsTab->addTab(customParam, QString());
 
         tabVBox->addWidget(settingsTab);
 
@@ -739,13 +609,8 @@ public:
     void retranslateUi(QWidget *exportWidget) const
     {
         // Disable all Custom Argument stuff for the time being as I'm too tired to deal with it now
-        allowParamsCheckBox->setDisabled(true);
-        postParamCheckBox->setDisabled(true);
-        intermediateParamCheckBox->setDisabled(true);
-        customParam->setDisabled(true);
         // ------------------------------------------------------------------------------------------
         exportWidget->setWindowTitle(QCoreApplication::translate("exportWidget", "Export parameters", nullptr));
-        intermediateParamCheckBox->setText(QCoreApplication::translate("exportWidget", "Intermediate ", nullptr));
         keepAspectRatio->setText(QCoreApplication::translate("exportWidget", "Keep aspect ratio", nullptr));
         lastFrameLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">- Last frame -</p></body></html>", nullptr));
         exportTypeLabel->setText(QCoreApplication::translate("exportWidget", "Export type:", nullptr));
@@ -762,8 +627,6 @@ public:
         widthLabel->setText(QCoreApplication::translate("exportWidget", "Width: ", nullptr));
         oneToOneRatio->setText(QCoreApplication::translate("exportWidget", "One-to-one", nullptr));
         setWidthNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
-        postParamCheckBox->setText(QCoreApplication::translate("exportWidget", "Post", nullptr));
-        paramsLabel->setText(QCoreApplication::translate("exportWidget", "Active parameters:", nullptr));
         heightLabel->setText(QCoreApplication::translate("exportWidget", "Height:", nullptr));
         exportingLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Exporting</p></body></html>", nullptr));
         setHeightNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
@@ -782,7 +645,6 @@ public:
         bitrateLabel->setText(QCoreApplication::translate("exportWidget", "Bitrate (kB/s):", nullptr));
         imageQualityLabel->setText(QCoreApplication::translate("exportWidget", "Image quality:", nullptr));
         setImageQualityToAuto->setText(QCoreApplication::translate("exportWidget", "Set to auto", nullptr));
-        allowParamsCheckBox->setText(QCoreApplication::translate("exportWidget", "Export with custom parameters", nullptr));
         selectPalettePathButton->setText(QCoreApplication::translate("exportWidget", "Select palette path", nullptr));
         settingsTab->setTabText(settingsTab->indexOf(globalParam), QCoreApplication::translate("exportWidget", "General Parameters", nullptr));
 
@@ -794,20 +656,9 @@ public:
 
 
 
-        intermediateLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Intermediate:</p></body></html>", nullptr));
-        postLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Post:</p></body></html>", nullptr));
-        addPresetToIntermediate->setText(QCoreApplication::translate("exportWidget", "Add to Intermediate pass", nullptr));
-        addPresetToPost->setText(QCoreApplication::translate("exportWidget", "Add to Post", nullptr));
-        presetLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Presets:</p></body></html>", nullptr));
 
-        removePreset->setText(QCoreApplication::translate("exportWidget", "Remove preset", nullptr));
-        savePostParamAsPreset->setText(QCoreApplication::translate("exportWidget", "Save as preset...", nullptr));
-        saveIntermediateParamAsPreset->setText(QCoreApplication::translate("exportWidget", "Save as preset...", nullptr));
     #if QT_CONFIG(tooltip)
-        commandsLabel->setToolTip(QCoreApplication::translate("exportWidget", "<html><head/><body><p>You may use these special attributes in your custom command:</p><ul><p><li> %exportfilename%</li></p><p><li> %intermediatefilename%</p></li><p><li> %fps%</p></li><p><li> %palettepath%</p></li><p><li> %exportpath%</p></li><p><li> %intermediatepath%</p></li></ul></body></html>", nullptr));
     #endif // QT_CONFIG(tooltip)
-        commandsLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Commands</p></body></html>", nullptr));
-        settingsTab->setTabText(settingsTab->indexOf(customParam), QCoreApplication::translate("exportWidget", "Custom Parameters", nullptr));
         exportButton->setText(QCoreApplication::translate("exportWidget", "Export", nullptr));
         cancelButton->setText(QCoreApplication::translate("exportWidget", "Cancel", nullptr));
     } // translateUi

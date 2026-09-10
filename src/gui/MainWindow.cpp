@@ -1536,18 +1536,12 @@ void MainWindow::onExportTriggered() {
     if(!aspectRatioV.isValid()) { aspectRatioV.setValue(1); } // Aspect ratio = keep
     QVariant allowTransparencyV = settings.value("export_allow_transparency");
     if(!allowTransparencyV.isValid()) {allowTransparencyV.setValue(true); } // Allow transparency = true
-    QVariant allowCustomParamV = settings.value("export_allow_params");
-    QVariant allowInterParamV = settings.value("export_allow_param_inter");
-    QVariant allowPostParamV = settings.value("export_allow_param_post");
     QVariant useCustomPaletteV = settings.value("export_custom_palette");
     QVariant loopAnimV = settings.value("export_loop_anim");
     QVariant exportWithAudioV = settings.value("export_allow_audio");
     // Initialize pointers to generics
     auto* aspectRatio = new int;
     auto allowTransparency = new bool;
-    auto allowCustomParam = new bool;
-    auto allowInterParam = new bool;
-    auto allowPostParam = new bool;
     auto useCustomPalette = new bool;
     auto loopAnim = new bool;
     auto exportWithAudio = new bool;
@@ -1559,11 +1553,11 @@ void MainWindow::onExportTriggered() {
         aspectRatio
     };
     QVector<QVariant *> boolValues {
-        &allowTransparencyV, &allowCustomParamV, &allowInterParamV, &allowPostParamV, &useCustomPaletteV,
+        &allowTransparencyV, &useCustomPaletteV,
         &loopAnimV, &exportWithAudioV
     };
     QVector<bool *> boolVariables {
-        allowTransparency, allowCustomParam, allowInterParam, allowPostParam, useCustomPalette, loopAnim,
+        allowTransparency, useCustomPalette, loopAnim,
         exportWithAudio
     };
     // Loop through the vectors and initialize their values
@@ -1590,12 +1584,6 @@ void MainWindow::onExportTriggered() {
     // in the first place — getFormatAsInt() returns 0 for every input, so every
     // choice they stored was read back as "Auto".
     // Get custom parameters
-    QVariant customParamsV = settings.value("export_custom_params");
-    QVariant customParamsStringsV = settings.value("export_custom_params_str");
-    QStringList *customParams =
-        customParamsV.isValid()? new QStringList(customParamsV.toStringList()) : new QStringList();
-    QStringList *customParamsStrings =
-        customParamsStringsV.isValid()? new QStringList(customParamsStringsV.toStringList()) : new QStringList();
     // Sync
     settings.sync();
     // Value initialization
@@ -1608,11 +1596,7 @@ void MainWindow::onExportTriggered() {
     exportUI->transparencyCheckBox->setChecked(*allowTransparency);
     exportUI->loopCheckBox->setChecked(*loopAnim);
     exportUI->exportWithAudioCheckBox->setChecked(*exportWithAudio);
-    exportUI->allowParamsCheckBox->setChecked(*allowCustomParam);
-    exportUI->intermediateParamCheckBox->setChecked(*allowInterParam);
-    exportUI->postParamCheckBox->setChecked(*allowPostParam);
     exportUI->customPaletteCheckBox->setChecked(*useCustomPalette);
-    exportUI->presetCombo->addItems(*customParamsStrings);
     exportUI->nativeH = genParam.nativeHeight;
     exportUI->nativeW = genParam.nativeWidth;
     exportUI->latestHeight = exportUI->nativeH;
@@ -1656,48 +1640,6 @@ void MainWindow::onExportTriggered() {
     connect(exportUI->setFPSNative, &QPushButton::clicked, [=](){
         exportUI->fpsSpinBox->setValue(genParam.nativeFPS);
     });
-    connect(exportUI->saveIntermediateParamAsPreset, &QToolButton::clicked, [=]() mutable{
-        regenerateGeneralPurposeDiag();
-        customParams->append(exportUI->intermediateParamTextEdit->toPlainText());
-        exportUI->askForTextUI(gpDiag, tr("Select your preset name"));
-        gpDiag->exec();
-        if(exportUI->askOperationCancelled){
-            return;
-        }
-        customParamsStrings->append(exportUI->textEdit->toPlainText());
-        exportUI->presetCombo->addItem(exportUI->textEdit->toPlainText());
-        exportUI->presetCombo->setCurrentIndex(customParamsStrings->indexOf(exportUI->textEdit->toPlainText()));
-    });
-    connect(exportUI->savePostParamAsPreset, &QToolButton::clicked, [=]() mutable{
-        regenerateGeneralPurposeDiag();
-        customParams->append(exportUI->postParamTextEdit->toPlainText());
-        exportUI->askForTextUI(gpDiag, tr("Select your preset name"));
-        gpDiag->exec();
-        if(exportUI->askOperationCancelled){
-            return;
-        }
-        customParamsStrings->append(exportUI->textEdit->toPlainText());
-        exportUI->presetCombo->addItem(exportUI->textEdit->toPlainText());
-        exportUI->presetCombo->setCurrentIndex(customParamsStrings->indexOf(exportUI->textEdit->toPlainText()));
-    });
-    connect(exportUI->removePreset, &QPushButton::clicked, [=]() mutable{
-        int index = exportUI->presetCombo->currentIndex();
-        customParams->removeAt(index);
-        customParamsStrings->removeAt(index);
-        exportUI->presetCombo->removeItem(index);
-    });
-    connect(exportUI->addPresetToIntermediate, &QPushButton::clicked, [=](){
-        int index = exportUI->presetCombo->currentIndex();
-        if(!customParams->isEmpty() && customParams->length() >= index){
-                exportUI->intermediateParamTextEdit->append(customParams->at(index));
-            }
-    });
-    connect(exportUI->addPresetToPost, &QPushButton::clicked, [=](){
-        int index = exportUI->presetCombo->currentIndex();
-        if(!customParams->isEmpty() && customParams->length() >= index){
-            exportUI->postParamTextEdit->append(customParams->at(index));
-        }
-    });
 
     // Execute
     QGuiApplication::restoreOverrideCursor();
@@ -1713,22 +1655,12 @@ void MainWindow::onExportTriggered() {
                        "export_aspect_ratio");
         updateSettings(&allowTransparencyV, &settings, exportUI->transparencyCheckBox->isChecked(),
                        "export_allow_transparency");
-        updateSettings(&allowCustomParamV, &settings, exportUI->allowParamsCheckBox->isChecked(),
-                       "export_allow_params");
-        updateSettings(&allowInterParamV, &settings, exportUI->intermediateParamCheckBox->isChecked(),
-                       "export_allow_param_inter");
-        updateSettings(&allowPostParamV, &settings, exportUI->postParamCheckBox->isChecked(),
-                       "export_allow_param_post");
         updateSettings(&useCustomPaletteV, &settings, exportUI->customPaletteCheckBox->isChecked(),
                        "export_custom_palette");
         updateSettings(&loopAnimV, &settings, exportUI->loopCheckBox->isChecked(),
                        "export_loop_anim");
         updateSettings(&exportWithAudioV, &settings, exportUI->exportWithAudioCheckBox->isChecked(),
                        "export_allow_audio");
-        updateSettings(&customParamsV, &settings, *customParams,
-                       "export_custom_params");
-        updateSettings(&customParamsStringsV, &settings, *customParamsStrings,
-                       "export_custom_params_str");
         settings.sync();
     }
     // Get file name and folder for export
@@ -1801,9 +1733,6 @@ void MainWindow::onExportTriggered() {
     genParam.allowTransparency = exportUI->transparencyCheckBox->isChecked();
     genParam.loop = exportUI->loopCheckBox->isChecked();
     genParam.exportWithAudio = exportUI->exportWithAudioCheckBox->isChecked();
-    genParam.useCustomParam = exportUI->allowParamsCheckBox->isChecked();
-    genParam.useIntermediate = exportUI->intermediateParamCheckBox->isChecked();
-    genParam.usePost = exportUI->postParamCheckBox->isChecked();
     genParam.useCustomPalette = exportUI->customPaletteCheckBox->isChecked();
     genParam.palettePath = exportUI->paletteDir;
     auto* exportRanges = new QVector<frameExportRange>;
@@ -1826,8 +1755,6 @@ void MainWindow::onExportTriggered() {
         settings.setValue("export_destination", exParam->destinationId);
         settings.setValue("export_quality_bucket", exportUI->qualityCombo->currentIndex());
     }
-    genParam.customInterCommand = exportUI->intermediateParamTextEdit->toPlainText();
-    genParam.customPostCommand = exportUI->postParamTextEdit->toPlainText();
     if(exportUI->exportTypeCombo->currentIndex() == 0){ exParam->exportType = exportTarget::video; }
     else{ exParam->exportType = exportTarget::image; }
     if(exParam->exportType == exportTarget::video){
@@ -1951,7 +1878,6 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
     genParam.allowTransparency = aFormat.contains("_t") || aFormat == "png";
     genParam.loop = true;
     genParam.exportWithAudio = !mCurrent->pConf->empty();
-    genParam.useCustomParam = false;
     frameExportRange fer;
     fer.firstFrame = mCurrent->attribute().frameRange().min();
     fer.lastFrame = mCurrent->attribute().frameRange().max();
