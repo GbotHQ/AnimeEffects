@@ -726,7 +726,11 @@ bool MainWindow::closeProjects(const QVector<core::Project*>& aProjects) {
 void MainWindow::closeProjectTab(core::Project& aProject) {
     // Sneaky potential crash
     if (QFileSystemWatcher* watcher = getWatcher()) {
-        for (int x = 0; x < aProject.resourceHolder().imageTrees().size(); x += 1) {
+        // imageTrees() is a std::list, so its count is unsigned (size_type);
+        // the index has to be that same unsigned type. It starts at 0 and
+        // only counts up, so an unsigned index cannot wrap here, while the
+        // old `int x` would have overflowed on a list longer than INT_MAX.
+        for (size_t x = 0; x < aProject.resourceHolder().imageTrees().size(); x += 1) {
             if (watcher->files().contains(aProject.resourceHolder().findAbsoluteFilePath(
                     *aProject.resourceHolder().imageTree(x).topNode
                 ))) {

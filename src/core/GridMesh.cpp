@@ -585,7 +585,12 @@ bool GridMesh::deserializeFromJson(QJsonObject json) {
         const char* XCMemData = xcmemString.c_str();
         if (size > 0) {
             mHexaConnections.construct(size);
-            for (auto x = 0; x < rawSize; x++) {
+            // Index the XCMem buffer with its own length type: rawSize came
+            // from toInt() and was widened to uint64, so `int x` compared
+            // against it mixed signs (a negative x could never occur here —
+            // it starts at 0 and only increments — but the unsigned bound is
+            // the type that actually describes the byte count).
+            for (size_t x = 0; x < size; x++) {
                 std::vector<int> id;
                 for (auto x = 0; x < 6; x++) {
                     mHexaConnections.data()->id[x] = (uint8)XCMemData[x];
