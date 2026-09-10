@@ -1401,6 +1401,22 @@ QDockWidget
     titlebar-normal-icon: url(@icondir@/transparent.svg);
 }
 
+/**
+ *  A floating panel carries a ring of its own, carved by a transparent border.
+ *  It has to be the border: QDockWidgetLayout insets the header and the content
+ *  by PM_DockWidgetFrameWidth, and QStyleSheetStyle takes that metric from the
+ *  QSS border width - so this one line is what gives the window an edge band at
+ *  all, since on Wayland the panel is a frameless tool window and Qt paints no
+ *  frame once a custom title bar exists. The border and the rounding inside the
+ *  ring are drawn in DockPanel; the ring is also the band the compositor's edge
+ *  grabs resize from. A docked panel is unaffected: its frame width is ignored
+ *  while docked.
+ */
+QDockWidget[aeFloating="true"]
+{
+    border: 6px solid transparent;
+}
+
 /* the dock title text sits off the left edge */
 QDockWidget::title {
     /* the margin insets the title text; a matching background

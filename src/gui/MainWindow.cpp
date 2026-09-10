@@ -5,6 +5,7 @@
 #include "gl/Global.h"
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
+#include "gui/DockPanel.h"
 #include "gui/DockSash.h"
 #include "gui/ExportDialog.h"
 #include "gui/NewProjectDialog.h"
@@ -161,7 +162,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create targeting widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("animationDock");
         dockWidget->setWindowTitle(tr("Animation"));
         dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
@@ -174,7 +175,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create property widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("propertiesDock");
         dockWidget->setWindowTitle(tr("Properties"));
         dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
@@ -220,7 +221,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
     // create tool widget
     {
-        auto* dockWidget = new QDockWidget(this);
+        auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("toolsDock");
         dockWidget->setWindowTitle(tr("Tools"));
         dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
