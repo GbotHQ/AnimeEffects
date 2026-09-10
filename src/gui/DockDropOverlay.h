@@ -66,8 +66,12 @@ class DockDropOverlay: public QWidget {
 public:
     explicit DockDropOverlay(QMainWindow* aWindow);
 
-    /// The overlay of the main window a widget lives in, if there is one.
+    /// The overlay of the main window a widget lives in, if there is one. This
+    /// only works for a widget that is docked: a floating panel is a toplevel,
+    /// so its window chain ends at itself - use forPanel for a dock widget.
     static DockDropOverlay* forWidget(QWidget* aWidget);
+    /// The overlay a drag of this panel has to land on.
+    static DockDropOverlay* forPanel(QDockWidget* aPanel);
 
     /// The MIME type carrying the dragged panel's object name.
     static const char* mimeType();

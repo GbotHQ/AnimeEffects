@@ -3,7 +3,10 @@
 
 #include <QPoint>
 #include <QDockWidget>
+#include <QPointer>
 #include <QVector>
+
+class QMainWindow;
 
 namespace gui {
 
@@ -52,6 +55,13 @@ public:
     /// in that state, so the panel's own header steps aside instead of drawing
     /// a second title row under the tabs.
     bool isTabGrouped();
+
+    /// The window this panel docks into, remembered at creation. It cannot be
+    /// found later: a floating panel is its own toplevel, so walking up from the
+    /// panel's window reaches the panel, not the window it belongs to - which is
+    /// exactly the walk that has to work when a drag starts on a floating panel.
+    void setMainWindow(QMainWindow* aWindow) { mMainWindow = aWindow; }
+    QMainWindow* mainWindow() const { return mMainWindow; }
 
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
@@ -109,6 +119,7 @@ private:
 
     QVector<RingBand*> mRing;
     QSize mRingSize;
+    QPointer<QMainWindow> mMainWindow;
 };
 
 } // namespace gui

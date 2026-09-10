@@ -113,15 +113,18 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
     //
     // The text is also the dock handle, so it is drawn as the tab it becomes
     // when the panel joins a group: hovered, it takes the same accent wash and
-    // focus-coloured top rule the theme gives a tab, which is the only thing
-    // that says this region can be dragged somewhere. Docked, the tab in the
+    // focus-coloured rule the theme gives a selected tab - which is the only
+    // thing that says this region can be dragged somewhere. Docked, the tab in the
     // group's strip holds that role and this header is inert.
     const QRect tab = tabRect();
     if (mDock->isFloating() && mTabHover) {
         QColor wash = c.accent;
         wash.setAlpha(40);
         p.fillRect(tab, wash);
-        p.fillRect(QRect(tab.left(), tab.top(), tab.width(), 2), c.focus);
+        // the rule goes under the tab, not over it: the tab names the panel
+        // below it, and it lands on the header's own bottom rule so the two
+        // read as one line
+        p.fillRect(QRect(tab.left(), tab.bottom() - 1, tab.width(), 2), c.focus);
     }
 
     p.setPen(c.text);
@@ -199,7 +202,9 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
 /// adopts windows that are not), so the ghost is what makes the gesture read as
 /// "this panel is going there".
 void DockTitleBar::startDockDrag() {
-    auto* overlay = DockDropOverlay::forWidget(mDock);
+    auto* overlay = DockDropOverlay::forPanel(mDock);
+    if (!overlay)
+        log(QStringLiteral("tab drag: NO drop target found for this panel"));
     // Heap-allocated with a parent, as the documentation requires: setMimeData
     // hands over ownership of the data, and Qt has to be able to clean up after
     // the operation has completed.

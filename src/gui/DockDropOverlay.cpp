@@ -1,6 +1,8 @@
 #include "gui/DockDropOverlay.h"
 
 #include "gui/DockMetrics.h"
+#include "gui/DockPanel.h"
+#include "gui/DockTitleBar.h"
 #include "gui/theme/Colors.h"
 
 #include <QDragEnterEvent>
@@ -62,9 +64,19 @@ QRect halfTowards(const QRect& aRect, Qt::Edge aEdge) {
     return half;
 }
 
-/// A split that is worth doing: a band narrower than this is not a group, it is
-/// a sliver, and the panel dropped there would be unusable.
-constexpr int kMinSplitExtent = 2 * dockMetrics::kCollapseWidth;
+/// Whether a group is big enough to be divided: both halves have to clear what
+/// the area allows. A 200px sidebar split down the middle is two 100px columns,
+/// both under the side minimum, so the offer there is a tab instead - which is
+/// also what the drop would amount to.
+bool canSplit(const QRect& aGroup, Qt::Edge aEdge, Qt::DockWidgetArea aArea) {
+    const bool horizontal = (aEdge == Qt::LeftEdge || aEdge == Qt::RightEdge);
+    const bool sideArea = (aArea == Qt::LeftDockWidgetArea || aArea == Qt::RightDockWidgetArea);
+    const int needed = horizontal ? 2 * dockMetrics::kMinWidth
+                                  : (sideArea ? 2 * dockMetrics::kCollapseHeight
+                                              : 2 * dockMetrics::kMinHeight);
+    const int available = horizontal ? aGroup.width() : aGroup.height();
+    return available >= needed;
+}
 
 } // namespace
 
@@ -91,12 +103,29 @@ DockDropOverlay* DockDropOverlay::forWidget(QWidget* aWidget) {
     return window ? window->findChild<DockDropOverlay*>() : nullptr;
 }
 
+DockDropOverlay* DockDropOverlay::forPanel(QDockWidget* aPanel) {
+    if (!aPanel) return nullptr;
+    // The panel's own window chain is not the way there: a floating panel *is*
+    // a toplevel window, so window() returns the panel. The panel remembers the
+    // window it docks into instead (DockPanel::setMainWindow), which is what
+    // makes a drag that starts on a floating panel able to find its drop target
+    // at all - without this the drag ran with nothing accepting it, and every
+    // drop ended as IgnoreAction.
+    if (auto* panel = qobject_cast<DockPanel*>(aPanel)) {
+        if (QMainWindow* window = panel->mainWindow())
+            return window->findChild<DockDropOverlay*>();
+    }
+    return forWidget(aPanel);
+}
+
 void DockDropOverlay::beginDrag(QDockWidget* aPanel) {
     mPanel = aPanel;
     mTarget = DockDropTarget();
     if (mWindow) setGeometry(mWindow->rect());
     raise();
     show();
+    dockSpikeLog(aPanel, QStringLiteral("overlay shown for drag: cover=%1x%2 visible=%3")
+            .arg(width()).arg(height()).arg(isVisible()));
 }
 
 void DockDropOverlay::endDrag() {
@@ -159,10 +188,7 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
 
         const Qt::Edge edge = nearestEdge(group, aPos);
         const QRect half = halfTowards(group, edge);
-        const bool horizontalSplit = (edge == Qt::LeftEdge || edge == Qt::RightEdge);
-        // dividing a group this thin would leave two slivers rather than two
-        // panels; the whole group is then the only sensible target
-        if ((horizontalSplit ? group.width() : group.height()) < kMinSplitExtent) {
+        if (!canSplit(group, edge, area)) {
             target.kind = DockDropKind::Tabify;
             target.area = area;
             target.group = dock;
@@ -222,7 +248,14 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
 }
 
 DockDropTarget DockDropOverlay::hover(const QPoint& aPos) {
+    const DockDropTarget previous = mTarget;
     mTarget = resolve(aPos);
+    if (mTarget.kind != previous.kind || mTarget.rect != previous.rect) {
+        dockSpikeLog(mPanel, QStringLiteral("overlay target at %1,%2 -> kind=%3 area=%4 rect=%5,%6 %7x%8")
+                .arg(aPos.x()).arg(aPos.y()).arg(int(mTarget.kind)).arg(int(mTarget.area))
+                .arg(mTarget.rect.x()).arg(mTarget.rect.y())
+                .arg(mTarget.rect.width()).arg(mTarget.rect.height()));
+    }
     update();
     return mTarget;
 }
@@ -266,8 +299,8 @@ void DockDropOverlay::dragEnterEvent(QDragEnterEvent* aEvent) {
         return;
     }
     if (QDockWidget* panel = panelFromMime(aEvent->mimeData())) mPanel = panel;
-    mTarget = resolve(aEvent->position().toPoint());
-    update();
+    dockSpikeLog(mPanel, QStringLiteral("overlay drag enter"));
+    hover(aEvent->position().toPoint());
     aEvent->acceptProposedAction();
 }
 
@@ -276,8 +309,7 @@ void DockDropOverlay::dragMoveEvent(QDragMoveEvent* aEvent) {
         aEvent->ignore();
         return;
     }
-    mTarget = resolve(aEvent->position().toPoint());
-    update();
+    hover(aEvent->position().toPoint());
     aEvent->acceptProposedAction();
 }
 
@@ -286,6 +318,7 @@ void DockDropOverlay::dragLeaveEvent(QDragLeaveEvent* aEvent) {
     // after the drag has gone: the preview is dropped here unconditionally.
     mTarget = DockDropTarget();
     update();
+    dockSpikeLog(mPanel, QStringLiteral("overlay drag leave: preview cleared"));
     aEvent->accept();
 }
 
@@ -299,6 +332,7 @@ void DockDropOverlay::dropEvent(QDropEvent* aEvent) {
     mTarget = DockDropTarget();
     update();
     aEvent->acceptProposedAction();
+    dockSpikeLog(mPanel, QStringLiteral("overlay drop kind=%1").arg(int(target.kind)));
     if (mPanel && target.kind != DockDropKind::None && onDropped) onDropped(mPanel, target);
 }
 

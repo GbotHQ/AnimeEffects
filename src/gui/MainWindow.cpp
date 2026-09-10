@@ -358,6 +358,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     // be tabbed with a panel that lives on another side. See DockMetrics.h.
     for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
         dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+        if (auto* panel = qobject_cast<DockPanel*>(dock)) panel->setMainWindow(this);
         applyPanelMetrics(dock);
         // the range depends on the area, so it is re-applied whenever the panel
         // changes area or floats
@@ -460,6 +461,11 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                 panel->setPanelFloating(true);
             QTimer::singleShot(400, this, [this, spec]() {
                 if (!mDockDropOverlay) return;
+                dockSpikeLog(mDockPropertyWidget,
+                        QStringLiteral("drop probe: overlay lookup %1 (floating=%2)")
+                        .arg(DockDropOverlay::forPanel(mDockPropertyWidget) ? QStringLiteral("found")
+                                                                            : QStringLiteral("MISSING"))
+                        .arg(mDockPropertyWidget->isFloating()));
                 mDockDropOverlay->beginDrag(mDockPropertyWidget);
                 const QPoint pos(spec.value(0).toInt(), spec.value(1).toInt());
                 const DockDropTarget target = mDockDropOverlay->hover(pos);
@@ -2083,6 +2089,12 @@ void MainWindow::updateDockTabMenus() {
         if (!allPanels) continue;
 
         bar->setProperty("aeDockTabBar", true);
+        // Named for the theme: a dock group's tabs are titles sitting above the
+        // panel they name, which is not what a project tab is, and the QSS has
+        // to be able to tell them apart (both are plain QTabBars).
+        bar->setObjectName(QStringLiteral("dockTabBar"));
+        bar->style()->unpolish(bar);
+        bar->style()->polish(bar);
         bar->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(bar, &QWidget::customContextMenuRequested, this, [this, bar](const QPoint& aPos) {
             const int index = bar->tabAt(aPos);

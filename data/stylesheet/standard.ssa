@@ -1455,6 +1455,28 @@ QToolButton#dockToggle:pressed
     background-color: @active@;
 }
 
+/**
+ *  A dock group's tab strip - Qt's tab bar for the group, adopted and named by
+ *  MainWindow - dressed differently from the project tabs in two ways, because
+ *  these tabs are titles rather than documents. They carry real horizontal
+ *  padding (the shared tab rule's 0.23em left the text against its own edge),
+ *  and the selected tab's rule goes *under* it: the strip sits above the panel
+ *  it names, so a rule underneath reads as that tab owning the content below,
+ *  which is also how the floating header's tab marks itself. The top rule is
+ *  cleared at the same width so selecting a tab does not move its text.
+ */
+QTabBar#dockTabBar::tab:top
+{
+    padding-left: 0.62em;
+    padding-right: 0.62em;
+}
+
+QTabBar#dockTabBar::tab:top:selected
+{
+    border-top: 0.09em solid transparent;
+    border-bottom: 0.09em solid @focus@;
+}
+
 /* the dock title text sits off the left edge */
 QDockWidget::title {
     /* the margin insets the title text; a matching background
