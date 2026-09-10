@@ -8,10 +8,6 @@ class QDockWidget;
 
 namespace gui {
 
-/// Payload of a panel drag: the dock's objectName. The drop side resolves the
-/// panel from it, so no global state is needed to know what is being dragged.
-inline constexpr char kDockPanelMime[] = "application/x-anie-dock-panel";
-
 /// Gesture/state line for the docking work, to stderr and to the file named by
 /// AE_DOCK_SPIKE_LOG (/tmp/ae-dock-spike.log by default). Temporary: this is
 /// how the behaviour of a drag is read back off the machine that can perform
@@ -22,33 +18,31 @@ void dockSpikeLog(const QDockWidget* aDock, const QString& aMessage);
  * The dock's header, installed through QDockWidget::setTitleBarWidget().
  *
  * Setting a title bar widget is the seam that makes the panel ours: Qt hides
- * its own float/close buttons as soon as one exists (see
+ * its own float and close buttons as soon as one exists (see
  * QDockWidgetPrivate::updateButtons(): `hideButtons = nativeDeco ||
- * customTitleBar`), which is what removes the "undock on click" affordance
- * from the header, and it makes Qt stop painting both the title text and the
- * floating frame (QDockWidget::paintEvent returns early in that case), so
- * everything visible in the header is drawn here.
+ * customTitleBar`), and it stops painting both the title text and the floating
+ * frame (QDockWidget::paintEvent returns early in that case), so everything
+ * visible here is drawn here.
  *
- * The gesture split below is the part that QDockWidget's own title bar can
- * never provide on Wayland:
- *   - floating, drag on the grip   -> QWindow::startSystemMove(): a grip is a
- *     handle, so it moves the window; this is the conventional reading and the
- *     cursor says so
- *   - floating, drag on the header -> the dock drag (a DnD chip, see
- *     startPanelDrag). Only a drag-and-drop reports a drop position, so only
- *     it can dock
- *   - docked, drag on the header   -> ours: consumed on press, so Qt's own
- *     drag never starts (on Wayland that drag is a platform DnD through
- *     QDrag/QMimeData "application/x-qt-mainwindowdrag-window").
+ * What it does with the mouse is deliberately minimal:
  *
- * The reason it has to be ours: QDockWidget moves a floating window with
- * QWidget::move() and never calls the platform move API, while on Wayland
- * QWaylandWindow ignores every requested toplevel position
- * (fixedToplevelPositions -> rect.moveTo(screen origin)). QWindow::
- * startSystemMove() is the only API that can move a Wayland toplevel, and Qt
- * documents it as such.
+ *  - A floating header hands the press back to Qt, through QMouseEvent::ignore(),
+ *    so Qt's own dock drag runs. That drag is the one gesture that both moves a
+ *    panel and docks it: on Wayland it becomes a platform drag-and-drop with the
+ *    toplevel attached, so the compositor moves the window under the cursor and
+ *    where it is dropped decides whether it docks. Handing it back is also why
+ *    there is no grip and no other handle - dragging the header is the whole
+ *    gesture, and a separate handle that means "move" is a pattern from another
+ *    era.
+ *  - A docked header consumes the press and does nothing else: a docked panel is
+ *    not draggable, and Qt's drag must not start from it.
+ *  - Double-clicking a docked header floats the panel; the floating case is
+ *    Qt's own, with the same result.
  *
- * Window edges are not handled here: DockPanel's ring covers them.
+ * The drop indicator during that drag is Qt's own QRubberBand, which the layout
+ * positions at the rect the panel would occupy - the truthful answer, since it
+ * is the layout's decision. Only its appearance is ours (see
+ * AppStyle::drawControl).
  */
 class DockTitleBar: public QWidget {
     Q_OBJECT
@@ -62,28 +56,15 @@ public:
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
     void mousePressEvent(QMouseEvent* aEvent) override;
-    void mouseMoveEvent(QMouseEvent* aEvent) override;
-    void mouseReleaseEvent(QMouseEvent* aEvent) override;
     void mouseDoubleClickEvent(QMouseEvent* aEvent) override;
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
 
 private:
-    /// The grip: the move handle of a floating header. The header itself is
-    /// the dock handle, because on Wayland a single drag cannot both move a
-    /// toplevel and report where it was dropped.
-    QRect gripRect() const;
-    void startPanelDrag();
-
     void popupMenu(const QPoint& aGlobalPos);
     void toggleFloating();
     void log(const QString& aMessage) const;
 
     QDockWidget* mDock;
-    QPoint mPressPos;
-    bool mPressed;
-    bool mGripPressed;
-    bool mHoveredGrip;
-    bool mGestureStarted;
 };
 
 } // namespace gui

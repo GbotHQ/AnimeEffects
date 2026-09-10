@@ -230,6 +230,29 @@ void AppStyle::drawPrimitive(PrimitiveElement aElement, const QStyleOption* aOpt
 
 void AppStyle::drawControl(ControlElement aElement, const QStyleOption* aOption,
                                  QPainter* aPainter, const QWidget* aWidget) const {
+    if (aElement == CE_RubberBand && aOption) {
+        // The dock drop indicator is a plain QRubberBand Qt parents to the main
+        // window (objectName "qt_rubberband"), positioned by the layout at the
+        // rect the dragged panel would occupy - the truthful answer to "where
+        // will this land", because it *is* the layout's decision. Only the look
+        // is ours: the stock band is a thin default-styled frame that vanishes
+        // against the panels, which is most of why the drop read as janky.
+        if (aWidget && aWidget->objectName() == QLatin1String("qt_rubberband")) {
+            const theme::Colors c = theme::Colors::current();
+            QColor fill = c.accent;
+            fill.setAlpha(48);
+            const QRectF band = QRectF(aOption->rect).adjusted(1, 1, -1, -1);
+            aPainter->save();
+            aPainter->setRenderHint(QPainter::Antialiasing);
+            aPainter->setPen(Qt::NoPen);
+            aPainter->fillRect(band, fill);
+            aPainter->setPen(QPen(c.accent, 2));
+            aPainter->setBrush(Qt::NoBrush);
+            aPainter->drawRoundedRect(band, 6, 6);
+            aPainter->restore();
+            return;
+        }
+    }
     if (aElement == CE_MenuItem && aOption) {
         // Combo popups draw their items as CE_MenuItem rows; the QSS
         // QMenu::item rules do not reach them (the popup container is not a

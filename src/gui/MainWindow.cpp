@@ -5,7 +5,6 @@
 #include "gl/Global.h"
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
-#include "gui/DockDropOverlay.h"
 #include "gui/DockPanel.h"
 #include "gui/DockTitleBar.h" // dockSpikeLog (temporary instrumentation)
 #include "gui/DockSash.h"
@@ -14,9 +13,6 @@
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
-#include <QDragEnterEvent>
-#include <QDropEvent>
-#include <QMimeData>
 #include <QTimer>
 #include <utility>
 #include <QComboBox>
@@ -52,7 +48,6 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     mProperty(),
     mTool(),
     mResourceDialog(),
-    mDropOverlay(),
     mCurrent(),
     mLocaleParam(std::move(aLocaleParam)) {
     // setup default opengl format
@@ -70,10 +65,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         this->setWindowIcon(QIcon("../src/AnimeEffects.ico"));
         this->setMouseTracking(true);
         this->setFocusPolicy(Qt::NoFocus);
-        // panels are docked by dragging their grip onto the window, and on
-        // Wayland a drag-and-drop is the only gesture that reports a pointer
-        // position, so the window has to accept the drag
-        this->setAcceptDrops(true);
+        this->setAcceptDrops(false);
         this->setTabShape(QTabWidget::Rounded);
         this->setDockOptions(AnimatedDocks);
         this->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
@@ -293,9 +285,6 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             }
         });
     }
-
-    // drop band highlight, raised above the docks while a panel is dragged
-    mDropOverlay = new DockDropOverlay(this);
 
     // dock-edge sashes: 12px invisible hitboxes + 1px hairlines over the
     // zero-width native separators (see standard.ssa); resizes docks through
@@ -869,91 +858,6 @@ void MainWindow::onMovementTriggered(const QString& frameMovement) {
     } else {
         mTarget->timeLineWidget().setFrame(core::Frame(0));
     }
-}
-
-QDockWidget* MainWindow::draggedPanel(const QMimeData* aMime) const {
-    if (!aMime || !aMime->hasFormat(kDockPanelMime))
-        return nullptr;
-    const QString name = QString::fromUtf8(aMime->data(kDockPanelMime));
-    return findChild<QDockWidget*>(name);
-}
-
-Qt::DockWidgetArea MainWindow::dropAreaAt(const QPoint& aPos, const QDockWidget* aPanel) const {
-    if (!aPanel) return Qt::NoDockWidgetArea;
-
-    // Each edge owns a band of the window; the cursor picks the band it is in,
-    // and when two bands overlap (the corners) the nearest edge wins. Only the
-    // areas the panel is allowed into are considered, so the highlight and the
-    // drop agree with allowedAreas.
-    const QRect r = rect();
-    const int hBand = qMax(1, r.width() / 4);
-    const int vBand = qMax(1, r.height() / 4);
-    const Qt::DockWidgetAreas allowed = aPanel->allowedAreas();
-
-    Qt::DockWidgetArea best = Qt::NoDockWidgetArea;
-    int bestDistance = 0;
-    auto consider = [&](Qt::DockWidgetArea aArea, bool aInside, int aDistance) {
-        if (!aInside || !(allowed & aArea)) return;
-        if (best == Qt::NoDockWidgetArea || aDistance < bestDistance) {
-            best = aArea;
-            bestDistance = aDistance;
-        }
-    };
-    consider(Qt::LeftDockWidgetArea, aPos.x() < hBand, aPos.x());
-    consider(Qt::RightDockWidgetArea, aPos.x() >= r.width() - hBand, r.width() - 1 - aPos.x());
-    consider(Qt::TopDockWidgetArea, aPos.y() < vBand, aPos.y());
-    consider(Qt::BottomDockWidgetArea, aPos.y() >= r.height() - vBand, r.height() - 1 - aPos.y());
-    return best;
-}
-
-void MainWindow::dragEnterEvent(QDragEnterEvent* aEvent) {
-    if (!draggedPanel(aEvent->mimeData())) {
-        QMainWindow::dragEnterEvent(aEvent);
-        return;
-    }
-    aEvent->acceptProposedAction();
-}
-
-void MainWindow::dragMoveEvent(QDragMoveEvent* aEvent) {
-    QDockWidget* panel = draggedPanel(aEvent->mimeData());
-    if (!panel) {
-        QMainWindow::dragMoveEvent(aEvent);
-        return;
-    }
-    const Qt::DockWidgetArea area = dropAreaAt(aEvent->position().toPoint(), panel);
-    mDropOverlay->showArea(area);
-    aEvent->acceptProposedAction();
-}
-
-void MainWindow::dragLeaveEvent(QDragLeaveEvent* aEvent) {
-    mDropOverlay->clear();
-    QMainWindow::dragLeaveEvent(aEvent);
-}
-
-void MainWindow::dropEvent(QDropEvent* aEvent) {
-    QDockWidget* panel = draggedPanel(aEvent->mimeData());
-    mDropOverlay->clear();
-    if (!panel) {
-        QMainWindow::dropEvent(aEvent);
-        return;
-    }
-    const Qt::DockWidgetArea area = dropAreaAt(aEvent->position().toPoint(), panel);
-    dockSpikeLog(panel, QStringLiteral("drop at %1,%2 -> area=%3")
-            .arg(aEvent->position().toPoint().x()).arg(aEvent->position().toPoint().y())
-            .arg(int(area)));
-    if (area == Qt::NoDockWidgetArea) {
-        // outside every band: the panel stays floating where it was
-        aEvent->ignore();
-        return;
-    }
-    // setFloating(false) re-attaches it to the layout, then the area decides
-    // where; without the first call addDockWidget leaves it a floating window
-    panel->setFloating(false);
-    addDockWidget(area, panel);
-    panel->show();
-    dockSpikeLog(panel, QStringLiteral("docked by drop: floating=%1 area=%2")
-            .arg(panel->isFloating()).arg(int(dockWidgetArea(panel))));
-    aEvent->acceptProposedAction();
 }
 
 void MainWindow::onDockToggle() // For some reason it does not work without this travesty
