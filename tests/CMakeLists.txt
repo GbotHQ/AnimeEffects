@@ -364,6 +364,19 @@ target_link_libraries(media_export_target PRIVATE
     media
 )
 
+# Warnings for this target, because the failure this test was written to catch
+# was a section that was DEFINED AND NEVER CALLED. That is dead code, and the
+# project builds with no warning flags at all, so clang had nothing to say about
+# it: -Wunused-function is not on by default and needs -Wall. A test whose
+# sections can silently not run cannot be trusted from its green output alone.
+#
+# Sections now self-register (see TEST_SECTION), which removes the class; this
+# is the belt to that pair of braces, and it also keeps the section bodies clean
+# of other dead code that would otherwise read as testing something.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(media_export_target PRIVATE -Wall -Wextra)
+endif()
+
 # End-to-end export harness: offscreen (GL via a QOpenGLWidget) render of a
 # minimal project -> ctrl::Exporter -> a real mp4, verified with ffprobe. This
 # is the end-to-end gate for the media/export rearchitecture. Headless.

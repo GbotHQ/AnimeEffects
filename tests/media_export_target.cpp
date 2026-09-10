@@ -36,6 +36,49 @@ extern "C" {
 #include <cmath>
 #include <climits>
 
+// ---------------------------------------------------------------------------
+// Section registration.
+//
+// Sections used to be listed by hand in main(), and run_live_encode() was
+// written, read as coverage, and never listed — so six destinations' worth of
+// encoding assertions silently contributed nothing. Adding the missing call
+// fixes the instance; it does not fix the class, because the next section could
+// be forgotten the same way.
+//
+// So DEFINING a section is now what makes it run. The registrar appends itself
+// at static-init time and main() walks the registry, which makes
+// "defined but never executed" unrepresentable rather than merely discouraged.
+// The title is part of the macro so a section cannot forget to announce itself
+// either — the run banner and the section are one declaration.
+//
+// The registry is heap-allocated and deliberately never freed: a static QVector
+// would be destroyed in an order we do not control, while registrars hold
+// pointers to it.
+namespace {
+
+struct TestSection {
+    const char* title;
+    void (*fn)();
+};
+
+QVector<TestSection>& testSections() {
+    static QVector<TestSection>* registry = new QVector<TestSection>();
+    return *registry;
+}
+
+struct TestSectionRegistrar {
+    TestSectionRegistrar(const char* aTitle, void (*aFn)()) {
+        testSections().append(TestSection{aTitle, aFn});
+    }
+};
+
+} // namespace
+
+#define TEST_SECTION(title, fn)                              \
+    static void fn();                                        \
+    static TestSectionRegistrar fn##_registrar(title, &fn);  \
+    static void fn()
+
 static int failures = 0;
 
 static void check(bool ok, const char* what) {
@@ -178,10 +221,6 @@ static int decodeInfo(const QString& path, int* outW, int* outH) {
 
 // ---------------------------------------------------------------------------
 
-static void section(const char* title) {
-    QTextStream(stdout) << "\n== " << title << " ==\n";
-}
-
 // Some destinations can only be produced on one OS (HEVC+alpha needs Apple's
 // VideoToolbox). Those rows are declared, so validation can skip them instead
 // of reporting them as broken.
@@ -199,8 +238,7 @@ static bool platformMatches(const QString& aPlatform) {
     return false;
 }
 
-static void run_load_and_validate() {
-    section("load + validate every row");
+TEST_SECTION("load + validate every row", run_load_and_validate) {
 
     QString err;
     const QList<ctrl::ExportTarget> all =
@@ -271,8 +309,7 @@ static void run_load_and_validate() {
               .arg(fromResource.size()));
 }
 
-static void run_size_rules() {
-    section("size rules");
+TEST_SECTION("size rules", run_size_rules) {
 
     const ctrl::ExportTarget telegram =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
@@ -340,8 +377,7 @@ static void run_size_rules() {
           QStringLiteral("odd source still yields even output (%1x%2)").arg(f.width()).arg(f.height()));
 }
 
-static void run_caps() {
-    section("caps (deterministic pre-encode enforcement)");
+TEST_SECTION("caps (deterministic pre-encode enforcement)", run_caps) {
 
     const ctrl::ExportTarget telegram =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
@@ -384,8 +420,7 @@ static void run_caps() {
     check(!duplicated, QStringLiteral("no note is duplicated by the cap pass"));
 }
 
-static void run_frame_selection() {
-    section("frame selection (several non-contiguous ranges)");
+TEST_SECTION("frame selection (several non-contiguous ranges)", run_frame_selection) {
 
     using ctrl::FrameRange;
     using ctrl::FrameSelection;
@@ -515,8 +550,7 @@ static void run_frame_selection() {
           QStringLiteral("a frame-count mismatch is refused (%1)").arg(fr.error));
 }
 
-static void run_probe_sanity() {
-    section("availability probe: name lookup vs real one-frame encode");
+TEST_SECTION("availability probe: name lookup vs real one-frame encode", run_probe_sanity) {
 
     // The point of this section: encoderAvailable() only proves an encoder was
     // compiled in. Hardware encoders are listed on machines that cannot run
@@ -545,8 +579,7 @@ static void run_probe_sanity() {
     check(media::ffmpeg::encoderUsable("libx265"), "libx265 is usable");
 }
 
-static void run_ladder() {
-    section("codec ladder (class x bucket)");
+TEST_SECTION("codec ladder (class x bucket)", run_ladder) {
 
     const ctrl::DestClass classes[] = {ctrl::DestClass::Reencode, ctrl::DestClass::Direct,
                                        ctrl::DestClass::Archive};
@@ -603,8 +636,7 @@ static bool alphaObservable(const QString& aCodec) {
            aCodec == QLatin1String("ffv1");
 }
 
-static void run_conformance() {
-    section("destination conformance (every row)");
+TEST_SECTION("destination conformance (every row)", run_conformance) {
 
     const QList<ctrl::ExportTarget> all =
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
@@ -724,8 +756,7 @@ static void run_conformance() {
 
 // A misspelt encoder option must be an ERROR, not a silently-ignored typo:
 // "auto-alt-ref" typo'd means broken alpha with no other symptom.
-static void run_option_typo_is_fatal() {
-    section("unknown encoder option is rejected");
+TEST_SECTION("unknown encoder option is rejected", run_option_typo_is_fatal) {
 
     media::VideoEncoder::Config cfg;
     cfg.outputPath = QDir::temp().filePath("ae_badopt.webm");
@@ -752,8 +783,7 @@ static void run_option_typo_is_fatal() {
     enc2.close();
 }
 
-static void run_throughput_gate() {
-    section("throughput gate (is the codec fast enough HERE?)");
+TEST_SECTION("throughput gate (is the codec fast enough HERE?)", run_throughput_gate) {
 
     // Same job, two budgets. The invariant is not "which codec" (that depends
     // on the machine) but that a tight budget never selects a SLOWER codec than
@@ -789,8 +819,7 @@ static void run_throughput_gate() {
               .arg(tt));
 }
 
-static void run_audio_is_derived() {
-    section("audio is derived, not requested");
+TEST_SECTION("audio is derived, not requested", run_audio_is_derived) {
 
     const QList<ctrl::ExportTarget> all =
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
@@ -877,8 +906,7 @@ static void run_audio_is_derived() {
           "an archive master keeps audio lossless (flac)");
 }
 
-static void run_fit_to_cap() {
-    section("post-encode fit-to-cap");
+TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
 
     const QList<ctrl::ExportTarget> all =
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
@@ -925,8 +953,7 @@ static void run_fit_to_cap() {
     QTextStream(stdout) << "      " << r2.error << "\n";
 }
 
-static void run_live_encode() {
-    section("live encode from a resolved plan");
+TEST_SECTION("live encode from a resolved plan", run_live_encode) {
 
     const QList<ctrl::ExportTarget> all =
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
@@ -1003,22 +1030,15 @@ static void run_live_encode() {
 int main(int argc, char* argv[]) {
     QCoreApplication app(argc, argv);
 
-    run_load_and_validate();
-    run_size_rules();
-    run_caps();
-    run_frame_selection();
-    run_probe_sanity();
-    run_ladder();
-    run_conformance();
-    run_option_typo_is_fatal();
-    run_throughput_gate();
-    run_audio_is_derived();
-    run_fit_to_cap();
-    // This section existed but was never called, so it had never actually run —
-    // the assertion count did not include it. Everything that "passes" has to be
-    // reached from main.
-    run_live_encode();
+    // Every section that was DEFINED is in here. There is no list to keep in
+    // sync, so a section cannot be written and silently not run — which is how
+    // run_live_encode() went unexecuted while reading as coverage.
+    for (const TestSection& s : testSections()) {
+        QTextStream(stdout) << "\n== " << s.title << " ==\n";
+        s.fn();
+    }
 
+    QTextStream(stdout) << "\n" << testSections().size() << " sections ran\n";
     QTextStream(stdout) << "\n" << (failures ? "FAILURES: " : "ALL PASS ") << failures << "\n";
     return failures ? 1 : 0;
 }
