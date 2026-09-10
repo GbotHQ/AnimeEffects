@@ -246,14 +246,20 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
                 QStringLiteral("webm"), QStringLiteral("mkv"), QStringLiteral("matroska"),
             };
             if (audioContainers.contains(container)) {
-                const QString audioCodec = container == QLatin1String("webm")
-                                               ? QStringLiteral("libopus")
-                                               : QStringLiteral("aac");
+                // The destination's audio spec wins; the container-derived
+                // default is the fallback (WebM cannot carry AAC, so the codec
+                // is never simply taken from the table without this check).
+                QString audioCodec = aVideo.audioCodec;
+                if (audioCodec.isEmpty()) {
+                    audioCodec = container == QLatin1String("webm")
+                                     ? QStringLiteral("libopus")
+                                     : QStringLiteral("aac");
+                }
                 if (media::ffmpeg::encoderAvailable(audioCodec.toUtf8().constData())) {
                     cfg.audioCodec = audioCodec;
-                    cfg.audioChannels = mAudioChannels;
-                    cfg.audioSampleRate = mAudioSampleRate;
-                    cfg.audioBitrate = 128000;
+                    cfg.audioChannels = aVideo.audioChannels > 0 ? aVideo.audioChannels : mAudioChannels;
+                    cfg.audioSampleRate = aVideo.audioSampleRate > 0 ? aVideo.audioSampleRate : mAudioSampleRate;
+                    cfg.audioBitrate = aVideo.audioBitrate > 0 ? aVideo.audioBitrate : 128000;
                 }
             }
         }

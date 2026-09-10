@@ -89,6 +89,16 @@ public:
         // Four-char AVStream codec tag (e.g. hvc1, without which Safari refuses
         // HEVC). A container concern, deliberately not an encoder option.
         QString codecTag;
+        // Audio parameters, when a destination specifies them (a source upload
+        // wants generous bitrate, a website cares about bandwidth, an archive
+        // wants lossless). Empty/zero falls back to the container-derived
+        // default, which is what the exporter used unconditionally before: it
+        // hardcoded aac-at-128k for everything that was not WebM, so the table's
+        // per-destination audio could not take effect.
+        QString audioCodec;
+        int audioBitrate = 0;
+        int audioChannels = 0;
+        int audioSampleRate = 0;
     };
 
     struct GifParam {

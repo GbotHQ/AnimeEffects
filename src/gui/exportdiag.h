@@ -51,6 +51,15 @@ public:
     QRadioButton *keepAspectRatio;
     QLabel *lastFrameLabel;
     QLabel *exportTypeLabel;
+    // The destination decides everything below it: container, codec, that codec's
+    // private options and stream tag, transparency, the exact size (art fitted and
+    // padded), the caps and the audio. Capabilities are therefore STATED here
+    // rather than offered as controls the user could set wrong.
+    QLabel *destinationLabel;
+    QLabel *qualityLabel;
+    QLabel *destinationFacts;
+    QComboBox *destinationCombo;
+    QComboBox *qualityCombo;
     QLabel *intermediateTypeLabel;
     QRadioButton *customRatio;
     QPushButton *insertFrameRangeButton;
@@ -537,6 +546,35 @@ public:
 
         verticalLayout_3->addWidget(globalParamScroll);
 
+        destinationLabel = new QLabel(globalParamScrollContents);
+        destinationLabel->setObjectName(QString::fromUtf8("destinationLabel"));
+        gridLayout_2->addWidget(destinationLabel, 25, 0, 1, 1);
+
+        destinationCombo = new QComboBox(globalParamScrollContents);
+        destinationCombo->setObjectName(QString::fromUtf8("destinationCombo"));
+        gridLayout_2->addWidget(destinationCombo, 25, 1, 1, 2);
+
+        qualityLabel = new QLabel(globalParamScrollContents);
+        qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
+        gridLayout_2->addWidget(qualityLabel, 26, 0, 1, 1);
+
+        qualityCombo = new QComboBox(globalParamScrollContents);
+        qualityCombo->setObjectName(QString::fromUtf8("qualityCombo"));
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        gridLayout_2->addWidget(qualityCombo, 26, 1, 1, 2);
+
+        // What the destination requires, in words. Filled by MainWindow from
+        // planExport(): the codec it resolved and why, the size it forces, and
+        // every capability the row declares.
+        destinationFacts = new QLabel(globalParamScrollContents);
+        destinationFacts->setObjectName(QString::fromUtf8("destinationFacts"));
+        destinationFacts->setWordWrap(true);
+        destinationFacts->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        gridLayout_2->addWidget(destinationFacts, 27, 0, 1, 3);
+
         settingsTab->addTab(globalParam, QString());
         formatParam = new QWidget();
         formatParam->setObjectName(QString::fromUtf8("formatParam"));
@@ -875,6 +913,12 @@ public:
         keepAspectRatio->setText(QCoreApplication::translate("exportWidget", "Keep aspect ratio", nullptr));
         lastFrameLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">- Last frame -</p></body></html>", nullptr));
         exportTypeLabel->setText(QCoreApplication::translate("exportWidget", "Export type:", nullptr));
+        destinationLabel->setText(QCoreApplication::translate("exportWidget", "Destination:", nullptr));
+        qualityLabel->setText(QCoreApplication::translate("exportWidget", "Quality:", nullptr));
+        qualityCombo->setItemText(0, QCoreApplication::translate("exportWidget", "Smaller file", nullptr));
+        qualityCombo->setItemText(1, QCoreApplication::translate("exportWidget", "Balanced", nullptr));
+        qualityCombo->setItemText(2, QCoreApplication::translate("exportWidget", "Best quality", nullptr));
+        qualityCombo->setItemText(3, QCoreApplication::translate("exportWidget", "Lossless", nullptr));
         intermediateTypeLabel->setText(QCoreApplication::translate("exportWidget", "Intermediate type:", nullptr));
         customRatio->setText(QCoreApplication::translate("exportWidget", "Custom", nullptr));
         insertFrameRangeButton->setText(QCoreApplication::translate("exportWidget", "Insert range", nullptr));

@@ -34,6 +34,7 @@
 #include "qurl.h"
 #include "util/SelectArgs.h"
 #include "gui/AudioPlaybackWidget.h"
+#include "ExportTarget.h"   // ctrl::QualityBucket
 
 #include <QBuffer>
 #include <QDesktopServices>
@@ -126,6 +127,12 @@ public:
     exportParam();
     exportTarget exportType = exportTarget::video;
     GeneralParams generalParams;
+    // The chosen destination row from assets/export/ExportTargets.txt. Empty means
+    // the export is driven by the individual controls instead. When set,
+    // ctrl::planExport() decides the container, codec, its private options and
+    // stream tag, transparency, the exact size, the caps and the audio.
+    QString destinationId;
+    ctrl::QualityBucket qualityBucket = ctrl::QualityBucket::Balanced;
     // One of these will be ignored on export //
     VideoParams videoParams;
     ImageParams imageParams;

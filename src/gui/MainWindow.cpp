@@ -1273,8 +1273,6 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     // projectExporter::Exporter + ffmpeg:: CLI machinery is no longer used.
     auto& g = exParam.generalParams;
     const bool isImage = exParam.exportType == exportTarget::image;
-    const bool isGif = exParam.exportType == exportTarget::video &&
-                       exParam.videoParams.format == availableVideoFormats::gif;
 
     // Common parameters (path differs per target below).
     ctrl::Exporter::CommonParam cparam;
@@ -1296,6 +1294,55 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         cparam.selection = ctrl::FrameSelection::fromRange(g.nativeFrameRange.firstFrame,
                                                           g.nativeFrameRange.lastFrame);
     }
+
+    // A chosen destination is AUTHORITATIVE: it decides the container, the codec,
+    // that codec's private options and stream tag, transparency, the exact output
+    // size (art fitted and padded, never stretched), the frame caps, the audio
+    // parameters and the frame selection. Resolved before the branches because it
+    // also decides WHICH branch runs (a GIF destination is not a VideoEncoder
+    // target). This is what replaces the per-container codec combos, which could
+    // not work at all: getFormatAsInt() returns 0 for every input, so every codec
+    // and pixel format chosen in the dialog was silently discarded.
+    ctrl::ExportPlan plan;
+    bool havePlan = false;
+    if (!exParam.destinationId.isEmpty() && !isImage) {
+        const ctrl::ExportTarget target =
+            ctrl::ExportTargets::find(ctrl::ExportTargets::load(), exParam.destinationId);
+        if (target.id.isEmpty()) {
+            QMessageBox::warning(widget, QObject::tr("Export Error"),
+                                 QObject::tr("Unknown export destination: %1").arg(exParam.destinationId));
+            return;
+        }
+        ctrl::ExportRequest request;
+        request.outputPath = g.osExportTarget;
+        request.sourceSize = mCurrent->attribute().imageSize();
+        request.fps = cparam.fps;
+        request.selection = cparam.selection;
+        // Audio is derived, not requested: how many tracks are actually meant for
+        // the file, and whether the user asked for silence.
+        int exportableTracks = 0;
+        for (const audioConfig& ac : validAudioStreams) {
+            if (ac.exportEnable) ++exportableTracks;
+        }
+        request.exportableAudioTracks = exportableTracks;
+        request.mute = !g.exportWithAudio;
+
+        plan = ctrl::planExport(target, request, exParam.qualityBucket);
+        if (!plan.ok()) {
+            QMessageBox::warning(widget, QObject::tr("Export Error"), plan.error);
+            return;
+        }
+        havePlan = true;
+        cparam.size = plan.size;
+        cparam.renderSize = plan.renderSize;
+        cparam.fit = plan.config.fit;
+        cparam.fps = plan.fps;
+        cparam.selection = plan.selection;
+    }
+
+    const bool isGif = havePlan ? plan.gifPath
+                                : (exParam.exportType == exportTarget::video &&
+                                   exParam.videoParams.format == availableVideoFormats::gif);
 
     ctrl::Exporter exporter(*mCurrent);
     exporter.setOverwriteConfirmer([widget](const QString& aPath) -> bool {
@@ -1342,6 +1389,27 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     ctrl::Exporter::VideoParam vparam;
     QVector<media::AudioMixer::Track> audioTracks;
     translateVideoExport(exParam, validAudioStreams, vparam, audioTracks);
+
+    if (havePlan) {
+        ctrl::VideoFormat fmt = ctrl::VideoFormat::find(plan.config.container);
+        if (fmt.name.isEmpty()) {
+            fmt.name = plan.config.container;
+            fmt.label = plan.config.container;
+        }
+        vparam.format = fmt;
+        vparam.codecIndex = -1;            // the codec is named explicitly
+        vparam.codec = plan.config.codec;
+        vparam.pixfmt = plan.config.pixFmt;
+        vparam.transparent = plan.alphaEnabled;
+        vparam.encOptions = plan.config.encOptions;
+        vparam.codecTag = plan.config.codecTag;
+        vparam.bps = 0;                    // quality comes from the codec's own controls
+        vparam.audioCodec = plan.config.audioCodec;
+        vparam.audioBitrate = plan.config.audioBitrate;
+        vparam.audioChannels = plan.config.audioChannels;
+        vparam.audioSampleRate = plan.config.audioSampleRate;
+        if (!plan.audioEnabled) audioTracks.clear();
+    }
     exporter.setAudioTracks(audioTracks);
     auto res = exporter.execute(cparam, vparam);
     if (!res && !exporter.isCanceled())
@@ -1364,6 +1432,91 @@ void MainWindow::onExportTriggered() {
     // Set up UI
     exportWidget->setParent(this, Qt::Window);
     exportUI->setupUi(exportWidget, mGUIResources, mCurrent->attribute().frameRange().max());
+
+    // Destinations come from the data table — the same rows the exporter plans
+    // from — so what the dialog STATES is what the export will actually do. The
+    // per-container codec combos could not do that (getFormatAsInt() returns 0 for
+    // every input, so every codec and pixel format chosen there was discarded).
+    {
+        const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
+        exportUI->destinationCombo->addItem(tr("(use the settings below)"), QString());
+        for (const ctrl::ExportTarget& t : targets) {
+            exportUI->destinationCombo->addItem(t.label, t.id);
+        }
+        QSettings settings;
+        const int saved = exportUI->destinationCombo->findData(
+            settings.value("export_destination", QString()));
+        exportUI->destinationCombo->setCurrentIndex(saved > 0 ? saved : 0);
+        const int savedQuality = settings.value("export_quality_bucket", 1).toInt();
+        exportUI->qualityCombo->setCurrentIndex(savedQuality >= 0 && savedQuality <= 3 ? savedQuality : 1);
+
+        auto currentBucket = [this]() {
+            switch (exportUI->qualityCombo->currentIndex()) {
+            case 0: return ctrl::QualityBucket::Smaller;
+            case 2: return ctrl::QualityBucket::Best;
+            case 3: return ctrl::QualityBucket::Lossless;
+            default: return ctrl::QualityBucket::Balanced;
+            }
+        };
+
+        // The plan is computed on every change and shown in words: which codec was
+        // chosen and why, what size the destination forces, and every capability it
+        // declares. This is the whole point of the redesign — the user states a
+        // fact they possess ("it is for Telegram") and the system applies the
+        // consequences.
+        auto refreshFacts = [this, currentBucket]() {
+            const QString id = exportUI->destinationCombo->currentData().toString();
+            if (id.isEmpty()) {
+                exportUI->destinationFacts->clear();
+                return;
+            }
+            const ctrl::ExportTarget target =
+                ctrl::ExportTargets::find(ctrl::ExportTargets::load(), id);
+
+            const int first = exportUI->firstFrameSpinBox->value();
+            const int last = exportUI->lastFrameSpinBox->value();
+            int exportableTracks = 0;
+            if (mCurrent->pConf) {
+                for (const audioConfig& ac : *mCurrent->pConf) {
+                    if (ac.exportEnable) ++exportableTracks;
+                }
+            }
+
+            ctrl::ExportRequest request;
+            request.sourceSize = mCurrent->attribute().imageSize();
+            request.fps = exportUI->fpsSpinBox->value();
+            request.selection = ctrl::FrameSelection::fromRange(std::min(first, last), std::max(first, last));
+            request.exportableAudioTracks = exportableTracks;
+            request.mute = !exportUI->exportWithAudioCheckBox->isChecked();
+
+            const ctrl::ExportPlan plan = ctrl::planExport(target, request, currentBucket());
+            QStringList lines;
+            if (!plan.ok()) {
+                lines << tr("This destination cannot be exported: %1").arg(plan.error);
+            } else {
+                lines << tr("%1 x %2, %3 fps — %4 in %5")
+                             .arg(plan.size.width())
+                             .arg(plan.size.height())
+                             .arg(plan.fps)
+                             .arg(plan.config.codec, plan.config.container);
+                lines << tr("Transparency: %1   Audio: %2")
+                             .arg(plan.alphaEnabled ? tr("yes") : tr("no"),
+                                  plan.audioEnabled ? tr("yes") : tr("no"));
+                for (const QString& note : plan.notes) {
+                    lines << QStringLiteral("• ") + note;
+                }
+            }
+            exportUI->destinationFacts->setText(lines.join(QLatin1Char('\n')));
+        };
+
+        QObject::connect(exportUI->destinationCombo,
+                         util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
+                         [refreshFacts](int) { refreshFacts(); });
+        QObject::connect(exportUI->qualityCombo,
+                         util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
+                         [refreshFacts](int) { refreshFacts(); });
+        refreshFacts();
+    }
     // Initialize gpDiag
     gpDiag->setAttribute(Qt::WA_DeleteOnClose,true);
     gpDiag->setParent(exportWidget, Qt::Window);
@@ -1716,6 +1869,18 @@ void MainWindow::onExportTriggered() {
         exportRanges->append(frame_export_range);
     }
     genParam.exportRange = *exportRanges;
+    exParam->destinationId = exportUI->destinationCombo->currentData().toString();
+    switch (exportUI->qualityCombo->currentIndex()) {
+    case 0: exParam->qualityBucket = ctrl::QualityBucket::Smaller; break;
+    case 2: exParam->qualityBucket = ctrl::QualityBucket::Best; break;
+    case 3: exParam->qualityBucket = ctrl::QualityBucket::Lossless; break;
+    default: exParam->qualityBucket = ctrl::QualityBucket::Balanced; break;
+    }
+    {
+        QSettings settings;
+        settings.setValue("export_destination", exParam->destinationId);
+        settings.setValue("export_quality_bucket", exportUI->qualityCombo->currentIndex());
+    }
     genParam.customInterCommand = exportUI->intermediateParamTextEdit->toPlainText();
     genParam.customPostCommand = exportUI->postParamTextEdit->toPlainText();
     if(exportUI->exportTypeCombo->currentIndex() == 0){ exParam->exportType = exportTarget::video; }
