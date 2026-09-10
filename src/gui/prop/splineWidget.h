@@ -103,7 +103,11 @@ public:
         }
     }
 
-    void setupUi(QDialog *splineWidget, const gui::GUIResources* guiRes, util::Easing::CubicBezier* cubicBezier) {
+    // No GUIResources parameter: the editor's colours come from the global
+    // runtime theme (theme::Colors::current(), see bezierCurveEditor.cpp), so
+    // nothing here needs the resource object. There are no callers of this
+    // (the editor lives in EasingPickWidget now).
+    void setupUi(QDialog *splineWidget, util::Easing::CubicBezier* cubicBezier) {
         bezier = cubicBezier;
         if (splineWidget->objectName().isEmpty())
             splineWidget->setObjectName("splineWidget");
