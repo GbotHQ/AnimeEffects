@@ -81,7 +81,6 @@ int main(int argc, char** argv) {
     // flush at the widget top (no margin) and its top edge gets cut.
     const QImage sliderImg = slider->grab().toImage();
     int knobTop = -1, knobBottom = -1;
-    const qreal cx = sliderImg.width() / 2.0;
     for (int y = 0; y < sliderImg.height(); ++y) {
         bool knobPix = false;
         for (int x = 0; x < sliderImg.width(); ++x) {
@@ -215,16 +214,12 @@ int main(int argc, char** argv) {
     }
 
     // ---- #8 close X: phosphor stroke is thin (16/256 of the 14px box) ----
-    QWidget* closeBtn = w.findChild<QWidget*>("popover-close");
-    const QImage xi = closeBtn->grab().toImage();
-    int xw = 0;
-    const int midY = xi.height() / 2;
-    for (int x = 0; x < xi.width(); ++x) {
-        const QRgb p = xi.pixel(x, midY);
-        if (qRed(p) > 90 && qGreen(p) > 90 && qBlue(p) > 90) { ++xw; }
-    }
-    // the diagonal crosses the mid row in ~strokeWidth/sin(45deg) px:
-    // phosphor 0.875px stroke -> ~1-2 painted px; the old 2.5px stroke -> ~4.
+    // NOT REPORTED: this check was never wired up. It scanned the close
+    // button's middle row for painted pixels (the diagonal crosses the mid row
+    // in ~strokeWidth/sin(45deg) px: phosphor 0.875px stroke -> ~1-2 painted
+    // px, the old 2.5px stroke -> ~4) but the count was never printed or
+    // asserted, so #8 has always been silent. The unread count was removed as
+    // dead code; the verdict itself still has to be added deliberately.
     // ---- #9 fi fields: geometry stable + hover/focus/pressed states present ----
     // The custom bezier inputs are QDoubleSpinBox[role="fi"]. The bug was
     // `border: 0` in the popover's own stylesheet, which also killed the

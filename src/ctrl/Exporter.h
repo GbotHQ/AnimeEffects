@@ -140,8 +140,6 @@ private:
 
     CommonParam mCommonParam;
     ImageParam mImageParam;
-    const char* mVideoInCodec;
-    int mVideoInCodecQuality;
     bool mVideoExporting;
     // GIF path: collect rendered frames (no live encoder) and encode with the
     // in-process media::GifEncoder (replaces the legacy CLI palette subprocess).

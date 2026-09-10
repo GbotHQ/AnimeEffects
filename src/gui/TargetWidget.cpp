@@ -15,7 +15,6 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     QWidget(aParent),
     mProject(),
     mViaPoint(aViaPoint),
-    mResources(aResources),
     mSizeHint(aSizeHint),
     mHorizontalSplitter(nullptr),
     mIsFirstTime(true),

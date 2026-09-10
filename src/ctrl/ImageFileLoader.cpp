@@ -223,7 +223,6 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
     using img::PSDFormat;
     using img::PSDReader;
     using img::PSDUtil;
-    typedef PSDFormat::LayerList::reverse_iterator ReverseIterator;
 
     aReporter.setSection("Loading PSD file...");
     aReporter.setMaximum(1);
@@ -521,7 +520,9 @@ bool ImageFileLoader::loadOra(Project& aProject, util::IProgressReporter& aRepor
         loadMerged.setText(tr("How do you wish to load this ORA file?"));
         QAbstractButton* layerButton = loadMerged.addButton(tr("Load layered"), QMessageBox::YesRole);
         QAbstractButton* mergeButton = loadMerged.addButton(tr("Load merged"), QMessageBox::YesRole);
-        QAbstractButton* cancelButton = loadMerged.addButton(tr("Cancel file load"), QMessageBox::NoRole);
+        // Any other outcome (this button, Escape or the window close box) falls
+        // through to the cancel branch below, so the button is not read back.
+        loadMerged.addButton(tr("Cancel file load"), QMessageBox::NoRole);
         loadMerged.exec();
         if (loadMerged.clickedButton() != mergeButton && loadMerged.clickedButton() != layerButton) {
             mLog = "User cancelled image load";

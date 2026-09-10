@@ -60,8 +60,6 @@ Exporter::Exporter(core::Project& aProject):
     mUILogger(),
     mCommonParam(),
     mImageParam(),
-    mVideoInCodec(),
-    mVideoInCodecQuality(),
     mVideoExporting(),
     mExporting(false),
     mIndex(0),
