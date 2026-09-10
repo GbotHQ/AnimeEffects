@@ -161,32 +161,12 @@ QString getFormatAsString(exportTarget target, formatEnum formatIndex) {
     }
     return nullptr;
 }
-inline int getFormatAsInt(exportTarget target, const QString& format) {
-    qsizetype index = -1;
-    switch (target) {
-    case exportTarget::video:
-        index = videoFormats.indexOf(format);
-    case exportTarget::image:
-        index = imageFormats.indexOf(format);
-    case exportTarget::pxFmt:
-        index = pxFormats.indexOf(format);
-    case exportTarget::aviEnc:
-        index = aviEnc.indexOf(format);
-    case exportTarget::mkvEnc:
-        index = mkvEnc.indexOf(format);
-    case exportTarget::movEnc:
-        index = movEnc.indexOf(format);
-    case exportTarget::mp4Enc:
-        index = mp4Enc.indexOf(format);
-    case exportTarget::webmEnc:
-        index = webmEnc.indexOf(format);
-    default:
-        index =  0;
-    }
-    // Error handling for out of bound encoders and formats
-    if(index == -1){ return 0; }
-    return static_cast<int>(index);
-}
+// getFormatAsInt() used to live here, converting a combo's text back to an enum.
+// It had no breaks between its switch cases, so every path fell through to
+// `default: index = 0`: it returned 0 for EVERY input. That is why the dialog's
+// pixel-format and per-container codec choices were silently discarded for as
+// long as the control existed, and why removing the controls changed nothing.
+// Its callers are gone with the Format tab, so it is deleted rather than fixed.
 
 inline bool formatAllowsTransparency(const QString& format) {
     QStringList formatsWithTransparency{"apng", "gif", "png", "webp", "webm", "tiff"};

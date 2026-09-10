@@ -1589,36 +1589,10 @@ void MainWindow::onExportTriggered() {
         *boolVariables[x] = variant->toBool();
         x++;
     }
-    // Get formats
-    QVariant pixelFormatV = settings.value("export_pixel_format");
-    QVariant aviEncV = settings.value("export_avi_encoder");
-    QVariant mkvEncV = settings.value("export_mkv_encoder");
-    QVariant movEncV = settings.value("export_mov_encoder");
-    QVariant mp4EncV = settings.value("export_mp4_encoder");
-    QVariant webmEncV = settings.value("export_webm_encoder");
-    pixelFormats pixelFormat;
-    aviEncoders aviEncoder;
-    mkvEncoders mkvEncoder;
-    movEncoders movEncoder;
-    mp4Encoders mp4Encoder;
-    webmEncoders webmEncoder;
-    // Loop through the vectors and initialize their values
-    QVector<QVariant *> formats {
-        &pixelFormatV, &aviEncV, &mkvEncV, &movEncV, &mp4EncV, &webmEncV
-    };
-    for(auto variant: formats){
-        if(!variant->isValid()){
-            variant->setValue(QString("Auto"));
-            settings.sync();
-        }
-    }
-    // Cast the values gathered into an enum for the corresponding value
-    pixelFormat = static_cast<pixelFormats>(getFormatAsInt(exportTarget::pxFmt, pixelFormatV.toString()));
-    aviEncoder = static_cast<aviEncoders>(getFormatAsInt(exportTarget::aviEnc, aviEncV.toString()));
-    mkvEncoder = static_cast<mkvEncoders>(getFormatAsInt(exportTarget::mkvEnc, mkvEncV.toString()));
-    movEncoder = static_cast<movEncoders>(getFormatAsInt(exportTarget::movEnc, movEncV.toString()));
-    mp4Encoder = static_cast<mp4Encoders>(getFormatAsInt(exportTarget::mp4Enc, mp4EncV.toString()));
-    webmEncoder = static_cast<webmEncoders>(getFormatAsInt(exportTarget::webmEnc, webmEncV.toString()));
+    // The per-container codec and pixel-format settings are gone with the Format
+    // tab: a destination decides the codec now. The old values were never applied
+    // in the first place — getFormatAsInt() returns 0 for every input, so every
+    // choice they stored was read back as "Auto".
     // Get custom parameters
     QVariant customParamsV = settings.value("export_custom_params");
     QVariant customParamsStringsV = settings.value("export_custom_params_str");
@@ -1644,12 +1618,6 @@ void MainWindow::onExportTriggered() {
     exportUI->intermediateParamCheckBox->setChecked(*allowInterParam);
     exportUI->postParamCheckBox->setChecked(*allowPostParam);
     exportUI->customPaletteCheckBox->setChecked(*useCustomPalette);
-    exportUI->pixelFormatCombo->setCurrentIndex(static_cast<int>(pixelFormat));
-    exportUI->aviCombo->setCurrentIndex(static_cast<int>(aviEncoder));
-    exportUI->mkvCombo->setCurrentIndex(static_cast<int>(mkvEncoder));
-    exportUI->movCombo->setCurrentIndex(static_cast<int>(movEncoder));
-    exportUI->mp4Combo->setCurrentIndex(static_cast<int>(mp4Encoder));
-    exportUI->webmCombo->setCurrentIndex(static_cast<int>(webmEncoder));
     exportUI->presetCombo->addItems(*customParamsStrings);
     exportUI->nativeH = genParam.nativeHeight;
     exportUI->nativeW = genParam.nativeWidth;
@@ -1767,18 +1735,6 @@ void MainWindow::onExportTriggered() {
                        "export_loop_anim");
         updateSettings(&exportWithAudioV, &settings, exportUI->exportWithAudioCheckBox->isChecked(),
                        "export_allow_audio");
-        updateSettings(&pixelFormatV, &settings, exportUI->pixelFormatCombo->currentText(),
-                       "export_pixel_format");
-        updateSettings(&aviEncV, &settings, exportUI->aviCombo->currentText(),
-                       "export_avi_encoder");
-        updateSettings(&mkvEncV, &settings, exportUI->mkvCombo->currentText(),
-                       "export_mkv_encoder");
-        updateSettings(&movEncV, &settings, exportUI->movCombo->currentText(),
-                       "export_mov_encoder");
-        updateSettings(&mp4EncV, &settings, exportUI->mp4Combo->currentText(),
-                       "export_mp4_encoder");
-        updateSettings(&webmEncV, &settings, exportUI->webmCombo->currentText(),
-                       "export_webm_encoder");
         updateSettings(&customParamsV, &settings, *customParams,
                        "export_custom_params");
         updateSettings(&customParamsStringsV, &settings, *customParamsStrings,
@@ -1889,16 +1845,10 @@ void MainWindow::onExportTriggered() {
         exParam->videoParams.intermediateFormat = static_cast<availableIntermediateFormats>(
             exportUI->intermediateTypeCombo->currentIndex()
             );
-        exParam->videoParams.pixelFormat = static_cast<pixelFormats>(
-                getFormatAsInt(exportTarget::pxFmt, exportUI->pixelFormatCombo->currentText())
-            );
-        defaultEncoders encoders;
-        encoders.avi = static_cast<aviEncoders>(getFormatAsInt(exportTarget::aviEnc, exportUI->aviCombo->currentText()));
-        encoders.mkv = static_cast<mkvEncoders>(getFormatAsInt(exportTarget::mkvEnc, exportUI->mkvCombo->currentText()));
-        encoders.mov = static_cast<movEncoders>(getFormatAsInt(exportTarget::movEnc, exportUI->movCombo->currentText()));
-        encoders.mp4 = static_cast<mp4Encoders>(getFormatAsInt(exportTarget::mp4Enc, exportUI->mp4Combo->currentText()));
-        encoders.webm = static_cast<webmEncoders>(getFormatAsInt(exportTarget::webmEnc, exportUI->webmCombo->currentText()));
-        exParam->videoParams.encoders = encoders;
+        // No pixel format or per-container encoder is collected any more: a
+        // destination decides both. They stay at their defaults, which is exactly
+        // what they resolved to before, because getFormatAsInt() returned 0 for
+        // every input the user could pick.
     }
     // Get file via OS diag
     fileDiag.setViewMode(QFileDialog::Detail);

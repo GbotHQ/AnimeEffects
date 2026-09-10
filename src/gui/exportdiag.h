@@ -101,25 +101,6 @@ public:
     QCheckBox *allowParamsCheckBox;
     QSpinBox * fpsSpinBox;
     QToolButton *selectPalettePathButton;
-    QWidget *formatParam;
-    QVBoxLayout *verticalLayout_4;
-    QFormLayout *formatLayout;
-    QScrollArea *formatParamScroll;
-    QWidget *formatParamScrollContents;
-    QGridLayout *gridLayout;
-    QLabel *pixelFormatLabel;
-    QLabel *movLabel;
-    QComboBox *aviCombo;
-    QLabel *mkvLabel;
-    QComboBox *pixelFormatCombo;
-    QComboBox *movCombo;
-    QFrame *formatLine;
-    QLabel *mp4Label;
-    QLabel *aviLabel;
-    QComboBox *webmCombo;
-    QComboBox *mp4Combo;
-    QLabel *webmLabel;
-    QComboBox *mkvCombo;
     QWidget *customParam;
     QVBoxLayout *verticalLayout_5;
     QGridLayout *customParamLayout;
@@ -576,129 +557,6 @@ public:
         gridLayout_2->addWidget(destinationFacts, 27, 0, 1, 3);
 
         settingsTab->addTab(globalParam, QString());
-        formatParam = new QWidget();
-        formatParam->setObjectName(QString::fromUtf8("formatParam"));
-        verticalLayout_4 = new QVBoxLayout(formatParam);
-        verticalLayout_4->setObjectName(QString::fromUtf8("verticalLayout_4"));
-        formatLayout = new QFormLayout();
-        formatLayout->setObjectName(QString::fromUtf8("formatLayout"));
-        formatParamScroll = new QScrollArea(formatParam);
-        formatParamScroll->setObjectName(QString::fromUtf8("formatParamScroll"));
-        formatParamScroll->setWidgetResizable(true);
-        formatParamScrollContents = new QWidget();
-        formatParamScrollContents->setObjectName(QString::fromUtf8("formatParamScrollContents"));
-        formatParamScrollContents->setGeometry(QRect(0, 0, 189, 199));
-        gridLayout = new QGridLayout(formatParamScrollContents);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
-        pixelFormatLabel = new QLabel(formatParamScrollContents);
-        pixelFormatLabel->setObjectName(QString::fromUtf8("pixelFormatLabel"));
-
-        gridLayout->addWidget(pixelFormatLabel, 0, 0, 1, 1);
-
-        movLabel = new QLabel(formatParamScrollContents);
-        movLabel->setObjectName(QString::fromUtf8("movLabel"));
-
-        gridLayout->addWidget(movLabel, 4, 0, 1, 1);
-
-        aviCombo = new QComboBox(formatParamScrollContents);
-        aviCombo->addItem(QString());
-        aviCombo->addItem(QString());
-        aviCombo->addItem(QString());
-        aviCombo->setObjectName(QString::fromUtf8("aviCombo"));
-
-        gridLayout->addWidget(aviCombo, 2, 1, 1, 2);
-
-        mkvLabel = new QLabel(formatParamScrollContents);
-        mkvLabel->setObjectName(QString::fromUtf8("mkvLabel"));
-
-        gridLayout->addWidget(mkvLabel, 3, 0, 1, 1);
-
-        pixelFormatCombo = new QComboBox(formatParamScrollContents);
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->addItem(QString());
-        pixelFormatCombo->setObjectName(QString::fromUtf8("pixelFormatCombo"));
-
-        gridLayout->addWidget(pixelFormatCombo, 0, 1, 1, 2);
-
-        movCombo = new QComboBox(formatParamScrollContents);
-        movCombo->addItem(QString());
-        movCombo->addItem(QString());
-        movCombo->addItem(QString());
-        movCombo->addItem(QString());
-        movCombo->addItem(QString());
-        movCombo->setObjectName(QString::fromUtf8("movCombo"));
-
-        gridLayout->addWidget(movCombo, 4, 1, 1, 2);
-
-        formatLine = new QFrame(formatParamScrollContents);
-        formatLine->setObjectName(QString::fromUtf8("formatLine"));
-        formatLine->setFrameShape(QFrame::HLine);
-        formatLine->setFrameShadow(QFrame::Sunken);
-
-        gridLayout->addWidget(formatLine, 1, 0, 1, 3);
-
-        mp4Label = new QLabel(formatParamScrollContents);
-        mp4Label->setObjectName(QString::fromUtf8("mp4Label"));
-
-        gridLayout->addWidget(mp4Label, 5, 0, 1, 1);
-
-        aviLabel = new QLabel(formatParamScrollContents);
-        aviLabel->setObjectName(QString::fromUtf8("aviLabel"));
-        sizePolicy7.setHeightForWidth(aviLabel->sizePolicy().hasHeightForWidth());
-        aviLabel->setSizePolicy(sizePolicy7);
-
-        gridLayout->addWidget(aviLabel, 2, 0, 1, 1);
-
-        webmCombo = new QComboBox(formatParamScrollContents);
-        webmCombo->addItem(QString());
-        webmCombo->addItem(QString());
-        webmCombo->addItem(QString());
-        webmCombo->setObjectName(QString::fromUtf8("webmCombo"));
-
-        gridLayout->addWidget(webmCombo, 7, 1, 1, 2);
-
-        mp4Combo = new QComboBox(formatParamScrollContents);
-        mp4Combo->addItem(QString());
-        mp4Combo->addItem(QString());
-        mp4Combo->addItem(QString());
-        mp4Combo->setObjectName(QString::fromUtf8("mp4Combo"));
-
-        gridLayout->addWidget(mp4Combo, 5, 1, 1, 2);
-
-        webmLabel = new QLabel(formatParamScrollContents);
-        webmLabel->setObjectName(QString::fromUtf8("webmLabel"));
-
-        gridLayout->addWidget(webmLabel, 7, 0, 1, 1);
-
-        mkvCombo = new QComboBox(formatParamScrollContents);
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->addItem(QString());
-        mkvCombo->setObjectName(QString::fromUtf8("mkvCombo"));
-
-        gridLayout->addWidget(mkvCombo, 3, 1, 1, 2);
-
-        formatParamScroll->setWidget(formatParamScrollContents);
-
-        formatLayout->setWidget(0, QFormLayout::SpanningRole, formatParamScroll);
-
-
-        verticalLayout_4->addLayout(formatLayout);
-
-        settingsTab->addTab(formatParam, QString());
         customParam = new QWidget();
         customParam->setObjectName(QString::fromUtf8("customParam"));
         verticalLayout_5 = new QVBoxLayout(customParam);
@@ -956,55 +814,15 @@ public:
         allowParamsCheckBox->setText(QCoreApplication::translate("exportWidget", "Export with custom parameters", nullptr));
         selectPalettePathButton->setText(QCoreApplication::translate("exportWidget", "Select palette path", nullptr));
         settingsTab->setTabText(settingsTab->indexOf(globalParam), QCoreApplication::translate("exportWidget", "General Parameters", nullptr));
-        pixelFormatLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p>Pixel format:</p></body></html>", nullptr));
-        movLabel->setText(QCoreApplication::translate("exportWidget", "MOV", nullptr));
-        aviCombo->setItemText(0, "Auto");
-        aviCombo->setItemText(1, "mpeg2");
-        aviCombo->setItemText(2, "mpeg4");
 
-        mkvLabel->setText(QCoreApplication::translate("exportWidget", "MKV", nullptr));
         // "yuv420p", "yuva420p", "rgb24", "rgba", "bgr24", "bgra", "gray"
-        pixelFormatCombo->setItemText(0, "Auto");
-        pixelFormatCombo->setItemText(1, "yuv420p");
-        pixelFormatCombo->setItemText(2, "yuva420p");
-        pixelFormatCombo->setItemText(3, "rgb24");
-        pixelFormatCombo->setItemText(4, "rgba");
-        pixelFormatCombo->setItemText(5, "bgr24");
-        pixelFormatCombo->setItemText(6, "bgra");
-        pixelFormatCombo->setItemText(7, "gray");
 
     #if QT_CONFIG(tooltip)
-        pixelFormatCombo->setToolTip(QCoreApplication::translate("exportWidget", "Pixel Format availability depends on the selected format, we recommend you stick to yuv420p", nullptr));
     #endif // QT_CONFIG(tooltip)
-        movCombo->setItemText(0, "Auto");
-        movCombo->setItemText(1, "libx264");
-        movCombo->setItemText(2, "h264");
-        movCombo->setItemText(3, "prores_ks");
-        movCombo->setItemText(4, "utvideo");
 
-        mp4Label->setText(QCoreApplication::translate("exportWidget", "MP4", nullptr));
-        aviLabel->setText(QCoreApplication::translate("exportWidget", "AVI", nullptr));
-        webmCombo->setItemText(0, "Auto");
-        webmCombo->setItemText(1, "vp8");
-        webmCombo->setItemText(2, "vp9");
 
-        mp4Combo->setItemText(0, "Auto");
-        mp4Combo->setItemText(1, "mpeg4");
-        mp4Combo->setItemText(2, "h264");
 
-        webmLabel->setText(QCoreApplication::translate("exportWidget", "WEBM", nullptr));
-        mkvCombo->setItemText(0, "Auto");
-        mkvCombo->setItemText(1, "x264");
-        mkvCombo->setItemText(2, "x265");
-        mkvCombo->setItemText(3, "vp8");
-        mkvCombo->setItemText(4, "vp9");
-        mkvCombo->setItemText(5, "av1");
-        mkvCombo->setItemText(6, "ffv1");
-        mkvCombo->setItemText(7, "magicyuv");
-        mkvCombo->setItemText(8, "huffyuv");
-        mkvCombo->setItemText(9, "theora");
 
-        settingsTab->setTabText(settingsTab->indexOf(formatParam), QCoreApplication::translate("exportWidget", "Format Parameters", nullptr));
         intermediateLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Intermediate:</p></body></html>", nullptr));
         postLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Post:</p></body></html>", nullptr));
         addPresetToIntermediate->setText(QCoreApplication::translate("exportWidget", "Add to Intermediate pass", nullptr));
@@ -1027,7 +845,6 @@ public:
         askOperationCancelled = false;
         windowWidget->resize(400, 200);
         gl = new QGridLayout(windowWidget);
-        gl->setObjectName(QString::fromUtf8("gridLayout"));
         scrollArea = new QScrollArea(windowWidget);
         scrollArea->setObjectName(QString::fromUtf8("scrollArea"));
         scrollArea->setWidgetResizable(true);
