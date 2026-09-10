@@ -23,7 +23,17 @@ QString configuration();
 
 // Non-empty iff an encoder with the given name is registered (avcodec
 // can find it). e.g. encoderAvailable("libx264").
+//
+// NOTE: this only proves the encoder was COMPILED INTO this libavcodec. It does
+// not prove it can run: av1_nvenc is listed on machines with no capable NVIDIA
+// device and fails at avcodec_open2 ("No capable devices found"). Use
+// encoderUsable() wherever the answer decides something.
 bool encoderAvailable(const char* aEncoderName);
+
+// True iff the named encoder can actually be opened AND encode a frame here.
+// This is the real capability probe: a one-frame test encode, cached per name,
+// because hardware encoders routinely exist in the binary but have no device.
+bool encoderUsable(const char* aEncoderName);
 
 // Names of all registered VIDEO encoders (type == AVMEDIA_TYPE_VIDEO,
 // encode != nullptr), sorted. Used for diagnostics and to gate presets
@@ -40,7 +50,27 @@ QString resolveEncoderName(const QString& aName);
 // True iff the named encoder (resolved via resolveEncoderName) reports the
 // given pixel format as supported. Used to validate a preset's pixfmt list
 // against the linked build (the compatibility gate).
+//
+// NOTE: this queries the encoder's CLAIMED list, which is not the same as what
+// it will accept. libx265 lists yuva420p and then refuses avcodec_open2 with
+// ENOSYS. Where the answer decides behaviour, use
+// encoderSupportsPixFormatUsable().
 bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFmt);
+
+// True iff the encoder can be opened AND encode a frame using this pixel
+// format (cached one-frame probe). This is the one that is actually true.
+bool encoderSupportsPixFormatUsable(const QString& aEncoderName, const QString& aPixFmt);
+
+// Measured encode throughput in FRAMES PER SECOND at the given size and pixel
+// format, or <= 0 if the encoder cannot be opened there. This is the second
+// half of capability: knowing an encoder runs is not knowing whether it is
+// usable for THIS job. Measured at the real size because throughput does not
+// scale simply, and cached per (encoder, size, format).
+//
+// Cost is a handful of frames, so it is only worth it for jobs long enough that
+// a few frames are negligible — callers gate on that, not here.
+double encoderThroughput(const QString& aEncoderName, int aWidth, int aHeight,
+                         const QString& aPixFmt = QString());
 
 // True iff the container's muxer (e.g. "mp4", "webm") can carry the named
 // encoder's codec. Used to reject a container/codec mismatch up front rather
