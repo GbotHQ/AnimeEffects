@@ -253,19 +253,22 @@ int main(int argc, char** argv) {
         // counts, stream types and alpha side data, all of which a completely
         // blank render satisfies. Measured here so the gap is visible.
         // A PRECONDITION for the content-dependent checks, not a product
-        // assertion: whether this pipeline can render at all here is not
-        // established, and failing the suite on an unresolved environment
-        // question would be as misleading as passing silently.
+        // Content, not just structure. Existence, dimensions, frame count and
+        // stream type are all satisfied by a completely empty frame, so for as
+        // long as this suite checked only those it was green while verifying that
+        // nothing was drawn.
+        //
+        // This is now a FAILURE when the frame is blank, not a skip. It used to
+        // skip, on the theory that "can this pipeline render here at all" was an
+        // unresolved environment question — and that theory was wrong: the blank
+        // frames came from the HARNESS, which never bound a vertex array object
+        // and so had every draw dropped by the Core profile (ctrl::Exporter owns
+        // one now). Content renders on llvmpipe and on hardware alike, so a blank
+        // frame is a real regression and must stop the suite.
         gFrameInkPercent = decodedInkPercent(out);
         fprintf(stderr, "    e2e content: first frame is %.1f%% non-black\n", gFrameInkPercent);
-        if (gFrameInkPercent <= 0.0) {
-            fprintf(stderr,
-                    "\n  *** WARNING: the exporter produced a COMPLETELY BLANK frame, so every\n"
-                    "  *** content-dependent assertion below is skipped rather than passed.\n"
-                    "  *** Under Xvfb/Mesa llvmpipe this pipeline renders nothing (the app's\n"
-                    "  *** on-screen canvas does render), and whether a real GPU is required\n"
-                    "  *** is NOT established. Tracked as an open item in SCRATCHPAD.md.\n\n");
-        }
+        check(gFrameInkPercent > 0.0,
+              "e2e content: the exported frame actually contains the artwork");
         QFile::remove(out);
     }
 
@@ -458,18 +461,14 @@ int main(int argc, char** argv) {
             // Pad leaves transparent margin; a stretch to the same size would not.
             // This is only meaningful if the render has content at all — on a blank
             // frame every margin is trivially transparent.
-            bool marginTransparent = padImg.hasAlphaChannel() && gFrameInkPercent > 0.0;
+            bool marginTransparent = padImg.hasAlphaChannel();
             if (marginTransparent) {
                 const int y = 0; // fitted art is shorter than the box, so row 0 is margin
                 for (int x = 0; x < padImg.width() && marginTransparent; ++x) {
                     if (qAlpha(padImg.pixel(x, y)) != 0) marginTransparent = false;
                 }
             }
-            if (gFrameInkPercent <= 0.0) {
-                // A blank render leaves no margin to inspect: skipping loudly beats
-                // asserting something that cannot fail.
-                fprintf(stderr, "    SKIP  e2e exact-size: margin/fit content checks (blank render)\n");
-            } else {
+            if (true) {
                 check(marginTransparent,
                       "e2e exact-size: Pad leaves a TRANSPARENT margin (art fitted, not stretched)");
                 check(cropImg.size() == exact, "e2e exact-size: Crop output is the exact size too");

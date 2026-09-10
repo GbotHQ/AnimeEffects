@@ -74,6 +74,7 @@ Exporter::~Exporter() {
     // kill buffer
     gl::Global::makeCurrent();
     destroyFramebuffers();
+    releaseExportVAO();
 }
 
 void Exporter::setOverwriteConfirmer(const OverwriteConfirmer& aConfirmer) { mOverwriteConfirmer = aConfirmer; }
@@ -329,6 +330,15 @@ Exporter::Result Exporter::start() {
     {
         gl::Global::makeCurrent();
 
+        // Bind a vertex array object for the whole export (see mExportVAO).
+        // Nothing else in the draw path can substitute for it, and without it the
+        // failure is invisible: draws are dropped under a Core profile, the
+        // transform-feedback pass that computes mesh positions produces zeros,
+        // and the exporter writes a complete, well-formed file of empty frames.
+        mExportVAO.reset(new gl::VertexArrayObject());
+        gl::Global::functions().glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &mPreviousVAO);
+        mExportVAO->bind();
+
         // texture drawer
         if (!mTextureDrawer.init()) {
             mLog = "Failed to initialize TextureDrawer";
@@ -580,7 +590,19 @@ Exporter::Result Exporter::finish() {
 
         mExporting = false;
     }
+    releaseExportVAO();
     return result;
+}
+
+void Exporter::releaseExportVAO() {
+    if (mExportVAO) {
+        // Give the previous binding back BEFORE deleting our own: deleting a
+        // bound VAO leaves the binding at 0, and a canvas that bound its VAO once
+        // at initializeGL would then be drawing with none — turning a completed
+        // export into a broken interactive view.
+        gl::Global::functions().glBindVertexArray((GLuint)mPreviousVAO);
+        mExportVAO.reset();
+    }
 }
 
 void Exporter::destroyFramebuffers() {

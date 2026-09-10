@@ -16,6 +16,7 @@
 #include "util/IProgressReporter.h"
 #include "ctrl/UILogger.h"
 #include "gl/EasyTextureDrawer.h"
+#include "gl/VertexArrayObject.h"
 #include "core/Project.h"
 #include "core/TimeInfo.h"
 #include "core/TimeKeyBlender.h"
@@ -153,6 +154,7 @@ private:
     bool updateTime(core::TimeInfo& aDst);
     bool exportImage(const QImage& aFboImage, int aIndex);
     void destroyFramebuffers();
+    void releaseExportVAO();
     void createFramebuffers(const QSize& aOriginSize, const QSize& aExportSize);
     void setTextureParam(QOpenGLFramebufferObject& aFbo);
     static int getDigitCount(int aFrameCount, int aFps, int aFpsOrigin);
@@ -162,6 +164,19 @@ private:
 
     core::Project& mProject;
     FramebufferList mFramebuffers;
+    // A Core profile requires a bound vertex array object for EVERY draw, and the
+    // transform-feedback pass that poses each mesh is a draw like any other. The
+    // canvas happens to keep one bound for its own lifetime, which is why an
+    // export launched from the running app worked — and why every headless caller
+    // (the test harness, anything that renders without a widget) silently wrote
+    // blank files at 0% ink with no GL error to show for it.
+    //
+    // An exporter must not depend on ambient GL state it does not own, so it owns
+    // this one and gives the previous binding back when it is done: leaving its
+    // own VAO bound after deleting it would break the canvas that painted before.
+    QScopedPointer<gl::VertexArrayObject> mExportVAO;
+    GLint mPreviousVAO = 0;
+
     QScopedPointer<core::ClippingFrame> mClippingFrame;
     QScopedPointer<core::FilterFrame> mFilterFrame;
     QScopedPointer<core::DestinationTexturizer> mDestinationTexturizer;
