@@ -52,7 +52,6 @@ private:
 
     core::Project* mProject;
     ViaPoint& mViaPoint;
-    GUIResources& mResources;
     const QSize mSizeHint;
     ThinSplitter* mHorizontalSplitter;
     ObjectTreeWidget* mObjTree;
