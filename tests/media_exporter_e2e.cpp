@@ -560,6 +560,19 @@ int main(int argc, char** argv) {
             return got && QString::fromUtf8(buf).trimmed().size() > 0;
         };
 
+        // The audio stream's duration in seconds, for the gapped-selection check.
+        auto ffprobeAudioSeconds = [](const QString& aPath) -> double {
+            const QString cmd = QStringLiteral(
+                "ffprobe -v error -select_streams a -show_entries stream=duration "
+                "-of csv=p=0 \"%1\"").arg(aPath);
+            FILE* p = popen(cmd.toUtf8().constData(), "r");
+            if (!p) return -1.0;
+            char buf[128] = {0};
+            const bool got = fgets(buf, sizeof(buf), p) != nullptr;
+            pclose(p);
+            return got ? QString::fromUtf8(buf).trimmed().toDouble() : -1.0;
+        };
+
         // A 1s 16-bit mono PCM WAV, so the mixer has something to decode.
         const QString wav = QDir::temp().filePath("ae_e2e_tone.wav");
         {
@@ -601,26 +614,58 @@ int main(int argc, char** argv) {
             auto r = ex->execute(cp, vp);
             check((bool)r, "e2e audio: contiguous selection + audio exports");
             check(ffprobeHasAudio(out), "e2e audio: the output carries an audio stream");
+            // A stream that EXISTS is not a stream of the right LENGTH. The
+            // assertion was only the former, so audio eight times too short passed
+            // this suite.
+            const double wantSeconds = double(maxFrame - minFrame + 1) / fps;
+            const double gotSeconds = ffprobeAudioSeconds(out);
+            fprintf(stderr, "    contiguous audio: %.3fs, video is %.3fs\n", gotSeconds, wantSeconds);
+            check(gotSeconds > wantSeconds * 0.8 && gotSeconds < wantSeconds * 1.5,
+                  QStringLiteral("e2e audio: the audio lasts as long as the video (%1s vs %2s)")
+                      .arg(gotSeconds, 0, 'f', 3)
+                      .arg(wantSeconds, 0, 'f', 3)
+                      .toUtf8().constData());
             QFile::remove(out);
         }
 
-        {   // 9b: a gapped selection with audio is refused, not mis-mixed
+        {   // 9b: a gapped selection with audio EXPORTS, and the audio covers the
+            // selected frames rather than the span they came from.
+            //
+            // This used to be a refusal (the mixer takes one window). It is now one
+            // mix per range, concatenated in the order the ranges are written, so
+            // the assertion that matters is the DURATION: 4 selected frames must
+            // carry 4 frames of sound, not the 12 of the span 0..11.
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
             ctrl::Exporter::CommonParam cp;
             const QString gapOut = QDir::temp().filePath("ae_e2e_audio_gap.mp4");
             QFile::remove(gapOut);
             cp.path = gapOut; cp.size = small; cp.fps = fps;
             ctrl::FrameSelection sel;
-            sel.ranges.append(ctrl::FrameRange{ minFrame, minFrame });
-            sel.ranges.append(ctrl::FrameRange{ minFrame + 2, minFrame + 3 });
+            sel.ranges.append(ctrl::FrameRange{ minFrame, minFrame + 1 });
+            sel.ranges.append(ctrl::FrameRange{ minFrame + 10, minFrame + 11 });
             cp.selection = sel;
             ctrl::Exporter::VideoParam vp;
             vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
             vp.bps = 1000; vp.pixfmt = "yuv420p";
             ex->setAudioTracks(QVector<media::AudioMixer::Track>{ tr });
             auto r = ex->execute(cp, vp);
-            check(!r, "e2e audio: a gapped selection with audio is refused, not mis-mixed");
-            check(!QFile::exists(gapOut), "e2e audio: the refused export writes no file");
+            check((bool)r, QStringLiteral("e2e audio: a gapped selection with audio exports (%1)")
+                               .arg(ex->log()).toUtf8().constData());
+            check(ffprobeHasAudio(gapOut), "e2e audio: the gapped export carries an audio stream");
+
+            const double selectedSeconds = 4.0 / fps;
+            const double spanSeconds = 12.0 / fps;
+            const double audioSeconds = ffprobeAudioSeconds(gapOut);
+            fprintf(stderr, "    gapped audio: %.3fs for %d selected frames "
+                            "(span would be %.3fs)\n",
+                    audioSeconds, 4, spanSeconds);
+            check(audioSeconds > selectedSeconds * 0.5 && audioSeconds < spanSeconds * 0.6,
+                  QStringLiteral("e2e audio: the audio is the SELECTED duration (%1s), not the "
+                                 "span's (%2s)")
+                      .arg(audioSeconds, 0, 'f', 3)
+                      .arg(spanSeconds, 0, 'f', 3)
+                      .toUtf8().constData());
+            QFile::remove(gapOut);
         }
         QFile::remove(wav);
     }

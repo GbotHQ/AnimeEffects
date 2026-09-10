@@ -156,16 +156,6 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
-    // The audio mixer takes ONE window, so a selection with gaps cannot be mixed
-    // correctly yet. Refuse before rendering rather than write audio taken from a
-    // window the user did not ask for. (Concatenating the selected segments is the
-    // follow-up; until then the limitation is stated, not hidden.)
-    if (mHasAudio && aCommon.selection.rangeCount() > 1) {
-        mLog = "Audio export needs a single continuous frame range, but this export "
-               "selects several. Export each range separately, or turn audio off.";
-        return Result(ResultCode_InvalidOperation, mLog);
-    }
-
     // check file overwriting
     mOverwriteConfirmation = false;
     QFileInfo filePath(aCommon.path);
@@ -579,30 +569,57 @@ Exporter::Result Exporter::finish() {
             mCollectFrames = false;
             mGifFrames.clear();
         } else if (mVideoExporting) {
-            // Mix the supplied multi-track audio (in project frames) into the
-            // export window and mux it with the video in the same pass.
+            // Mix the supplied multi-track audio and mux it with the video in the
+            // same pass.
+            //
+            // One mix per SELECTED RANGE, concatenated in order, because the
+            // exporter writes the selected ranges back to back (see FrameSelection):
+            // a gapped selection plays 0-1 then 10-11 as four consecutive frames, so
+            // its audio is those same four frames' sound, in that order. The mixer
+            // takes one window at a time; mixing the whole span instead would lay
+            // down eight frames of sound under four frames of picture.
             if (mHasAudio) {
-                media::AudioMixer mixer;
-                media::AudioMixer::Config acfg;
-                acfg.fps = mCommonParam.fps;
-                // A single window: contiguous by construction, because a
-                // selection with gaps is refused before rendering starts.
-                acfg.totalFrames = mCommonParam.selection.total(); // export length
-                acfg.sampleRate = mAudioSampleRate;
-                acfg.channels = mAudioChannels;
-                QVector<media::AudioMixer::Track> tracks = mAudioTracks;
-                const int minFrame = mCommonParam.selection.ranges.first().first;
-                for (auto& t : tracks) {
-                    t.startFrame -= minFrame;
-                    if (t.endFrame > 0)
-                        t.endFrame -= minFrame;
+                media::AudioMixer::Config base;
+                base.fps = mCommonParam.fps;
+                base.sampleRate = mAudioSampleRate;
+                base.channels = mAudioChannels;
+
+                QVector<float> all;
+                int gotChannels = 0;
+                int gotRate = 0;
+                bool mixFailed = false;
+                for (const FrameRange& range : mCommonParam.selection.ranges) {
+                    if (!range.valid() || range.count() <= 0)
+                        continue;
+                    media::AudioMixer::Config cfg = base;
+                    cfg.totalFrames = range.count();
+                    // Tracks are in project frames; this window starts at the
+                    // range's first frame, exactly as the single-window case did.
+                    QVector<media::AudioMixer::Track> tracks = mAudioTracks;
+                    for (auto& t : tracks) {
+                        t.startFrame -= range.first;
+                        if (t.endFrame > 0)
+                            t.endFrame -= range.first;
+                    }
+                    media::AudioMixer chunk;
+                    if (!chunk.mix(tracks, cfg)) {
+                        mLog = "Audio mixing error.\n" + chunk.error();
+                        result = Result(ResultCode_EncodeError, mLog);
+                        mixFailed = true;
+                        break;
+                    }
+                    if (all.isEmpty()) {
+                        gotChannels = chunk.channels();
+                        gotRate = chunk.sampleRate();
+                    }
+                    const int count = chunk.sampleCount() * chunk.channels();
+                    const float* src = chunk.samples();
+                    for (int i = 0; i < count; ++i)
+                        all.append(src[i]);
                 }
-                if (mixer.mix(tracks, acfg)) {
-                    mVideoEncoder.setAudio(mixer.samples(), mixer.channels(),
-                                           mixer.sampleRate(), mixer.sampleCount());
-                } else {
-                    mLog = "Audio mixing error.\n" + mixer.error();
-                    result = Result(ResultCode_EncodeError, mLog);
+                if (!mixFailed && !all.isEmpty() && gotChannels > 0) {
+                    mVideoEncoder.setAudio(all.constData(), gotChannels, gotRate,
+                                           all.size() / gotChannels);
                 }
             }
 

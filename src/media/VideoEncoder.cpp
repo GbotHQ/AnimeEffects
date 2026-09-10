@@ -566,6 +566,33 @@ bool VideoEncoder::writeAudio() {
     }
 
     bool ok = true;
+
+    // Take everything the encoder is currently holding. EAGAIN just means "not
+    // right now" and EOF "no more ever" — neither is an error.
+    auto drain = [&]() -> bool {
+        AVPacket* pkt = ::av_packet_alloc();
+        if (!pkt) { mError = "could not allocate audio packet"; return false; }
+        int ret = 0;
+        bool good = true;
+        while ((ret = ::avcodec_receive_packet(mImpl->mAudioCtx, pkt)) >= 0) {
+            ::av_packet_rescale_ts(pkt, mImpl->mAudioCtx->time_base, mImpl->mAudioStream->time_base);
+            pkt->stream_index = mImpl->mAudioStream->index;
+            if (::av_interleaved_write_frame(mImpl->mFmt, pkt) < 0) {
+                mError = "could not write audio packet";
+                good = false;
+                ::av_packet_unref(pkt);
+                break;
+            }
+            ::av_packet_unref(pkt);
+        }
+        if (good && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
+            mError = "audio receive error";
+            good = false;
+        }
+        ::av_packet_free(&pkt);
+        return good;
+    };
+
     const qint64 totalFrames = aligned / frameSize;
     for (qint64 f = 0; f < totalFrames && ok; ++f) {
         if (::av_frame_make_writable(aframe) < 0) { mError = "audio frame not writable"; ok = false; break; }
@@ -574,21 +601,34 @@ bool VideoEncoder::writeAudio() {
                                     inArr, frameSize);
         if (n < 0) { mError = "audio resample failed"; ok = false; break; }
         aframe->nb_samples = n;
-        aframe->pts = f;
+        // PTS in the ENCODER's time base, which for audio is 1/sample_rate — so a
+        // frame's timestamp is its first SAMPLE, not its index. `pts = f` put the
+        // whole stream inside three samples of t=0: the samples were all encoded
+        // and all written, and the muxed stream still reported one frame's duration
+        // (0.021s) however long the video was, because every packet claimed to be
+        // at the same instant. Content was right; time was collapsed.
+        aframe->pts = f * frameSize;
 
-        AVPacket* pkt = ::av_packet_alloc();
-        if (::avcodec_send_frame(mImpl->mAudioCtx, aframe) >= 0) {
-            int ret;
-            while ((ret = ::avcodec_receive_packet(mImpl->mAudioCtx, pkt)) >= 0) {
-                ::av_packet_rescale_ts(pkt, mImpl->mAudioCtx->time_base, mImpl->mAudioStream->time_base);
-                pkt->stream_index = mImpl->mAudioStream->index;
-                if (::av_interleaved_write_frame(mImpl->mFmt, pkt) < 0) { mError = "could not write audio packet"; ok = false; }
-                ::av_packet_unref(pkt);
-                if (!ok) break;
-            }
-            if (ok && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) { mError = "audio receive error"; ok = false; }
+        // EAGAIN from send_frame means the encoder is full. The previous version
+        // only checked `>= 0`, so an EAGAIN frame's audio was dropped on the floor
+        // with no symptom other than a file that was too short. Drain and retry.
+        int ret = ::avcodec_send_frame(mImpl->mAudioCtx, aframe);
+        while (ret == AVERROR(EAGAIN)) {
+            if (!drain()) { ok = false; break; }
+            ret = ::avcodec_send_frame(mImpl->mAudioCtx, aframe);
         }
-        ::av_packet_free(&pkt);
+        if (!ok) break;
+        if (ret < 0) { mError = "audio send error"; ok = false; break; }
+        if (!drain()) { ok = false; break; }
+    }
+
+    // Flush the encoder. It holds the tail of the stream — for AAC that is the
+    // priming delay plus whatever is buffered, which is why exported audio was
+    // measured at ONE frame (0.021s) regardless of how long the video was. Without
+    // this send(nullptr) the rest never reaches the file.
+    if (ok) {
+        ::avcodec_send_frame(mImpl->mAudioCtx, nullptr);
+        if (!drain()) ok = false;
     }
 
     ::av_frame_free(&aframe);
