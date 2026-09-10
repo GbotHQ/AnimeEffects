@@ -127,6 +127,62 @@ struct Probe {
 // `aDecoderName` forces a specific decoder. This matters: the native FFmpeg VP9
 // decoder DISCARDS the alpha plane, so VP9+alpha can only be observed through
 // the libvpx decoder.
+// What the destination rows actually require of a WebP, read from the container.
+//
+// FFmpeg cannot decode ANIMATED WebP at all — its demuxer handles stills and
+// reports "image data not found" for the rest — so the WebP destinations had no
+// decode assertions whatsoever. That is a real gap: Discord emoji and WhatsApp
+// stickers are WebP-only, and "we cannot read it back" is not the same as "it is
+// correct". The container is a documented byte format, so the three things those
+// rows demand (how many frames, what canvas, whether alpha is present) can be read
+// directly, with no decoder and no dependency.
+//
+// It does NOT read pixels: a WebP whose frames were all blank would pass. Content
+// for the libav-decodable formats is asserted elsewhere; for WebP the honest
+// statement is "shape and alpha flag verified, pixels not".
+struct WebpInfo {
+    bool valid = false;
+    bool animated = false;
+    bool hasAlpha = false;
+    int frames = 0;
+    int width = 0;
+    int height = 0;
+};
+
+static WebpInfo readWebpInfo(const QString& aPath) {
+    WebpInfo info;
+    QFile f(aPath);
+    if (!f.open(QIODevice::ReadOnly)) return info;
+    const QByteArray d = f.readAll();
+    if (d.size() < 16) return info;
+    if (d.mid(0, 4) != "RIFF" || d.mid(8, 4) != "WEBP") return info;
+
+    auto u24 = [](const char* p) {
+        return (int)((quint8)p[0] | ((quint8)p[1] << 8) | ((quint8)p[2] << 16));
+    };
+    int pos = 12;
+    while (pos + 8 <= d.size()) {
+        const QByteArray fourcc = d.mid(pos, 4);
+        const quint32 size = (quint8)d[pos + 4] | ((quint8)d[pos + 5] << 8)
+                             | ((quint8)d[pos + 6] << 16) | ((quint32)(quint8)d[pos + 7] << 24);
+        const int payload = pos + 8;
+        if (payload + int(size) > d.size()) break; // truncated: stop, do not guess
+
+        if (fourcc == "VP8X" && size >= 10) {
+            const quint8 flags = (quint8)d[payload];
+            info.hasAlpha = (flags & 0x10) != 0;
+            info.animated = (flags & 0x02) != 0;
+            info.width = u24(d.constData() + payload + 4) + 1;
+            info.height = u24(d.constData() + payload + 7) + 1;
+            info.valid = true;
+        } else if (fourcc == "ANMF") {
+            ++info.frames;
+        }
+        pos = payload + int(size) + (int(size) & 1); // chunks are padded to even
+    }
+    return info;
+}
+
 static Probe probeFile(const QString& path, const char* aDecoderName = nullptr) {
     Probe p;
     AVFormatContext* fmt = nullptr;
@@ -755,8 +811,39 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
                             << " pixFmt=" << plan.config.pixFmt << "\n";
 
         if (!p.opened || p.frames == 0) {
-            // Animated WebP is the known case: encodable, not decodable here.
-            QTextStream(stdout) << "        (no in-process decode; skipping decode assertions)\n";
+            // Animated WebP: libav cannot read it back, so the container is read
+            // directly instead of skipping the row's assertions entirely.
+            const WebpInfo w = readWebpInfo(out);
+            QTextStream(stdout) << "        container: webp " << w.width << "x" << w.height
+                                << " frames=" << w.frames
+                                << " alpha=" << (w.hasAlpha ? "yes" : "no")
+                                << " animated=" << (w.animated ? "yes" : "no") << "\n";
+            // Verify the verifier: a parser that says "valid" to everything would
+            // make every assertion below it meaningless.
+            {
+                const QString png = QDir::temp().filePath(QStringLiteral("ae_not_webp.png"));
+                QImage(8, 8, QImage::Format_ARGB32).save(png);
+                const WebpInfo notWebp = readWebpInfo(png);
+                check(!notWebp.valid && notWebp.frames == 0,
+                      "the WebP reader rejects a file that is not a WebP (PNG)");
+                const WebpInfo missing = readWebpInfo(QDir::temp().filePath("ae_does_not_exist.webp"));
+                check(!missing.valid, "the WebP reader rejects a missing file");
+                QFile::remove(png);
+            }
+            check(w.valid, QStringLiteral("%1: the file is a well-formed WebP container").arg(t.id));
+            check(w.animated && w.frames == plan.frames(),
+                  QStringLiteral("%1: %2 animation frames, one per planned frame (%3)")
+                      .arg(t.id).arg(w.frames).arg(plan.frames()));
+            check(w.width == plan.size.width() && w.height == plan.size.height(),
+                  QStringLiteral("%1: canvas is %2x%3, as the plan says")
+                      .arg(t.id).arg(w.width).arg(w.height));
+            // The alpha flag is what Discord and WhatsApp read to decide the
+            // sticker has a transparent background.
+            check(w.hasAlpha == plan.alphaEnabled,
+                  QStringLiteral("%1: alpha flag = %2 (the plan says %3)")
+                      .arg(t.id)
+                      .arg(w.hasAlpha ? "set" : "clear")
+                      .arg(plan.alphaEnabled ? "enabled" : "disabled"));
             continue;
         }
 
