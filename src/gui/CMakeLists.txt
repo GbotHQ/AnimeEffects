@@ -108,10 +108,8 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ${app_icon}
     AudioPlaybackWidget.cpp
     AudioPlaybackWidget.h
-    prop/splineWidget.cpp
     prop/EasingPickWidget.cpp
     prop/EasingPickWidget.h
-    prop/splineWidget.h
         prop/bezierCurveEditor.h
         prop/bezierCurveEditor.cpp
     qml/QmlTheme.cpp qml/QmlTheme.h
