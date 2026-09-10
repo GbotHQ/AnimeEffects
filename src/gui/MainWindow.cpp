@@ -1316,6 +1316,10 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         ctrl::ExportRequest request;
         request.outputPath = g.osExportTarget;
         request.sourceSize = mCurrent->attribute().imageSize();
+        // The user's own size is an input only where the destination does not
+        // impose one; for every other rule the plan's size wins and this is
+        // ignored (see ExportRequest::requestedSize).
+        request.requestedSize = QSize(g.exportWidth, g.exportHeight);
         request.fps = cparam.fps;
         request.selection = cparam.selection;
         // Audio is derived, not requested: how many tracks are actually meant for
@@ -1468,10 +1472,17 @@ void MainWindow::onExportTriggered() {
             const QString id = exportUI->destinationCombo->currentData().toString();
             if (id.isEmpty()) {
                 exportUI->destinationFacts->clear();
+                exportUI->clearPlan();
                 return;
             }
             const ctrl::ExportTarget target =
                 ctrl::ExportTargets::find(ctrl::ExportTargets::load(), id);
+
+            // Phase one: the destination's own declarations go into the controls
+            // BEFORE the plan is asked, because the plan is computed from them.
+            // A row that says "this loops" has to have ticked the box first, or
+            // the answer would contradict the declaration it came from.
+            exportUI->applyDestinationDefaults(target);
 
             const int first = exportUI->firstFrameSpinBox->value();
             const int last = exportUI->lastFrameSpinBox->value();
@@ -1484,6 +1495,8 @@ void MainWindow::onExportTriggered() {
 
             ctrl::ExportRequest request;
             request.sourceSize = mCurrent->attribute().imageSize();
+            request.requestedSize =
+                QSize(exportUI->widthSpinBox->value(), exportUI->heightSpinBox->value());
             request.fps = exportUI->fpsSpinBox->value();
             request.selection = ctrl::FrameSelection::fromRange(std::min(first, last), std::max(first, last));
             request.exportableAudioTracks = exportableTracks;
@@ -1494,11 +1507,20 @@ void MainWindow::onExportTriggered() {
             if (!plan.ok()) {
                 lines << tr("This destination cannot be exported: %1").arg(plan.error);
             } else {
-                lines << tr("%1 x %2, %3 fps — %4 in %5")
-                             .arg(plan.size.width())
-                             .arg(plan.size.height())
-                             .arg(plan.fps)
-                             .arg(plan.config.codec, plan.config.container);
+                // GIF does not go through media::VideoEncoder — media::GifEncoder
+                // owns it — so config.codec/container are empty for a GIF row.
+                // Naming the format from the path we already know is honest;
+                // printing " —  in " is not.
+                lines << (plan.gifPath
+                              ? tr("%1 x %2, %3 fps — animated GIF")
+                                    .arg(plan.size.width())
+                                    .arg(plan.size.height())
+                                    .arg(plan.fps)
+                              : tr("%1 x %2, %3 fps — %4 in %5")
+                                    .arg(plan.size.width())
+                                    .arg(plan.size.height())
+                                    .arg(plan.fps)
+                                    .arg(plan.config.codec, plan.config.container));
                 lines << tr("Transparency: %1   Audio: %2")
                              .arg(plan.alphaEnabled ? tr("yes") : tr("no"),
                                   plan.audioEnabled ? tr("yes") : tr("no"));
@@ -1507,6 +1529,9 @@ void MainWindow::onExportTriggered() {
                 }
             }
             exportUI->destinationFacts->setText(lines.join(QLatin1Char('\n')));
+            // State the facts AND make them true in the controls the
+            // destination governs, so the form cannot contradict itself.
+            exportUI->applyPlan(plan, target);
         };
 
         QObject::connect(exportUI->destinationCombo,
@@ -1515,7 +1540,13 @@ void MainWindow::onExportTriggered() {
         QObject::connect(exportUI->qualityCombo,
                          util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
                          [refreshFacts](int) { refreshFacts(); });
-        refreshFacts();
+        // NOTE: no initial refreshFacts() call here. The widgets are still at
+        // their constructed values at this point — the project's own size, fps
+        // and the saved checkboxes are applied further down. Applying the plan
+        // now would freeze the size boxes at the wrong numbers and then have
+        // those numbers overwritten, which is the self-contradiction this whole
+        // change exists to remove. It is called once, after initialisation.
+        mRefreshExportFacts = refreshFacts;
     }
     // Initialize gpDiag
     gpDiag->setAttribute(Qt::WA_DeleteOnClose,true);
@@ -1614,6 +1645,12 @@ void MainWindow::onExportTriggered() {
     // (the last frame box was set above); frames before it are pre-roll the
     // animation doesn't own.
     exportUI->firstFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameRange.min());
+    // Now that the widgets hold the project's real values, state the
+    // destination's facts and freeze whatever it decides. This is the one place
+    // the plan is applied to the freshly built dialog.
+    if (mRefreshExportFacts) {
+        mRefreshExportFacts();
+    }
     // Connections, these below are to force a refresh and to avoid any weird bugs or memory leaks
     connect(exportWidget, &QDialog::destroyed, [=](){
         regenerateWidget();

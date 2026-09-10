@@ -34,6 +34,7 @@
 #include <QDebug>
 #include "util/SelectArgs.h"
 #include "gui/GUIResources.h"
+#include "ctrl/ExportTarget.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -59,6 +60,8 @@ public:
     QLabel *destinationFacts;
     QComboBox *destinationCombo;
     QComboBox *qualityCombo;
+    QWidget *destinationBox;
+    QGridLayout *destinationGrid;
     QRadioButton *customRatio;
     QPushButton *insertFrameRangeButton;
     QPushButton *removeFrameRangeButton;
@@ -102,6 +105,27 @@ public:
     QVector<QSpinBox *>* lastFrames = new QVector<QSpinBox *>;
     bool operationCancelled = true;
     bool mSizeUpdating = false;
+    // The values the user had before any destination was chosen. Held so manual
+    // mode gives back what it took: overwriting a deliberate size with 100x100
+    // and then "restoring native" would silently discard their choice, and
+    // leaving a destination's pre-set looping behind would attribute the
+    // destination's decision to them.
+    struct ManualState {
+        bool transparency = false;
+        bool loop = false;
+        bool audio = false;
+        bool palette = false;
+    };
+    ManualState mManualState;
+    bool mHasManualState = false;
+    // The size the USER chose: what a free-size destination exports at. Kept up
+    // to date from the boxes while they are live, and written back whenever a
+    // destination stops dictating one.
+    QSize mUserSize;
+    bool mUserSizeKnown = false;
+    // Whether the boxes currently report a size the destination forced rather
+    // than one the user set. This is what makes the hand-back above decidable.
+    bool mLastSizeDictated = false;
     // Ask UI
     QGridLayout *gl;
     QGridLayout *gl_2;
@@ -144,6 +168,13 @@ public:
         globalParam->setObjectName(QString::fromUtf8("globalParam"));
         verticalLayout_3 = new QVBoxLayout(globalParam);
         verticalLayout_3->setObjectName(QString::fromUtf8("verticalLayout_3"));
+
+        destinationBox = new QWidget(globalParam);
+        destinationBox->setObjectName(QString::fromUtf8("destinationBox"));
+        destinationGrid = new QGridLayout(destinationBox);
+        destinationGrid->setObjectName(QString::fromUtf8("destinationGrid"));
+        destinationGrid->setContentsMargins(0, 0, 0, 0);
+
         globalParamScroll = new QScrollArea(globalParam);
         globalParamScroll->setObjectName(QString::fromUtf8("globalParamScroll"));
         globalParamScroll->setWidgetResizable(true);
@@ -465,36 +496,46 @@ public:
 
         globalParamScroll->setWidget(globalParamScrollContents);
 
-        verticalLayout_3->addWidget(globalParamScroll);
+        // The destination is the FIRST question, not the last. It is the one
+        // thing the user knows that the system cannot derive, and everything
+        // below it is either a consequence of it or a genuine choice.
+        //
+        // Pinned above the scrolling technical settings rather than living
+        // inside them: it must stay visible while the rest is scrolled, because
+        // a stated fact that can be contradicted by a control scrolled out of
+        // sight is not a stated fact.
+        verticalLayout_3->addWidget(destinationBox);
 
-        destinationLabel = new QLabel(globalParamScrollContents);
+        destinationLabel = new QLabel(destinationBox);
         destinationLabel->setObjectName(QString::fromUtf8("destinationLabel"));
-        gridLayout_2->addWidget(destinationLabel, 25, 0, 1, 1);
+        destinationGrid->addWidget(destinationLabel, 0, 0, 1, 1);
 
-        destinationCombo = new QComboBox(globalParamScrollContents);
+        destinationCombo = new QComboBox(destinationBox);
         destinationCombo->setObjectName(QString::fromUtf8("destinationCombo"));
-        gridLayout_2->addWidget(destinationCombo, 25, 1, 1, 2);
+        destinationGrid->addWidget(destinationCombo, 0, 1, 1, 1);
 
-        qualityLabel = new QLabel(globalParamScrollContents);
+        qualityLabel = new QLabel(destinationBox);
         qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
-        gridLayout_2->addWidget(qualityLabel, 26, 0, 1, 1);
+        destinationGrid->addWidget(qualityLabel, 1, 0, 1, 1);
 
-        qualityCombo = new QComboBox(globalParamScrollContents);
+        qualityCombo = new QComboBox(destinationBox);
         qualityCombo->setObjectName(QString::fromUtf8("qualityCombo"));
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
-        gridLayout_2->addWidget(qualityCombo, 26, 1, 1, 2);
+        destinationGrid->addWidget(qualityCombo, 1, 1, 1, 1);
 
         // What the destination requires, in words. Filled by MainWindow from
         // planExport(): the codec it resolved and why, the size it forces, and
         // every capability the row declares.
-        destinationFacts = new QLabel(globalParamScrollContents);
+        destinationFacts = new QLabel(destinationBox);
         destinationFacts->setObjectName(QString::fromUtf8("destinationFacts"));
         destinationFacts->setWordWrap(true);
         destinationFacts->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        gridLayout_2->addWidget(destinationFacts, 27, 0, 1, 3);
+        destinationGrid->addWidget(destinationFacts, 2, 0, 1, 2);
+
+        verticalLayout_3->addWidget(globalParamScroll);
 
         settingsTab->addTab(globalParam, QString());
 
@@ -567,6 +608,226 @@ public:
         QMetaObject::connectSlotsByName(exportWidget);
     } // setupUi
     struct Pos { int row = -1, col = -1; };
+
+    // Applying a destination happens in TWO phases, and the order matters:
+    //
+    //   1. applyDestinationDefaults()  put the destination's own defaults into
+    //      the controls. This has to come first, because the plan is computed
+    //      FROM these controls: a destination that declares "loop is on by
+    //      default" is never reflected if the plan is asked before the box is
+    //      ticked, and the answer would contradict the declaration.
+    //   2. applyPlan()  write down what the plan resolved, freeze the axes the
+    //      destination decides, and untick anything the plan had to refuse.
+    //
+    // Without this the dialog argues with itself: picking "Telegram custom
+    // emoji" states "100 x 100" while the Width/Height boxes still read
+    // 1100 x 790, and a checkbox keeps claiming a capability the encoder has
+    // already been proven unable to deliver. A form whose stated facts and live
+    // controls disagree teaches the user to distrust both.
+    void applyDestinationDefaults(const ctrl::ExportTarget& aTarget) {
+        stashManualState();
+        // Ownership of the size. The boxes hold the USER's size exactly when the
+        // last destination did not dictate one; while one did, they hold a number
+        // the destination chose, and letting that number stand as the user's would
+        // silently export the next destination at Twitch's 112 pixels. So: save
+        // what is the user's, and hand it back before the plan reads the boxes.
+        if (mLastSizeDictated) {
+            writeSize(mUserSizeKnown ? mUserSize : QSize(nativeW, nativeH));
+        } else {
+            mUserSize = QSize(widthSpinBox->value(), heightSpinBox->value());
+            mUserSizeKnown = true;
+        }
+        setCapabilityDefault(aTarget.alpha, transparencyCheckBox);
+        setCapabilityDefault(aTarget.loop, loopCheckBox);
+        setCapabilityDefault(aTarget.audio, exportWithAudioCheckBox);
+    }
+
+    // What the destination DECIDED, made true in the widgets it governs.
+    //
+    // The rule is the capability model applied to widgets: an axis the
+    // destination fixes is written down and frozen; an axis it merely bounds
+    // keeps a live control carrying the bound; only a genuine Choice stays free.
+    void applyPlan(const ctrl::ExportPlan& aPlan, const ctrl::ExportTarget& aTarget) {
+        const bool planOk = aPlan.ok();
+
+        // --- size: dictated, or the project's own ---------------------------
+        // An exact-size destination (Discord 320x320, WhatsApp 512x512,
+        // Telegram emoji 100x100) does not negotiate. The spin boxes show what
+        // the file will actually be and stop accepting edits, because an edit
+        // there could not be honoured.
+        // The output size is the plan's, in every case. A destination that fixes
+        // it (Discord 320x320) obviously owns it; so does one that only bounds it
+        // (LINE fits the art inside 320x270); and a Free destination uses the size
+        // in these very boxes, which the plan has just read. So the boxes show the
+        // plan and are frozen while a destination is selected — a box the export
+        // ignores is worse than no box. Manual mode hands them back.
+        if (planOk) {
+            writeSize(aPlan.size);
+        }
+        // A Free rule keeps the size honest AND live: the user's resolution is
+        // what the plan used, so they may keep changing it. Every other rule
+        // decides the size outright, and the boxes only report it.
+        const bool sizeIsUsers = aTarget.size.mode == ctrl::SizeMode::Free;
+        if (sizeIsUsers) {
+            mUserSize = aPlan.size;
+            mUserSizeKnown = true;
+        }
+        mLastSizeDictated = !sizeIsUsers;
+        setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
+                    setHeightNative, oneToOneRatio, keepAspectRatio, customRatio},
+                   sizeIsUsers);
+
+        // --- fps: bounded, not dictated -------------------------------------
+        // Specs cap the frame rate (Telegram 30, LINE 20); below the cap the
+        // user's own rate stands. The bound lives on the control, which clamps
+        // the displayed value, so the dialog cannot show a rate the plan has
+        // already reduced.
+        fpsSpinBox->setMaximum(aTarget.caps.maxFps > 0 ? aTarget.caps.maxFps : 1000);
+
+        // --- capabilities ---------------------------------------------------
+        freezeCapability(aTarget.alpha, transparencyCheckBox, planOk && aPlan.alphaEnabled);
+        freezeCapability(aTarget.loop, loopCheckBox, planOk && aPlan.gifPath);
+        freezeCapability(aTarget.audio, exportWithAudioCheckBox, planOk && aPlan.audioEnabled);
+
+        // --- the codec's own quality knob -----------------------------------
+        // A destination resolves its codec and its quality from the bucket, so
+        // these numbers are not inputs: leaving them editable would advertise a
+        // decision that translateVideoExport() overwrites. "Auto" is the honest
+        // display for "the destination decides".
+        bitrateLineEdit->setText(QStringLiteral("Auto"));
+        imageQualitySpinbox->setValue(-1);
+        setEnabled({bitrateLabel, bitrateLineEdit, setBitrateAuto, imageQualityLabel,
+                    imageQualitySpinbox, setImageQualityToAuto}, false);
+
+        // --- palette: only a GIF has one ------------------------------------
+        // media::GifEncoder owns the palette; every other codec ignores it
+        // entirely. Disabled is not enough to say so: a box left ticked while
+        // greyed still reads as "a custom palette is in use", which for a WebM
+        // export is plainly untrue. It is unticked as well, and the stored
+        // preference is handed back on the way out.
+        const bool hasPalette = planOk && aPlan.gifPath;
+        if (!hasPalette) {
+            customPaletteCheckBox->setChecked(false);
+        }
+        customPaletteCheckBox->setEnabled(hasPalette);
+        selectPalettePathButton->setEnabled(hasPalette && customPaletteCheckBox->isChecked());
+
+        // --- export type ----------------------------------------------------
+        // Every row in the table is an animation. A still or image-sequence
+        // export is therefore not a destination but the absence of one, which
+        // is what "(use the settings below)" already means.
+        exportTypeCombo->setCurrentIndex(0);
+        exportTypeCombo->setEnabled(false);
+    }
+
+    // Manual mode: no destination, so every axis is the user's again, at the
+    // values they had before. This is the same dialog, not a lesser one — it is
+    // how a PNG sequence, or a format the table does not carry, is produced.
+    void clearPlan() {
+        writeSize(mUserSizeKnown ? mUserSize : QSize(nativeW, nativeH));
+        mLastSizeDictated = false;
+        setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
+                    setHeightNative, oneToOneRatio, keepAspectRatio, customRatio, bitrateLabel,
+                    bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
+                    setImageQualityToAuto, transparencyCheckBox, loopCheckBox,
+                    exportWithAudioCheckBox, customPaletteCheckBox, exportTypeCombo},
+                   true);
+        restoreManualState();
+        selectPalettePathButton->setEnabled(customPaletteCheckBox->isChecked());
+        fpsSpinBox->setMaximum(1000);
+    }
+
+private:
+    void stashManualState() {
+        if (mHasManualState) {
+            return;
+        }
+        mManualState.transparency = transparencyCheckBox->isChecked();
+        mManualState.loop = loopCheckBox->isChecked();
+        mManualState.audio = exportWithAudioCheckBox->isChecked();
+        mManualState.palette = customPaletteCheckBox->isChecked();
+        mHasManualState = true;
+    }
+
+    void restoreManualState() {
+        if (!mHasManualState) {
+            return;
+        }
+        transparencyCheckBox->setChecked(mManualState.transparency);
+        loopCheckBox->setChecked(mManualState.loop);
+        exportWithAudioCheckBox->setChecked(mManualState.audio);
+        customPaletteCheckBox->setChecked(mManualState.palette);
+        mHasManualState = false;
+    }
+
+    // Phase 1: what the destination declares, before the plan exists.
+    //   required/forbidden      - the state, frozen (done in phase 2, once the
+    //                             plan confirms it is achievable)
+    //   default-on/default-off  - the destination's own pre-set
+    //   choice                  - untouched: the user's answer IS the input
+    static void setCapabilityDefault(ctrl::Capability aCapability, QCheckBox* aBox) {
+        switch (aCapability) {
+        case ctrl::Capability::Required:
+            aBox->setChecked(true);
+            aBox->setEnabled(false);
+            break;
+        case ctrl::Capability::Forbidden:
+            aBox->setChecked(false);
+            aBox->setEnabled(false);
+            break;
+        case ctrl::Capability::DefaultOn:
+            aBox->setChecked(true);
+            aBox->setEnabled(true);
+            break;
+        case ctrl::Capability::DefaultOff:
+            aBox->setChecked(false);
+            aBox->setEnabled(true);
+            break;
+        case ctrl::Capability::Choice:
+            aBox->setEnabled(true);
+            break;
+        }
+    }
+
+    // Phase 2: the plan has the last word. `aResolved` is the only trustworthy
+    // answer — a destination may forbid audio the user asked for, require alpha
+    // they did not, or ask for alpha the chosen codec cannot deliver (libx265
+    // advertises yuva420p and then refuses it). Whenever the plan says no, the
+    // box must say no too, and stay put so the refusal cannot be re-asserted.
+    static void freezeCapability(ctrl::Capability aCapability, QCheckBox* aBox, bool aResolved) {
+        const bool decidedByDestination = aCapability == ctrl::Capability::Required
+                                       || aCapability == ctrl::Capability::Forbidden;
+        if (decidedByDestination) {
+            aBox->setChecked(aResolved);
+            aBox->setEnabled(false);
+            return;
+        }
+        if (aBox->isChecked() && !aResolved) {
+            aBox->setChecked(false);
+            aBox->setEnabled(false);
+            return;
+        }
+        aBox->setEnabled(true);
+    }
+
+    // Written through the guard the aspect-ratio handlers use, or setting the
+    // height would rewrite the width we just set.
+    void writeSize(const QSize& aSize) {
+        mSizeUpdating = true;
+        widthSpinBox->setValue(aSize.width());
+        heightSpinBox->setValue(aSize.height());
+        mSizeUpdating = false;
+    }
+
+    static void setEnabled(const QList<QWidget*>& aWidgets, bool aOn) {
+        for (QWidget* w : aWidgets) {
+            w->setEnabled(aOn);
+        }
+    }
+
+public:
+private:
+public:
 
     void addRange(int lastFrame) const{
         qDebug("Adding range");

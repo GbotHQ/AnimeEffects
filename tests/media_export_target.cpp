@@ -310,6 +310,52 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
 }
 
 TEST_SECTION("size rules", run_size_rules) {
+    // A Free rule means the destination imposes no size. That is NOT the same as
+    // deciding one: the export dialog's own Width/Height stay in force, and the
+    // plan must echo them. Without this a 1920x1080 upload from a 1100x790
+    // project was impossible, and — worse — a size forced by the PREVIOUS
+    // destination (Twitch's 112px) could stand in as if it were the user's.
+    {
+        const ctrl::ExportTarget freeRow =
+            ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                     QStringLiteral("youtube.video"));
+        check(freeRow.size.mode == ctrl::SizeMode::Free, "youtube.video imposes no size");
+
+        ctrl::ExportRequest req;
+        req.sourceSize = QSize(1100, 790);
+        req.selection = ctrl::FrameSelection::fromCount(1);
+        const ctrl::ExportPlan defaults = ctrl::planExport(freeRow, req, ctrl::QualityBucket::Balanced);
+        check(defaults.ok() && defaults.size == QSize(1100, 790),
+              QStringLiteral("no requested size -> the art's own (%1x%2)")
+                  .arg(defaults.size.width()).arg(defaults.size.height()));
+
+        req.requestedSize = QSize(1920, 1080);
+        const ctrl::ExportPlan chosen = ctrl::planExport(freeRow, req, ctrl::QualityBucket::Balanced);
+        check(chosen.ok() && chosen.size == QSize(1920, 1080),
+              QStringLiteral("requested size is used on a Free rule (%1x%2)")
+                  .arg(chosen.size.width()).arg(chosen.size.height()));
+
+        // Odd dimensions are not a user error: YUV needs even, so floor.
+        req.requestedSize = QSize(1921, 1081);
+        const ctrl::ExportPlan odd = ctrl::planExport(freeRow, req, ctrl::QualityBucket::Balanced);
+        check(odd.size == QSize(1920, 1080),
+              QStringLiteral("odd requested size floors to even (%1x%2)")
+                  .arg(odd.size.width()).arg(odd.size.height()));
+
+        // The ASPECT a fit rule preserves must stay the ART's, so a size typed
+        // for a free destination cannot leak into an exact one's padding.
+        req.requestedSize = QSize(1920, 1080);
+        req.sourceSize = QSize(1000, 800);
+        const ctrl::ExportTarget discordRow =
+            ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                     QStringLiteral("discord.sticker"));
+        const ctrl::ExportPlan exact = ctrl::planExport(discordRow, req, ctrl::QualityBucket::Balanced);
+        check(exact.ok() && exact.size == QSize(320, 320),
+              "an exact rule ignores requestedSize (the destination decides)");
+        check(exact.renderSize == QSize(320, 256),
+              QStringLiteral("exact renderSize uses the ART's aspect, not the request's (%1x%2)")
+                  .arg(exact.renderSize.width()).arg(exact.renderSize.height()));
+    }
 
     const ctrl::ExportTarget telegram =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),

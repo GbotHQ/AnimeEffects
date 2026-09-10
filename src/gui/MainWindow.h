@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QScopedPointer>
 #include <QTimer>
+#include <functional>
 #include "ctrl/System.h"
 #include "gui/MainMenuBar.h"
 #include "gui/MainDisplayWidget.h"
@@ -104,6 +105,13 @@ private:
     QDialog* gpDiag = new QDialog;
     void regenerateWidget(){ exportWidget = new QDialog; exporting = false; }
     void regenerateGeneralPurposeDiag(){ gpDiag = new QDialog; }
+
+    // Recompute the destination's facts and re-apply them to the dialog's
+    // controls. Held as a member only so it can be invoked once AFTER the
+    // project's own size/fps/saved options have been written into the widgets:
+    // running it earlier would state the plan's numbers and then have the
+    // initialisation overwrite them.
+    std::function<void()> mRefreshExportFacts;
 
     ctrl::System& mSystem;
     GUIResources& mGUIResources;

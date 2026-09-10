@@ -199,6 +199,15 @@ struct FrameSelection {
 struct ExportRequest {
     QString outputPath;
     QSize sourceSize;
+    // The output size the caller's user asked for. It applies ONLY to a
+    // destination whose size rule is Free — the one case where the destination
+    // does not decide — and empty means "use the source size".
+    //
+    // Deliberately separate from sourceSize: sourceSize is the ART, and the fit
+    // rules (max / exact / side) derive the aspect they preserve from it. Feeding
+    // a size the user typed for one destination into another destination's fit
+    // would silently change the aspect the art is padded or cropped to.
+    QSize requestedSize;
     int fps = 24;
     // Which frames. Defaults to a single frame, matching the old `frames = 1`.
     FrameSelection selection = FrameSelection::fromRange(0, 0);

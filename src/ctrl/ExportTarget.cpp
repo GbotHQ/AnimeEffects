@@ -112,16 +112,21 @@ QString firstAvailable(const QStringList& aGroup) {
     return QString();
 }
 
-const char* describeGroup(int aGroupIndex) {
+// Returns QString, not const char*, on purpose. This text is user-visible and
+// contains an em dash, and a `const char*` holding UTF-8 source bytes is a
+// decoding trap: read back with fromLatin1() (as both of these were) it renders
+// the dash as "â€”". QStringLiteral is compiled to UTF-16 from the source
+// encoding, so there is no decode step left to get wrong.
+QString describeGroup(int aGroupIndex) {
     switch (aGroupIndex) {
-    case 0: return "AV1 (software — highest quality per bit)";
-    case 1: return "AV1 (hardware — real-time, near-software quality)";
-    case 2: return "H.265 (software)";
-    case 3: return "H.265 (hardware)";
-    case 4: return "H.264 (software)";
-    case 5: return "H.264 (hardware)";
-    case 6: return "FFV1 (lossless master)";
-    default: return "";
+    case 0: return QStringLiteral("AV1 (software — highest quality per bit)");
+    case 1: return QStringLiteral("AV1 (hardware — real-time, near-software quality)");
+    case 2: return QStringLiteral("H.265 (software)");
+    case 3: return QStringLiteral("H.265 (hardware)");
+    case 4: return QStringLiteral("H.264 (software)");
+    case 5: return QStringLiteral("H.264 (hardware)");
+    case 6: return QStringLiteral("FFV1 (lossless master)");
+    default: return QString();
     }
 }
 
@@ -185,16 +190,16 @@ QStringList groupEncoders(int aGroup) {
     }
 }
 
-const char* classClause(DestClass aClass) {
+QString classClause(DestClass aClass) {
     switch (aClass) {
     case DestClass::Reencode:
-        return " — this site re-encodes uploads, so source quality matters more than compatibility";
+        return QStringLiteral(" — this site re-encodes uploads, so source quality matters more than compatibility");
     case DestClass::Direct:
-        return " — this plays your file directly, so decode compatibility matters most";
+        return QStringLiteral(" — this plays your file directly, so decode compatibility matters most");
     case DestClass::Archive:
-        return " — a master copy, so fidelity matters most";
+        return QStringLiteral(" — a master copy, so fidelity matters most");
     default:
-        return "";
+        return QString();
     }
 }
 
@@ -524,8 +529,7 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
         const QString name = firstAvailable(groupEncoders(group));
         if (name.isEmpty()) continue;
         fallback = name;
-        fallbackWhy = QString::fromLatin1(describeGroup(group)) +
-                      QString::fromLatin1(classClause(aClass));
+        fallbackWhy = describeGroup(group) + classClause(aClass);
 
         // Second gate: is it fast enough HERE? Only meaningful with a size, a
         // frame count and a budget — otherwise we have nothing to project.
@@ -543,9 +547,9 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
                 }
                 if (aWhy) {
                     *aWhy = QStringLiteral("%1 — about %2s here%3")
-                                .arg(QString::fromLatin1(describeGroup(group)))
+                                .arg(describeGroup(group))
                                 .arg((int)std::llround(projected))
-                                .arg(QString::fromLatin1(classClause(aClass)));
+                                .arg(classClause(aClass));
                 }
                 return name;
             }
@@ -554,8 +558,7 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
         }
 
         if (aWhy) {
-            *aWhy = QString::fromLatin1(describeGroup(group)) +
-                    QString::fromLatin1(classClause(aClass));
+            *aWhy = describeGroup(group) + classClause(aClass);
         }
         return name;
     }
@@ -590,11 +593,14 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     }
 
     // --- capabilities: declared per row, only ever a control when Choice -----
-    auto resolveCapability = [&](Capability aCap, const char* aName, bool* aOut) {
+    // aName is user-visible text, so it is a QString: a `const char*` holding
+    // source-encoded bytes is the same decoding trap that mangled the em dashes
+    // in describeGroup()/classClause().
+    auto resolveCapability = [&](Capability aCap, const QString& aName, bool* aOut) {
         switch (aCap) {
         case Capability::Required:
             *aOut = true;
-            plan.notes << QString::fromLatin1("%1 is required by this destination.").arg(QString::fromLatin1(aName));
+            plan.notes << QStringLiteral("%1 is required by this destination.").arg(aName);
             break;
         case Capability::Forbidden:
             *aOut = false;
@@ -605,8 +611,8 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         }
     };
 
-    resolveCapability(aTarget.alpha, "Transparency", &plan.alphaEnabled);
-    resolveCapability(aTarget.audio, "Audio", &plan.audioEnabled);
+    resolveCapability(aTarget.alpha, QStringLiteral("Transparency"), &plan.alphaEnabled);
+    resolveCapability(aTarget.audio, QStringLiteral("Audio"), &plan.audioEnabled);
 
     // --- size, rate and frames: the deterministic, pre-encode half -----------
     //
@@ -619,7 +625,19 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         return plan;
     }
 
-    plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
+    // A Free rule means the destination imposes no size, which is NOT the same
+    // as deciding one: it leaves the user's own resolution in force (a 1920x1080
+    // upload from a 1100x790 project is an ordinary thing to want). Only when the
+    // caller named no size does the art's own size apply. This is handled here
+    // rather than inside applySizeRule because it is request policy, not part of
+    // what the destination's rule says.
+    if (aTarget.size.mode == SizeMode::Free && aRequest.requestedSize.isValid()
+        && !aRequest.requestedSize.isEmpty()) {
+        plan.size = QSize(evenFloor(aRequest.requestedSize.width()),
+                          evenFloor(aRequest.requestedSize.height()));
+    } else {
+        plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
+    }
     plan.fps = aRequest.fps;
     int allowedFrames = aRequest.selection.total();
     applyCaps(aTarget.caps, &plan.fps, &allowedFrames, &plan.notes);

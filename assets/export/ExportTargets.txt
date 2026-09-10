@@ -30,7 +30,8 @@
                 exists on one OS must say so, so validation can skip them
 
   Size modes:
-    free          use the project size
+    free          the destination imposes no size: the export dialog's own
+                  Width/Height apply (they start at the project size)
     exact         exactly w x h  (NOTE: needs crop-or-pad — an open design item)
     max           fit inside w x h, preserve aspect
     maxExactSide  long side == @side, short side <= @side
@@ -200,7 +201,8 @@
                checked="2026-09-05" source="(design decision)" verified="true">
     <size mode="free"/>
     <audio codec="flac" channels="2" rate="48000"/>
-    <note>Lossless bucket -> FFV1, which carries alpha (yuva420p).</note>
+    <note>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other
+          buckets pick H.265, which cannot encode alpha here at all.</note>
   </destination>
 
   <!-- ===== quality control (for the post-encode fit-to-cap loop) ============
