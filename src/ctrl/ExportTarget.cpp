@@ -367,6 +367,65 @@ ExportTarget ExportTargets::find(const QList<ExportTarget>& aTargets, const QStr
 }
 
 // ---------------------------------------------------------------------------
+// FrameSelection
+
+FrameSelection FrameSelection::fromRange(int aFirst, int aLast) {
+    FrameSelection s;
+    if (aLast >= aFirst) s.ranges.append(FrameRange{aFirst, aLast});
+    return s;
+}
+
+FrameSelection FrameSelection::fromCount(int aCount) {
+    return aCount > 0 ? fromRange(0, aCount - 1) : FrameSelection();
+}
+
+int FrameSelection::total() const {
+    int n = 0;
+    for (const FrameRange& r : ranges) n += r.count();
+    return n;
+}
+
+QList<int> FrameSelection::indices() const {
+    QList<int> out;
+    out.reserve(total());
+    for (const FrameRange& r : ranges) {
+        for (int f = r.first; f <= r.last; ++f) out.append(f);
+    }
+    return out;
+}
+
+FrameSelection FrameSelection::firstN(int aCount) const {
+    FrameSelection out;
+    int remaining = aCount;
+    for (const FrameRange& r : ranges) {
+        if (remaining <= 0) break;
+        const int take = std::min(remaining, r.count());
+        if (take <= 0) continue;
+        out.ranges.append(FrameRange{r.first, r.first + take - 1});
+        remaining -= take;
+    }
+    return out;
+}
+
+int FrameSelection::rangeCount() const {
+    int valid = 0;
+    for (const FrameRange& r : ranges) {
+        if (r.count() > 0) ++valid;
+    }
+    return valid;
+}
+
+QString FrameSelection::describe() const {
+    const int n = total();
+    if (n == 0) return QStringLiteral("no frames selected");
+    // A backwards range contributes nothing, but is not pretended away: it just
+    // does not add to the range count either.
+    const int valid = rangeCount();
+    if (valid <= 1) return QStringLiteral("%1 frame%2").arg(n).arg(n == 1 ? QString() : QStringLiteral("s"));
+    return QStringLiteral("%1 frames from %2 separate ranges").arg(n).arg(valid);
+}
+
+// ---------------------------------------------------------------------------
 
 QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aNotes) {
     if (!aSource.isValid() || aSource.isEmpty()) return aSource;
@@ -380,10 +439,14 @@ QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aN
 
     case SizeMode::Exact:
         if (aNotes) {
-            *aNotes << QStringLiteral("Size forced to %1x%2 — this needs crop-or-pad, "
-                                      "which is still an open design item.")
+            // Crop-or-pad is resolved (FitMode), so the note states which one
+            // applies rather than calling it an open question.
+            *aNotes << QStringLiteral("Size forced to %1x%2 (required by this destination); "
+                                      "the art is %3.")
                            .arg(aRule.w)
-                           .arg(aRule.h);
+                           .arg(aRule.h)
+                           .arg(aRule.fit == FitMode::Crop ? QStringLiteral("cropped to fill it")
+                                                           : QStringLiteral("padded to fit it"));
         }
         return QSize(evenFloor(aRule.w), evenFloor(aRule.h));
 
@@ -545,21 +608,40 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     resolveCapability(aTarget.alpha, "Transparency", &plan.alphaEnabled);
     resolveCapability(aTarget.audio, "Audio", &plan.audioEnabled);
 
+    // --- size, rate and frames: the deterministic, pre-encode half -----------
+    //
+    // Applied EXACTLY ONCE, and before the codec ladder, because the ladder
+    // needs the real frame count to project its time budget. Keeping it in one
+    // place, rather than also inside each codec branch, is what keeps the cap
+    // notes from being emitted twice.
+    if (aRequest.selection.isEmpty()) {
+        plan.error = QStringLiteral("no frames selected for export");
+        return plan;
+    }
+
+    plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
+    plan.fps = aRequest.fps;
+    int allowedFrames = aRequest.selection.total();
+    applyCaps(aTarget.caps, &plan.fps, &allowedFrames, &plan.notes);
+    plan.selection = aRequest.selection.firstN(allowedFrames);
+    // applyCaps has already reported any trim by COUNT. Add the selection detail
+    // only when the selection has gaps, because "trimmed to 90 frames" does not
+    // say which frames survived, and packing the ranges back-to-back is the
+    // non-obvious consequence of choosing several ranges.
+    if (plan.selection.rangeCount() > 1) {
+        plan.notes << QStringLiteral("%1; the ranges play back to back and the frames "
+                                     "between them are not exported.")
+                          .arg(plan.selection.describe());
+    }
+
     // --- codec --------------------------------------------------------------
     QString codec = aTarget.codec;
     if (aTarget.codecLadder) {
-        // Size and caps must be known before the ladder can judge speed, so
-        // compute them first.
-        plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
-        plan.fps = aRequest.fps;
-        plan.frames = aRequest.frames;
-        applyCaps(aTarget.caps, &plan.fps, &plan.frames, &plan.notes);
-
         LadderHints hints;
         hints.width = plan.size.width();
         hints.height = plan.size.height();
         hints.pixFmt = aTarget.pixFmt;
-        hints.frameCount = plan.frames;
+        hints.frameCount = plan.frames();
         const QHash<QString, double> budgets = ExportTargets::loadTimeBudgets();
         hints.maxSeconds =
             budgets.value(bucketName(aBucket), 0.0);
@@ -573,15 +655,6 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         plan.notes << why;
     }
 
-    // --- size + caps (the deterministic, pre-encode half of enforcement) ----
-    // (already computed above when the codec came from the ladder)
-    if (!aTarget.codecLadder) {
-        plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
-        plan.fps = aRequest.fps;
-        plan.frames = aRequest.frames;
-        applyCaps(aTarget.caps, &plan.fps, &plan.frames, &plan.notes);
-    }
-
     // Exact-size destinations (Discord 320x320, WhatsApp 512x512) need the
     // FILE to be that size while the art keeps its aspect. So render at the
     // fitted size and have the encoder pad the remainder with transparency —
@@ -593,12 +666,6 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         const double scale = std::min((double)aTarget.size.w / sw, (double)aTarget.size.h / sh);
         plan.renderSize = QSize(evenFloor(sw * scale), evenFloor(sh * scale));
     }
-
-    // NOTE: caps are applied exactly once, in the codec branch above (both
-    // branches of the `if` do it). There used to be a third application here
-    // that first RESET fps/frames to the requested values and then re-applied
-    // them, which clamped identically but appended every cap note to
-    // `plan.notes` a second time, so the user saw each warning twice.
 
     if (!aTarget.note.isEmpty()) plan.notes << aTarget.note;
 
@@ -767,7 +834,20 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
 
     const ExportPlan plan = planExport(aTarget, aRequest, aBucket);
     if (!plan.ok()) { result.error = plan.error; return result; }
-    if (aFrames.isEmpty()) { result.error = QStringLiteral("no frames to export"); return result; }
+
+    // The plan is authoritative about WHICH frames to write (see FrameSelection).
+    // If the caller hands over a different number, the file would not match the
+    // plan — and for a capped destination it could exceed the very limit this
+    // function exists to enforce, while the fit loop reported success. Fail
+    // loudly instead of encoding something the plan never described.
+    if (aFrames.size() != plan.frames()) {
+        result.error = QStringLiteral("frame mismatch: the plan selects %1 frame%2 but %3 "
+                                      "were supplied (render plan.selection.indices())")
+                           .arg(plan.frames())
+                           .arg(plan.frames() == 1 ? QString() : QStringLiteral("s"))
+                           .arg(aFrames.size());
+        return result;
+    }
 
     const qint64 cap = aTarget.caps.maxBytes;
 

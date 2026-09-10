@@ -138,11 +138,70 @@ struct ExportTarget {
     QString platform; // empty/"any" = everywhere
 };
 
+// An inclusive span of project frames. Inclusive rather than half-open because
+// it mirrors util::Range / the project's own frame ranges (which support
+// negative starts — frame -1 is a normal frame in this codebase).
+struct FrameRange {
+    int first = 0;
+    int last = 0;
+
+    int count() const { return last >= first ? (last - first + 1) : 0; }
+    bool valid() const { return last >= first; }
+};
+
+// WHICH frames to export, as one or more ranges.
+//
+// This exists because the export dialog has always let the user select several
+// non-contiguous ranges and the model could only hold a single count, so the
+// exporter collapsed them to [first of the first .. last of the last] — i.e. it
+// silently exported frames the user had excluded. A count cannot express "these
+// frames but not those", which is why this is a list.
+//
+// Semantics, deliberately explicit:
+//  - Ranges are emitted in the ORDER GIVEN, packed contiguously. Gaps between
+//    ranges are DROPPED, not held: selecting 0-10 and 50-60 yields 22 frames of
+//    output, not 61 with 39 blank/holding ones. Holding or blanking a gap is
+//    never what someone exporting a selection wants.
+//  - Duration is therefore total() / fps. Gaps do not extend it.
+//  - Range order is honoured rather than sorted, so the output matches the list
+//    the user is looking at (WYSIWYG). Overlaps are NOT merged or deduplicated:
+//    total() must equal the number of frames actually written, and duplicating a
+//    frame is a real (if unusual) way to hold one.
+struct FrameSelection {
+    QList<FrameRange> ranges;
+
+    static FrameSelection fromRange(int aFirst, int aLast);
+    static FrameSelection fromCount(int aCount); // frames 0 .. aCount-1
+
+    // Total frames written — what duration, the caps and the ETA all use.
+    int total() const;
+
+    // Number of usable ranges (a backwards range counts as none). >1 means the
+    // selection has gaps, which is the case worth telling the user about.
+    int rangeCount() const;
+
+    bool isEmpty() const { return total() == 0; }
+
+    // Project frame numbers to render, in output order. This is the
+    // authoritative answer; with several ranges the count alone does not say
+    // what to render.
+    QList<int> indices() const;
+
+    // The first N frames of the selection, in output order. Monotone by
+    // construction (a smaller N is always a prefix), which is what makes it
+    // usable both for cap enforcement and as a fit-to-cap search dimension.
+    FrameSelection firstN(int aCount) const;
+
+    // For notes: "90 frames" or "90 frames from 3 ranges".
+    QString describe() const;
+};
+
 struct ExportRequest {
     QString outputPath;
     QSize sourceSize;
     int fps = 24;
-    int frames = 1;
+    // Which frames. Defaults to a single frame, matching the old `frames = 1`.
+    FrameSelection selection = FrameSelection::fromRange(0, 0);
 
     // Whether audio is exported is NOT a preference — it is derived:
     //   included  iff  the project HAS audio  AND  not muted  AND  the
@@ -172,7 +231,13 @@ struct ExportPlan {
     QSize renderSize;  // what to RENDER at — differs from `size` for exact-size
                        // destinations, which fit the art and pad the remainder
     int fps = 0;
-    int frames = 0;
+    // Which frames to render, in output order, AFTER caps have been applied.
+    // Authoritative: with several ranges the count alone does not say what to
+    // render, so callers must read this rather than assume 0..frames-1.
+    FrameSelection selection;
+    // Duration, caps and the ETA all want just the count. A method rather than a
+    // field so it cannot drift out of sync with `selection`.
+    int frames() const { return selection.total(); }
     bool alphaEnabled = false;
     bool audioEnabled = false;
 

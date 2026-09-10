@@ -306,7 +306,7 @@ static void run_size_rules() {
     ctrl::ExportRequest exactReq;
     exactReq.outputPath = QDir::temp().filePath("ae_exact.apng");
     exactReq.sourceSize = QSize(1000, 800);
-    exactReq.frames = 1;
+    exactReq.selection = ctrl::FrameSelection::fromCount(1);
     const ctrl::ExportPlan exactPlan =
         ctrl::planExport(discord, exactReq, ctrl::QualityBucket::Balanced);
     check(exactPlan.ok(), QStringLiteral("exact-size plan builds (%1)").arg(exactPlan.error));
@@ -365,23 +365,154 @@ static void run_caps() {
 
     // The caps must be applied exactly ONCE by planExport. It used to reset
     // fps/frames back to the requested values and re-apply them at the end,
-    // which clamped to the same numbers but appended every cap note to
-    // plan.notes a second time — so the user saw each warning twice.
-    ctrl::ExportRequest req;
-    req.outputPath = QDir::temp().filePath("ae_caps_once.png");
-    req.sourceSize = QSize(320, 240);
-    req.fps = 30;
-    req.frames = 50; // LINE's cap is 20, so this must be trimmed
-    const ctrl::ExportPlan plan = ctrl::planExport(line, req, ctrl::QualityBucket::Balanced);
-    check(plan.ok(), QStringLiteral("the capped plan builds (%1)").arg(plan.error));
-    check(plan.frames == 20, QStringLiteral("LINE's cap lands on 20 frames (got %1)").arg(plan.frames));
+    // which clamped to the same numbers but re-derived and re-appended every
+    // cap note, so the user saw each warning twice.
+    ctrl::ExportRequest creq;
+    creq.outputPath = QDir::temp().filePath("ae_caps_once.png");
+    creq.sourceSize = QSize(320, 240);
+    creq.fps = 30;
+    creq.selection = ctrl::FrameSelection::fromCount(50); // LINE's cap is 20
+    const ctrl::ExportPlan cplan = ctrl::planExport(line, creq, ctrl::QualityBucket::Balanced);
+    check(cplan.ok(), QStringLiteral("the capped plan builds (%1)").arg(cplan.error));
+    check(cplan.frames() == 20, QStringLiteral("LINE's cap lands on 20 frames (got %1)").arg(cplan.frames()));
     QSet<QString> seenNotes;
     bool duplicated = false;
-    for (const QString& n : plan.notes) {
+    for (const QString& n : cplan.notes) {
         if (seenNotes.contains(n)) duplicated = true;
         seenNotes.insert(n);
     }
     check(!duplicated, QStringLiteral("no note is duplicated by the cap pass"));
+}
+
+static void run_frame_selection() {
+    section("frame selection (several non-contiguous ranges)");
+
+    using ctrl::FrameRange;
+    using ctrl::FrameSelection;
+
+    const FrameSelection one = FrameSelection::fromRange(10, 19);
+    check(one.total() == 10, QStringLiteral("fromRange(10,19) is 10 frames (got %1)").arg(one.total()));
+    check(one.rangeCount() == 1, QStringLiteral("fromRange is one range"));
+    check(FrameSelection::fromCount(5).total() == 5, QStringLiteral("fromCount(5) is 5 frames"));
+    check(FrameSelection::fromCount(1).indices() == (QList<int>{0}),
+          QStringLiteral("fromCount(1) is frame 0 alone"));
+    check(FrameSelection::fromCount(0).isEmpty(), QStringLiteral("fromCount(0) is empty"));
+    check(FrameSelection::fromRange(5, 4).isEmpty(),
+          QStringLiteral("a backwards range contributes nothing"));
+    // Bounds are inclusive, and negative frames are ordinary in this codebase
+    // (util::Range supports them), so a negative selection must survive.
+    check(FrameSelection::fromRange(-3, -1).indices() == (QList<int>{-3, -2, -1}),
+          QStringLiteral("negative ranges are inclusive and preserved"));
+
+    // THE reason this type exists: ranges are PACKED and the gaps are dropped.
+    // The old model collapsed them to [first..last] and exported frames the user
+    // had excluded.
+    FrameSelection multi;
+    multi.ranges.append(FrameRange{0, 10});
+    multi.ranges.append(FrameRange{50, 60});
+    check(multi.total() == 22,
+          QStringLiteral("0-10 + 50-60 is 22 frames, not 61 (got %1)").arg(multi.total()));
+    check(multi.rangeCount() == 2, QStringLiteral("two usable ranges"));
+    const QList<int> idx = multi.indices();
+    check(idx.size() == 22, QStringLiteral("indices() yields exactly what is written (got %1)").arg(idx.size()));
+    check(idx.value(10) == 10 && idx.value(11) == 50 && idx.last() == 60,
+          QStringLiteral("indices() jumps the gap: element 10 -> frame 10, element 11 -> frame 50"));
+    check(!idx.contains(11) && !idx.contains(49),
+          QStringLiteral("nothing from inside the gap is present"));
+
+    // Order is honoured, not sorted, so the output matches the list on screen.
+    FrameSelection reversed;
+    reversed.ranges.append(FrameRange{50, 51});
+    reversed.ranges.append(FrameRange{0, 1});
+    check(reversed.indices() == (QList<int>{50, 51, 0, 1}),
+          QStringLiteral("range order is honoured rather than sorted"));
+
+    // Overlaps are not merged: total() must equal the frames actually written,
+    // and repeating a frame is a real way to hold one.
+    FrameSelection overlap;
+    overlap.ranges.append(FrameRange{0, 10});
+    overlap.ranges.append(FrameRange{5, 15});
+    check(overlap.total() == 22,
+          QStringLiteral("overlapping ranges count twice (got %1)").arg(overlap.total()));
+
+    // firstN is the truncation cap enforcement uses, so it must be monotone:
+    // a smaller N is always a prefix of a larger one.
+    check(multi.firstN(0).isEmpty(), QStringLiteral("firstN(0) is empty"));
+    check(multi.firstN(5).indices() == (QList<int>{0, 1, 2, 3, 4}),
+          QStringLiteral("firstN(5) takes the first five"));
+    check(multi.firstN(15).total() == 15, QStringLiteral("firstN(15) spans the gap and totals 15"));
+    check(multi.firstN(15).indices().last() == 53,
+          QStringLiteral("firstN crosses into the second range (11 + 4, last=%1)")
+              .arg(multi.firstN(15).indices().last()));
+    check(multi.firstN(15).rangeCount() == 2, QStringLiteral("firstN keeps the range structure"));
+    check(multi.firstN(999).total() == multi.total(), QStringLiteral("firstN past the end is a no-op"));
+
+    // describe() is what the user reads.
+    check(one.describe() == QLatin1String("10 frames"),
+          QStringLiteral("a single range describes as a count (got '%1')").arg(one.describe()));
+    check(FrameSelection::fromCount(1).describe() == QLatin1String("1 frame"),
+          QStringLiteral("singular is not pluralised"));
+    check(multi.describe().contains(QLatin1String("2 separate ranges")),
+          QStringLiteral("a multi-range selection says so (got '%1')").arg(multi.describe()));
+    check(FrameSelection().describe().contains(QLatin1String("no frames")),
+          QStringLiteral("an empty selection describes clearly"));
+
+    // --- through the planner -------------------------------------------------
+    const QList<ctrl::ExportTarget> all =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+    if (all.isEmpty()) return;
+    const ctrl::ExportTarget generic =
+        ctrl::ExportTargets::find(all, QStringLiteral("generic.file")); // no caps
+    const ctrl::ExportTarget line =
+        ctrl::ExportTargets::find(all, QStringLiteral("line.sticker")); // 5-20 frames
+
+    ctrl::ExportRequest req;
+    req.outputPath = QDir::temp().filePath("ae_selection.mp4");
+    req.sourceSize = QSize(320, 240);
+    req.fps = 30;
+    req.selection = multi;
+
+    const ctrl::ExportPlan plan = ctrl::planExport(generic, req, ctrl::QualityBucket::Balanced);
+    check(plan.ok(), QStringLiteral("a multi-range plan builds (%1)").arg(plan.error));
+    check(plan.frames() == 22, QStringLiteral("plan.frames() is the selection total (got %1)").arg(plan.frames()));
+    check(plan.selection.indices() == multi.indices(),
+          QStringLiteral("the plan carries the selection through unchanged"));
+    bool gapNote = false;
+    for (const QString& n : plan.notes) {
+        if (n.contains(QLatin1String("back to back"))) gapNote = true;
+    }
+    check(gapNote, QStringLiteral("the plan explains that the gaps are dropped"));
+
+    // A cap must truncate the SELECTION, not merely a counter — otherwise the
+    // caller cannot tell which frames survived.
+    ctrl::ExportRequest lreq = req;
+    lreq.outputPath = QDir::temp().filePath("ae_selection.png");
+    lreq.selection = FrameSelection::fromCount(50);
+    const ctrl::ExportPlan lplan = ctrl::planExport(line, lreq, ctrl::QualityBucket::Balanced);
+    check(lplan.ok(), QStringLiteral("the capped plan builds (%1)").arg(lplan.error));
+    check(lplan.frames() == 20, QStringLiteral("LINE's 20-frame cap applies (got %1)").arg(lplan.frames()));
+    check(lplan.selection.total() == 20,
+          QStringLiteral("the selection itself is truncated, not just the count"));
+    check(lplan.selection.indices().last() == 19,
+          QStringLiteral("the cap keeps the FIRST N frames (last=%1)").arg(lplan.selection.indices().last()));
+
+    // (The "cap notes appear exactly once" check lives in run_caps, where the
+    // cap behaviour is tested; it is not repeated here.)
+
+    // An empty selection is refused, rather than silently planning 0 frames.
+    ctrl::ExportRequest ereq = req;
+    ereq.selection = FrameSelection();
+    check(!ctrl::planExport(generic, ereq, ctrl::QualityBucket::Balanced).ok(),
+          QStringLiteral("an empty selection is an error, not a zero-frame export"));
+
+    // exportWithFit must refuse a hand-off that does not match the plan instead
+    // of encoding a file the plan never described.
+    QList<QImage> wrong;
+    for (int i = 0; i < 5; ++i) wrong.append(makeFrame(320, 240, i));
+    const ctrl::FitResult fr =
+        ctrl::exportWithFit(generic, req, ctrl::QualityBucket::Balanced, wrong);
+    check(!fr.ok && fr.error.contains(QLatin1String("frame mismatch")),
+          QStringLiteral("a frame-count mismatch is refused (%1)").arg(fr.error));
 }
 
 static void run_probe_sanity() {
@@ -492,7 +623,7 @@ static void run_conformance() {
         req.outputPath = out;
         req.sourceSize = QSize(640, 480); // deliberately non-square
         req.fps = 30;
-        req.frames = 3;
+        req.selection = ctrl::FrameSelection::fromCount(3);
         req.exportableAudioTracks = 2; // the project has sound; each row decides if it lands
 
         const ctrl::ExportPlan plan = ctrl::planExport(t, req, ctrl::QualityBucket::Balanced);
@@ -510,7 +641,7 @@ static void run_conformance() {
         // Render at the plan's RENDER size, exactly as the app would: the
         // encoder is what fits + pads to the output size.
         QList<QImage> frames;
-        for (int i = 0; i < plan.frames; ++i) {
+        for (int i = 0; i < plan.frames(); ++i) {
             frames.append(makeFrame(plan.renderSize.width(), plan.renderSize.height(), i));
         }
 
@@ -522,7 +653,7 @@ static void run_conformance() {
         for (const QImage& f : frames) enc.write(f);
         if (plan.config.audioChannels > 0) {
             const QVector<float> pcm =
-                makeAudio(plan.frames, plan.fps, plan.config.audioSampleRate, plan.config.audioChannels);
+                makeAudio(plan.frames(), plan.fps, plan.config.audioSampleRate, plan.config.audioChannels);
             enc.setAudio(pcm.constData(), plan.config.audioChannels, plan.config.audioSampleRate,
                          pcm.size() / plan.config.audioChannels);
         }
@@ -676,7 +807,7 @@ static void run_audio_is_derived() {
         req.outputPath = QDir::temp().filePath(QStringLiteral("ae_audio.%1").arg(t.container));
         req.sourceSize = QSize(320, 240);
         req.fps = 30;
-        req.frames = 3;
+        req.selection = ctrl::FrameSelection::fromCount(3);
         req.exportableAudioTracks = aProjectHasAudio ? 2 : 0;
         req.mute = aMute;
 
@@ -685,7 +816,7 @@ static void run_audio_is_derived() {
         if (!plan.ok()) return -1;
 
         QList<QImage> frames;
-        for (int i = 0; i < plan.frames; ++i) {
+        for (int i = 0; i < plan.frames(); ++i) {
             frames.append(makeFrame(plan.renderSize.width(), plan.renderSize.height(), i));
         }
 
@@ -693,7 +824,7 @@ static void run_audio_is_derived() {
         if (!enc.open(plan.config)) return -1;
         for (const QImage& f : frames) enc.write(f);
         if (plan.config.audioChannels > 0) {
-            const QVector<float> pcm = makeAudio(plan.frames, plan.fps,
+            const QVector<float> pcm = makeAudio(plan.frames(), plan.fps,
                                                  plan.config.audioSampleRate,
                                                  plan.config.audioChannels);
             enc.setAudio(pcm.constData(), plan.config.audioChannels,
@@ -761,7 +892,7 @@ static void run_fit_to_cap() {
     req.outputPath = QDir::temp().filePath("ae_fit.webm");
     req.sourceSize = QSize(640, 480);
     req.fps = 30;
-    req.frames = frames.size();
+    req.selection = ctrl::FrameSelection::fromCount(frames.size());
 
     // A cap small enough that the FIRST attempt cannot possibly fit, so the
     // loop has to degrade. File size is the one limit that cannot be known
@@ -832,7 +963,7 @@ static void run_live_encode() {
         req.outputPath = out;
         req.sourceSize = c.source;
         req.fps = 30;
-        req.frames = c.frames;
+        req.selection = ctrl::FrameSelection::fromCount(c.frames);
 
         const ctrl::ExportPlan plan = ctrl::planExport(t, req, c.bucket);
         if (!plan.ok()) {
@@ -848,7 +979,7 @@ static void run_live_encode() {
         // Render at the plan's RENDER size, exactly as the app would: the
         // encoder is what fits + pads to the output size.
         QList<QImage> frames;
-        for (int i = 0; i < plan.frames; ++i) {
+        for (int i = 0; i < plan.frames(); ++i) {
             frames.append(makeFrame(plan.renderSize.width(), plan.renderSize.height(), i));
         }
 
@@ -875,6 +1006,7 @@ int main(int argc, char* argv[]) {
     run_load_and_validate();
     run_size_rules();
     run_caps();
+    run_frame_selection();
     run_probe_sanity();
     run_ladder();
     run_conformance();
@@ -882,9 +1014,9 @@ int main(int argc, char* argv[]) {
     run_throughput_gate();
     run_audio_is_derived();
     run_fit_to_cap();
-    // run_live_encode() was defined but never called, so this section had never
-    // actually run and its assertions were not part of the count that "passed".
-    // Everything the suite claims to check has to be reachable from main.
+    // This section existed but was never called, so it had never actually run —
+    // the assertion count did not include it. Everything that "passes" has to be
+    // reached from main.
     run_live_encode();
 
     QTextStream(stdout) << "\n" << (failures ? "FAILURES: " : "ALL PASS ") << failures << "\n";
