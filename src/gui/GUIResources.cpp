@@ -13,10 +13,13 @@
 namespace gui {
 
 GUIResources::GUIResources(const QString& aResourceDir):
+    // mTheme is declared before the private members below, so it is initialised
+    // first no matter where it is written in this list. Written in declaration
+    // order so the list stops claiming an order the compiler does not follow.
+    mTheme(aResourceDir, "light"),
     mResourceDir(aResourceDir),
     mIconDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/icons"),
-    mAccent(theme::kDefaultAccent),
-    mTheme(aResourceDir, "light") {
+    mAccent(theme::kDefaultAccent) {
     setAppStyle();
 
     QSettings settings;
