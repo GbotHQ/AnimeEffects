@@ -103,7 +103,14 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         // QTabBar rules already carry the rest/hover/selected dressing). The
         // default is AnimatedDocks|AllowTabbedDocks; this line used to drop the
         // tabbing half.
-        this->setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
+        // AllowNestedDocks is what lets an area hold two columns: without it a
+        // dock area is a single row, so a second dock added to an occupied side
+        // area is *appended to that area's stack* rather than taking the slice
+        // beside the canvas that the drop promised. Qt's warning about nesting
+        // (more ways to place a dropped dock) does not apply: the drop rules are
+        // ours (DockDropOverlay), and this only widens what they can express.
+        this->setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks
+                             | QMainWindow::AllowNestedDocks);
         this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
         this->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
     }
@@ -447,6 +454,20 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->isVisible() : false)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->width() : -1)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->height() : -1));
+        });
+    }
+
+    // Temporary: does resizeDocks still work at all for a single side panel?
+    if (qEnvironmentVariableIsSet("AE_DOCK_RESIZE_PROBE")) {
+        const int wanted = qEnvironmentVariable("AE_DOCK_RESIZE_PROBE").toInt();
+        QTimer::singleShot(900, this, [this, wanted]() {
+            dockSpikeLog(mDockToolWidget, QStringLiteral("resize probe: before=%1 request=%2 nesting=%3")
+                    .arg(mDockToolWidget->width()).arg(wanted).arg(isDockNestingEnabled()));
+            this->resizeDocks({mDockToolWidget}, {wanted}, Qt::Horizontal);
+            QTimer::singleShot(600, this, [this]() {
+                dockSpikeLog(mDockToolWidget, QStringLiteral("resize probe: after=%1")
+                        .arg(mDockToolWidget->width()));
+            });
         });
     }
 
@@ -2202,8 +2223,36 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
         break;
     }
     case DockDropKind::Area: {
+        // A slice of the target area, on the canvas side of whatever is already
+        // there. Plain addDockWidget would append the panel to the end of that
+        // area's stack instead - measured: a canvas-left drop with the sidebar
+        // occupied landed as a 153px strip at the bottom of the sidebar, while
+        // the preview had drawn a full-height column beside the canvas. The
+        // split is what puts the panel where the preview drew it, and the
+        // preview is computed from this same rule (see DockDropOverlay).
+        QDockWidget* anchor = innermostDock(aTarget.area, aPanel);
+        if (!anchor) {
+            addDockWidget(aTarget.area, aPanel);
+        } else {
+        // The panel has to be in the target area before the split, for the same
+        // reason as the Split case: splitDockWidget arranges two docks within one
+        // area, and a panel that has just come back from floating lands in the
+        // area it remembers - measured: a canvas-bottom drop over the animation
+        // panel moved the *animation panel* into the right column instead.
         addDockWidget(aTarget.area, aPanel);
-        dockSpikeLog(aPanel, QStringLiteral("drop: area=%1").arg(int(aTarget.area)));
+        if (aTarget.area == Qt::LeftDockWidgetArea) {
+            splitDockWidget(anchor, aPanel, Qt::Horizontal);   // panel to its right
+        } else if (aTarget.area == Qt::RightDockWidgetArea) {
+            splitDockWidget(aPanel, anchor, Qt::Horizontal);   // panel to its left
+        } else if (aTarget.area == Qt::TopDockWidgetArea) {
+            splitDockWidget(anchor, aPanel, Qt::Vertical);     // panel below it
+        } else {
+            splitDockWidget(aPanel, anchor, Qt::Vertical);     // panel above it
+        }
+        }
+        dockSpikeLog(aPanel, QStringLiteral("drop: area=%1 anchor=%2")
+                .arg(int(aTarget.area))
+                .arg(anchor ? anchor->objectName() : QStringLiteral("none")));
         break;
     }
     default:
@@ -2211,6 +2260,46 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
     }
 
     applyPanelMetrics(aPanel);
+
+    // Temporary, while the preview rules are being matched to reality: where the
+    // panel actually ended up, once the layout has settled.
+    QTimer::singleShot(400, this, [this, aPanel, aTarget]() {
+        const QRect settled = aPanel->geometry();
+        dockSpikeLog(aPanel, QStringLiteral("settled: preview=%1,%2 %3x%4 -> actual=%5,%6 %7x%8 area=%9 "
+                                           "tabified=%10 | tools=%11,%12 %13x%14 anim=%15,%16 %17x%18")
+                .arg(aTarget.rect.x()).arg(aTarget.rect.y())
+                .arg(aTarget.rect.width()).arg(aTarget.rect.height())
+                .arg(settled.x()).arg(settled.y()).arg(settled.width()).arg(settled.height())
+                .arg(int(this->dockWidgetArea(aPanel)))
+                .arg(this->tabifiedDockWidgets(aPanel).size())
+                .arg(mDockToolWidget->x()).arg(mDockToolWidget->y())
+                .arg(mDockToolWidget->width()).arg(mDockToolWidget->height())
+                .arg(mDockAnimationWidget->x()).arg(mDockAnimationWidget->y())
+                .arg(mDockAnimationWidget->width()).arg(mDockAnimationWidget->height()));
+    });
+}
+
+
+/// The dock in an area that sits closest to the central widget: the one a new
+/// panel has to be split against to land between it and the canvas. This is the
+/// anchor both the drop and the preview work from.
+QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const {
+    QDockWidget* best = nullptr;
+    for (QDockWidget* dock : findChildren<QDockWidget*>()) {
+        if (dock == aSkip || !dock->isVisible() || dock->isFloating()) continue;
+        if (this->dockWidgetArea(dock) != aArea) continue;
+        if (!best) {
+            best = dock;
+            continue;
+        }
+        switch (aArea) {
+        case Qt::LeftDockWidgetArea:  if (dock->x() > best->x()) best = dock; break;
+        case Qt::RightDockWidgetArea: if (dock->x() < best->x()) best = dock; break;
+        case Qt::TopDockWidgetArea:   if (dock->y() > best->y()) best = dock; break;
+        default:                      if (dock->y() < best->y()) best = dock; break;
+        }
+    }
+    return best;
 }
 
 

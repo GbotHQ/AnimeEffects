@@ -105,6 +105,8 @@ private:
     /// How thick the preview band is along an axis: what the panel would
     /// actually take, so the preview is not a guess.
     int bandExtent(Qt::Orientation aAxis, int aLimit) const;
+    /// The slice of an area the drop will take, mirroring the operation.
+    QRect areaSlice(Qt::DockWidgetArea aArea, const QRect& aCanvas) const;
     QDockWidget* panelFromMime(const QMimeData* aData) const;
 
     QMainWindow* mWindow;

@@ -146,12 +146,59 @@ QRect DockDropOverlay::groupRect(QDockWidget* aDock) const {
     return rect;
 }
 
+/// The slice of an area a drop will take: on the canvas side of whatever is
+/// already in that area, sized like the panel. This mirrors
+/// MainWindow::applyDockDrop exactly - it splits the area's innermost dock - so
+/// that the rectangle drawn here is the rectangle the panel lands in.
+QRect DockDropOverlay::areaSlice(Qt::DockWidgetArea aArea, const QRect& aCanvas) const {
+    const int w = bandExtent(Qt::Horizontal, aCanvas.width());
+    const int h = bandExtent(Qt::Vertical, aCanvas.height());
+    const QRect window = mWindow ? mWindow->rect() : QRect();
+
+    QRect occupied;
+    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
+        if (dock == mPanel || !dock->isVisible() || dock->isFloating()) continue;
+        if (mWindow->dockWidgetArea(dock) != aArea) continue;
+        const QRect group = groupRect(dock);
+        occupied = occupied.isNull() ? group : occupied.united(group);
+    }
+
+    // With docks already in the area the panel goes beside the one nearest the
+    // canvas (the split anchor). With the area empty it *is* the area, so it
+    // starts at the window's edge on a side - measured: a canvas-top drop landed
+    // at y=23, the client area's top, with the canvas pushed down by its height.
+    switch (aArea) {
+    case Qt::LeftDockWidgetArea:
+        if (!occupied.isNull())
+            return QRect(occupied.right() + 1, occupied.top(), w, occupied.height());
+        return QRect(window.left(), aCanvas.top(), w, aCanvas.height());
+    case Qt::RightDockWidgetArea:
+        if (!occupied.isNull())
+            return QRect(occupied.left() - w, occupied.top(), w, occupied.height());
+        return QRect(window.right() + 1 - w, aCanvas.top(), w, aCanvas.height());
+    case Qt::TopDockWidgetArea:
+        if (!occupied.isNull())
+            return QRect(occupied.left(), occupied.bottom() + 1, occupied.width(), h);
+        return QRect(window.left(), aCanvas.top(), window.width(), h);
+    default:
+        if (!occupied.isNull())
+            return QRect(occupied.left(), occupied.top() - h, occupied.width(), h);
+        return QRect(window.left(), aCanvas.bottom() + 1 - h, window.width(), h);
+    }
+}
+
 int DockDropOverlay::bandExtent(Qt::Orientation aAxis, int aLimit) const {
     // What the panel would take along this axis: QDockWidget::sizeHint(), which
     // is the size Qt gives a docked panel. Its *floating* size is not that - a
     // floating property panel is 800 tall, and the preview would then cover the
     // whole canvas and say nothing.
-    const QSize hint = mPanel ? mPanel->sizeHint() : QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
+    QSize hint = mPanel ? mPanel->sizeHint() : QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
+    // A floating panel's hint carries its frame: the ring is a QSS border on the
+    // window, so it is inside the hint but will not be there once the panel is
+    // docked. Without this the preview was exactly one frame too big on both
+    // axes, which for the property panel is 20px of lie in each direction.
+    if (mPanel && mPanel->isFloating())
+        hint -= QSize(2 * dockMetrics::kFrameInset, 2 * dockMetrics::kFrameInset);
     const int own = (aAxis == Qt::Horizontal) ? hint.width() : hint.height();
     const int floor = (aAxis == Qt::Horizontal) ? dockMetrics::kMinWidth : dockMetrics::kMinHeight;
     const int ceiling = (aAxis == Qt::Horizontal) ? dockMetrics::kMaxWidth : dockMetrics::kMaxHeight;
@@ -161,6 +208,13 @@ int DockDropOverlay::bandExtent(Qt::Orientation aAxis, int aLimit) const {
 DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     DockDropTarget target;
     if (!mWindow) return target;
+
+    // A docked panel dropped back onto itself does nothing. Without this the
+    // cursor over the panel's own area falls through to the canvas rule and the
+    // preview points at a slice of canvas the pointer is nowhere near, while the
+    // drop would be a no-op.
+    if (mPanel && !mPanel->isFloating() && mPanel->isVisible() && mPanel->geometry().contains(aPos))
+        return target;
 
     // Docked panels first: a group is a sibling of the central widget at the
     // window's edge, so it wins where they meet.
@@ -225,25 +279,7 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
 
     target.kind = DockDropKind::Area;
     target.area = areaForEdge(edge);
-    switch (edge) {
-    case Qt::LeftEdge:
-        target.rect = QRect(canvas.left(), canvas.top(),
-                            bandExtent(Qt::Horizontal, canvas.width()), canvas.height());
-        break;
-    case Qt::RightEdge:
-        target.rect = QRect(canvas.right() + 1 - bandExtent(Qt::Horizontal, canvas.width()),
-                            canvas.top(), bandExtent(Qt::Horizontal, canvas.width()),
-                            canvas.height());
-        break;
-    case Qt::TopEdge:
-        target.rect = QRect(canvas.left(), canvas.top(), canvas.width(),
-                            bandExtent(Qt::Vertical, canvas.height()));
-        break;
-    default:
-        target.rect = QRect(canvas.left(), canvas.bottom() + 1 - bandExtent(Qt::Vertical, canvas.height()),
-                            canvas.width(), bandExtent(Qt::Vertical, canvas.height()));
-        break;
-    }
+    target.rect = areaSlice(target.area, canvas);
     return target;
 }
 

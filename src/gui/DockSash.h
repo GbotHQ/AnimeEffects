@@ -30,6 +30,10 @@ private:
     void watchDocks();
 
     QMainWindow* mWindow;
+    /// Pool of hitboxes: seams are enumerated now (dock against dock, and dock
+    /// against the central widget), and there are only ever a handful, so the
+    /// pool is a bound rather than something indexed by dock.
+    static constexpr int kMaxHitBoxes = 16;
     QVector<HitBox*> mHitBoxes;
 };
 

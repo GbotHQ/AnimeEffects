@@ -42,6 +42,17 @@ constexpr int kMinHeight = 160;
 /// Top/bottom areas: tallest.
 constexpr int kMaxHeight = 640;
 
+/// The floating window's frame, drawn inside the window: an unpainted grab
+/// margin outside the painted line plus the ring the border is painted in. Both
+/// are DockPanel's drawing, but the drop preview needs them too - a floating
+/// panel's sizeHint includes the frame, and a preview built from it came out
+/// exactly one frame too big on every axis (measured: 242 for a panel that Qt
+/// then made 222 tall).
+constexpr int kFrameMargin = 4;
+constexpr int kFrameRing = 6;
+/// What the frame adds to each axis of a floating panel.
+constexpr int kFrameInset = kFrameMargin + kFrameRing;
+
 /// Where a drag past the minimum turns into a collapse.
 constexpr int kCollapseWidth = kMinWidth / 2;
 constexpr int kCollapseHeight = kMinHeight / 2;

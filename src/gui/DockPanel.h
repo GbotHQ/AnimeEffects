@@ -1,6 +1,8 @@
 #ifndef GUI_DOCKPANEL_H
 #define GUI_DOCKPANEL_H
 
+#include "gui/DockMetrics.h"
+
 #include <QPoint>
 #include <QDockWidget>
 #include <QPointer>
@@ -71,17 +73,16 @@ protected:
     bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
 private:
-    /// Invisible margin between the window's outer edge and the painted frame.
-    ///
+    /// Invisible margin between the window's outer edge and the painted frame:
     /// Wayland gives a frameless toplevel no server-side border at all, so
-    /// without this margin the frame line sits exactly on the window edge and
-    /// there is nowhere to grab except inward - which reads as "the edge only
-    /// resizes from the inside", the opposite of every other window on the
-    /// desktop. The floating window is this much larger than the panel looks,
-    /// and the excess is the outer half of the resize band.
-    static constexpr int kGrabMargin = 4;
+    /// without it the frame line sits exactly on the window edge and there is
+    /// nowhere to grab except inward, the opposite of every other window on the
+    /// desktop. See dockMetrics::kFrameMargin - the drop preview measures
+    /// against the same numbers, because a floating panel's sizeHint includes
+    /// the frame.
+    static constexpr int kGrabMargin = dockMetrics::kFrameMargin;
     /// Width of the border ring painted inside the frame.
-    static constexpr int kRing = 6;
+    static constexpr int kRing = dockMetrics::kFrameRing;
     /// The resize band, measured from the window's outer edge: kGrabMargin
     /// outside the frame line plus kGrabMargin again inside it, so the grab
     /// straddles the edge instead of sitting on one side of it.

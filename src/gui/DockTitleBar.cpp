@@ -23,9 +23,13 @@ namespace gui {
 
 namespace {
 
-/// Text inset, matching the 0.375em/0.5em the QSS title rule used.
+/// Text inset for the title. It is the panel's own content inset, because the
+/// title is that panel's first line of text: the card padding in the theme
+/// (0.375em) plus the content layout's margin measures 11px at the default font,
+/// where the old 0.5 * font-height put the title at 8px - three pixels left of
+/// everything under it, and against the window edge for a left sidebar.
 int titleInset(const QFontMetrics& aMetrics) {
-    return static_cast<int>(aMetrics.height() * 0.5);
+    return static_cast<int>(aMetrics.height() * 0.72);
 }
 
 /// Padding above and below the text, on top of the font's own height.
@@ -116,8 +120,8 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
     // focus-coloured rule the theme gives a selected tab - which is the only
     // thing that says this region can be dragged somewhere. Docked, the tab in the
     // group's strip holds that role and this header is inert.
-    const QRect tab = tabRect();
-    if (mDock->isFloating() && mTabHover) {
+    const QRect tab = mDock->isFloating() ? tabRect() : rect();
+    if (mTabHover) {
         QColor wash = c.accent;
         wash.setAlpha(40);
         p.fillRect(tab, wash);
@@ -137,43 +141,47 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
         return;
     }
 
+    mPressPos = aEvent->position().toPoint();
+    mMoving = false;
     if (mDock->isFloating()) {
-        // The window's own title area: remember where the drag started and
-        // claim the press, so it cannot reach the dock and start Qt's own
-        // dock drag-and-drop instead of what is decided here.
-        mPressPos = aEvent->position().toPoint();
-        mMoving = false;
+        // The window's own title area: either the tab (dock) or the rest of the
+        // bar (move the window). The press is claimed here so it cannot reach
+        // the dock and start Qt's own dock drag-and-drop instead of this.
         mDockDragArmed = tabRect().contains(mPressPos);
         log(QStringLiteral("floating title-press pos=%1,%2 -> %3 armed")
                 .arg(mPressPos.x()).arg(mPressPos.y())
                 .arg(mDockDragArmed ? QStringLiteral("dock drag") : QStringLiteral("window move")));
-        aEvent->accept();
-        return;
+    } else {
+        // A docked panel's title is a handle as well: dragging it is how a
+        // panel moves to another area, splits one, or stacks as a tab. There is
+        // no window to move here, so the whole title is the handle - and the
+        // press is still claimed rather than left to reach the dock, so what
+        // starts is this drag and not Qt's.
+        mDockDragArmed = true;
+        log(QStringLiteral("docked title-press pos=%1,%2 -> dock drag armed")
+                .arg(mPressPos.x()).arg(mPressPos.y()));
     }
-
-    // Docked: consume it. A docked panel is not draggable, and this is what
-    // keeps Qt's own drag (and its Wayland platform DnD) from starting.
-    log(QStringLiteral("docked header-press -> inert"));
     aEvent->accept();
 }
 
 void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
+    const bool dragged = (aEvent->buttons() & Qt::LeftButton)
+            && (aEvent->position().toPoint() - mPressPos).manhattanLength()
+                    >= QApplication::startDragDistance();
+
+    if (mDockDragArmed && !mDragging && dragged) {
+        startDockDrag();
+        aEvent->accept();
+        return;
+    }
+
     // Moving a floating window is a compositor gesture, not ours to perform:
     // startSystemMove() is the same call a decorated window's title bar makes,
     // and the compositor then owns the pointer until the button is released.
     // The consequence is that the client receives no positions at all for the
     // rest of the gesture - which is exactly why docking cannot ride along on
     // this drag, and needs a gesture (and a drop target) of its own.
-    if (mDock->isFloating() && mDockDragArmed && !mDragging && (aEvent->buttons() & Qt::LeftButton)
-            && (aEvent->position().toPoint() - mPressPos).manhattanLength()
-                    >= QApplication::startDragDistance()) {
-        startDockDrag();
-        aEvent->accept();
-        return;
-    }
-    if (mDock->isFloating() && !mMoving && (aEvent->buttons() & Qt::LeftButton)
-            && (aEvent->position().toPoint() - mPressPos).manhattanLength()
-                    >= QApplication::startDragDistance()) {
+    if (mDock->isFloating() && !mMoving && dragged) {
         QWindow* window = mDock->windowHandle();
         mMoving = window && window->startSystemMove();
         log(QStringLiteral("title-drag -> startSystemMove=%1").arg(mMoving));
@@ -182,10 +190,12 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
             return;
         }
     }
-    // Hover feedback for the handle: the wash is painted, the cursor says the
-    // region is grabbable, and both only while the panel is a window (docked,
-    // the tab in the group's strip is the handle, and it is deliberately inert).
-    const bool hover = mDock->isFloating() && tabRect().contains(aEvent->position().toPoint());
+    // Hover feedback for the handle: the region is washed and the cursor says it
+    // is grabbable. Floating that region is the tab; docked it is the whole
+    // title, because there is no window there to move and nothing else the bar
+    // could mean.
+    const bool hover = mDock->isFloating() ? tabRect().contains(aEvent->position().toPoint())
+                                           : rect().contains(aEvent->position().toPoint());
     if (hover != mTabHover) {
         mTabHover = hover;
         setCursor(hover ? Qt::PointingHandCursor : Qt::ArrowCursor);
