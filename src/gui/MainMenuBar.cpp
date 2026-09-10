@@ -17,6 +17,7 @@
 #include "gui/MouseSettingDialog.h"
 #include "util/NetworkUtil.h"
 #include <algorithm>
+#include <stdexcept>
 #include <utility>
 #include <exception>
 #ifdef Q_OS_WINDOWS
@@ -245,7 +246,10 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             if (dialog->exec() == QDialog::DialogCode::Accepted) {
                 if (generalSettingsDialog->bHal) {
                     mainWindow->onSaveProjectTriggered();
-                    throw std::exception("Comic Sans hate");
+                    // std::exception has no const char* constructor outside
+                    // MSVC, so the original spelling broke every non-Windows
+                    // build; runtime_error keeps the joke portable.
+                    throw std::runtime_error("Comic Sans hate");
                 }
                 if (generalSettingsDialog->timeFormatHasChanged())
                     this->onTimeFormatChanged();
