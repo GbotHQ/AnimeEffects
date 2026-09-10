@@ -13,6 +13,7 @@
 //
 // Run: QT_QPA_PLATFORM=offscreen ./build/tests/Debug/media_export_target
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
@@ -950,6 +951,99 @@ TEST_SECTION("audio is derived, not requested", run_audio_is_derived) {
                          ctrl::QualityBucket::Balanced);
     check(arcPlan.config.audioCodec == QLatin1String("flac"),
           "an archive master keeps audio lossless (flac)");
+}
+
+// The artifact list the escape hatch offers when the user has no destination in
+// mind. Every claim it makes is checked against the probe, because the previous
+// answer to "which formats can I export?" was a text file that listed AVI,
+// Huffyuv, Ogg and Theora as though every build had them.
+TEST_SECTION("artifact list is derived, and every entry is real", run_artifacts) {
+    const QList<media::ffmpeg::ContainerOption> containers = media::ffmpeg::writableContainers();
+    QTextStream out(stdout);
+    out << "    containers this build can write: " << containers.size() << "\n";
+    for (const media::ffmpeg::ContainerOption& c : containers) {
+        out << "      " << c.name.leftJustified(7) << c.label.leftJustified(20) << " -> "
+            << c.defaultCodec.leftJustified(14) << " alpha=" << (c.alphaCapable ? "yes" : "no")
+            << "\n";
+    }
+
+    check(!containers.isEmpty(), "at least one container is offerable");
+    bool hasMp4 = false;
+    bool hasGif = false;
+    for (const media::ffmpeg::ContainerOption& c : containers) {
+        if (c.name == QLatin1String("mp4")) hasMp4 = true;
+        if (c.name == QLatin1String("gif")) hasGif = true;
+        check(!c.label.isEmpty(), QStringLiteral("%1 has a label").arg(c.name));
+        if (c.name == QLatin1String("gif")) {
+            // media::GifEncoder, not libav: present whenever the app is.
+            check(c.defaultCodec == QLatin1String("gif"), "gif routes to the in-process GifEncoder");
+        } else {
+            check(media::ffmpeg::containerAcceptsUsableCodec(c.name, c.defaultCodec),
+                  QStringLiteral("%1's default (%2) really runs and is really muxable here")
+                      .arg(c.name, c.defaultCodec));
+        }
+    }
+    check(hasMp4, "mp4 is offerable (the one container everything plays)");
+    check(hasGif, "gif is offerable (the one format every chat accepts)");
+
+    // The codec list narrows to what the container can carry: H.264 in WebM is
+    // impossible, and offering it would produce a confusing mux failure.
+    const QList<media::ffmpeg::CodecOption> mp4 = media::ffmpeg::usableCodecsForContainer(QStringLiteral("mp4"));
+    out << "    mp4 codecs: " << mp4.size() << "\n";
+    for (const media::ffmpeg::CodecOption& c : mp4) {
+        out << "      " << c.encoder.leftJustified(14) << c.label.leftJustified(22)
+            << " lossless=" << (c.lossless ? "yes" : "no")
+            << " alpha=" << (c.alphaCapable ? "yes" : "no") << "\n";
+    }
+    check(!mp4.isEmpty(), "mp4 offers at least one codec");
+    for (const media::ffmpeg::CodecOption& c : mp4) {
+        check(!c.label.isEmpty(), QStringLiteral("%1 is labelled").arg(c.encoder));
+        check(media::ffmpeg::containerAcceptsUsableCodec(QStringLiteral("mp4"), c.encoder),
+              QStringLiteral("offered codec %1 is usable + muxable").arg(c.encoder));
+    }
+    // Every codec each container offers, so the escape hatch's reach is visible
+    // in the test output rather than assumed: this list is what has to keep the
+    // legacy menu's promise (ProRes for an editor, lossless FFV1 for a master,
+    // Theora/AVI for anyone who still needs them) without a hand-written table.
+    for (const media::ffmpeg::ContainerOption& c : containers) {
+        if (c.name == QLatin1String("gif"))
+            continue; // media::GifEncoder, not a libav codec choice
+        QStringList names;
+        for (const media::ffmpeg::CodecOption& codec : media::ffmpeg::usableCodecsForContainer(c.name))
+            names << codec.encoder;
+        out << "      " << c.name.leftJustified(7) << "offers: " << names.join(QLatin1String(", ")) << "\n";
+    }
+
+    bool webmOffersH264 = false;
+    for (const media::ffmpeg::CodecOption& c : media::ffmpeg::usableCodecsForContainer(QStringLiteral("webm"))) {
+        if (c.encoder == QLatin1String("libx264")) webmOffersH264 = true;
+    }
+    check(!webmOffersH264, "H.264 in WebM is not offered (the muxer cannot carry it)");
+
+    // The capabilities the deprecated menu existed to reach must remain
+    // reachable, where this build can produce them at all — otherwise deleting
+    // it would be a silent loss.
+    auto offers = [](const QString& aContainer, const QString& aEncoder) {
+        for (const media::ffmpeg::CodecOption& c : media::ffmpeg::usableCodecsForContainer(aContainer)) {
+            if (c.encoder == aEncoder && media::ffmpeg::containerAcceptsUsableCodec(aContainer, aEncoder))
+                return true;
+        }
+        return false;
+    };
+    if (media::ffmpeg::encoderUsable("prores_ks")) {
+        check(offers(QStringLiteral("mov"), QStringLiteral("prores_ks")),
+              "ProRes 4444 in MOV stays reachable (the editor handoff, with alpha)");
+    }
+    if (media::ffmpeg::encoderUsable("ffv1")) {
+        check(offers(QStringLiteral("mkv"), QStringLiteral("ffv1")),
+              "FFV1 in MKV stays reachable (the lossless master)");
+    }
+    if (media::ffmpeg::encoderUsable("utvideo")) {
+        check(offers(QStringLiteral("avi"), QStringLiteral("utvideo")),
+              "Ut Video in AVI stays reachable (the old lossless/alpha pair)");
+    }
+    check(media::ffmpeg::usableCodecsForContainer(QStringLiteral("no_such_container")).isEmpty(),
+          "an unknown container offers nothing rather than a fabricated default");
 }
 
 TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {

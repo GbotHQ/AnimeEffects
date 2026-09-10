@@ -345,5 +345,156 @@ bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFm
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// which artifacts this build can actually produce
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct KnownContainer {
+    const char* name;
+    const char* label;
+};
+
+// The containers worth offering, most wanted first. This table is the ONLY
+// authored part: names and labels do not change, whereas which of them works
+// does — and that is probed, never listed.
+const KnownContainer kKnownContainers[] = {
+    {"mp4",  "MP4"},
+    {"webm", "WebM"},
+    {"gif",  "GIF animation"},
+    {"apng", "APNG animation"},
+    {"webp", "WebP animation"},
+    {"mov",  "QuickTime (MOV)"},
+    {"mkv",  "Matroska (MKV)"},
+    {"avi",  "AVI"},
+    {"ogv",  "Ogg"},
+};
+
+struct KnownCodec {
+    const char* encoder;
+    const char* label;
+    bool lossless;
+};
+
+// Friendly names for the encoders an animation tool plausibly wants, in the
+// order a container should prefer them: COMPATIBILITY FIRST.
+//
+// This order is not a quality ranking, and getting it wrong is a real
+// regression: putting AV1 ahead of VP9 made WebM default to AV1, which would
+// have broken the single most common use of WebM here — a transparent overlay
+// that OBS and browsers must decode. The first usable entry becomes a
+// container's default, so the first entry has to be the one that plays
+// everywhere, and the fancier codecs come after it.
+const KnownCodec kKnownCodecs[] = {
+    {"libx264",       "H.264",                  false},
+    {"libx265",       "H.265",                  false},
+    {"libvpx-vp9",    "VP9",                    false},
+    {"libvpx",        "VP8",                    false},
+    {"mpeg4",         "MPEG-4",                 false},
+    {"libsvtav1",     "AV1",                    false},
+    {"libaom-av1",    "AV1",                    false},
+    {"h264_nvenc",    "H.264 (GPU)",            false},
+    {"hevc_nvenc",    "H.265 (GPU)",            false},
+    {"av1_nvenc",     "AV1 (GPU)",              false},
+    {"h264_qsv",      "H.264 (Quick Sync)",     false},
+    {"hevc_qsv",      "H.265 (Quick Sync)",     false},
+    {"h264_vaapi",    "H.264 (VAAPI)",          false},
+    {"hevc_vaapi",    "H.265 (VAAPI)",          false},
+    {"prores_ks",     "ProRes 4444",            false},
+    {"ffv1",          "FFV1 (lossless)",        true},
+    {"utvideo",       "Ut Video (lossless)",    true},
+    {"huffyuv",       "Huffyuv (lossless)",     true},
+    {"libtheora",     "Theora",                 false},
+    {"apng",          "APNG",                   false},
+    {"libwebp",       "WebP",                   false},
+};
+
+const KnownCodec* knownCodec(const QString& aEncoder) {
+    for (const KnownCodec& c : kKnownCodecs) {
+        if (aEncoder == QLatin1String(c.encoder))
+            return &c;
+    }
+    return nullptr;
+}
+
+// Can this encoder carry an alpha channel HERE? Asked of the encoder rather than
+// read off the row, because the two answers differ in exactly the cases that
+// matter: libx265 advertises yuva420p and then refuses to open with it.
+bool alphaWorks(const QString& aEncoder) {
+    return encoderSupportsPixFormatUsable(aEncoder, QStringLiteral("yuva420p"))
+        || encoderSupportsPixFormatUsable(aEncoder, QStringLiteral("rgba"));
+}
+
+} // namespace
+
+bool containerAcceptsUsableCodec(const QString& aContainer, const QString& aEncoderName) {
+    if (aEncoderName.isEmpty())
+        return false;
+    if (!encoderUsable(aEncoderName.toUtf8().constData()))
+        return false;
+    return muxerSupportsCodec(aContainer, aEncoderName);
+}
+
+QList<ContainerOption> writableContainers() {
+    // Probed once: each entry costs a one-frame encode, and the answer cannot
+    // change while the process lives.
+    static const QList<ContainerOption> kCache = [] {
+        QList<ContainerOption> out;
+        for (const KnownContainer& c : kKnownContainers) {
+            const QString name = QString::fromUtf8(c.name);
+
+            ContainerOption option;
+            option.name = name;
+            option.label = QString::fromUtf8(c.label);
+
+            if (name == QLatin1String("gif")) {
+                // GIF is the one artifact media::GifEncoder owns rather than
+                // libav: it builds a palette per clip, which libav's gif encoder
+                // does not. So it is present whenever the app is, and its codec
+                // is named "gif" to route it there.
+                option.defaultCodec = QStringLiteral("gif");
+                option.alphaCapable = true;
+                out.append(option);
+                continue;
+            }
+
+            // The default must be one that RUNS here, not merely one that
+            // compiled in: defaultCodecForContainer() only checks availability,
+            // so walk its candidates until one actually opens.
+            const QList<CodecOption> usable = usableCodecsForContainer(name);
+            if (usable.isEmpty())
+                continue;
+            option.defaultCodec = usable.first().encoder;
+            option.alphaCapable = usable.first().alphaCapable;
+            out.append(option);
+        }
+        return out;
+    }();
+    return kCache;
+}
+
+QList<CodecOption> usableCodecsForContainer(const QString& aContainer) {
+    QList<CodecOption> out;
+    if (aContainer.isEmpty())
+        return out;
+
+    // Offerable = known name, runs here, and this muxer accepts it, in the
+    // known list's order (compatibility first, lossless last).
+    for (const KnownCodec& c : kKnownCodecs) {
+        const QString encoder = QString::fromUtf8(c.encoder);
+        if (!containerAcceptsUsableCodec(aContainer, encoder))
+            continue;
+        const KnownCodec* known = knownCodec(encoder);
+        CodecOption option;
+        option.encoder = encoder;
+        option.label = QString::fromUtf8(known ? known->label : c.encoder);
+        option.lossless = c.lossless;
+        option.alphaCapable = alphaWorks(encoder);
+        out.append(option);
+    }
+    return out;
+}
+
 } // namespace ffmpeg
 } // namespace media

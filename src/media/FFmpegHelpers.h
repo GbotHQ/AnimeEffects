@@ -81,6 +81,45 @@ bool muxerSupportsCodec(const QString& aContainer, const QString& aEncoderName);
 // build provides), in priority order. Empty string if none fit -> caller rejects.
 QString defaultCodecForContainer(const QString& aContainer);
 
+// A container this build can actually WRITE, and the encoder it defaults to.
+//
+// This exists because "which formats can I export?" was answered by a
+// hand-maintained text file (assets/encode/VideoEncode.txt) that listed AVI,
+// Huffyuv, Ogg and Theora as though every build had them, and carried ffmpeg
+// COMMAND LINES from the era when the export shelled out to the CLI. The list is
+// now DERIVED: a container appears only if its muxer exists, its default encoder
+// is compiled in, and — the part no list can know — that encoder actually opens
+// and encodes a frame HERE. Hardware encoders are the reason: av1_nvenc is
+// compiled into most builds and fails at avcodec_open2 on a machine with no
+// capable device.
+struct ContainerOption {
+    QString name;         // "mp4" — the name callers pass to the exporter
+    QString label;        // "MP4" — what the user recognizes
+    QString defaultCodec; // already probed usable here
+    bool alphaCapable = false;
+};
+
+// Ordered most-commonly-wanted first. Probed once per process (each entry costs a
+// one-frame encode) and cached, so this is safe to call when building a dialog.
+QList<ContainerOption> writableContainers();
+
+// The encoders this container could carry that actually run here, best first,
+// each with the friendly name it is known by. An encoder absent from the
+// known-name table is skipped rather than shown by its libav identifier: a string
+// like "h264_qsv" in a codec list helps nobody, and the defaults cover every real
+// case.
+struct CodecOption {
+    QString encoder; // "libx265"
+    QString label;   // "H.265"
+    bool lossless = false;
+    bool alphaCapable = false;
+};
+QList<CodecOption> usableCodecsForContainer(const QString& aContainer);
+
+// True iff the named encoder runs here AND the container's muxer accepts it.
+// The single question that decides whether a container/codec pair is offerable.
+bool containerAcceptsUsableCodec(const QString& aContainer, const QString& aEncoderName);
+
 } // namespace ffmpeg
 } // namespace media
 
