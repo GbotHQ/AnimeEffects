@@ -28,6 +28,7 @@
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
 #include <QDir>
+#include <algorithm>
 #include <QFileDialog>
 #include <QPlainTextEdit>
 #include <QDialogButtonBox>
@@ -62,6 +63,10 @@ public:
     QLabel *destinationFacts;
     QComboBox *destinationCombo;
     QComboBox *qualityCombo;
+    // Lines of facts reserved even when the text is shorter, so the form below
+    // does not jump around while the user moves through the destination list.
+    static constexpr int kFactsMinLines = 4;
+
     QWidget *destinationBox;
     QGridLayout *destinationGrid;
     QRadioButton *customRatio;
@@ -564,7 +569,16 @@ public:
         // destination list, because a wrapped label's height IS its line count:
         // controls that move while you are reading them are worse than a little
         // empty space.
-        destinationFacts->setMinimumHeight(destinationFacts->fontMetrics().lineSpacing() * 4);
+        destinationFacts->setMinimumHeight(kFactsMinLines * destinationFacts->fontMetrics().lineSpacing());
+        // Horizontal Ignored means "give me whatever
+        // width the layout has and wrap into it". A wrapped label must not have a
+        // say in how wide its column is: its sizeHint is one long line, and
+        // letting that become the preferred width stretches the dialog instead of
+        // wrapping the sentence.
+        destinationFacts->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+        // Top-aligned: a taller-than-needed label centres its text by default,
+        // which floated the facts into the middle of the box.
+        destinationFacts->setAlignment(Qt::AlignLeft | Qt::AlignTop);
         destinationGrid->addWidget(destinationFacts, 2, 0, 1, 2);
 
         verticalLayout_3->addWidget(globalParamScroll);
@@ -640,6 +654,20 @@ public:
         QMetaObject::connectSlotsByName(exportWidget);
     } // setupUi
     struct Pos { int row = -1, col = -1; };
+
+    // The stated facts. One setter, so the text and the reserved height cannot
+    // drift apart.
+    //
+    // It deliberately does NOT size the label to its content: a wrapped label
+    // grows by itself once the layout gives it a width, and asking
+    // heightForWidth() for the answer before that layout has happened returned
+    // roughly twice the height needed, leaving a gap the size of half the panel.
+    // The single number that does belong here is the FLOOR, so the form below
+    // does not jump as the user moves through the destination list.
+    void setFacts(const QString& aText) {
+        destinationFacts->setText(aText);
+        destinationFacts->setMinimumHeight(kFactsMinLines * destinationFacts->fontMetrics().lineSpacing());
+    }
 
     // Fill the escape hatch's two rows from what this build can actually produce.
     //

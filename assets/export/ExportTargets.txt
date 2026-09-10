@@ -220,6 +220,31 @@
     <codec name="libwebp"    option="quality" best="80" worst="30"/>
   </quality_control>
 
+  <!-- ===== where each quality intent STARTS, within a codec's [best, worst] ==
+
+       Without this the Quality selector was inert for every destination whose
+       codec is FIXED (ten of these fourteen rows): the bucket picked the codec
+       only when the codec came from the ladder, so "Smaller file" and "Best
+       quality" produced byte-identical instructions for Telegram, Discord,
+       WhatsApp or LINE. The bucket now sets the codec's own quality knob, and
+       this is where its starting point is declared.
+
+       position 0 = the codec's best value, 1 = the lowest we accept before the
+       fit-to-cap loop gives up on quality and starts shrinking the image
+       instead. ONE table for every codec, because the intent is about the trade
+       the user is willing to make, not about a particular encoder — and a
+       position rather than a CRF, because the numbers themselves are per-codec
+       and already declared above.
+
+       Policy, not fact: these are the numbers to tune, so they are data.
+  -->
+  <bucket_positions>
+    <bucket name="smaller"  position="0.70"/>
+    <bucket name="balanced" position="0.25"/>
+    <bucket name="best"     position="0.00"/>
+    <bucket name="lossless" position="0.00"/>
+  </bucket_positions>
+
   <!-- ===== time budgets (for the codec ladder) =============================
 
        How long a user is presumed willing to wait, per quality intent, when

@@ -1552,7 +1552,7 @@ void MainWindow::onExportTriggered() {
                     manual << QStringLiteral("• ")
                                   + tr("A GIF loops forever, so the Loop animation box is fixed on.");
                 }
-                exportUI->destinationFacts->setText(manual.join(QLatin1Char('\n')));
+                exportUI->setFacts(manual.join(QLatin1Char('\n')));
                 return;
             }
             const ctrl::ExportTarget target =
@@ -1608,7 +1608,7 @@ void MainWindow::onExportTriggered() {
                     lines << QStringLiteral("• ") + note;
                 }
             }
-            exportUI->destinationFacts->setText(lines.join(QLatin1Char('\n')));
+            exportUI->setFacts(lines.join(QLatin1Char('\n')));
             // State the facts AND make them true in the controls the
             // destination governs, so the form cannot contradict itself.
             exportUI->applyPlan(plan, target);

@@ -299,6 +299,13 @@ public:
     // Per-quality-intent time budgets (seconds), from the data file. Policy,
     // not fact — therefore data, so it can be tuned without a rebuild.
     static QHash<QString, double> loadTimeBudgets(const QString& aPath = defaultPath());
+
+    // Where each quality intent starts within a codec's [best, worst] span
+    // (0 = the codec's best value, 1 = the lowest we accept before the fit-to-cap
+    // loop shrinks the image instead). Keyed by bucket name, from
+    // <bucket_positions>. One table for every codec: the intent describes the
+    // trade the user will accept, not a particular encoder.
+    static QHash<QString, double> loadBucketPositions(const QString& aPath = defaultPath());
 };
 
 // Apply a destination's size rule to a source size. YUV planar formats need

@@ -1046,6 +1046,131 @@ TEST_SECTION("artifact list is derived, and every entry is real", run_artifacts)
           "an unknown container offers nothing rather than a fabricated default");
 }
 
+// The Quality selector has to reach the encoder for EVERY destination, not just
+// the ones whose codec comes from the ladder. Ten of the fourteen rows fix the
+// codec (Telegram, Discord, WhatsApp, LINE, OBS...), so for those the bucket used
+// to change nothing at all: "Smaller file" and "Best quality" emitted identical
+// instructions and produced near-identical files.
+TEST_SECTION("quality intent reaches the encoder", run_bucket_quality) {
+    const QList<ctrl::ExportTarget> targets =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+    const ctrl::ExportTarget telegram =
+        ctrl::ExportTargets::find(targets, QStringLiteral("telegram.sticker"));
+    check(telegram.codecLadder == false, "telegram.sticker fixes its codec (the case that was inert)");
+
+    ctrl::ExportRequest req;
+    req.sourceSize = QSize(512, 512);
+    req.selection = ctrl::FrameSelection::fromCount(30);
+    req.fps = 24;
+
+    auto crfFor = [&](ctrl::QualityBucket aBucket) -> QString {
+        const ctrl::ExportPlan plan = ctrl::planExport(telegram, req, aBucket);
+        if (!plan.ok()) return QStringLiteral("<plan error: %1>").arg(plan.error);
+        return plan.config.encOptions.value(QStringLiteral("crf"), QStringLiteral("<absent>"));
+    };
+    const QString smaller = crfFor(ctrl::QualityBucket::Smaller);
+    const QString balanced = crfFor(ctrl::QualityBucket::Balanced);
+    const QString best = crfFor(ctrl::QualityBucket::Best);
+    QTextStream(stdout) << "    telegram.sticker crf: smaller=" << smaller
+                        << " balanced=" << balanced << " best=" << best << "\n";
+
+    check(smaller != QStringLiteral("<absent>"),
+          "the fixed-codec destination gets a quality knob at all");
+    check(smaller != best, "Smaller and Best are no longer the same instruction");
+    check(balanced != best, "Balanced differs from Best");
+
+    // Direction: VP9's knob is CRF, where a LARGER number means a smaller file.
+    // Asserting the direction and not merely inequality is what stops this test
+    // from passing if the mapping is ever reversed.
+    check(smaller.toInt() > balanced.toInt() && balanced.toInt() > best.toInt(),
+          QStringLiteral("CRF rises as the intent gets smaller-quality (%1 > %2 > %3)")
+              .arg(smaller, balanced, best));
+
+    // And inside the span the data declares, or the fit-to-cap loop would start
+    // outside the range it is allowed to search.
+    const QHash<QString, ctrl::QualityControl> qc =
+        ctrl::ExportTargets::loadQualityControl(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+    const ctrl::QualityControl control = qc.value(QStringLiteral("libvpx-vp9"));
+    check(control.option == QLatin1String("crf") && control.best == 24 && control.worst == 52,
+          "the span for libvpx-vp9 comes from the table");
+    for (const QString& v : {smaller, balanced, best}) {
+        check(v.toInt() >= control.best && v.toInt() <= control.worst,
+              QStringLiteral("crf %1 stays inside [%2, %3]").arg(v).arg(control.best).arg(control.worst));
+    }
+
+    // A codec with no quality knob must NOT be given a fabricated one: FFV1 is
+    // lossless, and inventing a "crf" for it would be a lie that the encoder
+    // then rejects as an unknown option.
+    const ctrl::ExportTarget master =
+        ctrl::ExportTargets::find(targets, QStringLiteral("archive.master"));
+    const ctrl::ExportPlan losslessPlan =
+        ctrl::planExport(master, req, ctrl::QualityBucket::Lossless);
+    check(losslessPlan.ok(), QStringLiteral("lossless master plan builds (%1)").arg(losslessPlan.error));
+    check(losslessPlan.config.encOptions.value(QStringLiteral("crf"), QString()).isEmpty(),
+          "a lossless codec is left alone (no invented quality knob)");
+
+    // Asking a lossy codec for "Lossless" cannot be honoured, and the plan says
+    // so rather than quietly pretending.
+    const ctrl::ExportPlan losslessOnVp9 =
+        ctrl::planExport(telegram, req, ctrl::QualityBucket::Lossless);
+    bool saidSo = false;
+    for (const QString& n : losslessOnVp9.notes) {
+        if (n.contains(QLatin1String("lossy"), Qt::CaseInsensitive)) saidSo = true;
+    }
+    check(saidSo, "Lossless on a lossy codec is stated, not silently approximated");
+
+    // The option being SET is not the claim; the claim is that the file changes.
+    // Encode real frames both ways through the same code path the app uses and
+    // compare the output — the whole point of this session's fixes is that a
+    // setting which does not reach the output is worse than no setting.
+    {
+        const ctrl::ExportTarget generic =
+            ctrl::ExportTargets::find(targets, QStringLiteral("generic.file"));
+        const QString smallPath = QDir::temp().filePath(QStringLiteral("ae_bucket_small.mp4"));
+        const QString bestPath = QDir::temp().filePath(QStringLiteral("ae_bucket_best.mp4"));
+        auto encodeAt = [&](ctrl::QualityBucket aBucket, const QString& aPath) -> qint64 {
+            ctrl::ExportRequest r = req;
+            r.outputPath = aPath;
+            r.sourceSize = QSize(320, 240);
+            r.selection = ctrl::FrameSelection::fromCount(8);
+            ctrl::ExportPlan p = ctrl::planExport(generic, r, aBucket);
+            if (!p.ok()) return -1;
+            p.config.outputPath = aPath;
+            QList<QImage> frames;
+            for (int i = 0; i < p.frames(); ++i)
+                frames.append(makeFrame(p.renderSize.width(), p.renderSize.height(), i));
+            media::VideoEncoder enc;
+            if (!enc.open(p.config) || !enc.writeAll(frames, p.config)) return -1;
+            return QFileInfo(aPath).size();
+        };
+        const qint64 smallBytes = encodeAt(ctrl::QualityBucket::Smaller, smallPath);
+        const qint64 bestBytes = encodeAt(ctrl::QualityBucket::Best, bestPath);
+        QTextStream(stdout) << "    generic.file: smaller=" << smallBytes
+                            << " bytes, best=" << bestBytes << " bytes\n";
+        check(smallBytes > 0 && bestBytes > 0, "both buckets encode");
+        check(bestBytes > smallBytes,
+              QStringLiteral("Best really produces a larger file than Smaller (%1 > %2)")
+                  .arg(bestBytes).arg(smallBytes));
+        QFile::remove(smallPath);
+        QFile::remove(bestPath);
+    }
+
+    // libwebp's knob runs the OTHER way (0-100, higher is better), so the same
+    // mapping must produce the opposite ordering. One table, both directions.
+    const ctrl::ExportTarget discordEmoji =
+        ctrl::ExportTargets::find(targets, QStringLiteral("discord.emoji"));
+    const ctrl::ExportPlan webpSmall =
+        ctrl::planExport(discordEmoji, req, ctrl::QualityBucket::Smaller);
+    const ctrl::ExportPlan webpBest =
+        ctrl::planExport(discordEmoji, req, ctrl::QualityBucket::Best);
+    const QString ws = webpSmall.config.encOptions.value(QStringLiteral("quality"));
+    const QString wb = webpBest.config.encOptions.value(QStringLiteral("quality"));
+    QTextStream(stdout) << "    discord.emoji webp quality: smaller=" << ws << " best=" << wb << "\n";
+    check(!ws.isEmpty() && !wb.isEmpty(), "the WebP rows get their quality knob too");
+    check(ws.toInt() < wb.toInt(),
+          QStringLiteral("a higher-is-better knob moves the other way (%1 < %2)").arg(ws, wb));
+}
+
 TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
 
     const QList<ctrl::ExportTarget> all =

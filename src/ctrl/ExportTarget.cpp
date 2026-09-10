@@ -341,6 +341,29 @@ QHash<QString, QualityControl> ExportTargets::loadQualityControl(const QString& 
     return out;
 }
 
+QHash<QString, double> ExportTargets::loadBucketPositions(const QString& aPath) {
+    static QHash<QString, QHash<QString, double>> cache;
+    const auto it = cache.constFind(aPath);
+    if (it != cache.constEnd()) return *it;
+
+    QHash<QString, double> out;
+    QFile file(aPath);
+    if (file.open(QIODevice::ReadOnly)) {
+        QDomDocument doc;
+        if (doc.setContent(&file)) {
+            const QDomElement root = doc.firstChildElement(QStringLiteral("export_targets"));
+            const QDomElement bp = root.firstChildElement(QStringLiteral("bucket_positions"));
+            for (QDomElement b = bp.firstChildElement(QStringLiteral("bucket")); !b.isNull();
+                 b = b.nextSiblingElement(QStringLiteral("bucket"))) {
+                out.insert(b.attribute(QStringLiteral("name")),
+                           (double)attrDouble(b, QStringLiteral("position")));
+            }
+        }
+    }
+    cache.insert(aPath, out);
+    return out;
+}
+
 QHash<QString, double> ExportTargets::loadTimeBudgets(const QString& aPath) {
     static QHash<QString, QHash<QString, double>> cache;
     const auto it = cache.constFind(aPath);
@@ -752,6 +775,51 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     plan.config.outputPath = aRequest.outputPath;
     plan.config.encOptions = aTarget.encOptions;
     plan.config.codecTag = aTarget.codecTag;
+
+    // The user's quality intent, applied through the codec's OWN knob.
+    //
+    // Without this the Quality selector was inert for every destination whose
+    // codec is fixed — ten of the fourteen rows — because the bucket only ever
+    // chose the codec, and the codec here is dictated by the platform. "Smaller
+    // file" and "Best quality" then produced identical instructions.
+    //
+    // The knob is the private encoder option the table names ('crf' for the
+    // VP9/AV1/x264/x265 families, 'quality' for WebP), NOT
+    // media::VideoEncoder::Config::quality: that shorthands a 0-100 value onto
+    // crf for H.264/H.265 only and is ignored for everything else, so it could
+    // never have covered WebP or ProRes.
+    {
+        const QString codecKey = plan.config.codec;
+        const QHash<QString, QualityControl> controls = ExportTargets::loadQualityControl();
+        const QualityControl control = controls.value(codecKey);
+        const QHash<QString, double> positions = ExportTargets::loadBucketPositions();
+        const QString bucket = QString::fromUtf8(bucketName(aBucket));
+
+        if (!control.option.isEmpty()) {
+            if (!positions.contains(bucket)) {
+                // A table without the policy cannot apply the intent, and saying
+                // nothing would put us back where this started: a control that
+                // looks like a decision and is not one.
+                plan.notes << QStringLiteral(
+                    "Quality intent not applied: the destination table declares no "
+                    "<bucket_positions>, so '%1' was left at its own default.").arg(codecKey);
+            } else {
+                const double position = positions.value(bucket);
+                const int value = (int)std::lround(control.best
+                                                   + (control.worst - control.best) * position);
+                plan.config.encOptions.insert(control.option, QString::number(value));
+                if (aBucket == QualityBucket::Lossless) {
+                    // The knob exists precisely because the codec is lossy (the
+                    // table's own rule: no knob means nothing to trade). Asking
+                    // for lossless cannot be honoured, so say so instead of
+                    // quietly delivering the best lossy setting.
+                    plan.notes << QStringLiteral(
+                        "'%1' is a lossy codec, so Lossless here means its highest "
+                        "quality, not a lossless file.").arg(codecKey);
+                }
+            }
+        }
+    }
     plan.config.fit = (aTarget.size.mode == SizeMode::Exact)
                           ? (aTarget.size.fit == FitMode::Crop ? media::FitMode::Crop
                                                                               : media::FitMode::Pad)
