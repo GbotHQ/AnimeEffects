@@ -11,6 +11,7 @@ extern "C" {
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libavutil/dict.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
@@ -93,6 +94,7 @@ struct VideoEncoder::Impl {
     AVFrame* mFrame = nullptr;
     AVPixelFormat mPixFmt = AV_PIX_FMT_NONE;
     bool mClosed = true;
+    FitMode mFit = FitMode::None;
 
     // Optional audio stream (interleaved float, set via setAudio()).
     AVCodecContext* mAudioCtx = nullptr;
@@ -241,10 +243,36 @@ bool VideoEncoder::open(const Config& aConfig) {
         ::av_opt_set_int(mImpl->mCtx->priv_data, "crf", crf, 0);
     }
 
-    if (::avcodec_open2(mImpl->mCtx, codec, nullptr) < 0) {
-        return fail("could not open encoder: " + aConfig.codec);
+    // Private encoder options (e.g. libvpx "auto-alt-ref"). avcodec_open2
+    // consumes the entries it recognises and LEAVES the rest, which is how we
+    // detect a typo instead of silently producing wrong output.
+    AVDictionary* opts = nullptr;
+    for (auto it = aConfig.encOptions.constBegin(); it != aConfig.encOptions.constEnd(); ++it) {
+        const QByteArray k = it.key().toUtf8();
+        const QByteArray v = it.value().toUtf8();
+        ::av_dict_set(&opts, k.constData(), v.constData(), 0);
+    }
+    const int openErr = ::avcodec_open2(mImpl->mCtx, codec, &opts);
+    if (opts) {
+        AVDictionaryEntry* leftover = ::av_dict_get(opts, "", nullptr, AV_DICT_IGNORE_SUFFIX);
+        const QString unknown = leftover ? QString::fromUtf8(leftover->key) : QString();
+        ::av_dict_free(&opts);
+        if (leftover) {
+            return fail(QStringLiteral("unknown encoder option '%1' for %2")
+                            .arg(unknown, aConfig.codec));
+        }
+    }
+    if (openErr < 0) {
+        // Report libav's own reason: "could not open encoder" alone is useless
+        // when the real cause is an unsupported pixel format or a missing
+        // device.
+        char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        ::av_strerror(openErr, errbuf, sizeof(errbuf));
+        return fail(QStringLiteral("could not open encoder %1: %2")
+                        .arg(aConfig.codec, QString::fromUtf8(errbuf)));
     }
     mImpl->mPixFmt = pixFmt;
+    mImpl->mFit = aConfig.fit;
 
     // Stream.
     mImpl->mStream = ::avformat_new_stream(mImpl->mFmt, nullptr);
@@ -254,6 +282,18 @@ bool VideoEncoder::open(const Config& aConfig) {
         return fail("could not copy codec parameters");
     }
     mImpl->mStream->time_base = mImpl->mCtx->time_base;
+    // Stream codec tag (e.g. "hvc1" for HEVC). This belongs to the container's
+    // stream entry, not the encoder, so it is applied AFTER the parameters are
+    // copied and before the header is written. Without it, HEVC in an ISO
+    // container defaults to hev1, which Safari/iOS refuse to play.
+    if (aConfig.codecTag.size() == 4) {
+        // Bind the UTF-8 buffer to a local: taking constData() off a temporary
+        // QByteArray leaves a dangling pointer by the next statement (this
+        // exact bug already bit the container name above).
+        const QByteArray tagBytes = aConfig.codecTag.toUtf8();
+        const char* t = tagBytes.constData();
+        mImpl->mStream->codecpar->codec_tag = (uint32_t)MKTAG(t[0], t[1], t[2], t[3]);
+    }
     // Make the real framerate discoverable to decoders/players (avg_frame_rate
     // is not the same as time_base and would otherwise read as 0/0).
     mImpl->mStream->avg_frame_rate = AVRational{ aConfig.fps, 1 };
@@ -271,8 +311,12 @@ bool VideoEncoder::open(const Config& aConfig) {
     if (::avio_open(&mImpl->mFmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
         return fail("could not open output file: " + aConfig.outputPath);
     }
-    if (::avformat_write_header(mImpl->mFmt, nullptr) < 0) {
-        return fail("could not write container header");
+    const int hdrErr = ::avformat_write_header(mImpl->mFmt, nullptr);
+    if (hdrErr < 0) {
+        char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        ::av_strerror(hdrErr, errbuf, sizeof(errbuf));
+        return fail(QStringLiteral("could not write container header for %1/%2: %3")
+                        .arg(aConfig.container, aConfig.codec, QString::fromUtf8(errbuf)));
     }
 
     // Format converter: QImage is normalized to RGBA before sws.
@@ -305,6 +349,30 @@ bool VideoEncoder::writeFrame(const QImage& aFrame) {
     QImage rgba = aFrame.convertToFormat(QImage::Format_RGBA8888);
     const int width = mImpl->mCtx->width;
     const int height = mImpl->mCtx->height;
+
+    // Pad/Crop: reconcile the aspect ratio here (before the size-mismatch path
+    // below) so the frame handed to sws is already exactly the encoded size.
+    if (mImpl->mFit != FitMode::None && (rgba.width() != width || rgba.height() != height)) {
+        const Qt::AspectRatioMode mode = (mImpl->mFit == FitMode::Pad)
+                                             ? Qt::KeepAspectRatio
+                                             : Qt::KeepAspectRatioByExpanding;
+        const QImage fitted = rgba.scaled(width, height, mode, Qt::SmoothTransformation);
+        QImage canvas(width, height, QImage::Format_RGBA8888);
+        canvas.fill(0x00000000); // fully transparent; stickers want no background
+        // KeepAspectRatioByExpanding can exceed the frame, so the offset may be
+        // negative — that is the crop. Copy only the intersecting rectangle.
+        const int ox = (width - fitted.width()) / 2;
+        const int oy = (height - fitted.height()) / 2;
+        const int sx = std::max(0, -ox);
+        const int sy = std::max(0, -oy);
+        const int cw = std::min(fitted.width() - sx, width - std::max(0, ox));
+        const int ch = std::min(fitted.height() - sy, height - std::max(0, oy));
+        for (int y = 0; y < ch; ++y) {
+            std::memcpy(canvas.scanLine(std::max(0, oy) + y) + (size_t)std::max(0, ox) * 4,
+                        fitted.constScanLine(sy + y) + (size_t)sx * 4, (size_t)cw * 4);
+        }
+        rgba = canvas;
+    }
 
     // The encoder may have rounded a YUV frame dimension up to an even size
     // (normalizedSize). If the caller fed an odd-sized QImage, the sws/direct
