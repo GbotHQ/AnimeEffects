@@ -358,6 +358,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     mDockDropOverlay->onDropped = [this](QDockWidget* aPanel, const DockDropTarget& aTarget) {
         applyDockDrop(aPanel, aTarget);
     };
+    // The same placement, without the panel bookkeeping: this is what puts the
+    // preview dock where the panel would go, which is why the preview cannot
+    // disagree with the drop - they are the same code, and the layout, not a
+    // second copy of its arithmetic, decides the geometry.
+    mDockDropOverlay->onPlace = [this](QDockWidget* aWidget, const DockDropTarget& aTarget) {
+        placeDock(aWidget, aTarget);
+    };
 
     // One size range for every panel, and one set of allowed areas: a tab
     // group can only be as narrow as its strictest member and as wide as its
@@ -2136,7 +2143,10 @@ bool MainWindow::eventFilter(QObject* aObject, QEvent* aEvent) {
         case QEvent::LayoutRequest:
         case QEvent::ChildAdded:
         case QEvent::ChildRemoved:
-            QTimer::singleShot(0, this, [this]() { updateDockTabMenus(); });
+            QTimer::singleShot(0, this, [this]() {
+                updateDockTabMenus();
+                refreshPanelChrome();
+            });
             break;
         default:
             break;
@@ -2184,9 +2194,33 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
     if (auto* panel = qobject_cast<DockPanel*>(aPanel)) panel->setPanelFloating(false);
     aPanel->show();
 
+    placeDock(aPanel, aTarget);
+    applyPanelMetrics(aPanel);
+
+    // Temporary: what the preview promised against what the layout did. The two
+    // now come from the same code, so this is a check rather than a hope.
+    QTimer::singleShot(400, this, [this, aPanel, aTarget]() {
+        dockSpikeLog(aPanel, QStringLiteral("settled: kind=%1 area=%2 -> actual=%3,%4 %5x%6 tabified=%7")
+                .arg(int(aTarget.kind)).arg(int(aTarget.area))
+                .arg(aPanel->x()).arg(aPanel->y())
+                .arg(aPanel->width()).arg(aPanel->height())
+                .arg(this->tabifiedDockWidgets(aPanel).size()));
+        refreshPanelChrome();
+    });
+}
+
+/// The placement alone: which area, split or tab a target asks for. Shared with
+/// the drop preview, which is a real dock placed by this same code - so the two
+/// cannot drift apart the way a separately computed rectangle did.
+void MainWindow::placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget) {
+    if (!aPanel || aTarget.kind == DockDropKind::None) return;
+
     switch (aTarget.kind) {
     case DockDropKind::Tabify: {
         if (!aTarget.group) return;
+        // in the target area first, so this arranges two docks of one area
+        // rather than pulling the group towards the panel's remembered area
+        addDockWidget(aTarget.area, aPanel);
         tabifyDockWidget(aTarget.group, aPanel);
         aPanel->raise();
         dockSpikeLog(aPanel, QStringLiteral("drop: tabified with %1 (area=%2)")
@@ -2258,27 +2292,18 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
     default:
         break;
     }
-
-    applyPanelMetrics(aPanel);
-
-    // Temporary, while the preview rules are being matched to reality: where the
-    // panel actually ended up, once the layout has settled.
-    QTimer::singleShot(400, this, [this, aPanel, aTarget]() {
-        const QRect settled = aPanel->geometry();
-        dockSpikeLog(aPanel, QStringLiteral("settled: preview=%1,%2 %3x%4 -> actual=%5,%6 %7x%8 area=%9 "
-                                           "tabified=%10 | tools=%11,%12 %13x%14 anim=%15,%16 %17x%18")
-                .arg(aTarget.rect.x()).arg(aTarget.rect.y())
-                .arg(aTarget.rect.width()).arg(aTarget.rect.height())
-                .arg(settled.x()).arg(settled.y()).arg(settled.width()).arg(settled.height())
-                .arg(int(this->dockWidgetArea(aPanel)))
-                .arg(this->tabifiedDockWidgets(aPanel).size())
-                .arg(mDockToolWidget->x()).arg(mDockToolWidget->y())
-                .arg(mDockToolWidget->width()).arg(mDockToolWidget->height())
-                .arg(mDockAnimationWidget->x()).arg(mDockAnimationWidget->y())
-                .arg(mDockAnimationWidget->width()).arg(mDockAnimationWidget->height()));
-    });
 }
 
+/// Re-syncs every panel's title chrome. Called after the layout changes hands (a
+/// drop, a tab, a panel moving area): whether a panel shows its own header
+/// depends on whether it shares its area, and the events a dock emits do not
+/// cover every way that changes - measured: a panel tabified by a drop kept its
+/// header, because its last Show event happened before the tab existed.
+void MainWindow::refreshPanelChrome() {
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (auto* panel = qobject_cast<DockPanel*>(dock)) panel->updateTitleChrome();
+    }
+}
 
 /// The dock in an area that sits closest to the central widget: the one a new
 /// panel has to be split against to land between it and the canvas. This is the
@@ -2286,7 +2311,8 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
 QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const {
     QDockWidget* best = nullptr;
     for (QDockWidget* dock : findChildren<QDockWidget*>()) {
-        if (dock == aSkip || !dock->isVisible() || dock->isFloating()) continue;
+        if (dock == aSkip || dock->property("aeDockPreview").toBool()) continue;
+        if (!dock->isVisible() || dock->isFloating()) continue;
         if (this->dockWidgetArea(dock) != aArea) continue;
         if (!best) {
             best = dock;

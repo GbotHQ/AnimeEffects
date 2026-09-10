@@ -1,6 +1,8 @@
 #include "gui/PlayBackWidget.h"
 #include <QFile>
 #include <QPainter>
+#include <QPoint>
+#include <QResizeEvent>
 #include <QTimer>
 #include <QTextStream>
 #include <functional>
@@ -11,7 +13,43 @@ constexpr double kButtonSize = 24.0 * 1.2;
 constexpr double kIconSize = 18.0 * 1.2;
 constexpr int kGap = 4;
 constexpr int kButtonCount = 8;
-constexpr int kLeftMargin = 4;
+constexpr int kEdgeMargin = 4; ///< padding at the row's left and right ends
+constexpr int kTopMargin = 3;  ///< padding above the row
+constexpr int kGroupGap = 22;  ///< between groups, wider than the gap inside one
+
+/// The row's groups, read left to right. The split is by meaning, not by
+/// symmetry:
+///
+///  - the transport (rewind, step back, play, step on, fast forward) is what
+///    the panel is *for*, so it starts at the reading edge;
+///  - the loop toggle is a mode of that whole transport rather than another
+///    step in it, so it stands apart, centred;
+///  - animation settings and the audio track open dialogs and configure the
+///    panel rather than driving it, so they sit at the trailing edge, out of
+///    the transport's run.
+///
+/// The bar used to be a column beside the timeline, which made its button stack
+/// the animation panel's minimum height (262px, so the panel could never be
+/// shorter than 290) - a floor no other panel had. As a row above the timeline
+/// it is 35px tall instead.
+struct ButtonGroup {
+    int first;
+    int count;
+};
+constexpr ButtonGroup kGroups[] = {{0, 5}, {5, 1}, {6, 2}};
+constexpr int kGroupCount = int(sizeof(kGroups) / sizeof(kGroups[0]));
+
+/// Total width the row needs: the buttons, the gaps inside each group, and the
+/// gaps between the groups.
+int rowWidth() {
+    const int step = int(kButtonSize) + kGap;
+    int width = kEdgeMargin * 2;
+    for (int g = 0; g < kGroupCount; ++g) {
+        width += step * kGroups[g].count - kGap;
+        if (g + 1 < kGroupCount) width += kGroupGap;
+    }
+    return width;
+}
 
 // A playback button whose glyph brightens to the active (max-contrast) color
 // on hover — the icon participates in the hover feedback, not just the
@@ -39,9 +77,9 @@ namespace gui {
 
 PlayBackWidget::PlayBackWidget(GUIResources& aResources, QWidget* aParent, core::Project& mProject):
     QWidget(aParent), mGUIResources(aResources), mButtons(), mDoesLoop(true) {
-    // Fixed width (the layout must never stretch the toolbar), full height
-    // (the column fills the dock; the buttons stay top-anchored).
-    this->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    // A row above the timeline: fixed height, and the layout may stretch it
+    // sideways (the buttons stay left-anchored).
+    this->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     aProject = &mProject;
 
     mButtons.push_back(createButton("skip-back", false, 0, tr("Return to initial frame")));
@@ -63,6 +101,7 @@ PlayBackWidget::PlayBackWidget(GUIResources& aResources, QWidget* aParent, core:
     }
     audioWidget->setupUi(audioUI, &mediaPlayer, aConf);
     mGUIResources.onThemeChanged.connect(this, &PlayBackWidget::onThemeUpdated);
+    layoutButtons();
     // The audio window's speaker glyph is a runtime-tinted icon; refresh it
     // (and let the ToolSlider repaint) on theme changes.
     mGUIResources.onThemeChanged.connect(audioWidget, &AudioPlaybackWidget::onThemeUpdated);
@@ -153,8 +192,7 @@ void PlayBackWidget::PlayPause() {
 }
 
 QSize PlayBackWidget::sizeHint() const {
-    // Symmetric side padding: left and right margins are the same.
-    return QSize(kButtonSize + kLeftMargin * 2, (kButtonSize + kGap) * kButtonCount);
+    return QSize(rowWidth(), kButtonSize + kTopMargin * 2);
 }
 
 QSize PlayBackWidget::minimumSizeHint() const {
@@ -162,12 +200,40 @@ QSize PlayBackWidget::minimumSizeHint() const {
 }
 
 void PlayBackWidget::paintEvent(QPaintEvent* aEvent) {
-    // The playback bar is a fixed toolbar beside the timeline; the 1px
-    // hairline (the design system's section-separator token) marks its left
-    // edge. Painted here, like the ThinSplitter/DockSash hairlines, because
-    // QSS box rules do not render on plain widget surfaces.
-    QPainter painter(this);
-    painter.fillRect(0, 0, 1, height(), theme::Colors::current().hairline);
+    // Nothing is painted, deliberately. There used to be a hairline under the
+    // bar, left over from when the bar was a column and the line was the
+    // boundary it shared with the timeline; as a row above the timeline that
+    // line separates nothing that needs separating, and the timeline draws its
+    // own header right below. The override stays so the universal QWidget
+    // background rule in the QSS cannot fill the row.
+    Q_UNUSED(aEvent);
+}
+
+/// Places the buttons: one run per group, the first from the left edge, the last
+/// from the right edge, and the one in between centred. Positions depend on the
+/// bar's width, so this runs on every resize.
+void PlayBackWidget::layoutButtons() {
+    const int step = int(kButtonSize) + kGap;
+    const auto place = [this, step](int aFrom, int aCount, int aStartX) {
+        int x = aStartX;
+        for (int i = aFrom; i < aFrom + aCount && i < int(mButtons.size()); ++i) {
+            mButtons[i]->setGeometry(x, kTopMargin, int(kButtonSize), int(kButtonSize));
+            x += step;
+        }
+    };
+
+    place(kGroups[0].first, kGroups[0].count, kEdgeMargin);
+
+    const int middleWidth = step * kGroups[1].count - kGap;
+    place(kGroups[1].first, kGroups[1].count, (width() - middleWidth) / 2);
+
+    const int trailingWidth = step * kGroups[2].count - kGap;
+    place(kGroups[2].first, kGroups[2].count, width() - kEdgeMargin - trailingWidth);
+}
+
+void PlayBackWidget::resizeEvent(QResizeEvent* aEvent) {
+    QWidget::resizeEvent(aEvent);
+    layoutButtons();
 }
 
 void PlayBackWidget::pushPauseButton() {
@@ -203,7 +269,6 @@ PlayBackWidget::createButton(const QString& aName, bool aIsCheckable, int aColum
     // The QSS width/height rule pins the box; geometry alone is not enough
     // because theme restyles resize absolute children to the style's
     // sizeFromContents (icon + button margins -> 29px tall).
-    button->setGeometry(kLeftMargin, 2 + (kButtonSize + kGap) * aColumn, kButtonSize, kButtonSize);
     return button;
 }
 
@@ -215,11 +280,7 @@ void PlayBackWidget::onThemeUpdated(theme::Theme& aTheme) {
     // button margins), which sticks at 29px tall even after the QSS pins
     // the sizeHint to 24x24. Re-assert the fixed grid once the restyle
     // cascade has settled.
-    QTimer::singleShot(0, [this]() {
-        for (int i = 0; i < (int)mButtons.size(); ++i) {
-            mButtons[i]->setGeometry(kLeftMargin, 2 + (kButtonSize + kGap) * i, kButtonSize, kButtonSize);
-        }
-    });
+    QTimer::singleShot(0, [this]() { layoutButtons(); });
 
     if (!mButtons.empty()) {
         for (int i = 0; i < (int)mButtons.size(); ++i) {

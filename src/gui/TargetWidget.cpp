@@ -7,6 +7,7 @@
 #include "core/ProjectEvent.h"
 #include <QDialog>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QScopedPointer>
 
 namespace gui {
@@ -27,9 +28,10 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mHorizontalSplitter->setHitBoxOffset(4);
     mObjTree = new ObjectTreeWidget(aViaPoint, aResources, mHorizontalSplitter);
     mTimeLine = new TimeLineWidget(aResources, aViaPoint, *this, mHorizontalSplitter);
-    // The playback bar is a fixed-width toolbar: it lives next to the
-    // splitter, not inside it, so there is no draggable boundary and the
-    // buttons can never be resized.
+    // The playback bar is a fixed-height toolbar above the tree/timeline
+    // splitter, not inside it, so there is no draggable boundary and the buttons
+    // can never be resized. (It used to be a column beside the splitter, which
+    // made its nine-button stack this panel's minimum height.)
     mPlayBack = new PlayBackWidget(aResources, this, *mProject);
 
     mHorizontalSplitter->addWidget(mObjTree);
@@ -38,11 +40,11 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mHorizontalSplitter->setCollapsible(1, false);
 
 
-    auto* lay = new QHBoxLayout(this);
+    auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
-    lay->addWidget(mHorizontalSplitter, 1);
     lay->addWidget(mPlayBack);
+    lay->addWidget(mHorizontalSplitter, 1);
 
     mPlayBack->setPushDelegate([=](PlayBackWidget::PushType aType) { this->onPlayBackButtonPushed(aType); });
 }

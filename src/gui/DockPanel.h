@@ -57,6 +57,10 @@ public:
     /// in that state, so the panel's own header steps aside instead of drawing
     /// a second title row under the tabs.
     bool isTabGrouped();
+    /// Shows the header only while this panel is the only one in its area.
+    /// Public: the main window re-syncs after layout changes, since a dock's own
+    /// events do not cover every way its group membership can change.
+    void updateTitleChrome();
 
     /// The window this panel docks into, remembered at creation. It cannot be
     /// found later: a floating panel is its own toplevel, so walking up from the
@@ -115,8 +119,6 @@ private:
     /// derives comes from the same stale rectangle.
     void ensureRing();
     void onTopLevelChanged(bool aFloating);
-    /// Shows the header only while this panel is the only one in its area.
-    void updateTitleChrome();
 
     QVector<RingBand*> mRing;
     QSize mRingSize;

@@ -90,6 +90,11 @@ public:
 
     /// Called with the resolved target when a drag is dropped on the overlay.
     std::function<void(QDockWidget*, const DockDropTarget&)> onDropped;
+    /// Called to place a widget for a target, without any of the panel
+    /// bookkeeping a real drop does. The overlay uses it to put a throwaway
+    /// dock where the panel would go, so the preview is produced by the layout
+    /// rather than predicted by a second copy of its arithmetic.
+    std::function<void(QDockWidget*, const DockDropTarget&)> onPlace;
 
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
@@ -102,11 +107,14 @@ protected:
 private:
     /// The rect a dock occupies together with the docks tabbed onto it.
     QRect groupRect(QDockWidget* aDock) const;
-    /// How thick the preview band is along an axis: what the panel would
-    /// actually take, so the preview is not a guess.
-    int bandExtent(Qt::Orientation aAxis, int aLimit) const;
-    /// The slice of an area the drop will take, mirroring the operation.
-    QRect areaSlice(Qt::DockWidgetArea aArea, const QRect& aCanvas) const;
+    /// Places (or clears) the preview dock for a target. The preview is a real
+    /// QDockWidget handed to the same operation a drop performs, so what it
+    /// occupies is what the panel will occupy - the layout decides both, and
+    /// there is no second model of it to drift.
+    void showPreview(const DockDropTarget& aTarget);
+    void clearPreview();
+
+    QDockWidget* mPreview = nullptr;
     QDockWidget* panelFromMime(const QMimeData* aData) const;
 
     QMainWindow* mWindow;

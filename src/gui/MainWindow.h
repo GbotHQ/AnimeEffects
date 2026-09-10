@@ -139,6 +139,10 @@ private:
     void applyPanelMetrics(QDockWidget* aDock);
     /// Performs the docking a drop asked for (declared in DockDropOverlay.h).
     void applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget);
+    /// The placement alone, shared with the drop preview.
+    void placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget);
+    /// Re-syncs each panel's header visibility after a layout change.
+    void refreshPanelChrome();
     /// The dock in an area closest to the central widget (the split anchor).
     QDockWidget* innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const;
     void updateDockTabMenus();

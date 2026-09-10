@@ -253,6 +253,20 @@ void DockTitleBar::mouseDoubleClickEvent(QMouseEvent* aEvent) {
     QWidget::mouseDoubleClickEvent(aEvent);
 }
 
+void DockTitleBar::leaveEvent(QEvent* aEvent) {
+    // The hover wash and the cursor are shown from mouseMoveEvent, which stops
+    // arriving the moment the pointer leaves - and while the mouse is held
+    // (during a drag) or after a drop it may never arrive again, so the wash
+    // stayed on a title the pointer had left long ago. Leaving is the only
+    // event that says so.
+    if (mTabHover) {
+        mTabHover = false;
+        setCursor(Qt::ArrowCursor);
+        update();
+    }
+    QWidget::leaveEvent(aEvent);
+}
+
 void DockTitleBar::mouseReleaseEvent(QMouseEvent* aEvent) {
     mDockDragArmed = false;
     mMoving = false;

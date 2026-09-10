@@ -281,6 +281,18 @@ bool DockPanel::eventFilter(QObject* aObject, QEvent* aEvent) {
             dockSpikeLog(this, QStringLiteral("dock press pos=%1,%2 button=0x%3 floating=%4")
                     .arg(int(m->position().x())).arg(int(m->position().y()))
                     .arg(int(m->button()), 0, 16).arg(isFloating()));
+            // A grouped panel draws no header - its title is the group's tab -
+            // which leaves the strip where the header was as bare dock surface.
+            // A press there reaches the QDockWidget, and that is what starts
+            // Qt's own dock drag, which floats the panel: measured, pressing
+            // there undocked a tabbed panel mid-click. The strip belongs to the
+            // tab now, so it swallows the press instead.
+            QWidget* header = titleBarWidget();
+            if (m->button() == Qt::LeftButton && header && !header->isVisible()) {
+                dockSpikeLog(this, QStringLiteral("grouped header strip press -> swallowed "
+                                                  "(the tab is the handle)"));
+                return true;
+            }
             break;
         }
         case QEvent::MouseMove: {

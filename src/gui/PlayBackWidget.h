@@ -37,6 +37,7 @@ public:
     QSize minimumSizeHint() const override;
     void pushPauseButton();
     void paintEvent(QPaintEvent* aEvent) override;
+    void resizeEvent(QResizeEvent* aEvent) override;
     core::Project* aProject;
     QWidget* audioUI = new QWidget(this, Qt::Window);
     std::vector<audioConfig>* aConf = new std::vector<audioConfig>;
@@ -46,6 +47,8 @@ public:
 
 private:
     QPushButton* createButton(const QString& aName, bool aIsCheckable, int aColumn, const QString& aToolTip);
+    /// Places the buttons in their groups, from the bar's current width.
+    void layoutButtons();
     // Set a playback button's rest icon and its hover counterpart in one go
     // (the play/pause glyph swap must keep the hover in sync).
     void setButtonIcon(int aIndex, const QString& aName);

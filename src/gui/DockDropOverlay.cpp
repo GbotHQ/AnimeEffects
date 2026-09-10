@@ -12,6 +12,8 @@
 #include <QMainWindow>
 #include <QMimeData>
 #include <QPainter>
+#include <QPointer>
+#include <QTimer>
 #include <QPainterPath>
 
 namespace gui {
@@ -80,6 +82,81 @@ bool canSplit(const QRect& aGroup, Qt::Edge aEdge, Qt::DockWidgetArea aArea) {
 
 } // namespace
 
+/// The preview's body: an accent wash with a 1px accent edge. Everything around
+/// it is the real layout - the preview is a real dock in the real dock area -
+/// so the wash marks the slot without pretending to be the panel.
+class DockPreviewBody: public QWidget {
+public:
+    DockPreviewBody(QWidget* aParent, const QSize& aHint):
+        QWidget(aParent) {
+        setMinimumSize(aHint);
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_NoSystemBackground);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        const theme::Colors c = theme::Colors::current();
+        QColor fill = c.accent;
+        fill.setAlpha(70);
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QRectF area = QRectF(rect()).adjusted(1.5, 1.5, -1.5, -1.5);
+        QPainterPath path;
+        path.addRoundedRect(area, 4, 4);
+        p.fillPath(path, fill);
+        p.setPen(QPen(c.accent, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+    }
+};
+
+/// The size the panel would bring to a slot: a floating panel's hint carries its
+/// frame, and the frame is not there once docked.
+QSize dockedHint(const QDockWidget* aPanel) {
+    if (!aPanel) return QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
+    QSize hint = aPanel->sizeHint();
+    if (aPanel->isFloating())
+        hint -= QSize(2 * dockMetrics::kFrameInset, 2 * dockMetrics::kFrameInset);
+    return hint;
+}
+
+void DockDropOverlay::clearPreview() {
+    if (!mPreview || !mWindow) return;
+    mWindow->removeDockWidget(mPreview);
+    mPreview->hide();
+}
+
+void DockDropOverlay::showPreview(const DockDropTarget& aTarget) {
+    clearPreview();
+    if (!mPreview || !mWindow || !mPanel || aTarget.kind == DockDropKind::None) return;
+
+    if (auto* body = mPreview->widget()) body->setMinimumSize(dockedHint(mPanel));
+    mPreview->setMinimumSize(mPanel->minimumSize());
+    mPreview->setMaximumSize(mPanel->maximumSize());
+
+    // Un-float first, exactly as a real drop does for the panel: addDockWidget
+    // and tabifyDockWidget arrange docks that are in the layout, and a
+    // freshly-created dock shown on its own is a floating window (measured: the
+    // preview sat at 0,0 with its own size instead of taking the slot).
+    mPreview->setFloating(false);
+    if (onPlace) onPlace(mPreview, aTarget);
+    mPreview->show();
+
+    // Read after the layout has run: immediately after placement the preview
+    // still carries its pre-placement geometry, which is what made this log look
+    // like the preview was not being placed at all.
+    QPointer<QDockWidget> preview = mPreview;
+    const DockDropTarget target = aTarget;
+    QTimer::singleShot(0, this, [this, preview, target]() {
+        if (!preview) return;
+        dockSpikeLog(mPanel, QStringLiteral("preview placed kind=%1 area=%2 at %3,%4 %5x%6")
+                .arg(int(target.kind)).arg(int(target.area))
+                .arg(preview->x()).arg(preview->y())
+                .arg(preview->width()).arg(preview->height()));
+    });
+}
+
 const char* DockDropOverlay::mimeType() {
     return "application/x-animeeffects-dock-panel";
 }
@@ -122,6 +199,22 @@ void DockDropOverlay::beginDrag(QDockWidget* aPanel) {
     mPanel = aPanel;
     mTarget = DockDropTarget();
     if (mWindow) setGeometry(mWindow->rect());
+
+    if (!mPreview && mWindow) {
+        mPreview = new QDockWidget(mWindow);
+        mPreview->setObjectName(QStringLiteral("aeDockPreview"));
+        // Marked so every pass that walks the docks can skip it: it is a place,
+        // not a panel.
+        mPreview->setProperty("aeDockPreview", true);
+        mPreview->setWindowTitle(aPanel ? aPanel->windowTitle() : QString());
+        // No title row of its own: the point of the preview is the space. A tab
+        // it joins is labelled by the window title set here.
+        auto* bare = new QWidget(mPreview);
+        bare->setFixedHeight(0);
+        mPreview->setTitleBarWidget(bare);
+        mPreview->setWidget(new DockPreviewBody(mPreview, dockedHint(aPanel)));
+        mPreview->hide();
+    }
     raise();
     show();
     dockSpikeLog(aPanel, QStringLiteral("overlay shown for drag: cover=%1x%2 visible=%3")
@@ -129,6 +222,7 @@ void DockDropOverlay::beginDrag(QDockWidget* aPanel) {
 }
 
 void DockDropOverlay::endDrag() {
+    clearPreview();
     mPanel = nullptr;
     mTarget = DockDropTarget();
     hide();
@@ -146,65 +240,6 @@ QRect DockDropOverlay::groupRect(QDockWidget* aDock) const {
     return rect;
 }
 
-/// The slice of an area a drop will take: on the canvas side of whatever is
-/// already in that area, sized like the panel. This mirrors
-/// MainWindow::applyDockDrop exactly - it splits the area's innermost dock - so
-/// that the rectangle drawn here is the rectangle the panel lands in.
-QRect DockDropOverlay::areaSlice(Qt::DockWidgetArea aArea, const QRect& aCanvas) const {
-    const int w = bandExtent(Qt::Horizontal, aCanvas.width());
-    const int h = bandExtent(Qt::Vertical, aCanvas.height());
-    const QRect window = mWindow ? mWindow->rect() : QRect();
-
-    QRect occupied;
-    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-        if (dock == mPanel || !dock->isVisible() || dock->isFloating()) continue;
-        if (mWindow->dockWidgetArea(dock) != aArea) continue;
-        const QRect group = groupRect(dock);
-        occupied = occupied.isNull() ? group : occupied.united(group);
-    }
-
-    // With docks already in the area the panel goes beside the one nearest the
-    // canvas (the split anchor). With the area empty it *is* the area, so it
-    // starts at the window's edge on a side - measured: a canvas-top drop landed
-    // at y=23, the client area's top, with the canvas pushed down by its height.
-    switch (aArea) {
-    case Qt::LeftDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.right() + 1, occupied.top(), w, occupied.height());
-        return QRect(window.left(), aCanvas.top(), w, aCanvas.height());
-    case Qt::RightDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.left() - w, occupied.top(), w, occupied.height());
-        return QRect(window.right() + 1 - w, aCanvas.top(), w, aCanvas.height());
-    case Qt::TopDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.left(), occupied.bottom() + 1, occupied.width(), h);
-        return QRect(window.left(), aCanvas.top(), window.width(), h);
-    default:
-        if (!occupied.isNull())
-            return QRect(occupied.left(), occupied.top() - h, occupied.width(), h);
-        return QRect(window.left(), aCanvas.bottom() + 1 - h, window.width(), h);
-    }
-}
-
-int DockDropOverlay::bandExtent(Qt::Orientation aAxis, int aLimit) const {
-    // What the panel would take along this axis: QDockWidget::sizeHint(), which
-    // is the size Qt gives a docked panel. Its *floating* size is not that - a
-    // floating property panel is 800 tall, and the preview would then cover the
-    // whole canvas and say nothing.
-    QSize hint = mPanel ? mPanel->sizeHint() : QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
-    // A floating panel's hint carries its frame: the ring is a QSS border on the
-    // window, so it is inside the hint but will not be there once the panel is
-    // docked. Without this the preview was exactly one frame too big on both
-    // axes, which for the property panel is 20px of lie in each direction.
-    if (mPanel && mPanel->isFloating())
-        hint -= QSize(2 * dockMetrics::kFrameInset, 2 * dockMetrics::kFrameInset);
-    const int own = (aAxis == Qt::Horizontal) ? hint.width() : hint.height();
-    const int floor = (aAxis == Qt::Horizontal) ? dockMetrics::kMinWidth : dockMetrics::kMinHeight;
-    const int ceiling = (aAxis == Qt::Horizontal) ? dockMetrics::kMaxWidth : dockMetrics::kMaxHeight;
-    return qBound(floor, own, qMin(ceiling, aLimit));
-}
-
 DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     DockDropTarget target;
     if (!mWindow) return target;
@@ -219,7 +254,7 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     // Docked panels first: a group is a sibling of the central widget at the
     // window's edge, so it wins where they meet.
     for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-        if (dock == mPanel || !dock->isVisible() || dock->isFloating()) continue;
+        if (dock == mPanel || dock == mPreview || !dock->isVisible() || dock->isFloating()) continue;
         const QRect group = groupRect(dock);
         if (group.isEmpty() || !group.contains(aPos)) continue;
 
@@ -241,8 +276,9 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
         }
 
         const Qt::Edge edge = nearestEdge(group, aPos);
-        const QRect half = halfTowards(group, edge);
         if (!canSplit(group, edge, area)) {
+            // two halves of a group this small would both be under the area's
+            // minimum, so the whole group is the only sensible target
             target.kind = DockDropKind::Tabify;
             target.area = area;
             target.group = dock;
@@ -252,7 +288,7 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
         target.kind = DockDropKind::Split;
         target.area = area;
         target.group = dock;
-        target.rect = half;
+        target.rect = halfTowards(group, edge);
         return target;
     }
 
@@ -273,26 +309,35 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
                          qBound(canvas.top(), aPos.y(), canvas.bottom()));
 
     // The nearest side wins everywhere on the canvas, so there is no dead
-    // middle to drop into by accident and no tie to arbitrate beyond which edge
-    // was fractionally closer.
-    const Qt::Edge edge = nearestEdge(canvas, clamped);
-
+    // middle to drop into by accident. No rectangle is computed here: for an
+    // area drop the preview dock says where the panel lands, because the layout
+    // decides it - including the corner rules that a hand-written slice got
+    // wrong (measured: a bottom drop previewed full width and landed 965 wide,
+    // stopping at the right sidebar).
     target.kind = DockDropKind::Area;
-    target.area = areaForEdge(edge);
-    target.rect = areaSlice(target.area, canvas);
+    target.area = areaForEdge(nearestEdge(canvas, clamped));
+
+    // A panel already docked in that area has nowhere to go: the layout would
+    // not change, so the target is "nothing" and no preview is shown. Without
+    // this, dragging the timeline's own title back towards the bottom area
+    // previewed a slot *above* the timeline (the preview dock was split against
+    // it) while the drop left everything exactly as it was.
+    if (mPanel && !mPanel->isFloating() && mWindow->dockWidgetArea(mPanel) == target.area)
+        return DockDropTarget();
+
     return target;
 }
 
 DockDropTarget DockDropOverlay::hover(const QPoint& aPos) {
     const DockDropTarget previous = mTarget;
     mTarget = resolve(aPos);
-    if (mTarget.kind != previous.kind || mTarget.rect != previous.rect) {
-        dockSpikeLog(mPanel, QStringLiteral("overlay target at %1,%2 -> kind=%3 area=%4 rect=%5,%6 %7x%8")
+    if (mTarget.kind != previous.kind || mTarget.area != previous.area
+            || mTarget.group != previous.group || mTarget.rect != previous.rect) {
+        dockSpikeLog(mPanel, QStringLiteral("overlay target at %1,%2 -> kind=%3 area=%4 group=%5")
                 .arg(aPos.x()).arg(aPos.y()).arg(int(mTarget.kind)).arg(int(mTarget.area))
-                .arg(mTarget.rect.x()).arg(mTarget.rect.y())
-                .arg(mTarget.rect.width()).arg(mTarget.rect.height()));
+                .arg(mTarget.group ? mTarget.group->objectName() : QStringLiteral("-")));
+        showPreview(mTarget);
     }
-    update();
     return mTarget;
 }
 
@@ -306,22 +351,11 @@ QDockWidget* DockDropOverlay::panelFromMime(const QMimeData* aData) const {
     return nullptr;
 }
 
+
 void DockDropOverlay::paintEvent(QPaintEvent*) {
-    if (mTarget.kind == DockDropKind::None || mTarget.rect.isEmpty()) return;
-
-    const theme::Colors c = theme::Colors::current();
-    QColor fill = c.accent;
-    fill.setAlpha(70);
-
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-    const QRectF rect = QRectF(mTarget.rect).adjusted(0.5, 0.5, -0.5, -0.5);
-    QPainterPath path;
-    path.addRoundedRect(rect, 4, 4);
-    p.fillPath(path, fill);
-    p.setPen(QPen(c.accent, 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawPath(path);
+    // Nothing to paint: the feedback is the preview dock, which the layout
+    // placed. This widget is here to be the drop target, and to know when to
+    // take the preview away again.
 }
 
 void DockDropOverlay::resizeEvent(QResizeEvent* aEvent) {
@@ -353,7 +387,7 @@ void DockDropOverlay::dragLeaveEvent(QDragLeaveEvent* aEvent) {
     // This is the path Qt's rubber band can miss, leaving its preview on screen
     // after the drag has gone: the preview is dropped here unconditionally.
     mTarget = DockDropTarget();
-    update();
+    clearPreview();
     dockSpikeLog(mPanel, QStringLiteral("overlay drag leave: preview cleared"));
     aEvent->accept();
 }
@@ -366,7 +400,7 @@ void DockDropOverlay::dropEvent(QDropEvent* aEvent) {
     if (QDockWidget* panel = panelFromMime(aEvent->mimeData())) mPanel = panel;
     const DockDropTarget target = resolve(aEvent->position().toPoint());
     mTarget = DockDropTarget();
-    update();
+    clearPreview();
     aEvent->acceptProposedAction();
     dockSpikeLog(mPanel, QStringLiteral("overlay drop kind=%1").arg(int(target.kind)));
     if (mPanel && target.kind != DockDropKind::None && onDropped) onDropped(mPanel, target);
