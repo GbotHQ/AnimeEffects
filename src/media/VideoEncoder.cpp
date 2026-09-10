@@ -216,6 +216,15 @@ bool VideoEncoder::open(const Config& aConfig) {
     mImpl->mCtx = ::avcodec_alloc_context3(codec);
     if (!mImpl->mCtx) { return fail("could not allocate codec context"); }
 
+    // Muxers that declare AVFMT_GLOBALHEADER (matroska, mp4, mov, ...) need the
+    // codec's extradata up front in the container header. Without this flag the
+    // encoder is never asked for it and avformat_write_header fails with
+    // AVERROR_INVALIDDATA. Some codec/container pairs happen to cope, which is
+    // why this went unnoticed until a matroska+libx265 encode was exercised.
+    if (mImpl->mFmt->oformat->flags & AVFMT_GLOBALHEADER) {
+        mImpl->mCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    }
+
     mImpl->mCtx->width = width;
     mImpl->mCtx->height = height;
     mImpl->mCtx->pix_fmt = pixFmt;
