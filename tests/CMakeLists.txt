@@ -1,3 +1,8 @@
+# The tests are first-party code, so they use the project warning policy
+# (see ae_enable_warnings in the top-level CMakeLists.txt): a test whose
+# sections can silently not run is a test that reads as coverage.
+ae_enable_warnings()
+
 # Regression test for the BoneKey::deserialize use-after-free (dangling
 # &mBindingCaches.back() captured into a deferred IDSolver lambda that runs
 # after the QList reallocates). Self-contained; see bonekey_regression.cpp.
@@ -363,19 +368,9 @@ target_link_libraries(media_export_target PRIVATE
     Qt6::Xml
     media
 )
-
-# Warnings for this target, because the failure this test was written to catch
-# was a section that was DEFINED AND NEVER CALLED. That is dead code, and the
-# project builds with no warning flags at all, so clang had nothing to say about
-# it: -Wunused-function is not on by default and needs -Wall. A test whose
-# sections can silently not run cannot be trusted from its green output alone.
-#
-# Sections now self-register (see TEST_SECTION), which removes the class; this
-# is the belt to that pair of braces, and it also keeps the section bodies clean
-# of other dead code that would otherwise read as testing something.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(media_export_target PRIVATE -Wall -Wextra)
-endif()
+# (Warning flags come from the directory-wide ae_enable_warnings() call at the
+# top of this file; this target used to set -Wall -Wextra on its own, from when
+# it was the only target that had them.)
 
 # End-to-end export harness: offscreen (GL via a QOpenGLWidget) render of a
 # minimal project -> ctrl::Exporter -> a real mp4, verified with ffprobe. This

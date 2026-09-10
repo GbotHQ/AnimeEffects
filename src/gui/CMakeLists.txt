@@ -1,4 +1,5 @@
 project(AnimeEffects)
+ae_enable_warnings()
 
 set(MACOSX_BUNDLE_ICON_FILE AnimeEffects.icns)	
 
