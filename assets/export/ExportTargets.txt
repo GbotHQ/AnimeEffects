@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Export destination table — DESIGN PROTOTYPE.
+
+  This is the data asset the export UI is built from: every destination is a row
+  that resolves to (container, codec, constraints, capabilities). It is DATA and
+  not code because every fact in it moves — Discord moved GIF -> WebP, Twitch
+  emote specs change, Safari's VP9-alpha support is in flight. Adding or
+  correcting a destination must be an edit here, never a code change.
+
+  Attributes:
+    id          stable key, dotted: <platform>.<family>
+    label       user-facing name (the thing they recognize)
+    family      sticker | overlay | video | image | archive  (the grouping the UI shows)
+    class       fixed    - the destination dictates the codec (most rows)
+                reencode - platform re-encodes our upload (YouTube, X, TikTok)
+                direct   - platform serves our file as-is (website, messaging)
+                archive  - keep a master
+    codecSelect fixed  - use @codec
+                ladder - pick by (class, quality bucket) via the availability probe
+    alpha/audio/loop
+                required   - forced on; stated in the UI, never a control
+                forbidden  - impossible or rejected; stated or hidden
+                default-on / default-off - pre-set checkbox, overridable
+                choice     - a real user decision
+    checked     ISO date the facts below were last verified
+    source      primary source for the facts
+    verified    "true" only when checked against that primary source
+    platform    any (default) | apple | windows | linux — rows whose codec only
+                exists on one OS must say so, so validation can skip them
+
+  Size modes:
+    free          use the project size
+    exact         exactly w x h  (NOTE: needs crop-or-pad — an open design item)
+    max           fit inside w x h, preserve aspect
+    maxExactSide  long side == @side, short side <= @side
+    maxMinSide    fit inside w x h, then ensure long side >= @side
+
+  <caps>          hard limits; 0 = unlimited
+  <encOptions>    private encoder options (avcodec_open2). e.g. libvpx's
+                  auto-alt-ref=0, which VP9+alpha requires.
+  <codecTag>      four-char stream codec tag. NOT an encoder option — it lives
+                  in the container's stream entry (hvc1 for HEVC).
+  <audio>         per-destination audio parameters. Empty codec = derive from
+                  the container (WebM cannot carry AAC).
+  minScalePct     floor for fit-to-cap's scale phase (never shrink past this).
+-->
+<export_targets>
+
+  <!-- ===== sticker / emote ============================================= -->
+
+  <destination id="telegram.sticker" label="Telegram sticker" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://core.telegram.org/stickers" verified="true">
+    <size mode="maxExactSide" side="512"/>
+    <caps maxBytes="262144" maxDurationSec="3" maxFps="30"/>
+    <encOptions><opt name="auto-alt-ref" value="0"/></encOptions>
+    <note>Video must have no audio stream. Should loop.</note>
+  </destination>
+
+  <destination id="telegram.emoji" label="Telegram custom emoji" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://core.telegram.org/stickers" verified="true">
+    <size mode="exact" w="100" h="100"/>
+    <caps maxBytes="262144" maxDurationSec="3" maxFps="30"/>
+    <encOptions><opt name="auto-alt-ref" value="0"/></encOptions>
+  </destination>
+
+  <destination id="discord.sticker" label="Discord sticker" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="apng" codec="apng" pixfmt="rgba"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://discord.com/blog/how-to-create-upload-your-own-stickers-on-discord" verified="true">
+    <size mode="exact" w="320" h="320"/>
+    <caps maxBytes="524288"/>
+    <note>Discord animated stickers are APNG (GIF and Lottie also accepted). 320x320 EXACT.</note>
+  </destination>
+
+  <destination id="discord.emoji" label="Discord emoji" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="webp" codec="libwebp" pixfmt="yuva420p"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://github.com/discord/discord-api-docs" verified="true">
+    <size mode="max" w="128" h="128"/>
+    <caps maxBytes="262144"/>
+    <note>Animated emoji are served as animated WebP; upload accepts JPEG/PNG/GIF/WebP/AVIF.</note>
+  </destination>
+
+  <destination id="whatsapp.sticker" label="WhatsApp sticker" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="webp" codec="libwebp" pixfmt="yuva420p"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://github.com/WhatsApp/stickers" verified="true">
+    <size mode="exact" w="512" h="512"/>
+    <caps maxBytes="512000" maxDurationSec="10"/>
+    <note>Animated stickers are WebP ONLY. Minimum frame duration 8ms.</note>
+  </destination>
+
+  <destination id="signal.sticker" label="Signal sticker" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="apng" codec="apng" pixfmt="rgba"
+               alpha="required" audio="forbidden" loop="default-on"
+               checked="2026-09-05" source="https://support.signal.org/hc/en-us/articles/360031836512-Stickers" verified="true">
+    <size mode="max" w="512" h="512"/>
+    <caps maxBytes="307200" maxDurationSec="3"/>
+    <note>Animated stickers must be APNG — "Please do not upload GIFs".</note>
+  </destination>
+
+  <destination id="line.sticker" label="LINE sticker" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="apng" codec="apng" pixfmt="rgba"
+               alpha="required" audio="forbidden" loop="required"
+               checked="2026-09-05" source="https://creator.line.me/en/guideline/animationsticker/" verified="true">
+    <size mode="maxMinSide" w="320" h="270" side="270"/>
+    <caps maxBytes="307200" maxDurationSec="4" minFrames="5" maxFrames="20"/>
+    <note>RGB colour space; transparent background required; 1-4 loops.</note>
+  </destination>
+
+  <destination id="twitch.emote" label="Twitch emote" family="sticker"
+               class="fixed" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2025-01-01" source="(carried over — NOT re-verified)" verified="false">
+    <size mode="maxExactSide" side="112"/>
+    <caps maxBytes="1048576" maxFrames="60"/>
+    <note>UNVERIFIED: square, 60 frames max, resize tiers 28/56/112, 3 flashes/sec max.</note>
+  </destination>
+
+  <!-- ===== overlay ===================================================== -->
+
+  <destination id="obs.overlay" label="Stream overlay (OBS)" family="overlay"
+               class="fixed" codecSelect="fixed"
+               container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
+               alpha="required" audio="choice" loop="choice"
+               checked="2026-09-05" source="https://github.com/kasunjith713/obs-transparent-webm-guide" verified="true">
+    <size mode="free"/>
+    <encOptions><opt name="auto-alt-ref" value="0"/></encOptions>
+    <audio codec="libopus" bitrate="128000" channels="2" rate="48000"/>
+    <note>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</note>
+  </destination>
+
+  <destination id="safari.transparent" label="Transparent video (Safari / iOS)" family="overlay"
+               class="fixed" codecSelect="fixed"
+               platform="apple"
+               container="mov" codec="hevc_videotoolbox" pixfmt="yuva420p"
+               alpha="required" audio="choice" loop="choice"
+               checked="2026-09-05" source="https://github.com/kasunjith713/obs-transparent-webm-guide" verified="true">
+    <size mode="free"/>
+    <encOptions><opt name="alpha_quality" value="0.9"/></encOptions>
+    <codecTag value="hvc1"/>
+    <note>HEVC+alpha needs Apple's VideoToolbox encoder; libx265 ADVERTISES yuva420p and
+          then refuses it at open. hvc1 is mandatory — Safari rejects untagged hev1. Where
+          VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</note>
+  </destination>
+
+  <!-- ===== video ======================================================= -->
+
+  <destination id="youtube.video" label="YouTube" family="video"
+               class="reencode" codecSelect="ladder"
+               container="mp4" codec="" pixfmt="yuv420p"
+               alpha="forbidden" audio="default-on" loop="forbidden"
+               checked="2026-09-05" source="https://support.google.com/youtube/answer/1722171" verified="true">
+    <size mode="free"/>
+    <audio codec="aac" bitrate="256000" channels="2" rate="48000"/>
+    <note>YouTube re-encodes every upload. Official docs still recommend H.264/AAC;
+          AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</note>
+  </destination>
+
+  <destination id="website.video" label="Website" family="video"
+               class="direct" codecSelect="ladder"
+               container="mp4" codec="" pixfmt="yuv420p"
+               alpha="choice" audio="choice" loop="choice"
+               checked="2026-09-05" source="(design decision)" verified="true">
+    <size mode="free"/>
+    <audio codec="aac" bitrate="128000" channels="2" rate="48000"/>
+    <note>Direct playback: decode compatibility dominates, so H.264 at every bucket.
+          For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</note>
+  </destination>
+
+  <destination id="generic.file" label="Just a file (not sure yet)" family="video"
+               class="direct" codecSelect="ladder"
+               container="mp4" codec="" pixfmt="yuv420p"
+               alpha="choice" audio="default-on" loop="forbidden"
+               checked="2026-09-05" source="(design decision)" verified="true">
+    <size mode="free"/>
+    <audio codec="aac" bitrate="160000" channels="2" rate="48000"/>
+    <note>The fallback when the destination is unknown: maximum compatibility.</note>
+  </destination>
+
+  <!-- ===== archive ===================================================== -->
+
+  <destination id="archive.master" label="Keep a master copy" family="archive"
+               class="archive" codecSelect="ladder"
+               container="mkv" codec="" pixfmt="yuva420p"
+               alpha="default-on" audio="default-on" loop="forbidden"
+               checked="2026-09-05" source="(design decision)" verified="true">
+    <size mode="free"/>
+    <audio codec="flac" channels="2" rate="48000"/>
+    <note>Lossless bucket -> FFV1, which carries alpha (yuva420p).</note>
+  </destination>
+
+  <!-- ===== quality control (for the post-encode fit-to-cap loop) ============
+
+       The knob that trades quality for bytes, per codec. "best" is the value
+       we start from, "worst" the lowest quality we will accept before falling
+       back to shrinking the image instead. Absent = the codec has no usable
+       quality knob (lossless formats), so fit-to-cap goes straight to scale.
+  -->
+  <quality_control>
+    <codec name="libvpx-vp9" option="crf" best="24" worst="52"/>
+    <codec name="libsvtav1"  option="crf" best="26" worst="55"/>
+    <codec name="libx264"    option="crf" best="19" worst="34"/>
+    <codec name="libx265"    option="crf" best="23" worst="38"/>
+    <codec name="libwebp"    option="quality" best="80" worst="30"/>
+  </quality_control>
+
+  <!-- ===== time budgets (for the codec ladder) =============================
+
+       How long a user is presumed willing to wait, per quality intent, when
+       the ladder decides whether a slower-but-better codec is acceptable.
+       Policy, not fact: these are the numbers to tune, so they are here and
+       not in code.
+  -->
+  <time_budgets>
+    <bucket name="smaller"  maxSeconds="900"/>
+    <bucket name="balanced" maxSeconds="900"/>
+    <bucket name="best"     maxSeconds="3600"/>
+    <bucket name="lossless" maxSeconds="3600"/>
+  </time_budgets>
+
+</export_targets>

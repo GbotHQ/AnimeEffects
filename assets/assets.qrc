@@ -102,5 +102,6 @@
     <file>shaders/PartialScreenCopyingVert.glsl</file>
     <file>shaders/TestBlurVert.glsl</file>
     <file>encode/VideoEncode.txt</file>
+    <file>export/ExportTargets.txt</file>
   </qresource>
 </RCC>
