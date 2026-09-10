@@ -362,6 +362,26 @@ static void run_caps() {
     ctrl::applyCaps(line.caps, &lfps, &lframes, &lnotes);
     const bool warned = lnotes.filter(QStringLiteral("WARNING")).size() == 1;
     check(warned, "LINE min-frames (5) under-run produces a warning, not a silent pass");
+
+    // The caps must be applied exactly ONCE by planExport. It used to reset
+    // fps/frames back to the requested values and re-apply them at the end,
+    // which clamped to the same numbers but appended every cap note to
+    // plan.notes a second time — so the user saw each warning twice.
+    ctrl::ExportRequest req;
+    req.outputPath = QDir::temp().filePath("ae_caps_once.png");
+    req.sourceSize = QSize(320, 240);
+    req.fps = 30;
+    req.frames = 50; // LINE's cap is 20, so this must be trimmed
+    const ctrl::ExportPlan plan = ctrl::planExport(line, req, ctrl::QualityBucket::Balanced);
+    check(plan.ok(), QStringLiteral("the capped plan builds (%1)").arg(plan.error));
+    check(plan.frames == 20, QStringLiteral("LINE's cap lands on 20 frames (got %1)").arg(plan.frames));
+    QSet<QString> seenNotes;
+    bool duplicated = false;
+    for (const QString& n : plan.notes) {
+        if (seenNotes.contains(n)) duplicated = true;
+        seenNotes.insert(n);
+    }
+    check(!duplicated, QStringLiteral("no note is duplicated by the cap pass"));
 }
 
 static void run_probe_sanity() {

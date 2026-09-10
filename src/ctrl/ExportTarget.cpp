@@ -594,9 +594,11 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         plan.renderSize = QSize(evenFloor(sw * scale), evenFloor(sh * scale));
     }
 
-    plan.fps = aRequest.fps;
-    plan.frames = aRequest.frames;
-    applyCaps(aTarget.caps, &plan.fps, &plan.frames, &plan.notes);
+    // NOTE: caps are applied exactly once, in the codec branch above (both
+    // branches of the `if` do it). There used to be a third application here
+    // that first RESET fps/frames to the requested values and then re-applied
+    // them, which clamped identically but appended every cap note to
+    // `plan.notes` a second time, so the user saw each warning twice.
 
     if (!aTarget.note.isEmpty()) plan.notes << aTarget.note;
 
