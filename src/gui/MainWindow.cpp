@@ -1720,7 +1720,26 @@ void MainWindow::onExportTriggered() {
     exportUI->transparencyCheckBox->setChecked(*allowTransparency);
     exportUI->loopCheckBox->setChecked(*loopAnim);
     exportUI->exportWithAudioCheckBox->setChecked(*exportWithAudio);
-    exportUI->customPaletteCheckBox->setChecked(*useCustomPalette);
+    // The palette path is restored WITH the preference. Without it, a remembered
+    // "use a custom palette" could only ever produce a blocking validation error
+    // ("Selected palette does not exist") with no way to see which file it meant:
+    // the checkbox was persisted, the file it referred to was not. A preference
+    // the app cannot honour is not a preference, so the box is only ticked when
+    // the file is still there.
+    {
+        const QString savedPalette = settings.value("export_palette_path").toString();
+        const QFileInfo paletteInfo(savedPalette);
+        // A FILE, checked as a file: QDir() is the current directory and
+        // "exists", so testing a QDir for existence made an unset palette look
+        // like a valid one and kept the box ticked.
+        const bool paletteRestored =
+            !savedPalette.isEmpty() && paletteInfo.isFile() && paletteInfo.isReadable();
+        if (paletteRestored) {
+            exportUI->paletteDir = QDir(savedPalette);
+            exportUI->selectPalettePathButton->setText(paletteInfo.fileName());
+        }
+        exportUI->customPaletteCheckBox->setChecked(*useCustomPalette && paletteRestored);
+    }
     exportUI->nativeH = genParam.nativeHeight;
     exportUI->nativeW = genParam.nativeWidth;
     exportUI->latestHeight = exportUI->nativeH;
@@ -1787,6 +1806,7 @@ void MainWindow::onExportTriggered() {
                        "export_allow_transparency");
         updateSettings(&useCustomPaletteV, &settings, exportUI->customPaletteCheckBox->isChecked(),
                        "export_custom_palette");
+        settings.setValue("export_palette_path", exportUI->paletteDir.absolutePath());
         updateSettings(&loopAnimV, &settings, exportUI->loopCheckBox->isChecked(),
                        "export_loop_anim");
         updateSettings(&exportWithAudioV, &settings, exportUI->exportWithAudioCheckBox->isChecked(),

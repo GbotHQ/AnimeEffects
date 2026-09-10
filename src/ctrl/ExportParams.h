@@ -243,6 +243,14 @@ inline bool isExportParamValid(exportParam* exParam, QWidget* widget, std::vecto
         }
     }
 
+    // Everything that refuses an export says WHY, in the log as well as in the
+    // dialog. Without this the only account of a refusal was a modal listing
+    // "critical errors: 1" behind a Details button, which is not something a user
+    // can quote when asking for help and not something a bug report can contain.
+    for (const QString& error : errors) {
+        qWarning("export refused: %s", error.toUtf8().constData());
+    }
+
     QSettings settings;
     bool proceedToExport = true;
     QVariant ignoreWarnings = settings.value("export_ignore_warning");
