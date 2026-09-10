@@ -69,7 +69,11 @@ public:
     void onTabCopyPathRequested(core::Project&);
     void onExportTriggered();
     void onExportImageSeqTriggered(const QString& aSuffix);
-    void onQuickExportTriggered(const QString& aFormat);
+    // Quick export BY DESTINATION: the user names where the file is going and the
+    // destination table decides the rest. This is what the quick menu offers now —
+    // a format name is not a destination, and the table's rows bundle intent
+    // (small, loops, transparent, silent) that a container name cannot express.
+    void onQuickExportDestinationTriggered(const QString& aDestinationId);
     void onExportVideoTriggered(const ctrl::VideoFormat& aFormat);
     void onPlayPauseTriggered();
     void onDockToggle();

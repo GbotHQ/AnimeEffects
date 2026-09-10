@@ -8,6 +8,7 @@
 #include "core/FormatVersion.h"
 #include "core/ObjectNodeUtil.h"
 #include "ctrl/CmndName.h"
+#include "ctrl/ExportTarget.h"
 #include "gui/MainMenuBar.h"
 #include "gui/MainWindow.h"
 #include "gui/ResourceDialog.h"
@@ -234,22 +235,21 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         }
         auto quickExport = new QMenu(tr("Quickly export as"), this);
         {
-            auto pngs = new QAction(tr("PNG Sequence"), this);
-            auto gif_transparent = new QAction(tr("GIF Animation (Transparent)"), this);
-            auto gif_opaque = new QAction(tr("GIF Animation (Opaque)"), this);
-            auto webm_transparent = new QAction(tr("WebM Animation (Transparent)"), this);
-            auto webm_opaque = new QAction(tr("WebM Animation (Opaque)"), this);
-            auto mp4 = new QAction(tr("MP4 Video"), this);
-            auto avi = new QAction(tr("AVI Video"), this);
-
-            QVector<QAction*> actions = {pngs, gif_transparent, gif_opaque, webm_transparent, webm_opaque, mp4, avi};
-            QStringList formats = {"png", "gif_t", "gif_o", "webm_t", "webm_o", "mp4", "avi"};
-            assert(actions.size() == formats.size());
-            int i = 0;
-            for (auto action: actions) {
-                connect(action, &QAction::triggered, [=]() { mainWindow->onQuickExportTriggered(formats.at(i)); });
+            // Destinations, not formats. The old menu offered seven
+            // container/transparency pairs ("GIF Animation (Transparent)",
+            // "WebM Animation (Opaque)", ...) with a private _t/_o naming scheme:
+            // an artifact name bundles intent only, and the pair is exactly what a
+            // destination row already encodes. Each entry exports immediately at
+            // the project's own size and frame rate; anything more specific is the
+            // full dialog or the legacy menu below.
+            const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
+            for (const ctrl::ExportTarget& target : targets) {
+                auto action = new QAction(target.label, this);
+                const QString id = target.id;
+                connect(action, &QAction::triggered, [=]() {
+                    mainWindow->onQuickExportDestinationTriggered(id);
+                });
                 quickExport->addAction(action);
-                i++;
             }
         }
 

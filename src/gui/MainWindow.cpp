@@ -1891,70 +1891,58 @@ void MainWindow::onExportImageSeqTriggered(const QString& aSuffix) {
     }
 }
 
-void MainWindow::onQuickExportTriggered(const QString& aFormat) {
-    // General parameters
-    GeneralParams genParam;
-    genParam.fileName = mCurrent->fileName();
-    if (genParam.fileName.isEmpty()) {
-        genParam.fileName = "New Export";
+void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId) {
+    if (!mCurrent) {
+        return;
     }
-    genParam.exportName = QFileInfo(genParam.fileName).baseName();
-    genParam.exportDirectory = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
-    genParam.exportFileName = QDir(genParam.exportDirectory.absolutePath() + "/" + genParam.exportName + "." +
-        QString(aFormat).replace("_o", "").replace("_t", "").replace(".anie", ""));
-    genParam.osExportTarget = QFileInfo(genParam.exportName).absoluteFilePath();
+    const ctrl::ExportTarget target =
+        ctrl::ExportTargets::find(ctrl::ExportTargets::load(), aDestinationId);
+    if (target.id.isEmpty()) {
+        return;
+    }
+
+    // One click: pick a folder, and the destination decides the container, the
+    // codec, its options, transparency, the exact size, the caps and the audio.
+    const QString dirPath = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
+    if (dirPath.isEmpty()) {
+        return;
+    }
+    QString base = QFileInfo(mCurrent->fileName()).baseName();
+    if (base.isEmpty()) {
+        base = QStringLiteral("New Export");
+    }
+    const QString fileName = base + "." + target.container;
+
+    GeneralParams genParam;
+    genParam.fileName = base;
+    genParam.exportName = base;
+    genParam.exportDirectory = QDir(dirPath);
+    genParam.exportFileName = QDir(dirPath + "/" + fileName);
+    genParam.osExportTarget = QDir(dirPath + "/" + fileName).absolutePath();
     genParam.nativeWidth = mCurrent->attribute().imageSize().width();
     genParam.nativeHeight = mCurrent->attribute().imageSize().height();
-    genParam.exportWidth = mCurrent->attribute().imageSize().width();
-    genParam.exportHeight = mCurrent->attribute().imageSize().height();
+    genParam.exportWidth = genParam.nativeWidth;
+    genParam.exportHeight = genParam.nativeHeight;
     genParam.aspectRatio = custom;
     genParam.nativeFPS = mCurrent->attribute().fps();
     genParam.fps = mCurrent->attribute().fps();
-    genParam.bitrate = 0;
-    genParam.imageExportQuality = 100;
-    genParam.allowTransparency = aFormat.contains("_t") || aFormat == "png";
+    genParam.allowTransparency = true; // the destination decides, in the plan
     genParam.loop = true;
-    genParam.exportWithAudio = !mCurrent->pConf->empty();
-    frameExportRange fer;
-    fer.firstFrame = mCurrent->attribute().frameRange().min();
-    fer.lastFrame = mCurrent->attribute().frameRange().max();
-    genParam.nativeFrameRange = fer;
-    genParam.exportAllFrames = true;
-    genParam.exportRange = {fer};
-    genParam.exportToLast = true;
     genParam.imageExportQuality = -1;
-    // Get format info
-    bool imageExport = false;
-    ImageParams img;
-    VideoParams vid;
-    if (aFormat == "png") {
-        imageExport = true;
-        img.format = availableImageFormats::png;
-    }
-    else {
-        if (aFormat.contains("gif")) {
-            vid.format = availableVideoFormats::gif;
-        }
-        else if (aFormat.contains("mp4")) {
-            vid.format = availableVideoFormats::mp4;
-        }
-        else if (aFormat.contains("avi")) {
-            vid.format = availableVideoFormats::avi;
-        }
-        else if (aFormat.contains("webm")) {
-            vid.format = availableVideoFormats::webm;
-        }
-    }
-    // Export parameters
+    const frameExportRange fer{mCurrent->attribute().frameRange().min(),
+                               mCurrent->attribute().frameRange().max()};
+    genParam.nativeFrameRange = fer;
+    genParam.exportRange = {fer};
+
     auto exParam = new exportParam();
     exParam->generalParams = genParam;
-    exParam->imageParams = img;
-    exParam->videoParams = vid;
-    exParam->exportType = imageExport? exportTarget::image : exportTarget::video;
+    exParam->exportType = exportTarget::video;
+    exParam->destinationId = aDestinationId;
+    exParam->qualityBucket = ctrl::QualityBucket::Balanced;
 
-    // Main export function
-    std::vector<audioConfig> validAudioStreams = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
-    if(isExportParamValid(exParam, exportWidget, &validAudioStreams)){
+    std::vector<audioConfig> validAudioStreams =
+        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+    if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
         exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
     }
 }
