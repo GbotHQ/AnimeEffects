@@ -914,7 +914,8 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
 } // namespace
 
 FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aRequest,
-                        QualityBucket aBucket, const QList<QImage>& aFrames) {
+                        QualityBucket aBucket, const QList<QImage>& aFrames,
+                        const std::function<void(const QString&)>& aOnStep) {
     FitResult result;
     result.path = aRequest.outputPath;
 
@@ -964,13 +965,15 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         }
         const Attempt a = encodeAttempt(plan, frames, QSize(w, h), aStride, aCrf, quality);
         ++result.attempts;
-        result.steps << QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
-                            .arg(aWhat)
-                            .arg(aCrf)
-                            .arg(w)
-                            .arg(h)
-                            .arg(aStride)
-                            .arg(a.wrote ? (qlonglong)a.bytes : (qlonglong)-1);
+        const QString step = QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
+                                 .arg(aWhat)
+                                 .arg(aCrf)
+                                 .arg(w)
+                                 .arg(h)
+                                 .arg(aStride)
+                                 .arg(a.wrote ? (qlonglong)a.bytes : (qlonglong)-1);
+        result.steps << step;
+        if (aOnStep) aOnStep(step);
         if (!a.wrote) { result.error = a.error; return -1; }
         // `bytes` is the file the caller gets; `smallest` is only for the
         // failure message (the last probe is not necessarily the smallest).

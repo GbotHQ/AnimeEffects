@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
+#include <functional>
 
 #include "media/VideoEncoder.h"
 
@@ -349,8 +350,13 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
 // first: quality -> scale -> frame count. These caps are hard upload
 // rejections, so this is the difference between a file the platform accepts and
 // a 400.
+// `aOnStep` (optional) is called for each encode attempt as it happens. The
+// attempt list is on the result too, but reaching a cap can take a dozen encodes
+// — minutes of work — and a caller that can only report afterwards leaves the
+// user watching a frozen progress bar.
 FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aRequest,
-                        QualityBucket aBucket, const QList<QImage>& aFrames);
+                        QualityBucket aBucket, const QList<QImage>& aFrames,
+                        const std::function<void(const QString&)>& aOnStep = nullptr);
 
 } // namespace ctrl
 

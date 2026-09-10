@@ -629,6 +629,81 @@ int main(int argc, char** argv) {
     // media_video_encoder (V1); the real-path harness stays video/gif/image to
     // keep the GL + .anie load fast and deterministic.
 
+    // Scenario 12: the frame-sink path the app now uses for a destination with a
+    // hard byte cap. Telegram refuses a sticker over 256 KB, Discord over 512 KB,
+    // and exportWithFit() has implemented the encode-measure-re-encode loop since
+    // it was written — but nothing in the app called it, so the caps were stated
+    // in the dialog and enforced nowhere. This is the wiring: render through the
+    // exporter WITHOUT encoding, hand the frames to the fit loop, and land a file
+    // inside the cap.
+    {
+        const ctrl::ExportTarget telegram =
+            ctrl::ExportTargets::find(ctrl::ExportTargets::load(), QStringLiteral("telegram.sticker"));
+        const QString out = QDir::temp().filePath("ae_e2e_capped.webm");
+        QFile::remove(out);
+
+        ctrl::ExportRequest req;
+        req.outputPath = out;
+        req.sourceSize = project.attribute().imageSize();
+        req.fps = fps;
+        // Three seconds at the export rate is Telegram's own duration cap, but
+        // never past the end of the project: the exporter stops at the project's
+        // last frame (correctly — it has nothing to render beyond it), so a
+        // selection that overruns would hand the fit loop fewer frames than the
+        // plan describes and fail its frame-count check. The app cannot reach that
+        // state because the dialog's spin boxes are bounded by the project; a
+        // harness constructing a selection by hand can, and must not.
+        const int lastWanted = minFrame + 3 * fps - 1;
+        const int lastFrame = std::min(lastWanted, project.attribute().frameRange().max());
+        req.selection = ctrl::FrameSelection::fromRange(minFrame, lastFrame);
+        const ctrl::ExportPlan plan = ctrl::planExport(telegram, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok(), QStringLiteral("e2e capped: telegram plan builds (%1)").arg(plan.error).toUtf8().constData());
+
+        if (plan.ok()) {
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            ctrl::Exporter::CommonParam cp;
+            cp.path = out;                       // validated, never written in sink mode
+            cp.size = plan.size;
+            cp.renderSize = plan.renderSize;
+            cp.fit = plan.config.fit;
+            cp.fps = plan.fps;
+            cp.selection = plan.selection;
+            ctrl::Exporter::VideoParam vp;
+            vp.container = plan.config.container;
+            vp.codec = plan.config.codec;
+
+            QList<QImage> frames;
+            ex->setFrameSink([&](const QList<QImage>& aFrames) { frames = aFrames; });
+            const auto r = ex->execute(cp, vp);
+            check((bool)r, QStringLiteral("e2e capped: sink-mode render succeeds (%1)").arg(ex->log()).toUtf8().constData());
+            check(frames.size() == plan.frames(),
+                  QStringLiteral("e2e capped: the sink got every selected frame (%1 of %2)")
+                      .arg(frames.size()).arg(plan.frames()).toUtf8().constData());
+            // The frames arrive at the RENDER size: the encoder owns pad/crop, and
+            // padding here as well would fit an exact-size destination twice.
+            check(!frames.isEmpty() && frames.first().size() == plan.renderSize,
+                  QStringLiteral("e2e capped: frames arrive at the render size (%1x%2)")
+                      .arg(frames.isEmpty() ? 0 : frames.first().width())
+                      .arg(frames.isEmpty() ? 0 : frames.first().height())
+                      .toUtf8().constData());
+
+            const ctrl::FitResult fit =
+                ctrl::exportWithFit(telegram, req, ctrl::QualityBucket::Balanced, frames);
+            for (const QString& step : fit.steps) {
+                fprintf(stderr, "    fit: %s\n", step.toUtf8().constData());
+            }
+            const qint64 written = QFileInfo(out).size();
+            fprintf(stderr, "    fit: %lld bytes in %d attempts, cap %lld\n",
+                    (long long)written, fit.attempts, (long long)telegram.caps.maxBytes);
+            check(fit.ok, QStringLiteral("e2e capped: a file within the cap was produced (%1)").arg(fit.error).toUtf8().constData());
+            check(written > 0 && written <= telegram.caps.maxBytes,
+                  QStringLiteral("e2e capped: %1 bytes is inside Telegram's %2")
+                      .arg((qlonglong)written).arg((qlonglong)telegram.caps.maxBytes)
+                      .toUtf8().constData());
+            QFile::remove(out);
+        }
+    }
+
     QTextStream(stdout) << "=== result ===\n";
     return failures == 0 ? 0 : 1;
 }

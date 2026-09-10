@@ -1395,6 +1395,77 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         if (!plan.audioEnabled) audioTracks.clear();
     }
     exporter.setAudioTracks(audioTracks);
+
+    // A destination with a hard byte cap is the one case where a single encode is
+    // not enough. Telegram rejects a sticker over 256 KB, Discord over 512 KB, and
+    // so on — those are upload rejections, not preferences — and the only way to
+    // meet them is to encode, MEASURE, and encode again lower if the file is over.
+    //
+    // exportWithFit() has done exactly that since it was written, and nothing in
+    // the app ever called it: the caps were stated in the dialog and enforced
+    // nowhere, so the user got a file the platform refused with no warning. So for
+    // a capped destination the exporter renders the frames and hands them over
+    // instead of encoding.
+    if (havePlan && plan.target.caps.maxBytes > 0) {
+        ctrl::ExportTarget fitTarget = plan.target;
+        ctrl::ExportRequest fitRequest;
+        fitRequest.outputPath = g.osExportTarget;
+        fitRequest.sourceSize = mCurrent->attribute().imageSize();
+        fitRequest.requestedSize = QSize(g.exportWidth, g.exportHeight);
+        fitRequest.fps = cparam.fps;
+        fitRequest.selection = cparam.selection;
+
+        // Fitting needs every frame in memory at once. Bounded by the row's own
+        // caps (a 512px, 3-second sticker is ~70 MB), but checked rather than
+        // assumed, so a future row with a byte cap on a long video is refused
+        // with a reason instead of exhausting memory.
+        const qint64 bytesEach = qint64(plan.renderSize.width()) * plan.renderSize.height() * 4;
+        const qint64 needed = bytesEach * plan.frames();
+        const qint64 kBudget = 512LL * 1024 * 1024;
+        if (needed > kBudget) {
+            QMessageBox::warning(widget, QObject::tr("Export Error"),
+                                 QObject::tr("%1 caps the file size, which means encoding it "
+                                             "more than once, and that needs all %2 frames in "
+                                             "memory (~%3 MB). Export fewer frames, or choose a "
+                                             "destination without a size limit.")
+                                     .arg(plan.target.label)
+                                     .arg(plan.frames())
+                                     .arg(needed / (1024 * 1024)));
+            return;
+        }
+
+        exporter.setFrameSink([&](const QList<QImage>& frames) {
+            // The fit phase is encoding, not rendering: saying "Rendering..." while
+            // it re-encodes a dozen times leaves the user watching a stuck 98%. So
+            // the section says what is happening and every attempt is logged as it
+            // happens (pushLog pumps events, so the dialog also stays alive).
+            progress.setSection(QObject::tr("Fitting under %1's %2 KB limit...")
+                                    .arg(plan.target.label)
+                                    .arg(plan.target.caps.maxBytes / 1024));
+            const ctrl::FitResult fit = ctrl::exportWithFit(
+                fitTarget, fitRequest, exParam.qualityBucket, frames,
+                [&progress](const QString& aStep) {
+                    progress.pushLog(aStep, ctrl::UILogType_Info);
+                });
+            if (!fit.ok) {
+                QMessageBox::warning(widget, QObject::tr("Export Error"),
+                                     QObject::tr("%1 caps the file at %2 KB and even the "
+                                                 "smallest setting did not fit it (%3 KB).\n%4")
+                                         .arg(plan.target.label)
+                                         .arg(plan.target.caps.maxBytes / 1024)
+                                         .arg(fit.bytes / 1024)
+                                         .arg(fit.error));
+                return;
+            }
+            progress.pushLog(QObject::tr("Fitted to %1 bytes in %2 attempts (%3x%4).")
+                                 .arg((qlonglong)fit.bytes)
+                                 .arg(fit.attempts)
+                                 .arg(fit.finalSize.width())
+                                 .arg(fit.finalSize.height()),
+                             ctrl::UILogType_Info);
+        });
+    }
+
     auto res = exporter.execute(cparam, vparam);
     if (!res && !exporter.isCanceled())
         QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());

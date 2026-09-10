@@ -32,6 +32,18 @@ class Exporter {
 public:
     typedef std::function<bool(const QString&)> OverwriteConfirmer;
 
+    // Render the selection and hand the FRAMES to this instead of encoding a file.
+    //
+    // Fitting a file under a destination's hard byte cap means encoding,
+    // measuring, and encoding again at a lower quality — so the caller needs the
+    // frames, not a finished file. The frames arrive at the RENDER size, which is
+    // what media::VideoEncoder::Config::fit expects (it pads or crops to the
+    // output size itself); padding them here instead would double-fit an
+    // exact-size destination.
+    //
+    // Called once, from finish(), after every frame has been rendered.
+    typedef std::function<void(const QList<QImage>&)> FrameSink;
+
     enum ResultCode {
         ResultCode_Success,
         ResultCode_Canceled,
@@ -124,6 +136,7 @@ public:
 
     void setOverwriteConfirmer(const OverwriteConfirmer& aConfirmer);
     void setProgressReporter(util::IProgressReporter& aReporter);
+    void setFrameSink(FrameSink aSink) { mFrameSink = std::move(aSink); }
     void setUILogger(ctrl::UILogger& aLogger);
 
     // Supply the multi-track audio to mix and mux alongside the video. Call
@@ -176,6 +189,10 @@ private:
     // own VAO bound after deleting it would break the canvas that painted before.
     QScopedPointer<gl::VertexArrayObject> mExportVAO;
     GLint mPreviousVAO = 0;
+
+    // Frame-sink mode: frames are collected and handed over instead of encoded.
+    FrameSink mFrameSink;
+    QList<QImage> mSinkFrames;
 
     QScopedPointer<core::ClippingFrame> mClippingFrame;
     QScopedPointer<core::FilterFrame> mFilterFrame;

@@ -259,7 +259,10 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
             }
         }
 
-        if (!mVideoEncoder.open(cfg)) {
+        // Frame-sink mode writes no file: the caller fits and encodes the frames
+        // itself. Opening the encoder here would create an empty file that the
+        // caller's own encode then has to overwrite.
+        if (!mFrameSink && !mVideoEncoder.open(cfg)) {
             mLog = "Video encoder error.\n" + mVideoEncoder.error();
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
@@ -501,6 +504,13 @@ bool Exporter::update() {
 }
 
 bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
+    // Frame-sink mode: nothing is written here. The frames are handed over in
+    // finish(), at the render size, for the caller to fit and encode.
+    if (mFrameSink) {
+        mSinkFrames.append(aFboImage);
+        return true;
+    }
+
     // Frames leave here at the RENDER size; an exact-size destination needs the
     // output size, so reconcile once here for the paths that do not go through
     // the encoder (which does its own pad/crop from the same helper).
@@ -537,6 +547,20 @@ bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
 
 Exporter::Result Exporter::finish() {
     Result result(ResultCode_Success, "Success.");
+
+    if (mFrameSink && !mSinkFrames.isEmpty()) {
+        FrameSink sink = mFrameSink;
+        QList<QImage> frames = mSinkFrames;
+        // Cleared BEFORE the call: the sink typically re-encodes, and a sink that
+        // reported failure must not leave the exporter able to hand the same
+        // frames over twice.
+        mSinkFrames.clear();
+        mFrameSink = nullptr;
+        sink(frames);
+        mExporting = false;
+        releaseExportVAO();
+        return result;
+    }
 
     if (mExporting) {
         if (mCollectFrames) {
