@@ -459,8 +459,10 @@ int main(int argc, char** argv) {
             check(padImg.size() == exact, msg1.toUtf8().constData());
 
             // Pad leaves transparent margin; a stretch to the same size would not.
-            // This is only meaningful if the render has content at all — on a blank
-            // frame every margin is trivially transparent.
+            // Row 0 is margin: the fitted art is shorter than the box. A stretch
+            // to the same size would paint it, so this distinguishes Pad from a
+            // plain resize — and it is only meaningful because the render is known
+            // to have content (asserted in scenario 1).
             bool marginTransparent = padImg.hasAlphaChannel();
             if (marginTransparent) {
                 const int y = 0; // fitted art is shorter than the box, so row 0 is margin
@@ -468,13 +470,11 @@ int main(int argc, char** argv) {
                     if (qAlpha(padImg.pixel(x, y)) != 0) marginTransparent = false;
                 }
             }
-            if (true) {
-                check(marginTransparent,
-                      "e2e exact-size: Pad leaves a TRANSPARENT margin (art fitted, not stretched)");
-                check(cropImg.size() == exact, "e2e exact-size: Crop output is the exact size too");
-                check(!cropImg.isNull() && !padImg.isNull() && cropImg != padImg,
-                      "e2e exact-size: Pad and Crop produce different images (fit is honoured)");
-            }
+            check(marginTransparent,
+                  "e2e exact-size: Pad leaves a TRANSPARENT margin (art fitted, not stretched)");
+            check(cropImg.size() == exact, "e2e exact-size: Crop output is the exact size too");
+            check(!cropImg.isNull() && !padImg.isNull() && cropImg != padImg,
+                  "e2e exact-size: Pad and Crop produce different images (fit is honoured)");
 
             QDir(padDir).removeRecursively();
             QDir(cropDir).removeRecursively();
