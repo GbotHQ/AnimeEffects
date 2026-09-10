@@ -22,6 +22,9 @@ public:
     MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResources& aGUIResources, QWidget* aParent);
     MainWindow* mainWindow = nullptr;
     QMenu* openRecent = nullptr;
+    /// Holds one checkable action per dock panel; MainWindow fills it once the
+    /// panels exist, because a hidden panel has no other way back.
+    QMenu* viewMenu = nullptr;
     QVector<QAction*> actions;
     void onRecentsUpdate();
     void setProject(core::Project* aProject);

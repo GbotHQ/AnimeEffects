@@ -234,6 +234,9 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         editMenu->addAction(assets);
     }
 
+    // Filled by MainWindow once the panels are constructed.
+    viewMenu = new QMenu(tr("View"), this);
+
     auto preferenceMenu = new QMenu(tr("Preferences"), this);
     {
         auto general = new QAction(tr("General settings"), this);
@@ -507,6 +510,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     this->addAction(fileMenu->menuAction());
     this->addAction(editMenu->menuAction());
+    this->addAction(viewMenu->menuAction());
     this->addAction(preferenceMenu->menuAction());
     this->addAction(helpMenu->menuAction());
     QSettings settings;

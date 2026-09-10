@@ -6,12 +6,14 @@
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
 #include "gui/DockPanel.h"
+#include "gui/DockTitleBar.h" // dockSpikeLog (temporary instrumentation)
 #include "gui/DockSash.h"
 #include "gui/ExportDialog.h"
 #include "gui/NewProjectDialog.h"
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
+#include <QTimer>
 #include <utility>
 #include <QComboBox>
 // This thing is held by duct tape and OOP hell I swear...
@@ -42,6 +44,7 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     mMainDisplay(),
     mProjectTabBar(),
     mTarget(),
+    mDockAnimationWidget(),
     mProperty(),
     mTool(),
     mResourceDialog(),
@@ -165,9 +168,17 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("animationDock");
         dockWidget->setWindowTitle(tr("Animation"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        // Closable is not for a close button: Qt hides its buttons as soon as a
+        // title bar widget exists. It is required for toggleViewAction(), which
+        // Qt leaves disabled on a dock that cannot close - and that action is
+        // how a hidden panel gets back (see the View menu below).
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         dockWidget->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
         this->addDockWidget(Qt::BottomDockWidgetArea, dockWidget);
+
+        mDockAnimationWidget = dockWidget;
 
         mTarget = new TargetWidget(mViaPoint, mGUIResources, dockWidget, QSize(256, 256));
         dockWidget->setWidget(mTarget);
@@ -178,7 +189,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("propertiesDock");
         dockWidget->setWindowTitle(tr("Properties"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        // Closable is not for a close button: Qt hides its buttons as soon as a
+        // title bar widget exists. It is required for toggleViewAction(), which
+        // Qt leaves disabled on a dock that cannot close - and that action is
+        // how a hidden panel gets back (see the View menu below).
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         dockWidget->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
         this->addDockWidget(Qt::RightDockWidgetArea, dockWidget);
 
@@ -224,7 +241,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         auto* dockWidget = new gui::DockPanel(this);
         dockWidget->setObjectName("toolsDock");
         dockWidget->setWindowTitle(tr("Tools"));
-        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+        // Closable is not for a close button: Qt hides its buttons as soon as a
+        // title bar widget exists. It is required for toggleViewAction(), which
+        // Qt leaves disabled on a dock that cannot close - and that action is
+        // how a hidden panel gets back (see the View menu below).
+        dockWidget->setFeatures(QDockWidget::DockWidgetFloatable
+                                | QDockWidget::DockWidgetMovable
+                                | QDockWidget::DockWidgetClosable);
         this->addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
 
         mDockToolWidget = dockWidget;
@@ -237,6 +260,30 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     {
         mResourceDialog = new ResourceDialog(mViaPoint, false, this);
         mViaPoint.setResourceDialog(mResourceDialog);
+    }
+
+    // panels are hidden from their own header menu, so the menu bar has to be
+    // able to bring them back: one checkable action per panel, ordered the way
+    // they sit in the window (left, right, bottom). The action's checked state
+    // follows the dock's visibility on its own.
+    {
+        QMenu* viewMenu = mMainMenuBar->viewMenu;
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            QAction* action = dock->toggleViewAction();
+            viewMenu->addAction(action);
+            dockSpikeLog(dock, QStringLiteral("view action enabled=%1 checkable=%2 checked=%3 text=%4")
+                    .arg(action->isEnabled()).arg(action->isCheckable())
+                    .arg(action->isChecked()).arg(action->text()));
+        }
+        // Qt only sets the check state from the dock's Show/Hide events, so the
+        // state above is pre-show; read it again once the window is up.
+        QTimer::singleShot(0, this, [this]() {
+            for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+                auto* action = dock->toggleViewAction();
+                dockSpikeLog(dock, QStringLiteral("view action shown: checked=%1 visible=%2")
+                        .arg(action->isChecked()).arg(dock->isVisible()));
+            }
+        });
     }
 
     // dock-edge sashes: 12px invisible hitboxes + 1px hairlines over the

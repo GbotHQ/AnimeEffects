@@ -115,6 +115,7 @@ private:
     QVector<core::Project*> mProjects;
     TargetWidget* mTarget;
     PropertyWidget* mProperty;
+    QDockWidget* mDockAnimationWidget;
     QDockWidget* mDockPropertyWidget;
     ToolWidget* mTool;
     QDockWidget* mDockToolWidget;
