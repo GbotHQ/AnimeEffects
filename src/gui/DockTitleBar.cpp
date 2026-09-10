@@ -1,5 +1,6 @@
 #include "gui/DockTitleBar.h"
 
+#include "gui/DockDropOverlay.h"
 #include "gui/DockPanel.h"
 #include "gui/theme/Colors.h"
 
@@ -9,7 +10,9 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QMainWindow>
+#include <QDrag>
 #include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QTime>
@@ -68,6 +71,18 @@ DockTitleBar::DockTitleBar(QDockWidget* aDock):
             .arg(QGuiApplication::platformName(), QString::fromLatin1(qVersion())));
 }
 
+/// The tab: the title text plus the padding a tab carries, left-aligned in the
+/// header. This is the dock handle while the panel floats - the title area
+/// around it moves the window, which is the split the platform forces: a move
+/// hands the client no positions and a drag hands it no way to move the window,
+/// so one gesture cannot be both.
+QRect DockTitleBar::tabRect() const {
+    const int inset = titleInset(fontMetrics());
+    const int tabWidth = qMin(width() - 2 * inset,
+                              fontMetrics().horizontalAdvance(mDock->windowTitle()) + 2 * inset);
+    return QRect(inset, 0, qMax(0, tabWidth), height());
+}
+
 QSize DockTitleBar::sizeHint() const {
     return QSize(0, qMax(18, fontMetrics().height() + kVerticalPadding));
 }
@@ -95,10 +110,22 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
     // The title text replaces the QSS `QDockWidget::title` box, which Qt no
     // longer draws once a title bar widget exists. The dock carries the bold
     // dock font, so this text is bold without asking.
-    const int inset = titleInset(fontMetrics());
+    //
+    // The text is also the dock handle, so it is drawn as the tab it becomes
+    // when the panel joins a group: hovered, it takes the same accent wash and
+    // focus-coloured top rule the theme gives a tab, which is the only thing
+    // that says this region can be dragged somewhere. Docked, the tab in the
+    // group's strip holds that role and this header is inert.
+    const QRect tab = tabRect();
+    if (mDock->isFloating() && mTabHover) {
+        QColor wash = c.accent;
+        wash.setAlpha(40);
+        p.fillRect(tab, wash);
+        p.fillRect(QRect(tab.left(), tab.top(), tab.width(), 2), c.focus);
+    }
+
     p.setPen(c.text);
-    p.drawText(rect().adjusted(inset, 0, -inset, 0),
-               Qt::AlignVCenter | Qt::AlignLeft, mDock->windowTitle());
+    p.drawText(tab, Qt::AlignVCenter | Qt::AlignLeft, mDock->windowTitle());
 }
 
 void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
@@ -109,12 +136,14 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
 
     if (mDock->isFloating()) {
         // The window's own title area: remember where the drag started and
-        // claim the press, so it cannot reach the dock and start Qt's
-        // dock drag-and-drop in place of the move.
+        // claim the press, so it cannot reach the dock and start Qt's own
+        // dock drag-and-drop instead of what is decided here.
         mPressPos = aEvent->position().toPoint();
         mMoving = false;
-        log(QStringLiteral("floating title-press pos=%1,%2 -> move armed")
-                .arg(mPressPos.x()).arg(mPressPos.y()));
+        mDockDragArmed = tabRect().contains(mPressPos);
+        log(QStringLiteral("floating title-press pos=%1,%2 -> %3 armed")
+                .arg(mPressPos.x()).arg(mPressPos.y())
+                .arg(mDockDragArmed ? QStringLiteral("dock drag") : QStringLiteral("window move")));
         aEvent->accept();
         return;
     }
@@ -132,6 +161,13 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
     // The consequence is that the client receives no positions at all for the
     // rest of the gesture - which is exactly why docking cannot ride along on
     // this drag, and needs a gesture (and a drop target) of its own.
+    if (mDock->isFloating() && mDockDragArmed && !mDragging && (aEvent->buttons() & Qt::LeftButton)
+            && (aEvent->position().toPoint() - mPressPos).manhattanLength()
+                    >= QApplication::startDragDistance()) {
+        startDockDrag();
+        aEvent->accept();
+        return;
+    }
     if (mDock->isFloating() && !mMoving && (aEvent->buttons() & Qt::LeftButton)
             && (aEvent->position().toPoint() - mPressPos).manhattanLength()
                     >= QApplication::startDragDistance()) {
@@ -143,7 +179,51 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
             return;
         }
     }
+    // Hover feedback for the handle: the wash is painted, the cursor says the
+    // region is grabbable, and both only while the panel is a window (docked,
+    // the tab in the group's strip is the handle, and it is deliberately inert).
+    const bool hover = mDock->isFloating() && tabRect().contains(aEvent->position().toPoint());
+    if (hover != mTabHover) {
+        mTabHover = hover;
+        setCursor(hover ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        update();
+    }
     QWidget::mouseMoveEvent(aEvent);
+}
+
+/// Hand the panel to a drag-and-drop, which is the only gesture on Wayland in
+/// which a client is told where the pointer is - and therefore the only one that
+/// can know what it is hovering. The image that follows the cursor is the
+/// panel's own snapshot, scaled: the panel cannot follow the cursor itself (its
+/// toplevel is already mapped, and the compositor's toplevel-drag protocol only
+/// adopts windows that are not), so the ghost is what makes the gesture read as
+/// "this panel is going there".
+void DockTitleBar::startDockDrag() {
+    auto* overlay = DockDropOverlay::forWidget(mDock);
+    // Heap-allocated with a parent, as the documentation requires: setMimeData
+    // hands over ownership of the data, and Qt has to be able to clean up after
+    // the operation has completed.
+    auto* drag = new QDrag(this);
+    auto* mime = new QMimeData();
+    mime->setData(QString::fromLatin1(DockDropOverlay::mimeType()), mDock->objectName().toUtf8());
+    drag->setMimeData(mime);
+
+    const QPixmap shot = mDock->grab();
+    if (!shot.isNull()) {
+        const QPixmap ghost = shot.scaledToWidth(qBound(160, shot.width() / 3, 360), Qt::SmoothTransformation);
+        drag->setPixmap(ghost);
+        drag->setHotSpot(QPoint(ghost.width() / 2, qMin(12, ghost.height() / 4)));
+    }
+
+    mDragging = true;
+    if (overlay) overlay->beginDrag(mDock);
+    log(QStringLiteral("tab drag started (ghost %1x%2)")
+            .arg(drag->pixmap().width()).arg(drag->pixmap().height()));
+    const Qt::DropAction result = drag->exec(Qt::MoveAction);
+    if (overlay) overlay->endDrag();
+    mDragging = false;
+    mDockDragArmed = false;
+    log(QStringLiteral("tab drag finished action=%1").arg(int(result)));
 }
 
 void DockTitleBar::mouseDoubleClickEvent(QMouseEvent* aEvent) {
@@ -156,6 +236,12 @@ void DockTitleBar::mouseDoubleClickEvent(QMouseEvent* aEvent) {
         return;
     }
     QWidget::mouseDoubleClickEvent(aEvent);
+}
+
+void DockTitleBar::mouseReleaseEvent(QMouseEvent* aEvent) {
+    mDockDragArmed = false;
+    mMoving = false;
+    QWidget::mouseReleaseEvent(aEvent);
 }
 
 void DockTitleBar::contextMenuEvent(QContextMenuEvent* aEvent) {

@@ -34,8 +34,9 @@ bool isVerticalEdge(Qt::DockWidgetArea aArea) {
 // stays transparent.
 class DockSash::HitBox: public QWidget {
 public:
-    HitBox(QMainWindow* aWindow):
+    HitBox(DockSash* aSash, QMainWindow* aWindow):
         QWidget(nullptr),
+        mSash(aSash),
         mWindow(aWindow),
         mDock(nullptr),
         mArea(Qt::NoDockWidgetArea),
@@ -136,26 +137,27 @@ protected:
         // grow away from it
         const int sign = (mArea == Qt::LeftDockWidgetArea || mArea == Qt::TopDockWidgetArea) ? 1 : -1;
         const int newSize = mStartSize + sign * (pos - mPressPos);
-        const int minSize = isVerticalEdge(mArea) ? dockMetrics::kMinWidth : dockMetrics::kMinHeight;
-
-        // Past the minimum the panel collapses instead of clamping, the way a
-        // VS Code sidebar does: resizeDocks would stop at kMinWidth and leave
-        // the sash stuck under the cursor with nothing moving. Asking for less
-        // than the minimum is an unambiguous "hide this", and dragging back out
-        // asks just as unambiguously for it back, so the gesture stays
-        // reversible while the button is still down.
-        if (newSize < minSize) {
+        // The collapse point is half the minimum, not the minimum: stopping at
+        // the minimum would make the first few pixels of "too small" hide the
+        // panel, so a panel could only ever be dragged to exactly its minimum
+        // and never a hair less. Past the minimum it keeps shrinking down to
+        // half of it, and only a drag that goes beyond that reads as "hide
+        // this". Dragging back out asks just as unambiguously for it back, so
+        // the gesture stays reversible while the button is still down.
+        const int collapseSize = isVerticalEdge(mArea) ? dockMetrics::kCollapseWidth
+                                                      : dockMetrics::kCollapseHeight;
+        if (newSize < collapseSize) {
             if (mDock->isVisible()) {
-                dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 < min %2 -> collapsed")
-                        .arg(newSize).arg(minSize));
+                dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 < collapse point %2 -> collapsed")
+                        .arg(newSize).arg(collapseSize));
                 mDock->hide();
                 mCollapsed = true;
             }
             return;
         }
         if (mCollapsed) {
-            dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 >= min %2 -> restored")
-                    .arg(newSize).arg(minSize));
+            dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 >= collapse point %2 -> restored")
+                    .arg(newSize).arg(collapseSize));
             mDock->show();
             mCollapsed = false;
         }
@@ -168,6 +170,11 @@ protected:
         if (aEvent->button() == Qt::LeftButton) {
             mDragging = false;
             mCollapsed = false;
+            // A collapsed dock is no longer a target, so its sash has to go -
+            // and it cannot go during the drag (see isDragging), which is why
+            // this is the moment, not the collapse itself. Without it the last
+            // hitbox stayed drawn at the boundary of a panel that is not there.
+            if (mSash) mSash->scheduleRelayout();
             update();
         }
     }
@@ -201,6 +208,7 @@ private:
         }
     }
 
+    DockSash* mSash;
     QMainWindow* mWindow;
     QPointer<QDockWidget> mDock;
     Qt::DockWidgetArea mArea;
@@ -261,7 +269,7 @@ void DockSash::relayout() {
         targets.push_back({dock, area});
     }
     while (mHitBoxes.size() < targets.size())
-        mHitBoxes.push_back(new HitBox(mWindow));
+        mHitBoxes.push_back(new HitBox(this, mWindow));
     int used = 0;
     for (int i = 0; i < mHitBoxes.size(); ++i) {
         if (used < targets.size()) {

@@ -30,6 +30,9 @@
 
 namespace gui {
 
+struct DockDropTarget;
+class DockDropOverlay;
+
 class MainWindow: public QMainWindow {
     Q_OBJECT
 
@@ -119,6 +122,7 @@ private:
     QVector<core::Project*> mProjects;
     TargetWidget* mTarget;
     PropertyWidget* mProperty;
+    DockDropOverlay* mDockDropOverlay = nullptr;
     QDockWidget* mDockAnimationWidget;
     QDockWidget* mDockPropertyWidget;
     ToolWidget* mTool;
@@ -131,6 +135,10 @@ private:
     /// Gives Qt's dock tab bars the panel context menu (see MainWindow.cpp):
     /// a grouped panel's own header, which carries that menu, is hidden behind
     /// the group's tabs.
+    /// Applies the area's size range (DockMetrics.h) to a panel.
+    void applyPanelMetrics(QDockWidget* aDock);
+    /// Performs the docking a drop asked for (declared in DockDropOverlay.h).
+    void applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget);
     void updateDockTabMenus();
     QDockWidget* dockForTabTitle(const QString& aTitle) const;
 };

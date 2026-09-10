@@ -4,31 +4,47 @@
 namespace gui {
 
 /**
- * One size range, shared by every panel.
+ * One size range, shared by every panel - but applied per *area*, not per
+ * panel.
  *
- * Panel-local ranges do not survive tabbing. A tab group is a single area, so
- * its reachable sizes are the intersection of its members': the widest minimum
- * wins, the smallest maximum wins, and a panel whose content caps its own width
- * leaves a gap beside itself once the group is wider than that cap. That is
- * exactly what the three panels did before this file existed - Tools was capped
- * at its own design width of 172, Properties claimed a 320..640 window, and the
- * timeline's content asked for 380 - so no two of them could share an area
- * sensibly, which is the whole point of the tabs.
+ * Two things went wrong when the panels each carried their own range. The
+ * first is that a tab group is a single area, so its reachable sizes are the
+ * intersection of its members': the widest minimum and the smallest maximum
+ * win, and a panel whose content caps its own width leaves a gap beside itself
+ * once the group is wider. That is what the three panels did - Tools was capped
+ * at its design width of 172, Properties claimed 320..640, the timeline's
+ * content asked for 380 - so no two of them could share an area sensibly, which
+ * is the whole point of the tabs.
  *
- * The minimum is also the collapse threshold: dragging a sash past it hides the
- * panel rather than clamping, the way a VS Code sidebar collapses (see
- * DockSash::mouseMoveEvent). It is deliberately the smallest size that still
- * leaves every panel usable, not a comfortable size, because that is what makes
- * collapsing useful rather than something the user fights.
+ * The second is that the two axes are not the same kind of thing. A side area
+ * is constrained in width and runs the full height of the window; a top or
+ * bottom area is constrained in height and runs the full width. Giving every
+ * panel both ranges meant the bottom panel took a maximum *width* of 640 and
+ * could no longer span the window: the timeline was 640 wide with dead space
+ * beside it. So the range is selected by the area the panel is in, and a
+ * floating panel is constrained by neither (it is a window, and the compositor
+ * resizes it).
+ *
+ * The minimum is also what a sash drag measures against: past it the panel
+ * keeps shrinking to half of it, and only then collapses - the collapse is for
+ * the deliberate "I want this gone" drag, not a hair past the usable size (see
+ * DockSash::mouseMoveEvent).
  */
 namespace dockMetrics {
 
-/// Narrowest a panel may be dragged before it collapses.
+/// Side areas (left, right): narrowest width before collapsing.
 constexpr int kMinWidth = 200;
-/// Shortest a panel may be dragged before it collapses.
-constexpr int kMinHeight = 160;
-/// Widest a panel grows; past this a side panel is just stretched empty space.
+/// Side areas: widest, past which a sidebar is stretched empty space.
 constexpr int kMaxWidth = 640;
+
+/// Top/bottom areas: shortest height before collapsing.
+constexpr int kMinHeight = 160;
+/// Top/bottom areas: tallest.
+constexpr int kMaxHeight = 640;
+
+/// Where a drag past the minimum turns into a collapse.
+constexpr int kCollapseWidth = kMinWidth / 2;
+constexpr int kCollapseHeight = kMinHeight / 2;
 
 } // namespace dockMetrics
 

@@ -1,0 +1,113 @@
+#ifndef GUI_DOCKDROPOVERLAY_H
+#define GUI_DOCKDROPOVERLAY_H
+
+#include <QDockWidget>
+#include <QRect>
+#include <functional>
+
+class QDragEnterEvent;
+class QDragMoveEvent;
+class QDragLeaveEvent;
+class QDropEvent;
+class QMainWindow;
+class QMimeData;
+
+namespace gui {
+
+/**
+ * The drop side of the dock gesture: what a dragged panel lands on, and the
+ * preview that says so.
+ *
+ * Qt's own drop handling is not used. It exists - QMainWindow::event handles
+ * DragEnter/DragMove/Drop for a dock drag - but its feedback is a QRubberBand
+ * drawn at the rect the layout would give the panel, which is truthful and
+ * useless: at this app's sizes it is a sliver a few pixels wide, it appears
+ * only once the cursor is already over it, and its leave path can miss, leaving
+ * it stuck on screen. What is here instead is one function that both decides
+ * the target and produces the rectangle to draw, so the preview cannot disagree
+ * with the drop, drawn large enough to aim at, shown for the whole drag rather
+ * than only once the cursor is inside, and cleared the moment the drag leaves.
+ *
+ * The overlay is a child of the main window covering it, shown only while a
+ * drag is in flight. That is also what makes it the drop target: a drag is
+ * delivered to the widget under the cursor, so covering the window means the
+ * decision is ours and Qt's own handler never sees the drop.
+ *
+ * Hovering is keyed to the pointer, which during a drag *is* the panel: the
+ * drag image is the panel's own snapshot, so "where the window is" and "where
+ * the cursor is" are the same place. There is nothing else it could be keyed
+ * to: a drag-and-drop is the only gesture in which a Wayland client is told
+ * where the pointer is at all, and the price of that is that the window itself
+ * cannot follow the cursor (that needs the compositor's move, which reports no
+ * positions).
+ */
+/// What a drop would do.
+enum class DockDropKind {
+    None,   ///< nothing here: the panel stays floating where it is
+    Area,   ///< take a side of the central widget (addDockWidget)
+    Split,  ///< divide the target group (splitDockWidget)
+    Tabify, ///< become a tab of the target group (tabifyDockWidget)
+};
+
+/// A resolved drop: at namespace scope rather than nested, so the main window
+/// can declare it and take it by reference without including this header.
+struct DockDropTarget {
+    DockDropKind kind = DockDropKind::None;
+    Qt::DockWidgetArea area = Qt::NoDockWidgetArea;
+    /// The group's title-bearing dock, for Split and Tabify.
+    QDockWidget* group = nullptr;
+    /// The rectangle the drop would occupy, in main-window coordinates.
+    QRect rect;
+};
+
+class DockDropOverlay: public QWidget {
+    Q_OBJECT
+
+public:
+    explicit DockDropOverlay(QMainWindow* aWindow);
+
+    /// The overlay of the main window a widget lives in, if there is one.
+    static DockDropOverlay* forWidget(QWidget* aWidget);
+
+    /// The MIME type carrying the dragged panel's object name.
+    static const char* mimeType();
+
+    /// Show the overlay for a drag of aPanel. Call before QDrag::exec: the
+    /// overlay has to be up to receive the drag's enter event at all.
+    void beginDrag(QDockWidget* aPanel);
+    /// Hide it again, whatever the outcome.
+    void endDrag();
+
+    /// Resolve a position and repaint the preview. Public because the target
+    /// rule is the thing worth testing, and a mouse is not the only way in.
+    DockDropTarget hover(const QPoint& aPosInWindow);
+    /// The target at a position, without showing anything.
+    DockDropTarget resolve(const QPoint& aPosInWindow) const;
+
+    /// Called with the resolved target when a drag is dropped on the overlay.
+    std::function<void(QDockWidget*, const DockDropTarget&)> onDropped;
+
+protected:
+    void paintEvent(QPaintEvent* aEvent) override;
+    void resizeEvent(QResizeEvent* aEvent) override;
+    void dragEnterEvent(QDragEnterEvent* aEvent) override;
+    void dragMoveEvent(QDragMoveEvent* aEvent) override;
+    void dragLeaveEvent(QDragLeaveEvent* aEvent) override;
+    void dropEvent(QDropEvent* aEvent) override;
+
+private:
+    /// The rect a dock occupies together with the docks tabbed onto it.
+    QRect groupRect(QDockWidget* aDock) const;
+    /// How thick the preview band is along an axis: what the panel would
+    /// actually take, so the preview is not a guess.
+    int bandExtent(Qt::Orientation aAxis, int aLimit) const;
+    QDockWidget* panelFromMime(const QMimeData* aData) const;
+
+    QMainWindow* mWindow;
+    QDockWidget* mPanel = nullptr;
+    DockDropTarget mTarget;
+};
+
+} // namespace gui
+
+#endif // GUI_DOCKDROPOVERLAY_H

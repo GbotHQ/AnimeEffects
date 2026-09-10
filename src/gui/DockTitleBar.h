@@ -59,10 +59,14 @@ protected:
     void paintEvent(QPaintEvent* aEvent) override;
     void mousePressEvent(QMouseEvent* aEvent) override;
     void mouseMoveEvent(QMouseEvent* aEvent) override;
+    void mouseReleaseEvent(QMouseEvent* aEvent) override;
     void mouseDoubleClickEvent(QMouseEvent* aEvent) override;
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
 
 private:
+    /// The handle region: the title text plus tab padding, left-aligned.
+    QRect tabRect() const;
+    void startDockDrag();
     void popupMenu(const QPoint& aGlobalPos);
     void toggleFloating();
     void log(const QString& aMessage) const;
@@ -70,6 +74,9 @@ private:
     QDockWidget* mDock;
     QPoint mPressPos;
     bool mMoving = false;
+    bool mDockDragArmed = false;
+    bool mDragging = false;
+    bool mTabHover = false;
 };
 
 } // namespace gui

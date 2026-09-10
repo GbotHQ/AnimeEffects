@@ -5,6 +5,7 @@
 #include "gl/Global.h"
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
+#include "gui/DockDropOverlay.h"
 #include "gui/DockMetrics.h"
 #include "gui/DockPanel.h"
 #include "gui/DockTitleBar.h" // dockSpikeLog (temporary instrumentation)
@@ -344,15 +345,26 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     // rather than built (see updateDockTabMenus).
     this->installEventFilter(this);
 
+    // The drop side of the dock gesture: one overlay over the window that
+    // decides the target, draws it, and performs it (see DockDropOverlay).
+    mDockDropOverlay = new DockDropOverlay(this);
+    mDockDropOverlay->onDropped = [this](QDockWidget* aPanel, const DockDropTarget& aTarget) {
+        applyDockDrop(aPanel, aTarget);
+    };
+
     // One size range for every panel, and one set of allowed areas: a tab
     // group can only be as narrow as its strictest member and as wide as its
     // most-capped one, and a panel that is only allowed in one area can never
     // be tabbed with a panel that lives on another side. See DockMetrics.h.
     for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
         dock->setAllowedAreas(Qt::AllDockWidgetAreas);
-        dock->setMinimumWidth(dockMetrics::kMinWidth);
-        dock->setMinimumHeight(dockMetrics::kMinHeight);
-        dock->setMaximumWidth(dockMetrics::kMaxWidth);
+        applyPanelMetrics(dock);
+        // the range depends on the area, so it is re-applied whenever the panel
+        // changes area or floats
+        connect(dock, &QDockWidget::dockLocationChanged, this,
+                [this, dock](Qt::DockWidgetArea) { applyPanelMetrics(dock); });
+        connect(dock, &QDockWidget::topLevelChanged, this,
+                [this, dock](bool) { applyPanelMetrics(dock); });
     }
 
     // Layout toggles in the menu bar's top-right corner, where VS Code keeps
@@ -434,6 +446,48 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->isVisible() : false)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->width() : -1)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->height() : -1));
+        });
+    }
+
+    // Temporary: exercise the drop rule without a mouse. "x,y" resolves a target
+    // and leaves the preview on screen (so it can be looked at); "x,y,apply"
+    // performs it too, which is how the docking operations get tested at all -
+    // a synthetic drag cannot be produced on this platform.
+    if (qEnvironmentVariableIsSet("AE_DOCK_DROP_PROBE")) {
+        const QStringList spec = qEnvironmentVariable("AE_DOCK_DROP_PROBE").split(QLatin1Char(','));
+        QTimer::singleShot(700, this, [this, spec]() {
+            if (auto* panel = qobject_cast<DockPanel*>(mDockPropertyWidget))
+                panel->setPanelFloating(true);
+            QTimer::singleShot(400, this, [this, spec]() {
+                if (!mDockDropOverlay) return;
+                mDockDropOverlay->beginDrag(mDockPropertyWidget);
+                const QPoint pos(spec.value(0).toInt(), spec.value(1).toInt());
+                const DockDropTarget target = mDockDropOverlay->hover(pos);
+                dockSpikeLog(mDockPropertyWidget,
+                        QStringLiteral("drop probe at %1,%2 -> kind=%3 area=%4 group=%5 rect=%6,%7 %8x%9")
+                        .arg(pos.x()).arg(pos.y()).arg(int(target.kind)).arg(int(target.area))
+                        .arg(target.group ? target.group->objectName() : QStringLiteral("-"))
+                        .arg(target.rect.x()).arg(target.rect.y())
+                        .arg(target.rect.width()).arg(target.rect.height()));
+                if (spec.size() > 2 && spec.at(2) == QLatin1String("apply")) {
+                    applyDockDrop(mDockPropertyWidget, target);
+                    mDockDropOverlay->endDrag();
+                    // the layout settles asynchronously, so the geometry below
+                    // is read after it has
+                    QTimer::singleShot(500, this, [this]() {
+                    dockSpikeLog(mDockPropertyWidget,
+                            QStringLiteral("drop probe applied: floating=%1 area=%2 tabified=%3 "
+                                           "panel=%4,%5 %6x%7 tools=%8,%9 %10x%11")
+                            .arg(mDockPropertyWidget->isFloating())
+                            .arg(int(this->dockWidgetArea(mDockPropertyWidget)))
+                            .arg(this->tabifiedDockWidgets(mDockPropertyWidget).size())
+                            .arg(mDockPropertyWidget->x()).arg(mDockPropertyWidget->y())
+                            .arg(mDockPropertyWidget->width()).arg(mDockPropertyWidget->height())
+                            .arg(mDockToolWidget->x()).arg(mDockToolWidget->y())
+                            .arg(mDockToolWidget->width()).arg(mDockToolWidget->height()));
+                    });
+                }
+            });
         });
     }
 
@@ -2057,5 +2111,95 @@ bool MainWindow::eventFilter(QObject* aObject, QEvent* aEvent) {
     }
     return QMainWindow::eventFilter(aObject, aEvent);
 }
+
+/// The size range a panel is held to is the *area's*, not its own: a side area
+/// is a width-constrained full-height column, a top/bottom area is a
+/// height-constrained full-width row, and a floating panel is a window that the
+/// compositor sizes. Applying both ranges everywhere is what gave the bottom
+/// panel a 640px maximum width.
+void MainWindow::applyPanelMetrics(QDockWidget* aDock) {
+    const Qt::DockWidgetArea area = this->dockWidgetArea(aDock);
+    const bool floating = aDock->isFloating();
+    const bool side = (area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea);
+
+    // clear first: the panel may have just left the other kind of area
+    aDock->setMinimumSize(0, 0);
+    aDock->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    if (floating) return;
+
+    if (side) {
+        aDock->setMinimumWidth(dockMetrics::kMinWidth);
+        aDock->setMaximumWidth(dockMetrics::kMaxWidth);
+    } else if (area != Qt::NoDockWidgetArea) {
+        aDock->setMinimumHeight(dockMetrics::kMinHeight);
+        aDock->setMaximumHeight(dockMetrics::kMaxHeight);
+    }
+}
+
+
+/// Performs the drop the overlay resolved. The overlay and this function are the
+/// two halves of one decision - what the preview drew is what this does - which
+/// is why the target is passed through rather than recomputed.
+void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget) {
+    if (!aPanel || aTarget.kind == DockDropKind::None) {
+        dockSpikeLog(aPanel, QStringLiteral("drop: nothing here, panel stays floating"));
+        return;
+    }
+
+    // the panel stops being a window before it is re-docked, so the floating
+    // chrome (translucent attributes, edge bands) is torn down first
+    if (auto* panel = qobject_cast<DockPanel*>(aPanel)) panel->setPanelFloating(false);
+    aPanel->show();
+
+    switch (aTarget.kind) {
+    case DockDropKind::Tabify: {
+        if (!aTarget.group) return;
+        tabifyDockWidget(aTarget.group, aPanel);
+        aPanel->raise();
+        dockSpikeLog(aPanel, QStringLiteral("drop: tabified with %1 (area=%2)")
+                .arg(aTarget.group->objectName()).arg(int(aTarget.area)));
+        break;
+    }
+    case DockDropKind::Split: {
+        if (!aTarget.group) return;
+        // Both docks have to be in the target's area before the split:
+        // splitDockWidget arranges two docks *within one area*, so a panel that
+        // has just come back from floating (and therefore landed in whatever
+        // area it remembered) would be split over there instead of where the
+        // drop pointed. Docking it into the target area first, then splitting,
+        // puts the arrangement where the preview drew it.
+        addDockWidget(aTarget.area, aPanel);
+        // Qt's orientation is about where the *second* dock goes: Horizontal
+        // puts it to the right of the first, Vertical below it. The preview
+        // drew the half the panel would take, so the orientation and the order
+        // follow from which half that was.
+        const QRect group = aTarget.group->geometry();
+        const bool leftHalf = aTarget.rect.center().x() < group.center().x();
+        const bool topHalf = aTarget.rect.center().y() < group.center().y();
+        const bool horizontal = qAbs(aTarget.rect.center().x() - group.center().x())
+                              > qAbs(aTarget.rect.center().y() - group.center().y());
+        if (horizontal) {
+            if (leftHalf) splitDockWidget(aPanel, aTarget.group, Qt::Horizontal);
+            else splitDockWidget(aTarget.group, aPanel, Qt::Horizontal);
+        } else {
+            if (topHalf) splitDockWidget(aPanel, aTarget.group, Qt::Vertical);
+            else splitDockWidget(aTarget.group, aPanel, Qt::Vertical);
+        }
+        dockSpikeLog(aPanel, QStringLiteral("drop: split %1 (area=%2)")
+                .arg(aTarget.group->objectName()).arg(int(aTarget.area)));
+        break;
+    }
+    case DockDropKind::Area: {
+        addDockWidget(aTarget.area, aPanel);
+        dockSpikeLog(aPanel, QStringLiteral("drop: area=%1").arg(int(aTarget.area)));
+        break;
+    }
+    default:
+        break;
+    }
+
+    applyPanelMetrics(aPanel);
+}
+
 
 } // namespace gui
