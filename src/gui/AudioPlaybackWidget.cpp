@@ -136,7 +136,11 @@ void AudioPlaybackWidget::aPlayer(std::vector<audioConfig>* pConf, bool play, me
         }
         if(output->volume() != getVol(config.volume)){ output->setVolume(getVol(config.volume)); }
         correctTrackPos(player, curFrame, fps, const_cast<audioConfig&>(config));
-        if (state->playing || play && player->playbackState() == QMediaPlayer::PlayingState) {
+        // Parenthesised to state the intended grouping explicitly: "already
+        // playing, or asked to play and the player agrees". `&&` binding tighter
+        // than `||` already produced this, but the precedence is the whole point
+        // of the expression and a reader should not have to apply it.
+        if (state->playing || (play && player->playbackState() == QMediaPlayer::PlayingState)) {
             if (!state->playing) {state->playing = true;}
             // Do nothing
         }
@@ -370,14 +374,26 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
                 x++;
             }
         }
-        if (index > 0 && index + 1 != config->size() || ((index == 0 || index == 1 && index + 1 != config->size()) && config->size() == 2)) {
-            if (index < config->size() - 1){
-                curUIState.addNewTrack->setText(QCoreApplication::translate("audioWidget", "Remove next audio track", nullptr));
-            }
-            else {
-                // It shouldn't trigger but just in case...
-                curUIState.addNewTrack->setText(QCoreApplication::translate("audioWidget", "Remove current audio track", nullptr));
-            }
+        // Invariant: the LAST row's button adds a track, and every earlier row
+        // removes the track after it. That is exactly what the click handler
+        // maintains — adding flips the clicked row to "remove" and the new last
+        // row to "add"; removing ends with vecUIState.last().addTrack = true —
+        // so stating the invariant directly is both simpler and correct.
+        //
+        // The previous condition excluded row 0 outright, then bolted on a
+        // special case for config->size() == 2. That special case is the
+        // fingerprint of the bug rather than a fix for it: with three or more
+        // tracks row 0 was classified as an "add" row, so it read "Add new audio
+        // track" while sitting mid-list, and clicking it appended a track at the
+        // end and inserted a UI row for index 1 — a different row from the one
+        // that was clicked.
+        //
+        // The inner "remove current" branch was unreachable in both versions
+        // (not the last row implies index < size - 1), so it is gone rather than
+        // kept as an "in case" that cannot happen.
+        const int trackCount = static_cast<int>(config->size());
+        if (index + 1 != trackCount) {
+            curUIState.addNewTrack->setText(QCoreApplication::translate("audioWidget", "Remove next audio track", nullptr));
             curUIState.addTrack = false;
         }
         else{ curUIState.addTrack = true; }
@@ -405,7 +421,7 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
         }
     }));
     checkConnection(QToolButton::connect(curUIState.addNewTrack, &QToolButton::clicked, [=] {
-        if (vecUIState.size() != config->size()) { rectifyUI(config, mediaPlayer, true); return; }
+        if (vecUIState.size() != static_cast<qsizetype>(config->size())) { rectifyUI(config, mediaPlayer, true); return; }
 
         if (curUIState.addTrack) {
             qDebug() << "addTrack at " << index + 1 << " | player size is " << mediaPlayer->players.size();
