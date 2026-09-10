@@ -12,6 +12,7 @@ add_library(${PROJECT_NAME}
     Driver.cpp Driver.h
     DriverResources.cpp DriverResources.h
     Exporter.cpp Exporter.h
+    ExportTarget.cpp ExportTarget.h
     FFDEditor.cpp FFDEditor.h
     FFDParam.h
     GraphicStyle.h
