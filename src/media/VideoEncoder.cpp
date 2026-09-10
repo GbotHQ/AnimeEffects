@@ -20,6 +20,35 @@ extern "C" {
 
 namespace media {
 
+QImage fitImage(const QImage& aImage, const QSize& aTarget, FitMode aFit) {
+    if (aFit == FitMode::None || aImage.size() == aTarget || aTarget.isEmpty()) {
+        return aImage;
+    }
+    const QImage src = (aImage.format() == QImage::Format_RGBA8888)
+                           ? aImage
+                           : aImage.convertToFormat(QImage::Format_RGBA8888);
+    const Qt::AspectRatioMode mode = (aFit == FitMode::Pad)
+                                         ? Qt::KeepAspectRatio
+                                         : Qt::KeepAspectRatioByExpanding;
+    const QImage fitted = src.scaled(aTarget, mode, Qt::SmoothTransformation);
+    QImage canvas(aTarget, QImage::Format_RGBA8888);
+    canvas.fill(0x00000000); // fully transparent; stickers want no background
+    // KeepAspectRatioByExpanding can exceed the frame, so the offset may be
+    // negative — that is the crop. Copy only the intersecting rectangle.
+    const int ox = (aTarget.width() - fitted.width()) / 2;
+    const int oy = (aTarget.height() - fitted.height()) / 2;
+    const int sx = std::max(0, -ox);
+    const int sy = std::max(0, -oy);
+    const int cw = std::min(fitted.width() - sx, aTarget.width() - std::max(0, ox));
+    const int ch = std::min(fitted.height() - sy, aTarget.height() - std::max(0, oy));
+    for (int y = 0; y < ch; ++y) {
+        std::memcpy(canvas.scanLine(std::max(0, oy) + y) + (size_t)std::max(0, ox) * 4,
+                    fitted.constScanLine(sy + y) + (size_t)sx * 4, (size_t)cw * 4);
+    }
+    return canvas;
+}
+
+
 namespace {
 
 AVPixelFormat pixfmtFromString(const QString& aName) {
@@ -352,27 +381,7 @@ bool VideoEncoder::writeFrame(const QImage& aFrame) {
 
     // Pad/Crop: reconcile the aspect ratio here (before the size-mismatch path
     // below) so the frame handed to sws is already exactly the encoded size.
-    if (mImpl->mFit != FitMode::None && (rgba.width() != width || rgba.height() != height)) {
-        const Qt::AspectRatioMode mode = (mImpl->mFit == FitMode::Pad)
-                                             ? Qt::KeepAspectRatio
-                                             : Qt::KeepAspectRatioByExpanding;
-        const QImage fitted = rgba.scaled(width, height, mode, Qt::SmoothTransformation);
-        QImage canvas(width, height, QImage::Format_RGBA8888);
-        canvas.fill(0x00000000); // fully transparent; stickers want no background
-        // KeepAspectRatioByExpanding can exceed the frame, so the offset may be
-        // negative — that is the crop. Copy only the intersecting rectangle.
-        const int ox = (width - fitted.width()) / 2;
-        const int oy = (height - fitted.height()) / 2;
-        const int sx = std::max(0, -ox);
-        const int sy = std::max(0, -oy);
-        const int cw = std::min(fitted.width() - sx, width - std::max(0, ox));
-        const int ch = std::min(fitted.height() - sy, height - std::max(0, oy));
-        for (int y = 0; y < ch; ++y) {
-            std::memcpy(canvas.scanLine(std::max(0, oy) + y) + (size_t)std::max(0, ox) * 4,
-                        fitted.constScanLine(sy + y) + (size_t)sx * 4, (size_t)cw * 4);
-        }
-        rgba = canvas;
-    }
+    rgba = fitImage(rgba, QSize(width, height), mImpl->mFit);
 
     // The encoder may have rounded a YUV frame dimension up to an even size
     // (normalizedSize). If the caller fed an odd-sized QImage, the sws/direct

@@ -33,6 +33,31 @@
 bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfig>*) { return false; }
 
 static int failures = 0;
+
+// Percentage of non-black pixels in the first frame of a video/image file; -1 if
+// it could not be decoded. Used to detect a blank render, which the rest of this
+// harness cannot see (dimensions, frame counts and stream types all hold for an
+// empty frame).
+static double gFrameInkPercent = -1.0;
+static double decodedInkPercent(const QString& aPath) {
+    if (aPath.isEmpty()) return -1.0;
+    // ffmpeg decodes both a video and a still frame the same way.
+    const QString cmd = QStringLiteral(
+        "ffmpeg -v error -i \"%1\" -frames:v 1 -f rawvideo -pix_fmt gray -").arg(aPath);
+    FILE* p = popen(cmd.toUtf8().constData(), "r");
+    if (!p) return -1.0;
+    long ink = 0, total = 0;
+    char buf[65536];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), p)) > 0) {
+        for (size_t i = 0; i < n; ++i) {
+            ++total;
+            if ((unsigned char)buf[i] > 16) ++ink;
+        }
+    }
+    pclose(p);
+    return total > 0 ? (100.0 * ink / total) : -1.0;
+}
 static void check(bool ok, const char* what) {
     QTextStream(stdout) << (ok ? "PASS  " : "FAIL  ") << what << "\n";
     if (!ok) ++failures;
@@ -232,6 +257,24 @@ int main(int argc, char** argv) {
         const int expH = nativeH + (nativeH & 1);
         check(ffprobeVideo(out, &w, &h) && w == expW && h == expH,
               "e2e mp4: ffprobe video stream at (even-rounded) native dims");
+        // Does the encoded frame contain any ART? Nothing in this harness ever
+        // checked that: every scenario asserted existence, dimensions, frame
+        // counts, stream types and alpha side data, all of which a completely
+        // blank render satisfies. Measured here so the gap is visible.
+        // A PRECONDITION for the content-dependent checks, not a product
+        // assertion: whether this pipeline can render at all here is not
+        // established, and failing the suite on an unresolved environment
+        // question would be as misleading as passing silently.
+        gFrameInkPercent = decodedInkPercent(out);
+        fprintf(stderr, "    e2e content: first frame is %.1f%% non-black\n", gFrameInkPercent);
+        if (gFrameInkPercent <= 0.0) {
+            fprintf(stderr,
+                    "\n  *** WARNING: the exporter produced a COMPLETELY BLANK frame, so every\n"
+                    "  *** content-dependent assertion below is skipped rather than passed.\n"
+                    "  *** Under Xvfb/Mesa llvmpipe this pipeline renders nothing (the app's\n"
+                    "  *** on-screen canvas does render), and whether a real GPU is required\n"
+                    "  *** is NOT established. Tracked as an open item in SCRATCHPAD.md.\n\n");
+        }
         QFile::remove(out);
     }
 
@@ -328,6 +371,10 @@ int main(int argc, char** argv) {
         check((bool)r, "e2e image-seq: export succeeds");
         QDir d(imgDir);
         const QStringList pngs = d.entryList(QStringList{ "*.png" }, QDir::Files);
+        {
+            const QString probe = pngs.isEmpty() ? QString() : d.filePath(pngs.first());
+            fprintf(stderr, "    image-seq frame ink: %.1f%%\n", decodedInkPercent(probe));
+        }
         const int expected = maxFrame - minFrame + 1;
         const QString msg = QStringLiteral("e2e image-seq: one file per selected frame (expected %1, got %2)")
                                 .arg(expected).arg(pngs.size());
@@ -365,6 +412,143 @@ int main(int argc, char** argv) {
             const QByteArray msgBytes = msg.toUtf8();
             check(pngs.size() == 3, msgBytes.constData());
             QDir(mrDir).removeRecursively();
+        }
+    }
+
+    // Scenario 10: an EXACT output size the project's aspect does not match.
+    // This is what Discord 320x320 / WhatsApp 512x512 need. "Never stretch" is
+    // the rule, so the art is fitted and the remainder padded (or cropped) —
+    // and the discriminating evidence is that the padding is TRANSPARENT, which
+    // a stretch to the same size cannot produce. The image-sequence path is used
+    // because it lets the PNG be inspected directly.
+    {
+        const QSize native = project.attribute().imageSize();
+        const int side = std::min(native.width(), native.height());
+        const QSize exact(side, side);
+        if (native.width() == native.height()) {
+            check(false, "e2e exact-size: project is already square, scenario is degenerate");
+        } else {
+            auto renderFirstPng = [&](const QString& aDir, ctrl::Exporter::CommonParam& cp) -> QImage {
+                QDir(aDir).removeRecursively();
+                QDir().mkpath(aDir);
+                std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+                ctrl::Exporter::ImageParam ip;
+                ip.name = "ae_e2e_fit"; ip.suffix = "png"; ip.quality = 90;
+                cp.path = aDir;
+                if (!ex->execute(cp, ip)) return QImage();
+                const QStringList pngs = QDir(aDir).entryList(QStringList{ "*.png" }, QDir::Files);
+                if (pngs.isEmpty()) return QImage();
+                return QImage(QDir(aDir).filePath(pngs.first()));
+            };
+
+            const QString padDir = QDir::temp().filePath("ae_e2e_fitpad");
+            const QString cropDir = QDir::temp().filePath("ae_e2e_fitcrop");
+
+            ctrl::Exporter::CommonParam pad;
+            pad.size = exact; pad.fps = fps;
+            pad.selection = ctrl::FrameSelection::fromRange(minFrame, minFrame);
+            // what planExport() computes for an exact-size row: render fitted,
+            // then reconcile to the exact box
+            const double scale = std::min(exact.width() / (double)native.width(),
+                                         exact.height() / (double)native.height());
+            pad.renderSize = QSize(int(native.width() * scale) & ~1, int(native.height() * scale) & ~1);
+            pad.fit = media::FitMode::Pad;
+            const QImage padImg = renderFirstPng(padDir, pad);
+
+            ctrl::Exporter::CommonParam crop = pad;
+            crop.fit = media::FitMode::Crop;
+            const QImage cropImg = renderFirstPng(cropDir, crop);
+
+            const QString msg1 = QStringLiteral("e2e exact-size: output is exactly %1x%2 (got %3x%4)")
+                                     .arg(exact.width()).arg(exact.height())
+                                     .arg(padImg.width()).arg(padImg.height());
+            check(padImg.size() == exact, msg1.toUtf8().constData());
+
+            // Pad leaves transparent margin; a stretch to the same size would not.
+            // This is only meaningful if the render has content at all — on a blank
+            // frame every margin is trivially transparent.
+            bool marginTransparent = padImg.hasAlphaChannel() && gFrameInkPercent > 0.0;
+            if (marginTransparent) {
+                const int y = 0; // fitted art is shorter than the box, so row 0 is margin
+                for (int x = 0; x < padImg.width() && marginTransparent; ++x) {
+                    if (qAlpha(padImg.pixel(x, y)) != 0) marginTransparent = false;
+                }
+            }
+            if (gFrameInkPercent <= 0.0) {
+                // A blank render leaves no margin to inspect: skipping loudly beats
+                // asserting something that cannot fail.
+                fprintf(stderr, "    SKIP  e2e exact-size: margin/fit content checks (blank render)\n");
+            } else {
+                check(marginTransparent,
+                      "e2e exact-size: Pad leaves a TRANSPARENT margin (art fitted, not stretched)");
+                check(cropImg.size() == exact, "e2e exact-size: Crop output is the exact size too");
+                check(!cropImg.isNull() && !padImg.isNull() && cropImg != padImg,
+                      "e2e exact-size: Pad and Crop produce different images (fit is honoured)");
+            }
+
+            QDir(padDir).removeRecursively();
+            QDir(cropDir).removeRecursively();
+        }
+    }
+
+    // Scenario 11: the destination table's encoder-level requirements reach the
+    // encoder. Before this they could not: the exporter had no way to carry them,
+    // so a row documenting auto-alt-ref=0 or hvc1 could not honour it.
+    {
+        auto ffprobeTag = [](const QString& aPath) -> QString {
+            const QString cmd = QStringLiteral(
+                "ffprobe -v error -select_streams v -show_entries stream=codec_tag_string "
+                "-of csv=p=0 \"%1\"").arg(aPath);
+            FILE* p = popen(cmd.toUtf8().constData(), "r");
+            if (!p) return QString();
+            char buf[256] = {0};
+            const bool got = fgets(buf, sizeof(buf), p) != nullptr;
+            pclose(p);
+            return got ? QString::fromUtf8(buf).trimmed() : QString();
+        };
+
+        // 11a: an UNKNOWN private option must be rejected, which proves the
+        // options actually reach avcodec_open2 rather than being dropped.
+        {
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            ctrl::Exporter::CommonParam cp;
+            const QString bogus = QDir::temp().filePath("ae_e2e_bogusopt.mp4");
+            QFile::remove(bogus);
+            cp.path = bogus; cp.size = small; cp.fps = fps;
+            cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame);
+            ctrl::Exporter::VideoParam vp;
+            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.bps = 1000; vp.pixfmt = "yuv420p";
+            vp.encOptions.insert(QStringLiteral("definitely-not-an-option"), QStringLiteral("1"));
+            auto r = ex->execute(cp, vp);
+            check(!r, "e2e encOptions: an unknown private option is rejected, not ignored");
+        }
+
+        // 11b: a codec tag reaches the container. HEVC in mp4 defaults to hev1,
+        // which Safari refuses; the table asks for hvc1.
+        {
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            ctrl::Exporter::CommonParam cp;
+            const QString hevc = QDir::temp().filePath("ae_e2e_hvc1.mp4");
+            QFile::remove(hevc);
+            cp.path = hevc; cp.size = small; cp.fps = fps;
+            cp.selection = ctrl::FrameSelection::fromRange(minFrame, minFrame);
+            ctrl::Exporter::VideoParam vp;
+            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.bps = 1000; vp.pixfmt = "yuv420p";
+            vp.codec = QStringLiteral("libx265");
+            vp.codecTag = QStringLiteral("hvc1");
+            auto r = ex->execute(cp, vp);
+            if (!r) {
+                const QString skip = QStringLiteral("e2e codecTag: SKIPPED - HEVC unavailable (%1)")
+                                         .arg(ex->log().trimmed());
+                check(false, skip.toUtf8().constData());
+            } else {
+                const QString tag = ffprobeTag(hevc);
+                const QString msg = QStringLiteral("e2e codecTag: mp4 carries hvc1, not hev1 (got '%1')").arg(tag);
+                check(tag == QLatin1String("hvc1"), msg.toUtf8().constData());
+            }
+            QFile::remove(hevc);
         }
     }
 

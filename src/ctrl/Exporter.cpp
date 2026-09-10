@@ -228,6 +228,12 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
         cfg.outputPath = outPath;
+        // The destination's encoder-level requirements: its private options and
+        // its stream codec tag (hvc1 for Apple HEVC), plus how to reconcile the
+        // rendered frame with an exact output size.
+        cfg.encOptions = aVideo.encOptions;
+        cfg.codecTag = aVideo.codecTag;
+        cfg.fit = aCommon.fit;
 
         // Configure the audio stream (muxed in the same pass) when tracks were
         // supplied AND the container supports a standard audio codec we have.
@@ -329,8 +335,13 @@ Exporter::Result Exporter::start() {
             Result(ResultCode_UnclassfiedError, mLog);
         }
 
-        // framebuffers
-        createFramebuffers(mProject.attribute().imageSize(), mCommonParam.size);
+        // framebuffers scale from the native size to what we RENDER at, which is
+        // the output size unless the destination asked for an exact size that the
+        // project's aspect does not match (then renderSize, and the encoder pads).
+        const QSize renderTarget = (mCommonParam.renderSize.isValid() && !mCommonParam.renderSize.isEmpty())
+                                       ? mCommonParam.renderSize
+                                       : mCommonParam.size;
+        createFramebuffers(mProject.attribute().imageSize(), renderTarget);
 
         // clipping frame
         mClippingFrame.reset(new core::ClippingFrame());
@@ -480,9 +491,14 @@ bool Exporter::update() {
 }
 
 bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
+    // Frames leave here at the RENDER size; an exact-size destination needs the
+    // output size, so reconcile once here for the paths that do not go through
+    // the encoder (which does its own pad/crop from the same helper).
+    const QImage outImage = media::fitImage(aFboImage, mCommonParam.size, mCommonParam.fit);
+
     // GIF mode: accumulate the rendered frames (encoded in finish()).
     if (mCollectFrames) {
-        mGifFrames.append(aFboImage);
+        mGifFrames.append(outImage);
         return true;
     }
 
@@ -503,7 +519,7 @@ bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
         // QImage image(aFboImage.constBits(), aFboImage.width(),
         //              aFboImage.height(), QImage::Format_ARGB32);
         // image.save(aFilePath);
-        aFboImage.save(filePath.filePath(), Q_NULLPTR, mImageParam.quality);
+        outImage.save(filePath.filePath(), Q_NULLPTR, mImageParam.quality);
     }
 
     return true;

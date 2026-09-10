@@ -26,6 +26,13 @@ enum class FitMode {
 };
 
 
+// Reconcile a frame's aspect ratio with a required output size: Pad fits the art
+// inside and fills the remainder with transparency, Crop fills the frame and
+// discards the overflow. Shared by the encoder (which pads a rendered frame) and
+// by callers that must produce an exactly-sized image themselves (e.g. the GIF
+// collector) — one implementation, so the two cannot drift.
+QImage fitImage(const QImage& aImage, const QSize& aTarget, FitMode aFit);
+
 class VideoEncoder {
 public:
     struct Config {

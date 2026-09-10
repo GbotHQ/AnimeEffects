@@ -7,6 +7,7 @@
 #include <QString>
 #include <QSize>
 #include <QList>
+#include <QMap>
 #include <QImage>
 #include <QFileInfo>
 #include <QOpenGLFramebufferObject>
@@ -60,6 +61,13 @@ public:
         // export is just FrameSelection::fromRange(min, max).
         FrameSelection selection;
         int fps;
+        // What to RENDER at, when the destination demands an exact output size
+        // that the project's aspect does not match. Empty means "same as size"
+        // (the historical behaviour). Destinations that require an exact size
+        // (Discord 320x320, WhatsApp 512x512) set this to the fitted size and
+        // let `fit` reconcile the remainder, so art is never stretched.
+        QSize renderSize;
+        media::FitMode fit = media::FitMode::None;
         bool isValid() const;
     };
 
@@ -73,6 +81,14 @@ public:
         QString pixfmt;    // e.g. "yuv420p"; empty = per-codec auto
         QString codec;     // explicit encoder (friendly or libav name); empty = Auto/default
         bool transparent;  // honor alpha when the codec/container allow it
+        // Private encoder options handed to avcodec_open2 (e.g. libvpx needs
+        // auto-alt-ref=0 for VP9 alpha, or alt-ref frames corrupt the alpha
+        // plane). The destination table carries these; without them the table's
+        // documented gotchas could not reach the encoder at all.
+        QMap<QString, QString> encOptions;
+        // Four-char AVStream codec tag (e.g. hvc1, without which Safari refuses
+        // HEVC). A container concern, deliberately not an encoder option.
+        QString codecTag;
     };
 
     struct GifParam {
