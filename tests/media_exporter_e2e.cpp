@@ -348,6 +348,17 @@ int main(int argc, char** argv) {
         }
         if (p) fclose(p);
         check(isGif, "e2e gif: ffprobe reports a gif video stream");
+        {
+            // A valid GIF of blank frames passed every assertion above. The frames
+            // come from the same render path as the video (which is content-checked
+            // in scenario 1), but the GifEncoder's palette and quantisation are its
+            // own, so "the GIF is not empty" has to be checked on the GIF.
+            const double ink = decodedInkPercent(gPath);
+            fprintf(stderr, "    gif frame ink: %.1f%%\n", ink);
+            check(ink > 0.0,
+                  QStringLiteral("e2e gif: the frames contain the artwork (%1% ink)")
+                      .arg(ink, 0, 'f', 1).toUtf8().constData());
+        }
         QFile::remove(gPath);
     }
 
@@ -367,7 +378,13 @@ int main(int argc, char** argv) {
         const QStringList pngs = d.entryList(QStringList{ "*.png" }, QDir::Files);
         {
             const QString probe = pngs.isEmpty() ? QString() : d.filePath(pngs.first());
-            fprintf(stderr, "    image-seq frame ink: %.1f%%\n", decodedInkPercent(probe));
+            const double ink = decodedInkPercent(probe);
+            fprintf(stderr, "    image-seq frame ink: %.1f%%\n", ink);
+            // Printed, and until now not asserted: a sequence of blank PNGs
+            // satisfied every check in this scenario.
+            check(ink > 0.0,
+                  QStringLiteral("e2e image-seq: the exported frame contains the artwork (%1% ink)")
+                      .arg(ink, 0, 'f', 1).toUtf8().constData());
         }
         const int expected = maxFrame - minFrame + 1;
         const QString msg = QStringLiteral("e2e image-seq: one file per selected frame (expected %1, got %2)")
