@@ -9,9 +9,11 @@
 #include <QMouseEvent>
 #include <QRandomGenerator>
 #include <QDebug>
+#include <QTemporaryDir>
 #include <cstdio>
 #include "gui/prop/EasingPickWidget.h"
 #include "gui/theme/Colors.h"
+#include "gui/theme/Icons.h"
 #include "util/Easing.h"
 
 using namespace gui::prop;
@@ -24,6 +26,13 @@ static int hfw_h(EasingPickWidget& w) {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     theme::Colors::activate(true, theme::kDefaultAccent);
+    // Glyphs are SVGs tinted at runtime into a scratch dir (in the app,
+    // GUIResources::applyAppearance). Without this the icon dir is empty and
+    // every QIcon(...) here loads nothing, so any icon measurement silently
+    // measures a blank widget.
+    QTemporaryDir iconScratch;
+    theme::tintIcons(QStringLiteral(AE_ICONS_DIR), iconScratch.path(), theme::Colors::current());
+    theme::setIconDir(iconScratch.path());
 
     util::Easing::Param initial;
     initial.type = util::Easing::Type_Cubic;
@@ -214,12 +223,40 @@ int main(int argc, char** argv) {
     }
 
     // ---- #8 close X: phosphor stroke is thin (16/256 of the 14px box) ----
-    // NOT REPORTED: this check was never wired up. It scanned the close
-    // button's middle row for painted pixels (the diagonal crosses the mid row
-    // in ~strokeWidth/sin(45deg) px: phosphor 0.875px stroke -> ~1-2 painted
-    // px, the old 2.5px stroke -> ~4) but the count was never printed or
-    // asserted, so #8 has always been silent. The unread count was removed as
-    // dead code; the verdict itself still has to be added deliberately.
+    // The glyph's diagonal crosses its middle row in about stroke/sin(45deg) px,
+    // so the row's painted-pixel count reads the stroke directly: the phosphor
+    // 0.875px stroke lands at ~1-2 px, the old 2.5px stroke at ~4. This used to
+    // compute that count and throw it away — no print, no verdict — so the
+    // scenario was silently absent while looking present. It now reports in the
+    // same measure-then-verdict shape as #7 and #9, and reports NOT FOUND rather
+    // than skipping, because a silent skip is the bug it is here to avoid.
+    {
+        // Measure the GLYPH, not the button: a QToolButton with autoRaise and a
+        // transparent QSS background does not paint into grab() in this harness
+        // (its icon is a valid pixmap with content while its grab is fully
+        // transparent), so measuring the button reported 0 forever. The stroke
+        // the design specifies lives in the glyph anyway.
+        auto* closeBtn = w.findChild<QToolButton*>("popover-close");
+        if (closeBtn && !closeBtn->icon().isNull()) {
+            const QImage gi = closeBtn->icon().pixmap(closeBtn->iconSize()).toImage();
+            const int midY = gi.height() / 2;
+            // Count pixels the stroke actually COVERS, not every non-zero
+            // alpha: an antialiased 0.875px diagonal always spreads over ~2
+            // fringe pixels, so counting any-alpha cannot distinguish a thin
+            // stroke from a thick one. (Measured profile at 14px:
+            // 0,0,0,0,0,50,220,220,50,0,... — two covered, two fringe.)
+            int covered = 0, fringe = 0;
+            for (int x = 0; x < gi.width(); ++x) {
+                const int a = qAlpha(gi.pixel(x, midY));
+                if (a > 128) ++covered; else if (a > 0) ++fringe;
+            }
+            const bool ok = covered >= 1 && covered <= 2;
+            fprintf(stderr, "#8 close-x: glyph=%dx%d midRow=%d covered=%d fringe=%d -> %s\n",
+                    gi.width(), gi.height(), midY, covered, fringe, ok ? "OK" : "MISMATCH");
+        } else {
+            fprintf(stderr, "#8 close-x: popover-close glyph NOT FOUND -> MISMATCH\n");
+        }
+    }
     // ---- #9 fi fields: geometry stable + hover/focus/pressed states present ----
     // The custom bezier inputs are QDoubleSpinBox[role="fi"]. The bug was
     // `border: 0` in the popover's own stylesheet, which also killed the

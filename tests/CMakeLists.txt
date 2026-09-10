@@ -148,6 +148,7 @@ target_compile_definitions(picker_probe PRIVATE
     AE_MAJOR_VERSION=1
     AE_MINOR_VERSION=7
     AE_MICRO_VERSION=1
+    AE_ICONS_DIR="${CMAKE_SOURCE_DIR}/assets/icons"
     USE_GL_CORE_PROFILE
 )
 target_link_libraries(picker_probe PRIVATE
