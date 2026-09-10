@@ -1,6 +1,6 @@
 #include "gui/DockPanel.h"
 
-#include "gui/DockTitleBar.h"
+#include "gui/DockTabBar.h"
 #include "gui/theme/Colors.h"
 
 #include <QContextMenuEvent>
@@ -112,7 +112,10 @@ private:
 
 DockPanel::DockPanel(QWidget* aParent):
     QDockWidget(aParent) {
-    setTitleBarWidget(new DockTitleBar(this));
+    // The title row is a tab bar - the same widget Qt builds for a group - so a
+    // panel alone in its area and a panel sharing one are the same thing: one
+    // tab or several, one widget class, one QSS rule (see DockTabBar).
+    setTitleBarWidget(new DockTabBar(this));
     // top, bottom, then the vertical bands: created last, they take the corners
     mRing = {new RingBand(this, Qt::TopEdge), new RingBand(this, Qt::BottomEdge),
              new RingBand(this, Qt::LeftEdge), new RingBand(this, Qt::RightEdge)};

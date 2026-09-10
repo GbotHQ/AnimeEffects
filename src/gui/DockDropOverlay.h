@@ -14,6 +14,11 @@ class QMimeData;
 
 namespace gui {
 
+/// Starts the dock drag for a panel: the ghost, the MIME payload and the overlay
+/// that resolves where it lands. Shared by every title row this app has, since a
+/// drag has to mean the same thing from all of them.
+void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource);
+
 /**
  * The drop side of the dock gesture: what a dragged panel lands on, and the
  * preview that says so.
@@ -111,10 +116,12 @@ private:
     /// QDockWidget handed to the same operation a drop performs, so what it
     /// occupies is what the panel will occupy - the layout decides both, and
     /// there is no second model of it to drift.
-    void showPreview(const DockDropTarget& aTarget);
-    void clearPreview();
+    /// The region an area drop takes, following the placement rule: the slice
+    /// beside the area's innermost dock (the split anchor), or the area's own
+    /// place when it is empty.
+    QRect targetRect(const DockDropTarget& aTarget, const QRect& aCanvas) const;
 
-    QDockWidget* mPreview = nullptr;
+    int mMoveCount = 0;
     QDockWidget* panelFromMime(const QMimeData* aData) const;
 
     QMainWindow* mWindow;

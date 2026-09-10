@@ -8,7 +8,9 @@
 #include "gui/DockDropOverlay.h"
 #include "gui/DockMetrics.h"
 #include "gui/DockPanel.h"
-#include "gui/DockTitleBar.h" // dockSpikeLog (temporary instrumentation)
+#include "gui/DockTabBar.h"
+#include "gui/DockTabBar.h"
+#include "gui/DockTabBar.h" // dockSpikeLog (temporary instrumentation)
 #include "gui/DockSash.h"
 #include "gui/ExportDialog.h"
 #include "gui/NewProjectDialog.h"
@@ -370,9 +372,17 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     // group can only be as narrow as its strictest member and as wide as its
     // most-capped one, and a panel that is only allowed in one area can never
     // be tabbed with a panel that lives on another side. See DockMetrics.h.
+    int order = 0;
     for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
         dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+        // The tab order of a group: creation order, fixed, so a tab does not
+        // jump to the front when it is activated (the strip reads this).
+        dock->setProperty("aeDockOrder", order++);
         if (auto* panel = qobject_cast<DockPanel*>(dock)) panel->setMainWindow(this);
+        // Every title row understands the same gestures, whether it is this
+        // panel's own (one tab) or Qt's bar for a group it joins.
+        if (auto* titleBar = qobject_cast<QTabBar*>(dock->titleBarWidget()))
+            new DockTabBarFilter(titleBar, this);
         applyPanelMetrics(dock);
         // the range depends on the area, so it is re-applied whenever the panel
         // changes area or floats
@@ -383,43 +393,63 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
     }
 
     // Layout toggles in the menu bar's top-right corner, where VS Code keeps
-    // them: one per panel, the glyph saying which side it is on (and following
-    // it if the panel moves), the check state being the panel's visibility.
-    // The state comes from Qt's own toggleViewAction, so this row, the Panels
-    // menu and any shortcut can never disagree about what is showing.
+    // them - one per *slot*, not one per panel. A slot is a place a panel can be
+    // (left side, right side, bottom), it exists whether or not anything is in
+    // it, and its glyph is the slot's shape and never changes: a button whose
+    // picture followed a panel around the window was describing the panel, which
+    // the tab already does. A slot with nothing in it is simply empty, and its
+    // button says so by being disabled.
     {
         auto* row = new QWidget(mMainMenuBar);
         auto* rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 6, 0);
         rowLayout->setSpacing(2);
 
-        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        struct Slot {
+            Qt::DockWidgetArea area;
+            const char* glyph;
+            const char* name;
+        };
+        static const Slot kSlots[] = {
+            {Qt::LeftDockWidgetArea, "sidebar-left", QT_TR_NOOP("left side")},
+            {Qt::RightDockWidgetArea, "sidebar-right", QT_TR_NOOP("right side")},
+            {Qt::BottomDockWidgetArea, "sidebar-bottom", QT_TR_NOOP("bottom")},
+        };
+
+        for (const Slot& slot : kSlots) {
             auto* button = new QToolButton(row);
             button->setObjectName(QStringLiteral("dockToggle"));
             button->setFocusPolicy(Qt::NoFocus);
             button->setAutoRaise(true);
             button->setCheckable(true);
             button->setIconSize(QSize(18, 18));
-            // Deliberately not setDefaultAction(): a QToolButton re-reads icon,
-            // text and tooltip from its action on every action change, which
-            // would drop both the glyph chosen here and this tooltip.
-            QAction* action = dock->toggleViewAction();
-            button->setChecked(action->isChecked());
-            button->setToolTip(tr("Show or hide the %1 panel").arg(dock->windowTitle()));
-            const auto applyGlyph = [this, button](Qt::DockWidgetArea aArea) {
-                button->setIcon(mGUIResources.icon(areaIconName(aArea)));
-            };
-            applyGlyph(this->dockWidgetArea(dock));
+            button->setIcon(mGUIResources.icon(QString::fromLatin1(slot.glyph)));
 
-            connect(button, &QToolButton::clicked, action, &QAction::trigger);
-            connect(action, &QAction::toggled, button, &QToolButton::setChecked);
-            connect(dock, &QDockWidget::dockLocationChanged, button,
-                    [applyGlyph](Qt::DockWidgetArea aArea) { applyGlyph(aArea); });
+            connect(button, &QToolButton::clicked, this, [this, slot]() {
+                // whatever is in the slot, shown or hidden: one button, one slot
+                QVector<QDockWidget*> inSlot;
+                bool anyVisible = false;
+                for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+                    if (dockWidgetArea(dock) != slot.area) continue;
+                    inSlot.push_back(dock);
+                    anyVisible = anyVisible || dock->isVisible();
+                }
+                for (QDockWidget* dock : inSlot)
+                    dock->setVisible(!anyVisible);
+                dockSpikeLog(inSlot.isEmpty() ? nullptr : inSlot.first(),
+                        QStringLiteral("slot %1 -> %2 (%3 panels)")
+                        .arg(QString::fromLatin1(slot.name))
+                        .arg(anyVisible ? QStringLiteral("hidden") : QStringLiteral("shown"))
+                        .arg(inSlot.size()));
+                updateLayoutButtons();
+            });
 
+            mLayoutButtons.push_back({button, slot.area, QString::fromUtf8(slot.name)});
             rowLayout->addWidget(button);
         }
 
         mMainMenuBar->setCornerWidget(row, Qt::TopRightCorner);
+        updateLayoutButtons();
     }
 
     // Temporary: make two panels share an area without needing a drag to get
@@ -436,6 +466,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             auto* bar = mDockToolWidget->parentWidget()
                     ? mDockToolWidget->parentWidget()->findChild<QTabBar*>()
                     : nullptr;
+            for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget}) {
+                QWidget* strip = dock->titleBarWidget();
+                dockSpikeLog(dock, QStringLiteral("  probe: dock=%1,%2 %3x%4 visible=%5 | strip%6 visible=%7 %8x%9")
+                        .arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height())
+                        .arg(dock->isVisible())
+                        .arg(strip ? QString() : QStringLiteral(" NONE"))
+                        .arg(strip ? strip->isVisible() : false)
+                        .arg(strip ? strip->width() : -1).arg(strip ? strip->height() : -1));
+            }
             dockSpikeLog(mDockToolWidget,
                     QStringLiteral("tab probe: tabified=%1 tabBar=%2 geometry=%3,%4 %5x%6 count=%7")
                             .arg(tabifiedDockWidgets(mDockToolWidget).size())
@@ -2117,20 +2156,18 @@ void MainWindow::updateDockTabMenus() {
         if (!allPanels) continue;
 
         bar->setProperty("aeDockTabBar", true);
-        // Named for the theme: a dock group's tabs are titles sitting above the
-        // panel they name, which is not what a project tab is, and the QSS has
-        // to be able to tell them apart (both are plain QTabBars).
+        // Qt builds this bar for a group and it stays where it is: it *is* the
+        // group's title row, and taking it out (to give the room to each panel's
+        // own title bar) leaves the layout reserving its height regardless -
+        // measured, a 32px band above the group, which then has to be filled by
+        // hand. So one QSS rule dresses both this bar and a lone panel's title
+        // bar (both are QTabBars named dockTabBar), and one filter gives both the
+        // same gestures.
         bar->setObjectName(QStringLiteral("dockTabBar"));
-        bar->style()->unpolish(bar);
-        bar->style()->polish(bar);
-        bar->setContextMenuPolicy(Qt::CustomContextMenu);
-        connect(bar, &QWidget::customContextMenuRequested, this, [this, bar](const QPoint& aPos) {
-            const int index = bar->tabAt(aPos);
-            if (index < 0) return;
-            if (QDockWidget* dock = dockForTabTitle(bar->tabText(index)))
-                showDockPanelMenu(dock, bar->mapToGlobal(aPos));
-        });
-        dockSpikeLog(nullptr, QStringLiteral("dock tab bar adopted: %1 tabs").arg(bar->count()));
+        new DockTabBarFilter(bar, this);
+        dockSpikeLog(dockForTabTitle(bar->count() > 0 ? bar->tabText(0) : QString()),
+                QStringLiteral("group tab bar adopted (%1 tabs), same widget and gestures as a title row")
+                .arg(bar->count()));
     }
 }
 
@@ -2144,8 +2181,16 @@ bool MainWindow::eventFilter(QObject* aObject, QEvent* aEvent) {
         case QEvent::ChildAdded:
         case QEvent::ChildRemoved:
             QTimer::singleShot(0, this, [this]() {
+                // Deliberately not while a drag is in flight. The preview is a
+                // real dock placed by the layout, so it makes the layout change
+                // during the drag - and these passes show and hide title rows.
+                // Moving widgets mid-drag breaks the drag itself: measured, a
+                // floating panel's drop stopped being delivered at all (the drag
+                // ended in a leave with action=0) once the passes ran on every
+                // preview placement.
                 updateDockTabMenus();
-                refreshPanelChrome();
+                updateTitleRows();
+                updateLayoutButtons();
             });
             break;
         default:
@@ -2205,7 +2250,6 @@ void MainWindow::applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarge
                 .arg(aPanel->x()).arg(aPanel->y())
                 .arg(aPanel->width()).arg(aPanel->height())
                 .arg(this->tabifiedDockWidgets(aPanel).size()));
-        refreshPanelChrome();
     });
 }
 
@@ -2294,17 +2338,6 @@ void MainWindow::placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget) {
     }
 }
 
-/// Re-syncs every panel's title chrome. Called after the layout changes hands (a
-/// drop, a tab, a panel moving area): whether a panel shows its own header
-/// depends on whether it shares its area, and the events a dock emits do not
-/// cover every way that changes - measured: a panel tabified by a drop kept its
-/// header, because its last Show event happened before the tab existed.
-void MainWindow::refreshPanelChrome() {
-    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
-        if (auto* panel = qobject_cast<DockPanel*>(dock)) panel->updateTitleChrome();
-    }
-}
-
 /// The dock in an area that sits closest to the central widget: the one a new
 /// panel has to be split against to land between it and the canvas. This is the
 /// anchor both the drop and the preview work from.
@@ -2326,6 +2359,47 @@ QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aS
         }
     }
     return best;
+}
+
+
+/// Shows each panel's own title row only while that panel is alone in its area.
+///
+/// A grouped panel's titles are the group's tab bar - that is Qt's model, and it
+/// gives a tabbed dock's title bar space as well if it is left visible, which is
+/// the two rows a group used to show. Both rows are the same widget class dressed
+/// by the same rule (DockTabBar), so which one draws is a question of *where*,
+/// not of what: one tab when alone, the group's tabs when stacked.
+void MainWindow::updateTitleRows() {
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        auto* panel = qobject_cast<DockPanel*>(dock);
+        QWidget* row = dock ? dock->titleBarWidget() : nullptr;
+        if (!panel || !row) continue;
+        // A floating panel always shows its own row: it has no group to belong
+        // to, whatever it was tabbed with before it floated.
+        row->setVisible(panel->isFloating() || !panel->isTabGrouped());
+    }
+}
+
+
+/// Synchronises the slot buttons with the layout: enabled while the slot holds
+/// anything, lit while any panel in it is showing. Driven from the layout events
+/// rather than from each dock's visibility signal, because what the button
+/// describes is the *slot*, which no single panel owns.
+void MainWindow::updateLayoutButtons() {
+    for (const LayoutButton& entry : mLayoutButtons) {
+        QVector<QDockWidget*> inSlot;
+        bool anyVisible = false;
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            if (!dock || dockWidgetArea(dock) != entry.area) continue;
+            inSlot.push_back(dock);
+            anyVisible = anyVisible || dock->isVisible();
+        }
+        entry.button->setEnabled(!inSlot.isEmpty());
+        entry.button->setChecked(anyVisible);
+        entry.button->setToolTip(inSlot.isEmpty()
+                ? tr("Nothing is docked on the %1").arg(entry.name)
+                : tr("Show or hide the %1").arg(entry.name));
+    }
 }
 
 

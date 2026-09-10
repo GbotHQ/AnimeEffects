@@ -25,7 +25,7 @@ void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos);
  * resizeDocks, saveState - so this is a dock, not a docking engine. What it
  * takes over is the part Qt gets wrong on Linux:
  *
- *  - the header, through DockTitleBar (which also suppresses Qt's float and
+ *  - the header, through DockTabBar (which also suppresses Qt's float and
  *    close buttons and Qt's own drag),
  *  - the floating window's frame. Qt paints neither frame nor title once a
  *    title bar widget exists, and on Wayland the panel is a frameless tool

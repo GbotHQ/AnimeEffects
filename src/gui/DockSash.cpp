@@ -1,6 +1,6 @@
 #include "gui/DockSash.h"
 #include "gui/DockMetrics.h"
-#include "gui/DockTitleBar.h"
+#include "gui/DockTabBar.h"
 #include "gui/theme/Colors.h"
 
 #include <QDockWidget>
@@ -94,6 +94,13 @@ public:
     /// mid-drag: hiding it would drop the implicit mouse grab this drag depends
     /// on, so the panel could never be dragged back out in the same gesture.
     bool isDragging() const { return mDragging; }
+
+    /// Whether this hitbox is the seam aBoundary describes, so a drag in progress
+    /// is not shown a different one.
+    bool holds(const Boundary& aBoundary) const {
+        return mBoundary.subject == aBoundary.subject && mBoundary.axis == aBoundary.axis
+                && mBoundary.line == aBoundary.line && mBoundary.spanStart == aBoundary.spanStart;
+    }
 
 protected:
     void paintEvent(QPaintEvent*) override {
@@ -382,9 +389,26 @@ void DockSash::relayout() {
     while (mHitBoxes.size() < boundaries.size())
         mHitBoxes.push_back(new HitBox(this, mWindow));
 
+    // A seam being dragged keeps the boundary it was pressed on. Collapsing a
+    // panel changes the layout, the layout rebuilds this list, and the hitbox
+    // that holds the mouse grab is pooled - so without this it is handed a
+    // different seam mid-drag and starts resizing a panel the user never
+    // touched (measured: dragging the sidebar past its collapse point began
+    // resizing the animation panel above it).
+    int draggingIndex = -1;
+    for (int i = 0; i < mHitBoxes.size(); ++i) {
+        if (mHitBoxes[i]->isDragging()) {
+            draggingIndex = i;
+            break;
+        }
+    }
+
     int used = 0;
     for (const Boundary& boundary : boundaries) {
         if (used >= kMaxHitBoxes) break;
+        if (draggingIndex >= 0 && used == draggingIndex) ++used; // keep its slot
+        if (used >= kMaxHitBoxes) break;
+        if (draggingIndex >= 0 && mHitBoxes[draggingIndex]->holds(boundary)) continue;
         mHitBoxes[used]->setBoundary(boundary, boundary.partner != nullptr);
         ++used;
     }

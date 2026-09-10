@@ -22,11 +22,10 @@ constexpr int kGroupGap = 22;  ///< between groups, wider than the gap inside on
 ///
 ///  - the transport (rewind, step back, play, step on, fast forward) is what
 ///    the panel is *for*, so it starts at the reading edge;
-///  - the loop toggle is a mode of that whole transport rather than another
-///    step in it, so it stands apart, centred;
-///  - animation settings and the audio track open dialogs and configure the
-///    panel rather than driving it, so they sit at the trailing edge, out of
-///    the transport's run.
+///  - loop, animation settings and the audio track are not transport: they are
+///    modes and panels rather than steps, so they sit together at the trailing
+///    edge, out of the transport's run. (The loop toggle was briefly centred on
+///    its own, which read as a stray button rather than as a separate idea.)
 ///
 /// The bar used to be a column beside the timeline, which made its button stack
 /// the animation panel's minimum height (262px, so the panel could never be
@@ -36,7 +35,7 @@ struct ButtonGroup {
     int first;
     int count;
 };
-constexpr ButtonGroup kGroups[] = {{0, 5}, {5, 1}, {6, 2}};
+constexpr ButtonGroup kGroups[] = {{0, 5}, {5, 3}};
 constexpr int kGroupCount = int(sizeof(kGroups) / sizeof(kGroups[0]));
 
 /// Total width the row needs: the buttons, the gaps inside each group, and the
@@ -224,11 +223,8 @@ void PlayBackWidget::layoutButtons() {
 
     place(kGroups[0].first, kGroups[0].count, kEdgeMargin);
 
-    const int middleWidth = step * kGroups[1].count - kGap;
-    place(kGroups[1].first, kGroups[1].count, (width() - middleWidth) / 2);
-
-    const int trailingWidth = step * kGroups[2].count - kGap;
-    place(kGroups[2].first, kGroups[2].count, width() - kEdgeMargin - trailingWidth);
+    const int trailingWidth = step * kGroups[1].count - kGap;
+    place(kGroups[1].first, kGroups[1].count, width() - kEdgeMargin - trailingWidth);
 }
 
 void PlayBackWidget::resizeEvent(QResizeEvent* aEvent) {

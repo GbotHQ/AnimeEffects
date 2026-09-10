@@ -122,6 +122,15 @@ private:
     QVector<core::Project*> mProjects;
     TargetWidget* mTarget;
     PropertyWidget* mProperty;
+    /// One entry per layout toggle: the button, the slot it stands for, and the
+    /// slot's name for its tooltip.
+    struct LayoutButton {
+        QToolButton* button;
+        Qt::DockWidgetArea area;
+        QString name;
+    };
+    QVector<LayoutButton> mLayoutButtons;
+
     DockDropOverlay* mDockDropOverlay = nullptr;
     QDockWidget* mDockAnimationWidget;
     QDockWidget* mDockPropertyWidget;
@@ -141,11 +150,16 @@ private:
     void applyDockDrop(QDockWidget* aPanel, const DockDropTarget& aTarget);
     /// The placement alone, shared with the drop preview.
     void placeDock(QDockWidget* aPanel, const DockDropTarget& aTarget);
-    /// Re-syncs each panel's header visibility after a layout change.
-    void refreshPanelChrome();
     /// The dock in an area closest to the central widget (the split anchor).
     QDockWidget* innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aSkip) const;
     void updateDockTabMenus();
+    /// Shows each panel's own title row only while the panel is alone in its area.
+    void updateTitleRows();
+    /// Synchronises the slot buttons with the layout.
+    void updateLayoutButtons();
+    /// Shows each panel's strip while its panel is the visible member of its
+    /// group (Qt hides a tabified dock's title bar; this app's strip is the
+    /// group's title row).
     QDockWidget* dockForTabTitle(const QString& aTitle) const;
 };
 
