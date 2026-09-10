@@ -8,6 +8,10 @@ class QDockWidget;
 
 namespace gui {
 
+/// Payload of a panel drag: the dock's objectName. The drop side resolves the
+/// panel from it, so no global state is needed to know what is being dragged.
+inline constexpr char kDockPanelMime[] = "application/x-anie-dock-panel";
+
 /// Gesture/state line for the docking work, to stderr and to the file named by
 /// AE_DOCK_SPIKE_LOG (/tmp/ae-dock-spike.log by default). Temporary: this is
 /// how the behaviour of a drag is read back off the machine that can perform
@@ -59,6 +63,12 @@ protected:
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
 
 private:
+    /// The grip: the part of a floating header that starts a dock-drag. The
+    /// rest of the header keeps moving the window, because on Wayland a single
+    /// drag cannot both move a toplevel and report where it was dropped.
+    QRect gripRect() const;
+    void startPanelDrag();
+
     void popupMenu(const QPoint& aGlobalPos);
     void toggleFloating();
     void log(const QString& aMessage) const;
@@ -66,6 +76,8 @@ private:
     QDockWidget* mDock;
     QPoint mPressPos;
     bool mPressed;
+    bool mGripPressed;
+    bool mHoveredGrip;
     bool mGestureStarted;
 };
 

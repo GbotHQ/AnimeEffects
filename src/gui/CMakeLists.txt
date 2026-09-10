@@ -24,6 +24,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ../XCReport.h
     ../XCType.h
     CanvasMover.cpp CanvasMover.h
+    DockDropOverlay.cpp DockDropOverlay.h
     DockPanel.cpp DockPanel.h
     DockSash.cpp DockSash.h
     DockTitleBar.cpp DockTitleBar.h

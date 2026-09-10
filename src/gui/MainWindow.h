@@ -30,6 +30,8 @@
 
 namespace gui {
 
+class DockDropOverlay;
+
 class MainWindow: public QMainWindow {
     Q_OBJECT
 
@@ -82,6 +84,14 @@ private:
     virtual void keyReleaseEvent(QKeyEvent* aEvent);
     virtual void closeEvent(QCloseEvent* aEvent);
 
+    // a panel dragged by its grip is a drag-and-drop: on Wayland that is the
+    // only gesture that reports where the cursor is, so it is the only one a
+    // dock drop can be computed from
+    virtual void dragEnterEvent(QDragEnterEvent* aEvent);
+    virtual void dragMoveEvent(QDragMoveEvent* aEvent);
+    virtual void dragLeaveEvent(QDragLeaveEvent* aEvent);
+    virtual void dropEvent(QDropEvent* aEvent);
+
     void resetProjectRefs(core::Project* aProject);
     bool processProjectSaving(core::Project& aProject, bool aRename = false);
     int confirmProjectClosing(const QVector<core::Project*>& aProjects);
@@ -120,10 +130,13 @@ private:
     ToolWidget* mTool;
     QDockWidget* mDockToolWidget;
     ResourceDialog* mResourceDialog;
+    DockDropOverlay* mDropOverlay;
     QScopedPointer<DriverHolder> mDriverHolder;
     core::Project* mCurrent;
     LocaleParam mLocaleParam;
     void onMoveFrameTriggered(bool moveRight);
+    QDockWidget* draggedPanel(const QMimeData* aMime) const;
+    Qt::DockWidgetArea dropAreaAt(const QPoint& aPos, const QDockWidget* aPanel) const;
 };
 
 } // namespace gui

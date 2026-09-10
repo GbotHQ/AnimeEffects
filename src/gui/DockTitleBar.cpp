@@ -4,6 +4,9 @@
 
 #include <QApplication>
 #include <QContextMenuEvent>
+#include <QDrag>
+#include <QMimeData>
+#include <QPixmap>
 #include <QDockWidget>
 #include <QGuiApplication>
 #include <QFile>
@@ -55,6 +58,8 @@ DockTitleBar::DockTitleBar(QDockWidget* aDock):
     mDock(aDock),
     mPressPos(0, 0),
     mPressed(false),
+    mGripPressed(false),
+    mHoveredGrip(false),
     mGestureStarted(false) {
     setObjectName(QStringLiteral("DockTitleBar"));
     setMouseTracking(true);
@@ -83,9 +88,36 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
     // The title text replaces the QSS `QDockWidget::title` box, which Qt no
     // longer draws once a title bar widget exists. The dock carries the bold
     // dock font, so this text is bold without asking.
+    const int inset = titleInset(fontMetrics());
+    // floating headers carry the grip, so their title starts after it; a docked
+    // header has no grip and keeps the old inset
+    const int textLeft = mDock->isFloating() ? gripRect().right() + inset / 2 : inset;
     p.setPen(c.text);
-    p.drawText(rect().adjusted(titleInset(fontMetrics()), 0, -titleInset(fontMetrics()), 0),
+    p.drawText(rect().adjusted(textLeft, 0, -inset, 0),
                Qt::AlignVCenter | Qt::AlignLeft, mDock->windowTitle());
+
+    // the grip: two columns of three dots, dimmed until the header is hovered
+    if (mDock->isFloating()) {
+        const QRect grip = gripRect();
+        const QColor dot = mHoveredGrip ? c.text : c.textMuted;
+        const int step = qMax(3, grip.height() / 4);
+        const int r = qMax(1, step / 3);
+        for (int col = 0; col < 2; ++col) {
+            for (int row = 0; row < 3; ++row) {
+                const QPoint centre(grip.center().x() + (col * 2 - 1) * r * 2,
+                                    grip.center().y() + (row - 1) * step);
+                p.setPen(Qt::NoPen);
+                p.setBrush(dot);
+                p.drawEllipse(centre, r, r);
+            }
+        }
+    }
+}
+
+QRect DockTitleBar::gripRect() const {
+    const int side = qMax(12, fontMetrics().height());
+    const int inset = titleInset(fontMetrics());
+    return QRect(inset, (height() - side) / 2, side, side);
 }
 
 void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
@@ -97,6 +129,9 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
     mPressPos = aEvent->position().toPoint();
     mPressed = true;
     mGestureStarted = false;
+    // floating only: a docked panel is not draggable at all (its header press is
+    // consumed below and nothing else happens)
+    mGripPressed = mDock->isFloating() && gripRect().contains(mPressPos);
 
     // Consume the press. Qt starts its dock drag from a press that reaches the
     // QDockWidget itself (QDockWidgetPrivate::mousePressEvent only accepts
@@ -106,7 +141,18 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
-    if (!mPressed || mGestureStarted) {
+    if (!mPressed) {
+        const bool overGrip = mDock->isFloating()
+                && gripRect().contains(aEvent->position().toPoint());
+        if (overGrip != mHoveredGrip) {
+            mHoveredGrip = overGrip;
+            setCursor(overGrip ? Qt::OpenHandCursor : Qt::ArrowCursor);
+            update();
+        }
+        QWidget::mouseMoveEvent(aEvent);
+        return;
+    }
+    if (mGestureStarted) {
         QWidget::mouseMoveEvent(aEvent);
         return;
     }
@@ -115,6 +161,11 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
         return;
     }
     mGestureStarted = true;
+
+    if (mGripPressed) {
+        startPanelDrag();
+        return;
+    }
 
     QWindow* window = mDock->windowHandle();
     if (mDock->isFloating()) {
@@ -134,8 +185,30 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
     aEvent->accept();
 }
 
+void DockTitleBar::startPanelDrag() {
+    QMimeData* mime = new QMimeData;
+    mime->setData(kDockPanelMime, mDock->objectName().toUtf8());
+
+    QDrag drag(this);
+    drag.setMimeData(mime);
+
+    // The chip is the header, at a fraction of its width. The panel itself must
+    // not be what follows the cursor: on Wayland we cannot position the window
+    // ourselves, and even if the compositor moved it, a full-size panel would
+    // cover the drop band the overlay is drawing in the main window.
+    const int chipWidth = qMin(width(), 200);
+    const QPixmap chip = grab(QRect(0, 0, chipWidth, height()));
+    drag.setPixmap(chip);
+    drag.setHotSpot(QPoint(chip.width() / 2, chip.height() / 2));
+
+    log(QStringLiteral("grip drag started (%1x%2 chip)").arg(chip.width()).arg(chip.height()));
+    const Qt::DropAction result = drag.exec(Qt::MoveAction);
+    log(QStringLiteral("grip drag finished result=%1").arg(int(result)));
+}
+
 void DockTitleBar::mouseReleaseEvent(QMouseEvent* aEvent) {
     mPressed = false;
+    mGripPressed = false;
     mGestureStarted = false;
     QWidget::mouseReleaseEvent(aEvent);
 }
