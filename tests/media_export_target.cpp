@@ -1197,6 +1197,21 @@ TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
         ctrl::exportWithFit(tiny, req, ctrl::QualityBucket::Balanced, frames);
     for (const QString& step : r.steps) QTextStream(stdout) << "      " << step << "\n";
     check(r.attempts > 1, QStringLiteral("the fit loop iterated (%1 attempts)").arg(r.attempts));
+
+    // Cancellation, polled before each attempt. Without this the loop ran to
+    // completion (up to 16 encodes) while the progress dialog's Cancel button did
+    // nothing — a button that lies about what it does.
+    {
+        int polls = 0;
+        const ctrl::FitResult c = ctrl::exportWithFit(
+            tiny, req, ctrl::QualityBucket::Balanced, frames, nullptr,
+            [&polls] { return ++polls > 2; }); // let two attempts run, then stop
+        check(c.canceled, "a canceled fit reports cancellation");
+        check(!c.ok, "a canceled fit is not reported as success");
+        check(c.attempts <= 3, QStringLiteral("the loop stopped promptly (%1 attempts)").arg(c.attempts));
+        check(c.error == QLatin1String("canceled"),
+              QStringLiteral("the reason is 'canceled', not the did-not-fit message (got '%1')").arg(c.error));
+    }
     if (r.ok) {
         check(r.bytes <= tiny.caps.maxBytes,
               QStringLiteral("fitted under the cap: %1 <= %2 bytes")

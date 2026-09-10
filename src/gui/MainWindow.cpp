@@ -1446,7 +1446,19 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
                 fitTarget, fitRequest, exParam.qualityBucket, frames,
                 [&progress](const QString& aStep) {
                     progress.pushLog(aStep, ctrl::UILogType_Info);
-                });
+                },
+                [&progress] { return progress.wasCanceled(); });
+            if (fit.canceled) {
+                // Say what is on disk rather than deleting it: the last attempt is
+                // a complete, playable file, and for an already-fitted attempt it
+                // is a good one. Which attempt it was is exactly what the log says.
+                QMessageBox::information(widget, QObject::tr("Export Canceled"),
+                                         QObject::tr("The export was stopped while fitting under "
+                                                     "%1's size limit. The file already written is "
+                                                     "the last attempt, and may exceed the limit.")
+                                             .arg(plan.target.label));
+                return;
+            }
             if (!fit.ok) {
                 QMessageBox::warning(widget, QObject::tr("Export Error"),
                                      QObject::tr("%1 caps the file at %2 KB and even the "

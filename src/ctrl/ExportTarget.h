@@ -275,6 +275,9 @@ struct QualityControl {
 
 struct FitResult {
     bool ok = false;
+    // The user stopped it. Distinct from a failure: the caller must not report
+    // "even the smallest setting did not fit" for a job the user cancelled.
+    bool canceled = false;
     QString path;
     qint64 bytes = 0; // size of the ACCEPTED file (or, on failure, the smallest seen)
     int attempts = 0;
@@ -354,9 +357,13 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
 // attempt list is on the result too, but reaching a cap can take a dozen encodes
 // — minutes of work — and a caller that can only report afterwards leaves the
 // user watching a frozen progress bar.
+// `aShouldCancel` (optional) is polled before each attempt. Fitting can run a
+// dozen encodes, so a Cancel button that does nothing until it finishes is a
+// button that lies about what it does.
 FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aRequest,
                         QualityBucket aBucket, const QList<QImage>& aFrames,
-                        const std::function<void(const QString&)>& aOnStep = nullptr);
+                        const std::function<void(const QString&)>& aOnStep = nullptr,
+                        const std::function<bool()>& aShouldCancel = nullptr);
 
 } // namespace ctrl
 

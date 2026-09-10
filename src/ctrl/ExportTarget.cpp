@@ -915,7 +915,8 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
 
 FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aRequest,
                         QualityBucket aBucket, const QList<QImage>& aFrames,
-                        const std::function<void(const QString&)>& aOnStep) {
+                        const std::function<void(const QString&)>& aOnStep,
+                        const std::function<bool()>& aShouldCancel) {
     FitResult result;
     result.path = aRequest.outputPath;
 
@@ -952,6 +953,13 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     // No cap: one encode, no loop.
     qint64 smallest = 0; // smallest file seen (only used in the give-up message)
     auto encodeOnce = [&](int aCrf, double aScale, int aStride, const QString& aWhat) -> int {
+        // The single choke point every attempt goes through, so one check here
+        // covers the initial encode and both bisections.
+        if (aShouldCancel && aShouldCancel()) {
+            result.canceled = true;
+            result.error = QStringLiteral("canceled");
+            return -1;
+        }
         const int w = std::max(2, evenFloor(plan.size.width() * aScale));
         const int h = std::max(2, evenFloor(plan.size.height() * aScale));
         QList<QImage> frames;
@@ -1056,7 +1064,7 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     };
 
     for (const QString& phase : aTarget.degradeOrder) {
-        if (result.ok) break;
+        if (result.ok || result.canceled) break;
         if (phase == QLatin1String("quality") && quality) {
             const int win = bisectSmallest(
                 crf, quality->worst,
@@ -1113,6 +1121,9 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         return result;
     }
 
+    // A cancelled fit is not a failed fit: overwriting the reason here would tell
+    // the user "even the smallest setting did not fit" about a job THEY stopped.
+    if (result.canceled) return result;
     result.error = QStringLiteral(
                        "could not fit under %1's %2 byte cap (best was %3 bytes at %4x%5). "
                        "Shorten the animation or simplify the art — quality and size are "
