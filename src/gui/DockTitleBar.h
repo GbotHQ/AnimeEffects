@@ -31,8 +31,13 @@ void dockSpikeLog(const QDockWidget* aDock, const QString& aMessage);
  *
  * The gesture split below is the part that QDockWidget's own title bar can
  * never provide on Wayland:
- *   - floating, drag on the header -> QWindow::startSystemMove()
- *   - docked, drag on the header  -> ours: consumed on press, so Qt's own
+ *   - floating, drag on the grip   -> QWindow::startSystemMove(): a grip is a
+ *     handle, so it moves the window; this is the conventional reading and the
+ *     cursor says so
+ *   - floating, drag on the header -> the dock drag (a DnD chip, see
+ *     startPanelDrag). Only a drag-and-drop reports a drop position, so only
+ *     it can dock
+ *   - docked, drag on the header   -> ours: consumed on press, so Qt's own
  *     drag never starts (on Wayland that drag is a platform DnD through
  *     QDrag/QMimeData "application/x-qt-mainwindowdrag-window").
  *
@@ -63,9 +68,9 @@ protected:
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
 
 private:
-    /// The grip: the part of a floating header that starts a dock-drag. The
-    /// rest of the header keeps moving the window, because on Wayland a single
-    /// drag cannot both move a toplevel and report where it was dropped.
+    /// The grip: the move handle of a floating header. The header itself is
+    /// the dock handle, because on Wayland a single drag cannot both move a
+    /// toplevel and report where it was dropped.
     QRect gripRect() const;
     void startPanelDrag();
 

@@ -115,7 +115,9 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
 }
 
 QRect DockTitleBar::gripRect() const {
-    const int side = qMax(12, fontMetrics().height());
+    // comfortably larger than the dots: along with a grip, the header is the
+    // dock handle, so a near miss would start the wrong gesture
+    const int side = qMax(18, fontMetrics().height());
     const int inset = titleInset(fontMetrics());
     return QRect(inset, (height() - side) / 2, side, side);
 }
@@ -146,7 +148,7 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
                 && gripRect().contains(aEvent->position().toPoint());
         if (overGrip != mHoveredGrip) {
             mHoveredGrip = overGrip;
-            setCursor(overGrip ? Qt::OpenHandCursor : Qt::ArrowCursor);
+            setCursor(overGrip ? Qt::SizeAllCursor : Qt::ArrowCursor);
             update();
         }
         QWidget::mouseMoveEvent(aEvent);
@@ -162,22 +164,23 @@ void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
     }
     mGestureStarted = true;
 
-    if (mGripPressed) {
-        startPanelDrag();
-        return;
-    }
-
     QWindow* window = mDock->windowHandle();
     if (mDock->isFloating()) {
-        const bool accepted = window && window->startSystemMove();
-        log(QStringLiteral("floating header-drag startSystemMove=%1 flags=0x%2")
-                .arg(accepted).arg(window ? int(window->flags()) : 0, 0, 16));
+        if (mGripPressed) {
+            // the grip is the move handle
+            const bool accepted = window && window->startSystemMove();
+            log(QStringLiteral("floating grip-drag startSystemMove=%1 flags=0x%2")
+                    .arg(accepted).arg(window ? int(window->flags()) : 0, 0, 16));
+        } else {
+            // the header is the dock handle
+            startPanelDrag();
+        }
     } else {
         // Phase 3 puts the drop-zone overlay here. Until then the value of this
         // line is the negative result: the panel must stay put and in the
         // layout, i.e. Qt's drag and its platform DnD never started.
         auto* mainWindow = qobject_cast<QMainWindow*>(mDock->parentWidget());
-        log(QStringLiteral("docked header-drag -> ours: area=%1 geometry=%2,%3 %4x%5")
+        log(QStringLiteral("docked header-drag -> inert: area=%1 geometry=%2,%3 %4x%5")
                 .arg(mainWindow ? int(mainWindow->dockWidgetArea(mDock)) : -1)
                 .arg(mDock->geometry().x()).arg(mDock->geometry().y())
                 .arg(mDock->width()).arg(mDock->height()));
