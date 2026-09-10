@@ -8,7 +8,6 @@
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
 #include "gui/DockSash.h"
-#include "gui/ExportDialog.h"
 #include "gui/NewProjectDialog.h"
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
@@ -1230,40 +1229,24 @@ static QVector<media::AudioMixer::Track> toAudioTracks(const std::vector<audioCo
 
 // Map the dialog's per-container encoder combo to the raw friendly encoder name
 // (e.g. "x264"), or "" for Auto so the exporter picks a muxer-aware default.
-static QString videoCodecForContainer(const exportParam& exParam, const QString& aContainer) {
-    const defaultEncoders& e = exParam.videoParams.encoders;
-    QString friendly;
-    if (aContainer == QLatin1String("avi"))       friendly = aviEnc[(int)e.avi];
-    else if (aContainer == QLatin1String("mkv"))       friendly = mkvEnc[(int)e.mkv];
-    else if (aContainer == QLatin1String("mov"))       friendly = movEnc[(int)e.mov];
-    else if (aContainer == QLatin1String("mp4"))       friendly = mp4Enc[(int)e.mp4];
-    else if (aContainer == QLatin1String("webm"))      friendly = webmEnc[(int)e.webm];
-    if (friendly.isEmpty() || friendly == QLatin1String("Auto") || friendly == QLatin1String("auto"))
-        return QString();
-    return friendly;
-}
 
 // Fill the video-specific bits of a ctrl::Exporter::VideoParam from an exportParam.
-// Container can be any export target (embedded preset or a container-default codec).
+//
+// The container and the codec are names here, not indices into a table: that
+// table (and the getFormatAsInt() that could not read it back) is gone. An empty
+// codec means "the container's probed default", which is what the exporter
+// resolves, so "Auto" is no longer a value pretending to be a choice.
 static void translateVideoExport(exportParam& exParam, const std::vector<audioConfig>& aValidStreams,
                                  ctrl::Exporter::VideoParam& aVideo,
                                  QVector<media::AudioMixer::Track>& aAudio) {
     auto& g = exParam.generalParams;
-    const QString container = getFormatAsString(exportTarget::video, (int)exParam.videoParams.format);
-    ctrl::VideoFormat fmt = ctrl::VideoFormat::find(container);
-    if (fmt.name.isEmpty()) {
-        // No embedded preset (e.g. "mkv"): build a minimal format whose default
-        // codec the exporter resolves via a muxer-aware container default.
-        fmt.name = container;
-        fmt.label = container;
-    }
-    aVideo.format = fmt;
-    aVideo.codecIndex = -1;              // container default unless overridden below
-    aVideo.codec = videoCodecForContainer(exParam, container); // friendly name or "" (Auto)
+    aVideo.container = exParam.videoParams.container;
+    aVideo.codec = exParam.videoParams.codec;
+    // No pixel format: it follows from the codec and from whether alpha is
+    // wanted, and the encoder picks between the two by asking.
+    aVideo.pixfmt.clear();
     aVideo.transparent = g.allowTransparency;
     aVideo.bps = g.bitrate;              // kbps (the exporter converts to bits/sec)
-    const QString px = getFormatAsString(exportTarget::pxFmt, (int)exParam.videoParams.pixelFormat);
-    aVideo.pixfmt = (px == QLatin1String("Auto") || px.isEmpty()) ? QString() : px;
     aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
 }
 
@@ -1344,9 +1327,11 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         cparam.selection = plan.selection;
     }
 
+    // GIF is the one artifact media::GifEncoder owns rather than libav, so which
+    // branch runs follows from the container itself.
     const bool isGif = havePlan ? plan.gifPath
                                 : (exParam.exportType == exportTarget::video &&
-                                   exParam.videoParams.format == availableVideoFormats::gif);
+                                   exParam.videoParams.container == QLatin1String("gif"));
 
     ctrl::Exporter exporter(*mCurrent);
     exporter.setOverwriteConfirmer([widget](const QString& aPath) -> bool {
@@ -1362,7 +1347,8 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         ctrl::Exporter::ImageParam iparam;
         cparam.path = g.exportDirectory.absolutePath();
         iparam.name = QFileInfo(g.fileName).baseName();
-        iparam.suffix = getFormatAsString(exportTarget::image, (int)exParam.imageParams.format);
+        iparam.suffix = exParam.imageParams.suffix.isEmpty() ? QStringLiteral("png")
+                                                            : exParam.imageParams.suffix;
         iparam.quality = g.imageExportQuality;
         auto res = exporter.execute(cparam, iparam);
         if (!res && !exporter.isCanceled())
@@ -1395,14 +1381,8 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     translateVideoExport(exParam, validAudioStreams, vparam, audioTracks);
 
     if (havePlan) {
-        ctrl::VideoFormat fmt = ctrl::VideoFormat::find(plan.config.container);
-        if (fmt.name.isEmpty()) {
-            fmt.name = plan.config.container;
-            fmt.label = plan.config.container;
-        }
-        vparam.format = fmt;
-        vparam.codecIndex = -1;            // the codec is named explicitly
-        vparam.codec = plan.config.codec;
+        vparam.container = plan.config.container;
+        vparam.codec = plan.config.codec;   // named explicitly by the destination
         vparam.pixfmt = plan.config.pixFmt;
         vparam.transparent = plan.alphaEnabled;
         vparam.encOptions = plan.config.encOptions;
@@ -1420,6 +1400,62 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
 }
 
+
+void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId) {
+    if (!mCurrent) {
+        return;
+    }
+    const ctrl::ExportTarget target =
+        ctrl::ExportTargets::find(ctrl::ExportTargets::load(), aDestinationId);
+    if (target.id.isEmpty()) {
+        return;
+    }
+
+    // One click: pick a folder, and the destination decides the container, the
+    // codec, its options, transparency, the exact size, the caps and the audio.
+    const QString dirPath = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
+    if (dirPath.isEmpty()) {
+        return;
+    }
+    QString base = QFileInfo(mCurrent->fileName()).baseName();
+    if (base.isEmpty()) {
+        base = QStringLiteral("New Export");
+    }
+    const QString fileName = base + "." + target.container;
+
+    GeneralParams genParam;
+    genParam.fileName = base;
+    genParam.exportName = base;
+    genParam.exportDirectory = QDir(dirPath);
+    genParam.exportFileName = QDir(dirPath + "/" + fileName);
+    genParam.osExportTarget = QDir(dirPath + "/" + fileName).absolutePath();
+    genParam.nativeWidth = mCurrent->attribute().imageSize().width();
+    genParam.nativeHeight = mCurrent->attribute().imageSize().height();
+    genParam.exportWidth = genParam.nativeWidth;
+    genParam.exportHeight = genParam.nativeHeight;
+    genParam.aspectRatio = custom;
+    genParam.nativeFPS = mCurrent->attribute().fps();
+    genParam.fps = mCurrent->attribute().fps();
+    genParam.allowTransparency = true; // the destination decides, in the plan
+    genParam.loop = true;
+    genParam.imageExportQuality = -1;
+    const frameExportRange fer{mCurrent->attribute().frameRange().min(),
+                               mCurrent->attribute().frameRange().max()};
+    genParam.nativeFrameRange = fer;
+    genParam.exportRange = {fer};
+
+    auto exParam = new exportParam();
+    exParam->generalParams = genParam;
+    exParam->exportType = exportTarget::video;
+    exParam->destinationId = aDestinationId;
+    exParam->qualityBucket = ctrl::QualityBucket::Balanced;
+
+    std::vector<audioConfig> validAudioStreams =
+        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+    if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
+        exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
+    }
+}
 
 void MainWindow::onExportTriggered() {
     if (!mCurrent) { return; }
@@ -1471,8 +1507,52 @@ void MainWindow::onExportTriggered() {
         auto refreshFacts = [this, currentBucket]() {
             const QString id = exportUI->destinationCombo->currentData().toString();
             if (id.isEmpty()) {
-                exportUI->destinationFacts->clear();
                 exportUI->clearPlan();
+                // Manual mode states its own facts, for the same reason a
+                // destination does: the controls cannot say everything. A ticked
+                // "Export with transparency" beside H.264 is the clearest case —
+                // libx264 has no alpha pixel format at all, so the export will be
+                // opaque however the box is set, and only words can say so.
+                QStringList manual;
+                if (exportUI->selectedFormatIsSequence()) {
+                    manual << tr("%1 of %2 frames at %3 x %4, %5 fps")
+                                  .arg(exportUI->selectedFormatLabel())
+                                  .arg(exportUI->lastFrameSpinBox->value()
+                                       - exportUI->firstFrameSpinBox->value() + 1)
+                                  .arg(exportUI->widthSpinBox->value())
+                                  .arg(exportUI->heightSpinBox->value())
+                                  .arg(exportUI->fpsSpinBox->value());
+                } else {
+                    // A container with exactly one codec (GIF, APNG, WebP) has no
+                    // codec label to print, and " —  in GIF animation" is not a
+                    // fact, it is a gap where one should be.
+                    const QString codecLabel = exportUI->selectedCodecLabel();
+                    manual << (codecLabel.isEmpty()
+                                   ? tr("%1 x %2, %3 fps — %4")
+                                         .arg(exportUI->widthSpinBox->value())
+                                         .arg(exportUI->heightSpinBox->value())
+                                         .arg(exportUI->fpsSpinBox->value())
+                                         .arg(exportUI->selectedFormatLabel())
+                                   : tr("%1 x %2, %3 fps — %4 in %5")
+                                         .arg(exportUI->widthSpinBox->value())
+                                         .arg(exportUI->heightSpinBox->value())
+                                         .arg(exportUI->fpsSpinBox->value())
+                                         .arg(codecLabel, exportUI->selectedFormatLabel()));
+                }
+                // One string per note: QStringList's operator<< appends each
+                // argument as its own element, so streaming a literal bullet and
+                // then the sentence would put them on separate lines.
+                if (exportUI->transparencyCheckBox->isChecked()
+                    && !exportUI->selectedCodecCarriesAlpha()) {
+                    manual << QStringLiteral("• ") + tr("%1 cannot carry transparency, so this "
+                                                       "export will be opaque.")
+                                                     .arg(exportUI->selectedCodecLabel());
+                }
+                if (exportUI->selectedFormatIsGif()) {
+                    manual << QStringLiteral("• ")
+                                  + tr("A GIF loops forever, so the Loop animation box is fixed on.");
+                }
+                exportUI->destinationFacts->setText(manual.join(QLatin1Char('\n')));
                 return;
             }
             const ctrl::ExportTarget target =
@@ -1538,6 +1618,19 @@ void MainWindow::onExportTriggered() {
                          util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
                          [refreshFacts](int) { refreshFacts(); });
         QObject::connect(exportUI->qualityCombo,
+                         util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
+                         [refreshFacts](int) { refreshFacts(); });
+
+        // The escape hatch: only meaningful with no destination, which is the
+        // only case where the user has to state the artifact themselves.
+        exportUI->populateFormats();
+        QObject::connect(exportUI->formatCombo,
+                         util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
+                         [this, refreshFacts](int) {
+                             exportUI->refreshCodecs();
+                             refreshFacts();
+                         });
+        QObject::connect(exportUI->codecCombo,
                          util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
                          [refreshFacts](int) { refreshFacts(); });
         // NOTE: no initial refreshFacts() call here. The widgets are still at
@@ -1702,41 +1795,24 @@ void MainWindow::onExportTriggered() {
     }
     // Get file name and folder for export
     if (exportUI->operationCancelled) { return; }
-    // Initialize the file dialog with the appropriate descriptors
+    // One filter: the artifact the user already chose in the dialog's Format row.
+    //
+    // This used to be thirteen video filters and nine image filters, and the
+    // EXPORT FORMAT was then read back out of whichever filter was selected — so
+    // the format was chosen in the OS file dialog by a name like "Flash Video",
+    // "MPEG-2" or "X11 PixelMap" that nothing downstream could produce. The
+    // artifact is decided in one place now; the file dialog only asks where to
+    // put it and what to call it.
+    const QString artifactId = exportUI->formatCombo->currentData().toString();
+    const bool sequenceExport = artifactId.startsWith(QLatin1String("image/"));
+    const QString artifactSuffix = sequenceExport ? artifactId.mid(6)
+                                                 : exportUI->containerForFormat(artifactId);
     QFileDialog fileDiag;
     fileDiag.setAcceptMode(QFileDialog::AcceptMode::AcceptSave);
     fileDiag.setFileMode(QFileDialog::AnyFile);
-    QStringList vF = videoFormats;
-    QStringList videoFormatDescriptor{
-        tr("Animated PNG"), tr("AVI"), tr("Flash Video"), tr("Flash Video"),
-        tr("GIF"), tr("Matroska"), tr("QuickTime Movie"), tr("MPEG-2"),
-        tr("MPEG-4"), tr("Ogg Video"), tr("Shockwave Flash"), tr("WEBM"), tr("WEBP")
-    };
-    QStringList iF = imageFormats;
-    QStringList imageFormatDescriptor{
-        tr("BitMap"), tr("JPEG"), tr("JPEG"), tr("PNG"), tr("Portable PixelMap"),
-        tr("X11 BitMap"), tr("X11 PixelMap"), tr("Tagged Image"), tr("WEBP")
-    };
-    x = 0;
-    for(auto &format: vF){
-        format.push_front(videoFormatDescriptor[x] + " (*.");
-        format.push_back(')');
-        x++;
-    }
-    x = 0;
-    for(auto &format: iF){
-        format.push_front(imageFormatDescriptor[x] + " (*.");
-        format.push_back(')');
-        x++;
-    }
-    if(exportUI->exportTypeCombo->currentIndex() == 0) {
-        fileDiag.setNameFilters(vF);
-        fileDiag.selectNameFilter("MPEG-4");
-    }
-    else {
-        fileDiag.setNameFilters(iF);
-        fileDiag.selectNameFilter("PNG");
-    }
+    fileDiag.setNameFilters({exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")"});
+    fileDiag.selectNameFilter(exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")");
+
     // Generate parameters prior to exportUI destructor
     genParam.fileName = mCurrent->fileName().isEmpty()? "New Export" : QString(mCurrent->fileName());
     genParam.nativeWidth = mCurrent->attribute().imageSize().width();
@@ -1792,30 +1868,28 @@ void MainWindow::onExportTriggered() {
         settings.setValue("export_destination", exParam->destinationId);
         settings.setValue("export_quality_bucket", exportUI->qualityCombo->currentIndex());
     }
-    if(exportUI->exportTypeCombo->currentIndex() == 0){ exParam->exportType = exportTarget::video; }
-    else{ exParam->exportType = exportTarget::image; }
-    if(exParam->exportType == exportTarget::video){
-        // No pixel format or per-container encoder is collected any more: a
-        // destination decides both. They stay at their defaults, which is exactly
-        // what they resolved to before, because getFormatAsInt() returned 0 for
-        // every input the user could pick.
+    // The artifact decides the type: a sequence writes numbered stills, anything
+    // else writes one video file. This used to be an independent combo, which let
+    // the two disagree ("Animation" plus a .png filter) and left the format to be
+    // reconstructed from the disagreement.
+    exParam->exportType = sequenceExport ? exportTarget::image : exportTarget::video;
+    if (exParam->exportType == exportTarget::video) {
+        exParam->videoParams.container = artifactSuffix;
+        // Empty means "the container's probed default", which is the only honest
+        // answer when the codec was not a choice (one candidate, or a GIF).
+        exParam->videoParams.codec = exportUI->codecCombo->currentData().toString();
+    } else {
+        exParam->imageParams.suffix = artifactSuffix;
     }
     // Get file via OS diag
     fileDiag.setViewMode(QFileDialog::Detail);
     QString selectedFile;
     if(fileDiag.exec()){ selectedFile = fileDiag.selectedFiles().at(0); }
     else{ return; }
-    bool isVideoExport = exParam->exportType == exportTarget::video;
-    int suffixIndex = isVideoExport? (int)vF.indexOf(fileDiag.selectedNameFilter()) : (int)iF.indexOf(fileDiag.selectedNameFilter());
-    QString sfx = getFormatAsString(exParam->exportType, suffixIndex);
-    qDebug() << "Exporting animation to format: " << sfx;
-    if(QFileInfo(selectedFile).suffix() == ""){
-        auto regex = QRegularExpression("(\\*.)\\w+", QRegularExpression::CaseInsensitiveOption);
-        QString suffix = regex.match(fileDiag.selectedNameFilter()).captured(0).remove(0, 1);
-        qDebug() << suffix;
-        selectedFile.append(suffix);
+    if (QFileInfo(selectedFile).suffix().isEmpty()) {
+        selectedFile.append(QLatin1Char('.') + artifactSuffix);
     }
-    qDebug() << selectedFile;
+    qDebug() << "Exporting animation to" << selectedFile << "as" << artifactSuffix;
     // Generate export parameters
     genParam.exportName = QFileInfo(selectedFile).fileName();
     genParam.exportDirectory = QFileInfo(selectedFile).absoluteDir();
@@ -1823,12 +1897,6 @@ void MainWindow::onExportTriggered() {
     genParam.osExportTarget = selectedFile;
     exParam->generalParams = genParam;
 
-    if(exParam->exportType == exportTarget::video) {
-        exParam->videoParams.format = static_cast<availableVideoFormats>(suffixIndex);
-    }
-    else{
-        exParam->imageParams.format = static_cast<availableImageFormats>(suffixIndex);
-    }
     // Main export function
     std::vector<audioConfig> validAudioStreams = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
     if(isExportParamValid(exParam, exportWidget, &validAudioStreams)){
@@ -1836,221 +1904,6 @@ void MainWindow::onExportTriggered() {
     }
 }
 
-void MainWindow::onExportImageSeqTriggered(const QString& aSuffix) {
-    if (!mCurrent)
-        return;
-
-    // stop animation and main display rendering
-    EventSuspender suspender(*mMainDisplay, *mTarget);
-
-    // export directory
-    QString dirName = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
-
-    // make sure existing
-    if (dirName.isEmpty())
-        return;
-    if (!QFileInfo::exists(dirName))
-        return;
-
-    // export param
-    ctrl::Exporter::CommonParam cparam;
-    ctrl::Exporter::ImageParam iparam;
-    {
-        QScopedPointer<ImageExportDialog> dialog(new ImageExportDialog(*mCurrent, dirName, aSuffix, this));
-
-        dialog->exec();
-        if (dialog->result() != QDialog::Accepted)
-            return;
-
-        cparam = dialog->commonParam();
-        iparam = dialog->imageParam();
-    }
-
-    // gui for confirm overwrite
-    auto overwriteConfirmer = [=](const QString&) -> bool {
-        QMessageBox msgBox;
-        msgBox.setText(tr("File already exists."));
-        msgBox.setInformativeText(tr("Do you want to overwrite the existing file?"));
-        msgBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-        msgBox.setDefaultButton(QMessageBox::Ok);
-        int ret = msgBox.exec();
-        return (ret == QMessageBox::Ok);
-    };
-
-    menu::ProgressReporter progress(true, this);
-    ctrl::Exporter exporter(*mCurrent);
-    exporter.setOverwriteConfirmer(overwriteConfirmer);
-    exporter.setProgressReporter(progress);
-
-    // execute
-    if (!exporter.execute(cparam, iparam)) {
-        progress.cancel();
-        if (!exporter.isCanceled()) {
-            QMessageBox::warning(nullptr, tr("Export Error"), exporter.log());
-        }
-    }
-}
-
-void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId) {
-    if (!mCurrent) {
-        return;
-    }
-    const ctrl::ExportTarget target =
-        ctrl::ExportTargets::find(ctrl::ExportTargets::load(), aDestinationId);
-    if (target.id.isEmpty()) {
-        return;
-    }
-
-    // One click: pick a folder, and the destination decides the container, the
-    // codec, its options, transparency, the exact size, the caps and the audio.
-    const QString dirPath = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
-    if (dirPath.isEmpty()) {
-        return;
-    }
-    QString base = QFileInfo(mCurrent->fileName()).baseName();
-    if (base.isEmpty()) {
-        base = QStringLiteral("New Export");
-    }
-    const QString fileName = base + "." + target.container;
-
-    GeneralParams genParam;
-    genParam.fileName = base;
-    genParam.exportName = base;
-    genParam.exportDirectory = QDir(dirPath);
-    genParam.exportFileName = QDir(dirPath + "/" + fileName);
-    genParam.osExportTarget = QDir(dirPath + "/" + fileName).absolutePath();
-    genParam.nativeWidth = mCurrent->attribute().imageSize().width();
-    genParam.nativeHeight = mCurrent->attribute().imageSize().height();
-    genParam.exportWidth = genParam.nativeWidth;
-    genParam.exportHeight = genParam.nativeHeight;
-    genParam.aspectRatio = custom;
-    genParam.nativeFPS = mCurrent->attribute().fps();
-    genParam.fps = mCurrent->attribute().fps();
-    genParam.allowTransparency = true; // the destination decides, in the plan
-    genParam.loop = true;
-    genParam.imageExportQuality = -1;
-    const frameExportRange fer{mCurrent->attribute().frameRange().min(),
-                               mCurrent->attribute().frameRange().max()};
-    genParam.nativeFrameRange = fer;
-    genParam.exportRange = {fer};
-
-    auto exParam = new exportParam();
-    exParam->generalParams = genParam;
-    exParam->exportType = exportTarget::video;
-    exParam->destinationId = aDestinationId;
-    exParam->qualityBucket = ctrl::QualityBucket::Balanced;
-
-    std::vector<audioConfig> validAudioStreams =
-        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
-    if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
-        exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
-    }
-}
-
-void MainWindow::onExportVideoTriggered(const ctrl::VideoFormat& aFormat) {
-    if (!mCurrent)
-        return;
-
-    const QString suffix = aFormat.name;
-    const bool isGif = suffix == "gif";
-
-    // stop animation and main display rendering
-    EventSuspender suspender(*mMainDisplay, *mTarget);
-
-    const QString targetVideos = "Videos (*." + suffix + ")";
-
-    // get export file name
-    QString fileName = QFileDialog::getSaveFileName(
-        this,
-        tr("Export File"),
-        QString(), // dir
-        targetVideos
-    );
-    const QFileInfo fileInfo(fileName);
-
-    // make sure existing
-    if (fileName.isEmpty())
-        return;
-    if (!fileInfo.dir().exists())
-        return;
-
-    if (fileInfo.suffix().isEmpty()) {
-        fileName += "." + suffix; // makesure suffix
-    } else if (fileInfo.suffix() != suffix) {
-        QMessageBox::warning(nullptr, tr("Operation Error"), tr("Invalid extension specified."));
-        return;
-    }
-
-    // export param
-    ctrl::Exporter::CommonParam cparam;
-    ctrl::Exporter::VideoParam vparam;
-    ctrl::Exporter::GifParam gparam;
-    if (isGif) {
-        QScopedPointer<GifExportDialog> dialog(new GifExportDialog(*mCurrent, fileName, this));
-        dialog->exec();
-        if (dialog->result() != QDialog::Accepted)
-            return;
-
-        cparam = dialog->commonParam();
-        gparam = dialog->gifParam();
-    } else {
-        QScopedPointer<VideoExportDialog> dialog(new VideoExportDialog(*mCurrent, fileName, aFormat, this));
-        dialog->exec();
-        if (dialog->result() != QDialog::Accepted)
-            return;
-
-        cparam = dialog->commonParam();
-        vparam = dialog->videoParam();
-    }
-    // vparam.codec = codec;
-
-    menu::LoggableProgressReporter progress(true, this);
-    ctrl::Exporter exporter(*mCurrent);
-    exporter.setOverwriteConfirmer([=](const QString&) -> bool { return true; });
-    exporter.setProgressReporter(progress);
-    exporter.setUILogger(progress);
-
-    // Include the project's multi-track audio on video exports: it is mixed and
-    // muxed in-process (linked libav*) with the video in one pass.
-    if (!isGif) {
-        const auto validAudio = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
-        QVector<media::AudioMixer::Track> audioTracks;
-        audioTracks.reserve(int(validAudio.size()));
-        for (const auto& ac : validAudio) {
-            media::AudioMixer::Track t;
-            t.path = ac.audioPath.absoluteFilePath();
-            t.startFrame = ac.startFrame;
-            t.endFrame = ac.endFrame;
-            t.volume = AudioPlaybackWidget::getVol(ac.volume);
-            t.enabled = true;
-            audioTracks.push_back(t);
-        }
-        exporter.setAudioTracks(audioTracks);
-    }
-
-    // execute
-    auto result = isGif ? exporter.execute(cparam, gparam) : exporter.execute(cparam, vparam);
-
-    if (!result) {
-        progress.cancel();
-
-        if (result.code == ctrl::Exporter::ResultCode_Canceled) {
-        } else if (result.code == ctrl::Exporter::ResultCode_EncoderOpenFailed) {
-            QMessageBox message;
-            message.setIcon(QMessageBox::Warning);
-            message.setText(tr("FFmpeg was not found."));
-            auto infoText = tr("Video export requires FFmpeg.") + "\n" +
-                tr("Install FFmpeg on the system, or place a FFmpeg executable "
-                   "under \"/tools\" in the folder where you installed AnimeEffects.");
-            message.setInformativeText(infoText);
-            message.setStandardButtons(QMessageBox::Ok);
-            message.setDefaultButton(QMessageBox::Ok);
-            message.exec();
-        } else {
-            QMessageBox::warning(nullptr, tr("Export Error"), exporter.log());
-        }
-    }
-}
 void MainWindow::onMoveFrameTriggered(bool moveRight) {
     int frameDest = moveRight? 1: -1;
     core::Frame dest = mTarget->currentFrame();

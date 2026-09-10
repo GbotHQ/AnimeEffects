@@ -23,7 +23,6 @@
 #include "core/Project.h"
 #include "core/Animator.h"
 #include "ctrl/Exporter.h"
-#include "ctrl/VideoFormat.h"
 #include "ctrl/ProjectLoader.h"
 #include "gui/AudioPlaybackWidget.h"
 #include "util/IProgressReporter.h"
@@ -172,29 +171,17 @@ int main(int argc, char** argv) {
     // project's native size, so these run fast and deterministic).
     const QSize small(320, 180);
 
-    // Build an mp4/libx264 format (the harness's canonical container/codec).
-    auto makeMp4 = []() {
-        ctrl::VideoFormat vf;
-        vf.name = "mp4"; vf.label = "MP4"; vf.icodec = "ppm";
-        ctrl::VideoCodec c;
-        c.name = "libx264"; c.label = "H.264"; c.icodec = "ppm";
-        c.pixfmts = QStringList{ QStringLiteral("yuv420p") };
-        vf.codecs.push_back(c);
-        return vf;
-    };
-    // webm/libvpx-vp9 @ yuva420p carries alpha as packet side data
-    // (alpha_mode=1); the alpha is recovered by the libvpx decoder. This is the
-    // primary alpha-capable animation container for the web.
-    auto makeWebmVp9 = []() {
-        ctrl::VideoFormat vf;
-        vf.name = "webm"; vf.label = "WebM"; vf.icodec = "ppm";
-        ctrl::VideoCodec c;
-        c.name = "libvpx-vp9"; c.label = "VP9"; c.icodec = "ppm";
-        c.transparent = true;
-        c.pixfmts = QStringList{ QStringLiteral("yuva420p") };
-        vf.codecs.push_back(c);
-        return vf;
-    };
+    // The harness's canonical container/codec pairs. A container and a codec are
+    // names now, not a preset object: the exporter resolves everything else (the
+    // muxer, the pixel format, the private options) by asking, so a fixture that
+    // names them explicitly is the whole of what a caller supplies.
+    const QString mp4Container = QStringLiteral("mp4");
+    const QString mp4Codec = QStringLiteral("libx264");
+    // webm/libvpx-vp9 @ yuva420p carries alpha as packet side data (alpha_mode=1);
+    // the alpha is recovered by the libvpx decoder. This is the primary
+    // alpha-capable animation container for the web.
+    const QString webmContainer = QStringLiteral("webm");
+    const QString webmCodec = QStringLiteral("libvpx-vp9");
 
     // The app creates a NEW ctrl::Exporter per export. Reusing a single exporter
     // is NOT supported: the second start()'s createFramebuffers crashes inside
@@ -208,7 +195,7 @@ int main(int argc, char** argv) {
         return ex;
     };
 
-    auto runVideo = [&](const ctrl::VideoFormat& aFmt, const QSize& aSize,
+    auto runVideo = [&](const QString& aContainer, const QString& aCodec, const QSize& aSize,
                         const util::Range& aFrame, const QString& aPixFmt,
                         const QString& aPath, bool aExpectSuccess) -> bool {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
@@ -217,8 +204,12 @@ int main(int argc, char** argv) {
         cp.selection = ctrl::FrameSelection::fromRange(aFrame.min(), aFrame.max());
         cp.fps = fps;
         ctrl::Exporter::VideoParam vp;
-        vp.format = aFmt;
-        vp.codecIndex = 0; vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = aPixFmt;
+        vp.container = aContainer;
+        vp.codec = aCodec;
+        // VP9+alpha needs the encoder to be asked for alpha; the old preset
+        // carried that flag, and it is the caller's to state now.
+        vp.transparent = aPixFmt.contains(QLatin1String("a4")) || aPixFmt == QLatin1String("rgba");
+        vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = aPixFmt;
         auto r = ex->execute(cp, vp);
         return aExpectSuccess ? (bool)r : !r;
     };
@@ -246,7 +237,7 @@ int main(int argc, char** argv) {
         ctrl::Exporter::CommonParam cp;
         cp.path = out; cp.size = QSize(nativeW, nativeH); cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::VideoParam vp;
-        vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = "yuv420p";
+        vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0; vp.bps = 1000; vp.pixfmt = "yuv420p";
         auto r = ex->execute(cp, vp);
         check((bool)r, "e2e mp4: native-size export succeeds");
         check(QFile::exists(out) && QFile(out).size() > 0, "e2e mp4: file exists + non-empty");
@@ -281,7 +272,7 @@ int main(int argc, char** argv) {
     // Scenario 2: odd export size must round to even (no corrupt file, no crash).
     {
         const QString oddPath = QDir::temp().filePath("ae_e2e_odd.mp4");
-        bool ok = runVideo(makeMp4(), QSize(321, 241), util::Range(minFrame, maxFrame), "yuv420p", oddPath, true);
+        bool ok = runVideo(mp4Container, mp4Codec, QSize(321, 241), util::Range(minFrame, maxFrame), "yuv420p", oddPath, true);
         check(ok, "e2e odd-size (321x241): export succeeds (rounded to even)");
         int w = 0, h = 0;
         check(ffprobeVideo(oddPath, &w, &h), "e2e odd-size: ffprobe reports a video stream");
@@ -292,7 +283,7 @@ int main(int argc, char** argv) {
     // Scenario 3: single-frame export (range of exactly 1 frame).
     {
         const QString sPath = QDir::temp().filePath("ae_e2e_single.mp4");
-        bool ok = runVideo(makeMp4(), small, util::Range(minFrame, minFrame), "yuv420p", sPath, true);
+        bool ok = runVideo(mp4Container, mp4Codec, small, util::Range(minFrame, minFrame), "yuv420p", sPath, true);
         check(ok, "e2e single-frame: export succeeds");
         int w = 0, h = 0;
         check(ffprobeVideo(sPath, &w, &h) && w == small.width() && h == small.height(),
@@ -306,7 +297,7 @@ int main(int argc, char** argv) {
     // assert alpha_mode is set (the V1 unit test verifies the values survive).
     {
         const QString tPath = QDir::temp().filePath("ae_e2e_alpha.webm");
-        bool ok = runVideo(makeWebmVp9(), small, util::Range(minFrame, maxFrame), "yuva420p", tPath, true);
+        bool ok = runVideo(webmContainer, webmCodec, small, util::Range(minFrame, maxFrame), "yuva420p", tPath, true);
         check(ok, "e2e transparent (webm/vp9 @ yuva420p): export succeeds");
         FILE* p = popen(QStringLiteral(
             "ffprobe -v error -select_streams v -show_entries stream=codec_name:stream_tags=alpha_mode "
@@ -329,7 +320,7 @@ int main(int argc, char** argv) {
     {
         const QString badPath = QDir::temp().filePath("ae_e2e_dir.mp4");
         QDir().mkpath(badPath); // create a DIRECTORY at the output path
-        bool ok = runVideo(makeMp4(), small, util::Range(minFrame, maxFrame), "yuv420p", badPath, false);
+        bool ok = runVideo(mp4Container, mp4Codec, small, util::Range(minFrame, maxFrame), "yuv420p", badPath, false);
         check(ok, "e2e unwritable path: export rejected cleanly (no false success)");
         QDir(badPath).removeRecursively();
     }
@@ -517,7 +508,7 @@ int main(int argc, char** argv) {
             cp.path = bogus; cp.size = small; cp.fps = fps;
             cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame);
             ctrl::Exporter::VideoParam vp;
-            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
             vp.bps = 1000; vp.pixfmt = "yuv420p";
             vp.encOptions.insert(QStringLiteral("definitely-not-an-option"), QStringLiteral("1"));
             auto r = ex->execute(cp, vp);
@@ -534,7 +525,7 @@ int main(int argc, char** argv) {
             cp.path = hevc; cp.size = small; cp.fps = fps;
             cp.selection = ctrl::FrameSelection::fromRange(minFrame, minFrame);
             ctrl::Exporter::VideoParam vp;
-            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
             vp.bps = 1000; vp.pixfmt = "yuv420p";
             vp.codec = QStringLiteral("libx265");
             vp.codecTag = QStringLiteral("hvc1");
@@ -605,7 +596,7 @@ int main(int argc, char** argv) {
             cp.path = out; cp.size = small; cp.fps = fps;
             cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame);
             ctrl::Exporter::VideoParam vp;
-            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
             vp.bps = 1000; vp.pixfmt = "yuv420p";
             ex->setAudioTracks(QVector<media::AudioMixer::Track>{ tr });
             auto r = ex->execute(cp, vp);
@@ -625,7 +616,7 @@ int main(int argc, char** argv) {
             sel.ranges.append(ctrl::FrameRange{ minFrame + 2, minFrame + 3 });
             cp.selection = sel;
             ctrl::Exporter::VideoParam vp;
-            vp.format = makeMp4(); vp.codecIndex = 0; vp.colorIndex = 0;
+            vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
             vp.bps = 1000; vp.pixfmt = "yuv420p";
             ex->setAudioTracks(QVector<media::AudioMixer::Track>{ tr });
             auto r = ex->execute(cp, vp);

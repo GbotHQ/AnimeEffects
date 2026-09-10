@@ -42,7 +42,7 @@ Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {
 }
 
 //-------------------------------------------------------------------------------------------------
-Exporter::VideoParam::VideoParam(): format(), codecIndex(-1), colorIndex(), bps(), pixfmt(), codec(), transparent(false) {}
+Exporter::VideoParam::VideoParam(): container(), colorIndex(), bps(), pixfmt(), codec(), transparent(false) {}
 
 //-------------------------------------------------------------------------------------------------
 
@@ -183,22 +183,21 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
     {
         const QString outPath = filePath.absoluteFilePath();
 
-        VideoCodec videoCodec;
-        if (aVideo.codecIndex != -1 && !aVideo.format.codecs.isEmpty())
-            videoCodec = aVideo.format.codecs.at(aVideo.codecIndex);
+        // The container decides the muxer, so it is the thing every other
+        // question is asked against. Empty means the historical default, mp4.
+        const QString container = aVideo.container.isEmpty() ? QStringLiteral("mp4")
+                                                             : aVideo.container;
 
-        // Codec: explicit override > preset codec > a muxer-aware container
-        // default. The explicit override lets the dialog's per-container encoder
-        // choice be honored instead of always falling back to the container
-        // default. (command/colorspace/icodec are CLI-subprocess artifacts; the
-        // in-process encoder consumes only name/pixfmt/transparent.)
+        // Codec: explicit > the container's probed default. A hand-written
+        // preset used to sit between the two (a table of friendly codec names per
+        // container); it could not be trusted, because it listed encoders a build
+        // may not have and encoders a container cannot carry, and the exporter had
+        // to re-validate every one of them anyway.
         QString codecName = aVideo.codec;
-        if (codecName.isEmpty() && !videoCodec.name.isEmpty())
-            codecName = videoCodec.name;
         if (codecName.isEmpty()) {
-            codecName = media::ffmpeg::defaultCodecForContainer(aVideo.format.name);
+            codecName = media::ffmpeg::defaultCodecForContainer(container);
             if (codecName.isEmpty()) {
-                mLog = "No available video encoder can carry the '" + aVideo.format.name + "' container.";
+                mLog = "No available video encoder can carry the '" + container + "' container.";
                 return Result(ResultCode_EncoderOpenFailed, mLog);
             }
         }
@@ -212,14 +211,14 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
             mLog = "Encoder not available in this build: " + aVideo.codec;
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
-        if (!media::ffmpeg::muxerSupportsCodec(aVideo.format.name, codecName)) {
-            mLog = "The '" + aVideo.format.name + "' container cannot carry the " + codecName + " video codec.";
+        if (!media::ffmpeg::muxerSupportsCodec(container, codecName)) {
+            mLog = "The '" + container + "' container cannot carry the " + codecName + " video codec.";
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
 
         QString encoderError;
         media::VideoEncoder::Config cfg = media::VideoEncoder::makeConfig(
-            aVideo.format.name, codecName, aVideo.pixfmt, videoCodec.transparent || aVideo.transparent,
+            container, codecName, aVideo.pixfmt, aVideo.transparent,
             mCommonParam.size.width(), mCommonParam.size.height(), mCommonParam.fps,
             aVideo.bps, &encoderError);
 
@@ -240,12 +239,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         // This keeps AVI/Ogg exports video-only rather than failing on an
         // audio codec the container can't carry.
         if (mHasAudio) {
-            const QString container = aVideo.format.name;
-            static const QStringList audioContainers = {
-                QStringLiteral("mp4"), QStringLiteral("mov"),
-                QStringLiteral("webm"), QStringLiteral("mkv"), QStringLiteral("matroska"),
-            };
-            if (audioContainers.contains(container)) {
+            if (media::ffmpeg::containerCarriesAudio(container)) {
                 // The destination's audio spec wins; the container-derived
                 // default is the fallback (WebM cannot carry AAC, so the codec
                 // is never simply taken from the table without this check).

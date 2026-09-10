@@ -28,7 +28,6 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     DockSash.cpp DockSash.h
     DriverHolder.cpp DriverHolder.h
     EasyDialog.cpp EasyDialog.h
-    ExportDialog.cpp ExportDialog.h
     GUIResources.cpp GUIResources.h
     GeneralSettingDialog.cpp GeneralSettingDialog.h
     KeyBindingDialog.cpp KeyBindingDialog.h

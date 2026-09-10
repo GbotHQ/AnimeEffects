@@ -22,7 +22,6 @@
 #include "core/ClippingFrame.h"
 #include "core/FilterFrame.h"
 #include "core/DestinationTexturizer.h"
-#include "ctrl/VideoFormat.h"
 #include "media/VideoEncoder.h"
 #include "media/AudioMixer.h"
 
@@ -73,8 +72,11 @@ public:
 
     struct VideoParam {
         VideoParam();
-        VideoFormat format;
-        int codecIndex;    // index into format.codecs, or -1
+        // The container (muxer) to write into: "mp4", "webm", "mkv", "mov",
+        // "gif", ... Empty means mp4. A NAME, not an index into a preset table:
+        // this used to be a ctrl::VideoFormat carrying a whole codec list read
+        // from a text asset, of which the exporter ever used two fields.
+        QString container;
         int colorIndex;    // colorspace box index (set by the quick-export dialog); exporter
                            // does not apply colorspace yet (see the UI follow-up)
         int bps;           // bitrate in kbps (exporter converts to bits/sec)

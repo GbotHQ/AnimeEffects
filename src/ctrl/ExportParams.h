@@ -40,36 +40,19 @@
 #include <QDesktopServices>
 // I was not meant to do OOP...
 
-// Formats other than video and image are for internal use only, ***DO NOT*** use them on export
-enum class exportTarget { video, image, pxFmt, aviEnc, mkvEnc, movEnc, mp4Enc, webmEnc };
+// What the export produces. Video is a container with a codec; an image export
+// is a directory of numbered stills.
+enum class exportTarget { video, image };
 enum targetRatio { oneToOne, keep, custom };
-enum class availableVideoFormats { apng, avi, f4v, flv, gif, mkv, mov, mp2, mp4, ogv, swf, webm, webp };
-enum class availableImageFormats { bmp, jpeg, jpg, png, ppm, xbm, xpm, tiff, webp };
-enum class pixelFormats { Auto, yuv420p, yuva420p, rgb24, rgba, bgr24, bgra, gray };
 
-enum class aviEncoders { Auto, mpeg2, mpeg4 };
-enum class mkvEncoders { Auto, x264, x265, vp8, vp9, av1, ffv1, magicyuv, huffyuv, theora };
-enum class movEncoders { Auto, libx264, h264, prores_ks, utvideo };
-enum class mp4Encoders { Auto, mpeg4, h264 };
-enum class webmEncoders { Auto, vp8, vp9 };
-
-struct defaultEncoders {
-    aviEncoders avi = aviEncoders::Auto;
-    mkvEncoders mkv = mkvEncoders::Auto;
-    movEncoders mov = movEncoders::Auto;
-    mp4Encoders mp4 = mp4Encoders::Auto;
-    webmEncoders webm = webmEncoders::Auto;
-};
-
-QStringList const videoFormats{ "apng", "avi", "f4v", "flv", "gif", "mkv", "mov", "mp2", "mp4", "ogv", "swf", "webm", "webp"};
-QStringList const audioTargettable{ "avi", "mkv", "mov", "mp4", "webm"};
-QStringList const imageFormats{"bmp", "jpeg", "jpg", "png", "ppm", "xbm", "xpm", "tiff", "webp"};
-QStringList const pxFormats{"Auto", "yuv420p", "yuva420p", "rgb24", "rgba", "bgr24", "bgra", "gray"};
-QStringList const aviEnc{"Auto", "mpeg2", "mpeg4"};
-QStringList const mkvEnc{"Auto", "x264", "x265", "vp8", "vp9", "av1", "ffv1", "magicyuv", "huffyuv", "theora"};
-QStringList const movEnc{"Auto", "libx264", "h264", "prores_ks", "utvideo"};
-QStringList const mp4Enc{"Auto", "mpeg4", "h264"};
-QStringList const webmEnc{"Auto", "vp8", "vp9"};
+// The containers this build can write, and the codecs it can write into them, are
+// PROBED (media::ffmpeg::writableContainers / usableCodecsForContainer) rather
+// than enumerated here. What used to live at this spot was five hand-written
+// lists of encoder names — "Auto", "h264", "vp8", "magicyuv" — which were not
+// libav encoder names at all, plus "f4v", "flv", "swf", "mp2" and "xbm" among the
+// offered formats: artifacts nothing downstream could produce. The escape hatch
+// offers what exists; a fabricated option is worse than a missing one, because it
+// fails after the user has committed to it.
 
 struct frameExportRange {
     int firstFrame = 0;
@@ -103,14 +86,15 @@ struct GeneralParams {
     int imageExportQuality = -1;
 };
 
+// The artifact chosen in the escape hatch (the dialog's Format row), used only
+// when no destination is set: a destination decides both of these.
 struct VideoParams {
-    availableVideoFormats format = availableVideoFormats::gif;
-    pixelFormats pixelFormat = pixelFormats::Auto;
-    defaultEncoders encoders;
+    QString container; // "mp4", "webm", "mkv", "mov", "gif", ... empty = "mp4"
+    QString codec;     // a libav encoder name; empty = the container's probed default
 };
 
 struct ImageParams {
-    availableImageFormats format = availableImageFormats::png;
+    QString suffix; // "png" or "jpg" — a directory of numbered frames
 };
 
 class exportParam {
@@ -130,35 +114,13 @@ public:
     // They are available for ease of access ///
 };
 
-template<typename formatEnum>
-QString getFormatAsString(exportTarget target, formatEnum formatIndex) {
-    switch (target) {
-    case exportTarget::video:
-        return videoFormats[formatIndex];
-    case exportTarget::image:
-        return imageFormats[formatIndex];
-    case exportTarget::pxFmt:
-        return pxFormats[formatIndex];
-    case exportTarget::aviEnc:
-        return aviEnc[formatIndex];
-    case exportTarget::mkvEnc:
-        return mkvEnc[formatIndex];
-    case exportTarget::movEnc:
-        return movEnc[formatIndex];
-    case exportTarget::mp4Enc:
-        return mp4Enc[formatIndex];
-    case exportTarget::webmEnc:
-        return webmEnc[formatIndex];
-    }
-    return nullptr;
-}
-// getFormatAsInt() used to live here, converting a combo's text back to an enum.
-// It had no breaks between its switch cases, so every path fell through to
-// `default: index = 0`: it returned 0 for EVERY input. That is why the dialog's
-// pixel-format and per-container codec choices were silently discarded for as
-// long as the control existed, and why removing the controls changed nothing.
-// Its callers are gone with the Format tab, so it is deleted rather than fixed.
-
+// getFormatAsString()/getFormatAsInt() used to live here, mapping a combo index
+// to a container or encoder name and back. getFormatAsInt() had no breaks between
+// its switch cases, so every path fell through to `default: index = 0` and it
+// returned 0 for EVERY input — which is why the dialog's pixel-format and
+// per-container codec choices were silently discarded for as long as those
+// controls existed. The names now travel as names (QString), so there is nothing
+// to convert and nothing to get wrong.
 
 inline QString q_translate(const QString& str) { return QCoreApplication::translate("ExportParams", str.toStdString().c_str(), nullptr); }
 

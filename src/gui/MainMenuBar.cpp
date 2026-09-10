@@ -27,36 +27,6 @@
 
 namespace gui {
 //-------------------------------------------------------------------------------------------------
-QDomDocument getVideoExportDocument() {
-    QFile file(":/encode/VideoEncode.txt");
-
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qDebug() << file.errorString();
-        return {};
-    }
-
-    QDomDocument prop;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-    auto result = prop.setContent(&file, QDomDocument::ParseOption::Default);
-    if (!result) {
-        qDebug() << "invalid xml file. " << file.fileName() << result.errorMessage << ", line = " << result.errorLine
-                 << ", column = " << result.errorColumn;
-        return {};
-    }
-#else
-    QString errorMessage;
-    int errorLine = 0;
-    int errorColumn = 0;
-    if (!prop.setContent(&file, false, &errorMessage, &errorLine, &errorColumn)) {
-        qDebug() << "invalid xml file. " << file.fileName() << errorMessage << ", line = " << errorLine
-                 << ", column = " << errorColumn;
-        return {};
-    }
-#endif
-    file.close();
-
-    return prop;
-}
 #ifdef Q_PROCESSOR_X86_64
     // This is gonna be rough
     #ifdef _WIN32
@@ -112,10 +82,8 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
     mViaPoint(aViaPoint),
     mProject(),
     mProjectActions(),
-    mVideoFormats(),
     mGUIResources(aGUIResources) {
     // load the list of video formats from a setting file.
-    loadVideoFormats();
 
     MainWindow* mainWindow = &aMainWindow;
 
@@ -210,29 +178,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         auto saveProjectAs = new QAction(tr("Save project as"), this);
         auto closeProject = new QAction(tr("Close project"), this);
         auto exportWindow = new QAction(tr("Export project as"), this);
-        auto exportAs = new QMenu(tr("Legacy exporter (deprecated)"), this);
-        {
-            ctrl::VideoFormat gifFormat;
-            gifFormat.name = "gif";
-            gifFormat.label = "GIF";
-            gifFormat.icodec = "ppm";
-
-            auto jpgs = new QAction(tr("JPEG Sequence"), this);
-            auto pngs = new QAction(tr("PNG Sequence"), this);
-            auto gif = new QAction(tr("GIF Animation"), this);
-            connect(jpgs, &QAction::triggered, [=]() { mainWindow->onExportImageSeqTriggered("jpg"); });
-            connect(pngs, &QAction::triggered, [=]() { mainWindow->onExportImageSeqTriggered("png"); });
-            connect(gif, &QAction::triggered, [=]() { mainWindow->onExportVideoTriggered(gifFormat); });
-            exportAs->addAction(jpgs);
-            exportAs->addAction(pngs);
-            exportAs->addAction(gif);
-
-            for (const auto& format : mVideoFormats) {
-                auto video = new QAction(format.label + " " + tr("Video"), this);
-                connect(video, &QAction::triggered, [=]() { mainWindow->onExportVideoTriggered(format); });
-                exportAs->addAction(video);
-            }
-        }
         auto quickExport = new QMenu(tr("Quickly export as"), this);
         {
             // Destinations, not formats. The old menu offered seven
@@ -257,7 +202,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         mProjectActions.push_back(saveProjectAs);
         mProjectActions.push_back(closeProject);
         mProjectActions.push_back(exportWindow);
-        mProjectActions.push_back(exportAs->menuAction());
         mProjectActions.push_back(quickExport->menuAction());
 
         connect(newProject, &QAction::triggered, mainWindow, &MainWindow::onNewProjectTriggered);
@@ -276,7 +220,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         fileMenu->addAction(exportWindow);
         fileMenu->addAction(quickExport->menuAction());
         fileMenu->addSeparator();
-        fileMenu->addAction(exportAs->menuAction());
         fileMenu->addSeparator();
         fileMenu->addAction(closeProject);
     }
@@ -601,74 +544,6 @@ void MainMenuBar::setProject(core::Project* aProject) {
     }
 }
 
-void MainMenuBar::loadVideoFormats() {
-    using util::TextUtil;
-
-    QDomDocument doc = getVideoExportDocument();
-    QDomElement domRoot = doc.firstChildElement("video_encode");
-
-    // for each format
-    QDomElement domFormat = domRoot.firstChildElement("format");
-    while (!domFormat.isNull()) {
-        ctrl::VideoFormat format;
-        // neccessary attribute
-        format.name = domFormat.attribute("name");
-        if (format.name.isEmpty())
-            continue;
-        // optional attributes
-        format.label = domFormat.attribute("label");
-        format.icodec = domFormat.attribute("icodec");
-        format.command = domFormat.attribute("command");
-        if (format.label.isEmpty())
-            format.label = format.name;
-        if (format.icodec.isEmpty())
-            format.icodec = "png";
-        // add one format
-        mVideoFormats.push_back(format);
-
-        // for each codec
-        QDomElement domCodec = domFormat.firstChildElement("codec");
-        while (!domCodec.isNull()) {
-            ctrl::VideoCodec codec;
-            // neccessary attribute
-            codec.name = domCodec.attribute("name");
-            if (codec.name.isEmpty())
-                continue;
-            // optional attributes
-            codec.label = domCodec.attribute("label");
-            codec.icodec = domCodec.attribute("icodec");
-            codec.command = domCodec.attribute("command");
-            if (codec.label.isEmpty())
-                codec.label = codec.name;
-            if (codec.icodec.isEmpty())
-                codec.icodec = format.icodec;
-            if (codec.command.isEmpty())
-                codec.command = format.command;
-            {
-                auto hints = TextUtil::splitAndTrim(domCodec.attribute("hint"), ',');
-                for (const auto& hint : hints) {
-                    if (hint == "lossless")
-                        codec.lossless = true;
-                    else if (hint == "transparent")
-                        codec.transparent = true;
-                    else if (hint == "colorspace")
-                        codec.colorspace = true;
-                    else if (hint == "gpuenc")
-                        codec.gpuenc = true;
-                }
-            }
-            codec.pixfmts = TextUtil::splitAndTrim(domCodec.attribute("pixfmt"), ',');
-
-            // add one codec
-            mVideoFormats.back().codecs.push_back(codec);
-
-            // to next sibling
-            domCodec = domCodec.nextSiblingElement("codec");
-        }
-        // to next sibling
-        domFormat = domFormat.nextSiblingElement("format");
-    }
-}
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------

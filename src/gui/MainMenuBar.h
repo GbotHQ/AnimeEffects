@@ -4,7 +4,6 @@
 #include <QCheckBox>
 #include <QSpinBox>
 #include "core/Project.h"
-#include "ctrl/VideoFormat.h"
 #include "gui/EasyDialog.h"
 #include "gui/GUIResources.h"
 #include "qprocess.h"
@@ -35,13 +34,11 @@ public:
 
 private:
     QScopedPointer<QProcess> mProcess;
-    void loadVideoFormats();
     void onProjectSettingsTriggered();
 
     ViaPoint& mViaPoint;
     core::Project* mProject;
     QVector<QAction*> mProjectActions;
-    QList<ctrl::VideoFormat> mVideoFormats;
     GUIResources& mGUIResources;
 };
 

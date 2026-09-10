@@ -428,6 +428,18 @@ bool alphaWorks(const QString& aEncoder) {
 
 } // namespace
 
+bool containerCarriesAudio(const QString& aContainer) {
+    // Not a guess about the format: these are the containers the exporter has an
+    // audio encoder for and that carry one in practice. WebM is the reason the
+    // question matters at all — it cannot hold AAC, so its audio codec is derived
+    // separately (libopus).
+    static const QStringList kCarriers = {
+        QStringLiteral("mp4"), QStringLiteral("mov"), QStringLiteral("webm"),
+        QStringLiteral("mkv"), QStringLiteral("matroska"), QStringLiteral("avi"),
+    };
+    return kCarriers.contains(aContainer);
+}
+
 bool containerAcceptsUsableCodec(const QString& aContainer, const QString& aEncoderName) {
     if (aEncoderName.isEmpty())
         return false;

@@ -116,6 +116,12 @@ struct CodecOption {
 };
 QList<CodecOption> usableCodecsForContainer(const QString& aContainer);
 
+// Whether we can mux a standard audio stream into this container. The list lived
+// in two places and they disagreed: ExportParams.h offered AVI and the exporter
+// silently dropped audio for it, so "export with audio" was a checkbox that did
+// nothing for one of the containers it was shown for.
+bool containerCarriesAudio(const QString& aContainer);
+
 // True iff the named encoder runs here AND the container's muxer accepts it.
 // The single question that decides whether a container/codec pair is offerable.
 bool containerAcceptsUsableCodec(const QString& aContainer, const QString& aEncoderName);

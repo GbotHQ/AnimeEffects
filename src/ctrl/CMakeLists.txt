@@ -39,7 +39,6 @@ add_library(${PROJECT_NAME}
     UILog.h
     UILogType.h
     UILogger.h
-    VideoFormat.cpp VideoFormat.h
     bone/bone_AssignInfluence.h
     bone/bone_BindNodesMode.cpp bone/bone_BindNodesMode.h
     bone/bone_CreateMode.cpp bone/bone_CreateMode.h

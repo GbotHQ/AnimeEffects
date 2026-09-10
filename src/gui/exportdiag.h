@@ -35,6 +35,7 @@
 #include "util/SelectArgs.h"
 #include "gui/GUIResources.h"
 #include "ctrl/ExportTarget.h"
+#include "media/FFmpegHelpers.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -50,7 +51,8 @@ public:
     QGridLayout *gridLayout_2;
     QRadioButton *keepAspectRatio;
     QLabel *lastFrameLabel;
-    QLabel *exportTypeLabel;
+    QLabel *formatLabel;
+    QLabel *codecLabel;
     // The destination decides everything below it: container, codec, that codec's
     // private options and stream tag, transparency, the exact size (art fitted and
     // padded), the caps and the audio. Capabilities are therefore STATED here
@@ -81,7 +83,8 @@ public:
     QPushButton *setFPSNative;
     QLabel *fpsLabel;
     QLabel *renderingLabel;
-    QComboBox *exportTypeCombo;
+    QComboBox *formatCombo;
+    QComboBox *codecCombo;
     QCheckBox *transparencyCheckBox;
     QCheckBox *loopCheckBox;
     QCheckBox *exportWithAudioCheckBox;
@@ -126,6 +129,15 @@ public:
     // Whether the boxes currently report a size the destination forced rather
     // than one the user set. This is what makes the hand-back above decidable.
     bool mLastSizeDictated = false;
+    // The looping / audio / palette preferences as they were before an artifact
+    // froze them (a GIF loops and cannot carry audio; a sequence does neither).
+    struct ArtifactState {
+        bool loop = false;
+        bool audio = false;
+        bool palette = false;
+        bool valid = false;
+    };
+    ArtifactState mPreArtifact;
     // Ask UI
     QGridLayout *gl;
     QGridLayout *gl_2;
@@ -201,10 +213,10 @@ public:
 
         gridLayout_2->addWidget(lastFrameLabel, 22, 2, 1, 1);
 
-        exportTypeLabel = new QLabel(globalParamScrollContents);
-        exportTypeLabel->setObjectName(QString::fromUtf8("exportTypeLabel"));
+        formatLabel = new QLabel(globalParamScrollContents);
+        formatLabel->setObjectName(QString::fromUtf8("formatLabel"));
 
-        gridLayout_2->addWidget(exportTypeLabel, 9, 0, 1, 1);
+        gridLayout_2->addWidget(formatLabel, 9, 0, 1, 1);
 
 
         customRatio = new QRadioButton(globalParamScrollContents);
@@ -352,7 +364,7 @@ public:
         fpsLabel = new QLabel(globalParamScrollContents);
         fpsLabel->setObjectName(QString::fromUtf8("fpsLabel"));
 
-        gridLayout_2->addWidget(fpsLabel, 10, 0, 1, 1);
+        gridLayout_2->addWidget(fpsLabel, 11, 0, 1, 1);
 
         renderingLabel = new QLabel(globalParamScrollContents);
         renderingLabel->setObjectName(QString::fromUtf8("renderingLabel"));
@@ -364,14 +376,27 @@ public:
 
         gridLayout_2->addWidget(renderingLabel, 2, 1, 1, 1);
 
-        exportTypeCombo = new QComboBox(globalParamScrollContents);
-        QIcon icon2 = aResources.icon("images");
-        exportTypeCombo->addItem(icon2, QString());
-        QIcon icon3 = aResources.icon("image");
-        exportTypeCombo->addItem(icon3, QString());
-        exportTypeCombo->setObjectName(QString::fromUtf8("exportTypeCombo"));
+        // The escape hatch: the artifact, for a user who has no destination in
+        // mind. This is the ONE place a format is genuinely the user's choice,
+        // and it is why a format name is not a destination — "Telegram sticker"
+        // resolves to one format, while "GIF animation" resolves to no
+        // destination at all. The list is filled from the build's probed
+        // capabilities (media::ffmpeg::writableContainers) plus the two image
+        // sequence kinds Qt writes.
+        formatCombo = new QComboBox(globalParamScrollContents);
+        formatCombo->setObjectName(QString::fromUtf8("formatCombo"));
+        gridLayout_2->addWidget(formatCombo, 9, 1, 1, 2);
 
-        gridLayout_2->addWidget(exportTypeCombo, 9, 1, 1, 2);
+        // Only a container that can carry more than one codec offers a choice;
+        // for the rest this is disabled and names the single codec, which is
+        // information rather than a decision.
+        codecLabel = new QLabel(globalParamScrollContents);
+        codecLabel->setObjectName(QString::fromUtf8("codecLabel"));
+        gridLayout_2->addWidget(codecLabel, 10, 0, 1, 1);
+
+        codecCombo = new QComboBox(globalParamScrollContents);
+        codecCombo->setObjectName(QString::fromUtf8("codecCombo"));
+        gridLayout_2->addWidget(codecCombo, 10, 1, 1, 2);
 
         transparencyCheckBox = new QCheckBox(globalParamScrollContents);
         transparencyCheckBox->setObjectName(QString::fromUtf8("transparencyCheckBox"));
@@ -408,8 +433,8 @@ public:
         imageQualitySpinbox->setRange(-1, 100);
         imageQualitySpinbox->setValue(-1);
 
-        gridLayout_2->addWidget(bitrateLineEdit, 11, 1, 1, 1);
-        gridLayout_2->addWidget(imageQualitySpinbox, 12, 1, 1, 1);
+        gridLayout_2->addWidget(bitrateLineEdit, 12, 1, 1, 1);
+        gridLayout_2->addWidget(imageQualitySpinbox, 13, 1, 1, 1);
 
         setBitrateAuto = new QPushButton(globalParamScrollContents);
         setBitrateAuto->setObjectName(QString::fromUtf8("setBitrateAuto"));
@@ -419,8 +444,8 @@ public:
 
         setImageQualityToAuto->setIcon(icon1);
         setBitrateAuto->setIcon(icon1);
-        gridLayout_2->addWidget(setBitrateAuto, 11, 2, 1, 1);
-        gridLayout_2->addWidget(setImageQualityToAuto, 12, 2, 1, 1);
+        gridLayout_2->addWidget(setBitrateAuto, 12, 2, 1, 1);
+        gridLayout_2->addWidget(setImageQualityToAuto, 13, 2, 1, 1);
 
         QWidget::connect(setBitrateAuto, &QPushButton::clicked,
                          [=]{bitrateLineEdit->setText("Auto");});
@@ -453,12 +478,12 @@ public:
         bitrateLabel = new QLabel(globalParamScrollContents);
         bitrateLabel->setObjectName(QString::fromUtf8("bitrateLabel"));
 
-        gridLayout_2->addWidget(bitrateLabel, 11, 0, 1, 1);
+        gridLayout_2->addWidget(bitrateLabel, 12, 0, 1, 1);
 
         imageQualityLabel = new QLabel(globalParamScrollContents);
         imageQualityLabel->setObjectName(QString::fromUtf8("imageQualityLabel"));
 
-        gridLayout_2->addWidget(imageQualityLabel, 12, 0, 1, 1);
+        gridLayout_2->addWidget(imageQualityLabel, 13, 0, 1, 1);
 
 
 
@@ -468,13 +493,13 @@ public:
         fpsSpinBox->setMinimum(1);
         fpsSpinBox->setMaximum(INT32_MAX);
 
-        gridLayout_2->addWidget(fpsSpinBox, 10, 1, 1, 1);
+        gridLayout_2->addWidget(fpsSpinBox, 11, 1, 1, 1);
 
         setFPSNative = new QPushButton(globalParamScrollContents);
         setFPSNative->setObjectName(QString::fromUtf8("setFPSNative"));
         setFPSNative->setIcon(icon1);
 
-        gridLayout_2->addWidget(setFPSNative, 10, 2, 1, 1);
+        gridLayout_2->addWidget(setFPSNative, 11, 2, 1, 1);
 
 
         selectPalettePathButton = new QToolButton(globalParamScrollContents);
@@ -533,6 +558,13 @@ public:
         destinationFacts->setObjectName(QString::fromUtf8("destinationFacts"));
         destinationFacts->setWordWrap(true);
         destinationFacts->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        // Reserve the height the longest destination needs (summary, capability
+        // line, and its notes — Telegram's emoji row uses four). Without it the
+        // whole form shifts up and down as the user moves through the
+        // destination list, because a wrapped label's height IS its line count:
+        // controls that move while you are reading them are worse than a little
+        // empty space.
+        destinationFacts->setMinimumHeight(destinationFacts->fontMetrics().lineSpacing() * 4);
         destinationGrid->addWidget(destinationFacts, 2, 0, 1, 2);
 
         verticalLayout_3->addWidget(globalParamScroll);
@@ -608,6 +640,140 @@ public:
         QMetaObject::connectSlotsByName(exportWidget);
     } // setupUi
     struct Pos { int row = -1, col = -1; };
+
+    // Fill the escape hatch's two rows from what this build can actually produce.
+    //
+    // The Format list is CONTAINERS plus the two image-sequence kinds, because
+    // those are the answers to the only question manual mode asks: what am I
+    // making? It is deliberately not a list of destinations — a format name is
+    // not a destination, which is why this control is the exception rather than
+    // the rule, and why it only appears when no destination is selected.
+    void populateFormats() {
+        // Filling a combo is not the user choosing from it. Without the blocker,
+        // clear() emits currentIndexChanged(-1) and the whole plan/facts pipeline
+        // runs again from inside its own construction — which recursed until the
+        // stack ran out, because refreshCodecs() clears a combo that is wired to
+        // the same refresh.
+        const QSignalBlocker formatBlock(formatCombo);
+        formatCombo->clear();
+        for (const media::ffmpeg::ContainerOption& c : media::ffmpeg::writableContainers()) {
+            formatCombo->addItem(c.label, c.name);
+        }
+        // A directory of numbered stills, written by Qt's own image writers —
+        // a different mechanism from the libav* video path, hence the "image/"
+        // prefix that marks it. These two are the ones anyone asks for.
+        formatCombo->addItem(tr("PNG sequence"), QStringLiteral("image/png"));
+        formatCombo->addItem(tr("JPEG sequence"), QStringLiteral("image/jpg"));
+        refreshCodecs();
+    }
+
+    // The codecs the chosen container can carry HERE, best first. One entry (or
+    // none, for a sequence) means there was no choice to make, so the combo is
+    // disabled and simply names what will be used.
+    void refreshCodecs() {
+        const QString id = formatCombo->currentData().toString();
+        // Same reason as populateFormats(): this rebuilds the list, it does not
+        // represent a choice, and its signal is wired back into this pipeline.
+        const QSignalBlocker codecBlock(codecCombo);
+        codecCombo->clear();
+        if (id.startsWith(QLatin1String("image/"))) {
+            codecCombo->setEnabled(false);
+            applyArtifactConstraints();
+            return;
+        }
+        for (const media::ffmpeg::CodecOption& c : media::ffmpeg::usableCodecsForContainer(id)) {
+            codecCombo->addItem(c.label, c.encoder);
+        }
+        codecCombo->setEnabled(codecCombo->count() > 1);
+        applyArtifactConstraints();
+    }
+
+    // The two controls whose meaning depends on the artifact, kept honest in
+    // manual mode the same way a destination keeps them honest:
+    //   - a palette belongs to GIF alone (media::GifEncoder builds one per clip;
+    //     every other codec ignores it entirely), and
+    //   - transparency needs a codec that carries alpha. libx264 and libx265 do
+    //     not, so a ticked "Export with transparency" beside H.264 is a promise
+    //     the encoder cannot keep.
+    void applyArtifactConstraints() {
+        const QString id = formatCombo->currentData().toString();
+        const bool isGif = id == QLatin1String("gif");
+        const bool isSequence = id.startsWith(QLatin1String("image/"));
+
+        // The user's own values, kept the first time an artifact constrains them
+        // and handed back as soon as it stops. A format must not silently rewrite
+        // a preference it merely had no use for.
+        if (!mPreArtifact.valid) {
+            mPreArtifact.loop = loopCheckBox->isChecked();
+            mPreArtifact.audio = exportWithAudioCheckBox->isChecked();
+            mPreArtifact.palette = customPaletteCheckBox->isChecked();
+            mPreArtifact.valid = true;
+        }
+
+        // A palette belongs to GIF alone: media::GifEncoder builds one per clip,
+        // and every other codec ignores it entirely.
+        customPaletteCheckBox->setEnabled(isGif);
+        selectPalettePathButton->setEnabled(isGif && customPaletteCheckBox->isChecked());
+
+        // Looping. A GIF has an infinite-loop extension and no way to say
+        // otherwise, so the box is frozen ON. A directory of stills does not loop
+        // at all, so it is frozen off. Anything else loops if the user says so.
+        const bool loopForced = isGif || isSequence;
+        loopCheckBox->setChecked(isGif ? true : (loopForced ? false : mPreArtifact.loop));
+        loopCheckBox->setEnabled(!loopForced);
+
+        // Audio. GIF cannot carry a stream of any kind, and a sequence is a
+        // directory. For a container it is a real choice exactly when we can mux
+        // audio into it — one list, shared with the exporter, because this used to
+        // be two lists that disagreed about AVI.
+        const bool audioPossible = !isGif && !isSequence
+                                && media::ffmpeg::containerCarriesAudio(id);
+        exportWithAudioCheckBox->setChecked(audioPossible ? mPreArtifact.audio : false);
+        exportWithAudioCheckBox->setEnabled(audioPossible);
+    }
+
+    // Whether the codec currently selected can carry alpha HERE. Asked of the
+    // probe, not of a table: libx265 lists yuva420p and refuses to open with it.
+    bool selectedCodecCarriesAlpha() const {
+        const QString id = formatCombo->currentData().toString();
+        if (id.startsWith(QLatin1String("image/")))
+            return true; // PNG carries alpha; the JPEG case is stated in words
+        if (id == QLatin1String("gif"))
+            return true;
+        const QString codec = codecCombo->currentData().toString();
+        for (const media::ffmpeg::CodecOption& c : media::ffmpeg::usableCodecsForContainer(id)) {
+            if (c.encoder == codec)
+                return c.alphaCapable;
+        }
+        return false;
+    }
+
+    bool selectedFormatIsSequence() const {
+        return formatCombo->currentData().toString().startsWith(QLatin1String("image/"));
+    }
+
+    bool selectedFormatIsGif() const {
+        return formatCombo->currentData().toString() == QLatin1String("gif");
+    }
+
+    QString selectedFormatLabel() const {
+        return formatCombo->currentText();
+    }
+
+    QString selectedCodecLabel() const {
+        return codecCombo->currentText();
+    }
+
+    // The suffix a file written in this format carries. For a sequence it is the
+    // image extension; for a container it is the container's own name.
+    static QString containerForFormat(const QString& aId) {
+        return aId.startsWith(QLatin1String("image/")) ? aId.mid(6) : aId;
+    }
+
+    QString labelForFormat(const QString& aId) const {
+        const int index = formatCombo->findData(aId);
+        return index >= 0 ? formatCombo->itemText(index) : aId;
+    }
 
     // Applying a destination happens in TWO phases, and the order matters:
     //
@@ -712,12 +878,48 @@ public:
         customPaletteCheckBox->setEnabled(hasPalette);
         selectPalettePathButton->setEnabled(hasPalette && customPaletteCheckBox->isChecked());
 
-        // --- export type ----------------------------------------------------
-        // Every row in the table is an animation. A still or image-sequence
-        // export is therefore not a destination but the absence of one, which
-        // is what "(use the settings below)" already means.
-        exportTypeCombo->setCurrentIndex(0);
-        exportTypeCombo->setEnabled(false);
+        // --- the artifact ---------------------------------------------------
+        // A destination IS the artifact: it fixes the container and the codec, so
+        // the escape hatch's two controls have nothing left to decide and are
+        // frozen on what the plan resolved. They come back in manual mode, which
+        // is where a user who has no destination states the format themselves.
+        // GIF goes through media::GifEncoder, so its plan carries no
+        // VideoEncoder config at all; the container and codec it corresponds to
+        // are named here rather than left blank.
+        const QString artifact = planOk ? (aPlan.gifPath ? QStringLiteral("gif")
+                                                         : aPlan.config.container)
+                                        : QString();
+        const QString artifactCodec = planOk ? (aPlan.gifPath ? QStringLiteral("gif")
+                                                              : aPlan.config.codec)
+                                             : QString();
+        // Blocked: this is the plan REPORTING what it resolved, not the user
+        // choosing, and letting the change signal fire would re-enter the whole
+        // plan computation from inside its own application. Note that
+        // refreshCodecs() is deliberately NOT called here either — the artifact
+        // constraints it applies (loop, audio, palette) belong to manual mode,
+        // where the artifact IS the decision; here the destination's capabilities
+        // have already decided those and must not be overwritten by them.
+        {
+            const QSignalBlocker formatBlock(formatCombo);
+            const QSignalBlocker codecBlock(codecCombo);
+            const int formatIndex = formatCombo->findData(artifact);
+            if (formatIndex >= 0) {
+                formatCombo->setCurrentIndex(formatIndex);
+            }
+            codecCombo->clear();
+            if (!artifactCodec.isEmpty()) {
+                for (const media::ffmpeg::CodecOption& c :
+                     media::ffmpeg::usableCodecsForContainer(artifact)) {
+                    codecCombo->addItem(c.label, c.encoder);
+                }
+                const int codecIndex = codecCombo->findData(artifactCodec);
+                if (codecIndex >= 0) {
+                    codecCombo->setCurrentIndex(codecIndex);
+                }
+            }
+            formatCombo->setEnabled(false);
+            codecCombo->setEnabled(false);
+        }
     }
 
     // Manual mode: no destination, so every axis is the user's again, at the
@@ -730,10 +932,12 @@ public:
                     setHeightNative, oneToOneRatio, keepAspectRatio, customRatio, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
                     setImageQualityToAuto, transparencyCheckBox, loopCheckBox,
-                    exportWithAudioCheckBox, customPaletteCheckBox, exportTypeCombo},
+                    exportWithAudioCheckBox, customPaletteCheckBox, formatCombo, codecCombo},
                    true);
         restoreManualState();
-        selectPalettePathButton->setEnabled(customPaletteCheckBox->isChecked());
+        // Manual mode is exactly the mode where the artifact is the user's own
+        // decision, so its constraints apply here and only here.
+        refreshCodecs();
         fpsSpinBox->setMaximum(1000);
     }
 
@@ -743,9 +947,14 @@ private:
             return;
         }
         mManualState.transparency = transparencyCheckBox->isChecked();
-        mManualState.loop = loopCheckBox->isChecked();
-        mManualState.audio = exportWithAudioCheckBox->isChecked();
-        mManualState.palette = customPaletteCheckBox->isChecked();
+        // The artifact stash, when present, holds the user's real values: an
+        // artifact (a GIF forcing the loop on) may have overwritten the boxes,
+        // and that forced state is not the user's preference to hand back.
+        mManualState.loop = mPreArtifact.valid ? mPreArtifact.loop : loopCheckBox->isChecked();
+        mManualState.audio = mPreArtifact.valid ? mPreArtifact.audio
+                                               : exportWithAudioCheckBox->isChecked();
+        mManualState.palette = mPreArtifact.valid ? mPreArtifact.palette
+                                                 : customPaletteCheckBox->isChecked();
         mHasManualState = true;
     }
 
@@ -874,7 +1083,8 @@ public:
         exportWidget->setWindowTitle(QCoreApplication::translate("exportWidget", "Export parameters", nullptr));
         keepAspectRatio->setText(QCoreApplication::translate("exportWidget", "Keep aspect ratio", nullptr));
         lastFrameLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">- Last frame -</p></body></html>", nullptr));
-        exportTypeLabel->setText(QCoreApplication::translate("exportWidget", "Export type:", nullptr));
+        formatLabel->setText(QCoreApplication::translate("exportWidget", "Format:", nullptr));
+        codecLabel->setText(QCoreApplication::translate("exportWidget", "Codec:", nullptr));
         destinationLabel->setText(QCoreApplication::translate("exportWidget", "Destination:", nullptr));
         qualityLabel->setText(QCoreApplication::translate("exportWidget", "Quality:", nullptr));
         qualityCombo->setItemText(0, QCoreApplication::translate("exportWidget", "Smaller file", nullptr));
@@ -893,8 +1103,6 @@ public:
         setHeightNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
         fpsLabel->setText(QCoreApplication::translate("exportWidget", "FPS:", nullptr));
         renderingLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Rendering</p></body></html>", nullptr));
-        exportTypeCombo->setItemText(0, QCoreApplication::translate("exportWidget", "Animation", nullptr));
-        exportTypeCombo->setItemText(1, QCoreApplication::translate("exportWidget", "Image sequence", nullptr));
         setFPSNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
         transparencyCheckBox->setText(QCoreApplication::translate("exportWidget", "Export with transparency", nullptr));
         loopCheckBox->setText(QCoreApplication::translate("exportWidget", "Loop animation", nullptr));
