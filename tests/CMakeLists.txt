@@ -339,6 +339,31 @@ target_link_libraries(media_preset_matrix PRIVATE
     media
 )
 
+# Export-destination table prototype: loads assets/export/ExportTargets.txt,
+# validates every row against the linked libav* build, checks the size/cap
+# rules, resolves the codec ladder, and encodes real files from resolved plans.
+# Compiles ExportTarget.cpp directly (GL-free) so it links only media + Qt
+# Core/Gui/Xml. Headless. See media_export_target.cpp.
+add_executable(media_export_target
+    media_export_target.cpp
+    ../src/ctrl/ExportTarget.cpp
+    ../src/ctrl/ExportTarget.h
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(media_export_target PRIVATE ..)
+target_compile_definitions(media_export_target PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+)
+target_link_libraries(media_export_target PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Xml
+    media
+)
+
 # End-to-end export harness: offscreen (GL via a QOpenGLWidget) render of a
 # minimal project -> ctrl::Exporter -> a real mp4, verified with ffprobe. This
 # is the end-to-end gate for the media/export rearchitecture. Headless.
