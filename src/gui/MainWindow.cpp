@@ -65,7 +65,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         this->setWindowIcon(QIcon("../src/AnimeEffects.ico"));
         this->setMouseTracking(true);
         this->setFocusPolicy(Qt::NoFocus);
-        this->setAcceptDrops(false);
+        // Qt's own dock drag is a drag-and-drop, so the window has to accept
+        // drops for it to have a target at all: with drops off the drag runs
+        // with a "no drop" cursor and nothing ever docks. QMainWindow turns
+        // this on itself; the line here used to turn it off. Foreign drags are
+        // still ignored - there is no drop handler on this window, so only
+        // Qt's dock drag (which QMainWindow::event handles) accepts anything.
+        this->setAcceptDrops(true);
         this->setTabShape(QTabWidget::Rounded);
         this->setDockOptions(AnimatedDocks);
         this->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);

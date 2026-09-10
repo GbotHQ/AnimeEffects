@@ -10,6 +10,7 @@
 #include <QPainterPath>
 #include <QStyle>
 #include <QWindow>
+#include <QResizeEvent>
 
 namespace gui {
 
@@ -35,13 +36,105 @@ void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos) {
     }
 }
 
+class DockPanel::RingBand : public QWidget {
+public:
+    RingBand(DockPanel* aPanel, Qt::Edges aSpanned):
+        QWidget(aPanel),
+        mPanel(aPanel),
+        mSpanned(aSpanned) {
+        setObjectName(QStringLiteral("DockRingBand"));
+        setMouseTracking(true);
+        // an input surface only: the ring itself is painted by DockPanel
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_NoSystemBackground);
+    }
+
+protected:
+    void mouseMoveEvent(QMouseEvent* aEvent) override {
+        if (!(aEvent->buttons() & Qt::LeftButton))
+            setCursor(cursorFor(edgesAt(aEvent->position().toPoint())));
+        QWidget::mouseMoveEvent(aEvent);
+    }
+
+    void mousePressEvent(QMouseEvent* aEvent) override {
+        if (aEvent->button() != Qt::LeftButton) {
+            QWidget::mousePressEvent(aEvent);
+            return;
+        }
+        // Only the compositor can resize a frameless Wayland toplevel, and only
+        // from an edge it is told about: this is the same call a decorated
+        // window's edge gets, which is what keeps the anchor under the cursor.
+        const Qt::Edges edges = edgesAt(aEvent->position().toPoint());
+        QWindow* window = mPanel->windowHandle();
+        const bool accepted = window && window->startSystemResize(edges);
+        dockSpikeLog(mPanel, QStringLiteral("ring band press edges=0x%1 startSystemResize=%2")
+                .arg(int(edges), 0, 16).arg(accepted));
+        aEvent->accept();
+    }
+
+private:
+    /// The band spans one edge; a position near either end of it adds the
+    /// perpendicular edge, so the corners resize diagonally.
+    Qt::Edges edgesAt(const QPoint& aPos) const {
+        Qt::Edges edges = mSpanned;
+        const QPoint inPanel = mapTo(mPanel, aPos);
+        const QRect panelRect = mPanel->rect();
+        if (mSpanned & (Qt::TopEdge | Qt::BottomEdge)) {
+            if (inPanel.x() < kRing) edges |= Qt::LeftEdge;
+            if (inPanel.x() >= panelRect.width() - kRing) edges |= Qt::RightEdge;
+        } else {
+            if (inPanel.y() < kRing) edges |= Qt::TopEdge;
+            if (inPanel.y() >= panelRect.height() - kRing) edges |= Qt::BottomEdge;
+        }
+        return edges;
+    }
+
+    static Qt::CursorShape cursorFor(Qt::Edges aEdges) {
+        const bool top = aEdges & Qt::TopEdge;
+        const bool bottom = aEdges & Qt::BottomEdge;
+        const bool left = aEdges & Qt::LeftEdge;
+        if ((top && left) || (bottom && (aEdges & Qt::RightEdge))) return Qt::SizeFDiagCursor;
+        if ((top && (aEdges & Qt::RightEdge)) || (bottom && left)) return Qt::SizeBDiagCursor;
+        if (top || bottom) return Qt::SizeVerCursor;
+        return Qt::SizeHorCursor;
+    }
+
+    DockPanel* mPanel;
+    Qt::Edges mSpanned;
+};
+
 DockPanel::DockPanel(QWidget* aParent):
-    QDockWidget(aParent),
-    mPressPos(0, 0),
-    mRingPress(false) {
+    QDockWidget(aParent) {
     setTitleBarWidget(new DockTitleBar(this));
+    // top, bottom, then the vertical bands: created last, they take the corners
+    mRing = {new RingBand(this, Qt::TopEdge), new RingBand(this, Qt::BottomEdge),
+             new RingBand(this, Qt::LeftEdge), new RingBand(this, Qt::RightEdge)};
     installEventFilter(this);
     connect(this, &QDockWidget::topLevelChanged, this, &DockPanel::onTopLevelChanged);
+}
+
+void DockPanel::layoutRing() {
+    if (mRing.size() != 4) return;
+
+    const int w = width();
+    const int h = height();
+    mRing[0]->setGeometry(0, 0, w, kRing);
+    mRing[1]->setGeometry(0, h - kRing, w, kRing);
+    mRing[2]->setGeometry(0, 0, kRing, h);
+    mRing[3]->setGeometry(w - kRing, 0, kRing, h);
+
+    // the ring is the floating window's edge, so it only exists while floating;
+    // a docked panel's edges belong to the main window's sashes
+    const bool visible = isFloating();
+    for (RingBand* band : mRing) {
+        if (visible) band->raise();
+        band->setVisible(visible);
+    }
+}
+
+void DockPanel::resizeEvent(QResizeEvent* aEvent) {
+    QDockWidget::resizeEvent(aEvent);
+    layoutRing();
 }
 
 void DockPanel::paintEvent(QPaintEvent* aEvent) {
@@ -75,40 +168,35 @@ void DockPanel::contextMenuEvent(QContextMenuEvent* aEvent) {
 }
 
 bool DockPanel::eventFilter(QObject* aObject, QEvent* aEvent) {
-    if (aObject != this || aEvent->type() != QEvent::MouseButtonPress)
-        return false;
-
-    auto* mouse = static_cast<QMouseEvent*>(aEvent);
-    if (mouse->button() != Qt::LeftButton || !isFloating())
-        return false;
-
-    // Only the ring around the panel belongs to this filter; a press inside it
-    // is the window edge, and on this platform an edge can only be resized
-    // through the compositor. Consuming the press keeps Qt's own resize handler
-    // (a QWidgetResizeHandler Qt installs when a dock floats) out of the
-    // gesture: that one resizes by recomputing the widget geometry, and on
-    // Wayland the position half of it is ignored - which is why dragging the
-    // top or left edge used to resize from the opposite corner.
-    const Qt::Edges edges = edgesAt(mouse->position().toPoint());
-    if (!edges)
-        return false;
-
-    mPressPos = mouse->position().toPoint();
-    mRingPress = true;
-    QWindow* window = windowHandle();
-    const bool accepted = window && window->startSystemResize(edges);
-    dockSpikeLog(this, QStringLiteral("ring edge-press edges=0x%1 startSystemResize=%2")
-            .arg(int(edges), 0, 16).arg(accepted));
-    return true;
-}
-
-Qt::Edges DockPanel::edgesAt(const QPoint& aPos) const {
-    Qt::Edges edges;
-    if (aPos.y() < kRing) edges |= Qt::TopEdge;
-    if (aPos.y() >= height() - kRing) edges |= Qt::BottomEdge;
-    if (aPos.x() < kRing) edges |= Qt::LeftEdge;
-    if (aPos.x() >= width() - kRing) edges |= Qt::RightEdge;
-    return edges;
+    // Diagnostic: what the dock itself receives. Qt's dock drag needs the press
+    // to arrive here and then the moves, so this separates "the press never
+    // arrived" from "it arrived and Qt's drag still did nothing".
+    if (aObject == this) {
+        switch (aEvent->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* m = static_cast<QMouseEvent*>(aEvent);
+            dockSpikeLog(this, QStringLiteral("dock press pos=%1,%2 button=0x%3 floating=%4")
+                    .arg(int(m->position().x())).arg(int(m->position().y()))
+                    .arg(int(m->button()), 0, 16).arg(isFloating()));
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto* m = static_cast<QMouseEvent*>(aEvent);
+            if (m->buttons() & Qt::LeftButton)
+                dockSpikeLog(this, QStringLiteral("dock drag-move pos=%1,%2")
+                        .arg(int(m->position().x())).arg(int(m->position().y())));
+            break;
+        }
+        case QEvent::MouseButtonRelease:
+            dockSpikeLog(this, QStringLiteral("dock release"));
+            break;
+        default:
+            break;
+        }
+    }
+    // no gesture is claimed here: the ring bands own the edges, and a header
+    // press belongs to Qt's dock drag
+    return false;
 }
 
 void DockPanel::onTopLevelChanged(bool aFloating) {
@@ -125,6 +213,7 @@ void DockPanel::onTopLevelChanged(bool aFloating) {
     // by edgesAt() instead of by Qt.
     installEventFilter(this);
 
+    layoutRing();
     update();
     if (auto* header = titleBarWidget()) header->update();
 

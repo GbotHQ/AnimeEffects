@@ -3,6 +3,7 @@
 
 #include <QPoint>
 #include <QDockWidget>
+#include <QVector>
 
 namespace gui {
 
@@ -42,6 +43,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
+    void resizeEvent(QResizeEvent* aEvent) override;
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
     bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
@@ -52,11 +54,23 @@ private:
     /// corners inside the rounded body, so they are never visible.
     static constexpr int kRadius = kRing;
 
-    Qt::Edges edgesAt(const QPoint& aPos) const;
+    /// Input-only strip lying in one band of the floating panel's edge ring.
+    ///
+    /// These exist because owning the edge gesture through an event filter is a
+    /// race that was lost: Qt emits QDockWidget::topLevelChanged *before* it
+    /// installs its own QWidgetResizeHandler (qdockwidget.cpp, setWindowState),
+    /// and event filters run newest-first, so Qt's handler always ends up in
+    /// front of any filter re-installed from that signal - and its resize
+    /// recomputes the widget geometry, whose position half Wayland throws away,
+    /// which is why the top and left edges resized from the opposite corner.
+    /// A child widget is hit before its parent, so a press in the ring never
+    /// reaches the dock and Qt's handler never sees it.
+    class RingBand;
+
+    void layoutRing();
     void onTopLevelChanged(bool aFloating);
 
-    QPoint mPressPos;
-    bool mRingPress;
+    QVector<RingBand*> mRing;
 };
 
 } // namespace gui
