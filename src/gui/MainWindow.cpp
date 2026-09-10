@@ -15,6 +15,7 @@
 #include "util/NetworkUtil.h"
 #include <QElapsedTimer>
 #include <QResizeEvent>
+#include <QTabBar>
 #include <QTimer>
 #include <utility>
 #include <QComboBox>
@@ -75,7 +76,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         // Qt's dock drag (which QMainWindow::event handles) accepts anything.
         this->setAcceptDrops(true);
         this->setTabShape(QTabWidget::Rounded);
-        this->setDockOptions(AnimatedDocks);
+        // AllowTabbedDocks is the piece of Qt's docking this app actually wants:
+        // two panels sharing an area become tabs at the top of that area, and
+        // that tab strip is the same title UI a lone panel shows as its header -
+        // minimal, in the same visual language as the project tabs (the theme's
+        // QTabBar rules already carry the rest/hover/selected dressing). The
+        // default is AnimatedDocks|AllowTabbedDocks; this line used to drop the
+        // tabbing half.
+        this->setDockOptions(QMainWindow::AnimatedDocks | QMainWindow::AllowTabbedDocks);
+        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
         this->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
     }
 
@@ -291,6 +300,57 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                 dockSpikeLog(dock, QStringLiteral("view action shown: checked=%1 visible=%2")
                         .arg(action->isChecked()).arg(dock->isVisible()));
             }
+        });
+    }
+
+    // Temporary: make two panels share an area without needing a drag to get
+    // there, so the tab strip can be looked at. Note what it takes to do it:
+    // each panel is pinned to one area (Tools left, Properties right, Animation
+    // bottom/top), so no two of them *can* share an area today - which is its
+    // own decision to revisit, since tabbing needs two panels in one area.
+    if (qEnvironmentVariableIsSet("AE_DOCK_TAB_PROBE")) {
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget})
+            dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+        tabifyDockWidget(mDockToolWidget, mDockPropertyWidget);
+        mDockToolWidget->raise();
+        QTimer::singleShot(0, this, [this]() {
+            auto* bar = mDockToolWidget->parentWidget()
+                    ? mDockToolWidget->parentWidget()->findChild<QTabBar*>()
+                    : nullptr;
+            dockSpikeLog(mDockToolWidget,
+                    QStringLiteral("tab probe: tabified=%1 tabBar=%2 geometry=%3,%4 %5x%6 count=%7")
+                            .arg(tabifiedDockWidgets(mDockToolWidget).size())
+                            .arg(bar ? QStringLiteral("yes") : QStringLiteral("none"))
+                            .arg(bar ? bar->x() : -1).arg(bar ? bar->y() : -1)
+                            .arg(bar ? bar->width() : -1).arg(bar ? bar->height() : -1)
+                            .arg(bar ? bar->count() : -1));
+            for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget}) {
+                dockSpikeLog(dock, QStringLiteral("tab probe: parent=%1 parentClass=%2 geometry=%3,%4 %5x%6 "
+                                                  "headerVisible=%7")
+                        .arg(dock->parentWidget() ? dock->parentWidget()->objectName() : QStringLiteral("-"))
+                        .arg(dock->parentWidget()
+                                ? QString::fromLatin1(dock->parentWidget()->metaObject()->className())
+                                : QStringLiteral("-"))
+                        .arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height())
+                        .arg(dock->titleBarWidget() && dock->titleBarWidget()->isVisible()));
+            }
+            dockSpikeLog(mDockToolWidget, QStringLiteral("tab probe: tools header visible=%1 %2x%3 | "
+                                                         "properties header visible=%4 %5x%6")
+                    .arg(mDockToolWidget->titleBarWidget() ? mDockToolWidget->titleBarWidget()->isVisible() : false)
+                    .arg(mDockToolWidget->titleBarWidget() ? mDockToolWidget->titleBarWidget()->width() : -1)
+                    .arg(mDockToolWidget->titleBarWidget() ? mDockToolWidget->titleBarWidget()->height() : -1)
+                    .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->isVisible() : false)
+                    .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->width() : -1)
+                    .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->height() : -1));
+        });
+    }
+
+    // Temporary: float a panel at startup so the floating window's geometry can
+    // be measured from the log without a hand on the mouse.
+    if (qEnvironmentVariableIsSet("AE_DOCK_FLOAT_PROBE")) {
+        QTimer::singleShot(500, this, [this]() {
+            if (auto* panel = qobject_cast<DockPanel*>(mDockPropertyWidget))
+                panel->setPanelFloating(true);
         });
     }
 

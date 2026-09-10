@@ -4,6 +4,7 @@
 #include "gui/theme/Colors.h"
 
 #include <QContextMenuEvent>
+#include <QMainWindow>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
@@ -72,7 +73,8 @@ protected:
         const Qt::Edges edges = edgesAt(aEvent->position().toPoint());
         QWindow* window = mPanel->windowHandle();
         const bool accepted = window && window->startSystemResize(edges);
-        dockSpikeLog(mPanel, QStringLiteral("ring band press edges=0x%1 startSystemResize=%2")
+        dockSpikeLog(mPanel, QStringLiteral("ring band press pos=%1,%2 edges=0x%3 startSystemResize=%4")
+                .arg(int(aEvent->position().x())).arg(int(aEvent->position().y()))
                 .arg(int(edges), 0, 16).arg(accepted));
         aEvent->accept();
     }
@@ -85,11 +87,11 @@ private:
         const QPoint inPanel = mapTo(mPanel, aPos);
         const QRect panelRect = mPanel->rect();
         if (mSpanned & (Qt::TopEdge | Qt::BottomEdge)) {
-            if (inPanel.x() < kRing) edges |= Qt::LeftEdge;
-            if (inPanel.x() >= panelRect.width() - kRing) edges |= Qt::RightEdge;
+            if (inPanel.x() < kBand) edges |= Qt::LeftEdge;
+            if (inPanel.x() >= panelRect.width() - kBand) edges |= Qt::RightEdge;
         } else {
-            if (inPanel.y() < kRing) edges |= Qt::TopEdge;
-            if (inPanel.y() >= panelRect.height() - kRing) edges |= Qt::BottomEdge;
+            if (inPanel.y() < kBand) edges |= Qt::TopEdge;
+            if (inPanel.y() >= panelRect.height() - kBand) edges |= Qt::BottomEdge;
         }
         return edges;
     }
@@ -130,10 +132,10 @@ void DockPanel::layoutRing() {
 
     const int w = width();
     const int h = height();
-    mRing[0]->setGeometry(0, 0, w, kRing);
-    mRing[1]->setGeometry(0, h - kRing, w, kRing);
-    mRing[2]->setGeometry(0, 0, kRing, h);
-    mRing[3]->setGeometry(w - kRing, 0, kRing, h);
+    mRing[0]->setGeometry(0, 0, w, kBand);
+    mRing[1]->setGeometry(0, h - kBand, w, kBand);
+    mRing[2]->setGeometry(0, 0, kBand, h);
+    mRing[3]->setGeometry(w - kBand, 0, kBand, h);
 
     // the ring is the floating window's edge, so it only exists while floating;
     // a docked panel's edges belong to the main window's sashes
@@ -142,6 +144,32 @@ void DockPanel::layoutRing() {
         if (visible) band->raise();
         band->setVisible(visible);
     }
+
+    if (visible) logRingProbe();
+}
+
+/// Diagnostic, with the bands placed: what the window's own edge actually
+/// hit-tests as, inside and outside the frame line. childAt() uses the same
+/// hit-test input dispatch does, so this answers "is the edge grabbable" from
+/// the app rather than from a guess.
+void DockPanel::logRingProbe() {
+    const int h = height();
+    const int w = width();
+    const auto nameAt = [this](int aX, int aY) {
+        QWidget* hit = childAt(aX, aY);
+        return hit ? hit->objectName() : QStringLiteral("dock");
+    };
+    dockSpikeLog(this, QStringLiteral("ring probe %1x%2 radius=%3 halo=%4 band=%5 | left edge=0:%6 "
+                                      "frame=%7:%8 inside=%9:%10 | top 0:%11 frame=%12 inside=%13 | "
+                                      "header=%14,%15 %16x%17")
+            .arg(w).arg(h).arg(kRadius).arg(kGrabMargin).arg(kBand)
+            .arg(nameAt(0, h / 2)).arg(kGrabMargin).arg(nameAt(kGrabMargin, h / 2))
+            .arg(kBand - 1).arg(nameAt(kBand - 1, h / 2))
+            .arg(nameAt(w / 2, 0)).arg(nameAt(w / 2, kGrabMargin)).arg(nameAt(w / 2, kBand - 1))
+            .arg(titleBarWidget() ? titleBarWidget()->x() : -1)
+            .arg(titleBarWidget() ? titleBarWidget()->y() : -1)
+            .arg(titleBarWidget() ? titleBarWidget()->width() : -1)
+            .arg(titleBarWidget() ? titleBarWidget()->height() : -1));
 }
 
 void DockPanel::resizeEvent(QResizeEvent* aEvent) {
@@ -163,6 +191,43 @@ void DockPanel::setPanelFloating(bool aFloating) {
     }
 }
 
+bool DockPanel::isTabGrouped() {
+    // Asked of the main window rather than inferred from the widget tree: a
+    // tabified dock keeps living as a direct child of the QMainWindow (measured
+    // - Qt 6.11 does not move it into a QDockWidgetGroupWindow), so the only
+    // public answer to "am I sharing an area" is QMainWindow::tabifiedDockWidgets.
+    auto* window = qobject_cast<QMainWindow*>(parentWidget());
+    return window && !window->tabifiedDockWidgets(this).isEmpty();
+}
+
+void DockPanel::updateTitleChrome() {
+    QWidget* header = titleBarWidget();
+    if (!header) return;
+    const bool showHeader = isFloating() || !isTabGrouped();
+    if (header->isVisible() != showHeader) {
+        header->setVisible(showHeader);
+        dockSpikeLog(this, QStringLiteral("header visible=%1 (tab grouped=%2 parent=%3)")
+                .arg(showHeader).arg(isTabGrouped())
+                .arg(parentWidget() ? QString::fromLatin1(parentWidget()->metaObject()->className())
+                                    : QStringLiteral("-")));
+    }
+}
+
+bool DockPanel::event(QEvent* aEvent) {
+    // Membership of a tab group is only observable through the parent, and it
+    // changes when docks are tabified or split apart again.
+    switch (aEvent->type()) {
+    case QEvent::ParentChange:
+    case QEvent::Show:
+    case QEvent::LayoutRequest:
+        updateTitleChrome();
+        break;
+    default:
+        break;
+    }
+    return QDockWidget::event(aEvent);
+}
+
 void DockPanel::paintEvent(QPaintEvent* aEvent) {
     QDockWidget::paintEvent(aEvent);
 
@@ -180,11 +245,14 @@ void DockPanel::paintEvent(QPaintEvent* aEvent) {
 
     // The floating window is translucent so its corners can actually be round:
     // everything outside the rounded body stays unpainted and the backdrop
-    // shows through, the same trick AppStyle uses for menus. The content's own
-    // square corners sit inside the body because the ring insets them by
-    // exactly the radius.
+    // shows through, the same trick AppStyle uses for menus. The body sits
+    // kGrabMargin inside the window - that margin is the outer half of the
+    // resize band and is never painted, so the frame line the user sees is not
+    // the window edge and can be grabbed from either side. The content's own
+    // square corners sit kRing inside the body, which is exactly the radius.
     QPainterPath body;
-    body.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), kRadius, kRadius);
+    const qreal inset = kGrabMargin + 0.5;
+    body.addRoundedRect(QRectF(rect()).adjusted(inset, inset, -inset, -inset), kRadius, kRadius);
 
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
@@ -195,7 +263,9 @@ void DockPanel::paintEvent(QPaintEvent* aEvent) {
 }
 
 void DockPanel::contextMenuEvent(QContextMenuEvent* aEvent) {
-    // reached while floating, where the header is transparent to the mouse
+    // the floating header has its own menu; this one covers the frame and the
+    // body, and is what a floating panel's right-click reaches outside the
+    // header's inset
     showDockPanelMenu(this, aEvent->globalPos());
     aEvent->accept();
 }

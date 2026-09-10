@@ -57,21 +57,29 @@ public:
         mDock = aDock;
         mArea = aArea;
         setCursor(isVerticalEdge(aArea) ? Qt::SplitHCursor : Qt::SplitVCursor);
-        // dock geometry is in window coordinates; the hitbox straddles the
-        // boundary, so its center IS the boundary
+        // Dock geometry is in window coordinates. The hitbox lies entirely
+        // outside the dock, on the central-widget side of the boundary: a box
+        // straddling the boundary covers part of the dock's own edge, and for a
+        // bottom-docked or left-docked panel that edge is where the header is.
+        // A press there then belongs to the sash instead of the panel - and a
+        // right-click escapes past the sash to the QMainWindow, whose default
+        // popup is Qt's bare list of dock-visibility toggles, which is not the
+        // panel's menu and looks nothing like the rest of the app. The drawn
+        // hairline still sits on the boundary, because lineRect() puts it on
+        // the edge facing the dock.
         const QRect r = aDock->geometry();
         switch (aArea) {
         case Qt::LeftDockWidgetArea:
-            setGeometry(r.right() + 1 - kHitBoxSize / 2, r.top(), kHitBoxSize, r.height());
+            setGeometry(r.right() + 1, r.top(), kHitBoxSize, r.height());
             break;
         case Qt::RightDockWidgetArea:
-            setGeometry(r.left() - 1 - kHitBoxSize / 2, r.top(), kHitBoxSize, r.height());
+            setGeometry(r.left() - kHitBoxSize, r.top(), kHitBoxSize, r.height());
             break;
         case Qt::TopDockWidgetArea:
-            setGeometry(r.left(), r.bottom() + 1 - kHitBoxSize / 2, r.width(), kHitBoxSize);
+            setGeometry(r.left(), r.bottom() + 1, r.width(), kHitBoxSize);
             break;
         case Qt::BottomDockWidgetArea:
-            setGeometry(r.left(), r.top() - 1 - kHitBoxSize / 2, r.width(), kHitBoxSize);
+            setGeometry(r.left(), r.top() - kHitBoxSize, r.width(), kHitBoxSize);
             break;
         default:
             break;
@@ -139,14 +147,26 @@ protected:
     }
 
 private:
+    /// The 1px line the box paints, always on the boundary itself: the hitbox
+    /// is one-sided (outside the dock), so the line goes on whichever edge
+    /// faces the dock.
     QRect lineRect() const {
         int lineSize = 1;
 #ifdef Q_OS_WIN
         lineSize = 2;
 #endif
-        if (isVerticalEdge(mArea))
-            return QRect(width() / 2, 0, lineSize, height());
-        return QRect(0, height() / 2, width(), lineSize);
+        switch (mArea) {
+        case Qt::LeftDockWidgetArea:
+            return QRect(0, 0, lineSize, height());
+        case Qt::RightDockWidgetArea:
+            return QRect(width() - lineSize, 0, lineSize, height());
+        case Qt::TopDockWidgetArea:
+            return QRect(0, 0, width(), lineSize);
+        case Qt::BottomDockWidgetArea:
+            return QRect(0, height() - lineSize, width(), lineSize);
+        default:
+            return QRect();
+        }
     }
 
     QMainWindow* mWindow;

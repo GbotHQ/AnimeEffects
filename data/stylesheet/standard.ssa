@@ -1421,10 +1421,14 @@ QDockWidget
  *  ring are drawn in DockPanel; the ring is also the band the compositor's edge
  *  grabs resize from. A docked panel is unaffected: its frame width is ignored
  *  while docked.
+ *
+ *  The 10px here is DockPanel::kGrabMargin + DockPanel::kRing, and it has to
+ *  stay in step with those: 4px of it is an unpainted margin outside the frame,
+ *  which is what gives the user somewhere to grab that is not inside the panel.
  */
 QDockWidget[aeFloating="true"]
 {
-    border: 6px solid transparent;
+    border: 10px solid transparent;
 }
 
 /* the dock title text sits off the left edge */

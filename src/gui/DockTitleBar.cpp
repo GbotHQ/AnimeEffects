@@ -13,6 +13,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QTime>
+#include <QWindow>
 #include <cstdio>
 
 namespace gui {
@@ -57,12 +58,11 @@ DockTitleBar::DockTitleBar(QDockWidget* aDock):
     // The header is painted by hand, so the universal QWidget QSS background
     // must not fill it.
     setAttribute(Qt::WA_TranslucentBackground);
-    // constructed docked: opaque to the mouse, so the press is ours to swallow
+    // Opaque to the mouse in both states, deliberately: the press is what
+    // decides which gesture this is, and a press that reaches the QDockWidget
+    // starts Qt's own dock drag-and-drop instead. Floating, that drag is what
+    // used to swallow the move; docked, it is what made panels draggable.
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    connect(aDock, &QDockWidget::topLevelChanged, this, [this](bool aFloating) {
-        setAttribute(Qt::WA_TransparentForMouseEvents, aFloating);
-        log(QStringLiteral("header mouse-transparent=%1").arg(aFloating));
-    });
 
     dockSpikeLog(mDock, QStringLiteral("titlebar installed: platform=%1 qt=%2")
             .arg(QGuiApplication::platformName(), QString::fromLatin1(qVersion())));
@@ -82,6 +82,16 @@ void DockTitleBar::paintEvent(QPaintEvent*) {
 
     p.fillRect(rect(), c.base);
 
+    // A floating panel is a window, and this is its title area: the rule under
+    // it is what says so, and it is the boundary of the region that will move
+    // the window (or, in the docked state, of nothing at all). Docked, the
+    // surrounding sashes and tabs already draw that boundary, so a line here
+    // would just double the dock separator.
+    if (mDock->isFloating()) {
+        p.setPen(c.hairline);
+        p.drawLine(0, height() - 1, width() - 1, height() - 1);
+    }
+
     // The title text replaces the QSS `QDockWidget::title` box, which Qt no
     // longer draws once a title bar widget exists. The dock carries the bold
     // dock font, so this text is bold without asking.
@@ -98,10 +108,14 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
     }
 
     if (mDock->isFloating()) {
-        // unreachable while the attribute is set; kept so a stale attribute
-        // cannot turn a floating drag into a swallowed press
-        log(QStringLiteral("floating header-press (unexpected: header was hit)"));
-        aEvent->ignore();
+        // The window's own title area: remember where the drag started and
+        // claim the press, so it cannot reach the dock and start Qt's
+        // dock drag-and-drop in place of the move.
+        mPressPos = aEvent->position().toPoint();
+        mMoving = false;
+        log(QStringLiteral("floating title-press pos=%1,%2 -> move armed")
+                .arg(mPressPos.x()).arg(mPressPos.y()));
+        aEvent->accept();
         return;
     }
 
@@ -111,13 +125,36 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
     aEvent->accept();
 }
 
+void DockTitleBar::mouseMoveEvent(QMouseEvent* aEvent) {
+    // Moving a floating window is a compositor gesture, not ours to perform:
+    // startSystemMove() is the same call a decorated window's title bar makes,
+    // and the compositor then owns the pointer until the button is released.
+    // The consequence is that the client receives no positions at all for the
+    // rest of the gesture - which is exactly why docking cannot ride along on
+    // this drag, and needs a gesture (and a drop target) of its own.
+    if (mDock->isFloating() && !mMoving && (aEvent->buttons() & Qt::LeftButton)
+            && (aEvent->position().toPoint() - mPressPos).manhattanLength()
+                    >= QApplication::startDragDistance()) {
+        QWindow* window = mDock->windowHandle();
+        mMoving = window && window->startSystemMove();
+        log(QStringLiteral("title-drag -> startSystemMove=%1").arg(mMoving));
+        if (mMoving) {
+            aEvent->accept();
+            return;
+        }
+    }
+    QWidget::mouseMoveEvent(aEvent);
+}
+
 void DockTitleBar::mouseDoubleClickEvent(QMouseEvent* aEvent) {
-    if (aEvent->button() == Qt::LeftButton && !mDock->isFloating()) {
+    if (aEvent->button() == Qt::LeftButton) {
+        // The same toggle in both states: docked it floats, floating it docks.
+        // Qt has its own handler that does this, but it only sees the press
+        // while the header lets it through - which it no longer does.
         toggleFloating();
         aEvent->accept();
         return;
     }
-    // A floating header's double-click is Qt's (it toggles the same way).
     QWidget::mouseDoubleClickEvent(aEvent);
 }
 

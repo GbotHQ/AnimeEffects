@@ -27,13 +27,14 @@ void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos);
  *    window that nothing else decorates, so the edge and its rounding are
  *    drawn here.
  *
- * The floating window carries a ring of kRing on every side. That ring is what
- * the border is painted in and what the resize grab covers; it is created by
- * the transparent QDockWidget border in the theme, because
+ * The floating window carries a ring of kRing on every side, inside a
+ * kGrabMargin halo. The ring is what the border is painted in; the halo plus
+ * the ring is the resize band. The inset itself is created by the transparent
+ * QDockWidget border in the theme, because
  * QStyleSheetStyle::pixelMetric(PM_DockWidgetFrameWidth) follows the QSS border
  * width and QDockWidgetLayout insets the header and the content by exactly that
- * much. Without it the content widget is flush with the window edge and any
- * border painted by the dock ends up underneath it.
+ * much (kGrabMargin + kRing). Without it the content widget is flush with the
+ * window edge and any border painted by the dock ends up underneath it.
  */
 class DockPanel: public QDockWidget {
     Q_OBJECT
@@ -46,16 +47,36 @@ public:
     /// float goes through here rather than calling setFloating() directly.
     void setPanelFloating(bool aFloating);
 
+    /// True while this panel shares a dock area with another one, i.e. Qt has
+    /// moved it into a tab group. The group's tab strip is the panel's title UI
+    /// in that state, so the panel's own header steps aside instead of drawing
+    /// a second title row under the tabs.
+    bool isTabGrouped();
+
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
     void resizeEvent(QResizeEvent* aEvent) override;
     void contextMenuEvent(QContextMenuEvent* aEvent) override;
+    bool event(QEvent* aEvent) override;
     bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
 private:
-    /// Width of the border ring; also the resize band on every edge.
+    /// Invisible margin between the window's outer edge and the painted frame.
+    ///
+    /// Wayland gives a frameless toplevel no server-side border at all, so
+    /// without this margin the frame line sits exactly on the window edge and
+    /// there is nowhere to grab except inward - which reads as "the edge only
+    /// resizes from the inside", the opposite of every other window on the
+    /// desktop. The floating window is this much larger than the panel looks,
+    /// and the excess is the outer half of the resize band.
+    static constexpr int kGrabMargin = 4;
+    /// Width of the border ring painted inside the frame.
     static constexpr int kRing = 6;
-    /// Corner radius of the floating window; kRing keeps the content's square
+    /// The resize band, measured from the window's outer edge: kGrabMargin
+    /// outside the frame line plus kGrabMargin again inside it, so the grab
+    /// straddles the edge instead of sitting on one side of it.
+    static constexpr int kBand = kGrabMargin * 2;
+    /// Corner radius of the floating frame; kRing keeps the content's square
     /// corners inside the rounded body, so they are never visible.
     static constexpr int kRadius = kRing;
 
@@ -73,6 +94,9 @@ private:
     class RingBand;
 
     void layoutRing();
+    /// Diagnostic: logs what the window's own edge hit-tests as, once the bands
+    /// are placed (childAt() is the same hit-test input dispatch uses).
+    void logRingProbe();
     /// Relayouts the bands if the panel changed size since they were placed.
     /// A band left at a stale size is not just cosmetic: the press it should
     /// have caught falls through to the dock, where Qt's own resize handler
@@ -80,6 +104,8 @@ private:
     /// derives comes from the same stale rectangle.
     void ensureRing();
     void onTopLevelChanged(bool aFloating);
+    /// Shows the header only while this panel is the only one in its area.
+    void updateTitleChrome();
 
     QVector<RingBand*> mRing;
     QSize mRingSize;
