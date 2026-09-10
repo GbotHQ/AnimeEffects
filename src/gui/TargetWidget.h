@@ -38,7 +38,6 @@ public:
     virtual bool isSuspended() const;
 
 private:
-    virtual void resizeEvent(QResizeEvent* aEvent);
     virtual QSize sizeHint() const { return mSizeHint; }
 
     void onPlayBackButtonPushed(PlayBackWidget::PushType aType);
@@ -62,7 +61,6 @@ private:
     int mLastAnimFps = 0;
     util::Range mLastAnimRange;
     bool mLastAnimLoop = false;
-    bool mIsFirstTime;
     int mSuspendCount;
 };
 
