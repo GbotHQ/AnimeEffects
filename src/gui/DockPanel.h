@@ -73,9 +73,16 @@ private:
     class RingBand;
 
     void layoutRing();
+    /// Relayouts the bands if the panel changed size since they were placed.
+    /// A band left at a stale size is not just cosmetic: the press it should
+    /// have caught falls through to the dock, where Qt's own resize handler
+    /// takes it and resizes from the opposite anchor - and the cursor it
+    /// derives comes from the same stale rectangle.
+    void ensureRing();
     void onTopLevelChanged(bool aFloating);
 
     QVector<RingBand*> mRing;
+    QSize mRingSize;
 };
 
 } // namespace gui

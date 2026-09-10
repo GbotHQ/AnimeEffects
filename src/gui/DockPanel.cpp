@@ -54,6 +54,7 @@ public:
 
 protected:
     void mouseMoveEvent(QMouseEvent* aEvent) override {
+        mPanel->ensureRing();
         if (!(aEvent->buttons() & Qt::LeftButton))
             setCursor(cursorFor(edgesAt(aEvent->position().toPoint())));
         QWidget::mouseMoveEvent(aEvent);
@@ -67,6 +68,7 @@ protected:
         // Only the compositor can resize a frameless Wayland toplevel, and only
         // from an edge it is told about: this is the same call a decorated
         // window's edge gets, which is what keeps the anchor under the cursor.
+        mPanel->ensureRing();
         const Qt::Edges edges = edgesAt(aEvent->position().toPoint());
         QWindow* window = mPanel->windowHandle();
         const bool accepted = window && window->startSystemResize(edges);
@@ -116,8 +118,15 @@ DockPanel::DockPanel(QWidget* aParent):
     connect(this, &QDockWidget::topLevelChanged, this, &DockPanel::onTopLevelChanged);
 }
 
+void DockPanel::ensureRing() {
+    if (isFloating() && mRingSize != size())
+        layoutRing();
+}
+
 void DockPanel::layoutRing() {
     if (mRing.size() != 4) return;
+
+    mRingSize = size();
 
     const int w = width();
     const int h = height();
