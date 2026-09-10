@@ -1,5 +1,6 @@
 #include "gui/DockTitleBar.h"
 
+#include "gui/DockPanel.h"
 #include "gui/theme/Colors.h"
 
 #include <QApplication>
@@ -56,6 +57,12 @@ DockTitleBar::DockTitleBar(QDockWidget* aDock):
     // The header is painted by hand, so the universal QWidget QSS background
     // must not fill it.
     setAttribute(Qt::WA_TranslucentBackground);
+    // constructed docked: opaque to the mouse, so the press is ours to swallow
+    setAttribute(Qt::WA_TransparentForMouseEvents, false);
+    connect(aDock, &QDockWidget::topLevelChanged, this, [this](bool aFloating) {
+        setAttribute(Qt::WA_TransparentForMouseEvents, aFloating);
+        log(QStringLiteral("header mouse-transparent=%1").arg(aFloating));
+    });
 
     dockSpikeLog(mDock, QStringLiteral("titlebar installed: platform=%1 qt=%2")
             .arg(QGuiApplication::platformName(), QString::fromLatin1(qVersion())));
@@ -91,16 +98,9 @@ void DockTitleBar::mousePressEvent(QMouseEvent* aEvent) {
     }
 
     if (mDock->isFloating()) {
-        // Hand the gesture to Qt: its dock drag is what moves a floating panel
-        // and docks it where it is dropped (a platform drag-and-drop with the
-        // toplevel attached, on Wayland). Accepting here instead is what made
-        // the panel inert earlier, and implementing the move ourselves cannot
-        // coexist with a drop position, since a system move reports nothing.
-        auto* mainWindow = qobject_cast<QMainWindow*>(mDock->parentWidget());
-        log(QStringLiteral("floating header-press -> Qt dock drag (area=%1 geometry=%2,%3 %4x%5)")
-                .arg(mainWindow ? int(mainWindow->dockWidgetArea(mDock)) : -1)
-                .arg(mDock->geometry().x()).arg(mDock->geometry().y())
-                .arg(mDock->width()).arg(mDock->height()));
+        // unreachable while the attribute is set; kept so a stale attribute
+        // cannot turn a floating drag into a swallowed press
+        log(QStringLiteral("floating header-press (unexpected: header was hit)"));
         aEvent->ignore();
         return;
     }
@@ -127,21 +127,8 @@ void DockTitleBar::contextMenuEvent(QContextMenuEvent* aEvent) {
 }
 
 void DockTitleBar::popupMenu(const QPoint& aGlobalPos) {
-    QMenu menu;
-    const bool floating = mDock->isFloating();
-    QAction* floatAction = menu.addAction(floating ? tr("Dock panel") : tr("Undock panel"));
-    QAction* hideAction = menu.addAction(tr("Hide panel"));
-
-    QAction* chosen = menu.exec(aGlobalPos);
-    if (!chosen) return;
-
-    if (chosen == floatAction) {
-        toggleFloating();
-    } else if (chosen == hideAction) {
-        // the dock's own action, so the Panels menu's check state follows
-        log(QStringLiteral("hide panel"));
-        mDock->hide();
-    }
+    // the docked case: the header is opaque there, so it gets the right-click
+    showDockPanelMenu(mDock, aGlobalPos);
 }
 
 void DockTitleBar::toggleFloating() {

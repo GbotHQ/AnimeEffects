@@ -24,20 +24,28 @@ void dockSpikeLog(const QDockWidget* aDock, const QString& aMessage);
  * frame (QDockWidget::paintEvent returns early in that case), so everything
  * visible here is drawn here.
  *
- * What it does with the mouse is deliberately minimal:
+ * What it does with the mouse is deliberately minimal, and the mechanism is
+ * hit testing rather than event propagation:
  *
- *  - A floating header hands the press back to Qt, through QMouseEvent::ignore(),
- *    so Qt's own dock drag runs. That drag is the one gesture that both moves a
- *    panel and docks it: on Wayland it becomes a platform drag-and-drop with the
+ *  - While the dock is floating, the header is marked
+ *    WA_TransparentForMouseEvents, so hit testing skips it and the press lands
+ *    on the QDockWidget itself. That is the only way to reach Qt's own
+ *    title-area handling, which is the one gesture that both moves a panel and
+ *    docks it - on Wayland it becomes a platform drag-and-drop with the
  *    toplevel attached, so the compositor moves the window under the cursor and
- *    where it is dropped decides whether it docks. Handing it back is also why
- *    there is no grip and no other handle - dragging the header is the whole
- *    gesture, and a separate handle that means "move" is a pattern from another
- *    era.
- *  - A docked header consumes the press and does nothing else: a docked panel is
- *    not draggable, and Qt's drag must not start from it.
- *  - Double-clicking a docked header floats the panel; the floating case is
- *    Qt's own, with the same result.
+ *    where it is dropped decides whether it docks.
+ *    The documented alternative, ignoring the press so it "propagates to the
+ *    QDockWidget parent", does not work: an ignored press never reaches the
+ *    dock (verified with QWidget::childAt - with the header opaque the header
+ *    is hit, with the attribute set the dock is), which is why the panel was
+ *    inert when this header tried to hand the gesture back.
+ *  - While the dock is docked the header stays opaque and consumes the press,
+ *    so a docked panel is not draggable at all and Qt's drag never starts from
+ *    it. The attribute is toggled from QDockWidget::topLevelChanged.
+ *  - Double-clicking a docked header floats the panel (the floating case is
+ *    Qt's own handler, with the same result), and a docked header carries the
+ *    right-click menu. A floating panel's right-click menu comes from DockPanel,
+ *    which is what receives it there.
  *
  * The drop indicator during that drag is Qt's own QRubberBand, which the layout
  * positions at the rect the panel would occupy - the truthful answer, since it

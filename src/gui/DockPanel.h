@@ -6,6 +6,12 @@
 
 namespace gui {
 
+/// The panel's right-click menu (undock/dock, hide). Shared, because which
+/// widget receives the click depends on the state: a docked panel's header is
+/// opaque to the mouse and handles it, a floating panel's header is transparent
+/// so the QDockWidget underneath receives it.
+void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos);
+
 /**
  * A QDockWidget that owns its own chrome.
  *
@@ -36,6 +42,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
+    void contextMenuEvent(QContextMenuEvent* aEvent) override;
     bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
 private:

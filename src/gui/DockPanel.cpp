@@ -3,6 +3,8 @@
 #include "gui/DockTitleBar.h"
 #include "gui/theme/Colors.h"
 
+#include <QContextMenuEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -10,6 +12,28 @@
 #include <QWindow>
 
 namespace gui {
+
+void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos) {
+    if (!aDock) return;
+
+    QMenu menu;
+    const bool floating = aDock->isFloating();
+    QAction* floatAction = menu.addAction(floating ? QObject::tr("Dock panel")
+                                                   : QObject::tr("Undock panel"));
+    QAction* hideAction = menu.addAction(QObject::tr("Hide panel"));
+
+    QAction* chosen = menu.exec(aGlobalPos);
+    if (!chosen) return;
+
+    if (chosen == floatAction) {
+        dockSpikeLog(aDock, QStringLiteral("menu -> setFloating(%1)").arg(!floating));
+        aDock->setFloating(!floating);
+    } else if (chosen == hideAction) {
+        // hiding through the dock keeps the Panels menu's check state in step
+        dockSpikeLog(aDock, QStringLiteral("hide panel"));
+        aDock->hide();
+    }
+}
 
 DockPanel::DockPanel(QWidget* aParent):
     QDockWidget(aParent),
@@ -42,6 +66,12 @@ void DockPanel::paintEvent(QPaintEvent* aEvent) {
     p.setPen(QPen(c.outline, 1));
     p.setBrush(Qt::NoBrush);
     p.drawPath(body);
+}
+
+void DockPanel::contextMenuEvent(QContextMenuEvent* aEvent) {
+    // reached while floating, where the header is transparent to the mouse
+    showDockPanelMenu(this, aEvent->globalPos());
+    aEvent->accept();
 }
 
 bool DockPanel::eventFilter(QObject* aObject, QEvent* aEvent) {
