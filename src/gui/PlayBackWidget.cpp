@@ -161,7 +161,7 @@ QSize PlayBackWidget::minimumSizeHint() const {
     return sizeHint();
 }
 
-void PlayBackWidget::paintEvent(QPaintEvent* aEvent) {
+void PlayBackWidget::paintEvent(QPaintEvent*) {
     // The playback bar is a fixed toolbar beside the timeline; the 1px
     // hairline (the design system's section-separator token) marks its left
     // edge. Painted here, like the ThinSplitter/DockSash hairlines, because

@@ -392,9 +392,8 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
         auto checkForUpdates = new QAction(tr("Check for updates"), this);
         connect(checkForUpdates, &QAction::triggered, [=]() {
-            const util::NetworkUtil networking;
             const QString url("https://api.github.com/repos/AnimeEffectsDevs/AnimeEffects/tags");
-            util::NetworkUtil::checkForUpdate(url, networking, this);
+            util::NetworkUtil::checkForUpdate(url, this);
         });
         auto diagnostics = new QAction(tr("System telemetry"), this);
         connect(diagnostics, &QAction::triggered, [=] {
