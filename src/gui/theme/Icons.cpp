@@ -33,6 +33,12 @@ const QHash<QString, IconRole>& roleTable() {
         {QStringLiteral("close"), IconRole::Muted},
         {QStringLiteral("close_hover"), IconRole::Muted},
         {QStringLiteral("close_pressed"), IconRole::Accent},
+        // layout toggles (MainWindow's top-right row): quiet at rest, and the
+        // tinted-to-accent -active glyph marks the panel that is showing
+        {QStringLiteral("sidebar-left"), IconRole::Muted},
+        {QStringLiteral("sidebar-right"), IconRole::Muted},
+        {QStringLiteral("sidebar-top"), IconRole::Muted},
+        {QStringLiteral("sidebar-bottom"), IconRole::Muted},
         {QStringLiteral("hand"), IconRole::Text},
         {QStringLiteral("dialog_cancel"), IconRole::Text},
         {QStringLiteral("dialog_close"), IconRole::Text},
@@ -146,6 +152,9 @@ const QSet<QString>& activeVariantNames() {
         // menu rows: a checkable entry shows the glyph on the selected row's
         // accent fill, so it needs the max-contrast tint there
         "check-bold",
+        // layout toggles: the checked state means "this panel is showing", so
+        // it is a state worth a distinct tint
+        "sidebar-left", "sidebar-right", "sidebar-top", "sidebar-bottom",
     };
     return s;
 }

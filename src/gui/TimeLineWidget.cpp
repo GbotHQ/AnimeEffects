@@ -270,7 +270,12 @@ QSize TimeLineWidget::minimumSizeHint() const {
     // invalid hint as (1,1) — the object tree would swallow the split at
     // startup. Claim a usable default so both panes start reasonable.
     const int hbarHeight = mHorizontalScrollBar ? mHorizontalScrollBar->sizeHint().height() : 0;
-    return QSize(280, ctrl::TimeLineEditor::kHeaderHeight + 2 * ctrl::TimeLineRow::kHeight + hbarHeight);
+    // The width is a floor, not a comfort: the object tree beside it and the
+    // playback bar's fixed column have to fit inside dockMetrics::kMinWidth
+    // with it, so a panel can actually be dragged to its minimum (and past it,
+    // which collapses it). The old 280 made the animation panel refuse to go
+    // below 380 wide, which no sidebar could ever give it.
+    return QSize(100, ctrl::TimeLineEditor::kHeaderHeight + 2 * ctrl::TimeLineRow::kHeight + hbarHeight);
 }
 
 QSize TimeLineWidget::sizeHint() const {

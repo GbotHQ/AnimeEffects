@@ -30,10 +30,13 @@ ToolWidget::ToolWidget(
     createModePanel();
     setPanelActivity(false);
 
-    // the dock width is the default and the max: narrower would cramp the
-    // buttons, wider adds no value (the sizeHint width is the panel's design
-    // width, divisible by 4)
-    setMaximumWidth(mSizeHint.width());
+    // No width cap of its own. This panel used to cap itself at its design
+    // width (mSizeHint.width(), divisible by 4), which was fine while it was
+    // the only thing that could ever be in the left area - but a width cap is
+    // a property of the *area*, not of the content: with tabs, this panel can
+    // share an area that is wider than its design width, and a content cap
+    // just leaves a gap beside the buttons. The area's range is the panels'
+    // shared one now (see DockMetrics.h).
 
     mSRTPanel = new tool::SRTPanel(this, mResources);
     mSRTPanel->onParamUpdated.connect(this, &ToolWidget::onParamUpdated);

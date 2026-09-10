@@ -5,6 +5,7 @@
 #include "gl/Global.h"
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
+#include "gui/DockMetrics.h"
 #include "gui/DockPanel.h"
 #include "gui/DockTitleBar.h" // dockSpikeLog (temporary instrumentation)
 #include "gui/DockSash.h"
@@ -15,8 +16,10 @@
 #include "util/NetworkUtil.h"
 #include <QElapsedTimer>
 #include <QResizeEvent>
+#include <QHBoxLayout>
 #include <QTabBar>
 #include <QTimer>
+#include <QToolButton>
 #include <utility>
 #include <QComboBox>
 // This thing is held by duct tape and OOP hell I swear...
@@ -33,6 +36,22 @@ public:
         aTarget.stop();
     }
 };
+
+/// The layout-toggle glyph for a dock area. One Phosphor sidebar glyph per
+/// side: the source is "sidebar-simple" and the other three are it rotated or
+/// mirrored, so a panel that is moved to another side gets the matching glyph.
+QString areaIconName(Qt::DockWidgetArea aArea) {
+    switch (aArea) {
+    case Qt::TopDockWidgetArea:
+        return QStringLiteral("sidebar-top");
+    case Qt::BottomDockWidgetArea:
+        return QStringLiteral("sidebar-bottom");
+    case Qt::RightDockWidgetArea:
+        return QStringLiteral("sidebar-right");
+    default:
+        return QStringLiteral("sidebar-left");
+    }
+}
 
 } // namespace
 
@@ -299,8 +318,81 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                 auto* action = dock->toggleViewAction();
                 dockSpikeLog(dock, QStringLiteral("view action shown: checked=%1 visible=%2")
                         .arg(action->isChecked()).arg(dock->isVisible()));
+                QWidget* content = dock->widget();
+                dockSpikeLog(dock, QStringLiteral("sizes: dock min=%1,%2 max=%3,%4 hint=%5,%6 | "
+                                                  "content min=%7,%8 maxW=%9 hint=%10,%11")
+                        .arg(dock->minimumWidth()).arg(dock->minimumHeight())
+                        .arg(dock->maximumWidth()).arg(dock->maximumHeight())
+                        .arg(dock->sizeHint().width()).arg(dock->sizeHint().height())
+                        .arg(content ? content->minimumSizeHint().width() : -1)
+                        .arg(content ? content->minimumSizeHint().height() : -1)
+                        .arg(content ? content->maximumWidth() : -1)
+                        .arg(content ? content->sizeHint().width() : -1)
+                        .arg(content ? content->sizeHint().height() : -1));
             }
         });
+    }
+
+    // A grouped panel hides its own header, because the group's tab strip is
+    // its title row - which also takes the header's context menu with it. The
+    // tab is the panel's title UI in that state, so the menu moves there: the
+    // same undock/hide menu, on the tab.
+    // A grouped panel hides its own header, because the group's tab strip is
+    // its title row - and the header's context menu goes into hiding with it.
+    // The tab is that panel's title UI in this state, so the menu moves to the
+    // tab; the tab bars themselves are Qt's, so they are found and adopted
+    // rather than built (see updateDockTabMenus).
+    this->installEventFilter(this);
+
+    // One size range for every panel, and one set of allowed areas: a tab
+    // group can only be as narrow as its strictest member and as wide as its
+    // most-capped one, and a panel that is only allowed in one area can never
+    // be tabbed with a panel that lives on another side. See DockMetrics.h.
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+        dock->setMinimumWidth(dockMetrics::kMinWidth);
+        dock->setMinimumHeight(dockMetrics::kMinHeight);
+        dock->setMaximumWidth(dockMetrics::kMaxWidth);
+    }
+
+    // Layout toggles in the menu bar's top-right corner, where VS Code keeps
+    // them: one per panel, the glyph saying which side it is on (and following
+    // it if the panel moves), the check state being the panel's visibility.
+    // The state comes from Qt's own toggleViewAction, so this row, the Panels
+    // menu and any shortcut can never disagree about what is showing.
+    {
+        auto* row = new QWidget(mMainMenuBar);
+        auto* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 6, 0);
+        rowLayout->setSpacing(2);
+
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            auto* button = new QToolButton(row);
+            button->setObjectName(QStringLiteral("dockToggle"));
+            button->setFocusPolicy(Qt::NoFocus);
+            button->setAutoRaise(true);
+            button->setCheckable(true);
+            button->setIconSize(QSize(18, 18));
+            // Deliberately not setDefaultAction(): a QToolButton re-reads icon,
+            // text and tooltip from its action on every action change, which
+            // would drop both the glyph chosen here and this tooltip.
+            QAction* action = dock->toggleViewAction();
+            button->setChecked(action->isChecked());
+            button->setToolTip(tr("Show or hide the %1 panel").arg(dock->windowTitle()));
+            const auto applyGlyph = [this, button](Qt::DockWidgetArea aArea) {
+                button->setIcon(mGUIResources.icon(areaIconName(aArea)));
+            };
+            applyGlyph(this->dockWidgetArea(dock));
+
+            connect(button, &QToolButton::clicked, action, &QAction::trigger);
+            connect(action, &QAction::toggled, button, &QToolButton::setChecked);
+            connect(dock, &QDockWidget::dockLocationChanged, button,
+                    [applyGlyph](Qt::DockWidgetArea aArea) { applyGlyph(aArea); });
+
+            rowLayout->addWidget(button);
+        }
+
+        mMainMenuBar->setCornerWidget(row, Qt::TopRightCorner);
     }
 
     // Temporary: make two panels share an area without needing a drag to get
@@ -1906,6 +1998,64 @@ void MainWindow::onMoveFrameTriggered(bool moveRight) {
     core::Frame dest = mTarget->currentFrame();
     dest.add(frameDest);
     mTarget->timeLineWidget().setFrame(dest);
+}
+
+/// The panel a dock tab bar's tab belongs to, by title. Qt's dock tab bar owns
+/// no mapping back to the docks, and the titles are the panel names, so this is
+/// the available answer - and it is also what keeps the project tab bar (same
+/// QTabBar class, different titles) from being adopted.
+QDockWidget* MainWindow::dockForTabTitle(const QString& aTitle) const {
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (dock && dock->windowTitle() == aTitle) return dock;
+    }
+    return nullptr;
+}
+
+/// Gives every dock tab bar the panel context menu, once, on whichever tab was
+/// right-clicked. A tab bar qualifies only if every one of its tabs names a
+/// panel, which is what distinguishes it from the project tabs.
+void MainWindow::updateDockTabMenus() {
+    const auto bars = this->findChildren<QTabBar*>();
+    for (QTabBar* bar : bars) {
+        if (bar->property("aeDockTabBar").toBool() || bar->count() == 0)
+            continue;
+        bool allPanels = true;
+        for (int i = 0; i < bar->count(); ++i) {
+            if (!dockForTabTitle(bar->tabText(i))) {
+                allPanels = false;
+                break;
+            }
+        }
+        if (!allPanels) continue;
+
+        bar->setProperty("aeDockTabBar", true);
+        bar->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(bar, &QWidget::customContextMenuRequested, this, [this, bar](const QPoint& aPos) {
+            const int index = bar->tabAt(aPos);
+            if (index < 0) return;
+            if (QDockWidget* dock = dockForTabTitle(bar->tabText(index)))
+                showDockPanelMenu(dock, bar->mapToGlobal(aPos));
+        });
+        dockSpikeLog(nullptr, QStringLiteral("dock tab bar adopted: %1 tabs").arg(bar->count()));
+    }
+}
+
+bool MainWindow::eventFilter(QObject* aObject, QEvent* aEvent) {
+    // The dock tab bars are created and destroyed by the layout as panels are
+    // tabified and split apart again, so adoption is driven from the layout
+    // events rather than from the one place that tabifies today.
+    if (aObject == this) {
+        switch (aEvent->type()) {
+        case QEvent::LayoutRequest:
+        case QEvent::ChildAdded:
+        case QEvent::ChildRemoved:
+            QTimer::singleShot(0, this, [this]() { updateDockTabMenus(); });
+            break;
+        default:
+            break;
+        }
+    }
+    return QMainWindow::eventFilter(aObject, aEvent);
 }
 
 } // namespace gui

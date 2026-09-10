@@ -82,6 +82,9 @@ private:
     virtual void keyReleaseEvent(QKeyEvent* aEvent);
     virtual void closeEvent(QCloseEvent* aEvent);
     virtual void resizeEvent(QResizeEvent* aEvent);
+    /// Adopts Qt's dock tab bars so the panel menu survives on a grouped panel,
+    /// whose own header (which carries that menu) is hidden behind the tabs.
+    bool eventFilter(QObject* aObject, QEvent* aEvent) override;
 
     void resetProjectRefs(core::Project* aProject);
     bool processProjectSaving(core::Project& aProject, bool aRename = false);
@@ -125,6 +128,11 @@ private:
     core::Project* mCurrent;
     LocaleParam mLocaleParam;
     void onMoveFrameTriggered(bool moveRight);
+    /// Gives Qt's dock tab bars the panel context menu (see MainWindow.cpp):
+    /// a grouped panel's own header, which carries that menu, is hidden behind
+    /// the group's tabs.
+    void updateDockTabMenus();
+    QDockWidget* dockForTabTitle(const QString& aTitle) const;
 };
 
 } // namespace gui

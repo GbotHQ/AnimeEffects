@@ -1,4 +1,6 @@
 #include "gui/DockSash.h"
+#include "gui/DockMetrics.h"
+#include "gui/DockTitleBar.h"
 #include "gui/theme/Colors.h"
 
 #include <QDockWidget>
@@ -134,6 +136,29 @@ protected:
         // grow away from it
         const int sign = (mArea == Qt::LeftDockWidgetArea || mArea == Qt::TopDockWidgetArea) ? 1 : -1;
         const int newSize = mStartSize + sign * (pos - mPressPos);
+        const int minSize = isVerticalEdge(mArea) ? dockMetrics::kMinWidth : dockMetrics::kMinHeight;
+
+        // Past the minimum the panel collapses instead of clamping, the way a
+        // VS Code sidebar does: resizeDocks would stop at kMinWidth and leave
+        // the sash stuck under the cursor with nothing moving. Asking for less
+        // than the minimum is an unambiguous "hide this", and dragging back out
+        // asks just as unambiguously for it back, so the gesture stays
+        // reversible while the button is still down.
+        if (newSize < minSize) {
+            if (mDock->isVisible()) {
+                dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 < min %2 -> collapsed")
+                        .arg(newSize).arg(minSize));
+                mDock->hide();
+                mCollapsed = true;
+            }
+            return;
+        }
+        if (mCollapsed) {
+            dockSpikeLog(mDock, QStringLiteral("sash drag requested=%1 >= min %2 -> restored")
+                    .arg(newSize).arg(minSize));
+            mDock->show();
+            mCollapsed = false;
+        }
         // resizeDocks clamps to the dock's minimum/maximum sizes
         mWindow->resizeDocks({mDock}, {newSize},
                              isVerticalEdge(mArea) ? Qt::Horizontal : Qt::Vertical);
@@ -142,9 +167,16 @@ protected:
     void mouseReleaseEvent(QMouseEvent* aEvent) override {
         if (aEvent->button() == Qt::LeftButton) {
             mDragging = false;
+            mCollapsed = false;
             update();
         }
     }
+
+public:
+    /// A hitbox stays put (and stays alive) while its dock is collapsed
+    /// mid-drag: hiding it would drop the implicit mouse grab this drag depends
+    /// on, so the panel could never be dragged back out in the same gesture.
+    bool isDragging() const { return mDragging; }
 
 private:
     /// The 1px line the box paints, always on the boundary itself: the hitbox
@@ -174,6 +206,7 @@ private:
     Qt::DockWidgetArea mArea;
     bool mHovered;
     bool mDragging;
+    bool mCollapsed = false;
     int mPressPos;
     int mStartSize;
 };
@@ -229,11 +262,16 @@ void DockSash::relayout() {
     }
     while (mHitBoxes.size() < targets.size())
         mHitBoxes.push_back(new HitBox(mWindow));
+    int used = 0;
     for (int i = 0; i < mHitBoxes.size(); ++i) {
-        if (i < targets.size())
-            mHitBoxes[i]->setTarget(targets[i].first, targets[i].second);
-        else
+        if (used < targets.size()) {
+            mHitBoxes[i]->setTarget(targets[used].first, targets[used].second);
+            ++used;
+        } else if (!mHitBoxes[i]->isDragging()) {
+            // a hitbox whose panel was just collapsed stays where it is for the
+            // rest of the drag (see isDragging)
             mHitBoxes[i]->hide();
+        }
     }
 }
 

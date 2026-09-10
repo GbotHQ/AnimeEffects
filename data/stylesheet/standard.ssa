@@ -1431,6 +1431,30 @@ QDockWidget[aeFloating="true"]
     border: 10px solid transparent;
 }
 
+/**
+ *  The layout toggles in the menu bar's top-right corner (MainWindow): one per
+ *  panel, icon-only, quiet until hovered. The glyph's lit/unlit pair is the
+ *  QIcon's own On/Off state (the -active tint), so nothing is swapped here -
+ *  the check state means "this panel is showing" and reads through the icon.
+ */
+QToolButton#dockToggle
+{
+    background: transparent;
+    border: none;
+    border-radius: 0.19em;
+    padding: 0.08em;
+}
+
+QToolButton#dockToggle:hover
+{
+    background-color: @accentOverlay@;
+}
+
+QToolButton#dockToggle:pressed
+{
+    background-color: @active@;
+}
+
 /* the dock title text sits off the left edge */
 QDockWidget::title {
     /* the margin insets the title text; a matching background
