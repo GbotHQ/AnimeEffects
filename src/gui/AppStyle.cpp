@@ -1,5 +1,4 @@
 #include "gui/AppStyle.h"
-#include "gui/DockPanel.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Icons.h"
 
@@ -71,13 +70,11 @@ AppStyle::AppStyle(QStyle* aBaseStyle): QProxyStyle(aBaseStyle) {}
 
 void AppStyle::polish(QWidget* aWidget) {
     // Mark as translucent so the window manager doesn't draw behind them.
-    // A floating dock panel needs the same treatment: it is a frameless tool
-    // window whose rounded corners only work if the pixels outside them stay
-    // unpainted, and both attributes have to be set before the window is
-    // created (polish runs first, the floating window is created later when
-    // the panel is undocked).
-    if (qobject_cast<QMenu*>(aWidget) || aWidget->inherits("QComboBoxPrivateContainer")
-        || qobject_cast<DockPanel*>(aWidget)) {
+    // Dock panels are deliberately NOT in this branch: it applies to a widget
+    // for its whole life, and a docked panel is an ordinary child widget that
+    // must keep an erased background. DockPanel sets these only around a float
+    // transition, when it is about to become a window (see setPanelFloating).
+    if (qobject_cast<QMenu*>(aWidget) || aWidget->inherits("QComboBoxPrivateContainer")) {
         aWidget->setAttribute(Qt::WA_TranslucentBackground);
         aWidget->setAttribute(Qt::WA_NoSystemBackground);
 #ifdef Q_OS_WIN

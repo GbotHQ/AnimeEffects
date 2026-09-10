@@ -13,6 +13,8 @@
 #include "gui/ProjectHook.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
+#include <QElapsedTimer>
+#include <QResizeEvent>
 #include <QTimer>
 #include <utility>
 #include <QComboBox>
@@ -864,6 +866,28 @@ void MainWindow::onMovementTriggered(const QString& frameMovement) {
     } else {
         mTarget->timeLineWidget().setFrame(core::Frame(0));
     }
+}
+
+void MainWindow::resizeEvent(QResizeEvent* aEvent) {
+    QMainWindow::resizeEvent(aEvent);
+
+    // Diagnostic: a window resize has to reach the central widget and the
+    // docks. If those keep stale sizes while this line reports a new size, it
+    // is a layout problem rather than a painting one.
+    static QElapsedTimer timer;
+    if (timer.isValid() && timer.elapsed() < 250) return;
+    timer.restart();
+    QString state;
+    for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+        if (!dock) continue;
+        state += QStringLiteral(" %1(area=%2 %3x%4)")
+                .arg(dock->objectName()).arg(int(dockWidgetArea(dock)))
+                .arg(dock->width()).arg(dock->height());
+    }
+    dockSpikeLog(nullptr, QStringLiteral("window=%1x%2 central=%3x%4%5")
+            .arg(width()).arg(height())
+            .arg(mMainDisplay ? mMainDisplay->width() : -1)
+            .arg(mMainDisplay ? mMainDisplay->height() : -1).arg(state));
 }
 
 void MainWindow::onDockToggle() // For some reason it does not work without this travesty

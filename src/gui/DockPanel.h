@@ -41,6 +41,11 @@ class DockPanel: public QDockWidget {
 public:
     explicit DockPanel(QWidget* aParent);
 
+    /// Undock/dock the panel. The translucent attributes have to be in place
+    /// before the floating window is created, and must not outlive it, so every
+    /// float goes through here rather than calling setFloating() directly.
+    void setPanelFloating(bool aFloating);
+
 protected:
     void paintEvent(QPaintEvent* aEvent) override;
     void resizeEvent(QResizeEvent* aEvent) override;

@@ -28,7 +28,10 @@ void showDockPanelMenu(QDockWidget* aDock, const QPoint& aGlobalPos) {
 
     if (chosen == floatAction) {
         dockSpikeLog(aDock, QStringLiteral("menu -> setFloating(%1)").arg(!floating));
-        aDock->setFloating(!floating);
+        if (auto* panel = qobject_cast<DockPanel*>(aDock))
+            panel->setPanelFloating(!floating);
+        else
+            aDock->setFloating(!floating);
     } else if (chosen == hideAction) {
         // hiding through the dock keeps the Panels menu's check state in step
         dockSpikeLog(aDock, QStringLiteral("hide panel"));
@@ -137,13 +140,34 @@ void DockPanel::resizeEvent(QResizeEvent* aEvent) {
     layoutRing();
 }
 
+void DockPanel::setPanelFloating(bool aFloating) {
+    // Set before setFloating(): the attribute is read when the floating window
+    // is created, and cleared again on the way back so a docked panel is an
+    // ordinary opaque child (a translucent child that paints nothing keeps
+    // stale pixels, which looked like panels overlapping after a layout change).
+    setAttribute(Qt::WA_TranslucentBackground, aFloating);
+    setAttribute(Qt::WA_NoSystemBackground, aFloating);
+    setFloating(aFloating);
+    if (!aFloating) {
+        setAttribute(Qt::WA_TranslucentBackground, false);
+        setAttribute(Qt::WA_NoSystemBackground, false);
+    }
+}
+
 void DockPanel::paintEvent(QPaintEvent* aEvent) {
-    // Docked, the panel has no surface of its own: the QSS gives it the window
-    // floor colour and the content widget covers it. Nothing to add.
     QDockWidget::paintEvent(aEvent);
-    if (!isFloating()) return;
 
     const theme::Colors c = theme::Colors::current();
+
+    // The dock paints its own floor in both states. Floating it needs one (the
+    // window would otherwise be bare), and docked it is the safe default: with
+    // WA_NoSystemBackground set for the float, Qt does not erase this widget,
+    // so anything left unpainted would retain whatever was on screen before.
+    if (!isFloating()) {
+        QPainter p(this);
+        p.fillRect(rect(), c.base);
+        return;
+    }
 
     // The floating window is translucent so its corners can actually be round:
     // everything outside the rounded body stays unpainted and the backdrop
@@ -200,6 +224,13 @@ bool DockPanel::eventFilter(QObject* aObject, QEvent* aEvent) {
 }
 
 void DockPanel::onTopLevelChanged(bool aFloating) {
+    if (!aFloating) {
+        // Qt can dock a floating panel on its own (a drop, or its own
+        // double-click), so the opaque state is restored here too
+        setAttribute(Qt::WA_TranslucentBackground, false);
+        setAttribute(Qt::WA_NoSystemBackground, false);
+    }
+
     // The floating look is the theme's business, so the ring is a QSS rule
     // selected by this property (see standard.ssa); QSS property selectors are
     // only re-evaluated on a repolish.

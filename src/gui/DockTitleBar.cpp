@@ -134,7 +134,10 @@ void DockTitleBar::popupMenu(const QPoint& aGlobalPos) {
 void DockTitleBar::toggleFloating() {
     const bool floating = !mDock->isFloating();
     log(QStringLiteral("double-click/menu -> setFloating(%1)").arg(floating));
-    mDock->setFloating(floating);
+    if (auto* panel = qobject_cast<DockPanel*>(mDock))
+        panel->setPanelFloating(floating);
+    else
+        mDock->setFloating(floating);
 }
 
 void DockTitleBar::log(const QString& aMessage) const {

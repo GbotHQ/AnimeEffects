@@ -81,6 +81,7 @@ private:
     virtual void keyPressEvent(QKeyEvent* aEvent);
     virtual void keyReleaseEvent(QKeyEvent* aEvent);
     virtual void closeEvent(QCloseEvent* aEvent);
+    virtual void resizeEvent(QResizeEvent* aEvent);
 
     void resetProjectRefs(core::Project* aProject);
     bool processProjectSaving(core::Project& aProject, bool aRename = false);
