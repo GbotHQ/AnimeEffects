@@ -60,7 +60,6 @@ public:
     QLabel *destinationFacts;
     QComboBox *destinationCombo;
     QComboBox *qualityCombo;
-    QLabel *intermediateTypeLabel;
     QRadioButton *customRatio;
     QPushButton *insertFrameRangeButton;
     QPushButton *removeFrameRangeButton;
@@ -68,8 +67,6 @@ public:
     QCheckBox *customPaletteCheckBox;
     QSpinBox *firstFrameSpinBox;
     QSpinBox *heightSpinBox;
-    QCheckBox * forcePipeCheckBox;
-    QComboBox *intermediateTypeCombo;
     QLabel *widthLabel;
     QRadioButton *oneToOneRatio;
     QPushButton *setWidthNative;
@@ -203,10 +200,6 @@ public:
 
         gridLayout_2->addWidget(exportTypeLabel, 9, 0, 1, 1);
 
-        intermediateTypeLabel = new QLabel(globalParamScrollContents);
-        intermediateTypeLabel->setObjectName(QString::fromUtf8("intermediateTypeLabel"));
-
-        gridLayout_2->addWidget(intermediateTypeLabel, 13, 0, 1, 1);
 
         customRatio = new QRadioButton(globalParamScrollContents);
         customRatio->setObjectName(QString::fromUtf8("customRatio"));
@@ -271,22 +264,7 @@ public:
 
         gridLayout_2->addWidget(heightSpinBox, 4, 1, 1, 1);
 
-        forcePipeCheckBox = new QCheckBox(globalParamScrollContents);
-        forcePipeCheckBox->setObjectName(QString::fromUtf8("forcePipeCheckBox"));
 
-        gridLayout_2->addWidget(forcePipeCheckBox, 15, 0, 1, 2);
-
-        intermediateTypeCombo = new QComboBox(globalParamScrollContents);
-        intermediateTypeCombo->addItem(QString());
-        intermediateTypeCombo->addItem(QString());
-        intermediateTypeCombo->addItem(QString());
-        intermediateTypeCombo->addItem(QString());
-        intermediateTypeCombo->addItem(QString());
-        intermediateTypeCombo->setObjectName(QString::fromUtf8("intermediateTypeCombo"));
-
-        intermediateTypeCombo->setCurrentIndex(4);
-
-        gridLayout_2->addWidget(intermediateTypeCombo, 13, 1, 1, 2);
 
         widthLabel = new QLabel(globalParamScrollContents);
         widthLabel->setObjectName(QString::fromUtf8("widthLabel"));
@@ -777,17 +755,10 @@ public:
         qualityCombo->setItemText(1, QCoreApplication::translate("exportWidget", "Balanced", nullptr));
         qualityCombo->setItemText(2, QCoreApplication::translate("exportWidget", "Best quality", nullptr));
         qualityCombo->setItemText(3, QCoreApplication::translate("exportWidget", "Lossless", nullptr));
-        intermediateTypeLabel->setText(QCoreApplication::translate("exportWidget", "Intermediate type:", nullptr));
         customRatio->setText(QCoreApplication::translate("exportWidget", "Custom", nullptr));
         insertFrameRangeButton->setText(QCoreApplication::translate("exportWidget", "Insert range", nullptr));
         removeFrameRangeButton->setText(QCoreApplication::translate("exportWidget", "Remove range", nullptr));
         customPaletteCheckBox->setText(QCoreApplication::translate("exportWidget", "Custom palette", nullptr));
-        forcePipeCheckBox->setText(QCoreApplication::translate("exportWidget", "Force piped export ", nullptr));
-        intermediateTypeCombo->setItemText(0, QCoreApplication::translate("exportWidget", "PNG", nullptr));
-        intermediateTypeCombo->setItemText(1, QCoreApplication::translate("exportWidget", "BMP", nullptr));
-        intermediateTypeCombo->setItemText(2, QCoreApplication::translate("exportWidget", "JPG", nullptr));
-        intermediateTypeCombo->setItemText(3, QCoreApplication::translate("exportWidget", "JPEG", nullptr));
-        intermediateTypeCombo->setItemText(4, QCoreApplication::translate("exportWidget", "PPM", nullptr));
         widthLabel->setText(QCoreApplication::translate("exportWidget", "Width: ", nullptr));
         oneToOneRatio->setText(QCoreApplication::translate("exportWidget", "One-to-one", nullptr));
         setWidthNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));

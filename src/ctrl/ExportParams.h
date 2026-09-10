@@ -45,7 +45,6 @@ enum class exportTarget { video, image, pxFmt, aviEnc, mkvEnc, movEnc, mp4Enc, w
 enum targetRatio { oneToOne, keep, custom };
 enum class availableVideoFormats { apng, avi, f4v, flv, gif, mkv, mov, mp2, mp4, ogv, swf, webm, webp };
 enum class availableImageFormats { bmp, jpeg, jpg, png, ppm, xbm, xpm, tiff, webp };
-enum class availableIntermediateFormats { png, bmp, jpg, jpeg, ppm };
 enum class pixelFormats { Auto, yuv420p, yuva420p, rgb24, rgba, bgr24, bgra, gray };
 
 enum class aviEncoders { Auto, mpeg2, mpeg4 };
@@ -65,7 +64,6 @@ struct defaultEncoders {
 QStringList const videoFormats{ "apng", "avi", "f4v", "flv", "gif", "mkv", "mov", "mp2", "mp4", "ogv", "swf", "webm", "webp"};
 QStringList const audioTargettable{ "avi", "mkv", "mov", "mp4", "webm"};
 QStringList const imageFormats{"bmp", "jpeg", "jpg", "png", "ppm", "xbm", "xpm", "tiff", "webp"};
-QStringList const intermediateImageFormats{"PNG", "BMP", "JPG", "JPEG", "PPM"};
 QStringList const pxFormats{"Auto", "yuv420p", "yuva420p", "rgb24", "rgba", "bgr24", "bgra", "gray"};
 QStringList const aviEnc{"Auto", "mpeg2", "mpeg4"};
 QStringList const mkvEnc{"Auto", "x264", "x265", "vp8", "vp9", "av1", "ffv1", "magicyuv", "huffyuv", "theora"};
@@ -93,7 +91,6 @@ struct GeneralParams {
     int fps = 24;
     int bitrate = 0;
     bool allowTransparency = true;
-    bool forcePipe = false;
     bool loop = true;
     bool exportWithAudio = false;
     bool useCustomParam = false;
@@ -113,7 +110,6 @@ struct GeneralParams {
 
 struct VideoParams {
     availableVideoFormats format = availableVideoFormats::gif;
-    availableIntermediateFormats intermediateFormat = availableIntermediateFormats::png;
     pixelFormats pixelFormat = pixelFormats::Auto;
     defaultEncoders encoders;
 };

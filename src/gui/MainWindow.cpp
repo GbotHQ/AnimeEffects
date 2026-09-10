@@ -1534,40 +1534,36 @@ void MainWindow::onExportTriggered() {
     // Get generics
     QVariant aspectRatioV = settings.value("export_aspect_ratio");
     if(!aspectRatioV.isValid()) { aspectRatioV.setValue(1); } // Aspect ratio = keep
-    QVariant intermediateTypeV = settings.value("export_intermediate_type");
     QVariant allowTransparencyV = settings.value("export_allow_transparency");
     if(!allowTransparencyV.isValid()) {allowTransparencyV.setValue(true); } // Allow transparency = true
     QVariant allowCustomParamV = settings.value("export_allow_params");
     QVariant allowInterParamV = settings.value("export_allow_param_inter");
     QVariant allowPostParamV = settings.value("export_allow_param_post");
     QVariant useCustomPaletteV = settings.value("export_custom_palette");
-    QVariant forcePipeV = settings.value("export_force_piped");
     QVariant loopAnimV = settings.value("export_loop_anim");
     QVariant exportWithAudioV = settings.value("export_allow_audio");
     // Initialize pointers to generics
     auto* aspectRatio = new int;
-    auto intermediateType = new int;
     auto allowTransparency = new bool;
     auto allowCustomParam = new bool;
     auto allowInterParam = new bool;
     auto allowPostParam = new bool;
     auto useCustomPalette = new bool;
-    auto forcePipe = new bool;
     auto loopAnim = new bool;
     auto exportWithAudio = new bool;
     // Gather initialized pointers into a vector
     QVector<QVariant *> intValues {
-        &aspectRatioV, &intermediateTypeV
+        &aspectRatioV
     };
     QVector<int *> intVariables {
-        aspectRatio, intermediateType
+        aspectRatio
     };
     QVector<QVariant *> boolValues {
-        &allowTransparencyV, &allowCustomParamV, &allowInterParamV, &allowPostParamV, &useCustomPaletteV, &forcePipeV,
+        &allowTransparencyV, &allowCustomParamV, &allowInterParamV, &allowPostParamV, &useCustomPaletteV,
         &loopAnimV, &exportWithAudioV
     };
     QVector<bool *> boolVariables {
-        allowTransparency, allowCustomParam, allowInterParam, allowPostParam, useCustomPalette, forcePipe, loopAnim,
+        allowTransparency, allowCustomParam, allowInterParam, allowPostParam, useCustomPalette, loopAnim,
         exportWithAudio
     };
     // Loop through the vectors and initialize their values
@@ -1609,9 +1605,7 @@ void MainWindow::onExportTriggered() {
         case 2: exportUI->customRatio->setChecked(true); break;
         default: break;
     }
-    exportUI->intermediateTypeCombo->setCurrentIndex(*intermediateType);
     exportUI->transparencyCheckBox->setChecked(*allowTransparency);
-    exportUI->forcePipeCheckBox->setChecked(*forcePipe);
     exportUI->loopCheckBox->setChecked(*loopAnim);
     exportUI->exportWithAudioCheckBox->setChecked(*exportWithAudio);
     exportUI->allowParamsCheckBox->setChecked(*allowCustomParam);
@@ -1717,8 +1711,6 @@ void MainWindow::onExportTriggered() {
     {
         updateSettings(&aspectRatioV, &settings, aspectRatioIndex,
                        "export_aspect_ratio");
-        updateSettings(&intermediateTypeV, &settings, exportUI->intermediateTypeCombo->currentIndex(),
-                       "export_intermediate_type");
         updateSettings(&allowTransparencyV, &settings, exportUI->transparencyCheckBox->isChecked(),
                        "export_allow_transparency");
         updateSettings(&allowCustomParamV, &settings, exportUI->allowParamsCheckBox->isChecked(),
@@ -1729,8 +1721,6 @@ void MainWindow::onExportTriggered() {
                        "export_allow_param_post");
         updateSettings(&useCustomPaletteV, &settings, exportUI->customPaletteCheckBox->isChecked(),
                        "export_custom_palette");
-        updateSettings(&forcePipeV, &settings, exportUI->forcePipeCheckBox->isChecked(),
-                       "export_force_piped");
         updateSettings(&loopAnimV, &settings, exportUI->loopCheckBox->isChecked(),
                        "export_loop_anim");
         updateSettings(&exportWithAudioV, &settings, exportUI->exportWithAudioCheckBox->isChecked(),
@@ -1809,7 +1799,6 @@ void MainWindow::onExportTriggered() {
             ? exportUI->bitrateLineEdit->text().toInt() : -1;
     genParam.imageExportQuality = exportUI->imageQualitySpinbox->value();
     genParam.allowTransparency = exportUI->transparencyCheckBox->isChecked();
-    genParam.forcePipe = exportUI->forcePipeCheckBox->isChecked();
     genParam.loop = exportUI->loopCheckBox->isChecked();
     genParam.exportWithAudio = exportUI->exportWithAudioCheckBox->isChecked();
     genParam.useCustomParam = exportUI->allowParamsCheckBox->isChecked();
@@ -1842,9 +1831,6 @@ void MainWindow::onExportTriggered() {
     if(exportUI->exportTypeCombo->currentIndex() == 0){ exParam->exportType = exportTarget::video; }
     else{ exParam->exportType = exportTarget::image; }
     if(exParam->exportType == exportTarget::video){
-        exParam->videoParams.intermediateFormat = static_cast<availableIntermediateFormats>(
-            exportUI->intermediateTypeCombo->currentIndex()
-            );
         // No pixel format or per-container encoder is collected any more: a
         // destination decides both. They stay at their defaults, which is exactly
         // what they resolved to before, because getFormatAsInt() returned 0 for
@@ -1963,7 +1949,6 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
     genParam.bitrate = 0;
     genParam.imageExportQuality = 100;
     genParam.allowTransparency = aFormat.contains("_t") || aFormat == "png";
-    genParam.forcePipe = false;
     genParam.loop = true;
     genParam.exportWithAudio = !mCurrent->pConf->empty();
     genParam.useCustomParam = false;
@@ -1995,11 +1980,6 @@ void MainWindow::onQuickExportTriggered(const QString& aFormat) {
         }
         else if (aFormat.contains("webm")) {
             vid.format = availableVideoFormats::webm;
-        }
-        if (!genParam.allowTransparency)
-            vid.intermediateFormat = availableIntermediateFormats::ppm;
-        else {
-            vid.intermediateFormat = availableIntermediateFormats::png;
         }
     }
     // Export parameters
