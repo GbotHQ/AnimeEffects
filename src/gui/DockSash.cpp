@@ -30,10 +30,16 @@ constexpr int kAdjacentSlack = 2;
 
 /// One resizable seam: the line, what it resizes, and which way.
 struct Boundary {
-    /// The slot's panels: resizing acts through the first one on screen, and a
-    /// collapse hides them all - a slot collapses, not the tab that happened to
-    /// be active in it.
+    /// The slot's panels: a collapse hides them all - a slot collapses, not the
+    /// tab that happened to be active in it.
     QVector<QDockWidget*> subjects;
+    /// The panel the resize acts through, which has to be one that is *on screen*.
+    /// A group keeps its inactive tabs parked off-screen, still reporting a size,
+    /// and resizeDocks on one of those does nothing at all (measured: with the
+    /// animation panel tabbed onto the properties one, the seam led with the
+    /// parked properties dock and a 120px drag left it at 340 - the size range
+    /// applied, the resize itself silently dropped).
+    QDockWidget* lead = nullptr;
     QDockWidget* partner = nullptr;  ///< what absorbs it, null for the central widget
     Qt::Orientation axis = Qt::Horizontal; ///< Horizontal: the drag changes widths
     int sign = 1;                    ///< +1 if the subject grows with the coordinate
@@ -113,7 +119,9 @@ public:
         return mBoundary.subjects == aSubjects && mBoundary.partner == aPartner
                 && mBoundary.axis == aAxis;
     }
-    QDockWidget* lead() const { return mBoundary.subjects.value(0); }
+    QDockWidget* lead() const {
+        return mBoundary.lead ? mBoundary.lead : mBoundary.subjects.value(0);
+    }
 
 protected:
     void paintEvent(QPaintEvent*) override {
@@ -320,6 +328,7 @@ void DockSash::relayout() {
 
         Boundary boundary;
         boundary.subjects = slot.panels;
+        boundary.lead = slot.onScreen.first();
         boundary.partner = nullptr;
         switch (slot.area) {
         case Qt::LeftDockWidgetArea:
@@ -368,6 +377,7 @@ void DockSash::relayout() {
 
                 Boundary between;
                 between.subjects = {slot.onScreen[i]};
+                between.lead = slot.onScreen[i];
                 between.partner = slot.onScreen[j];
                 bool found = false;
                 if (vBottom > vTop) {
@@ -430,6 +440,24 @@ void DockSash::relayout() {
         // a hitbox whose slot was just collapsed stays where it is for the rest
         // of the drag, so the slot can be dragged back out (see isDragging)
         if (!mHitBoxes[i]->isDragging()) mHitBoxes[i]->hide();
+    }
+
+    // Temporary: what the seam pass actually produced - the geometry a press has
+    // to land in, and what each seam resizes. "Handles are missing" is a claim
+    // about this list, so the list has to be readable instead of inferred from
+    // pressing at guessed coordinates.
+    if (qEnvironmentVariableIsSet("AE_DOCK_SASH_PROBE")) {
+        dockSpikeLog(nullptr, QStringLiteral("sash: %1 boundaries -> %2 hitboxes")
+                .arg(boundaries.size()).arg(mHitBoxes.size()));
+        for (int i = 0; i < mHitBoxes.size(); ++i) {
+            const QRect g = mHitBoxes[i]->geometry();
+            const QDockWidget* lead = mHitBoxes[i]->lead();
+            dockSpikeLog(lead, QStringLiteral("sash: #%1 %2 lead=%3 size=%4x%5 box=%6,%7 %8x%9")
+                    .arg(i).arg(taken[i] ? QStringLiteral("shown") : QStringLiteral("unused"))
+                    .arg(lead ? lead->objectName() : QStringLiteral("-"))
+                    .arg(lead ? lead->width() : -1).arg(lead ? lead->height() : -1)
+                    .arg(g.x()).arg(g.y()).arg(g.width()).arg(g.height()));
+        }
     }
 }
 

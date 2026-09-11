@@ -49,7 +49,14 @@ QString ProjectTabBar::getTabName(const core::Project& aProject) const {
 /// ring), so nothing else keeps the two in step - and a fixed 16x16 in a tab the
 /// style made smaller is what put it off-centre.
 void ProjectTabBar::syncCloseButtonSizes() {
-    const int side = qMax(10, this->tabRect(0).height() - 6);
+    // Both heights are explicit and both come from the one number the style sets
+    // for a tab: the bar is exactly as tall as its tabs - it used to be a
+    // hard-coded 18px against 1.125em tabs, which is why the tabs overflowed it -
+    // and the close button fits inside that height rather than overhanging it.
+    const int tabHeight = this->tabRect(0).height();
+    if (tabHeight > 0 && this->height() != tabHeight) this->setFixedHeight(tabHeight);
+
+    const int side = qMax(8, tabHeight - 4);
     for (auto* button : mCloseButtons) {
         if (button && button->width() != side) button->setFixedSize(side, side);
     }
@@ -70,6 +77,11 @@ void ProjectTabBar::onTabMoved(int aFrom, int aTo) {
         QStringList order;
         for (int i = 0; i < count(); ++i) order << tabText(i);
         qWarning("tab order: %s", qPrintable(order.join(QStringLiteral(" | "))));
+        const QRect tab = this->tabRect(0);
+        QWidget* button = mCloseButtons.isEmpty() ? nullptr : mCloseButtons.first();
+        qWarning("tab geometry: bar=%dx%d tab=%d,%d %dx%d button=%dx%d",
+                 width(), height(), tab.x(), tab.y(), tab.width(), tab.height(),
+                 button ? button->width() : -1, button ? button->height() : -1);
     }
     this->update();
 }

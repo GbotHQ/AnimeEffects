@@ -295,10 +295,17 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     // by tabbing its panel onto the right one.
     for (const DockSlot& slot : dockSlots(*mWindow)) {
         if (slot.onScreen.isEmpty()) continue;
-        // dropping a docked panel back into the slot it already occupies is a
-        // no-op, so it is not a target
-        if (mPanel && !mPanel->isFloating() && slot.panels.contains(mPanel)) return target;
         if (!slot.rect.contains(aPos)) continue;
+        // Dropping a docked panel back into the slot it already occupies is a
+        // no-op, so it is not a target - but that only holds for a pointer that is
+        // actually over that slot. Asked *before* the containment test, this
+        // returned "no target" for every position as soon as the dragged panel
+        // belonged to any on-screen slot, which is every docked panel: measured,
+        // dragging the tools title onto the bottom band logged no target line at
+        // all, dropped with kind=0 and left the layout untouched. Docking a docked
+        // panel was impossible, and an emptied area - having no slot to be skipped
+        // - could not be dropped into either.
+        if (mPanel && !mPanel->isFloating() && slot.panels.contains(mPanel)) return target;
 
         const int bandX = qMax(1, int(slot.rect.width() * kGroupMiddleBand));
         const int bandY = qMax(1, int(slot.rect.height() * kGroupMiddleBand));

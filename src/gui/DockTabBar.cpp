@@ -92,25 +92,27 @@ QDockWidget* DockTabBarFilter::dockForTab(int aIndex) const {
     return nullptr;
 }
 
+bool DockTabBarFilter::isTitleRow() const {
+    return mBar && qobject_cast<QDockWidget*>(mBar->parentWidget()) != nullptr;
+}
+
 QRect DockTabBarFilter::railRect() const {
     // The rail is the bar itself, plus a couple of pixels of slack so that
     // nudging a tab a hair past the row's edge does not start docking.
     return mBar->rect().adjusted(-2, -2, 2, 2);
 }
 
-void DockTabBarFilter::reorderTo(int aIndex) {
+void DockTabBarFilter::commitRailOrder() {
     auto* window = mBar ? qobject_cast<QMainWindow*>(mBar->window()) : nullptr;
-    if (!window || !mPressed) return;
+    if (!window || mBar->count() < 2) return;
 
     // The group in rail order, as docks.
     QVector<QDockWidget*> order;
     for (int i = 0; i < mBar->count(); ++i) {
         if (QDockWidget* dock = dockForTab(i)) order.push_back(dock);
     }
-    const int from = order.indexOf(mPressed);
-    if (from < 0 || aIndex < 0 || aIndex >= order.size() || aIndex == from) return;
+    if (order.size() < 2) return;
 
-    order.move(from, aIndex);
     // tabifyDockWidget puts a dock at the *end* of the rail, whatever the anchor
     // (measured: tools<-properties gave Tools|Properties, tools<-animation gave
     // Tools|Properties|Animation, animation<-tools gave Properties|Animation|Tools).
@@ -118,20 +120,16 @@ void DockTabBarFilter::reorderTo(int aIndex) {
     // end, then the one before it, and so on - each lands in front of the ones
     // already placed. Moving them front-to-back instead puts the first wanted tab
     // at the end and undoes the lot.
-    // Stops before the first wanted tab: moving the last wanted tab to the end,
-    // then the one before it, and so on, leaves each in front of the ones already
-    // placed - so the first is first by elimination, and moving it as well would
-    // put it at the end and undo the arrangement.
-    for (int i = order.size() - 1; i >= 1; --i) {
-        QDockWidget* anchor = order.at(0);
-        if (anchor != order.at(i)) window->tabifyDockWidget(anchor, order.at(i));
-    }
-    mPressed->raise();
+    for (int i = order.size() - 1; i >= 1; --i)
+        window->tabifyDockWidget(order.at(0), order.at(i));
+    // The dragged tab is the one the user was working on and the one Qt activated
+    // on press, so it stays the visible panel: re-tabifying raises whatever it
+    // moved last, which would otherwise flip the group to another panel on release.
+    if (mPressed) mPressed->raise();
 
     QStringList rail;
     for (int i = 0; i < mBar->count(); ++i) rail << mBar->tabText(i);
-    log(QStringLiteral("rail reorder -> %1 at %2, rail now: %3")
-            .arg(mPressed->objectName()).arg(aIndex).arg(rail.join(QStringLiteral(" | "))));
+    log(QStringLiteral("rail order committed: %1").arg(rail.join(QStringLiteral(" | "))));
 }
 
 bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
@@ -156,12 +154,26 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
             // is what this did - left no way to reorder a tab at all.
             mPressed = dock;
             mRailDrag = true;
+            mTabIndex = index;
+            mMovedTab = false;
             log(QStringLiteral("tab press pos=%1,%2 tab=%3 (%4) floating=%5 -> rail drag")
                     .arg(mPressPos.x()).arg(mPressPos.y()).arg(index).arg(dock->objectName())
                     .arg(dock->isFloating()));
-        } else if (dock && dock->isFloating()) {
-            // the rail's empty space past the last tab: the window's own bar
+        } else if (dock && !dock->isFloating() && isTitleRow()) {
+            // The rest of a lone panel's title row, which is all of it but the tab
+            // text: one tab reads as the title, so the row is the panel's handle
+            // and not a tab strip with dead space in it. Measured before this: the
+            // only interactive part was tabRect(0), local x 8..78, so 65% of the
+            // tools title row and 93% of the animation one did nothing on a drag -
+            // which is "dragging the tabs does not initiate docking any more".
+            mPressed = dock;
             mDockDragArmed = true;
+            log(QStringLiteral("title row press pos=%1,%2 -> dock drag armed")
+                    .arg(mPressPos.x()).arg(mPressPos.y()));
+        } else if (dock && dock->isFloating()) {
+            // The rail's empty space past the last tab is window chrome: it moves
+            // the window (see MouseMove) instead of starting a docking drag, which
+            // is what makes a floating panel readable as a window.
             log(QStringLiteral("rail press pos=%1,%2 -> window move").arg(mPressPos.x()).arg(mPressPos.y()));
         }
         break;
@@ -174,14 +186,27 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
 
         if (mRailDrag && mPressed) {
             if (railRect().contains(pos)) {
-                // still in the rail: this is a reorder, not a docking gesture
+                // Still in the rail: this is a reorder, not a docking gesture, and
+                // it is a *visual* one - moveTab shifts the item inside the bar and
+                // touches nothing else. The group's real order is committed once,
+                // on release. Re-tabifying on every move, which is what this did,
+                // re-parents docks and re-lays out the whole area per pixel of the
+                // drag: that is what the tab snapping is.
                 const int target = mBar->tabAt(pos);
-                if (target >= 0) reorderTo(target);
+                if (target >= 0 && target != mTabIndex) {
+                    mBar->moveTab(mTabIndex, target);
+                    mTabIndex = target;
+                    mMovedTab = true;
+                }
                 mPressPos = pos;
                 return true;
             }
             // left the rail: docking takes over, and it is the same drag a
-            // floating panel's title starts
+            // floating panel's title starts. The reorder the user has already made
+            // is committed first, so the tabs left behind keep the order they are
+            // shown in instead of reverting when the layout next re-syncs the bar.
+            if (mMovedTab) commitRailOrder();
+            mMovedTab = false;
             mRailDrag = false;
             const bool docked = mPressed;
             log(QStringLiteral("left the rail -> dock drag"));
@@ -211,9 +236,13 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
         break;
     }
     case QEvent::MouseButtonRelease:
+        // the one place the layout is told about a reorder
+        if (mRailDrag && mMovedTab) commitRailOrder();
         mDockDragArmed = false;
         mMoving = false;
         mRailDrag = false;
+        mMovedTab = false;
+        mTabIndex = -1;
         mPressed = nullptr;
         break;
     case QEvent::MouseButtonDblClick: {

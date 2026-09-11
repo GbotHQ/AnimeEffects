@@ -248,11 +248,11 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
         mDockPropertyWidget = dockWidget;
 
-        // Panel width budget: min = default = 320 (everything fits; the
-        // fields cap at 70% of the column), max = 2x min - a wider dock
-        // would just stretch empty space.
-        dockWidget->setMinimumWidth(320);
-        dockWidget->setMaximumWidth(640);
+        // No size range is set here: the panel's range is its *area's*, applied by
+        // applyPanelMetrics, which clears and re-applies it on every layout pass.
+        // The 320/640 that used to sit here was therefore overwritten at the first
+        // pass and only misled: every slot is 200..640 wide, and the rank of
+        // panels in it cannot change that.
 
 #if 0
         mProperty = new PropertyWidget(mViaPoint, splitter, &mGUIResources);
@@ -508,6 +508,31 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->isVisible() : false)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->width() : -1)
                     .arg(mDockPropertyWidget->titleBarWidget() ? mDockPropertyWidget->titleBarWidget()->height() : -1));
+        });
+    }
+
+    // Temporary: where each panel's minimum actually comes from. A slot has one
+    // size range (DockMetrics), so the panels in it must not be able to widen that
+    // range through their content - and "the range seems to be based on the tabs in
+    // it" is a claim about these four numbers.
+    if (qEnvironmentVariableIsSet("AE_DOCK_MIN_PROBE")) {
+        QTimer::singleShot(1200, this, [this]() {
+            for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+                if (!dock) continue;
+                QWidget* content = dock->widget();
+                dockSpikeLog(dock, QStringLiteral("min: area=%1 explicitMin=%2x%3 explicitMax=%4x%5 "
+                                                  "minHint=%6x%7 size=%8x%9 contentMin=%10x%11 "
+                                                  "contentMinHint=%12x%13")
+                        .arg(int(this->dockWidgetArea(dock)))
+                        .arg(dock->minimumWidth()).arg(dock->minimumHeight())
+                        .arg(dock->maximumWidth()).arg(dock->maximumHeight())
+                        .arg(dock->minimumSizeHint().width()).arg(dock->minimumSizeHint().height())
+                        .arg(dock->width()).arg(dock->height())
+                        .arg(content ? content->minimumWidth() : -1)
+                        .arg(content ? content->minimumHeight() : -1)
+                        .arg(content ? content->minimumSizeHint().width() : -1)
+                        .arg(content ? content->minimumSizeHint().height() : -1));
+            }
         });
     }
 
@@ -2251,11 +2276,18 @@ void MainWindow::updateDockTabMenus() {
         // bar (both are QTabBars named dockTabBar), and one filter gives both the
         // same gestures.
         bar->setObjectName(QStringLiteral("dockTabBar"));
-        // The rail belongs to the slot rather than to any panel in it, so it says
+        // A rail belongs to the slot rather than to any panel in it, so it says
         // which area it is the chrome of - the slot model reads this to include
         // the rail in the slot's extent (without it the seam stopped at the tabs).
-        if (QDockWidget* first = dockForTabTitle(bar->count() > 0 ? bar->tabText(0) : QString()))
-            bar->setProperty("aeDockArea", int(this->dockWidgetArea(first)));
+        // Only Qt's own bar is a rail: a lone panel's title row is one of ours,
+        // lives inside the dock it titles, and reports its geometry in that dock's
+        // coordinates, so calling it a rail mixed two coordinate spaces into the
+        // slot rect (see DockSlots). The property is kept honest here rather than
+        // merely unset, because a panel adopted as a title row can join a group
+        // later, and a leftover area would name it a rail again.
+        const bool isRail = qobject_cast<DockTabBar*>(bar) == nullptr;
+        QDockWidget* first = dockForTabTitle(bar->count() > 0 ? bar->tabText(0) : QString());
+        bar->setProperty("aeDockArea", isRail && first ? int(this->dockWidgetArea(first)) : -1);
         // Naming it is not enough: a style sheet rule is matched when the widget
         // is polished, so a bar that Qt creates mid-session (a group made by
         // dragging a panel onto another) kept Qt's own look while the same bar
@@ -2314,6 +2346,24 @@ void MainWindow::applyPanelMetrics(QDockWidget* aDock) {
     aDock->setMinimumSize(0, 0);
     aDock->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
     if (floating) return;
+
+    // A slot has one size range, and the panels in it must not be able to widen
+    // that range through their contents. Setting the dock's minimum is not enough:
+    // a widget's effective minimum is max(its explicit minimum, its
+    // minimumSizeHint) - qSmartMinSize - so an explicit 200 only raises a floor the
+    // content can still set. Measured, one panel per area: the animation panel's
+    // content reported a 278px minimum width, so any slot holding that panel could
+    // never be dragged below 278 however the slot's own range was set, which is
+    // exactly "the slot min/max seems to be based on the tabs in it".
+    //
+    // Ignoring the content's size hint is Qt's way of saying the hint must not
+    // constrain the sizes at all: a docked panel is a tiled pane, its range comes
+    // from the area (below) and the layout, and its content is expected to fit
+    // itself or be clipped. Leaving one axis to the content is what lets a panel
+    // drag a floor into the window's own minimum - an 800px-wide timeline would
+    // stop the window from ever being narrowed.
+    if (QWidget* content = aDock->widget())
+        content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     if (side) {
         aDock->setMinimumWidth(dockMetrics::kMinWidth);
