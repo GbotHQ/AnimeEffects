@@ -118,8 +118,11 @@ public:
 
     struct GifParam {
         GifParam();
-        bool optimizePalette;   // legacy no-op (the in-process encoder always builds a palette)
-        int intermediateBps;    // legacy no-op
+        // NOTE: the legacy `optimizePalette` / `intermediateBps` fields are gone.
+        // They addressed the ffmpeg CLI subprocess (its palettegen pass and the
+        // intermediate bitrate of a two-pass encode); media::GifEncoder has no
+        // pass structure to configure, so both were written by the caller and read
+        // by nothing. A parameter that cannot affect the output is not a setting.
         QString palettePath;    // optional PNG palette (pixels are the colors); empty = adaptive
         bool transparent = false; // honor alpha (reserve a transparent palette entry)
     };

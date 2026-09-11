@@ -335,7 +335,6 @@ int main(int argc, char** argv) {
         ctrl::Exporter::CommonParam cp;
         cp.path = gPath; cp.size = small; cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::GifParam gp;
-        gp.optimizePalette = true; gp.intermediateBps = 0;
         auto r = ex->execute(cp, gp);
         check((bool)r, "e2e gif: export succeeds (in-process GifEncoder)");
         check(QFile::exists(gPath) && QFile(gPath).size() > 0, "e2e gif: file exists + non-empty");

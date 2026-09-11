@@ -1552,8 +1552,6 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     if (isGif) {
         ctrl::Exporter::GifParam gparam;
         cparam.path = g.osExportTarget;
-        gparam.optimizePalette = true;  // legacy no-op; the in-process encoder always builds a palette
-        gparam.intermediateBps = 0;
         // Custom palette: the UI collects a PNG whose pixels ARE the palette
         // (the paletteuse convention). Feed it to the encoder; otherwise it
         // builds an adaptive palette from the rendered frames.

@@ -78,11 +78,12 @@ struct GeneralParams {
     bool exportWithAudio = false;
     bool useCustomPalette = false;
     QDir palettePath = QDir();
+    // Which frames, as the ranges the dialog collected. This is the ONLY frame
+    // selection: the old single-count inputs (`framesToBeExported`, plus the
+    // `exportAllFrames` / `exportToLast` flags that chose between them) were
+    // carried here and read by nothing for as long as the ranges have existed.
     QVector<frameExportRange> exportRange = QVector<frameExportRange>();
-    QVector<int> framesToBeExported = QVector<int>();
     frameExportRange nativeFrameRange = frameExportRange();
-    bool exportAllFrames = false;
-    bool exportToLast = false;
     int imageExportQuality = -1;
 };
 

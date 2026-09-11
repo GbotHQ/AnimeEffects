@@ -37,7 +37,7 @@ bool Exporter::CommonParam::isValid() const {
 Exporter::ImageParam::ImageParam(): name(), suffix("png"), quality(-1) {}
 
 //-------------------------------------------------------------------------------------------------
-Exporter::GifParam::GifParam(): optimizePalette(), intermediateBps() {
+Exporter::GifParam::GifParam() {
     // palettePath defaults to empty (adaptive palette).
 }
 
