@@ -5,6 +5,8 @@
 #include <QHoverEvent>
 #include "gui/ProjectTabBar.h"
 
+#include "gui/DockTabBar.h" // temporary: dockSpikeLog
+
 namespace gui {
 
 
@@ -76,12 +78,13 @@ void ProjectTabBar::onTabMoved(int aFrom, int aTo) {
     if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG")) {
         QStringList order;
         for (int i = 0; i < count(); ++i) order << tabText(i);
-        qWarning("tab order: %s", qPrintable(order.join(QStringLiteral(" | "))));
+        dockSpikeLog(nullptr, QStringLiteral("tabs: order now %1").arg(order.join(QStringLiteral(" | "))));
         const QRect tab = this->tabRect(0);
         QWidget* button = mCloseButtons.isEmpty() ? nullptr : mCloseButtons.first();
-        qWarning("tab geometry: bar=%dx%d tab=%d,%d %dx%d button=%dx%d",
-                 width(), height(), tab.x(), tab.y(), tab.width(), tab.height(),
-                 button ? button->width() : -1, button ? button->height() : -1);
+        dockSpikeLog(nullptr, QStringLiteral("tabs: bar=%1x%2 tab=%3,%4 %5x%6 button=%7x%8")
+                .arg(width()).arg(height()).arg(tab.x()).arg(tab.y())
+                .arg(tab.width()).arg(tab.height())
+                .arg(button ? button->width() : -1).arg(button ? button->height() : -1));
     }
     this->update();
 }
@@ -260,16 +263,17 @@ void ProjectTabBar::mousePressEvent(QMouseEvent* aEvent) {
         }
     }
     if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG")) {
-        qWarning("tab press at %d,%d -> tab %d movable=%d", int(aEvent->position().x()),
-                 int(aEvent->position().y()), this->tabAt(aEvent->position().toPoint()),
-                 int(this->isMovable()));
+        dockSpikeLog(nullptr, QStringLiteral("tabs: press at %1,%2 -> tab %3 movable=%4")
+                .arg(int(aEvent->position().x())).arg(int(aEvent->position().y()))
+                .arg(this->tabAt(aEvent->position().toPoint())).arg(this->isMovable()));
     }
     QTabBar::mousePressEvent(aEvent);
 }
 
 void ProjectTabBar::mouseMoveEvent(QMouseEvent* aEvent) {
     if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG") && (aEvent->buttons() & Qt::LeftButton)) {
-        qWarning("tab drag move at %d,%d", int(aEvent->position().x()), int(aEvent->position().y()));
+        dockSpikeLog(nullptr, QStringLiteral("tabs: drag move at %1,%2")
+                .arg(int(aEvent->position().x())).arg(int(aEvent->position().y())));
     }
     QTabBar::mouseMoveEvent(aEvent);
 }

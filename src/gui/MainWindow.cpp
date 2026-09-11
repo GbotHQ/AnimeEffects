@@ -511,6 +511,23 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         });
     }
 
+    // Temporary: the window's own minimum, which decides how much room a dock has
+    // to grow into - resizeDocks never resizes the window. Read late: the canvas
+    // does not exist yet when the layout first settles.
+    if (qEnvironmentVariableIsSet("AE_DOCK_MIN_PROBE")) {
+        QTimer::singleShot(3500, this, [this]() {
+            if (QWidget* central = centralWidget()) {
+                dockSpikeLog(nullptr, QStringLiteral("min: window=%1x%2 windowMin=%3x%4 "
+                                                     "canvas=%5x%6 canvasMin=%7x%8")
+                        .arg(width()).arg(height())
+                        .arg(minimumSizeHint().width()).arg(minimumSizeHint().height())
+                        .arg(central->width()).arg(central->height())
+                        .arg(central->minimumSizeHint().width())
+                        .arg(central->minimumSizeHint().height()));
+            }
+        });
+    }
+
     // Temporary: where each panel's minimum actually comes from. A slot has one
     // size range (DockMetrics), so the panels in it must not be able to widen that
     // range through their content - and "the range seems to be based on the tabs in
