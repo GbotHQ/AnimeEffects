@@ -503,6 +503,35 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         });
     }
 
+    // Temporary: is re-tabifying a primitive for *reordering* a group's rail?
+    // Qt has no move-tab API for dock groups, and its bar's order comes from the
+    // group's children, so the only lever is tabifyDockWidget again.
+    if (qEnvironmentVariableIsSet("AE_DOCK_REORDER_PROBE")) {
+        QTimer::singleShot(900, this, [this]() {
+            const auto rail = [this](const char* aWhen) {
+                QStringList order;
+                for (QTabBar* bar : findChildren<QTabBar*>()) {
+                    if (bar->count() < 2) continue;
+                    for (int i = 0; i < bar->count(); ++i) order << bar->tabText(i);
+                }
+                dockSpikeLog(mDockToolWidget, QStringLiteral("rail %1: %2")
+                        .arg(QLatin1String(aWhen), order.join(QStringLiteral(" | "))));
+            };
+            tabifyDockWidget(mDockToolWidget, mDockPropertyWidget);
+            QTimer::singleShot(300, this, [this, rail]() {
+                rail("1. tools<-properties");
+                tabifyDockWidget(mDockToolWidget, mDockAnimationWidget);
+                QTimer::singleShot(300, this, [this, rail]() {
+                    rail("2. tools<-animation");
+                    tabifyDockWidget(mDockAnimationWidget, mDockToolWidget);
+                    QTimer::singleShot(300, this, [this, rail]() {
+                        rail("3. animation<-tools (tools to front?)");
+                    });
+                });
+            });
+        });
+    }
+
     // Temporary: does resizeDocks still work at all for a single side panel?
     if (qEnvironmentVariableIsSet("AE_DOCK_RESIZE_PROBE")) {
         const int wanted = qEnvironmentVariable("AE_DOCK_RESIZE_PROBE").toInt();

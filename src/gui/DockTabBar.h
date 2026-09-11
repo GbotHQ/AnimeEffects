@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QPoint>
+#include <QPointer>
 #include <QTabBar>
 
 class QDockWidget;
@@ -45,8 +46,10 @@ public:
  * The gestures every dock tab bar shares, installed by MainWindow on the panels'
  * own title bars and on the tab bars Qt builds for groups.
  *
- *  - dragging a tab starts the dock drag, so a panel is moved, split or tabbed
- *    from wherever its title is - alone, grouped, or floating;
+ *  - dragging a tab *inside the rail* moves the tab in the rail (the group's
+ *    order, which Qt's layout then keeps), and only once the pointer leaves the
+ *    rail does the dock drag start - the VS Code gesture, so a tab can be
+ *    reordered without a docking preview appearing whenever the pointer twitches;
  *  - dragging the row's empty space past the last tab moves a floating panel's
  *    window: the split Wayland forces, since a compositor move reports no
  *    positions and a drag cannot move a window;
@@ -66,13 +69,23 @@ private:
     /// The panel a tab belongs to: the bar's own dock for a panel's title row,
     /// and the dock named by the tab's text for a group's bar.
     QDockWidget* dockForTab(int aIndex) const;
+    /// The rail's rectangle: the band a tab drag has to leave before docking.
+    QRect railRect() const;
+    /// Moves the pressed tab to aIndex in the group's order, the only way Qt
+    /// offers: tabifyDockWidget puts a dock at the *end* of the rail, so an order
+    /// is built by moving docks to the end from last to first.
+    void reorderTo(int aIndex);
     void log(const QString& aMessage) const;
 
-    QTabBar* mBar;
+    /// Watched, not merely pointed at: Qt creates and destroys these bars as
+    /// groups come and go, and a reorder makes it rebuild one.
+    QPointer<QTabBar> mBar;
+    QDockWidget* mPressed = nullptr;
     QPoint mPressPos;
     bool mMoving = false;
     bool mDockDragArmed = false;
     bool mDragging = false;
+    bool mRailDrag = false;
 };
 
 } // namespace gui

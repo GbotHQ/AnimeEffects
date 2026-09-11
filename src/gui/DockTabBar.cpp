@@ -55,7 +55,7 @@ DockTabBar::DockTabBar(QDockWidget* aDock):
 DockTabBarFilter::DockTabBarFilter(QTabBar* aBar, QObject* aParent):
     QObject(aParent),
     mBar(aBar) {
-    mBar->installEventFilter(this);
+    if (mBar) mBar->installEventFilter(this);
 }
 
 QDockWidget* DockTabBarFilter::dockForTab(int aIndex) const {
@@ -72,8 +72,50 @@ QDockWidget* DockTabBarFilter::dockForTab(int aIndex) const {
     return nullptr;
 }
 
+QRect DockTabBarFilter::railRect() const {
+    // The rail is the bar itself, plus a couple of pixels of slack so that
+    // nudging a tab a hair past the row's edge does not start docking.
+    return mBar->rect().adjusted(-2, -2, 2, 2);
+}
+
+void DockTabBarFilter::reorderTo(int aIndex) {
+    auto* window = mBar ? qobject_cast<QMainWindow*>(mBar->window()) : nullptr;
+    if (!window || !mPressed) return;
+
+    // The group in rail order, as docks.
+    QVector<QDockWidget*> order;
+    for (int i = 0; i < mBar->count(); ++i) {
+        if (QDockWidget* dock = dockForTab(i)) order.push_back(dock);
+    }
+    const int from = order.indexOf(mPressed);
+    if (from < 0 || aIndex < 0 || aIndex >= order.size() || aIndex == from) return;
+
+    order.move(from, aIndex);
+    // tabifyDockWidget puts a dock at the *end* of the rail, whatever the anchor
+    // (measured: tools<-properties gave Tools|Properties, tools<-animation gave
+    // Tools|Properties|Animation, animation<-tools gave Properties|Animation|Tools).
+    // So the wanted order is built from the back: move the last wanted tab to the
+    // end, then the one before it, and so on - each lands in front of the ones
+    // already placed. Moving them front-to-back instead puts the first wanted tab
+    // at the end and undoes the lot.
+    // Stops before the first wanted tab: moving the last wanted tab to the end,
+    // then the one before it, and so on, leaves each in front of the ones already
+    // placed - so the first is first by elimination, and moving it as well would
+    // put it at the end and undo the arrangement.
+    for (int i = order.size() - 1; i >= 1; --i) {
+        QDockWidget* anchor = order.at(0);
+        if (anchor != order.at(i)) window->tabifyDockWidget(anchor, order.at(i));
+    }
+    mPressed->raise();
+
+    QStringList rail;
+    for (int i = 0; i < mBar->count(); ++i) rail << mBar->tabText(i);
+    log(QStringLiteral("rail reorder -> %1 at %2, rail now: %3")
+            .arg(mPressed->objectName()).arg(aIndex).arg(rail.join(QStringLiteral(" | "))));
+}
+
 bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
-    if (aObject != mBar) return QObject::eventFilter(aObject, aEvent);
+    if (!mBar || aObject != mBar) return QObject::eventFilter(aObject, aEvent);
 
     switch (aEvent->type()) {
     case QEvent::MouseButtonPress: {
@@ -81,16 +123,26 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
         if (e->button() != Qt::LeftButton) break;
         mPressPos = e->position().toPoint();
         mMoving = false;
+        mRailDrag = false;
+        mDockDragArmed = false;
+        mPressed = nullptr;
+
         const int index = mBar->tabAt(mPressPos);
-        // The tab is the handle; the row's empty space past the last tab is the
-        // window's, and only a floating panel has a window to move.
         QDockWidget* dock = dockForTab(index);
-        const bool floating = dock && dock->isFloating();
-        mDockDragArmed = (index >= 0) || (dock && !floating);
         if (index >= 0 && dock) {
-            log(QStringLiteral("tab press pos=%1,%2 tab=%3 (%4) floating=%5 -> dock drag armed")
+            // A press on a tab is a rail drag first: inside the rail it moves the
+            // tab, and docking starts only when the pointer leaves the rail (see
+            // MouseMove). Starting the dock drag on the first few pixels - which
+            // is what this did - left no way to reorder a tab at all.
+            mPressed = dock;
+            mRailDrag = true;
+            log(QStringLiteral("tab press pos=%1,%2 tab=%3 (%4) floating=%5 -> rail drag")
                     .arg(mPressPos.x()).arg(mPressPos.y()).arg(index).arg(dock->objectName())
-                    .arg(floating));
+                    .arg(dock->isFloating()));
+        } else if (dock && dock->isFloating()) {
+            // the rail's empty space past the last tab: the window's own bar
+            mDockDragArmed = true;
+            log(QStringLiteral("rail press pos=%1,%2 -> window move").arg(mPressPos.x()).arg(mPressPos.y()));
         }
         break;
     }
@@ -100,15 +152,28 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
         const QPoint pos = e->position().toPoint();
         if ((pos - mPressPos).manhattanLength() < QApplication::startDragDistance()) break;
 
+        if (mRailDrag && mPressed) {
+            if (railRect().contains(pos)) {
+                // still in the rail: this is a reorder, not a docking gesture
+                const int target = mBar->tabAt(pos);
+                if (target >= 0) reorderTo(target);
+                mPressPos = pos;
+                return true;
+            }
+            // left the rail: docking takes over, and it is the same drag a
+            // floating panel's title starts
+            mRailDrag = false;
+            const bool docked = mPressed;
+            log(QStringLiteral("left the rail -> dock drag"));
+            beginDockPanelDrag(mPressed, mBar);
+            mPressed = nullptr;
+            Q_UNUSED(docked);
+            return true;
+        }
+
         QDockWidget* dock = dockForTab(mBar->tabAt(mPressPos));
         if (!dock) break;
         if (mDockDragArmed && !mDragging) {
-            // Deferred by one event-loop turn, not started inside the filter:
-            // a QDrag begun from within another widget's event handling never
-            // tracked the pointer (measured: one drag-enter, no drag-moves, then
-            // action=0 - the drop was never offered to anything). Handing the
-            // drag its own turn is what a widget's own mouseMoveEvent would have
-            // had.
             mDockDragArmed = false;
             mDragging = true;
             QMetaObject::invokeMethod(this, [this, dock]() {
@@ -128,6 +193,8 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
     case QEvent::MouseButtonRelease:
         mDockDragArmed = false;
         mMoving = false;
+        mRailDrag = false;
+        mPressed = nullptr;
         break;
     case QEvent::MouseButtonDblClick: {
         auto* e = static_cast<QMouseEvent*>(aEvent);
