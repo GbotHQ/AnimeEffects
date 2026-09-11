@@ -145,42 +145,25 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     const QSize hint = previewSize(mPanel, mWindow, sideTarget);
     const QRect window = mWindow->rect();
 
-    QRect occupied;
-    // What each area holds, and the region the areas tile between them. An empty
-    // area's slice is measured against the tiled region rather than against the
-    // canvas, because an area takes the window's own edge: measured, dropping onto
-    // an empty right column - with the timeline across the bottom, so the canvas
-    // stopped well above the window's bottom - previewed a band only as tall as the
-    // canvas while the drop gave the column the full window height.
+    // What each area holds, and the region the areas tile between them, from the
+    // slot model rather than from the docks: a slot is the one thing that knows an
+    // area's real extent (its rail included) and which of its panels are on screen,
+    // where a raw dock either reports a size while parked off-screen or leaves out
+    // the rail its group's tabs live in - measured, the second of those put an
+    // area preview 28px taller than the slot that landed.
     QRect eachArea[int(Qt::BottomDockWidgetArea) + 1];
     QRect dockRegion = aCanvas;
-    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-        if (!dock->isVisible() || dock->isFloating()) continue;
-        const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
-        if (area == Qt::NoDockWidgetArea) continue;
-        const QRect group = groupRect(dock);
-        dockRegion = dockRegion.united(group);
-        eachArea[int(area)] = eachArea[int(area)].isNull() ? group
-                                                          : eachArea[int(area)].united(group);
+    QRect occupied;
+    for (const DockSlot& slot : dockSlots(*mWindow)) {
+        if (slot.onScreen.isEmpty()) continue;
+        eachArea[int(slot.area)] = eachArea[int(slot.area)].isNull()
+                ? slot.rect : eachArea[int(slot.area)].united(slot.rect);
+        dockRegion = dockRegion.united(slot.rect);
     }
-    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-        if (!dock->isVisible() || dock->isFloating()) continue;
-        if (mWindow->dockWidgetArea(dock) != aTarget.area) continue;
-        const QRect group = groupRect(dock);
-        occupied = occupied.isNull() ? group : occupied.united(group);
-    }
+    occupied = eachArea[int(aTarget.area)];
 
-    // How much width a side area takes, for the corner arithmetic below.
-    const auto sideWidth = [this, &window](Qt::DockWidgetArea aArea) {
-        for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-                if (dock->isFloating()) continue;
-            if (mWindow->dockWidgetArea(dock) != aArea) continue;
-            if (!occupiesScreen(dock, window)) continue;
-            return aArea == Qt::LeftDockWidgetArea ? dock->geometry().right() + 1
-                                                   : window.right() + 1 - dock->geometry().left();
-        }
-        return 0;
-    };
+    // Which area holds each corner: that is what decides whether an area's band runs
+    // the whole way to the window's edge or stops where its neighbour's column does.
     const bool leftOwnsBottom = mWindow->corner(Qt::BottomLeftCorner) == Qt::LeftDockWidgetArea;
     const bool rightOwnsBottom = mWindow->corner(Qt::BottomRightCorner) == Qt::RightDockWidgetArea;
     const bool leftOwnsTop = mWindow->corner(Qt::TopLeftCorner) == Qt::LeftDockWidgetArea;
@@ -199,7 +182,6 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     // full height.
     const auto spanFor = [&](Qt::DockWidgetArea aArea) -> QPair<int, int> {
         const bool vertical = aArea == Qt::LeftDockWidgetArea || aArea == Qt::RightDockWidgetArea;
-        const bool firstSide = aArea == Qt::LeftDockWidgetArea || aArea == Qt::TopDockWidgetArea;
         int low = vertical ? dockRegion.top() : dockRegion.left();
         int high = vertical ? dockRegion.bottom() : dockRegion.right();
         // does the neighbouring area hold the corner this span starts from / ends at?
@@ -233,7 +215,6 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
                 high = qMin(high, eachArea[int(highArea)].left() - 1);
             }
         }
-        Q_UNUSED(firstSide);
         return QPair<int, int>(low, qMax(low, high));
     };
 
@@ -284,31 +265,18 @@ void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource, const DockDragIma
     mime->setData(QString::fromLatin1(DockDropOverlay::mimeType()), aPanel->objectName().toUtf8());
     drag->setMimeData(mime);
 
-    // The drag image is the tab the gesture started from, so the feedback is
-    // "this tab is being carried". A panel's own snapshot is the fallback for a
-    // drag that began somewhere other than a tab.
+    // The drag image is the tab the gesture started from, and the overlay draws it
+    // (see DockDropOverlay::mDragImage). Deliberately not QDrag::setPixmap: that
+    // hands the image to the platform, whose compositor may or may not put it on
+    // screen - on Wayland it does not - and where it does work it would double the
+    // ghost the overlay already draws.
     //
-    // The relay matters here as much as the image: Qt's dock tab bar is movable,
-    // so while the pointer is still inside the rail Qt draws its own floating
-    // copy of the grabbed tab and follows the cursor with it. That copy is a child
-    // of the bar and is clipped by it, so the moment the pointer leaves the rail
-    // it disappears - and this pixmap is what takes over, at the same size and at
-    // the same offset inside the tab, so the tab appears to keep moving with the
-    // pointer instead of vanishing at the rail's edge.
-    if (!aImage.pixmap.isNull()) {
-        drag->setPixmap(aImage.pixmap);
-        drag->setHotSpot(aImage.hotSpot);
-    } else {
-        const QPixmap shot = aPanel->grab();
-        if (!shot.isNull()) {
-            const QPixmap ghost = shot.scaledToWidth(qBound(160, shot.width() / 3, 360),
-                                                     Qt::SmoothTransformation);
-            drag->setPixmap(ghost);
-            drag->setHotSpot(QPoint(ghost.width() / 2, qMin(12, ghost.height() / 4)));
-        }
-    }
-
-    if (overlay) overlay->beginDrag(aPanel);
+    // What this replaces was Qt's own copy: the dock tab bar is movable, so while
+    // the pointer is still inside the rail Qt floats a copy of the grabbed tab and
+    // follows the cursor with it, but that copy is a child of the bar and is
+    // clipped by it, so it vanishes the moment the pointer leaves the rail. The
+    // overlay takes over at that point, at the same offset inside the tab.
+    if (overlay) overlay->beginDrag(aPanel, aImage);
     dockSpikeLog(aPanel, QStringLiteral("drag started (ghost %1x%2)")
             .arg(drag->pixmap().width()).arg(drag->pixmap().height()));
     const Qt::DropAction result = drag->exec(Qt::MoveAction);
@@ -354,9 +322,11 @@ DockDropOverlay* DockDropOverlay::forPanel(QDockWidget* aPanel) {
     return forWidget(aPanel);
 }
 
-void DockDropOverlay::beginDrag(QDockWidget* aPanel) {
+void DockDropOverlay::beginDrag(QDockWidget* aPanel, const DockDragImage& aImage) {
     mPanel = aPanel;
     mTarget = DockDropTarget();
+    mDragImage = aImage;
+    mHavePointer = false;
     if (mWindow) setGeometry(mWindow->rect());
 
     raise();
@@ -368,6 +338,8 @@ void DockDropOverlay::beginDrag(QDockWidget* aPanel) {
 void DockDropOverlay::endDrag() {
     mPanel = nullptr;
     mTarget = DockDropTarget();
+    mDragImage = DockDragImage();
+    mHavePointer = false;
     hide();
 }
 
@@ -490,6 +462,8 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
 }
 
 DockDropTarget DockDropOverlay::hover(const QPoint& aPos) {
+    mPointer = aPos;
+    mHavePointer = true;
     const DockDropTarget previous = mTarget;
     mTarget = resolve(aPos);
     if (mTarget.kind != previous.kind || mTarget.area != previous.area
@@ -517,28 +491,40 @@ QDockWidget* DockDropOverlay::panelFromMime(const QMimeData* aData) const {
 
 
 void DockDropOverlay::paintEvent(QPaintEvent*) {
-    // The feedback is a region, not a dock. A real dock placed by the layout
-    // would be exact by construction - that is how this started - but placing
-    // one restructures the window while the drag is in flight, and that ends the
-    // drag: measured, the drop stopped being delivered at all (the moves tracked
-    // the pointer, then the release produced a leave with action=0), while the
-    // same drag drops correctly with no preview placed. So the region is
-    // computed, from the rule the placement follows, and checked against the
-    // settled geometry.
-    if (mTarget.kind == DockDropKind::None || mTarget.rect.isEmpty()) return;
-
-    const theme::Colors c = theme::Colors::current();
-    QColor fill = c.accent;
-    fill.setAlpha(70);
     QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-    const QRectF area = QRectF(mTarget.rect).adjusted(0.5, 0.5, -0.5, -0.5);
-    QPainterPath path;
-    path.addRoundedRect(area, 4, 4);
-    p.fillPath(path, fill);
-    p.setPen(QPen(c.accent, 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawPath(path);
+
+    // Where it would land, if anywhere: nothing to draw for "nowhere", which is
+    // itself the answer.
+    //
+    // The feedback is a region, not a dock. A real dock placed by the layout would
+    // be exact by construction - that is how this started - but placing one
+    // restructures the window while the drag is in flight, and that ends the drag:
+    // measured, the drop stopped being delivered at all (the moves tracked the
+    // pointer, then the release produced a leave with action=0), while the same
+    // drag drops correctly with no preview placed. So the region is computed, from
+    // the rule the placement follows, and checked against the settled geometry.
+    if (mTarget.kind != DockDropKind::None && !mTarget.rect.isEmpty()) {
+        const theme::Colors c = theme::Colors::current();
+        QColor fill = c.accent;
+        fill.setAlpha(70);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QRectF area = QRectF(mTarget.rect).adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath path;
+        path.addRoundedRect(area, 4, 4);
+        p.fillPath(path, fill);
+        p.setPen(QPen(c.accent, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+    }
+
+    // The carried tab, on top of that and of everything else, drawn where the
+    // pointer is (see mDragImage). Painted even with no target, because "nothing
+    // here" is exactly when the user needs to see what they are holding.
+    if (!mDragImage.pixmap.isNull() && mHavePointer) {
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setOpacity(0.9);
+        p.drawPixmap(mPointer - mDragImage.hotSpot, mDragImage.pixmap);
+    }
 }
 
 void DockDropOverlay::resizeEvent(QResizeEvent* aEvent) {

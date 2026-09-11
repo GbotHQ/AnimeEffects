@@ -111,6 +111,17 @@ QRect DockTabBarFilter::railRect() const {
     return mBar->rect().adjusted(-2, -2, 2, 2);
 }
 
+int DockTabBarFilter::pressedTabIndex() const {
+    // The pressed tab by name, not by the index it had at press: Qt's movable-tab
+    // drag reorders the bar while the pointer is inside the rail, so the recorded
+    // index can be another tab's by the time it is used.
+    if (!mBar || !mPressed) return mTabIndex;
+    for (int i = 0; i < mBar->count(); ++i) {
+        if (mBar->tabText(i) == mPressed->windowTitle()) return i;
+    }
+    return mTabIndex;
+}
+
 DockDragImage DockTabBarFilter::dragImageFor(const QPoint& aPos) const {
     DockDragImage image;
     if (!mBar || mBar->count() == 0) return image;
@@ -118,7 +129,8 @@ DockDragImage DockTabBarFilter::dragImageFor(const QPoint& aPos) const {
     // The tab under the press; for a row that is one panel's title the row has a
     // single tab, and that is what the user sees themselves grabbing even when
     // they pressed the empty part of the row.
-    const int index = (mTabIndex >= 0 && mTabIndex < mBar->count()) ? mTabIndex : 0;
+    const int found = pressedTabIndex();
+    const int index = (found >= 0 && found < mBar->count()) ? found : 0;
     const QRect tab = mBar->tabRect(index);
     if (tab.isEmpty()) return image;
 
@@ -133,6 +145,37 @@ DockDragImage DockTabBarFilter::dragImageFor(const QPoint& aPos) const {
     return image;
 }
 
+void DockTabBarFilter::liftTab(int aIndex) {
+    // Only a rail with other tabs to close the gap: a single-tab row *is* that
+    // panel's title, and the panel is still there while it is being dragged, so
+    // emptying it would leave the panel with no title instead of reading as "this
+    // tab has left the strip".
+    if (!mBar || mBar->count() < 2 || aIndex < 0 || aIndex >= mBar->count()) {
+        log(QStringLiteral("tab not lifted: bar=%1 count=%2 index=%3 pressed=%4")
+                .arg(mBar ? QStringLiteral("ok") : QStringLiteral("gone"))
+                .arg(mBar ? mBar->count() : -1).arg(aIndex)
+                .arg(mPressed ? mPressed->objectName() : QStringLiteral("-")));
+        return;
+    }
+    mLiftedBar = mBar;
+    mLiftedTab = mBar->tabText(aIndex);
+    mBar->setTabVisible(aIndex, false);
+    log(QStringLiteral("tab lifted out of the rail: %1").arg(mLiftedTab));
+}
+
+void DockTabBarFilter::restoreTab() {
+    if (!mLiftedBar || mLiftedTab.isEmpty()) return;
+    for (int i = 0; i < mLiftedBar->count(); ++i) {
+        if (mLiftedBar->tabText(i) == mLiftedTab) {
+            mLiftedBar->setTabVisible(i, true);
+            log(QStringLiteral("tab put back in the rail: %1").arg(mLiftedTab));
+            break;
+        }
+    }
+    mLiftedBar = nullptr;
+    mLiftedTab.clear();
+}
+
 void DockTabBarFilter::endRailDrag() {
     if (!mBar || !mBar->isMovable()) return;
 
@@ -140,8 +183,8 @@ void DockTabBarFilter::endRailDrag() {
     // animates the tab home, hides the floating copy it made for the drag and
     // drops dragInProgress/dragStartPosition. Sent at the pressed tab, so the
     // release cannot land on a different tab and activate it.
-    const int index = (mTabIndex >= 0 && mTabIndex < mBar->count()) ? mTabIndex
-                                                                   : mBar->currentIndex();
+    const int found = pressedTabIndex();
+    const int index = (found >= 0 && found < mBar->count()) ? found : mBar->currentIndex();
     if (index < 0 || index >= mBar->count()) return;
     const QPointF where(mBar->tabRect(index).center());
     QMouseEvent release(QEvent::MouseButtonRelease, where, mBar->mapToGlobal(where.toPoint()),
@@ -236,6 +279,9 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
             // carrying the tab it picked up instead of the copy disappearing at the
             // rail's edge.
             QDockWidget* dock = mPressed;
+            // Read while this gesture's state is still intact: endRailDrag below
+            // sends the release that clears it (which is also what ends Qt's move).
+            const int tabIndex = pressedTabIndex();
             // the grab point, not where the pointer is now: the image has to stay
             // under the finger, and a hotspot taken from the leaving point makes
             // the ghost trail further off the further the drag goes
@@ -244,7 +290,11 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
             mRailDrag = false;
             log(QStringLiteral("left the rail -> dock drag"));
             endRailDrag();
+            // the tab leaves the strip while it is out, so the gesture reads as
+            // carrying that tab rather than as a copy of it appearing elsewhere
+            liftTab(tabIndex);
             beginDockPanelDrag(dock, mBar, image);
+            restoreTab();
             return true;
         }
 
@@ -256,8 +306,11 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
             // the tab the row shows, so the ghost is the part of the row the user
             // has their pointer on rather than a scaled panel snapshot
             const DockDragImage image = dragImageFor(mPressPos);
-            QMetaObject::invokeMethod(this, [this, dock, image]() {
+            const int lifted = pressedTabIndex();
+            QMetaObject::invokeMethod(this, [this, dock, image, lifted]() {
+                liftTab(lifted);
                 beginDockPanelDrag(dock, mBar, image);
+                restoreTab();
                 mDragging = false;
             }, Qt::QueuedConnection);
             return true;

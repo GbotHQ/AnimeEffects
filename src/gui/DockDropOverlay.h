@@ -91,9 +91,10 @@ public:
     /// The MIME type carrying the dragged panel's object name.
     static const char* mimeType();
 
-    /// Show the overlay for a drag of aPanel. Call before QDrag::exec: the
-    /// overlay has to be up to receive the drag's enter event at all.
-    void beginDrag(QDockWidget* aPanel);
+    /// Show the overlay for a drag of aPanel, carrying aImage as the thing the
+    /// gesture picked up. Call before QDrag::exec: the overlay has to be up to
+    /// receive the drag's enter event at all.
+    void beginDrag(QDockWidget* aPanel, const DockDragImage& aImage = DockDragImage());
     /// Hide it again, whatever the outcome.
     void endDrag();
 
@@ -137,6 +138,16 @@ private:
     QMainWindow* mWindow;
     QDockWidget* mPanel = nullptr;
     DockDropTarget mTarget;
+    /// The tab being carried, and where the pointer last was. The ghost is drawn
+    /// here rather than left to the platform's drag icon: a drag pixmap is a
+    /// surface the compositor has to place and paint, and on Wayland it does not
+    /// appear at all - measured, the drag runs (the preview region updates with the
+    /// pointer) with the tab image nowhere on screen. The overlay is a widget in
+    /// this window that is already following the drag, so it is the one place that
+    /// can always show the image, on every platform.
+    DockDragImage mDragImage;
+    QPoint mPointer;
+    bool mHavePointer = false;
 };
 
 } // namespace gui

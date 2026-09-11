@@ -93,12 +93,19 @@ private:
     bool isTitleRow() const;
     /// The rail's rectangle: the band a tab drag has to leave before docking.
     QRect railRect() const;
+    /// The index of the pressed tab right now, found by name: Qt's own drag moves
+    /// tabs inside the rail while the gesture is in flight.
+    int pressedTabIndex() const;
     /// The tab the gesture grabbed, as the image a docking drag carries.
     DockDragImage dragImageFor(const QPoint& aPos) const;
     /// Ends the tab move Qt started when the pointer left the rail, so its
     /// floating copy is hidden and its drag offsets are dropped before this app's
     /// own drag takes the gesture over.
     void endRailDrag();
+    /// Takes the grabbed tab out of a multi-tab rail for the length of the docking
+    /// drag, and puts it back when the drag ends if the group is still there.
+    void liftTab(int aIndex);
+    void restoreTab();
     void log(const QString& aMessage) const;
 
     /// Watched, not merely pointed at: Qt creates and destroys these bars as
@@ -109,6 +116,11 @@ private:
     /// The tab the press landed on: what the reorder Qt performs is doing, and
     /// which tab the drag image is taken from.
     int mTabIndex = -1;
+    /// The rail a tab was lifted out of, and which tab, so it can be put back: a
+    /// drag that docked the panel elsewhere takes its tab with it and the bar it
+    /// came from no longer exists, which is what the QPointer is for.
+    QPointer<QTabBar> mLiftedBar;
+    QString mLiftedTab;
     bool mMoving = false;
     bool mDockDragArmed = false;
     bool mDragging = false;

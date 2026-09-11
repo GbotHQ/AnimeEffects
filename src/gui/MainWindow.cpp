@@ -528,6 +528,36 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         });
     }
 
+    // Temporary: does hiding a rail tab stick? Qt's dock area re-syncs its tab bar
+    // from the docks it holds, so a hidden tab may come back on the next pass.
+    if (qEnvironmentVariableIsSet("AE_DOCK_LIFT_PROBE")) {
+        QTimer::singleShot(2500, this, [this]() {
+            tabifyDockWidget(mDockAnimationWidget, mDockToolWidget);
+            mDockAnimationWidget->raise();
+            QTimer::singleShot(600, this, [this]() {
+                QTabBar* bar = nullptr;
+                for (QTabBar* candidate : findChildren<QTabBar*>()) {
+                    if (candidate->objectName() == QLatin1String("dockTabBar")
+                            && !qobject_cast<DockTabBar*>(candidate) && candidate->isVisible()) {
+                        bar = candidate;
+                        break;
+                    }
+                }
+                if (!bar) return;
+                dockSpikeLog(nullptr, QStringLiteral("lift probe: bar has %1 tabs, hiding tab 0 (%2)")
+                        .arg(bar->count()).arg(bar->tabText(0)));
+                bar->setTabVisible(0, false);
+                dockSpikeLog(nullptr, QStringLiteral("lift probe: immediately visible=%1")
+                        .arg(bar->isTabVisible(0)));
+                QTimer::singleShot(800, this, [bar]() {
+                    dockSpikeLog(nullptr, QStringLiteral("lift probe: after 800ms visible=%1 "
+                                                         "(bar count=%2)")
+                            .arg(bar->isTabVisible(0)).arg(bar->count()));
+                });
+            });
+        });
+    }
+
     // Temporary: where each panel's minimum actually comes from. A slot has one
     // size range (DockMetrics), so the panels in it must not be able to widen that
     // range through their content - and "the range seems to be based on the tabs in
