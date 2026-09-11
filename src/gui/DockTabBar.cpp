@@ -52,6 +52,26 @@ DockTabBar::DockTabBar(QDockWidget* aDock):
     }
 }
 
+namespace {
+/// Whether this row's panel shares its slot, in which case the slot's rail is the
+/// title UI and this row has no business taking space.
+bool rowIsRedundant(QDockWidget* aDock) {
+    if (!aDock || aDock->isFloating()) return false;
+    auto* panel = qobject_cast<DockPanel*>(aDock);
+    return panel && panel->isTabGrouped();
+}
+} // namespace
+
+QSize DockTabBar::sizeHint() const {
+    if (rowIsRedundant(qobject_cast<QDockWidget*>(parentWidget()))) return QSize(0, 0);
+    return QTabBar::sizeHint();
+}
+
+QSize DockTabBar::minimumSizeHint() const {
+    if (rowIsRedundant(qobject_cast<QDockWidget*>(parentWidget()))) return QSize(0, 0);
+    return QTabBar::minimumSizeHint();
+}
+
 DockTabBarFilter::DockTabBarFilter(QTabBar* aBar, QObject* aParent):
     QObject(aParent),
     mBar(aBar) {

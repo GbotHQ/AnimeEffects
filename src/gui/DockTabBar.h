@@ -40,6 +40,14 @@ class DockTabBar: public QTabBar {
 public:
     /// The title row of one panel: a tab bar holding that panel's title.
     explicit DockTabBar(QDockWidget* aDock);
+
+    /// No size at all while the panel shares its slot, because then this row is
+    /// not drawn - the slot's rail holds the titles - and the dock's layout
+    /// reserves the title area from the *sizeHint*, not from the height, so
+    /// hiding the row or fixing its height at zero still left the band
+    /// (measured: a 32px strip under the rail, with the row 256x0).
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 };
 
 /**

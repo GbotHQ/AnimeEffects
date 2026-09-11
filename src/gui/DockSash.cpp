@@ -1,5 +1,6 @@
 #include "gui/DockSash.h"
 #include "gui/DockMetrics.h"
+#include "gui/DockSlots.h"
 #include "gui/DockTabBar.h"
 #include "gui/theme/Colors.h"
 
@@ -29,7 +30,10 @@ constexpr int kAdjacentSlack = 2;
 
 /// One resizable seam: the line, what it resizes, and which way.
 struct Boundary {
-    QDockWidget* subject = nullptr;  ///< the dock whose size the drag changes
+    /// The slot's panels: resizing acts through the first one on screen, and a
+    /// collapse hides them all - a slot collapses, not the tab that happened to
+    /// be active in it.
+    QVector<QDockWidget*> subjects;
     QDockWidget* partner = nullptr;  ///< what absorbs it, null for the central widget
     Qt::Orientation axis = Qt::Horizontal; ///< Horizontal: the drag changes widths
     int sign = 1;                    ///< +1 if the subject grows with the coordinate
@@ -104,10 +108,12 @@ public:
     /// where the line currently is: the line moves while the seam is dragged, and
     /// a hitbox that keeps the drag's mouse grab and baseline has to keep its
     /// identity while its geometry follows.
-    bool holds(QDockWidget* aSubject, QDockWidget* aPartner, Qt::Orientation aAxis) const {
-        return mBoundary.subject == aSubject && mBoundary.partner == aPartner
+    bool holds(const QVector<QDockWidget*>& aSubjects, QDockWidget* aPartner,
+               Qt::Orientation aAxis) const {
+        return mBoundary.subjects == aSubjects && mBoundary.partner == aPartner
                 && mBoundary.axis == aAxis;
     }
+    QDockWidget* lead() const { return mBoundary.subjects.value(0); }
 
 protected:
     void paintEvent(QPaintEvent*) override {
@@ -129,7 +135,7 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent* aEvent) override {
-        if (aEvent->button() != Qt::LeftButton || !mBoundary.subject)
+        if (aEvent->button() != Qt::LeftButton || mBoundary.subjects.isEmpty())
             return;
         mDragging = true;
         // the widget keeps an implicit mouse grab until release, so the drag
@@ -140,16 +146,15 @@ protected:
         // rather than refreshed from the relayout: every resize triggers a
         // relayout, so a moving baseline made each move re-apply its whole delta
         // (measured: a 76px drag grew the panel by 181).
-        mStartSize = (mBoundary.axis == Qt::Horizontal) ? mBoundary.subject->width()
-                                                       : mBoundary.subject->height();
+        mStartSize = (mBoundary.axis == Qt::Horizontal) ? lead()->width() : lead()->height();
         mPartnerStart = (mBoundary.partner && mBoundary.partner->isVisible())
                 ? ((mBoundary.axis == Qt::Horizontal) ? mBoundary.partner->width()
                                                       : mBoundary.partner->height())
                 : 0;
-        dockSpikeLog(mBoundary.subject,
-                QStringLiteral("sash press subject=%1 partner=%2 axis=%3 line=%4 span=%5..%6 "
+        dockSpikeLog(lead(),
+                QStringLiteral("sash press slot=%1 partner=%2 axis=%3 line=%4 span=%5..%6 "
                                "start=%7 partnerStart=%8 centered=%9")
-                .arg(mBoundary.subject->objectName())
+                .arg(lead()->objectName())
                 .arg(mBoundary.partner ? mBoundary.partner->objectName() : QStringLiteral("central"))
                 .arg(mBoundary.axis == Qt::Horizontal ? QStringLiteral("widths") : QStringLiteral("heights"))
                 .arg(mBoundary.line).arg(mBoundary.spanStart).arg(mBoundary.spanEnd)
@@ -158,7 +163,7 @@ protected:
     }
 
     void mouseMoveEvent(QMouseEvent* aEvent) override {
-        if (!mDragging || !mBoundary.subject)
+        if (!mDragging || mBoundary.subjects.isEmpty() || !lead())
             return;
         const QPointF global = aEvent->globalPosition();
         const int pos = (mBoundary.axis == Qt::Horizontal) ? global.x() : global.y();
@@ -172,20 +177,20 @@ protected:
         const int collapseSize = (mBoundary.axis == Qt::Horizontal) ? dockMetrics::kCollapseWidth
                                                                     : dockMetrics::kCollapseHeight;
         if (newSize < collapseSize) {
-            if (mBoundary.subject->isVisible()) {
-                dockSpikeLog(mBoundary.subject,
-                        QStringLiteral("sash drag requested=%1 < collapse point %2 -> collapsed")
-                        .arg(newSize).arg(collapseSize));
-                mBoundary.subject->hide();
+            if (!mCollapsed) {
+                dockSpikeLog(lead(),
+                        QStringLiteral("sash drag requested=%1 < collapse point %2 -> collapsed slot (%3 panels)")
+                        .arg(newSize).arg(collapseSize).arg(mBoundary.subjects.size()));
+                for (QDockWidget* panel : mBoundary.subjects) panel->hide();
                 mCollapsed = true;
             }
             return;
         }
         if (mCollapsed) {
-            dockSpikeLog(mBoundary.subject,
-                    QStringLiteral("sash drag requested=%1 >= collapse point %2 -> restored")
-                    .arg(newSize).arg(collapseSize));
-            mBoundary.subject->show();
+            dockSpikeLog(lead(),
+                    QStringLiteral("sash drag requested=%1 >= collapse point %2 -> restored slot (%3 panels)")
+                    .arg(newSize).arg(collapseSize).arg(mBoundary.subjects.size()));
+            for (QDockWidget* panel : mBoundary.subjects) panel->show();
             mCollapsed = false;
         }
 
@@ -194,10 +199,10 @@ protected:
         // instead of only one side of it moving.
         if (mBoundary.partner && mBoundary.partner->isVisible() && mPartnerStart > 0) {
             const int total = mStartSize + mPartnerStart;
-            mWindow->resizeDocks({mBoundary.subject, mBoundary.partner},
+            mWindow->resizeDocks({lead(), mBoundary.partner},
                                  {newSize, qMax(1, total - newSize)}, mBoundary.axis);
         } else {
-            mWindow->resizeDocks({mBoundary.subject}, {newSize}, mBoundary.axis);
+            mWindow->resizeDocks({lead()}, {newSize}, mBoundary.axis);
         }
     }
 
@@ -205,11 +210,11 @@ protected:
         if (aEvent->button() == Qt::LeftButton) {
             mDragging = false;
             mCollapsed = false;
-            dockSpikeLog(mBoundary.subject,
-                    QStringLiteral("sash release subject=%1 now=%2 partner=%3 now=%4")
-                    .arg(mBoundary.subject->objectName())
-                    .arg(mBoundary.axis == Qt::Horizontal ? mBoundary.subject->width()
-                                                          : mBoundary.subject->height())
+            dockSpikeLog(lead(),
+                    QStringLiteral("sash release slot=%1 now=%2 partner=%3 now=%4")
+                    .arg(lead() ? lead()->objectName() : QStringLiteral("-"))
+                    .arg(lead() ? (mBoundary.axis == Qt::Horizontal ? lead()->width()
+                                                                    : lead()->height()) : -1)
                     .arg(mBoundary.partner ? mBoundary.partner->objectName() : QStringLiteral("central"))
                     .arg(mBoundary.partner
                             ? (mBoundary.axis == Qt::Horizontal ? mBoundary.partner->width()
@@ -300,188 +305,113 @@ void DockSash::scheduleRelayout() {
 void DockSash::relayout() {
     watchDocks();
 
-    // Seams belong to areas, not to pairs of docks.
-    //
-    // A dock area is one slot with one edge facing the canvas, and that edge is
-    // one boundary however many panels sit in the area - the line where the
-    // sidebar's bottom meets the timeline is the *bottom area's* top edge, not a
-    // seam between two panels that happen to touch. Enumerating pairs instead put
-    // two handles on that one line (each highlighting its own half, since each
-    // spanned only the overlap of the pair), and the pair across areas resized
-    // docks from two different areas, which QMainWindow::resizeDocks does not
-    // support: measured, it aborted the process on the next drag.
-    // Only docks that are actually on screen count towards an area's extent. An
-    // inactive tab of a group is still "visible" and still reports a size - Qt
-    // parks it off-screen (measured: -820,-656) - and one such rect in the union
-    // made the area cover the whole window, with its seam nowhere useful.
-    const QRect windowRect = mWindow->rect();
-    const auto occupiesScreen = [&windowRect](const QWidget* aWidget) {
-        if (!aWidget || !aWidget->isVisible()) return false;
-        const QRect rect = aWidget->geometry();
-        return !rect.isEmpty() && windowRect.intersects(rect);
-    };
-
-    QMap<int, QVector<QDockWidget*>> byArea;
-    for (auto* dock : mWindow->findChildren<QDockWidget*>()) {
-        const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
-        if (area == Qt::NoDockWidgetArea || dock->isFloating()) continue;
-        if (!occupiesScreen(dock)) continue;
-        byArea[int(area)].push_back(dock);
-    }
-
+    // Seams come from the slot model, which is the one place that knows what an
+    // area is. Doing it from docks here meant guessing at three things at once -
+    // which docks are on screen (an inactive tab is parked off-screen but still
+    // reports a size), how far a slot reaches (its rail belongs to the slot, not
+    // to any panel in it), and what a collapse should hide (the slot, not
+    // whichever tab was active). Measured consequences of each: an area covering
+    // the whole window, a seam that stopped at the tabs, and a collapse that left
+    // the slot's other tabs on screen.
     QVector<Boundary> boundaries;
-    const auto addBoundary = [&boundaries](const Boundary& aBoundary) {
-        for (const Boundary& existing : boundaries) {
-            if (existing.axis == aBoundary.axis && existing.line == aBoundary.line
-                    && existing.spanStart == aBoundary.spanStart
-                    && existing.spanEnd == aBoundary.spanEnd)
-                return; // the same seam seen from the other side
-        }
-        boundaries.push_back(aBoundary);
-    };
-
-    // (1) one seam per area: the edge of the area that faces the canvas. The
-    //     subject is a panel of that area; nothing absorbs it, because resizing
-    //     an area is what changes - the canvas and the areas beside it take up
-    //     the difference.
-    for (auto it = byArea.begin(); it != byArea.end(); ++it) {
-        const Qt::DockWidgetArea area = Qt::DockWidgetArea(it.key());
-        const QVector<QDockWidget*>& docks = it.value();
-        if (docks.isEmpty()) continue;
-        QRect areaRect;
-        for (QDockWidget* dock : docks) {
-            const QRect rect = dock->geometry();
-            areaRect = areaRect.isNull() ? rect : areaRect.united(rect);
-        }
-        if (areaRect.isNull()) continue;
+    const QVector<DockSlot> areas = dockSlots(*mWindow);
+    for (const DockSlot& slot : areas) {
+        if (slot.onScreen.isEmpty()) continue;
 
         Boundary boundary;
-        boundary.subject = docks.first();
+        boundary.subjects = slot.panels;
         boundary.partner = nullptr;
-        switch (area) {
+        switch (slot.area) {
         case Qt::LeftDockWidgetArea:
-            // the seam is the area's right edge: dragging right grows it
             boundary.axis = Qt::Horizontal;
             boundary.sign = 1;
-            boundary.line = areaRect.right() + 1;
-            boundary.spanStart = areaRect.top();
-            boundary.spanEnd = areaRect.bottom();
+            boundary.line = slot.rect.right() + 1;
+            boundary.spanStart = slot.rect.top();
+            boundary.spanEnd = slot.rect.bottom();
             break;
         case Qt::RightDockWidgetArea:
             boundary.axis = Qt::Horizontal;
             boundary.sign = -1;
-            boundary.line = areaRect.left();
-            boundary.spanStart = areaRect.top();
-            boundary.spanEnd = areaRect.bottom();
+            boundary.line = slot.rect.left();
+            boundary.spanStart = slot.rect.top();
+            boundary.spanEnd = slot.rect.bottom();
             break;
         case Qt::TopDockWidgetArea:
             boundary.axis = Qt::Vertical;
             boundary.sign = 1;
-            boundary.line = areaRect.bottom() + 1;
-            boundary.spanStart = areaRect.left();
-            boundary.spanEnd = areaRect.right();
+            boundary.line = slot.rect.bottom() + 1;
+            boundary.spanStart = slot.rect.left();
+            boundary.spanEnd = slot.rect.right();
             break;
         default:
-            // the bottom area's top edge: the seam the timeline shares with
-            // everything above it, across the area's full width
             boundary.axis = Qt::Vertical;
             boundary.sign = -1;
-            boundary.line = areaRect.top();
-            boundary.spanStart = areaRect.left();
-            boundary.spanEnd = areaRect.right();
+            boundary.line = slot.rect.top();
+            boundary.spanStart = slot.rect.left();
+            boundary.spanEnd = slot.rect.right();
             break;
         }
-        addBoundary(boundary);
-    }
+        boundaries.push_back(boundary);
 
-    // (2) seams between panels *sharing* an area, which is the one case where
-    //     resizing moves two docks against each other: they are nested on the
-    //     same level, which is what QMainWindow::resizeDocks requires.
-    for (auto it = byArea.begin(); it != byArea.end(); ++it) {
-        const QVector<QDockWidget*>& docks = it.value();
-        for (int i = 0; i < docks.size(); ++i) {
-            for (int j = 0; j < docks.size(); ++j) {
+        // Panels sharing a slot can also be arranged against each other, which is
+        // the one case where two docks move together - and the only case
+        // QMainWindow::resizeDocks supports (docks nested on the same level).
+        for (int i = 0; i < slot.onScreen.size(); ++i) {
+            for (int j = 0; j < slot.onScreen.size(); ++j) {
                 if (i == j) continue;
-                const QRect a = docks[i]->geometry();
-                const QRect b = docks[j]->geometry();
-                if (a.isEmpty() || b.isEmpty()) continue;
+                const QRect a = slot.onScreen[i]->geometry();
+                const QRect b = slot.onScreen[j]->geometry();
                 const int vTop = qMax(a.top(), b.top());
                 const int vBottom = qMin(a.bottom(), b.bottom());
                 const int hLeft = qMax(a.left(), b.left());
                 const int hRight = qMin(a.right(), b.right());
 
-                Boundary boundary;
-                boundary.subject = docks[i];
-                boundary.partner = docks[j];
+                Boundary between;
+                between.subjects = {slot.onScreen[i]};
+                between.partner = slot.onScreen[j];
+                bool found = false;
                 if (vBottom > vTop) {
                     if (qAbs(b.right() + 1 - a.left()) <= kAdjacentSlack) {
-                        // the seam is on a's left edge: dragging right shrinks a
-                        boundary.axis = Qt::Horizontal;
-                        boundary.sign = -1;
-                        boundary.line = a.left();
-                        boundary.spanStart = vTop;
-                        boundary.spanEnd = vBottom;
-                        addBoundary(boundary);
+                        between.axis = Qt::Horizontal; between.sign = -1;
+                        between.line = a.left();
+                        between.spanStart = vTop; between.spanEnd = vBottom;
+                        found = true;
                     } else if (qAbs(b.left() - 1 - a.right()) <= kAdjacentSlack) {
-                        boundary.axis = Qt::Horizontal;
-                        boundary.sign = 1;
-                        boundary.line = a.right() + 1;
-                        boundary.spanStart = vTop;
-                        boundary.spanEnd = vBottom;
-                        addBoundary(boundary);
+                        between.axis = Qt::Horizontal; between.sign = 1;
+                        between.line = a.right() + 1;
+                        between.spanStart = vTop; between.spanEnd = vBottom;
+                        found = true;
                     }
                 }
-                if (hRight > hLeft) {
+                if (!found && hRight > hLeft) {
                     if (qAbs(b.bottom() + 1 - a.top()) <= kAdjacentSlack) {
-                        boundary.axis = Qt::Vertical;
-                        boundary.sign = -1;
-                        boundary.line = a.top();
-                        boundary.spanStart = hLeft;
-                        boundary.spanEnd = hRight;
-                        addBoundary(boundary);
+                        between.axis = Qt::Vertical; between.sign = -1;
+                        between.line = a.top();
+                        between.spanStart = hLeft; between.spanEnd = hRight;
+                        found = true;
                     } else if (qAbs(b.top() - 1 - a.bottom()) <= kAdjacentSlack) {
-                        boundary.axis = Qt::Vertical;
-                        boundary.sign = 1;
-                        boundary.line = a.bottom() + 1;
-                        boundary.spanStart = hLeft;
-                        boundary.spanEnd = hRight;
-                        addBoundary(boundary);
+                        between.axis = Qt::Vertical; between.sign = 1;
+                        between.line = a.bottom() + 1;
+                        between.spanStart = hLeft; between.spanEnd = hRight;
+                        found = true;
                     }
                 }
+                if (found) boundaries.push_back(between);
             }
         }
     }
 
-    {
-        // Temporary instrumentation: the seams as the layout sees them, logged
-        // only when they change.
-        static QString previous;
-        QStringList now;
-        for (const Boundary& boundary : boundaries) {
-            now << QStringLiteral("%1/%2/%3@%4[%5..%6]")
-                    .arg(boundary.subject ? boundary.subject->objectName() : QStringLiteral("-"))
-                    .arg(boundary.partner ? boundary.partner->objectName() : QStringLiteral("central"))
-                    .arg(boundary.axis == Qt::Horizontal ? QStringLiteral("w") : QStringLiteral("h"))
-                    .arg(boundary.line).arg(boundary.spanStart).arg(boundary.spanEnd);
-        }
-        const QString text = now.join(QStringLiteral(", "));
-        if (text != previous) {
-            previous = text;
-            dockSpikeLog(nullptr, QStringLiteral("seams: %1").arg(text));
-        }
-    }
-
-    // Each seam goes back to the hitbox that already holds it, matched by what
-    // it resizes rather than by its place in a list. That is what keeps a drag
+    // Each seam goes back to the hitbox that already holds it, matched by what it
+    // resizes rather than by its place in a list. That is what keeps a drag
     // coherent - the hitbox keeps the mouse grab and the baseline sizes taken at
-    // the press - while letting its geometry follow the edge as the layout
-    // moves, which freezing it in place did not: measured, the separator's
-    // highlight stayed where it was while the area's edge moved away from it.
+    // the press - while letting its geometry follow the edge as the layout moves,
+    // which freezing it in place did not: measured, the separator's highlight
+    // stayed where it was while the area's edge moved away from it.
     QVector<bool> taken(mHitBoxes.size(), false);
     for (const Boundary& boundary : boundaries) {
         int index = -1;
         for (int i = 0; i < mHitBoxes.size(); ++i) {
-            if (!taken[i] && mHitBoxes[i]->holds(boundary.subject, boundary.partner, boundary.axis)) {
+            if (!taken[i] && mHitBoxes[i]->holds(boundary.subjects, boundary.partner, boundary.axis)) {
                 index = i;
                 break;
             }
@@ -495,11 +425,10 @@ void DockSash::relayout() {
         taken[index] = true;
         mHitBoxes[index]->setBoundary(boundary, boundary.partner != nullptr);
     }
-
     for (int i = 0; i < mHitBoxes.size(); ++i) {
         if (taken[i]) continue;
-        // a hitbox whose panel was just collapsed stays where it is for the rest
-        // of the drag, so the panel can be dragged back out (see isDragging)
+        // a hitbox whose slot was just collapsed stays where it is for the rest
+        // of the drag, so the slot can be dragged back out (see isDragging)
         if (!mHitBoxes[i]->isDragging()) mHitBoxes[i]->hide();
     }
 }

@@ -2,6 +2,7 @@
 
 #include "gui/DockMetrics.h"
 #include "gui/DockPanel.h"
+#include "gui/DockSlots.h"
 #include "gui/DockTabBar.h"
 #include "gui/theme/Colors.h"
 
@@ -282,44 +283,54 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     if (mPanel && !mPanel->isFloating() && mPanel->isVisible() && mPanel->geometry().contains(aPos))
         return target;
 
-    // Docked panels first: a group is a sibling of the central widget at the
-    // window's edge, so it wins where they meet.
-    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-        if (dock == mPanel || !dock->isVisible() || dock->isFloating()) continue;
-        const QRect group = groupRect(dock);
-        if (group.isEmpty() || !group.contains(aPos)) continue;
+    // Slots first: a slot is a sibling of the central widget along the window's
+    // edge, so it wins where they meet.
+    //
+    // Iterating slots rather than docks is the fix for the worst version of this
+    // bug: iterating docks meant asking a *parked* dock (the inactive tab of a
+    // group, which Qt keeps off-screen at something like -700,-984) for its rect,
+    // and uniting that with its sibling's produced a group rect of 2005x1787 on a
+    // 1305x803 window - offered as a tab target for almost everywhere, while the
+    // drop landed correctly in the slot. Measured, with the left sidebar emptied
+    // by tabbing its panel onto the right one.
+    for (const DockSlot& slot : dockSlots(*mWindow)) {
+        if (slot.onScreen.isEmpty()) continue;
+        // dropping a docked panel back into the slot it already occupies is a
+        // no-op, so it is not a target
+        if (mPanel && !mPanel->isFloating() && slot.panels.contains(mPanel)) return target;
+        if (!slot.rect.contains(aPos)) continue;
 
-        const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
-        const int bandX = qMax(1, int(group.width() * kGroupMiddleBand));
-        const int bandY = qMax(1, int(group.height() * kGroupMiddleBand));
-        const QRect middle = group.adjusted(bandX, bandY, -bandX, -bandY);
+        const int bandX = qMax(1, int(slot.rect.width() * kGroupMiddleBand));
+        const int bandY = qMax(1, int(slot.rect.height() * kGroupMiddleBand));
+        const QRect middle = slot.rect.adjusted(bandX, bandY, -bandX, -bandY);
 
-        // A group of tabs can only take another tab: splitDockWidget on a
-        // tabified dock adds a tab anyway (Qt says so), so offering a split
-        // there would be a preview that lies.
-        const bool tabbed = !mWindow->tabifiedDockWidgets(dock).isEmpty();
-        if (tabbed || middle.contains(aPos)) {
+        // A slot with more than one panel is a rail: it can only take another
+        // tab, because splitDockWidget on a tabified dock adds a tab anyway (Qt
+        // says so) and a preview that says "split" while the drop tabifies is
+        // worse than no preview.
+        const bool stacked = slot.panels.size() > 1;
+        if (stacked || middle.contains(aPos)) {
             target.kind = DockDropKind::Tabify;
-            target.area = area;
-            target.group = dock;
-            target.rect = group;
+            target.area = slot.area;
+            target.group = slot.onScreen.first();
+            target.rect = slot.rect;
             return target;
         }
 
-        const Qt::Edge edge = nearestEdge(group, aPos);
-        if (!canSplit(group, edge, area)) {
+        const Qt::Edge edge = nearestEdge(slot.rect, aPos);
+        if (!canSplit(slot.rect, edge, slot.area)) {
             // two halves of a group this small would both be under the area's
-            // minimum, so the whole group is the only sensible target
+            // minimum, so the whole slot is the only sensible target
             target.kind = DockDropKind::Tabify;
-            target.area = area;
-            target.group = dock;
-            target.rect = group;
+            target.area = slot.area;
+            target.group = slot.onScreen.first();
+            target.rect = slot.rect;
             return target;
         }
         target.kind = DockDropKind::Split;
-        target.area = area;
-        target.group = dock;
-        target.rect = halfTowards(group, edge);
+        target.area = slot.area;
+        target.group = slot.onScreen.first();
+        target.rect = halfTowards(slot.rect, edge);
         return target;
     }
 

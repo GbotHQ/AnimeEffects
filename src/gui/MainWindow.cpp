@@ -8,6 +8,7 @@
 #include "gui/DockDropOverlay.h"
 #include "gui/DockMetrics.h"
 #include "gui/DockPanel.h"
+#include "gui/DockSlots.h"
 #include "gui/DockTabBar.h"
 #include "gui/DockTabBar.h"
 #include "gui/DockTabBar.h" // dockSpikeLog (temporary instrumentation)
@@ -468,6 +469,13 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                     : nullptr;
             for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget}) {
                 QWidget* strip = dock->titleBarWidget();
+                dockSpikeLog(dock, QStringLiteral("  probe: dock top=%1 | titleBar %2x%3 visible=%4 | "
+                                                  "widget top=%5 content top=%6")
+                        .arg(dock->y())
+                        .arg(strip ? strip->width() : -1).arg(strip ? strip->height() : -1)
+                        .arg(strip ? strip->isVisible() : false)
+                        .arg(dock->widget() ? dock->widget()->y() : -1)
+                        .arg(dock->widget() ? dock->widget()->height() : -1));
                 dockSpikeLog(dock, QStringLiteral("  probe: dock=%1,%2 %3x%4 visible=%5 | strip%6 visible=%7 %8x%9")
                         .arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height())
                         .arg(dock->isVisible())
@@ -503,6 +511,53 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         });
     }
 
+    // Temporary: the reported state - the left sidebar emptied by moving its
+    // panel in with the right one - with the slot model logged, so the numbers
+    // say what is wrong instead of a guess.
+    if (qEnvironmentVariableIsSet("AE_DOCK_STATE_PROBE")) {
+        QTimer::singleShot(900, this, [this]() {
+            tabifyDockWidget(mDockPropertyWidget, mDockToolWidget);
+            mDockPropertyWidget->raise();
+            // "drag": the timeline is the panel a user would move next, and the
+            // probe leaves it floating where the test can grab its rail.
+            if (qEnvironmentVariable("AE_DOCK_STATE_PROBE") == QLatin1String("float")) {
+                if (auto* panel = qobject_cast<DockPanel*>(mDockAnimationWidget))
+                    panel->setPanelFloating(true);
+            }
+            QTimer::singleShot(500, this, [this]() {
+                const QRect canvas = centralWidget() ? centralWidget()->geometry() : QRect();
+                dockSpikeLog(nullptr, QStringLiteral("state: window=%1x%2 canvas=%3,%4 %5x%6")
+                        .arg(width()).arg(height())
+                        .arg(canvas.x()).arg(canvas.y())
+                        .arg(canvas.width()).arg(canvas.height()));
+                for (const DockSlot& slot : dockSlots(*this)) {
+                    dockSpikeLog(slot.panels.isEmpty() ? nullptr : slot.panels.first(),
+                            QStringLiteral("state: slot area=%1 panels=%2 onScreen=%3 rect=%4,%5 %6x%7")
+                            .arg(int(slot.area)).arg(slot.panels.size()).arg(slot.onScreen.size())
+                            .arg(slot.rect.x()).arg(slot.rect.y())
+                            .arg(slot.rect.width()).arg(slot.rect.height()));
+                }
+                dockSpikeLog(nullptr, QStringLiteral("state: nesting=%1").arg(isDockNestingEnabled()));
+                // what a drag would offer, across the window: the report is about
+                // the drop area, which the seam log does not cover
+                if (mDockDropOverlay) {
+                    mDockDropOverlay->beginDrag(mDockToolWidget);
+                    for (int y : {40, 200, 400, 600, 790}) {
+                        for (int x : {20, 200, 600, 1000, 1290}) {
+                            const DockDropTarget target = mDockDropOverlay->resolve(QPoint(x, y));
+                            dockSpikeLog(mDockToolWidget,
+                                    QStringLiteral("state: at %1,%2 -> kind=%3 area=%4 rect=%5,%6 %7x%8")
+                                    .arg(x).arg(y).arg(int(target.kind)).arg(int(target.area))
+                                    .arg(target.rect.x()).arg(target.rect.y())
+                                    .arg(target.rect.width()).arg(target.rect.height()));
+                        }
+                    }
+                    mDockDropOverlay->endDrag();
+                }
+            });
+        });
+    }
+
     // Temporary: is re-tabifying a primitive for *reordering* a group's rail?
     // Qt has no move-tab API for dock groups, and its bar's order comes from the
     // group's children, so the only lever is tabifyDockWidget again.
@@ -512,6 +567,9 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
                 QStringList order;
                 for (QTabBar* bar : findChildren<QTabBar*>()) {
                     if (bar->count() < 2) continue;
+                    dockSpikeLog(nullptr, QStringLiteral("  probe: bar %1 geo=%2,%3 %4x%5 visible=%6")
+                            .arg(bar->objectName()).arg(bar->x()).arg(bar->y())
+                            .arg(bar->width()).arg(bar->height()).arg(bar->isVisible()));
                     for (int i = 0; i < bar->count(); ++i) order << bar->tabText(i);
                 }
                 dockSpikeLog(mDockToolWidget, QStringLiteral("rail %1: %2")
@@ -2193,6 +2251,11 @@ void MainWindow::updateDockTabMenus() {
         // bar (both are QTabBars named dockTabBar), and one filter gives both the
         // same gestures.
         bar->setObjectName(QStringLiteral("dockTabBar"));
+        // The rail belongs to the slot rather than to any panel in it, so it says
+        // which area it is the chrome of - the slot model reads this to include
+        // the rail in the slot's extent (without it the seam stopped at the tabs).
+        if (QDockWidget* first = dockForTabTitle(bar->count() > 0 ? bar->tabText(0) : QString()))
+            bar->setProperty("aeDockArea", int(this->dockWidgetArea(first)));
         // Naming it is not enough: a style sheet rule is matched when the widget
         // is polished, so a bar that Qt creates mid-session (a group made by
         // dragging a panel onto another) kept Qt's own look while the same bar
@@ -2407,13 +2470,28 @@ QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aS
 /// by the same rule (DockTabBar), so which one draws is a question of *where*,
 /// not of what: one tab when alone, the group's tabs when stacked.
 void MainWindow::updateTitleRows() {
+    const QVector<DockSlot> areas = dockSlots(*this);
     for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
-        auto* panel = qobject_cast<DockPanel*>(dock);
         QWidget* row = dock ? dock->titleBarWidget() : nullptr;
-        if (!panel || !row) continue;
-        // A floating panel always shows its own row: it has no group to belong
-        // to, whatever it was tabbed with before it floated.
-        row->setVisible(panel->isFloating() || !panel->isTabGrouped());
+        if (!row) continue;
+
+        const DockSlot* slot = slotFor(areas, dock);
+        // A floating panel is its own window and always shows its own row; a
+        // docked panel shows it only while it is the only panel in its slot,
+        // because a shared slot's titles are the slot's rail.
+        const bool ownRow = dock->isFloating() || !slot || slot->panels.size() <= 1;
+
+        row->setVisible(ownRow);
+        if (ownRow) {
+            row->setMinimumHeight(0);
+            row->setMaximumHeight(QWIDGETSIZE_MAX);
+        } else {
+            // Not merely hidden: a hidden title row still reserves its height
+            // inside the dock, which is the 32px band that appeared under a rail
+            // (measured: titleBar 256x32 visible=0, widget top=32) and never under
+            // a lone panel, where that row *is* the title.
+            row->setFixedHeight(0);
+        }
     }
 }
 
