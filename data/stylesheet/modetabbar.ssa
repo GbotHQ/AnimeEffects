@@ -13,10 +13,16 @@ QTabBar::tab:top:only-one {
     border-top-left-radius: 0.25em;
     border-top-right-radius: 0.25em;
     width: 8em;
-    min-height: 1.125em;
-    max-height: 1.125em;
+    /* The tab's height is one value, and the bar takes its own height from it
+       (ProjectTabBar no longer hard-codes 18px). It has to fit the close button
+       and its glyph with a little air: at 1.125em with no padding the button was
+       taller than the tab it sat in, which is why it looked off-centre and its
+       bottom was cut off. */
+    min-height: 1.5em;
+    max-height: 1.5em;
     min-width: 8ex;
-    padding: 0;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
     margin: 0;
 }
 

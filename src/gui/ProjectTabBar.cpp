@@ -7,7 +7,6 @@
 
 namespace gui {
 
-static const int kBarHeight = 18;
 
 //-------------------------------------------------------------------------------------------------
 ProjectTabBar::ProjectTabBar(QWidget* aParent, GUIResources& aResources):
@@ -19,18 +18,25 @@ ProjectTabBar::ProjectTabBar(QWidget* aParent, GUIResources& aResources):
     this->setDrawBase(false);
     this->setMouseTracking(true);
     this->setAttribute(Qt::WA_Hover, true);
+    // Reordering is Qt's own job once the bar is movable; the model behind it
+    // (mProjects and mCloseButtons run parallel to the tabs) follows tabMoved.
+    this->setMovable(true);
 
     this->installEventFilter(this);
 
-    this->setGeometry(0, 0, aParent->geometry().width(), kBarHeight);
+    this->setGeometry(0, 0, aParent->geometry().width(), this->sizeHint().height());
 
     this->connect(this, &QTabBar::currentChanged, this, &ProjectTabBar::onTabChanged);
+    this->connect(this, &QTabBar::tabMoved, this, &ProjectTabBar::onTabMoved);
     mGUIResources.onThemeChanged.connect(this, &ProjectTabBar::onThemeUpdated);
     this->onThemeUpdated(mGUIResources.mTheme);
 }
 
 void ProjectTabBar::updateTabPosition(const QSize& aDisplaySize) {
-    this->setGeometry(0, 0, aDisplaySize.width(), kBarHeight);
+    // The height is the bar's own hint - whatever the tabs' style makes them -
+    // rather than a constant: a fixed 18px with 1.125em tabs meant the tabs were
+    // cut off at the bottom and the close button (16px) did not fit at all.
+    this->setGeometry(0, 0, aDisplaySize.width(), this->sizeHint().height());
 }
 
 QString ProjectTabBar::getTabName(const core::Project& aProject) const {
@@ -38,8 +44,39 @@ QString ProjectTabBar::getTabName(const core::Project& aProject) const {
     return name.isEmpty() ? QString("New Project") : QFileInfo(name).fileName();
 }
 
+/// Sizes the close buttons to the tab they sit in. The button is a widget, not
+/// the style's close-button subcontrol (it has to show the dirty state and a hover
+/// ring), so nothing else keeps the two in step - and a fixed 16x16 in a tab the
+/// style made smaller is what put it off-centre.
+void ProjectTabBar::syncCloseButtonSizes() {
+    const int side = qMax(10, this->tabRect(0).height() - 6);
+    for (auto* button : mCloseButtons) {
+        if (button && button->width() != side) button->setFixedSize(side, side);
+    }
+}
+
+/// Qt moves a tab's *data* but not the buttons set on its indices, so the buttons
+/// are re-applied positionally after a move, and the parallel arrays follow.
+void ProjectTabBar::onTabMoved(int aFrom, int aTo) {
+    if (0 <= aFrom && aFrom < mProjects.size() && 0 <= aTo && aTo < mProjects.size()) {
+        mProjects.move(aFrom, aTo);
+        mCloseButtons.move(aFrom, aTo);
+    }
+    for (int i = 0; i < mCloseButtons.size(); ++i) {
+        this->setTabButton(i, QTabBar::RightSide, mCloseButtons.at(i));
+    }
+    syncCloseButtonSizes();
+    if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG")) {
+        QStringList order;
+        for (int i = 0; i < count(); ++i) order << tabText(i);
+        qWarning("tab order: %s", qPrintable(order.join(QStringLiteral(" | "))));
+    }
+    this->update();
+}
+
 void ProjectTabBar::onThemeUpdated(theme::Theme& aTheme) {
     this->setStyleSheet(aTheme.loadStylesheet("modetabbar.ssa"));
+    syncCloseButtonSizes();
     this->update();
     for (auto* button : mCloseButtons) {
         if (button) {
@@ -55,6 +92,7 @@ bool ProjectTabBar::pushProject(core::Project& aProject) {
         const int index = this->addTab(getTabName(aProject));
         mCloseButtons.push_back(createCloseButton(aProject));
         this->setTabButton(index, QTabBar::RightSide, mCloseButtons.last());
+        syncCloseButtonSizes();
         this->setCurrentIndex(index);
         this->updateTabActiveState();
         mSignal = true;
@@ -209,7 +247,19 @@ void ProjectTabBar::mousePressEvent(QMouseEvent* aEvent) {
             return;
         }
     }
+    if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG")) {
+        qWarning("tab press at %d,%d -> tab %d movable=%d", int(aEvent->position().x()),
+                 int(aEvent->position().y()), this->tabAt(aEvent->position().toPoint()),
+                 int(this->isMovable()));
+    }
     QTabBar::mousePressEvent(aEvent);
+}
+
+void ProjectTabBar::mouseMoveEvent(QMouseEvent* aEvent) {
+    if (qEnvironmentVariableIsSet("AE_TAB_ORDER_LOG") && (aEvent->buttons() & Qt::LeftButton)) {
+        qWarning("tab drag move at %d,%d", int(aEvent->position().x()), int(aEvent->position().y()));
+    }
+    QTabBar::mouseMoveEvent(aEvent);
 }
 
 } // namespace gui
