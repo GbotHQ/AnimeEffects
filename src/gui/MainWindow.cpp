@@ -2550,16 +2550,21 @@ QDockWidget* MainWindow::innermostDock(Qt::DockWidgetArea aArea, QDockWidget* aS
 /// by the same rule (DockTabBar), so which one draws is a question of *where*,
 /// not of what: one tab when alone, the group's tabs when stacked.
 void MainWindow::updateTitleRows() {
-    const QVector<DockSlot> areas = dockSlots(*this);
     for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
         QWidget* row = dock ? dock->titleBarWidget() : nullptr;
         if (!row) continue;
+        auto* panel = qobject_cast<DockPanel*>(dock);
 
-        const DockSlot* slot = slotFor(areas, dock);
-        // A floating panel is its own window and always shows its own row; a
-        // docked panel shows it only while it is the only panel in its slot,
-        // because a shared slot's titles are the slot's rail.
-        const bool ownRow = dock->isFloating() || !slot || slot->panels.size() <= 1;
+        // A floating panel is its own window and always shows its own row. A docked
+        // panel shows it unless it shares a *tab group*, because then the group's
+        // rail holds the titles. Sharing an area is not sharing a group: two panels
+        // split above each other in one area have no rail at all, so asking the slot
+        // (which is one per area) hid both of their rows and left the area with no
+        // titles anywhere - measured, docking Properties above the timeline made
+        // "Properties" and "Animation" disappear, since the bottom area then held
+        // two panels and neither was tabbed.
+        const bool sharedGroup = panel && panel->isTabGrouped();
+        const bool ownRow = dock->isFloating() || !sharedGroup;
 
         row->setVisible(ownRow);
         if (ownRow) {
@@ -2571,6 +2576,32 @@ void MainWindow::updateTitleRows() {
             // (measured: titleBar 256x32 visible=0, widget top=32) and never under
             // a lone panel, where that row *is* the title.
             row->setFixedHeight(0);
+        }
+    }
+
+    // Temporary: what each panel's titles actually are - its own row, and the rail
+    // of the group it is in - since "the titles disappear" is a claim about these.
+    if (qEnvironmentVariableIsSet("AE_DOCK_TITLE_PROBE")) {
+        for (QDockWidget* dock : {mDockToolWidget, mDockPropertyWidget, mDockAnimationWidget}) {
+            if (!dock) continue;
+            QWidget* row = dock->titleBarWidget();
+            auto* panel = qobject_cast<DockPanel*>(dock);
+            dockSpikeLog(dock, QStringLiteral("titles: area=%1 tabbed=%2 floating=%3 ownRow=%4 "
+                                              "rowVisible=%5 rowH=%6")
+                    .arg(int(this->dockWidgetArea(dock)))
+                    .arg(this->tabifiedDockWidgets(dock).size())
+                    .arg(dock->isFloating())
+                    .arg(panel && panel->isTabGrouped() ? QStringLiteral("no (grouped)")
+                                                        : QStringLiteral("yes"))
+                    .arg(row ? row->isVisible() : false).arg(row ? row->height() : -1));
+        }
+        for (QTabBar* bar : this->findChildren<QTabBar*>()) {
+            if (bar->objectName() != QLatin1String("dockTabBar") || bar->count() == 0) continue;
+            QStringList tabs;
+            for (int i = 0; i < bar->count(); ++i) tabs << bar->tabText(i);
+            dockSpikeLog(nullptr, QStringLiteral("titles: rail [%1] visible=%2 at %3,%4 %5x%6")
+                    .arg(tabs.join(QStringLiteral(" | "))).arg(bar->isVisible())
+                    .arg(bar->x()).arg(bar->y()).arg(bar->width()).arg(bar->height()));
         }
     }
 }

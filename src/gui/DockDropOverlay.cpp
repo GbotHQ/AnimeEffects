@@ -146,6 +146,23 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     const QRect window = mWindow->rect();
 
     QRect occupied;
+    // What each area holds, and the region the areas tile between them. An empty
+    // area's slice is measured against the tiled region rather than against the
+    // canvas, because an area takes the window's own edge: measured, dropping onto
+    // an empty right column - with the timeline across the bottom, so the canvas
+    // stopped well above the window's bottom - previewed a band only as tall as the
+    // canvas while the drop gave the column the full window height.
+    QRect eachArea[int(Qt::BottomDockWidgetArea) + 1];
+    QRect dockRegion = aCanvas;
+    for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
+        if (!dock->isVisible() || dock->isFloating()) continue;
+        const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
+        if (area == Qt::NoDockWidgetArea) continue;
+        const QRect group = groupRect(dock);
+        dockRegion = dockRegion.united(group);
+        eachArea[int(area)] = eachArea[int(area)].isNull() ? group
+                                                          : eachArea[int(area)].united(group);
+    }
     for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
         if (!dock->isVisible() || dock->isFloating()) continue;
         if (mWindow->dockWidgetArea(dock) != aTarget.area) continue;
@@ -169,31 +186,90 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     const bool leftOwnsTop = mWindow->corner(Qt::TopLeftCorner) == Qt::LeftDockWidgetArea;
     const bool rightOwnsTop = mWindow->corner(Qt::TopRightCorner) == Qt::RightDockWidgetArea;
 
+    // The span an area's slice takes across the tiled region, in the direction the
+    // slice does not use: a side area's slice runs the area's full height, a
+    // top/bottom area's runs its full width.
+    //
+    // An area only gives up part of that span to another area that owns the corner
+    // there - and only while that other area actually holds docks, because an empty
+    // area's corner region collapses and the neighbours grow into it. Measured, with
+    // the timeline across the bottom and the right column empty: the canvas stopped
+    // well above the window's bottom, so a preview measured against the canvas drew
+    // a band only as tall as the canvas, while the drop gave the column the window's
+    // full height.
+    const auto spanFor = [&](Qt::DockWidgetArea aArea) -> QPair<int, int> {
+        const bool vertical = aArea == Qt::LeftDockWidgetArea || aArea == Qt::RightDockWidgetArea;
+        const bool firstSide = aArea == Qt::LeftDockWidgetArea || aArea == Qt::TopDockWidgetArea;
+        int low = vertical ? dockRegion.top() : dockRegion.left();
+        int high = vertical ? dockRegion.bottom() : dockRegion.right();
+        // does the neighbouring area hold the corner this span starts from / ends at?
+        const bool takenAtLow = (aArea == Qt::LeftDockWidgetArea) ? leftOwnsTop
+                              : (aArea == Qt::RightDockWidgetArea) ? rightOwnsTop
+                              : (aArea == Qt::TopDockWidgetArea) ? leftOwnsTop
+                                                                 : leftOwnsBottom;
+        const bool takenAtHigh = (aArea == Qt::LeftDockWidgetArea) ? leftOwnsBottom
+                               : (aArea == Qt::RightDockWidgetArea) ? rightOwnsBottom
+                               : (aArea == Qt::TopDockWidgetArea) ? rightOwnsTop
+                                                                  : rightOwnsBottom;
+        const Qt::DockWidgetArea lowArea = vertical ? Qt::TopDockWidgetArea
+                                                    : Qt::LeftDockWidgetArea;
+        const Qt::DockWidgetArea highArea = vertical ? Qt::BottomDockWidgetArea
+                                                     : Qt::RightDockWidgetArea;
+        const bool lowOwnedByNeighbour = !takenAtLow;
+        const bool highOwnedByNeighbour = !takenAtHigh;
+        if (lowOwnedByNeighbour) {
+            if (vertical) {
+                if (!eachArea[int(lowArea)].isNull())
+                    low = qMax(low, eachArea[int(lowArea)].bottom() + 1);
+            } else if (!eachArea[int(lowArea)].isNull()) {
+                low = qMax(low, eachArea[int(lowArea)].right() + 1);
+            }
+        }
+        if (highOwnedByNeighbour) {
+            if (vertical) {
+                if (!eachArea[int(highArea)].isNull())
+                    high = qMin(high, eachArea[int(highArea)].top() - 1);
+            } else if (!eachArea[int(highArea)].isNull()) {
+                high = qMin(high, eachArea[int(highArea)].left() - 1);
+            }
+        }
+        Q_UNUSED(firstSide);
+        return QPair<int, int>(low, qMax(low, high));
+    };
+
     switch (aTarget.area) {
     case Qt::LeftDockWidgetArea:
         if (!occupied.isNull())
             return QRect(occupied.right() + 1, occupied.top(), hint.width(), occupied.height());
-        return QRect(window.left(), aCanvas.top(), hint.width(), aCanvas.height());
+        {
+            const auto span = spanFor(aTarget.area);
+            return QRect(dockRegion.left(), span.first, hint.width(),
+                         span.second - span.first + 1);
+        }
     case Qt::RightDockWidgetArea:
         if (!occupied.isNull())
             return QRect(occupied.left() - hint.width(), occupied.top(), hint.width(), occupied.height());
-        return QRect(window.right() + 1 - hint.width(), aCanvas.top(), hint.width(), aCanvas.height());
+        {
+            const auto span = spanFor(aTarget.area);
+            return QRect(dockRegion.right() + 1 - hint.width(), span.first, hint.width(),
+                         span.second - span.first + 1);
+        }
     case Qt::TopDockWidgetArea:
         if (!occupied.isNull())
             return QRect(occupied.left(), occupied.bottom() + 1, occupied.width(), hint.height());
-        return QRect(window.left() + (leftOwnsTop ? sideWidth(Qt::LeftDockWidgetArea) : 0),
-                     aCanvas.top(),
-                     window.width() - (leftOwnsTop ? sideWidth(Qt::LeftDockWidgetArea) : 0)
-                                    - (rightOwnsTop ? sideWidth(Qt::RightDockWidgetArea) : 0),
-                     hint.height());
+        {
+            const auto span = spanFor(aTarget.area);
+            return QRect(span.first, dockRegion.top(), span.second - span.first + 1,
+                         hint.height());
+        }
     default:
         if (!occupied.isNull())
             return QRect(occupied.left(), occupied.top() - hint.height(), occupied.width(), hint.height());
-        return QRect(window.left() + (leftOwnsBottom ? sideWidth(Qt::LeftDockWidgetArea) : 0),
-                     aCanvas.bottom() + 1 - hint.height(),
-                     window.width() - (leftOwnsBottom ? sideWidth(Qt::LeftDockWidgetArea) : 0)
-                                    - (rightOwnsBottom ? sideWidth(Qt::RightDockWidgetArea) : 0),
-                     hint.height());
+        {
+            const auto span = spanFor(aTarget.area);
+            return QRect(span.first, dockRegion.bottom() + 1 - hint.height(),
+                         span.second - span.first + 1, hint.height());
+        }
     }
 }
 

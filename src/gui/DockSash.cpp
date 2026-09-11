@@ -125,6 +125,13 @@ public:
 
 protected:
     void paintEvent(QPaintEvent*) override {
+        // Nothing at all while the slot is collapsed: the panel it was the edge of
+        // is gone, so a line there is a line on nothing - and it is the one the
+        // user just dragged away, so it reads as the seam having refused to go. The
+        // hitbox itself stays alive and still tracks the pointer, because the same
+        // gesture has to be able to drag the slot back out (see isDragging).
+        if (mCollapsed) return;
+
         // draw only the 1px hairline; never call the base paintEvent, so the
         // universal QWidget QSS background cannot fill the hitbox
         const theme::Colors c = theme::Colors::current();
@@ -132,6 +139,8 @@ protected:
         p.fillRect(lineRect(), mDragging ? c.hover : (mHovered ? c.hairlineHover : c.hairline));
     }
 
+    // the hover feedback is a repaint; paintEvent itself decides whether there is
+    // anything to draw (a collapsed slot draws nothing)
     void enterEvent(QEnterEvent*) override {
         mHovered = true;
         update();
