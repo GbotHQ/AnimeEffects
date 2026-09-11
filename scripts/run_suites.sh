@@ -12,7 +12,10 @@ declare -A SKIP=(
   [media_exporter_e2e]=1   # needs Release + xcb + a real .anie
   [roundtrip]=1            # needs .anie arguments
   [easing_picker_shot]=1   # writes screenshots
-  [picker_probe]=1
+  # picker_probe used to be skipped here. It constructs widgets (no display needed:
+  # it runs under QT_QPA_PLATFORM=offscreen) and it now EXITS NON-ZERO on a
+  # mismatch, so it is a gate: it reported a stale height expectation for months
+  # while exiting 0.
   [picker_pos_probe]=1
   [media_link_probe]=1
 )
