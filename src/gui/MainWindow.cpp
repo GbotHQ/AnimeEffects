@@ -2272,6 +2272,19 @@ QDockWidget* MainWindow::dockForTabTitle(const QString& aTitle) const {
 /// panel, which is what distinguishes it from the project tabs.
 void MainWindow::updateDockTabMenus() {
     const auto bars = this->findChildren<QTabBar*>();
+    // Temporary, and deliberately outside the adoption test below: the rail's
+    // order is what a reorder is measured on, and a bar that is already adopted is
+    // skipped there.
+    if (qEnvironmentVariableIsSet("AE_DOCK_RAIL_PROBE")) {
+        for (QTabBar* bar : bars) {
+            if (bar->objectName() != QLatin1String("dockTabBar") || bar->count() == 0) continue;
+            QStringList order;
+            for (int i = 0; i < bar->count(); ++i) order << bar->tabText(i);
+            dockSpikeLog(nullptr, QStringLiteral("rail: %1 (movable=%2, area=%3, tabs=%4)")
+                    .arg(order.join(QStringLiteral(" | "))).arg(bar->isMovable())
+                    .arg(bar->property("aeDockArea").toInt()).arg(bar->count()));
+        }
+    }
     for (QTabBar* bar : bars) {
         if (bar->property("aeDockTabBar").toBool() || bar->count() == 0)
             continue;

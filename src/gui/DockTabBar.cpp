@@ -102,34 +102,43 @@ QRect DockTabBarFilter::railRect() const {
     return mBar->rect().adjusted(-2, -2, 2, 2);
 }
 
-void DockTabBarFilter::commitRailOrder() {
-    auto* window = mBar ? qobject_cast<QMainWindow*>(mBar->window()) : nullptr;
-    if (!window || mBar->count() < 2) return;
+DockDragImage DockTabBarFilter::dragImageFor(const QPoint& aPos) const {
+    DockDragImage image;
+    if (!mBar || mBar->count() == 0) return image;
 
-    // The group in rail order, as docks.
-    QVector<QDockWidget*> order;
-    for (int i = 0; i < mBar->count(); ++i) {
-        if (QDockWidget* dock = dockForTab(i)) order.push_back(dock);
+    // The tab under the press; for a row that is one panel's title the row has a
+    // single tab, and that is what the user sees themselves grabbing even when
+    // they pressed the empty part of the row.
+    const int index = (mTabIndex >= 0 && mTabIndex < mBar->count()) ? mTabIndex : 0;
+    const QRect tab = mBar->tabRect(index);
+    if (tab.isEmpty()) return image;
+
+    image.pixmap = mBar->grab(tab);
+    // where inside the tab the pointer is, so the image does not jump under the
+    // cursor when it takes over from Qt's copy
+    image.hotSpot = aPos - tab.topLeft();
+    if (!tab.contains(aPos)) {
+        // pressed past the last tab: aim at the tab's middle instead of outside it
+        image.hotSpot = QPoint(tab.width() / 2, qMin(aPos.y(), tab.height() - 1));
     }
-    if (order.size() < 2) return;
+    return image;
+}
 
-    // tabifyDockWidget puts a dock at the *end* of the rail, whatever the anchor
-    // (measured: tools<-properties gave Tools|Properties, tools<-animation gave
-    // Tools|Properties|Animation, animation<-tools gave Properties|Animation|Tools).
-    // So the wanted order is built from the back: move the last wanted tab to the
-    // end, then the one before it, and so on - each lands in front of the ones
-    // already placed. Moving them front-to-back instead puts the first wanted tab
-    // at the end and undoes the lot.
-    for (int i = order.size() - 1; i >= 1; --i)
-        window->tabifyDockWidget(order.at(0), order.at(i));
-    // The dragged tab is the one the user was working on and the one Qt activated
-    // on press, so it stays the visible panel: re-tabifying raises whatever it
-    // moved last, which would otherwise flip the group to another panel on release.
-    if (mPressed) mPressed->raise();
+void DockTabBarFilter::endRailDrag() {
+    if (!mBar || !mBar->isMovable()) return;
 
-    QStringList rail;
-    for (int i = 0; i < mBar->count(); ++i) rail << mBar->tabText(i);
-    log(QStringLiteral("rail order committed: %1").arg(rail.join(QStringLiteral(" | "))));
+    // Qt's own way of ending a tab move, rather than reaching into its state: it
+    // animates the tab home, hides the floating copy it made for the drag and
+    // drops dragInProgress/dragStartPosition. Sent at the pressed tab, so the
+    // release cannot land on a different tab and activate it.
+    const int index = (mTabIndex >= 0 && mTabIndex < mBar->count()) ? mTabIndex
+                                                                   : mBar->currentIndex();
+    if (index < 0 || index >= mBar->count()) return;
+    const QPointF where(mBar->tabRect(index).center());
+    QMouseEvent release(QEvent::MouseButtonRelease, where, mBar->mapToGlobal(where.toPoint()),
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(mBar, &release);
+    log(QStringLiteral("rail drag ended (Qt's tab move released)"));
 }
 
 bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
@@ -155,7 +164,6 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
             mPressed = dock;
             mRailDrag = true;
             mTabIndex = index;
-            mMovedTab = false;
             log(QStringLiteral("tab press pos=%1,%2 tab=%3 (%4) floating=%5 -> rail drag")
                     .arg(mPressPos.x()).arg(mPressPos.y()).arg(index).arg(dock->objectName())
                     .arg(dock->isFloating()));
@@ -186,33 +194,36 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
 
         if (mRailDrag && mPressed) {
             if (railRect().contains(pos)) {
-                // Still in the rail: this is a reorder, not a docking gesture, and
-                // it is a *visual* one - moveTab shifts the item inside the bar and
-                // touches nothing else. The group's real order is committed once,
-                // on release. Re-tabifying on every move, which is what this did,
-                // re-parents docks and re-lays out the whole area per pixel of the
-                // drag: that is what the tab snapping is.
-                const int target = mBar->tabAt(pos);
-                if (target >= 0 && target != mTabIndex) {
-                    mBar->moveTab(mTabIndex, target);
-                    mTabIndex = target;
-                    mMovedTab = true;
-                }
-                mPressPos = pos;
-                return true;
+                // Still in the rail, so this is a reorder rather than a docking
+                // gesture - and it is the bar's own reorder: Qt's dock tab bar is
+                // movable, so QTabBar slides the neighbours aside, keeps a floating
+                // copy of the grabbed tab under the cursor and emits tabMoved,
+                // which QMainWindowLayout turns into the dock order. None of that
+                // is reimplemented here, and it must not be: moving tabs here as
+                // well was what made the reorder janky. The bar paints the pressed
+                // tab displaced by its own dragOffset, so a hand-made moveTab left
+                // the tab visibly in the wrong place until the next move recomputed
+                // the offset - the teleport that corrected itself a move later.
+                // Leaving the event alone is the whole gesture.
+                return false;
             }
-            // left the rail: docking takes over, and it is the same drag a
-            // floating panel's title starts. The reorder the user has already made
-            // is committed first, so the tabs left behind keep the order they are
-            // shown in instead of reverting when the layout next re-syncs the bar.
-            if (mMovedTab) commitRailOrder();
-            mMovedTab = false;
-            mRailDrag = false;
-            const bool docked = mPressed;
-            log(QStringLiteral("left the rail -> dock drag"));
-            beginDockPanelDrag(mPressed, mBar);
+            // Left the rail: docking takes over, and it is the same drag a floating
+            // panel's title starts. Two things have to happen in this order - Qt's
+            // in-flight tab move is ended the way Qt ends one (a release, which
+            // hides its floating copy and drops the drag offsets), and the docking
+            // drag is given the grabbed *tab* as its image, so the pointer keeps
+            // carrying the tab it picked up instead of the copy disappearing at the
+            // rail's edge.
+            QDockWidget* dock = mPressed;
+            // the grab point, not where the pointer is now: the image has to stay
+            // under the finger, and a hotspot taken from the leaving point makes
+            // the ghost trail further off the further the drag goes
+            const DockDragImage image = dragImageFor(mPressPos);
             mPressed = nullptr;
-            Q_UNUSED(docked);
+            mRailDrag = false;
+            log(QStringLiteral("left the rail -> dock drag"));
+            endRailDrag();
+            beginDockPanelDrag(dock, mBar, image);
             return true;
         }
 
@@ -221,8 +232,11 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
         if (mDockDragArmed && !mDragging) {
             mDockDragArmed = false;
             mDragging = true;
-            QMetaObject::invokeMethod(this, [this, dock]() {
-                beginDockPanelDrag(dock, mBar);
+            // the tab the row shows, so the ghost is the part of the row the user
+            // has their pointer on rather than a scaled panel snapshot
+            const DockDragImage image = dragImageFor(mPressPos);
+            QMetaObject::invokeMethod(this, [this, dock, image]() {
+                beginDockPanelDrag(dock, mBar, image);
                 mDragging = false;
             }, Qt::QueuedConnection);
             return true;
@@ -236,12 +250,12 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
         break;
     }
     case QEvent::MouseButtonRelease:
-        // the one place the layout is told about a reorder
-        if (mRailDrag && mMovedTab) commitRailOrder();
+        // A reorder Qt performed is already the layout's order (QMainWindowLayout
+        // moves the dock when the bar emits tabMoved), so there is nothing to
+        // commit here - and nothing to undo either.
         mDockDragArmed = false;
         mMoving = false;
         mRailDrag = false;
-        mMovedTab = false;
         mTabIndex = -1;
         mPressed = nullptr;
         break;

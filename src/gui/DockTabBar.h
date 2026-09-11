@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QTabBar>
 
+#include "gui/DockDropOverlay.h" // DockDragImage
+
 class QDockWidget;
 
 namespace gui {
@@ -54,10 +56,16 @@ public:
  * The gestures every dock tab bar shares, installed by MainWindow on the panels'
  * own title bars and on the tab bars Qt builds for groups.
  *
- *  - dragging a tab *inside the rail* moves the tab in the rail (the group's
- *    order, which Qt's layout then keeps), and only once the pointer leaves the
- *    rail does the dock drag start - the VS Code gesture, so a tab can be
- *    reordered without a docking preview appearing whenever the pointer twitches;
+ *  - dragging a tab *inside the rail* moves the tab in the rail: that is the
+ *    bar's own movable-tab drag, which slides the neighbours, carries a floating
+ *    copy of the grabbed tab under the cursor and emits tabMoved, which
+ *    QMainWindowLayout turns into the dock order - not reimplemented here, because
+ *    doing it here as well is what made the reorder janky;
+ *  - once the pointer leaves the rail the tab is lifted out of it: Qt's copy is
+ *    hidden by ending its move, and the docking drag carries the grabbed tab as
+ *    its drag image - the VS Code gesture, so a tab can be reordered without a
+ *    docking preview appearing whenever the pointer twitches, and a drag that
+ *    does leave the rail reads as carrying that tab;
  *  - dragging the rest of a lone panel's title row docks that panel: with one tab
  *    the row reads as a title, so the row is the handle and none of it is dead;
  *  - dragging the empty space past the last tab of a *floating* panel's row moves
@@ -85,11 +93,12 @@ private:
     bool isTitleRow() const;
     /// The rail's rectangle: the band a tab drag has to leave before docking.
     QRect railRect() const;
-    /// Applies the order the bar is *showing* to the layout, once the drag that
-    /// produced it is over. tabifyDockWidget is the only way to set a group's
-    /// order and it puts a dock at the *end* of the rail, so the order is built by
-    /// moving docks to the end from last to first.
-    void commitRailOrder();
+    /// The tab the gesture grabbed, as the image a docking drag carries.
+    DockDragImage dragImageFor(const QPoint& aPos) const;
+    /// Ends the tab move Qt started when the pointer left the rail, so its
+    /// floating copy is hidden and its drag offsets are dropped before this app's
+    /// own drag takes the gesture over.
+    void endRailDrag();
     void log(const QString& aMessage) const;
 
     /// Watched, not merely pointed at: Qt creates and destroys these bars as
@@ -97,12 +106,9 @@ private:
     QPointer<QTabBar> mBar;
     QDockWidget* mPressed = nullptr;
     QPoint mPressPos;
-    /// The pressed tab's *current* index in the bar: moveTab shifts it, so the next
-    /// move has to be applied from where the tab actually is.
+    /// The tab the press landed on: what the reorder Qt performs is doing, and
+    /// which tab the drag image is taken from.
     int mTabIndex = -1;
-    /// Whether the bar's order was changed during this drag, which is what decides
-    /// whether the layout has to be told about it at all.
-    bool mMovedTab = false;
     bool mMoving = false;
     bool mDockDragArmed = false;
     bool mDragging = false;

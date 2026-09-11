@@ -2,6 +2,7 @@
 #define GUI_DOCKDROPOVERLAY_H
 
 #include <QDockWidget>
+#include <QPixmap>
 #include <QRect>
 #include <functional>
 
@@ -14,10 +15,19 @@ class QMimeData;
 
 namespace gui {
 
-/// Starts the dock drag for a panel: the ghost, the MIME payload and the overlay
-/// that resolves where it lands. Shared by every title row this app has, since a
-/// drag has to mean the same thing from all of them.
-void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource);
+/// The image a drag carries and where inside it the pointer grabbed. For a tab
+/// drag that is the tab itself, so the ghost next to the cursor is the thing the
+/// user picked up rather than an abstract rectangle.
+struct DockDragImage {
+    QPixmap pixmap;
+    QPoint hotSpot;
+};
+
+/// Starts the dock drag for a panel: the drag image, the MIME payload and the
+/// overlay that resolves where it lands. Shared by every title row this app has,
+/// since a drag has to mean the same thing from all of them.
+void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource,
+                        const DockDragImage& aImage = DockDragImage());
 
 /**
  * The drop side of the dock gesture: what a dragged panel lands on, and the

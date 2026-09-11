@@ -97,14 +97,35 @@ bool occupiesScreen(const QWidget* aWidget, const QRect& aWindow) {
     return !rect.isEmpty() && aWindow.intersects(rect);
 }
 
-/// The size the panel brings to a slot: a floating panel's hint carries its
-/// frame, and the frame is not there once docked.
-QSize dockedHint(const QDockWidget* aPanel) {
-    if (!aPanel) return QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
-    QSize hint = aPanel->sizeHint();
-    if (aPanel->isFloating())
-        hint -= QSize(2 * dockMetrics::kFrameInset, 2 * dockMetrics::kFrameInset);
-    return hint;
+/// The size the dragged panel brings to a slot of the kind aTarget is, for the
+/// preview rectangle.
+///
+/// Deliberately not the panel's sizeHint. A panel that shares its slot has no
+/// title row of its own - the slot's rail holds the titles, so the row reports no
+/// size at all - which makes its hint 0x0. Measured: dropping a tabbed panel on an
+/// emptied sidebar produced a preview of "0,23 0x592", a zero-width rectangle,
+/// which is no indicator at all for the one gesture that needs one most. What the
+/// panel actually brings is the size it has now if it is already in that kind of
+/// area, and otherwise the area's own minimum - a panel from a sidebar has no
+/// meaningful height for a bottom slot, and its width is not the width a sidebar
+/// takes.
+QSize previewSize(const QDockWidget* aPanel, const QMainWindow* aWindow, bool aSideTarget) {
+    QSize size;
+    if (aPanel && aWindow && !aPanel->isFloating()) {
+        auto* panel = const_cast<QDockWidget*>(aPanel);
+        const Qt::DockWidgetArea area = aWindow->dockWidgetArea(panel);
+        const bool sideArea = area == Qt::LeftDockWidgetArea || area == Qt::RightDockWidgetArea;
+        // a grouped, inactive panel keeps its slot's size even while parked
+        if (area != Qt::NoDockWidgetArea && sideArea == aSideTarget) size = panel->size();
+    } else if (aPanel && aPanel->isFloating()) {
+        // the frame is not there once docked
+        size = aPanel->size() - QSize(2 * dockMetrics::kFrameInset, 2 * dockMetrics::kFrameInset);
+    }
+    if (size.isEmpty()) size = QSize(dockMetrics::kMinWidth, dockMetrics::kMinHeight);
+    // the preview says where the panel lands, and a slot can only be so big
+    size.setWidth(qBound(dockMetrics::kMinWidth, size.width(), dockMetrics::kMaxWidth));
+    size.setHeight(qBound(dockMetrics::kMinHeight, size.height(), dockMetrics::kMaxHeight));
+    return size;
 }
 
 
@@ -119,7 +140,9 @@ QSize dockedHint(const QDockWidget* aPanel) {
 /// said 1305 wide against a dock that landed 965 wide.
 QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aCanvas) const {
     if (!mWindow) return QRect();
-    const QSize hint = dockedHint(mPanel);
+    const bool sideTarget = aTarget.area == Qt::LeftDockWidgetArea
+                         || aTarget.area == Qt::RightDockWidgetArea;
+    const QSize hint = previewSize(mPanel, mWindow, sideTarget);
     const QRect window = mWindow->rect();
 
     QRect occupied;
@@ -174,7 +197,7 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     }
 }
 
-void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource) {
+void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource, const DockDragImage& aImage) {
     if (!aPanel || !aSource) return;
     auto* overlay = DockDropOverlay::forPanel(aPanel);
     if (!overlay)
@@ -185,16 +208,28 @@ void beginDockPanelDrag(QDockWidget* aPanel, QWidget* aSource) {
     mime->setData(QString::fromLatin1(DockDropOverlay::mimeType()), aPanel->objectName().toUtf8());
     drag->setMimeData(mime);
 
-    // The ghost is the panel's own snapshot, scaled: the panel cannot follow the
-    // cursor itself (its toplevel is already mapped, and the compositor's
-    // toplevel-drag protocol only adopts windows that are not), so the ghost is
-    // what makes the gesture read as "this panel is going there".
-    const QPixmap shot = aPanel->grab();
-    if (!shot.isNull()) {
-        const QPixmap ghost = shot.scaledToWidth(qBound(160, shot.width() / 3, 360),
-                                                 Qt::SmoothTransformation);
-        drag->setPixmap(ghost);
-        drag->setHotSpot(QPoint(ghost.width() / 2, qMin(12, ghost.height() / 4)));
+    // The drag image is the tab the gesture started from, so the feedback is
+    // "this tab is being carried". A panel's own snapshot is the fallback for a
+    // drag that began somewhere other than a tab.
+    //
+    // The relay matters here as much as the image: Qt's dock tab bar is movable,
+    // so while the pointer is still inside the rail Qt draws its own floating
+    // copy of the grabbed tab and follows the cursor with it. That copy is a child
+    // of the bar and is clipped by it, so the moment the pointer leaves the rail
+    // it disappears - and this pixmap is what takes over, at the same size and at
+    // the same offset inside the tab, so the tab appears to keep moving with the
+    // pointer instead of vanishing at the rail's edge.
+    if (!aImage.pixmap.isNull()) {
+        drag->setPixmap(aImage.pixmap);
+        drag->setHotSpot(aImage.hotSpot);
+    } else {
+        const QPixmap shot = aPanel->grab();
+        if (!shot.isNull()) {
+            const QPixmap ghost = shot.scaledToWidth(qBound(160, shot.width() / 3, 360),
+                                                     Qt::SmoothTransformation);
+            drag->setPixmap(ghost);
+            drag->setHotSpot(QPoint(ghost.width() / 2, qMin(12, ghost.height() / 4)));
+        }
     }
 
     if (overlay) overlay->beginDrag(aPanel);
