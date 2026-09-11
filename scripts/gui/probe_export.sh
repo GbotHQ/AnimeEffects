@@ -15,6 +15,10 @@ OUT=${3:-/tmp/ae_probe_out}
 # "<cwd>//tmp/name" and the export is (correctly) refused for a missing directory.
 OUTDIR=$(dirname "$OUT")
 OUTNAME=$(basename "$OUT")
+# Remove the target first. This probe asserts `ls "$OUT"*` is non-empty, and it was
+# passing on a file from an earlier run — a gate that tested nothing while reading
+# as coverage. The assertion has to fail when the export does not write.
+rm -f "$OUT"*
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   cd "'"$OUTDIR"'" && '"$APP"' "'"$PROJ"'" >/tmp/probe_export.log 2>&1 &
   app=$!
@@ -51,7 +55,15 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mousemove 520 455 click 1; sleep 1
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -3
+# The typed name has no extension, so the artifact's is appended ("ae_probe_out" ->
+# "ae_probe_out.apng"). Assert on that BASE name rather than on "some file appeared"
+# — a differently named output must not pass. Everything matching $OUT was deleted
+# before the run, so whatever is here now was written by this run.
 f=$(ls "$OUT"* 2>/dev/null | head -1)
+case "$f" in
+    "$OUT".*) check 0 "the exported file is named from the typed base name ($f)";;
+    *) check 1 "the exported file is named from the typed base name (got '$f')";;
+esac
 [ -n "$f" ] && assert_exists "$f" "the exported file"
 assert_rendered "$SHOTS/exp_03_after.png" "the app after the export"
 summary probe_export

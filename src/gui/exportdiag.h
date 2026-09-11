@@ -61,11 +61,15 @@ public:
     QLabel *destinationLabel;
     QLabel *qualityLabel;
     QLabel *destinationFacts;
+    QScrollArea *destinationFactsScroll;
     QComboBox *destinationCombo;
     QComboBox *qualityCombo;
     // Lines of facts reserved even when the text is shorter, so the form below
     // does not jump around while the user moves through the destination list.
     static constexpr int kFactsMinLines = 4;
+    // Ceiling for the facts box, in lines. See the scroll area's comment: a long
+    // note must not push the rest of the form out of the dialog.
+    static constexpr int kFactsMaxLines = 6;
 
     QWidget *destinationBox;
     QGridLayout *destinationGrid;
@@ -174,6 +178,11 @@ public:
         if (exportWidget->objectName().isEmpty())
             exportWidget->setObjectName(QString::fromUtf8("exportWidget"));
         exportWidget->resize(550, 700);
+        // NOTE: the height stays 700 on purpose. Growing the window was tried and
+        // reverted: it moves the Export and Cancel buttons, which is a worse
+        // trade than the two real fixes below (a bounded, scrolling facts box and
+        // hiding the rows that are facts rather than controls). Those are what keep
+        // the frame range on screen.
         QSizePolicy sizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
@@ -585,7 +594,23 @@ public:
         // Top-aligned: a taller-than-needed label centres its text by default,
         // which floated the facts into the middle of the box.
         destinationFacts->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        destinationGrid->addWidget(destinationFacts, 2, 0, 1, 2);
+        // A note can be long (pixiv's ugoira row explains three limits in seven
+        // lines, and the destination's limits are now stated above them). The
+        // facts are VARIABLE-length content, so they get the scrolling: without a
+        // ceiling here the label grows and pushes the frame range and the render
+        // size below the edge of the dialog, where the controls a user needs next
+        // are out of sight the moment they pick a documented destination. Better
+        // that the explanation scrolls than the form.
+        destinationFactsScroll = new QScrollArea(destinationBox);
+        destinationFactsScroll->setObjectName(QString::fromUtf8("destinationFactsScroll"));
+        destinationFactsScroll->setWidget(destinationFacts);
+        destinationFactsScroll->setWidgetResizable(true);
+        destinationFactsScroll->setFrameShape(QFrame::NoFrame);
+        destinationFactsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        destinationFactsScroll->setMaximumHeight(kFactsMaxLines
+                                                 * destinationFacts->fontMetrics().lineSpacing());
+        destinationFactsScroll->setFocusPolicy(Qt::NoFocus);
+        destinationGrid->addWidget(destinationFactsScroll, 2, 0, 1, 2);
 
         verticalLayout_3->addWidget(globalParamScroll);
 
@@ -900,6 +925,15 @@ public:
         imageQualitySpinbox->setValue(-1);
         setEnabled({bitrateLabel, bitrateLineEdit, setBitrateAuto, imageQualityLabel,
                     imageQualitySpinbox, setImageQualityToAuto}, false);
+        // ...and HIDDEN, because a frozen control that repeats a fact stated two
+        // lines above it is not information, it is furniture: the codec and the
+        // bitrate are named in the facts, and every one of these rows costs the
+        // vertical space the FRAME RANGE needs. The rows come back in manual mode,
+        // which is where they are the decision (same rule as the axes above).
+        setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
+                    bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
+                    setImageQualityToAuto},
+                   false);
 
         // --- palette: only a GIF has one ------------------------------------
         // media::GifEncoder owns the palette; every other codec ignores it
@@ -970,6 +1004,10 @@ public:
     // values they had before. This is the same dialog, not a lesser one — it is
     // how a PNG sequence, or a format the table does not carry, is produced.
     void clearPlan() {
+        setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
+                    bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
+                    setImageQualityToAuto},
+                   true);
         writeSize(mUserSizeKnown ? mUserSize : QSize(nativeW, nativeH));
         mLastSizeDictated = false;
         setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
@@ -1075,6 +1113,12 @@ private:
     static void setEnabled(const QList<QWidget*>& aWidgets, bool aOn) {
         for (QWidget* w : aWidgets) {
             w->setEnabled(aOn);
+        }
+    }
+
+    static void setVisible(const QList<QWidget*>& aWidgets, bool aOn) {
+        for (QWidget* w : aWidgets) {
+            w->setVisible(aOn);
         }
     }
 
