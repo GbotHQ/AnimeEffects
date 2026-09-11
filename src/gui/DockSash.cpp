@@ -4,6 +4,7 @@
 #include "gui/theme/Colors.h"
 
 #include <QDockWidget>
+#include <QMap>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
@@ -74,12 +75,15 @@ public:
         setCursor(aBoundary.axis == Qt::Horizontal ? Qt::SplitHCursor : Qt::SplitVCursor);
 
         const int span = aBoundary.spanEnd - aBoundary.spanStart + 1;
+        // One-sided boxes lie on the canvas's side of the seam, which is the
+        // direction the subject grows in; centred boxes straddle it.
+        const int boxStart = aCentered ? aBoundary.line - kHitBoxSize / 2
+                                       : (aBoundary.sign > 0 ? aBoundary.line
+                                                             : aBoundary.line - kHitBoxSize + 1);
         if (aBoundary.axis == Qt::Horizontal) {
-            const int x = aCentered ? aBoundary.line - kHitBoxSize / 2 : aBoundary.line;
-            setGeometry(x, aBoundary.spanStart, kHitBoxSize, span);
+            setGeometry(boxStart, aBoundary.spanStart, kHitBoxSize, span);
         } else {
-            const int y = aCentered ? aBoundary.line - kHitBoxSize / 2 : aBoundary.line;
-            setGeometry(aBoundary.spanStart, y, span, kHitBoxSize);
+            setGeometry(aBoundary.spanStart, boxStart, span, kHitBoxSize);
         }
 
 #ifdef Q_OS_WIN
@@ -225,11 +229,16 @@ private:
 #ifdef Q_OS_WIN
         lineSize = 2;
 #endif
+        // A one-sided box lies on the canvas's side of the seam, so the line is
+        // at the edge that touches the panel: the box's start when the subject
+        // grows towards positive coordinates, its end when it grows the other
+        // way (the bottom area's seam, for instance, has the canvas above it).
         if (mBoundary.axis == Qt::Horizontal) {
-            const int x = mCentered ? width() / 2 : 0;
+            const int x = mCentered ? width() / 2
+                                    : (mBoundary.sign > 0 ? 0 : width() - lineSize);
             return QRect(x, 0, lineSize, height());
         }
-        const int y = mCentered ? height() / 2 : 0;
+        const int y = mCentered ? height() / 2 : (mBoundary.sign > 0 ? 0 : height() - lineSize);
         return QRect(0, y, width(), lineSize);
     }
 
@@ -288,28 +297,25 @@ void DockSash::scheduleRelayout() {
 void DockSash::relayout() {
     watchDocks();
 
-    // The panes a seam can lie between: every docked panel plus the central
-    // widget. Enumerating seams instead of docks is what makes a boundary
-    // between two stacked panels exist at all - the old shape ("one hitbox per
-    // dock, on its edge facing the canvas") could not express one, which is why
-    // a vertical split had no horizontal resizer.
-    struct Pane {
-        QRect rect;
-        QDockWidget* dock;
-    };
-    QVector<Pane> panes;
-    if (QWidget* central = mWindow->centralWidget()) {
-        if (central->isVisible()) panes.push_back({central->geometry(), nullptr});
-    }
+    // Seams belong to areas, not to pairs of docks.
+    //
+    // A dock area is one slot with one edge facing the canvas, and that edge is
+    // one boundary however many panels sit in the area - the line where the
+    // sidebar's bottom meets the timeline is the *bottom area's* top edge, not a
+    // seam between two panels that happen to touch. Enumerating pairs instead put
+    // two handles on that one line (each highlighting its own half, since each
+    // spanned only the overlap of the pair), and the pair across areas resized
+    // docks from two different areas, which QMainWindow::resizeDocks does not
+    // support: measured, it aborted the process on the next drag.
+    QMap<int, QVector<QDockWidget*>> byArea;
     for (auto* dock : mWindow->findChildren<QDockWidget*>()) {
         const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
-        if (area == Qt::NoDockWidgetArea || dock->isFloating() || !dock->isVisible())
-            continue;
-        panes.push_back({dock->geometry(), dock});
+        if (area == Qt::NoDockWidgetArea || dock->isFloating() || !dock->isVisible()) continue;
+        byArea[int(area)].push_back(dock);
     }
 
     QVector<Boundary> boundaries;
-    const auto addBoundary = [&boundaries](const Boundary& aBoundary, bool aCentered) {
+    const auto addBoundary = [&boundaries](const Boundary& aBoundary) {
         for (const Boundary& existing : boundaries) {
             if (existing.axis == aBoundary.axis && existing.line == aBoundary.line
                     && existing.spanStart == aBoundary.spanStart
@@ -319,75 +325,117 @@ void DockSash::relayout() {
         boundaries.push_back(aBoundary);
     };
 
-    for (int i = 0; i < panes.size(); ++i) {
-        if (!panes[i].dock) continue; // the central widget is never the subject
-        const QRect a = panes[i].rect;
-        for (int j = 0; j < panes.size(); ++j) {
-            if (i == j) continue;
-            const QRect b = panes[j].rect;
-            if (b.isEmpty() || a.isEmpty()) continue;
+    // (1) one seam per area: the edge of the area that faces the canvas. The
+    //     subject is a panel of that area; nothing absorbs it, because resizing
+    //     an area is what changes - the canvas and the areas beside it take up
+    //     the difference.
+    for (auto it = byArea.begin(); it != byArea.end(); ++it) {
+        const Qt::DockWidgetArea area = Qt::DockWidgetArea(it.key());
+        const QVector<QDockWidget*>& docks = it.value();
+        if (docks.isEmpty()) continue;
+        QRect areaRect;
+        for (QDockWidget* dock : docks) {
+            const QRect rect = dock->geometry();
+            areaRect = areaRect.isNull() ? rect : areaRect.united(rect);
+        }
+        if (areaRect.isNull()) continue;
 
-            const int vTop = qMax(a.top(), b.top());
-            const int vBottom = qMin(a.bottom(), b.bottom());
-            const int hLeft = qMax(a.left(), b.left());
-            const int hRight = qMin(a.right(), b.right());
+        Boundary boundary;
+        boundary.subject = docks.first();
+        boundary.partner = nullptr;
+        switch (area) {
+        case Qt::LeftDockWidgetArea:
+            // the seam is the area's right edge: dragging right grows it
+            boundary.axis = Qt::Horizontal;
+            boundary.sign = 1;
+            boundary.line = areaRect.right() + 1;
+            boundary.spanStart = areaRect.top();
+            boundary.spanEnd = areaRect.bottom();
+            break;
+        case Qt::RightDockWidgetArea:
+            boundary.axis = Qt::Horizontal;
+            boundary.sign = -1;
+            boundary.line = areaRect.left();
+            boundary.spanStart = areaRect.top();
+            boundary.spanEnd = areaRect.bottom();
+            break;
+        case Qt::TopDockWidgetArea:
+            boundary.axis = Qt::Vertical;
+            boundary.sign = 1;
+            boundary.line = areaRect.bottom() + 1;
+            boundary.spanStart = areaRect.left();
+            boundary.spanEnd = areaRect.right();
+            break;
+        default:
+            // the bottom area's top edge: the seam the timeline shares with
+            // everything above it, across the area's full width
+            boundary.axis = Qt::Vertical;
+            boundary.sign = -1;
+            boundary.line = areaRect.top();
+            boundary.spanStart = areaRect.left();
+            boundary.spanEnd = areaRect.right();
+            break;
+        }
+        addBoundary(boundary);
+    }
 
-            if (vBottom > vTop) {
-                if (qAbs(b.right() + 1 - a.left()) <= kAdjacentSlack) {
-                    // the seam is on a's left edge: dragging right shrinks a
-                    Boundary boundary;
-                    boundary.subject = panes[i].dock;
-                    boundary.partner = panes[j].dock;
-                    boundary.axis = Qt::Horizontal;
-                    boundary.sign = -1;
-                    boundary.line = a.left();
-                    boundary.spanStart = vTop;
-                    boundary.spanEnd = vBottom;
-                    addBoundary(boundary, panes[j].dock != nullptr);
-                } else if (qAbs(b.left() - 1 - a.right()) <= kAdjacentSlack) {
-                    // the seam is on a's right edge: dragging right grows a
-                    Boundary boundary;
-                    boundary.subject = panes[i].dock;
-                    boundary.partner = panes[j].dock;
-                    boundary.axis = Qt::Horizontal;
-                    boundary.sign = 1;
-                    boundary.line = a.right() + 1;
-                    boundary.spanStart = vTop;
-                    boundary.spanEnd = vBottom;
-                    addBoundary(boundary, panes[j].dock != nullptr);
+    // (2) seams between panels *sharing* an area, which is the one case where
+    //     resizing moves two docks against each other: they are nested on the
+    //     same level, which is what QMainWindow::resizeDocks requires.
+    for (auto it = byArea.begin(); it != byArea.end(); ++it) {
+        const QVector<QDockWidget*>& docks = it.value();
+        for (int i = 0; i < docks.size(); ++i) {
+            for (int j = 0; j < docks.size(); ++j) {
+                if (i == j) continue;
+                const QRect a = docks[i]->geometry();
+                const QRect b = docks[j]->geometry();
+                if (a.isEmpty() || b.isEmpty()) continue;
+                const int vTop = qMax(a.top(), b.top());
+                const int vBottom = qMin(a.bottom(), b.bottom());
+                const int hLeft = qMax(a.left(), b.left());
+                const int hRight = qMin(a.right(), b.right());
+
+                Boundary boundary;
+                boundary.subject = docks[i];
+                boundary.partner = docks[j];
+                if (vBottom > vTop) {
+                    if (qAbs(b.right() + 1 - a.left()) <= kAdjacentSlack) {
+                        // the seam is on a's left edge: dragging right shrinks a
+                        boundary.axis = Qt::Horizontal;
+                        boundary.sign = -1;
+                        boundary.line = a.left();
+                        boundary.spanStart = vTop;
+                        boundary.spanEnd = vBottom;
+                        addBoundary(boundary);
+                    } else if (qAbs(b.left() - 1 - a.right()) <= kAdjacentSlack) {
+                        boundary.axis = Qt::Horizontal;
+                        boundary.sign = 1;
+                        boundary.line = a.right() + 1;
+                        boundary.spanStart = vTop;
+                        boundary.spanEnd = vBottom;
+                        addBoundary(boundary);
+                    }
                 }
-            }
-            if (hRight > hLeft) {
-                if (qAbs(b.bottom() + 1 - a.top()) <= kAdjacentSlack) {
-                    // the seam is on a's top edge: dragging down shrinks a
-                    Boundary boundary;
-                    boundary.subject = panes[i].dock;
-                    boundary.partner = panes[j].dock;
-                    boundary.axis = Qt::Vertical;
-                    boundary.sign = -1;
-                    boundary.line = a.top();
-                    boundary.spanStart = hLeft;
-                    boundary.spanEnd = hRight;
-                    addBoundary(boundary, panes[j].dock != nullptr);
-                } else if (qAbs(b.top() - 1 - a.bottom()) <= kAdjacentSlack) {
-                    // the seam is on a's bottom edge: dragging down grows a
-                    Boundary boundary;
-                    boundary.subject = panes[i].dock;
-                    boundary.partner = panes[j].dock;
-                    boundary.axis = Qt::Vertical;
-                    boundary.sign = 1;
-                    boundary.line = a.bottom() + 1;
-                    boundary.spanStart = hLeft;
-                    boundary.spanEnd = hRight;
-                    addBoundary(boundary, panes[j].dock != nullptr);
+                if (hRight > hLeft) {
+                    if (qAbs(b.bottom() + 1 - a.top()) <= kAdjacentSlack) {
+                        boundary.axis = Qt::Vertical;
+                        boundary.sign = -1;
+                        boundary.line = a.top();
+                        boundary.spanStart = hLeft;
+                        boundary.spanEnd = hRight;
+                        addBoundary(boundary);
+                    } else if (qAbs(b.top() - 1 - a.bottom()) <= kAdjacentSlack) {
+                        boundary.axis = Qt::Vertical;
+                        boundary.sign = 1;
+                        boundary.line = a.bottom() + 1;
+                        boundary.spanStart = hLeft;
+                        boundary.spanEnd = hRight;
+                        addBoundary(boundary);
+                    }
                 }
             }
         }
     }
-
-    // Hitboxes are pooled: the count only changes when the layout does.
-    while (mHitBoxes.size() < boundaries.size())
-        mHitBoxes.push_back(new HitBox(this, mWindow));
 
     // A seam being dragged keeps the boundary it was pressed on. Collapsing a
     // panel changes the layout, the layout rebuilds this list, and the hitbox
@@ -403,11 +451,20 @@ void DockSash::relayout() {
         }
     }
 
+    // The pool grows with the seams; without this the first assignment indexes
+    // an empty list and Qt asserts (measured: abort on startup, at
+    // QList::operator[] in this function).
+    while (mHitBoxes.size() < boundaries.size() && mHitBoxes.size() < kMaxHitBoxes)
+        mHitBoxes.push_back(new HitBox(this, mWindow));
+
+    // Bounded by the pool, not by the cap: skipping the dragged seam's slot
+    // consumes one, and indexing past the pool is what Qt asserts on (measured,
+    // twice, at exactly this line).
     int used = 0;
     for (const Boundary& boundary : boundaries) {
-        if (used >= kMaxHitBoxes) break;
+        if (used >= mHitBoxes.size()) break;
         if (draggingIndex >= 0 && used == draggingIndex) ++used; // keep its slot
-        if (used >= kMaxHitBoxes) break;
+        if (used >= mHitBoxes.size()) break;
         if (draggingIndex >= 0 && mHitBoxes[draggingIndex]->holds(boundary)) continue;
         mHitBoxes[used]->setBoundary(boundary, boundary.partner != nullptr);
         ++used;
