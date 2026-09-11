@@ -99,11 +99,14 @@ public:
     /// on, so the panel could never be dragged back out in the same gesture.
     bool isDragging() const { return mDragging; }
 
-    /// Whether this hitbox is the seam aBoundary describes, so a drag in progress
-    /// is not shown a different one.
-    bool holds(const Boundary& aBoundary) const {
-        return mBoundary.subject == aBoundary.subject && mBoundary.axis == aBoundary.axis
-                && mBoundary.line == aBoundary.line && mBoundary.spanStart == aBoundary.spanStart;
+    /// Whether this hitbox already holds the seam that resizes this subject,
+    /// against this partner, along this axis. Identity is *what it resizes*, not
+    /// where the line currently is: the line moves while the seam is dragged, and
+    /// a hitbox that keeps the drag's mouse grab and baseline has to keep its
+    /// identity while its geometry follows.
+    bool holds(QDockWidget* aSubject, QDockWidget* aPartner, Qt::Orientation aAxis) const {
+        return mBoundary.subject == aSubject && mBoundary.partner == aPartner
+                && mBoundary.axis == aAxis;
     }
 
 protected:
@@ -307,10 +310,22 @@ void DockSash::relayout() {
     // spanned only the overlap of the pair), and the pair across areas resized
     // docks from two different areas, which QMainWindow::resizeDocks does not
     // support: measured, it aborted the process on the next drag.
+    // Only docks that are actually on screen count towards an area's extent. An
+    // inactive tab of a group is still "visible" and still reports a size - Qt
+    // parks it off-screen (measured: -820,-656) - and one such rect in the union
+    // made the area cover the whole window, with its seam nowhere useful.
+    const QRect windowRect = mWindow->rect();
+    const auto occupiesScreen = [&windowRect](const QWidget* aWidget) {
+        if (!aWidget || !aWidget->isVisible()) return false;
+        const QRect rect = aWidget->geometry();
+        return !rect.isEmpty() && windowRect.intersects(rect);
+    };
+
     QMap<int, QVector<QDockWidget*>> byArea;
     for (auto* dock : mWindow->findChildren<QDockWidget*>()) {
         const Qt::DockWidgetArea area = mWindow->dockWidgetArea(dock);
-        if (area == Qt::NoDockWidgetArea || dock->isFloating() || !dock->isVisible()) continue;
+        if (area == Qt::NoDockWidgetArea || dock->isFloating()) continue;
+        if (!occupiesScreen(dock)) continue;
         byArea[int(area)].push_back(dock);
     }
 
@@ -437,41 +452,54 @@ void DockSash::relayout() {
         }
     }
 
-    // A seam being dragged keeps the boundary it was pressed on. Collapsing a
-    // panel changes the layout, the layout rebuilds this list, and the hitbox
-    // that holds the mouse grab is pooled - so without this it is handed a
-    // different seam mid-drag and starts resizing a panel the user never
-    // touched (measured: dragging the sidebar past its collapse point began
-    // resizing the animation panel above it).
-    int draggingIndex = -1;
-    for (int i = 0; i < mHitBoxes.size(); ++i) {
-        if (mHitBoxes[i]->isDragging()) {
-            draggingIndex = i;
-            break;
+    {
+        // Temporary instrumentation: the seams as the layout sees them, logged
+        // only when they change.
+        static QString previous;
+        QStringList now;
+        for (const Boundary& boundary : boundaries) {
+            now << QStringLiteral("%1/%2/%3@%4[%5..%6]")
+                    .arg(boundary.subject ? boundary.subject->objectName() : QStringLiteral("-"))
+                    .arg(boundary.partner ? boundary.partner->objectName() : QStringLiteral("central"))
+                    .arg(boundary.axis == Qt::Horizontal ? QStringLiteral("w") : QStringLiteral("h"))
+                    .arg(boundary.line).arg(boundary.spanStart).arg(boundary.spanEnd);
+        }
+        const QString text = now.join(QStringLiteral(", "));
+        if (text != previous) {
+            previous = text;
+            dockSpikeLog(nullptr, QStringLiteral("seams: %1").arg(text));
         }
     }
 
-    // The pool grows with the seams; without this the first assignment indexes
-    // an empty list and Qt asserts (measured: abort on startup, at
-    // QList::operator[] in this function).
-    while (mHitBoxes.size() < boundaries.size() && mHitBoxes.size() < kMaxHitBoxes)
-        mHitBoxes.push_back(new HitBox(this, mWindow));
-
-    // Bounded by the pool, not by the cap: skipping the dragged seam's slot
-    // consumes one, and indexing past the pool is what Qt asserts on (measured,
-    // twice, at exactly this line).
-    int used = 0;
+    // Each seam goes back to the hitbox that already holds it, matched by what
+    // it resizes rather than by its place in a list. That is what keeps a drag
+    // coherent - the hitbox keeps the mouse grab and the baseline sizes taken at
+    // the press - while letting its geometry follow the edge as the layout
+    // moves, which freezing it in place did not: measured, the separator's
+    // highlight stayed where it was while the area's edge moved away from it.
+    QVector<bool> taken(mHitBoxes.size(), false);
     for (const Boundary& boundary : boundaries) {
-        if (used >= mHitBoxes.size()) break;
-        if (draggingIndex >= 0 && used == draggingIndex) ++used; // keep its slot
-        if (used >= mHitBoxes.size()) break;
-        if (draggingIndex >= 0 && mHitBoxes[draggingIndex]->holds(boundary)) continue;
-        mHitBoxes[used]->setBoundary(boundary, boundary.partner != nullptr);
-        ++used;
+        int index = -1;
+        for (int i = 0; i < mHitBoxes.size(); ++i) {
+            if (!taken[i] && mHitBoxes[i]->holds(boundary.subject, boundary.partner, boundary.axis)) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            if (mHitBoxes.size() >= kMaxHitBoxes) break;
+            mHitBoxes.push_back(new HitBox(this, mWindow));
+            taken.push_back(false);
+            index = mHitBoxes.size() - 1;
+        }
+        taken[index] = true;
+        mHitBoxes[index]->setBoundary(boundary, boundary.partner != nullptr);
     }
-    for (int i = used; i < mHitBoxes.size(); ++i) {
-        // a hitbox whose panel was just collapsed stays where it is for the
-        // rest of the drag (see isDragging)
+
+    for (int i = 0; i < mHitBoxes.size(); ++i) {
+        if (taken[i]) continue;
+        // a hitbox whose panel was just collapsed stays where it is for the rest
+        // of the drag, so the panel can be dragged back out (see isDragging)
         if (!mHitBoxes[i]->isDragging()) mHitBoxes[i]->hide();
     }
 }

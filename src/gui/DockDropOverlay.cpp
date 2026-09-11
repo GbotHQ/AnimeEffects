@@ -83,6 +83,19 @@ bool canSplit(const QRect& aGroup, Qt::Edge aEdge, Qt::DockWidgetArea aArea) {
 
 } // namespace
 
+/// Whether a dock is actually occupying space on screen.
+///
+/// An inactive tab of a group is still "visible" and still reports a size: Qt
+/// parks it off-screen (measured: at -820,-656). Trusting that geometry when an
+/// area's extent is worked out makes the area enormous - one slot covering the
+/// whole window, with its seam drawn somewhere off it - which is what a group
+/// looked like after tabbing two panels together.
+bool occupiesScreen(const QWidget* aWidget, const QRect& aWindow) {
+    if (!aWidget || !aWidget->isVisible()) return false;
+    const QRect rect = aWidget->geometry();
+    return !rect.isEmpty() && aWindow.intersects(rect);
+}
+
 /// The size the panel brings to a slot: a floating panel's hint carries its
 /// frame, and the frame is not there once docked.
 QSize dockedHint(const QDockWidget* aPanel) {
@@ -119,8 +132,9 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     // How much width a side area takes, for the corner arithmetic below.
     const auto sideWidth = [this, &window](Qt::DockWidgetArea aArea) {
         for (QDockWidget* dock : mWindow->findChildren<QDockWidget*>()) {
-                if (!dock->isVisible() || dock->isFloating()) continue;
+                if (dock->isFloating()) continue;
             if (mWindow->dockWidgetArea(dock) != aArea) continue;
+            if (!occupiesScreen(dock, window)) continue;
             return aArea == Qt::LeftDockWidgetArea ? dock->geometry().right() + 1
                                                    : window.right() + 1 - dock->geometry().left();
         }
@@ -252,7 +266,7 @@ QRect DockDropOverlay::groupRect(QDockWidget* aDock) const {
     // whichever of them currently holds the space (the visible one), and the
     // hidden ones may sit anywhere.
     for (QDockWidget* sibling : mWindow->tabifiedDockWidgets(aDock)) {
-        if (sibling->isVisible()) rect = rect.united(sibling->geometry());
+        if (occupiesScreen(sibling, mWindow->rect())) rect = rect.united(sibling->geometry());
     }
     return rect;
 }
