@@ -2164,6 +2164,14 @@ void MainWindow::updateDockTabMenus() {
         // bar (both are QTabBars named dockTabBar), and one filter gives both the
         // same gestures.
         bar->setObjectName(QStringLiteral("dockTabBar"));
+        // Naming it is not enough: a style sheet rule is matched when the widget
+        // is polished, so a bar that Qt creates mid-session (a group made by
+        // dragging a panel onto another) kept Qt's own look while the same bar
+        // at startup was dressed - measured, the group created by a drop showed
+        // the generic tab rules until the next theme change.
+        bar->style()->unpolish(bar);
+        bar->style()->polish(bar);
+        bar->update();
         new DockTabBarFilter(bar, this);
         dockSpikeLog(dockForTabTitle(bar->count() > 0 ? bar->tabText(0) : QString()),
                 QStringLiteral("group tab bar adopted (%1 tabs), same widget and gestures as a title row")
