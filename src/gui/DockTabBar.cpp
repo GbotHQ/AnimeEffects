@@ -205,6 +205,18 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
                 // the tab visibly in the wrong place until the next move recomputed
                 // the offset - the teleport that corrected itself a move later.
                 // Leaving the event alone is the whole gesture.
+                if (qEnvironmentVariableIsSet("AE_DOCK_RAIL_PROBE")) {
+                    QStringList rects;
+                    for (int i = 0; i < mBar->count(); ++i) {
+                        const QRect r = mBar->tabRect(i);
+                        rects << QStringLiteral("%1@%2,%3+%4").arg(mBar->tabText(i))
+                                     .arg(r.x()).arg(r.y()).arg(r.width());
+                    }
+                    log(QStringLiteral("rail move pos=%1 tabAt=%2 index=%3 movable=%4 [%5]")
+                            .arg(pos.x()).arg(mBar->tabAt(pos)).arg(mTabIndex)
+                            .arg(mBar->isMovable())
+                            .arg(rects.join(QStringLiteral(", "))));
+                }
                 return false;
             }
             // Left the rail: docking takes over, and it is the same drag a floating
@@ -252,7 +264,14 @@ bool DockTabBarFilter::eventFilter(QObject* aObject, QEvent* aEvent) {
     case QEvent::MouseButtonRelease:
         // A reorder Qt performed is already the layout's order (QMainWindowLayout
         // moves the dock when the bar emits tabMoved), so there is nothing to
-        // commit here - and nothing to undo either.
+        // commit here - and nothing to undo either. Read at the release, because a
+        // reorder does not necessarily produce a layout pass for anything else to
+        // be read from.
+        if (qEnvironmentVariableIsSet("AE_DOCK_RAIL_PROBE") && mBar) {
+            QStringList order;
+            for (int i = 0; i < mBar->count(); ++i) order << mBar->tabText(i);
+            log(QStringLiteral("rail order at release: %1").arg(order.join(QStringLiteral(" | "))));
+        }
         mDockDragArmed = false;
         mMoving = false;
         mRailDrag = false;
