@@ -19,6 +19,15 @@
 namespace gui {
 
 void dockSpikeLog(const QDockWidget* aDock, const QString& aMessage) {
+    // One switch for the whole temporary harness. The call sites sit on gestures
+    // and on startup, so without this a normal run writes to stderr and appends to
+    // the file on every drag the user makes; with it everything is quiet until a
+    // probe asks for it, and AE_DOCK_SPIKE_LOG still names the file to read the
+    // behaviour back from.
+    static const bool enabled = qEnvironmentVariableIsSet("AE_DOCK_SPIKE_LOG")
+                             || qEnvironmentVariableIsSet("AE_DOCK_LOG");
+    if (!enabled) return;
+
     static const QString path = qEnvironmentVariable(
             "AE_DOCK_SPIKE_LOG", QStringLiteral("/tmp/ae-dock-spike.log"));
     const QString line = QStringLiteral("%1 [%2] %3")
