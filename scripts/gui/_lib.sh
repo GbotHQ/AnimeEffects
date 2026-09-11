@@ -24,6 +24,11 @@ FAILURES=0
 
 mkdir -p "$SHOTS"
 
+# Exported because the probes interpolate these INSIDE the single-quoted
+# `bash -c` string that xvfb-run executes: without this the inner shell sees an
+# empty $SHOTS and writes screenshots to "/" instead.
+export ROOT APP SHOTS PROJ
+
 if [ ! -x "$APP" ]; then
     echo "FAIL  no application binary at $APP (build the Debug target first)"
     exit 2

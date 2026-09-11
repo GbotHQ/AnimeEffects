@@ -15,6 +15,7 @@
 #include <set>
 #include <utility>
 #include <QComboBox>
+#include <QStatusBar>
 // This thing is held by duct tape and OOP hell I swear...
 #include "ctrl/ExportParams.h"
 
@@ -1250,7 +1251,40 @@ static void translateVideoExport(exportParam& exParam, const std::vector<audioCo
     aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
 }
 
-void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widget, const std::vector<audioConfig>& validAudioStreams){
+// A non-selectable group heading inside a QComboBox. Qt's own idiom for this is
+// to clear the item's flags through the model.
+static void addComboHeader(QComboBox* aCombo, const QString& aText) {
+    aCombo->addItem(aText);
+    if (auto* model = qobject_cast<QStandardItemModel*>(aCombo->model())) {
+        if (QStandardItem* item = model->item(aCombo->count() - 1)) {
+            item->setFlags(Qt::NoItemFlags);
+            QFont f = item->font();
+            f.setBold(true);
+            item->setFont(f);
+        }
+    }
+}
+
+// The label a user picks from, which has to say when a row cannot be produced
+// here. The table declares `platform` for exactly this and nothing read it: on
+// Linux the list offered "Transparent video (Safari / iOS)", and selecting it
+// produced "encoder not available in this build: hevc_videotoolbox" — a message
+// that reads like a broken installation rather than a platform requirement.
+static QString targetLabel(const ctrl::ExportTarget& aTarget) {
+    if (aTarget.platform.isEmpty() || aTarget.platform == QLatin1String("any"))
+        return aTarget.label;
+    // QStringLiteral, not QLatin1String: the em dash is UTF-8 in the source, and
+    // Latin-1 is the wrong decoder for it. Getting this wrong is how
+    // "— needs macOS" became "â€” needs macOS" in the destination list the first
+    // time this label was written.
+    return aTarget.label + QStringLiteral(" — needs ") + ctrl::platformName(aTarget.platform);
+}
+
+// Returns true only when something was actually written. The callers need that:
+// "export again" and the status line both have to tell a completed export from a
+// refused one, and an export that reports success without a file is the failure
+// mode this whole area keeps producing.
+bool exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widget, const std::vector<audioConfig>& validAudioStreams){
     // All full-export dialog exports now run through the single in-process
     // ctrl::Exporter (linked libav*): video, image sequence, and GIF. The legacy
     // projectExporter::Exporter + ffmpeg:: CLI machinery is no longer used.
@@ -1294,7 +1328,7 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         if (target.id.isEmpty()) {
             QMessageBox::warning(widget, QObject::tr("Export Error"),
                                  QObject::tr("Unknown export destination: %1").arg(exParam.destinationId));
-            return;
+            return false;
         }
         ctrl::ExportRequest request;
         request.outputPath = g.osExportTarget;
@@ -1317,7 +1351,7 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         plan = ctrl::planExport(target, request, exParam.qualityBucket);
         if (!plan.ok()) {
             QMessageBox::warning(widget, QObject::tr("Export Error"), plan.error);
-            return;
+            return false;
         }
         havePlan = true;
         cparam.size = plan.size;
@@ -1353,7 +1387,7 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         auto res = exporter.execute(cparam, iparam);
         if (!res && !exporter.isCanceled())
             QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
-        return;
+        return bool(res);
     }
 
     if (isGif) {
@@ -1371,7 +1405,7 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
         auto res = exporter.execute(cparam, gparam);
         if (!res && !exporter.isCanceled())
             QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
-        return;
+        return bool(res);
     }
 
     // Video.
@@ -1431,7 +1465,7 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
                                      .arg(plan.target.label)
                                      .arg(plan.frames())
                                      .arg(needed / (1024 * 1024)));
-            return;
+            return false;
         }
 
         exporter.setFrameSink([&](const QList<QImage>& frames) {
@@ -1481,8 +1515,80 @@ void exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     auto res = exporter.execute(cparam, vparam);
     if (!res && !exporter.isCanceled())
         QMessageBox::warning(widget, QObject::tr("Export Error"), exporter.log());
+    // Sink mode returns success from the exporter but writes the file itself (the
+    // fit loop owns it), so success is "the exporter says so AND the file is there".
+    return bool(res) && QFileInfo(g.osExportTarget).exists();
 }
 
+// Remember where an export went, so the next one does not start from nowhere.
+//
+// Two levels: the directory+name the dialogs should open at, and the directory
+// used for a given DESTINATION, which is what makes a repeat quick export a
+// single click instead of a folder prompt every time.
+void MainWindow::rememberExportLocation(const exportParam& aParam) {
+    const QFileInfo info(aParam.generalParams.osExportTarget);
+    const QString dir = info.absolutePath();
+    if (dir.isEmpty())
+        return;
+    QSettings settings;
+    settings.setValue(QStringLiteral("export_last_dir"), dir);
+    if (!info.fileName().isEmpty())
+        settings.setValue(QStringLiteral("export_last_name"), info.fileName());
+    if (!aParam.destinationId.isEmpty()) {
+        settings.setValue(QStringLiteral("export_dir/%1").arg(aParam.destinationId), dir);
+    }
+}
+
+// Tell the user what was written, and make it repeatable.
+//
+// There was no completion feedback at all: the progress dialog closed and the user
+// was left to find the file. The size matters as much as the path — for a
+// destination with a byte cap it is the difference between an upload that lands
+// and one the platform refuses.
+void MainWindow::reportExportOutcome(const exportParam& aParam, bool aWrote) {
+    if (!aWrote)
+        return;
+
+    rememberExportLocation(aParam);
+
+    const QFileInfo info(aParam.generalParams.osExportTarget);
+    const qint64 bytes = info.exists() ? info.size() : 0;
+    QString msg = tr("Exported %1 (%2 KB)").arg(info.fileName()).arg((bytes + 512) / 1024);
+
+    const ctrl::ExportTarget target =
+        ctrl::ExportTargets::find(ctrl::ExportTargets::load(), aParam.destinationId);
+    if (target.caps.maxBytes > 0) {
+        const bool within = bytes <= target.caps.maxBytes;
+        msg += tr(" — %1 of %2 KB allowed for %3")
+                   .arg((bytes + 512) / 1024)
+                   .arg(target.caps.maxBytes / 1024)
+                   .arg(target.label);
+        if (!within) {
+            msg += tr(" — OVER THE LIMIT, it will be rejected");
+        }
+    }
+    msg += QLatin1String("  ") + info.absolutePath();
+    statusBar()->showMessage(msg, 20000);
+
+    // Kept as a copy so "Export again" repeats THIS export rather than
+    // re-deriving one from whatever the dialogs currently hold.
+    mLastExport.reset(new exportParam(aParam));
+    if (mMainMenuBar)
+        mMainMenuBar->setExportAgainEnabled(true);
+}
+
+void MainWindow::onExportAgainTriggered() {
+    if (!mCurrent || !mLastExport)
+        return;
+
+    // No dialogs and no re-derivation: the same destination, quality, ranges, size,
+    // fps, artifact and path as last time. The exporter's own overwrite confirmer
+    // still asks before replacing the file, so this cannot silently destroy work.
+    std::vector<audioConfig> validAudioStreams =
+        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+    const bool wrote = exportProject(*mLastExport, mCurrent, exportWidget, validAudioStreams);
+    reportExportOutcome(*mLastExport, wrote);
+}
 
 void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId) {
     if (!mCurrent) {
@@ -1494,11 +1600,24 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
         return;
     }
 
-    // One click: pick a folder, and the destination decides the container, the
-    // codec, its options, transparency, the exact size, the caps and the audio.
-    const QString dirPath = QFileDialog::getExistingDirectory(this, tr("Export Folder"));
-    if (dirPath.isEmpty()) {
-        return;
+    // One click, and the destination decides the container, the codec, its options,
+    // transparency, the exact size, the caps and the audio.
+    //
+    // The folder is asked for ONCE PER DESTINATION and then remembered. Exporting a
+    // Telegram sticker, adjusting the art and exporting again is the normal
+    // workflow, and re-navigating a folder dialog every time is what made "quick
+    // export" not actually quick.
+    QSettings settings;
+    const QString rememberedDir =
+        settings.value(QStringLiteral("export_dir/%1").arg(aDestinationId)).toString();
+    QString dirPath = rememberedDir;
+    if (dirPath.isEmpty() || !QFileInfo(dirPath).isDir()) {
+        dirPath = QFileDialog::getExistingDirectory(
+            this, tr("Export Folder"),
+            settings.value(QStringLiteral("export_last_dir")).toString());
+        if (dirPath.isEmpty()) {
+            return;
+        }
     }
     QString base = QFileInfo(mCurrent->fileName()).baseName();
     if (base.isEmpty()) {
@@ -1536,7 +1655,8 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
     std::vector<audioConfig> validAudioStreams =
         AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
     if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
-        exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
+        const bool wrote = exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
+        reportExportOutcome(*exParam, wrote);
     }
 }
 
@@ -1561,10 +1681,44 @@ void MainWindow::onExportTriggered() {
     // per-container codec combos could not do that (getFormatAsInt() returns 0 for
     // every input, so every codec and pixel format chosen there was discarded).
     {
+        // The destination list, grouped by what the user is making.
+        //
+        // It was fourteen flat entries because nothing consumed the table's
+        // `family` column. Four scannable groups is the difference between reading
+        // a list and hunting through one, and the grouping is data the table
+        // already carried.
         const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-        exportUI->destinationCombo->addItem(tr("(use the settings below)"), QString());
-        for (const ctrl::ExportTarget& t : targets) {
-            exportUI->destinationCombo->addItem(t.label, t.id);
+
+        // The first entry is not "(use the settings below)" any more. That is a
+        // description of the dialog's mechanics, and the person who lands here is
+        // someone whose platform is NOT in the list — the one question this control
+        // has to answer and did not. It is also the entry that reveals the Format
+        // and Codec rows, so the wording has to lead there.
+        exportUI->destinationCombo->addItem(
+            tr("My platform isn't listed — let me choose the format"), QString());
+
+        struct Family {
+            const char* key;
+            const char* title;
+        };
+        // Order matters: the common case (a sticker for a chat app) comes first.
+        const Family families[] = {
+            {"sticker", QT_TR_NOOP("Stickers and emoji")},
+            {"overlay", QT_TR_NOOP("Overlays and transparency")},
+            {"video", QT_TR_NOOP("Video")},
+            {"archive", QT_TR_NOOP("Archive")},
+        };
+        for (const Family& family : families) {
+            bool wroteHeader = false;
+            for (const ctrl::ExportTarget& t : targets) {
+                if (t.family != QLatin1String(family.key))
+                    continue;
+                if (!wroteHeader) {
+                    addComboHeader(exportUI->destinationCombo, tr(family.title));
+                    wroteHeader = true;
+                }
+                exportUI->destinationCombo->addItem(targetLabel(t), t.id);
+            }
         }
         QSettings settings;
         const int saved = exportUI->destinationCombo->findData(
@@ -1913,6 +2067,19 @@ void MainWindow::onExportTriggered() {
     QFileDialog fileDiag;
     fileDiag.setAcceptMode(QFileDialog::AcceptMode::AcceptSave);
     fileDiag.setFileMode(QFileDialog::AnyFile);
+    // Open where the last export went, with its name preselected. Repeating an
+    // export to the same place is the common case, and this dialog used to open
+    // with no location at all.
+    {
+        QSettings s2;
+        const QString lastDir = s2.value(QStringLiteral("export_last_dir")).toString();
+        const QString lastName = s2.value(QStringLiteral("export_last_name")).toString();
+        if (!lastDir.isEmpty() && QFileInfo(lastDir).isDir()) {
+            fileDiag.setDirectory(lastDir);
+            if (!lastName.isEmpty())
+                fileDiag.selectFile(lastName);
+        }
+    }
     fileDiag.setNameFilters({exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")"});
     fileDiag.selectNameFilter(exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")");
 
@@ -2002,8 +2169,9 @@ void MainWindow::onExportTriggered() {
 
     // Main export function
     std::vector<audioConfig> validAudioStreams = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
-    if(isExportParamValid(exParam, exportWidget, &validAudioStreams)){
-        exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
+    if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
+        const bool wrote = exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
+        reportExportOutcome(*exParam, wrote);
     }
 }
 

@@ -39,6 +39,13 @@ private:
     ViaPoint& mViaPoint;
     core::Project* mProject;
     QVector<QAction*> mProjectActions;
+    // "Export again": enabled by the main window once an export has succeeded.
+    QAction* mExportAgainAction = nullptr;
+public:
+    // Enabled by the main window once an export has succeeded: "again" means the
+    // same export, and there is nothing to repeat until there has been one.
+    void setExportAgainEnabled(bool aOn);
+private:
     GUIResources& mGUIResources;
 };
 

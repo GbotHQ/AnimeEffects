@@ -187,14 +187,41 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             // destination row already encodes. Each entry exports immediately at
             // the project's own size and frame rate; anything more specific is the
             // full dialog or the legacy menu below.
+            // Grouped the same way as the dialog's list, from the same `family`
+            // column, so the two menus teach the same taxonomy.
             const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-            for (const ctrl::ExportTarget& target : targets) {
-                auto action = new QAction(target.label, this);
-                const QString id = target.id;
-                connect(action, &QAction::triggered, [=]() {
-                    mainWindow->onQuickExportDestinationTriggered(id);
-                });
-                quickExport->addAction(action);
+            const QList<QPair<QString, QString>> families = {
+                { QStringLiteral("sticker"), QObject::tr("Stickers and emoji") },
+                { QStringLiteral("overlay"), QObject::tr("Overlays and transparency") },
+                { QStringLiteral("video"), QObject::tr("Video") },
+                { QStringLiteral("archive"), QObject::tr("Archive") },
+            };
+            for (const auto& family : families) {
+                bool wroteAny = false;
+                for (const ctrl::ExportTarget& target : targets) {
+                    if (target.family != family.first)
+                        continue;
+                    if (!wroteAny) {
+                        // A disabled bold action, not QMenu::addSection: the section
+                        // header this application's stylesheet draws is a bare line,
+                        // so the grouping was invisible.
+                        QAction* header = quickExport->addAction(family.second);
+                        header->setEnabled(false);
+                        QFont headerFont = header->font();
+                        headerFont.setBold(true);
+                        header->setFont(headerFont);
+                        wroteAny = true;
+                    }
+                    QString label = target.label;
+                    if (!target.platform.isEmpty() && target.platform != QLatin1String("any"))
+                        label += QObject::tr(" — needs ") + ctrl::platformName(target.platform);
+                    auto action = new QAction(label, this);
+                    const QString id = target.id;
+                    connect(action, &QAction::triggered, [=]() {
+                        mainWindow->onQuickExportDestinationTriggered(id);
+                    });
+                    quickExport->addAction(action);
+                }
             }
         }
 
@@ -203,6 +230,15 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         mProjectActions.push_back(closeProject);
         mProjectActions.push_back(exportWindow);
         mProjectActions.push_back(quickExport->menuAction());
+
+        // Re-export: the same export, one click, no dialogs. Export is not a
+        // one-shot here — the same sticker gets exported a dozen times while the
+        // art is adjusted — and until now every one of those runs meant re-walking
+        // the menu, the destination and the file dialog from scratch.
+        mExportAgainAction = new QAction(tr("Export again"), this);
+        mExportAgainAction->setEnabled(false);
+        connect(mExportAgainAction, &QAction::triggered, mainWindow,
+                &MainWindow::onExportAgainTriggered);
 
         connect(newProject, &QAction::triggered, mainWindow, &MainWindow::onNewProjectTriggered);
         connect(openProject, &QAction::triggered, mainWindow, &MainWindow::onOpenProjectTriggered);
@@ -219,7 +255,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         fileMenu->addAction(saveProjectAs);
         fileMenu->addAction(exportWindow);
         fileMenu->addAction(quickExport->menuAction());
-        fileMenu->addSeparator();
+        fileMenu->addAction(mExportAgainAction);
         fileMenu->addSeparator();
         fileMenu->addAction(closeProject);
     }
@@ -528,6 +564,10 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     // reset status
     setProject(nullptr);
+}
+
+void MainMenuBar::setExportAgainEnabled(bool aOn) {
+    if (mExportAgainAction) mExportAgainAction->setEnabled(aOn);
 }
 
 void MainMenuBar::setProject(core::Project* aProject) {

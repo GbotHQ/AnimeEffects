@@ -26,6 +26,7 @@
 #include "gui/MouseSetting.h"
 #include "qfilesystemwatcher.h"
 #include "res/res_ResourceUpdater.h"
+#include "ctrl/ExportParams.h"
 #include "exportdiag.h"
 
 
@@ -73,6 +74,11 @@ public:
     // a format name is not a destination, and the table's rows bundle intent
     // (small, loops, transparent, silent) that a container name cannot express.
     void onQuickExportDestinationTriggered(const QString& aDestinationId);
+    // Repeat the last export exactly, with no dialogs: the iteration loop. Export
+    // is not a one-shot in this tool — an animator exports the same sticker a dozen
+    // times while adjusting the art — and re-walking the menu, the destination and
+    // the file dialog every time is the cost that made this worth having.
+    void onExportAgainTriggered();
     void onPlayPauseTriggered();
     void onDockToggle();
     void onDisplacementTriggered(int frameDisplacement);
@@ -114,6 +120,17 @@ private:
     // running it earlier would state the plan's numbers and then have the
     // initialisation overwrite them.
     std::function<void()> mRefreshExportFacts;
+
+    // The last export that actually wrote something, kept so it can be repeated.
+    // A copy of the parameters, not a re-derivation: repeating an export must
+    // reproduce it, including the manual-mode artifact and the frame ranges.
+    std::unique_ptr<exportParam> mLastExport;
+
+    // Where the last export went, so the next dialog opens there instead of
+    // nowhere, and so a quick export to a known destination needs no prompt at all.
+    void rememberExportLocation(const exportParam& aParam);
+    void reportExportOutcome(const exportParam& aParam, bool aWrote);
+
 
     ctrl::System& mSystem;
     GUIResources& mGUIResources;

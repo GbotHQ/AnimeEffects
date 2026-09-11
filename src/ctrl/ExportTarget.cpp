@@ -455,6 +455,14 @@ QString FrameSelection::describe() const {
 
 // ---------------------------------------------------------------------------
 
+QString platformName(const QString& aPlatform) {
+    const QString p = aPlatform.trimmed().toLower();
+    if (p == QLatin1String("apple")) return QStringLiteral("macOS");
+    if (p == QLatin1String("windows")) return QStringLiteral("Windows");
+    if (p == QLatin1String("linux")) return QStringLiteral("Linux");
+    return aPlatform; // unknown token: show it rather than invent a name
+}
+
 QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aNotes) {
     if (!aSource.isValid() || aSource.isEmpty()) return aSource;
 

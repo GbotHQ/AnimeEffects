@@ -14,10 +14,12 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   sleep 14
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
-  # File -> Quickly export as -> Telegram sticker
+  # File -> Quickly export as -> Telegram sticker. These are pixel coordinates and
+  # the menu has gained a group header since they were written, which shifted every
+  # row down by one; the assertions below are what catch that, and they did.
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 60 182; sleep 1.5
-  xdotool mousemove 300 182 click 1; sleep 3
+  xdotool mousemove 300 207 click 1; sleep 3
   import -window root "$SHOTS"/cap_01_folder.png
   # the folder chooser is already in the target directory; accept it
   xdotool key Return; sleep 3

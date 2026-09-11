@@ -31,7 +31,6 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   kill $app 2>/dev/null
   wait $app 2>/dev/null
 ' 2>&1 | tail -5
-ls -1 "$SHOTS"
 assert_rendered "$SHOTS/menu_03_sub.png" "the quick-export submenu"
 summary probe_menu
 assert_rendered "$SHOTS/menu_03_sub.png" "the quick-export submenu"

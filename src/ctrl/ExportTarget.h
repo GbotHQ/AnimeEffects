@@ -312,6 +312,11 @@ public:
     static QHash<QString, double> loadBucketPositions(const QString& aPath = defaultPath());
 };
 
+// The human name of a `platform` value ("apple" -> "macOS"). The table stores a
+// token; a menu must not show the token, which reads as a missing feature rather
+// than a platform requirement.
+QString platformName(const QString& aPlatform);
+
 // Apply a destination's size rule to a source size. YUV planar formats need
 // even dimensions, so the result is nudged to even.
 QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aNotes = nullptr);
