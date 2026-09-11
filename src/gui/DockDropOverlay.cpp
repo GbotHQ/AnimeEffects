@@ -143,114 +143,27 @@ QRect DockDropOverlay::targetRect(const DockDropTarget& aTarget, const QRect& aC
     const bool sideTarget = aTarget.area == Qt::LeftDockWidgetArea
                          || aTarget.area == Qt::RightDockWidgetArea;
     const QSize hint = previewSize(mPanel, mWindow, sideTarget);
-    const QRect window = mWindow->rect();
-
-    // What each area holds, and the region the areas tile between them, from the
-    // slot model rather than from the docks: a slot is the one thing that knows an
-    // area's real extent (its rail included) and which of its panels are on screen,
-    // where a raw dock either reports a size while parked off-screen or leaves out
-    // the rail its group's tabs live in - measured, the second of those put an
-    // area preview 28px taller than the slot that landed.
-    QRect eachArea[int(Qt::BottomDockWidgetArea) + 1];
-    QRect dockRegion = aCanvas;
-    QRect occupied;
-    for (const DockSlot& slot : dockSlots(*mWindow)) {
-        if (slot.onScreen.isEmpty()) continue;
-        eachArea[int(slot.area)] = eachArea[int(slot.area)].isNull()
-                ? slot.rect : eachArea[int(slot.area)].united(slot.rect);
-        dockRegion = dockRegion.united(slot.rect);
+    const QVector<DockSlot> allSlots = dockSlots(*mWindow); // not "slots": Qt macro
+    const DockSlot* slot = nullptr;
+    for (const DockSlot& candidate : allSlots) {
+        if (candidate.area == aTarget.area) slot = &candidate;
     }
-    occupied = eachArea[int(aTarget.area)];
 
-    // Which area holds each corner: that is what decides whether an area's band runs
-    // the whole way to the window's edge or stops where its neighbour's column does.
-    const bool leftOwnsBottom = mWindow->corner(Qt::BottomLeftCorner) == Qt::LeftDockWidgetArea;
-    const bool rightOwnsBottom = mWindow->corner(Qt::BottomRightCorner) == Qt::RightDockWidgetArea;
-    const bool leftOwnsTop = mWindow->corner(Qt::TopLeftCorner) == Qt::LeftDockWidgetArea;
-    const bool rightOwnsTop = mWindow->corner(Qt::TopRightCorner) == Qt::RightDockWidgetArea;
+    // An area holding nothing still has a slot, and the slot model says where that
+    // place is (dockAreaPlace): its own side of the window, less what a neighbour
+    // holding a corner there takes.
+    if (!slot || !slot->isVisible()) return dockAreaPlace(*mWindow, allSlots, hint, aTarget.area);
 
-    // The span an area's slice takes across the tiled region, in the direction the
-    // slice does not use: a side area's slice runs the area's full height, a
-    // top/bottom area's runs its full width.
-    //
-    // An area only gives up part of that span to another area that owns the corner
-    // there - and only while that other area actually holds docks, because an empty
-    // area's corner region collapses and the neighbours grow into it. Measured, with
-    // the timeline across the bottom and the right column empty: the canvas stopped
-    // well above the window's bottom, so a preview measured against the canvas drew
-    // a band only as tall as the canvas, while the drop gave the column the window's
-    // full height.
-    const auto spanFor = [&](Qt::DockWidgetArea aArea) -> QPair<int, int> {
-        const bool vertical = aArea == Qt::LeftDockWidgetArea || aArea == Qt::RightDockWidgetArea;
-        int low = vertical ? dockRegion.top() : dockRegion.left();
-        int high = vertical ? dockRegion.bottom() : dockRegion.right();
-        // does the neighbouring area hold the corner this span starts from / ends at?
-        const bool takenAtLow = (aArea == Qt::LeftDockWidgetArea) ? leftOwnsTop
-                              : (aArea == Qt::RightDockWidgetArea) ? rightOwnsTop
-                              : (aArea == Qt::TopDockWidgetArea) ? leftOwnsTop
-                                                                 : leftOwnsBottom;
-        const bool takenAtHigh = (aArea == Qt::LeftDockWidgetArea) ? leftOwnsBottom
-                               : (aArea == Qt::RightDockWidgetArea) ? rightOwnsBottom
-                               : (aArea == Qt::TopDockWidgetArea) ? rightOwnsTop
-                                                                  : rightOwnsBottom;
-        const Qt::DockWidgetArea lowArea = vertical ? Qt::TopDockWidgetArea
-                                                    : Qt::LeftDockWidgetArea;
-        const Qt::DockWidgetArea highArea = vertical ? Qt::BottomDockWidgetArea
-                                                     : Qt::RightDockWidgetArea;
-        const bool lowOwnedByNeighbour = !takenAtLow;
-        const bool highOwnedByNeighbour = !takenAtHigh;
-        if (lowOwnedByNeighbour) {
-            if (vertical) {
-                if (!eachArea[int(lowArea)].isNull())
-                    low = qMax(low, eachArea[int(lowArea)].bottom() + 1);
-            } else if (!eachArea[int(lowArea)].isNull()) {
-                low = qMax(low, eachArea[int(lowArea)].right() + 1);
-            }
-        }
-        if (highOwnedByNeighbour) {
-            if (vertical) {
-                if (!eachArea[int(highArea)].isNull())
-                    high = qMin(high, eachArea[int(highArea)].top() - 1);
-            } else if (!eachArea[int(highArea)].isNull()) {
-                high = qMin(high, eachArea[int(highArea)].left() - 1);
-            }
-        }
-        return QPair<int, int>(low, qMax(low, high));
-    };
-
+    const QRect occupied = slot->rect;
     switch (aTarget.area) {
     case Qt::LeftDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.right() + 1, occupied.top(), hint.width(), occupied.height());
-        {
-            const auto span = spanFor(aTarget.area);
-            return QRect(dockRegion.left(), span.first, hint.width(),
-                         span.second - span.first + 1);
-        }
+        return QRect(occupied.right() + 1, occupied.top(), hint.width(), occupied.height());
     case Qt::RightDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.left() - hint.width(), occupied.top(), hint.width(), occupied.height());
-        {
-            const auto span = spanFor(aTarget.area);
-            return QRect(dockRegion.right() + 1 - hint.width(), span.first, hint.width(),
-                         span.second - span.first + 1);
-        }
+        return QRect(occupied.left() - hint.width(), occupied.top(), hint.width(), occupied.height());
     case Qt::TopDockWidgetArea:
-        if (!occupied.isNull())
-            return QRect(occupied.left(), occupied.bottom() + 1, occupied.width(), hint.height());
-        {
-            const auto span = spanFor(aTarget.area);
-            return QRect(span.first, dockRegion.top(), span.second - span.first + 1,
-                         hint.height());
-        }
+        return QRect(occupied.left(), occupied.bottom() + 1, occupied.width(), hint.height());
     default:
-        if (!occupied.isNull())
-            return QRect(occupied.left(), occupied.top() - hint.height(), occupied.width(), hint.height());
-        {
-            const auto span = spanFor(aTarget.area);
-            return QRect(span.first, dockRegion.bottom() + 1 - hint.height(),
-                         span.second - span.first + 1, hint.height());
-        }
+        return QRect(occupied.left(), occupied.top() - hint.height(), occupied.width(), hint.height());
     }
 }
 
@@ -376,8 +289,28 @@ DockDropTarget DockDropOverlay::resolve(const QPoint& aPos) const {
     // 1305x803 window - offered as a tab target for almost everywhere, while the
     // drop landed correctly in the slot. Measured, with the left sidebar emptied
     // by tabbing its panel onto the right one.
-    for (const DockSlot& slot : dockSlots(*mWindow)) {
-        if (slot.onScreen.isEmpty()) continue;
+    const QVector<DockSlot> allSlots = dockSlots(*mWindow); // not "slots": Qt macro
+    for (const DockSlot& slot : allSlots) {
+        // An empty slot takes a panel as its own place: no dock of its own to split
+        // against or tabify onto, so the whole slot is the target. It is checked
+        // before the canvas rule below so that the area is decided by the slot, not
+        // inferred from the pointer's nearest canvas edge.
+        if (slot.onScreen.isEmpty()) {
+            const bool sideSlot = slot.area == Qt::LeftDockWidgetArea
+                               || slot.area == Qt::RightDockWidgetArea;
+            const QSize hint = previewSize(mPanel, mWindow, sideSlot);
+            const QRect place = dockAreaPlace(*mWindow, allSlots, hint, slot.area);
+            if (place.isEmpty() || !place.contains(aPos)) continue;
+            if (mPanel && !mPanel->isFloating() && mWindow->dockWidgetArea(mPanel) == slot.area)
+                return target; // already where it would go
+            target.kind = DockDropKind::Area;
+            target.area = slot.area;
+            target.rect = place;
+            dockSpikeLog(mPanel, QStringLiteral("overlay: empty slot area=%1 place=%2,%3 %4x%5")
+                    .arg(int(slot.area)).arg(place.x()).arg(place.y())
+                    .arg(place.width()).arg(place.height()));
+            return target;
+        }
         if (!slot.rect.contains(aPos)) continue;
         // Dropping a docked panel back into the slot it already occupies is a
         // no-op, so it is not a target - but that only holds for a pointer that is

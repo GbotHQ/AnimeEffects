@@ -34,6 +34,12 @@ namespace gui {
  *    the list to measure anything from;
  *  - `rect` is the slot itself: the on-screen panels plus the group's rail, which
  *    is chrome *of the slot* rather than of any panel in it.
+ *
+ * An area with nothing in it is a slot too, and it is listed here like any other:
+ * an empty sidebar is still a place a panel can be dropped, with a place in the
+ * window of its own (see dockAreaPlace). Writing its place down anywhere but here
+ * is how the drop preview ended up measured against the canvas - which stops
+ * wherever a panel happens to end - instead of against the area's own place.
  */
 struct DockSlot {
     Qt::DockWidgetArea area = Qt::NoDockWidgetArea;
@@ -48,8 +54,16 @@ struct DockSlot {
     QDockWidget* lead() const { return onScreen.isEmpty() ? nullptr : onScreen.first(); }
 };
 
-/// Every slot that holds anything, by area, in the order left, right, top, bottom.
+/// Every slot, by area, in the order left, right, top, bottom - empty ones
+/// included, with a null rect and nothing in them.
 QVector<DockSlot> dockSlots(const QMainWindow& aWindow);
+
+/// The place an area takes: the slice of the window a panel of this size gets
+/// there. Needed for an area that holds nothing, which has no rect of its own -
+/// it is a side of the window and a corner claim, not a rectangle - so its place
+/// is derived from the region the areas tile and the corners each area owns.
+QRect dockAreaPlace(const QMainWindow& aWindow, const QVector<DockSlot>& aSlots,
+                    const QSize& aPanelSize, Qt::DockWidgetArea aArea);
 
 /// The slot a panel lives in, whatever its visibility.
 const DockSlot* slotFor(const QVector<DockSlot>& aSlots, const QDockWidget* aPanel);

@@ -65,11 +65,10 @@ QVector<DockSlot> dockSlots(const QMainWindow& aWindow) {
     const QRect windowRect = aWindow.rect();
     QVector<DockSlot> found; // not "slots": Qt defines that as a macro
     for (Qt::DockWidgetArea area : kOrder) {
-        const auto it = byArea.constFind(int(area));
-        if (it == byArea.constEnd()) continue;
-
         DockSlot slot;
         slot.area = area;
+        const auto it = byArea.constFind(int(area));
+        if (it != byArea.constEnd()) {
         slot.panels = it.value();
         // Creation order, which is the rail's order (see DockTabBar): the tab text
         // is matched by name there, and the order is fixed so a tab does not jump
@@ -103,9 +102,72 @@ QVector<DockSlot> dockSlots(const QMainWindow& aWindow) {
                                                   : QStringLiteral("(none)"))
                         .arg(rail->isVisible()));
         }
-        if (!slot.rect.isNull()) found.push_back(slot);
+        }
+        // Every area is a slot, empty ones included: it is still a place a panel
+        // can be dropped. Its rect stays null, because an empty area has no
+        // geometry of its own - dockAreaPlace works that out when one is needed.
+        found.push_back(slot);
     }
     return found;
+}
+
+QRect dockAreaPlace(const QMainWindow& aWindow, const QVector<DockSlot>& aSlots,
+                    const QSize& aPanelSize, Qt::DockWidgetArea aArea) {
+    QWidget* central = aWindow.centralWidget();
+    if (!central) return QRect();
+
+    // The region the areas tile: the canvas united with everything the slots hold.
+    // Measured against the canvas alone an area's slice stops wherever a panel
+    // happens to end, and an area takes the window's own edge - the timeline across
+    // the bottom of the window is the case that showed it: the preview was only as
+    // tall as the canvas while the drop gave the column the window's full height.
+    QRect dockRegion = central->geometry();
+    QRect eachArea[int(Qt::BottomDockWidgetArea) + 1];
+    for (const DockSlot& slot : aSlots) {
+        if (slot.rect.isNull()) continue;
+        eachArea[int(slot.area)] = eachArea[int(slot.area)].isNull()
+                ? slot.rect : eachArea[int(slot.area)].united(slot.rect);
+        dockRegion = dockRegion.united(slot.rect);
+    }
+
+    const bool vertical = aArea == Qt::LeftDockWidgetArea || aArea == Qt::RightDockWidgetArea;
+    int low = vertical ? dockRegion.top() : dockRegion.left();
+    int high = vertical ? dockRegion.bottom() : dockRegion.right();
+
+    // An area gives part of that span up to a neighbour that owns the corner there,
+    // and only while that neighbour actually holds something: an empty area's corner
+    // region collapses and the areas beside it grow into it.
+    const bool leftOwnsTop = aWindow.corner(Qt::TopLeftCorner) == Qt::LeftDockWidgetArea;
+    const bool rightOwnsTop = aWindow.corner(Qt::TopRightCorner) == Qt::RightDockWidgetArea;
+    const bool leftOwnsBottom = aWindow.corner(Qt::BottomLeftCorner) == Qt::LeftDockWidgetArea;
+    const bool rightOwnsBottom = aWindow.corner(Qt::BottomRightCorner) == Qt::RightDockWidgetArea;
+    const bool neighbourAtLow = (aArea == Qt::LeftDockWidgetArea) ? !leftOwnsTop
+                             : (aArea == Qt::RightDockWidgetArea) ? !rightOwnsTop
+                             : (aArea == Qt::TopDockWidgetArea) ? !leftOwnsTop
+                                                                : !leftOwnsBottom;
+    const bool neighbourAtHigh = (aArea == Qt::LeftDockWidgetArea) ? !leftOwnsBottom
+                              : (aArea == Qt::RightDockWidgetArea) ? !rightOwnsBottom
+                              : (aArea == Qt::TopDockWidgetArea) ? !rightOwnsTop
+                                                                 : !rightOwnsBottom;
+    const QRect lowBand = eachArea[int(vertical ? Qt::TopDockWidgetArea : Qt::LeftDockWidgetArea)];
+    const QRect highBand = eachArea[int(vertical ? Qt::BottomDockWidgetArea : Qt::RightDockWidgetArea)];
+    if (neighbourAtLow && !lowBand.isNull())
+        low = qMax(low, vertical ? lowBand.bottom() + 1 : lowBand.right() + 1);
+    if (neighbourAtHigh && !highBand.isNull())
+        high = qMin(high, vertical ? highBand.top() - 1 : highBand.left() - 1);
+    high = qMax(low, high);
+
+    const int thickness = vertical ? qMax(1, aPanelSize.width()) : qMax(1, aPanelSize.height());
+    switch (aArea) {
+    case Qt::LeftDockWidgetArea:
+        return QRect(dockRegion.left(), low, thickness, high - low + 1);
+    case Qt::RightDockWidgetArea:
+        return QRect(dockRegion.right() + 1 - thickness, low, thickness, high - low + 1);
+    case Qt::TopDockWidgetArea:
+        return QRect(low, dockRegion.top(), high - low + 1, thickness);
+    default:
+        return QRect(low, dockRegion.bottom() + 1 - thickness, high - low + 1, thickness);
+    }
 }
 
 const DockSlot* slotFor(const QVector<DockSlot>& aSlots, const QDockWidget* aPanel) {
