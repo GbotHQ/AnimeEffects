@@ -129,6 +129,11 @@ public:
         QString name;
         QString suffix;
         int quality;
+        // ONE image file at `name`.`suffix`, not a numbered sequence. A still image
+        // destination (posting an illustration) promises the file the user named in
+        // the save dialog; writing `name0001.png` beside it instead would honour the
+        // letter of "image export" and not the request.
+        bool singleFile = false;
     };
 
     Exporter(core::Project& aProject);

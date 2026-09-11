@@ -696,8 +696,15 @@ void Exporter::setTextureParam(QOpenGLFramebufferObject& aFbo) {
 }
 
 bool Exporter::decideImagePath(int aIndex, QFileInfo& aPath) {
-    const QString number = QString("%1").arg(aIndex, mDigitCount, 10, QChar('0'));
-    QFileInfo filePath(mCommonParam.path + "/" + mImageParam.name + number + "." + mImageParam.suffix);
+    // A still destination writes the one file the caller named; everything else is
+    // a numbered sequence. The index is ignored in the single-file case, so a
+    // selection that somehow held two frames would still produce one image rather
+    // than two files with the same name.
+    const QString stem = mImageParam.singleFile
+                             ? mImageParam.name
+                             : mImageParam.name
+                                   + QString("%1").arg(aIndex, mDigitCount, 10, QChar('0'));
+    QFileInfo filePath(mCommonParam.path + "/" + stem + "." + mImageParam.suffix);
 
     // check overwrite
     if (!checkOverwriting(filePath)) {

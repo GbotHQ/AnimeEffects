@@ -131,6 +131,7 @@ public:
     // destination stops dictating one.
     QSize mUserSize;
     bool mUserSizeKnown = false;
+    int mPlayhead = 0; // see setupUi(); the frame a Still destination writes
     // Whether the boxes currently report a size the destination forced rather
     // than one the user set. This is what makes the hand-back above decidable.
     bool mLastSizeDictated = false;
@@ -163,8 +164,13 @@ public:
         return QCoreApplication::translate("ExportDiag", input.toStdString().c_str());
     }
 
-    void setupUi(QWidget *exportWidget, gui::GUIResources& aResources, int projectLastFrame)
+    // aPlayhead is the frame the timeline is showing. A destination that produces a
+    // single image exports THAT frame, so the dialog has to know it: the facts it
+    // prints and the file the exporter writes must be the same answer.
+    void setupUi(QWidget *exportWidget, gui::GUIResources& aResources, int projectLastFrame,
+                 int aPlayhead = 0)
     {
+        mPlayhead = aPlayhead;
         if (exportWidget->objectName().isEmpty())
             exportWidget->setObjectName(QString::fromUtf8("exportWidget"));
         exportWidget->resize(550, 700);
@@ -664,6 +670,8 @@ public:
     // roughly twice the height needed, leaving a gap the size of half the panel.
     // The single number that does belong here is the FLOOR, so the form below
     // does not jump as the user moves through the destination list.
+    int playhead() const { return mPlayhead; }
+
     void setFacts(const QString& aText) {
         destinationFacts->setText(aText);
         destinationFacts->setMinimumHeight(kFactsMinLines * destinationFacts->fontMetrics().lineSpacing());
@@ -914,11 +922,19 @@ public:
         // GIF goes through media::GifEncoder, so its plan carries no
         // VideoEncoder config at all; the container and codec it corresponds to
         // are named here rather than left blank.
-        const QString artifact = planOk ? (aPlan.gifPath ? QStringLiteral("gif")
-                                                         : aPlan.config.container)
-                                        : QString();
-        const QString artifactCodec = planOk ? (aPlan.gifPath ? QStringLiteral("gif")
-                                                              : aPlan.config.codec)
+        // An image artifact names itself the way the escape hatch's Format row
+        // already does (`image/png`, `image/jpg`), so the export path routes to the
+        // image writer it has always had, and the file dialog gets the right filter
+        // from one place instead of a second switch over containers.
+        const bool imageArtifact = planOk && aPlan.artifact != ctrl::ArtifactKind::Video;
+        const QString artifact =
+            planOk ? (imageArtifact
+                          ? QStringLiteral("image/") + aPlan.imageSuffix
+                          : (aPlan.gifPath ? QStringLiteral("gif") : aPlan.config.container))
+                   : QString();
+        const QString artifactCodec = planOk ? (imageArtifact || aPlan.gifPath
+                                                    ? QString()
+                                                    : aPlan.config.codec)
                                              : QString();
         // Blocked: this is the plan REPORTING what it resolved, not the user
         // choosing, and letting the change signal fire would re-enter the whole

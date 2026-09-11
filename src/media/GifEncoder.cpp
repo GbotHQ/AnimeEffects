@@ -196,8 +196,34 @@ bool GifEncoder::encode(const QList<QImage>& aFrames, const Config& aConfig, QSt
     }
     stream->time_base = ctx->time_base;
     stream->avg_frame_rate = AVRational{ aConfig.fps, 1 };
-    if (::avio_open(&fmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0 ||
-        ::avformat_write_header(fmt, nullptr) < 0) {
+    if (::avio_open(&fmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
+        mError = "could not write gif header"; if (aError) *aError = mError;
+        ::avformat_free_context(fmt); ::avcodec_free_context(&ctx); return false;
+    }
+    // The loop count is a MUXER option ("-loop": -1 no loop, 0 infinite), and it
+    // only reaches the file if it is passed at header time. Config::loop was
+    // declared and never used, so every GIF looped forever no matter what the
+    // export dialog's Loop box said.
+    AVDictionary* headerOpts = nullptr;
+    if (aConfig.loop != 0) {
+        ::av_dict_set(&headerOpts, "loop", QByteArray::number(aConfig.loop).constData(), 0);
+    }
+    const int headerRet = ::avformat_write_header(fmt, &headerOpts);
+    // A silently ignored option is how a control stops meaning anything.
+    const AVDictionaryEntry* ignored = ::av_dict_get(headerOpts, "", nullptr, AV_DICT_IGNORE_SUFFIX);
+    const bool hadUnknown = (ignored != nullptr);
+    const QString unknownKey = hadUnknown ? QString::fromUtf8(ignored->key) : QString();
+    ::av_dict_free(&headerOpts);
+    if (hadUnknown) {
+        // Out of range and unknown are indistinguishable here: ffmpeg leaves the
+        // entry in the dictionary in both cases.
+        mError = QStringLiteral("the gif muxer did not accept the '%1' option (unknown or out of "
+                                "range)").arg(unknownKey);
+        ::avformat_free_context(fmt); ::avcodec_free_context(&ctx);
+        if (aError) *aError = mError;
+        return false;
+    }
+    if (headerRet < 0) {
         mError = "could not write gif header"; if (aError) *aError = mError;
         ::avformat_free_context(fmt); ::avcodec_free_context(&ctx); return false;
     }

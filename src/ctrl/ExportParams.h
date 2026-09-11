@@ -108,6 +108,11 @@ public:
     // stream tag, transparency, the exact size, the caps and the audio.
     QString destinationId;
     ctrl::QualityBucket qualityBucket = ctrl::QualityBucket::Balanced;
+    // The frame the timeline was showing when the export was asked for. A
+    // destination that produces ONE image exports this frame; everything else
+    // ignores it. It travels here because exportProject() is a free function and
+    // the playhead belongs to the GUI.
+    int playhead = 0;
     // One of these will be ignored on export //
     VideoParams videoParams;
     ImageParams imageParams;

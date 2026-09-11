@@ -1,6 +1,7 @@
 #include "ctrl/ExportTarget.h"
 
 #include "media/FFmpegHelpers.h"
+#include "media/GifEncoder.h"
 
 #include <QDomDocument>
 #include <QFileInfo>
@@ -119,8 +120,8 @@ QString firstAvailable(const QStringList& aGroup) {
 // encoding, so there is no decode step left to get wrong.
 QString describeGroup(int aGroupIndex) {
     switch (aGroupIndex) {
-    case 0: return QStringLiteral("AV1 (software — highest quality per bit)");
-    case 1: return QStringLiteral("AV1 (hardware — real-time, near-software quality)");
+    case 0: return QStringLiteral("AV1 (software, highest quality per bit)");
+    case 1: return QStringLiteral("AV1 (hardware, real-time, near-software quality)");
     case 2: return QStringLiteral("H.265 (software)");
     case 3: return QStringLiteral("H.265 (hardware)");
     case 4: return QStringLiteral("H.264 (software)");
@@ -193,11 +194,11 @@ QStringList groupEncoders(int aGroup) {
 QString classClause(DestClass aClass) {
     switch (aClass) {
     case DestClass::Reencode:
-        return QStringLiteral(" — this site re-encodes uploads, so source quality matters more than compatibility");
+        return QStringLiteral(": this site re-encodes uploads, so source quality matters more than compatibility");
     case DestClass::Direct:
-        return QStringLiteral(" — this plays your file directly, so decode compatibility matters most");
+        return QStringLiteral(": this plays your file directly, so decode compatibility matters most");
     case DestClass::Archive:
-        return QStringLiteral(" — a master copy, so fidelity matters most");
+        return QStringLiteral(": a master copy, so fidelity matters most");
     default:
         return QString();
     }
@@ -245,10 +246,17 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         t.id = d.attribute(QStringLiteral("id"));
         if (t.id.isEmpty()) continue;
         t.label = d.attribute(QStringLiteral("label"));
+
+        t.icon = d.attribute(QStringLiteral("icon"));
         t.family = d.attribute(QStringLiteral("family"));
         t.klass = parseClass(d.attribute(QStringLiteral("class")));
         t.codecLadder = d.attribute(QStringLiteral("codecSelect")) == QLatin1String("ladder");
         t.container = d.attribute(QStringLiteral("container"));
+        {
+            const QString kind = d.attribute(QStringLiteral("artifact"));
+            if (kind == QLatin1String("still")) t.artifact = ArtifactKind::Still;
+            else if (kind == QLatin1String("sequence")) t.artifact = ArtifactKind::Sequence;
+        }
         t.codec = d.attribute(QStringLiteral("codec"));
         t.pixFmt = d.attribute(QStringLiteral("pixfmt"));
         t.alpha = parseCapability(d.attribute(QStringLiteral("alpha")));
@@ -279,6 +287,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         if (!capsElem.isNull()) {
             t.caps.maxBytes = attrInt(capsElem, QStringLiteral("maxBytes"));
             t.caps.maxDurationSec = attrDouble(capsElem, QStringLiteral("maxDurationSec"));
+            t.caps.minDurationSec = attrDouble(capsElem, QStringLiteral("minDurationSec"));
             t.caps.maxFps = attrInt(capsElem, QStringLiteral("maxFps"));
             t.caps.minFrames = attrInt(capsElem, QStringLiteral("minFrames"));
             t.caps.maxFrames = attrInt(capsElem, QStringLiteral("maxFrames"));
@@ -289,6 +298,14 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
              o = o.nextSiblingElement(QStringLiteral("opt"))) {
             const QString key = o.attribute(QStringLiteral("name"));
             if (!key.isEmpty()) t.encOptions.insert(key, o.attribute(QStringLiteral("value")));
+        }
+
+        // Container requirements, same shape as encOptions but consumed by the muxer.
+        const QDomElement muxOptsElem = d.firstChildElement(QStringLiteral("muxOptions"));
+        for (QDomElement o = muxOptsElem.firstChildElement(QStringLiteral("opt")); !o.isNull();
+             o = o.nextSiblingElement(QStringLiteral("opt"))) {
+            const QString key = o.attribute(QStringLiteral("name"));
+            if (!key.isEmpty()) t.muxerOptions.insert(key, o.attribute(QStringLiteral("value")));
         }
 
         const QDomElement audioElem = d.firstChildElement(QStringLiteral("audio"));
@@ -539,9 +556,27 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
     if (aCaps.minFrames > 0 && *aFrames < aCaps.minFrames) {
         if (aNotes) {
             *aNotes << QStringLiteral("WARNING: destination needs at least %1 frames but only %2 "
-                                      "are available — the upload will likely be rejected.")
+                                      "are available, so the upload will likely be rejected.")
                            .arg(aCaps.minFrames)
                            .arg(*aFrames);
+        }
+    }
+
+    // A MINIMUM duration is the mirror of maxDurationSec and cannot be met by
+    // exporting more of what the user selected: only they can extend the range.
+    // Snapchat Spotlight is the case that needs it (a Spot must be 5 seconds or
+    // longer), and without this the dialog said nothing at all about a file the
+    // platform will refuse.
+    if (aCaps.minDurationSec > 0.0 && *aFps > 0) {
+        const double duration = (double)*aFrames / (double)*aFps;
+        if (duration < aCaps.minDurationSec) {
+            if (aNotes) {
+                *aNotes << QStringLiteral("WARNING: destination needs at least %1 s but this export "
+                                          "is %2 s, so the upload will likely be rejected. Select "
+                                          "a longer frame range.")
+                               .arg(aCaps.minDurationSec)
+                               .arg(duration, 0, 'f', 2);
+            }
         }
     }
 }
@@ -577,7 +612,7 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
                     continue; // try the next rung down
                 }
                 if (aWhy) {
-                    *aWhy = QStringLiteral("%1 — about %2s here%3")
+                    *aWhy = QStringLiteral("%1, about %2s here%3")
                                 .arg(describeGroup(group))
                                 .arg((int)std::llround(projected))
                                 .arg(classClause(aClass));
@@ -596,7 +631,7 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
 
     if (!fallback.isEmpty()) {
         if (aWhy) {
-            *aWhy = QStringLiteral("%1 — nothing here is fast enough for this budget (%2), "
+            *aWhy = QStringLiteral("%1: nothing here is fast enough for this budget (%2), "
                                    "so this is the fastest available")
                         .arg(fallbackWhy, rejected.join(QLatin1String(", ")));
         }
@@ -716,16 +751,70 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         plan.renderSize = QSize(evenFloor(sw * scale), evenFloor(sh * scale));
     }
 
+    // How the art reaches the destination's size. Resolved HERE because it is not
+    // a video-only question: a GIF destination with an exact size needs the same
+    // pad-or-crop, and the GIF path never builds a video config to carry it. The
+    // video path re-applies it after makeConfig(), which replaces the whole config
+    // and would otherwise wipe it (that is exactly how this broke once already).
+    const media::FitMode fitMode = (aTarget.size.mode == SizeMode::Exact)
+                                       ? (aTarget.size.fit == FitMode::Crop
+                                              ? media::FitMode::Crop
+                                              : media::FitMode::Pad)
+                                       : media::FitMode::None;
+    plan.config.fit = fitMode;
+
     if (!aTarget.note.isEmpty()) plan.notes << aTarget.note;
 
     if (!aTarget.verified) {
-        plan.notes << QStringLiteral("WARNING: this destination's limits are UNVERIFIED — re-check before relying on them.");
+        plan.notes << QStringLiteral("WARNING: this destination's limits are UNVERIFIED; re-check before relying on them.");
+    }
+
+    // --- image artifacts ----------------------------------------------------
+    // A still or a frame sequence is written by Qt's own image writers, not by an
+    // encoder, so there is no codec to resolve and no container to mux. What the
+    // plan DOES have to settle is how many frames leave: one, or the set.
+    //
+    // Caps still apply and still mean what they mean. maxFrames trims a sequence
+    // (pixiv ugoira accepts at most 150 stills); maxBytes applies to the whole set
+    // for a sequence and to the one file for a still.
+    if (aTarget.artifact != ArtifactKind::Video) {
+        plan.artifact = aTarget.artifact;
+        plan.imageSuffix = aTarget.container.toLower();
+        // The fit loop writes the artifact through the same path a plain export
+        // uses, so the plan has to carry where it goes.
+        plan.config.outputPath = aRequest.outputPath;
+        plan.config.fit = fitMode;
+        if (plan.imageSuffix.isEmpty()) plan.imageSuffix = QStringLiteral("png");
+        // An image cannot carry a soundtrack, whatever the row says.
+        plan.audioEnabled = false;
+        if (aTarget.artifact == ArtifactKind::Still) {
+            // One file means one frame, and it is the frame on screen.
+            plan.selection = FrameSelection::fromRange(aRequest.playhead, aRequest.playhead);
+            plan.notes << QStringLiteral("One still image (frame %1), written as %2. "
+                                         "The frame range above does not apply.")
+                              .arg(aRequest.playhead)
+                              .arg(plan.imageSuffix.toUpper());
+        } else {
+            plan.notes << QStringLiteral("%1 frames written as numbered .%2 files.")
+                              .arg(plan.frames())
+                              .arg(plan.imageSuffix);
+        }
+        // The row's note and the UNVERIFIED warning were added above, before this
+        // branch: adding them here a second time printed the note twice, which is
+        // also how the frame-range controls got pushed out of the dialog.
+        return plan;
     }
 
     // --- build the config ---------------------------------------------------
-    // GIF does not go through VideoEncoder (media::GifEncoder owns it).
+    // GIF does not go through VideoEncoder (media::GifEncoder owns it). The plan
+    // still carries what that encoder needs, because the fit loop re-encodes
+    // through the same path as a plain export: without the output path there, a
+    // capped GIF destination has no way to be fitted at all.
     if (aTarget.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0) {
         plan.gifPath = true;
+        plan.config.fit = fitMode;
+        plan.config.outputPath = aRequest.outputPath;
+        plan.config.fps = plan.fps;
         return plan;
     }
 
@@ -760,7 +849,7 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
             plan.error = QStringLiteral(
                              "%1 requires transparency, but '%2' cannot encode an alpha "
                              "channel in this build (it advertises %3 and then refuses it). "
-                             "Use a destination whose codec carries alpha — WebM/VP9, APNG, "
+                             "Use a destination whose codec carries alpha: WebM/VP9, APNG, "
                              "or FFV1.")
                              .arg(aTarget.label, plan.config.codec, plan.config.pixFmt);
             return plan;
@@ -781,7 +870,9 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     }
 
     plan.config.outputPath = aRequest.outputPath;
+    plan.config.fit = fitMode; // makeConfig() replaced the config; see above
     plan.config.encOptions = aTarget.encOptions;
+    plan.config.muxerOptions = aTarget.muxerOptions;
     plan.config.codecTag = aTarget.codecTag;
 
     // The user's quality intent, applied through the codec's OWN knob.
@@ -828,11 +919,6 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
             }
         }
     }
-    plan.config.fit = (aTarget.size.mode == SizeMode::Exact)
-                          ? (aTarget.size.fit == FitMode::Crop ? media::FitMode::Crop
-                                                                              : media::FitMode::Pad)
-                          : media::FitMode::None;
-
     // Enforce the audio capability here, not by convention. Telegram rejects a
     // video sticker that carries an audio stream, so a forbidden capability has
     // to actively strip the audio config rather than rely on the caller
@@ -892,18 +978,99 @@ struct Attempt {
 
 Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
                       const QSize& aSize, int aFrameStride, int aQualityValue,
-                      const QualityControl* aQuality) {
+                      const QualityControl* aQuality, const ExportRequest& aRequest,
+                      QStringList* aWrittenBefore) {
     Attempt out;
+
+    QList<QImage> frames;
+    for (int i = 0; i < aFrames.size(); i += aFrameStride) frames.append(aFrames[i]);
+    if (frames.isEmpty()) { out.error = QStringLiteral("no frames left"); return out; }
+
+    // An image artifact is written by Qt's image writers, so "encode an attempt"
+    // means "write the file(s) this attempt describes and measure them". Without
+    // this branch a capped image destination went down the video path and failed
+    // with "invalid fps" — the fit loop knew about the video encoder and about GIF,
+    // and nothing else.
+    if (aPlan.artifact != ArtifactKind::Video) {
+        const QSize canvasSize = aSize.isEmpty() ? aPlan.size : aSize;
+        const QFileInfo target(aPlan.config.outputPath);
+        // Files a PREVIOUS attempt wrote are removed first: an attempt that drops
+        // frames (the last degradation phase) would otherwise leave its predecessor's
+        // frames behind, and the user would get a folder with more frames in it than
+        // the fit decided on. Only files this loop wrote are touched.
+        if (aWrittenBefore) {
+            for (const QString& p : *aWrittenBefore) QFile::remove(p);
+            aWrittenBefore->clear();
+        }
+        qint64 total = 0;
+        const int count = aPlan.artifact == ArtifactKind::Still ? 1 : frames.size();
+        for (int i = 0; i < count; ++i) {
+            const QImage frame =
+                frames[i].size() == canvasSize
+                    ? frames[i]
+                    : media::fitImage(frames[i], canvasSize, aPlan.config.fit);
+            const QString path =
+                aPlan.artifact == ArtifactKind::Still
+                    ? aPlan.config.outputPath
+                    // Same naming as Exporter::decideImagePath: stem + 4 digits,
+                    // with the stem the caller uses for a plain export.
+                    : target.absolutePath() + QLatin1Char('/')
+                          + (aRequest.imageStem.isEmpty() ? target.completeBaseName()
+                                                          : aRequest.imageStem)
+                          + QStringLiteral("%1").arg(i + 1, 4, 10, QChar('0')) + QLatin1Char('.')
+                          + aPlan.imageSuffix;
+            if (!frame.save(path, nullptr, aQualityValue)) {
+                out.error = QStringLiteral("could not write %1").arg(path);
+                return out;
+            }
+            if (aWrittenBefore) aWrittenBefore->append(path);
+            total += QFileInfo(path).size();
+        }
+        if (total <= 0) { out.error = QStringLiteral("no files produced"); return out; }
+        out.wrote = true;
+        out.bytes = total;
+        return out;
+    }
+
+    // GIF is media::GifEncoder's artifact, not VideoEncoder's, and a fit that
+    // wrote a different artifact than a plain export would not be a fit: the
+    // user's palette and the loop setting have to survive the re-encodes.
+    //
+    // The frames arrive at the RENDER size, so the pad-or-crop to the output size
+    // happens here (the video path gets that from the encoder itself).
+    if (aPlan.gifPath) {
+        const QSize canvasSize = aSize.isEmpty() ? aPlan.size : aSize;
+        QList<QImage> canvas;
+        canvas.reserve(frames.size());
+        for (const QImage& f : frames) {
+            canvas.append(f.size() == canvasSize ? f
+                                                 : media::fitImage(f, canvasSize, aPlan.config.fit));
+        }
+        media::GifEncoder::Config gcfg;
+        gcfg.outputPath = aPlan.config.outputPath;
+        gcfg.fps = aPlan.config.fps > 0 ? aPlan.config.fps : 15;
+        gcfg.transparent = aPlan.alphaEnabled;
+        gcfg.loop = aRequest.gifLoop;
+        gcfg.palettePath = aRequest.gifPalettePath;
+        media::GifEncoder gif;
+        QString gerr;
+        if (!gif.encode(canvas, gcfg, &gerr)) {
+            out.error = gerr.isEmpty() ? gif.error() : gerr;
+            return out;
+        }
+        const QFileInfo info(gcfg.outputPath);
+        if (!info.exists()) { out.error = QStringLiteral("no file produced"); return out; }
+        out.wrote = true;
+        out.bytes = info.size();
+        return out;
+    }
+
     media::VideoEncoder::Config cfg = aPlan.config;
     cfg.width = aSize.width();
     cfg.height = aSize.height();
     if (aQuality && aQualityValue >= 0) {
         cfg.encOptions.insert(aQuality->option, QString::number(aQualityValue));
     }
-
-    QList<QImage> frames;
-    for (int i = 0; i < aFrames.size(); i += aFrameStride) frames.append(aFrames[i]);
-    if (frames.isEmpty()) { out.error = QStringLiteral("no frames left"); return out; }
 
     media::VideoEncoder enc;
     if (!enc.open(cfg)) { out.error = enc.error(); return out; }
@@ -954,6 +1121,9 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
                         : f.scaled(plan.renderSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     }
 
+    // The files the last image attempt wrote, so a later attempt can clear them.
+    QStringList writtenByLastAttempt;
+
     const QHash<QString, QualityControl> qc = ExportTargets::loadQualityControl();
     const auto qit = qc.constFind(plan.config.codec);
     const QualityControl* quality = (qit != qc.constEnd()) ? &(*qit) : nullptr;
@@ -970,16 +1140,24 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         }
         const int w = std::max(2, evenFloor(plan.size.width() * aScale));
         const int h = std::max(2, evenFloor(plan.size.height() * aScale));
-        QList<QImage> frames;
-        for (int i = 0; i < base.size(); i += aStride) frames.append(base[i]);
-        if (frames.isEmpty()) frames.append(base.first());
-        if (aScale != 1.0) {
+        // The stride is applied ONCE, in encodeAttempt, which is the encoder
+        // boundary. It used to be applied here as well, so asking for every 2nd
+        // frame wrote every 4th and the stride in the log was not the stride in
+        // the file. Only the first attempt (stride 1) was unaffected, which is
+        // why it went unnoticed.
+        QList<QImage> frames = base;
+        if (aScale != 1.0 && !plan.gifPath) {
+            // The GIF path fits each frame to the output size itself (pad or
+            // crop, per the destination's rule); scaling it here would distort
+            // the art instead, because this scale ignores the aspect ratio.
             const QSize size(w, h);
             for (QImage& f : frames) {
                 f = f.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             }
         }
-        const Attempt a = encodeAttempt(plan, frames, QSize(w, h), aStride, aCrf, quality);
+        const Attempt a =
+            encodeAttempt(plan, frames, QSize(w, h), aStride, aCrf, quality, aRequest,
+                          &writtenByLastAttempt);
         ++result.attempts;
         const QString step = QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
                                  .arg(aWhat)
@@ -1123,6 +1301,32 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     }
 
     if (result.ok) {
+        // The search leaves the LAST PROBE's file on disk, and the last probe is
+        // not the setting the search decided on. A bisection stops as soon as the
+        // interval closes, and the probe that closes it is usually the one that
+        // did NOT fit — so the loop could report "fitted at 144x144, 119199 bytes"
+        // while the file the user got was the 146x146 probe at 120687 bytes, over
+        // the very cap the destination enforces. Re-encoding the winner is what
+        // makes the file match the report; without it "fitted" was a claim about
+        // an attempt that had already been overwritten.
+        const int finalBytes = encodeOnce(crf, scale, stride, QStringLiteral("final"));
+        if (finalBytes < 0) {
+            result.ok = false;
+            return result;
+        }
+        // result.bytes is the FINAL attempt's size (the file now on disk);
+        // lastBytes still holds whatever the search probed last.
+        if (result.bytes > cap) {
+            // Encoding is deterministic, so this means the winner did not
+            // reproduce. Reporting success here would hand over a rejected file.
+            result.ok = false;
+            result.error = QStringLiteral("%1: the fitted setting wrote %2 bytes, over its %3 byte "
+                                          "cap, when it was re-encoded.")
+                               .arg(aTarget.label)
+                               .arg((qlonglong)result.bytes)
+                               .arg((qlonglong)cap);
+            return result;
+        }
         result.steps << QStringLiteral("fit under the %1 byte cap in %2 attempts")
                             .arg((qlonglong)cap)
                             .arg(result.attempts);
@@ -1134,7 +1338,7 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     if (result.canceled) return result;
     result.error = QStringLiteral(
                        "could not fit under %1's %2 byte cap (best was %3 bytes at %4x%5). "
-                       "Shorten the animation or simplify the art — quality and size are "
+                       "Shorten the animation or simplify the art; quality and size are "
                        "already at their floors.")
                        .arg(aTarget.label)
                        .arg((qlonglong)cap)

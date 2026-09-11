@@ -190,22 +190,27 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             // Grouped the same way as the dialog's list, from the same `family`
             // column, so the two menus teach the same taxonomy.
             const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-            const QList<QPair<QString, QString>> families = {
-                { QStringLiteral("sticker"), QObject::tr("Stickers and emoji") },
-                { QStringLiteral("overlay"), QObject::tr("Overlays and transparency") },
-                { QStringLiteral("video"), QObject::tr("Video") },
-                { QStringLiteral("archive"), QObject::tr("Archive") },
+            // Same order and same families as the dialog's list, from the same
+            // `family` column, so the two menus teach one taxonomy.
+            struct Family { const char* key; const char* title; };
+            const QList<Family> families = {
+                { "chat", QT_TR_NOOP("Send in a chat") },
+                { "post", QT_TR_NOOP("Post to a platform") },
+                { "sticker", QT_TR_NOOP("Stickers and emoji") },
+                { "overlay", QT_TR_NOOP("Overlays and transparency") },
+                { "file", QT_TR_NOOP("A file") },
+                { "archive", QT_TR_NOOP("Archive") },
             };
             for (const auto& family : families) {
                 bool wroteAny = false;
                 for (const ctrl::ExportTarget& target : targets) {
-                    if (target.family != family.first)
+                    if (target.family != QLatin1String(family.key))
                         continue;
                     if (!wroteAny) {
                         // A disabled bold action, not QMenu::addSection: the section
                         // header this application's stylesheet draws is a bare line,
                         // so the grouping was invisible.
-                        QAction* header = quickExport->addAction(family.second);
+                        QAction* header = quickExport->addAction(QObject::tr(family.title));
                         header->setEnabled(false);
                         QFont headerFont = header->font();
                         headerFont.setBold(true);
@@ -214,8 +219,8 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
                     }
                     QString label = target.label;
                     if (!target.platform.isEmpty() && target.platform != QLatin1String("any"))
-                        label += QObject::tr(" — needs ") + ctrl::platformName(target.platform);
-                    auto action = new QAction(label, this);
+                        label += QLatin1String(" (") + QObject::tr("needs %1").arg(ctrl::platformName(target.platform)) + QLatin1String(")");
+                    auto action = new QAction(aGUIResources.icon(target.icon), label, this);
                     const QString id = target.id;
                     connect(action, &QAction::triggered, [=]() {
                         mainWindow->onQuickExportDestinationTriggered(id);

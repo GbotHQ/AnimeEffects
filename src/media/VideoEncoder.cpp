@@ -340,7 +340,24 @@ bool VideoEncoder::open(const Config& aConfig) {
     if (::avio_open(&mImpl->mFmt->pb, aConfig.outputPath.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
         return fail("could not open output file: " + aConfig.outputPath);
     }
-    const int hdrErr = ::avformat_write_header(mImpl->mFmt, nullptr);
+    // Muxer options (faststart and friends) belong to the container, so they are
+    // consumed HERE and not by the codec. Leftovers are reported: a requirement
+    // that quietly did nothing is how a platform rejects a file we claimed was
+    // built for it.
+    AVDictionary* muxOpts = nullptr;
+    for (auto it = aConfig.muxerOptions.constBegin(); it != aConfig.muxerOptions.constEnd(); ++it) {
+        ::av_dict_set(&muxOpts, it.key().toUtf8().constData(), it.value().toUtf8().constData(), 0);
+    }
+    const int hdrErr = ::avformat_write_header(mImpl->mFmt, &muxOpts);
+    if (muxOpts) {
+        AVDictionaryEntry* leftover = ::av_dict_get(muxOpts, "", nullptr, AV_DICT_IGNORE_SUFFIX);
+        const QString unknown = leftover ? QString::fromUtf8(leftover->key) : QString();
+        ::av_dict_free(&muxOpts);
+        if (leftover) {
+            return fail(QStringLiteral("unknown muxer option '%1' for %2")
+                            .arg(unknown, aConfig.container));
+        }
+    }
     if (hdrErr < 0) {
         char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
         ::av_strerror(hdrErr, errbuf, sizeof(errbuf));

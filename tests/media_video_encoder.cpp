@@ -20,6 +20,7 @@
 #include <QByteArray>
 #include <QtMath>
 
+#include "decode_util.h"
 #include "media/VideoEncoder.h"
 #include "media/FFmpegHelpers.h"
 #include "media/AudioMixer.h"
@@ -110,11 +111,8 @@ static QList<QImage> decodeFrames(const QString& path, int* outW, int* outH, int
     AVPacket* pkt = ::av_packet_alloc();
 
     auto pull = [&](AVFrame* f) {
-        QImage img(ctx->width, ctx->height, QImage::Format_RGBA8888);
-        uint8_t* dst[4] = { img.bits(), nullptr, nullptr, nullptr };
-        const int dstStride[4] = { static_cast<int>(img.bytesPerLine()), 0, 0, 0 };
-        ::sws_scale(sws, f->data, f->linesize, 0, ctx->height, dst, dstStride);
-        frames.append(img);
+        // Padded destination: see decode_util.h for why a tight buffer is unsafe.
+        frames.append(scaleToRgba(sws, f, ctx->width, ctx->height));
     };
 
     while (::av_read_frame(fmt, pkt) >= 0) {
@@ -470,14 +468,16 @@ static bool decodeFirstAlpha(const QString& path, const char* aDecoderName, int*
                     SwsContext* sws = ::sws_getContext(ctx->width, ctx->height, fFmt,
                                                        ctx->width, ctx->height, AV_PIX_FMT_RGBA,
                                                        SWS_BILINEAR, nullptr, nullptr, nullptr);
-                    QImage img(ctx->width, ctx->height, QImage::Format_RGBA8888);
-                    uint8_t* dst[4] = { img.bits(), nullptr, nullptr, nullptr };
-                    const int dstStride[4] = { static_cast<int>(img.bytesPerLine()), 0, 0, 0 };
-                    ::sws_scale(sws, frame->data, frame->linesize, 0, ctx->height, dst, dstStride);
+                    // Padded destination: see decode_util.h.
+                    const QImage img = scaleToRgba(sws, frame, ctx->width, ctx->height);
                     ::sws_freeContext(sws);
-                    for (int i = 3; i < img.width() * img.height() * 4; i += 4) {
-                        const int a = img.constBits()[i];
-                        minA = std::min(minA, a); maxA = std::max(maxA, a);
+                    // Scan by row: a QImage is not required to be tightly packed.
+                    for (int y = 0; y < img.height(); ++y) {
+                        const uchar* line = img.constScanLine(y);
+                        for (int x = 0; x < img.width(); ++x) {
+                            const int a = line[4 * x + 3];
+                            minA = std::min(minA, a); maxA = std::max(maxA, a);
+                        }
                     }
                     got = true;
                 }
@@ -588,6 +588,77 @@ static bool run_gif() {
     int w = 0, h = 0, fps = 0;
     const QList<QImage> dec = decodeFrames(out, &w, &h, &fps);
     check(w == 64 && h == 48 && dec.size() == 3, "gif decodes to 3 frames at 64x48");
+
+    // The loop count is part of the file, and it is a MUXER option: it only lands
+    // there when it is passed at header time. Config::loop was declared and never
+    // read, so a GIF looped forever no matter what the export dialog's Loop box
+    // said, and unticking that box changed nothing. The NETSCAPE2.0 application
+    // extension is where a GIF records this: present with a count of 0 for
+    // "forever", absent entirely for "play once".
+    auto loopBlock = [](const QString& path) -> int {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) return -2;
+        const QByteArray all = f.readAll();
+        const int at = all.indexOf("NETSCAPE2.0");
+        if (at < 0) return -1; // no loop extension at all
+        if (at + 15 > all.size()) return -2;
+        // "NETSCAPE2.0" (11) + block size 0x03 + sub-block id 0x01 + count (2, LE)
+        return uchar(all[at + 13]) | (uchar(all[at + 14]) << 8);
+    };
+
+    media::GifEncoder::Config loopForever = c;
+    loopForever.outputPath = QDir::temp().filePath("ae_gif_loop0.gif");
+    loopForever.loop = 0;
+    const bool loopForeverOk = g.encode(frames, loopForever, &err);
+    check(loopForeverOk, "gif encode with loop=0 succeeds");
+    const QByteArray infiniteMsg =
+        QStringLiteral("loop=0 records an infinite loop (NETSCAPE count %1, -1 = absent)")
+            .arg(loopBlock(loopForever.outputPath))
+            .toUtf8();
+    check(loopBlock(loopForever.outputPath) == 0, infiniteMsg.constData());
+
+    media::GifEncoder::Config once = c;
+    once.outputPath = QDir::temp().filePath("ae_gif_noloop.gif");
+    once.loop = -1;
+    check(g.encode(frames, once, &err), "gif encode with loop=-1 succeeds");
+    const QByteArray onceMsg =
+        QStringLiteral("loop=-1 records NO loop extension, so it plays once (got %1)")
+            .arg(loopBlock(once.outputPath))
+            .toUtf8();
+    check(loopBlock(once.outputPath) == -1, onceMsg.constData());
+    check(QFile(once.outputPath).size() > 0, "the play-once GIF is a real file");
+
+    // A finite count, so the check reads a NON-zero value: with only 0 and "absent"
+    // cases every byte in the extension is zero and a wrong offset would pass.
+    media::GifEncoder::Config thrice = c;
+    thrice.outputPath = QDir::temp().filePath("ae_gif_loop3.gif");
+    thrice.loop = 3;
+    check(g.encode(frames, thrice, &err), "gif encode with loop=3 succeeds");
+    const QByteArray thriceMsg = QStringLiteral("loop=3 is carried into the file (got %1)")
+                                     .arg(loopBlock(thrice.outputPath))
+                                     .toUtf8();
+    check(loopBlock(thrice.outputPath) == 3, thriceMsg.constData());
+
+    // An unknown muxer option must be reported, not swallowed: an option that is
+    // silently ignored is how a control stops meaning anything. Config::loop is
+    // the only option here today, so this drives the same code path with a value
+    // the muxer rejects (outside its -1..65535 range).
+    media::GifEncoder::Config bogus = c;
+    bogus.outputPath = QDir::temp().filePath("ae_gif_bogus.gif");
+    bogus.loop = 999999;
+    QString berr;
+    // The message is built AFTER the call, or the failure text would name an
+    // empty error and say nothing about why it was refused.
+    const bool bogusOk = g.encode(frames, bogus, &berr);
+    const QByteArray bogusMsg = QStringLiteral("an out-of-range loop value is refused, not ignored (%1)")
+                                    .arg(berr)
+                                    .toUtf8();
+    check(!bogusOk && !berr.isEmpty(), bogusMsg.constData());
+
+    QFile::remove(loopForever.outputPath);
+    QFile::remove(once.outputPath);
+    QFile::remove(thrice.outputPath);
+    QFile::remove(bogus.outputPath);
     QFile::remove(out);
     return true;
 }

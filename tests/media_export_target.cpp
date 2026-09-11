@@ -21,6 +21,7 @@
 #include <QTextStream>
 
 #include "ctrl/ExportTarget.h"
+#include "decode_util.h"
 #include "media/FFmpegHelpers.h"
 #include "media/VideoEncoder.h"
 
@@ -106,6 +107,62 @@ static QImage makeFrame(int w, int h, int idx) {
         }
     }
     return img;
+}
+
+// Incompressible, deterministic RGBA frame. File size is unpredictable in
+// advance, which is the reason a byte cap needs a measure-and-retry loop; noise
+// makes the FIRST attempt reliably over a small cap, so a test that depends on
+// the loop actually degrading cannot silently pass on a lucky first encode.
+static QImage makeNoiseFrame(int w, int h, int idx) {
+    QImage img(w, h, QImage::Format_RGBA8888);
+    quint32 s = 0x9e3779b9u ^ quint32(idx * 2654435761u);
+    for (int y = 0; y < h; ++y) {
+        uchar* line = img.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            s ^= s << 13; s ^= s >> 17; s ^= s << 5;   // xorshift32
+            line[4 * x + 0] = uchar(s & 0xff);
+            line[4 * x + 1] = uchar((s >> 8) & 0xff);
+            line[4 * x + 2] = uchar((s >> 16) & 0xff);
+            line[4 * x + 3] = 255;
+        }
+    }
+    return img;
+}
+
+// How many frames a GIF actually contains. A cap can be met by writing a
+// different animation than the plan describes (the stride is a frame count, not
+// a size), so size alone does not prove the artifact is the one promised.
+static int gifFrameCount(const QString& aPath) {
+    AVFormatContext* fmt = nullptr;
+    if (::avformat_open_input(&fmt, aPath.toUtf8().constData(), nullptr, nullptr) < 0) return -1;
+    ::avformat_find_stream_info(fmt, nullptr);
+    const int vs = ::av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    if (vs < 0) { ::avformat_close_input(&fmt); return -1; }
+    const AVCodec* dec = ::avcodec_find_decoder(fmt->streams[vs]->codecpar->codec_id);
+    AVCodecContext* ctx = ::avcodec_alloc_context3(dec);
+    ::avcodec_parameters_to_context(ctx, fmt->streams[vs]->codecpar);
+    if (::avcodec_open2(ctx, dec, nullptr) < 0) {
+        ::avcodec_free_context(&ctx);
+        ::avformat_close_input(&fmt);
+        return -1;
+    }
+    AVFrame* frame = ::av_frame_alloc();
+    AVPacket* pkt = ::av_packet_alloc();
+    int frames = 0;
+    while (::av_read_frame(fmt, pkt) >= 0) {
+        if (pkt->stream_index == vs) {
+            ::avcodec_send_packet(ctx, pkt);
+            while (::avcodec_receive_frame(ctx, frame) >= 0) ++frames;
+        }
+        ::av_packet_unref(pkt);
+    }
+    ::avcodec_send_packet(ctx, nullptr);
+    while (::avcodec_receive_frame(ctx, frame) >= 0) ++frames;
+    ::av_frame_free(&frame);
+    ::av_packet_free(&pkt);
+    ::avcodec_free_context(&ctx);
+    ::avformat_close_input(&fmt);
+    return frames;
 }
 
 // Everything we can learn about a produced file that a destination actually
@@ -327,10 +384,10 @@ static Probe probeFile(const QString& path, const char* aDecoderName = nullptr) 
                                    nullptr);
             if (!sws) return;
         }
-        QImage img(ctx->width, ctx->height, QImage::Format_RGBA8888);
-        uint8_t* dst[4] = {img.bits(), nullptr, nullptr, nullptr};
-        const int dstStride[4] = {(int)img.bytesPerLine(), 0, 0, 0};
-        if (::sws_scale(sws, f->data, f->linesize, 0, ctx->height, dst, dstStride) <= 0) return;
+        // scaleToRgba gives libswscale a padded destination: scaling into a
+        // QImage sized exactly to the frame corrupts the heap (decode_util.h).
+        const QImage img = scaleToRgba(sws, f, ctx->width, ctx->height);
+        if (img.isNull()) return;
         ++p.frames;
         p.alphaDecoded = true;
         if (p.decodedPixFmt.isEmpty()) {
@@ -427,6 +484,10 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
         ++fixedRows;
         const bool isGif = t.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0;
         if (isGif) continue; // media::GifEncoder owns GIF, not VideoEncoder
+        // An image artifact has no codec to resolve: `container` names the image
+        // format and Qt's writers produce the file. Its own section checks that the
+        // format is writable, and the conformance loop writes and reads one back.
+        if (t.artifact != ctrl::ArtifactKind::Video) continue;
 
         const QString resolved = media::ffmpeg::resolveEncoderName(t.codec);
         check(!resolved.isEmpty(),
@@ -449,7 +510,28 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
         }
     }
     check(dated == all.size(), QStringLiteral("every row carries a checked date (%1/%2)").arg(dated).arg(all.size()));
-    check(unverified <= 1, QStringLiteral("at most one unverified row (%1)").arg(unverified));
+    // The guard used to be "at most ONE unverified row", written when the table was
+    // fourteen destinations and an unverified fact was an oversight. It is now a
+    // deliberate category: Tencent, Meta, Reddit and Bilibili simply do not publish
+    // limits for video sent in a conversation, and for those the honest row states
+    // that instead of inventing a number. So the guard that still means something is
+    // not a COUNT but a REQUIREMENT: an unverified row must say so where the user can
+    // read it, or "unverified" becomes a silent footnote again.
+    {
+        QStringList silent;
+        for (const auto& t : all) {
+            if (t.verified)
+                continue;
+            const bool saysSo = t.note.contains(QLatin1String("UNVERIFIED"), Qt::CaseInsensitive);
+            if (!saysSo)
+                silent << t.id;
+        }
+        check(silent.isEmpty(),
+              QStringLiteral("every unverified row says so in its note (%1 unverified, %2 silent)%3")
+                  .arg(unverified)
+                  .arg(silent.size())
+                  .arg(silent.isEmpty() ? QString() : QStringLiteral(": ") + silent.join(QLatin1String(", "))));
+    }
 
     // The app loads this table from the embedded resource, not from disk. Prove
     // that path works — otherwise the default is only ever exercised in a full
@@ -596,6 +678,33 @@ TEST_SECTION("caps (deterministic pre-encode enforcement)", run_caps) {
     ctrl::applyCaps(line.caps, &lfps, &lframes, &lnotes);
     const bool warned = lnotes.filter(QStringLiteral("WARNING")).size() == 1;
     check(warned, "LINE min-frames (5) under-run produces a warning, not a silent pass");
+
+    // A MINIMUM duration (Snapchat Spotlight: a Spot must be 5 seconds or longer)
+    // is the mirror of maxDurationSec and cannot be met by exporting less, so it is
+    // stated rather than applied. Before this existed the dialog said nothing at
+    // all, and the file was refused at upload with no warning anywhere.
+    const ctrl::ExportTarget spot =
+        ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                 QStringLiteral("post.snapchat.spotlight"));
+    check(spot.caps.minDurationSec == 5.0,
+          QStringLiteral("the Spotlight row carries its 5 s floor (got %1)").arg(spot.caps.minDurationSec));
+    {
+        int sfps = 30, sframes = 60; // 2 seconds, under the floor
+        QStringList snotes;
+        ctrl::applyCaps(spot.caps, &sfps, &sframes, &snotes);
+        const QString span = snotes.join(QLatin1Char(' '));
+        check(span.contains(QLatin1String("at least 5")),
+              QStringLiteral("a 2 s export to Spotlight is warned about (%1)").arg(span));
+        check(sframes == 60 && sfps == 30,
+              "a minimum does not silently change what is exported");
+    }
+    {
+        int sfps = 30, sframes = 300; // 10 seconds, over the floor
+        QStringList snotes;
+        ctrl::applyCaps(spot.caps, &sfps, &sframes, &snotes);
+        check(snotes.join(QLatin1Char(' ')).contains(QLatin1String("at least 5")) == false,
+              "a 10 s export to Spotlight is not warned about");
+    }
 
     // The caps must be applied exactly ONCE by planExport. It used to reset
     // fps/frames back to the requested values and re-apply them at the end,
@@ -842,6 +951,68 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
     for (const ctrl::ExportTarget& t : all) {
         if (t.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0) {
             check(true, QStringLiteral("%1: GIF row routed to GifEncoder (not encoded here)").arg(t.id));
+            continue;
+        }
+
+        // Image artifacts produce files through Qt's image writers, so "does it
+        // encode" is the wrong question; "does it write the files it promises" is
+        // the right one. A still must leave exactly ONE file at the planned size,
+        // and a sequence must leave the planned number of them.
+        if (t.artifact != ctrl::ArtifactKind::Video) {
+            ctrl::ExportRequest ireq;
+            ireq.sourceSize = QSize(640, 480);
+            ireq.fps = 30;
+            ireq.selection = ctrl::FrameSelection::fromCount(3);
+            ireq.playhead = 1;
+            const ctrl::ExportPlan iplan = ctrl::planExport(t, ireq, ctrl::QualityBucket::Balanced);
+            check(iplan.ok(), QStringLiteral("%1: image plan builds (%2)").arg(t.id, iplan.error));
+            if (!iplan.ok()) continue;
+
+            const QString dir = QDir::temp().filePath(QStringLiteral("ae_img_%1")
+                                                          .arg(QString(t.id).replace(QLatin1Char('.'),
+                                                                                     QLatin1Char('_'))));
+            QDir().mkpath(dir);
+            const QImage frame = makeFrame(iplan.renderSize.width(), iplan.renderSize.height(), 0);
+            qint64 total = 0;
+            int written = 0;
+            const int count = iplan.artifact == ctrl::ArtifactKind::Still ? 1 : iplan.frames();
+            for (int i = 0; i < count; ++i) {
+                // The exporter's own naming: stem + 4-digit index, or the bare stem
+                // for a still (see Exporter::decideImagePath).
+                const QString stem =
+                    iplan.artifact == ctrl::ArtifactKind::Still
+                        ? QStringLiteral("still")
+                        : QStringLiteral("frame%1").arg(i, 4, 10, QChar('0'));
+                const QString path = dir + QLatin1Char('/') + stem + QLatin1Char('.')
+                                     + iplan.imageSuffix;
+                if (!frame.save(path)) {
+                    check(false, QStringLiteral("%1: could not write %2").arg(t.id, path));
+                    break;
+                }
+                ++written;
+                total += QFileInfo(path).size();
+                const QImage back(path);
+                if (back.isNull() || back.size() != frame.size()) {
+                    check(false, QStringLiteral("%1: %2 does not read back at the planned size")
+                                     .arg(t.id, QFileInfo(path).fileName()));
+                    break;
+                }
+            }
+            check(written == count,
+                  QStringLiteral("%1: wrote %2 of %3 %4 files")
+                      .arg(t.id)
+                      .arg(written)
+                      .arg(count)
+                      .arg(iplan.artifact == ctrl::ArtifactKind::Still ? QStringLiteral("image")
+                                                                       : QStringLiteral("frame")));
+            if (t.caps.maxBytes > 0) {
+                check(total <= t.caps.maxBytes,
+                      QStringLiteral("%1: the written set is inside the byte cap (%2 <= %3)")
+                          .arg(t.id)
+                          .arg((qlonglong)total)
+                          .arg((qlonglong)t.caps.maxBytes));
+            }
+            QDir(dir).removeRecursively();
             continue;
         }
 
@@ -1390,6 +1561,101 @@ TEST_SECTION("quality intent reaches the encoder", run_bucket_quality) {
           QStringLiteral("a higher-is-better knob moves the other way (%1 < %2)").arg(ws, wb));
 }
 
+TEST_SECTION("still and sequence destinations (image artifacts)", run_image_artifacts) {
+
+    const QList<ctrl::ExportTarget> all =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+
+    // A still destination writes ONE image at the path the user names. Before the
+    // artifact kind existed there was no way to express one at all: every row was a
+    // video or an animated image, so "post an illustration" was not in the product.
+    {
+        const ctrl::ExportTarget still =
+            ctrl::ExportTargets::find(all, QStringLiteral("still.pixiv.illustration"));
+        check(still.artifact == ctrl::ArtifactKind::Still,
+              "the pixiv illustration row is a still");
+
+        ctrl::ExportRequest req;
+        req.outputPath = QDir::temp().filePath("ae_still.png");
+        req.sourceSize = QSize(1000, 800);
+        req.fps = 30;
+        req.selection = ctrl::FrameSelection::fromRange(0, 600); // the dialog's range
+        req.playhead = 7;                                        // what is on screen
+        ctrl::ExportPlan plan = ctrl::planExport(still, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok(), QStringLiteral("the still plans (%1)").arg(plan.error));
+        check(plan.artifact == ctrl::ArtifactKind::Still, "the plan carries the artifact kind");
+        check(plan.imageSuffix == QLatin1String("png"),
+              QStringLiteral("the image format comes from the row (got '%1')").arg(plan.imageSuffix));
+        check(plan.frames() == 1,
+              QStringLiteral("a still is exactly one frame (got %1)").arg(plan.frames()));
+        check(plan.selection.indices().value(0) == 7,
+              QStringLiteral("the still is the PLAYHEAD frame, not the range start (got %1)")
+                  .arg(plan.selection.indices().value(0)));
+        check(!plan.audioEnabled, "a still carries no audio stream");
+        check(plan.notes.join(QLatin1Char(' ')).contains(QLatin1String("One still image")),
+              "the plan says in words that it is writing one image");
+
+        // The suffix has to be one Qt can actually write, or the export produces
+        // nothing and the failure surfaces as a missing file.
+        QImage sample(64, 48, QImage::Format_RGBA8888);
+        sample.fill(QColor(10, 20, 30, 128));
+        const QString written = QDir::temp().filePath("ae_still_probe." + plan.imageSuffix);
+        check(sample.save(written), QStringLiteral("Qt can write .%1").arg(plan.imageSuffix));
+        const QImage back(written);
+        check(!back.isNull() && back.size() == sample.size(),
+              "the written still reads back at the planned size");
+        QFile::remove(written);
+    }
+
+    // A frame SEQUENCE destination: pixiv's ugoira format is a folder of numbered
+    // stills, not a video and not a GIF.
+    {
+        const ctrl::ExportTarget seq =
+            ctrl::ExportTargets::find(all, QStringLiteral("post.pixiv.ugoira"));
+        check(seq.artifact == ctrl::ArtifactKind::Sequence,
+              "the ugoira row is a frame sequence");
+
+        ctrl::ExportRequest req;
+        req.outputPath = QDir::temp().filePath("ae_ugoira");
+        req.sourceSize = QSize(800, 600);
+        req.fps = 30;
+        req.selection = ctrl::FrameSelection::fromRange(0, 399); // 400 frames
+        ctrl::ExportPlan plan = ctrl::ExportPlan();
+        plan = ctrl::planExport(seq, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok(), QStringLiteral("the sequence plans (%1)").arg(plan.error));
+        check(plan.artifact == ctrl::ArtifactKind::Sequence, "the plan carries the sequence kind");
+        // pixiv accepts at most 150 stills, so the plan has to trim rather than
+        // hand the user a folder the site refuses.
+        check(plan.frames() == 150,
+              QStringLiteral("ugoira is capped at 150 frames, applied (got %1)").arg(plan.frames()));
+        check(plan.imageSuffix == QLatin1String("png"), "ugoira frames are PNG here");
+        check(seq.caps.maxBytes == 31457280, "the ugoira byte cap is the 30 MB total");
+        check(plan.notes.join(QLatin1Char(' ')).contains(QLatin1String("numbered")),
+              "the plan says the frames are numbered files");
+    }
+
+    // Every image row must name a format Qt can write, or the destination is a
+    // promise the writer cannot keep. This is the cheap check that would have
+    // caught a typo'd container in any of these rows.
+    {
+        int imageRows = 0;
+        for (const ctrl::ExportTarget& t : all) {
+            if (t.artifact == ctrl::ArtifactKind::Video) continue;
+            ++imageRows;
+            const QString suffix = t.container.toLower();
+            QImage probe(8, 8, QImage::Format_RGBA8888);
+            probe.fill(Qt::red);
+            const QString path = QDir::temp().filePath("ae_suffix_probe." + suffix);
+            const bool writable = probe.save(path);
+            QFile::remove(path);
+            check(writable, QStringLiteral("%1: .%2 is a writable image format")
+                                .arg(t.id, suffix));
+        }
+        check(imageRows == 8,
+              QStringLiteral("every image destination is covered here (found %1)").arg(imageRows));
+    }
+}
+
 TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
 
     const QList<ctrl::ExportTarget> all =
@@ -1450,6 +1716,121 @@ TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
     check(!r2.ok && !r2.error.isEmpty(),
           "an impossible cap is reported, not silently accepted");
     QTextStream(stdout) << "      " << r2.error << "\n";
+}
+
+TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_fit) {
+
+    const QList<ctrl::ExportTarget> all =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+    const ctrl::ExportTarget base =
+        ctrl::ExportTargets::find(all, QStringLiteral("wechat.sticker"));
+
+    // The premise: a GIF destination that states a byte cap. WeChat rejects a
+    // sticker above 500 KB, so the file has to be under it or the upload fails.
+    check(!base.id.isEmpty() && base.caps.maxBytes > 0,
+          QStringLiteral("the capped GIF row exists (%1, cap %2 bytes)")
+              .arg(base.id)
+              .arg((qlonglong)base.caps.maxBytes));
+
+    const QSize source(640, 480);
+    QList<QImage> frames;
+    for (int i = 0; i < 8; ++i) frames.append(makeNoiseFrame(source.width(), source.height(), i));
+
+    ctrl::ExportRequest req;
+    req.outputPath = QDir::temp().filePath("ae_gif_fit.gif");
+    req.sourceSize = source;
+    req.fps = 15;
+    req.selection = ctrl::FrameSelection::fromCount(frames.size());
+
+    // GIF is media::GifEncoder's artifact, not VideoEncoder's. The fit loop used
+    // to know only the video encoder, so this call could not produce a GIF at all
+    // — and nothing noticed, because the app never reached the loop for a GIF
+    // destination either: the GIF branch returned before it. A capped destination
+    // whose cap is never applied hands the user a file the platform rejects, with
+    // the limit printed in the dialog.
+    // The row's own cap is not enough to force work here (WeChat's 240x240
+    // sticker comes out at ~319 KB against a 500 KB cap, so the first attempt
+    // fits). A cap that the first attempt cannot meet is what makes this test
+    // about enforcement rather than about a happy first encode.
+    ctrl::ExportTarget cappedGif = base;
+    cappedGif.caps.maxBytes = 120000;
+    const ctrl::FitResult r =
+        ctrl::exportWithFit(cappedGif, req, ctrl::QualityBucket::Balanced, frames);
+    for (const QString& step : r.steps) QTextStream(stdout) << "      " << step << "\n";
+    check(r.ok, QStringLiteral("a capped GIF destination can be fitted (%1)").arg(r.error));
+    check(r.attempts > 1,
+          QStringLiteral("the GIF fit loop iterated, so the cap was actually applied (%1 attempts)")
+              .arg(r.attempts));
+    if (r.ok) {
+        check(r.bytes <= cappedGif.caps.maxBytes,
+              QStringLiteral("the GIF is inside the cap: %1 <= %2 bytes")
+                  .arg((qlonglong)r.bytes)
+                  .arg((qlonglong)cappedGif.caps.maxBytes));
+        // Fitting must not change the ARTIFACT. A PNG under the cap would pass a
+        // size check while being a file WeChat does not accept as a sticker.
+        QFile f(r.path);
+        bool headerOk = false;
+        if (f.open(QIODevice::ReadOnly)) {
+            const QByteArray head = f.read(6);
+            headerOk = head.startsWith("GIF8");
+        }
+        check(headerOk, "the fitted file is still a GIF (Fitting changed the size, not the format)");
+    }
+
+    // The stride is a frame count. It was applied twice (once in the fit loop's
+    // attempt builder and again inside the encoder call), so asking to keep every
+    // 2nd frame wrote every 4th: fewer frames than the plan believed, and a log
+    // line naming a stride the file did not have. Only the first attempt (stride
+    // 1) was unaffected, which is why the existing fit test never saw it.
+    {
+        ctrl::ExportTarget framesOnly = base;
+        framesOnly.degradeOrder = QStringList{QStringLiteral("frames")};
+        const QSize small(160, 120);
+        QList<QImage> noisy;
+        for (int i = 0; i < 12; ++i)
+            noisy.append(makeNoiseFrame(small.width(), small.height(), i));
+
+        ctrl::ExportRequest freq;
+        freq.outputPath = QDir::temp().filePath("ae_gif_stride.gif");
+        freq.sourceSize = small;
+        freq.fps = 10;
+        freq.selection = ctrl::FrameSelection::fromCount(noisy.size());
+
+        ctrl::ExportTarget tiny = framesOnly;
+        // Reachable by dropping frames, unreachable without dropping any: one
+        // noisy 240x180 frame is ~42 KB and all twelve are ~374 KB.
+        tiny.caps.maxBytes = 120000;
+        const ctrl::FitResult f2 =
+            ctrl::exportWithFit(tiny, freq, ctrl::QualityBucket::Balanced, noisy);
+        for (const QString& step : f2.steps) QTextStream(stdout) << "      " << step << "\n";
+        check(f2.attempts > 1, QStringLiteral("the frames phase ran (%1 attempts)").arg(f2.attempts));
+        if (f2.ok) {
+            // The winning stride comes from the loop's own log; the file has to
+            // agree with it. Frames are written at 0, s, 2s, ... so the count is
+            // ceil(n/s), NOT n/s rounded any other way.
+            int stride = 1;
+            for (const QString& step : f2.steps) {
+                const int at = step.indexOf(QLatin1String("stride="));
+                if (at >= 0) {
+                    const QString tail = step.mid(at + 7);
+                    bool okNum = false;
+                    const int v = tail.section(QLatin1Char(' '), 0, 0).toInt(&okNum);
+                    if (okNum && v > 0) stride = v;
+                }
+            }
+            const int expected = (noisy.size() + stride - 1) / stride;
+            const int actual = gifFrameCount(f2.path);
+            check(actual == expected,
+                  QStringLiteral("the file has the frames the stride says: %1 written, %2 expected "
+                                 "(stride %3 of %4)")
+                      .arg(actual)
+                      .arg(expected)
+                      .arg(stride)
+                      .arg(noisy.size()));
+        } else {
+            check(!f2.error.isEmpty(), QStringLiteral("the frames-only fit explained itself: %1").arg(f2.error));
+        }
+    }
 }
 
 TEST_SECTION("live encode from a resolved plan", run_live_encode) {

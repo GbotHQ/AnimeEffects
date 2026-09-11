@@ -40,6 +40,18 @@ enum class DestClass {
     Archive    // keep a master
 };
 
+// WHAT the destination wants produced. This is not the container: an image
+// destination has no container at all, and the difference between one still and a
+// directory of stills is the difference between two platforms' rules.
+//
+//   video    one muxed file (everything that goes through libav* or GifEncoder)
+//   still    ONE image file at the path the user named (posting an illustration)
+//   sequence a directory of numbered stills (pixiv ugoira, compositing elsewhere)
+//
+// Data, like every other per-destination fact: pixiv demands a frame sequence,
+// DeviantArt wants a single image, and neither is a property of the artwork.
+enum class ArtifactKind { Video, Still, Sequence };
+
 enum class SizeMode {
     Free,          // use the project size
     Exact,         // exactly w x h (needs crop-or-pad — open design item)
@@ -83,6 +95,10 @@ struct AudioSpec {
 struct Caps {
     qint64 maxBytes = 0;      // hard upload rejection above this
     double maxDurationSec = 0;
+    // Floors as well as ceilings: some destinations refuse a file that is too
+    // SHORT (Snapchat Spotlight wants 5 seconds or more). Nothing here can be
+    // satisfied by exporting less, so a floor is reported rather than applied.
+    double minDurationSec = 0;
     int maxFps = 0;
     int minFrames = 0;
     int maxFrames = 0;
@@ -91,13 +107,20 @@ struct Caps {
 struct ExportTarget {
     QString id;
     QString label;
+    // Icon file stem in assets/icons (see assets/icons/README.md). Presentation,
+    // but it belongs beside the label: the alternative is a switch over every
+    // destination inside the UI code.
+    QString icon;
     QString family;
     DestClass klass = DestClass::Fixed;
     bool codecLadder = false; // true => codec comes from the ladder, not @codec
 
+    // For an image artifact (Still/Sequence) the CONTAINER names the image format
+    // instead of a muxed container: "png", "jpg".
     QString container;
     QString codec;
     QString pixFmt;
+    ArtifactKind artifact = ArtifactKind::Video;
 
     Capability alpha = Capability::Forbidden;
     Capability audio = Capability::Choice;
@@ -112,6 +135,9 @@ struct ExportTarget {
     //  - codecTag:   four-char container stream tag (hvc1 for HEVC, without
     //    which Safari/iOS refuse the file). It is not an encoder option.
     QMap<QString, QString> encOptions;
+    // Container-level requirements, passed to the muxer (movflags=+faststart for
+    // Instagram, which rejects an MP4 without its moov atom at the front).
+    QMap<QString, QString> muxerOptions;
     QString codecTag;
     AudioSpec audioSpec; // parameters (the `audio` member is the capability)
 
@@ -212,6 +238,17 @@ struct ExportRequest {
     int fps = 24;
     // Which frames. Defaults to a single frame, matching the old `frames = 1`.
     FrameSelection selection = FrameSelection::fromRange(0, 0);
+    // The stem for a frame SEQUENCE's numbered files. The app names them after the
+    // project (the sequence's target is a directory, so there is no file name to
+    // take it from); the fit loop has to write the same names a plain export would,
+    // or "fitted" would mean a differently named set.
+    QString imageStem;
+    // The frame the timeline is showing. A Still destination writes exactly this
+    // one image ("post the illustration I am looking at"), which is a different
+    // question from "which range do you want", so it is not read out of the
+    // selection: the dialog's range has nothing to say about a single image and its
+    // start is usually frame 0.
+    int playhead = 0;
 
     // Whether audio is exported is NOT a preference — it is derived:
     //   included  iff  the project HAS audio  AND  not muted  AND  the
@@ -232,10 +269,22 @@ struct ExportRequest {
     // container, because a caller-supplied one can be impossible to mux
     // (AAC into WebM fails at avformat_write_header). Same rule as everything
     // else: don't let callers ask for things that cannot work.
+
+    // GIF only. media::GifEncoder owns that artifact instead of the video path,
+    // and the fit loop has to write the SAME file a single-pass export would —
+    // otherwise "fitted" would silently mean a different artifact (adaptive
+    // palette instead of the user's, permanent loop instead of one play).
+    // A user palette is a user file, so it belongs on the request.
+    QString gifPalettePath;
+    int gifLoop = 0; // 0 = loop forever, -1 = play once (the muxer's own units)
 };
 
 struct ExportPlan {
     ExportTarget target;
+    // What to write. Video (the default) uses `config`; Still and Sequence have no
+    // encoder config at all, because Qt's own image writers produce them.
+    ArtifactKind artifact = ArtifactKind::Video;
+    QString imageSuffix; // "png"/"jpg" for Still and Sequence, else empty
     media::VideoEncoder::Config config;
     QSize size;        // the OUTPUT size (what the file must be)
     QSize renderSize;  // what to RENDER at — differs from `size` for exact-size

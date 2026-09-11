@@ -61,6 +61,14 @@ public:
         // with no other symptom.
         QMap<QString, QString> encOptions;
 
+        // Muxer options, passed to avformat_write_header (e.g. movflags=+faststart,
+        // which puts the moov atom at the front of an MP4). Deliberately separate
+        // from encOptions: these configure the CONTAINER, not the encoder, and a
+        // platform that demands faststart rejects the file without it. An
+        // unrecognised key is an ERROR for the same reason an unknown encoder
+        // option is: a silently-ignored requirement is a rejected upload.
+        QMap<QString, QString> muxerOptions;
+
         // FourCC stream codec tag (e.g. "hvc1"). This is NOT an encoder option
         // — it is written into the container's stream entry, and for HEVC it is
         // the difference between Safari playing the file and refusing it
