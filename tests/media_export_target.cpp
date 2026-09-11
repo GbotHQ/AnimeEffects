@@ -183,6 +183,101 @@ static WebpInfo readWebpInfo(const QString& aPath) {
     return info;
 }
 
+// Pixel content for a format libav cannot decode.
+//
+// Animated WebP is the case: FFmpeg's demuxer answers "image data not found", so
+// the frames could not be read back at all and the WebP rows were verified by
+// container structure only. ImageMagick reads it (libwebp 1.6.0 here), and the
+// harness already shells out to ffprobe, so this is the same kind of dependency —
+// one more external tool that decodes what the linked libraries cannot.
+//
+// -coalesce is required, not optional: WebP animation frames are stored as
+// sub-rectangles and deltas, so a raw decode yields partial frames (measured: 10
+// frames of 128x13 instead of 128x96) and any ink measured on them would be
+// meaningless.
+struct MagickInfo {
+    bool available = false;
+    bool ok = false;
+    int frames = 0;
+    int width = 0;
+    int height = 0;
+    double inkPercent = -1.0;
+    QString error;
+};
+
+static bool magickAvailable() {
+    static const bool cached = [] {
+        FILE* p = popen("magick -version >/dev/null 2>&1", "r");
+        if (!p) return false;
+        return pclose(p) == 0;
+    }();
+    return cached;
+}
+
+static MagickInfo magickRead(const QString& aPath) {
+    MagickInfo info;
+    info.available = magickAvailable();
+    if (!info.available) {
+        info.error = QStringLiteral("ImageMagick (magick) is not installed");
+        return info;
+    }
+
+    // 1. the frame count and canvas, from the decoder rather than from the plan.
+    {
+        // The format string is repeated once PER FRAME with nothing between the
+        // repetitions, so a separator is required: reading the first line of
+        // "%n %w %h" gave "3 128 963 128 96..." and parsed the width as 963.
+        // %W/%H are the canvas, which is the same for every frame.
+        const QString cmd = QStringLiteral(
+            "magick identify -format \"%n %W %H|\" \"%1\" 2>/dev/null").arg(aPath);
+        FILE* p = popen(cmd.toUtf8().constData(), "r");
+        if (!p) { info.error = QStringLiteral("could not run identify"); return info; }
+        char buf[512] = {0};
+        const bool got = fgets(buf, sizeof(buf), p) != nullptr;
+        pclose(p);
+        if (!got) { info.error = QStringLiteral("identify produced nothing"); return info; }
+        const QString first = QString::fromUtf8(buf).section(QLatin1Char('|'), 0, 0).trimmed();
+        const QStringList parts = first.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() < 3) {
+            info.error = QStringLiteral("unexpected identify output: '%1'").arg(first);
+            return info;
+        }
+        info.frames = parts.at(0).toInt();
+        info.width = parts.at(1).toInt();
+        info.height = parts.at(2).toInt();
+    }
+
+    // 2. the pixels, coalesced to full canvas frames.
+    const QString raw = QDir::temp().filePath(QStringLiteral("ae_magick_raw"));
+    {
+        const QString cmd = QStringLiteral("magick \"%1\" -coalesce -depth 8 RGBA:\"%2\" "
+                                           "2>/dev/null").arg(aPath, raw);
+        FILE* p = popen(cmd.toUtf8().constData(), "r");
+        if (!p) { info.error = QStringLiteral("could not run magick"); return info; }
+        pclose(p);
+    }
+    QFile f(raw);
+    if (!f.open(QIODevice::ReadOnly)) {
+        info.error = QStringLiteral("magick wrote no pixels");
+        QFile::remove(raw);
+        return info;
+    }
+    const QByteArray d = f.readAll();
+    f.close();
+    QFile::remove(raw);
+
+    const qint64 pixels = d.size() / 4;
+    if (pixels <= 0) { info.error = QStringLiteral("magick produced an empty image"); return info; }
+    qint64 ink = 0;
+    for (qint64 i = 0; i + 3 < d.size(); i += 4) {
+        const quint8 r = (quint8)d[i], g = (quint8)d[i + 1], b = (quint8)d[i + 2], a = (quint8)d[i + 3];
+        if (r > 16 || g > 16 || b > 16 || a > 16) ++ink;
+    }
+    info.inkPercent = 100.0 * double(ink) / double(pixels);
+    info.ok = true;
+    return info;
+}
+
 static Probe probeFile(const QString& path, const char* aDecoderName = nullptr) {
     Probe p;
     AVFormatContext* fmt = nullptr;
@@ -844,6 +939,43 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
                       .arg(t.id)
                       .arg(w.hasAlpha ? "set" : "clear")
                       .arg(plan.alphaEnabled ? "enabled" : "disabled"));
+
+            // Verify the verifier before trusting it: a blank animation must
+            // measure 0% ink, or "ink > 0" below could never fail.
+            if (magickAvailable()) {
+                const QString blank = QDir::temp().filePath(QStringLiteral("ae_blank_anim.webp"));
+                const QString mk = QStringLiteral(
+                    "magick -size 32x32 xc:none -delay 5 xc:none -loop 0 \"%1\" 2>/dev/null").arg(blank);
+                FILE* mp = popen(mk.toUtf8().constData(), "r");
+                if (mp) pclose(mp);
+                const MagickInfo b = magickRead(blank);
+                check(b.ok && b.inkPercent == 0.0,
+                      QStringLiteral("a fully transparent animation measures 0% ink (got %1)")
+                          .arg(b.inkPercent, 0, 'f', 1));
+                QFile::remove(blank);
+            }
+
+            // And the PIXELS. Structure cannot tell a sticker from a correctly
+            // sized container of empty frames, which is exactly the failure this
+            // session kept finding elsewhere.
+            const MagickInfo m = magickRead(out);
+            if (!m.available) {
+                QTextStream(stdout) << "        SKIP  pixel content: " << m.error << "\n";
+            } else {
+                QTextStream(stdout) << "        decoded: " << m.frames << " frames "
+                                    << m.width << "x" << m.height
+                                    << " ink=" << QString::number(m.inkPercent, 'f', 1) << "%\n";
+                check(m.ok, QStringLiteral("%1: the frames decode (%2)").arg(t.id, m.error));
+                if (m.ok) {
+                    check(m.frames == plan.frames() && m.width == plan.size.width()
+                              && m.height == plan.size.height(),
+                          QStringLiteral("%1: %2 frames at %3x%4, as planned")
+                              .arg(t.id).arg(m.frames).arg(m.width).arg(m.height));
+                    check(m.inkPercent > 0.0,
+                          QStringLiteral("%1: the frames contain the artwork (%2% ink)")
+                              .arg(t.id).arg(m.inkPercent, 0, 'f', 1));
+                }
+            }
             continue;
         }
 
