@@ -1127,7 +1127,6 @@ private:
 public:
 
     void addRange(int lastFrame) const{
-        qDebug("Adding range");
         auto* newFirstRange = new QSpinBox;
         auto* newLastRange = new QSpinBox;
         newFirstRange->setMaximum(INT32_MAX);
@@ -1152,7 +1151,6 @@ public:
     }
 
     void removeRange(int lastFrame) const{
-        qDebug("Removing range");
         // No crashing the app please
         if(initialFrames->empty()){ addRange(lastFrame); return; }
         if(initialFrames->size() == 1){ return; }

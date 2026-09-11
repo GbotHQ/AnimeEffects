@@ -86,6 +86,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
     // load the list of video formats from a setting file.
 
     MainWindow* mainWindow = &aMainWindow;
+    mMainWindow = &aMainWindow;
 
     auto fileMenu = new QMenu(tr("File"), this);
     {
@@ -178,63 +179,21 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         auto saveProjectAs = new QAction(tr("Save project as"), this);
         auto closeProject = new QAction(tr("Close project"), this);
         auto exportWindow = new QAction(tr("Export project as"), this);
-        auto quickExport = new QMenu(tr("Quickly export as"), this);
-        {
-            // Destinations, not formats. The old menu offered seven
-            // container/transparency pairs ("GIF Animation (Transparent)",
-            // "WebM Animation (Opaque)", ...) with a private _t/_o naming scheme:
-            // an artifact name bundles intent only, and the pair is exactly what a
-            // destination row already encodes. Each entry exports immediately at
-            // the project's own size and frame rate; anything more specific is the
-            // full dialog or the legacy menu below.
-            // Grouped the same way as the dialog's list, from the same `family`
-            // column, so the two menus teach the same taxonomy.
-            const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-            // Same order and same families as the dialog's list, from the same
-            // `family` column, so the two menus teach one taxonomy.
-            struct Family { const char* key; const char* title; };
-            const QList<Family> families = {
-                { "chat", QT_TR_NOOP("Send in a chat") },
-                { "post", QT_TR_NOOP("Post to a platform") },
-                { "sticker", QT_TR_NOOP("Stickers and emoji") },
-                { "overlay", QT_TR_NOOP("Overlays and transparency") },
-                { "file", QT_TR_NOOP("A file") },
-                { "archive", QT_TR_NOOP("Archive") },
-            };
-            for (const auto& family : families) {
-                bool wroteAny = false;
-                for (const ctrl::ExportTarget& target : targets) {
-                    if (target.family != QLatin1String(family.key))
-                        continue;
-                    if (!wroteAny) {
-                        // A disabled bold action, not QMenu::addSection: the section
-                        // header this application's stylesheet draws is a bare line,
-                        // so the grouping was invisible.
-                        QAction* header = quickExport->addAction(QObject::tr(family.title));
-                        header->setEnabled(false);
-                        QFont headerFont = header->font();
-                        headerFont.setBold(true);
-                        header->setFont(headerFont);
-                        wroteAny = true;
-                    }
-                    QString label = target.label;
-                    if (!target.platform.isEmpty() && target.platform != QLatin1String("any"))
-                        label += QLatin1String(" (") + QObject::tr("needs %1").arg(ctrl::platformName(target.platform)) + QLatin1String(")");
-                    auto action = new QAction(aGUIResources.icon(target.icon), label, this);
-                    const QString id = target.id;
-                    connect(action, &QAction::triggered, [=]() {
-                        mainWindow->onQuickExportDestinationTriggered(id);
-                    });
-                    quickExport->addAction(action);
-                }
-            }
-        }
+        // "Quickly export as" is a QUICK action, so it leads with what this user
+        // actually exports to. It used to list all fifty-five destinations in six
+        // groups, which is a browsing list wearing a shortcut's name -- and it grew
+        // a second column the moment the chat and post families arrived. The
+        // recents come first and the full grouped list is one level down, so
+        // nothing became unreachable.
+        mQuickExport = new QMenu(tr("Quickly export as"), this);
+        mQuickExport->setObjectName(QString::fromUtf8("quickExportMenu"));
+        connect(mQuickExport, &QMenu::aboutToShow, this, [this]() { rebuildQuickExport(); });
 
         mProjectActions.push_back(saveProject);
         mProjectActions.push_back(saveProjectAs);
         mProjectActions.push_back(closeProject);
         mProjectActions.push_back(exportWindow);
-        mProjectActions.push_back(quickExport->menuAction());
+        mProjectActions.push_back(mQuickExport->menuAction());
 
         // Re-export: the same export, one click, no dialogs. Export is not a
         // one-shot here — the same sticker gets exported a dozen times while the
@@ -259,7 +218,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         fileMenu->addAction(saveProject);
         fileMenu->addAction(saveProjectAs);
         fileMenu->addAction(exportWindow);
-        fileMenu->addAction(quickExport->menuAction());
+        fileMenu->addAction(mQuickExport->menuAction());
         fileMenu->addAction(mExportAgainAction);
         fileMenu->addSeparator();
         fileMenu->addAction(closeProject);
@@ -569,6 +528,84 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     // reset status
     setProject(nullptr);
+}
+
+// One destination as a menu entry: the brand mark, the label, and the id captured
+// so the click exports exactly that row.
+void MainMenuBar::addQuickExportEntry(QMenu* aMenu, const ctrl::ExportTarget& aTarget) {
+    QString label = aTarget.label;
+    if (!aTarget.platform.isEmpty() && aTarget.platform != QLatin1String("any"))
+        label += QLatin1String(" (")
+                 + QObject::tr("needs %1").arg(ctrl::platformName(aTarget.platform))
+                 + QLatin1String(")");
+    auto action = new QAction(mGUIResources.icon(aTarget.icon), label, this);
+    const QString id = aTarget.id;
+    connect(action, &QAction::triggered, [this, id]() {
+        if (mMainWindow) mMainWindow->onQuickExportDestinationTriggered(id);
+    });
+    aMenu->addAction(action);
+}
+
+// "Quickly export as" is a shortcut, so it shows the destinations this user
+// exports to, most recent first, then the full grouped list one level down.
+//
+// It used to list all fifty-five destinations flat with six headers: browsing, in
+// a menu whose name promises a shortcut, and it wrapped into two columns as soon
+// as the sixth family existed. Nothing is lost -- every destination is still there,
+// one submenu deeper -- and the entries that matter stop moving as the table grows.
+void MainMenuBar::rebuildQuickExport() {
+    if (!mQuickExport) return;
+    mQuickExport->clear();
+
+    const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
+    QSettings settings;
+    const QStringList recent =
+        settings.value(QStringLiteral("export_recent_destinations")).toStringList();
+
+    int shown = 0;
+    for (const QString& id : recent) {
+        const ctrl::ExportTarget t = ctrl::ExportTargets::find(targets, id);
+        if (t.id.isEmpty()) continue; // a row that has since been removed or renamed
+        addQuickExportEntry(mQuickExport, t);
+        if (++shown >= 8) break;
+    }
+    if (shown > 0) {
+        mQuickExport->addSeparator();
+    } else {
+        // Nothing used yet: say so rather than offering an empty-looking menu.
+        QAction* none = mQuickExport->addAction(tr("No destination used yet"));
+        none->setEnabled(false);
+    }
+
+    QMenu* all = mQuickExport->addMenu(tr("All destinations"));
+    all->setObjectName(QString::fromUtf8("allDestinationsMenu"));
+    struct Family { const char* key; const char* title; };
+    const QList<Family> families = {
+        { "chat", QT_TR_NOOP("Send in a chat") },
+        { "post", QT_TR_NOOP("Post to a platform") },
+        { "sticker", QT_TR_NOOP("Stickers and emoji") },
+        { "overlay", QT_TR_NOOP("Overlays and transparency") },
+        { "file", QT_TR_NOOP("A file") },
+        { "archive", QT_TR_NOOP("Archive") },
+    };
+    for (const auto& family : families) {
+        bool wroteAny = false;
+        for (const ctrl::ExportTarget& target : targets) {
+            if (target.family != QLatin1String(family.key)) continue;
+            if (!wroteAny) {
+                // A disabled bold action, not QMenu::addSection: the section header
+                // this application's stylesheet draws is a bare line, so the grouping
+                // was invisible.
+                QAction* header = all->addAction(QObject::tr(family.title));
+                header->setEnabled(false);
+                QFont headerFont = header->font();
+                headerFont.setBold(true);
+                header->setFont(headerFont);
+                wroteAny = true;
+            }
+            addQuickExportEntry(all, target);
+        }
+    }
 }
 
 void MainMenuBar::setExportAgainEnabled(bool aOn) {

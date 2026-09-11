@@ -504,7 +504,12 @@ QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aN
         return QSize(evenFloor(aRule.w), evenFloor(aRule.h));
 
     case SizeMode::Max: {
-        const double scale = std::min(aRule.w / sw, aRule.h / sh);
+        // Capped at 1.0: a MAXIMUM does not enlarge. Without this, exporting a
+        // 640x480 animation to TikTok produced 1080x810 — pure interpolation, paid
+        // for in bytes and encode time, and every one of the fifteen max-mode rows
+        // did it. `exact` and `maxExactSide` are the modes that mean "make it this
+        // big" (Telegram requires one side to BE 512), and they still do.
+        const double scale = std::min(1.0, std::min(aRule.w / sw, aRule.h / sh));
         return QSize(evenFloor(sw * scale), evenFloor(sh * scale));
     }
 
@@ -514,7 +519,10 @@ QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aN
     }
 
     case SizeMode::MaxMinSide: {
-        double scale = std::min(aRule.w / sw, aRule.h / sh);
+        // The first stage is a maximum (no enlargement); the second is a FLOOR
+        // ("one side must be at least @side"), which is the one place where
+        // growing the art is the requirement rather than a side effect.
+        double scale = std::min(1.0, std::min(aRule.w / sw, aRule.h / sh));
         QSize out(evenFloor(sw * scale), evenFloor(sh * scale));
         if (std::max(out.width(), out.height()) < aRule.side) {
             scale = aRule.side / (double)std::max(out.width(), out.height());
@@ -815,6 +823,10 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         plan.config.fit = fitMode;
         plan.config.outputPath = aRequest.outputPath;
         plan.config.fps = plan.fps;
+        // Named so the fit loop finds this codec's quality knob in the table. GIF is
+        // not a VideoEncoder codec, but "what trades quality for bytes" is a
+        // per-codec fact and the table is where those live.
+        plan.config.codec = QStringLiteral("gif");
         return plan;
     }
 
@@ -1052,6 +1064,12 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
         gcfg.transparent = aPlan.alphaEnabled;
         gcfg.loop = aRequest.gifLoop;
         gcfg.palettePath = aRequest.gifPalettePath;
+        // The quality dimension for GIF: fewer palette entries, same pixels. The
+        // option NAME in the table ("palette") is not a libav option and is not used
+        // here; only its [best, worst] RANGE is, through aQualityValue.
+        if (aQuality && aQualityValue > 0) {
+            gcfg.maxColours = std::clamp(aQualityValue, 2, 256);
+        }
         media::GifEncoder gif;
         QString gerr;
         if (!gif.encode(canvas, gcfg, &gerr)) {
@@ -1252,20 +1270,33 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     for (const QString& phase : aTarget.degradeOrder) {
         if (result.ok || result.canceled) break;
         if (phase == QLatin1String("quality") && quality) {
+            // The search runs over a NORMALISED 0..100 domain, where 0 is the
+            // table's `best` and 100 its `worst`, and maps back to the codec's own
+            // numbers. It used to bisect straight between best and worst, which
+            // assumes the range RISES from best to worst: true for CRF, false for
+            // WebP's quality (80 -> 30) and for GIF's palette size (256 -> 8), where
+            // "best" is the larger number. Passing 80 -> 30 into a bisection that
+            // needs lo < hi made it return hi at once, so a capped WebP destination
+            // silently took the WORST quality even when a middling one fitted.
+            const int best = quality->best;
+            const int worst = quality->worst;
+            auto valueAt = [best, worst](int aPercent) {
+                return best + ((worst - best) * aPercent) / 100;
+            };
             const int win = bisectSmallest(
-                crf, quality->worst,
-                std::function<int(int)>([&](int c) {
-                    lastBytes = encodeOnce(c, scale, stride, QStringLiteral("quality"));
+                0, 100,
+                std::function<int(int)>([&](int pct) {
+                    lastBytes = encodeOnce(valueAt(pct), scale, stride, QStringLiteral("quality"));
                     return lastBytes;
                 }));
             if (win >= 0) {
-                crf = win;
+                crf = valueAt(win);
                 result.ok = true;
             } else if (win == -2) {
                 // Even the worst quality is too big: KEEP the floor and let the
                 // next phase build on it (otherwise later phases silently
                 // revert to the best quality and undo this phase's work).
-                crf = quality->worst;
+                crf = worst;
             }
         } else if (phase == QLatin1String("scale")) {
             // Search the scale in percent so bisection works in integers.

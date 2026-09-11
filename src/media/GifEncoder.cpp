@@ -33,8 +33,8 @@ void fillRemainingGray(QVector<quint32>& aPalette, int aStart) {
 // Build a 256-entry uint32_t palette (0xAARRGGBB) from the frames, adaptive:
 // keep the kPaletteCount most frequent opaque colors; if transparency is on,
 // entry 0 is reserved as the transparent index.
-void buildPalette(const QList<QImage>& aFrames, bool aTransparent,
-                  QVector<quint32>& aPalette, bool& aHasTransparent) {
+void buildPalette(const QList<QImage>& aFrames, bool aTransparent, int aLimit,
+                  QVector<quint32>& aPalette, bool& aHasTransparent, int* aUsed) {
     aHasTransparent = false;
     QHash<quint32, quint32> hist;
     for (const QImage& f : aFrames) {
@@ -72,9 +72,10 @@ void buildPalette(const QList<QImage>& aFrames, bool aTransparent,
         aHasTransparent = true;
     }
     for (const auto& c : counted) {
-        if (paletteIndex >= kPaletteCount) break;
+        if (paletteIndex >= aLimit) break;
         aPalette[paletteIndex++] = c.first;
     }
+    if (aUsed) *aUsed = paletteIndex;
     fillRemainingGray(aPalette, paletteIndex);
 }
 
@@ -82,8 +83,8 @@ void buildPalette(const QList<QImage>& aFrames, bool aTransparent,
 // paletteuse convention): each distinct opaque pixel color becomes one entry.
 // If transparency is requested (or the PNG contains a fully-transparent pixel),
 // entry 0 is reserved as the transparent index.
-bool loadPaletteFromPng(const QString& aPath, bool aTransparent,
-                        QVector<quint32>& aPalette, bool& aHasTransparent) {
+bool loadPaletteFromPng(const QString& aPath, bool aTransparent, int aLimit,
+                        QVector<quint32>& aPalette, bool& aHasTransparent, int* aUsed) {
     QImageReader reader(aPath);
     reader.setAutoTransform(true);
     QImage pal = reader.read();
@@ -116,15 +117,21 @@ bool loadPaletteFromPng(const QString& aPath, bool aTransparent,
     QList<quint32> colors = seen.values();
     std::sort(colors.begin(), colors.end());
     for (const quint32 rgb : colors) {
-        if (paletteIndex >= kPaletteCount) break;
+        if (paletteIndex >= aLimit) break;
         aPalette[paletteIndex++] = 0xFF000000u | rgb;
     }
+    if (aUsed) *aUsed = paletteIndex;
     fillRemainingGray(aPalette, paletteIndex);
     return true;
 }
 
 // Build a 32x32x32 LUT mapping quantized RGB -> nearest palette index.
-void buildLut(const QVector<quint32>& aPalette, QVector<uchar>& aLut) {
+// aUsed is how many entries the palette actually built. The rest are grey filler
+// (GIF always carries 256 slots), and searching them would let the encoder emit
+// colours that are not in the palette the fit loop asked for: reducing the palette
+// to 8 entries produced a BIGGER file, because a grey filler was often the nearest
+// match and every grey used costs bits.
+void buildLut(const QVector<quint32>& aPalette, int aUsed, QVector<uchar>& aLut) {
     const int kCube = 32;
     aLut.fill(0, kCube * kCube * kCube);
     for (int ci = 0; ci < kCube; ++ci)
@@ -136,7 +143,7 @@ void buildLut(const QVector<quint32>& aPalette, QVector<uchar>& aLut) {
                 const int R = (ci << 3) | (ci >> 2);
                 const int G = (cj << 3) | (cj >> 2);
                 const int B = (ck << 3) | (ck >> 2);
-                for (int p = 0; p < aPalette.size(); ++p) {
+                for (int p = 0; p < aUsed; ++p) {
                     const quint32 c = aPalette[p];
                     if ((c >> 24) == 0) continue; // skip transparent
                     const int pr = (c >> 16) & 0xFF, pg = (c >> 8) & 0xFF, pb = c & 0xFF;
@@ -160,19 +167,24 @@ bool GifEncoder::encode(const QList<QImage>& aFrames, const Config& aConfig, QSt
     const int width = aFrames.first().width();
     const int height = aFrames.first().height();
 
+    // How many entries the palette may use. 256 is a GIF's ceiling, not a target:
+    // a capped destination can be fitted by quantising harder instead of shrinking.
+    const int limit = std::clamp(aConfig.maxColours, 2, kPaletteCount);
+
+    int used = 0;
     QVector<quint32> palette;
     bool alpha = false;
     if (!aConfig.palettePath.isEmpty()) {
-        if (!loadPaletteFromPng(aConfig.palettePath, aConfig.transparent, palette, alpha)) {
+        if (!loadPaletteFromPng(aConfig.palettePath, aConfig.transparent, limit, palette, alpha, &used)) {
             mError = "could not load palette: " + aConfig.palettePath;
             if (aError) *aError = mError;
             return false;
         }
     } else {
-        buildPalette(aFrames, aConfig.transparent, palette, alpha);
+        buildPalette(aFrames, aConfig.transparent, limit, palette, alpha, &used);
     }
     QVector<uchar> lut;
-    buildLut(palette, lut);
+    buildLut(palette, used, lut);
 
     AVFormatContext* fmt = nullptr;
     if (::avformat_alloc_output_context2(&fmt, nullptr, "gif", aConfig.outputPath.toUtf8().constData()) < 0) {

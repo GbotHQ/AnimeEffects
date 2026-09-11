@@ -23,6 +23,7 @@
 #include "ctrl/ExportTarget.h"
 #include "decode_util.h"
 #include "media/FFmpegHelpers.h"
+#include "media/GifEncoder.h"
 #include "media/VideoEncoder.h"
 
 extern "C" {
@@ -611,6 +612,25 @@ TEST_SECTION("size rules", run_size_rules) {
     check(c.width() <= 320 && c.height() <= 270 && std::max(c.width(), c.height()) >= 270,
           QStringLiteral("LINE 1000x800 -> %1x%2 (within 320x270, long side >= 270)").arg(c.width()).arg(c.height()));
 
+    // A MAXIMUM must not enlarge. Every max-mode row (the chat and post video
+    // destinations) used to scale a small project UP to the box, so a 320x240
+    // animation exported to a 1080x1920 destination came out 1080x810: interpolated
+    // pixels, more bytes and more encode time, for nothing the platform asked for.
+    {
+        const ctrl::ExportTarget tiktok =
+            ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                     QStringLiteral("post.tiktok.video"));
+        check(tiktok.size.mode == ctrl::SizeMode::Max, "the TikTok row is a max rule");
+        const QSize small = ctrl::applySizeRule(tiktok.size, QSize(320, 240));
+        check(small == QSize(320, 240),
+              QStringLiteral("a max rule leaves a small project alone (320x240 -> %1x%2)")
+                  .arg(small.width()).arg(small.height()));
+        const QSize big = ctrl::applySizeRule(tiktok.size, QSize(4000, 3000));
+        check(big.width() <= 1080 && big.height() <= 1920 && big != QSize(4000, 3000),
+              QStringLiteral("a max rule still shrinks what is too big (4000x3000 -> %1x%2)")
+                  .arg(big.width()).arg(big.height()));
+    }
+
     // Discord: exactly 320x320.
     const ctrl::ExportTarget discord =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
@@ -644,7 +664,12 @@ TEST_SECTION("size rules", run_size_rules) {
     check(cropPlan.config.fit == media::FitMode::Crop,
           "a destination declaring fit=crop gets Crop");
 
-    // Signal: fits inside 512x512 and fills it (stickers resize to 512).
+    // Signal: EXACTLY 512x512 (stickers resize to 512). It used to be declared as a
+    // max rule, which only produced 512x512 while max-mode rules enlarged small art
+    // — so a 200x200 project came out 512x512 by way of an upscale, and the moment
+    // max stopped enlarging (a maximum should cap, not grow) this row would have
+    // exported 200x200 to a platform that requires 512. The requirement was always
+    // the size, so the rule now says so.
     const ctrl::ExportTarget signal =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
                                  QStringLiteral("signal.sticker"));
@@ -949,8 +974,49 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
 
     for (const ctrl::ExportTarget& t : all) {
+        // GIF rows go through media::GifEncoder rather than an encoder config, which
+        // is why they used to be skipped here with a "routed elsewhere" pass — a
+        // check that could not fail. They are encoded for real instead: three rows
+        // (Twitch, WeChat, QQ) state exact sticker sizes, and a size rule nothing
+        // exercises is a size rule that can silently stop being applied.
         if (t.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0) {
-            check(true, QStringLiteral("%1: GIF row routed to GifEncoder (not encoded here)").arg(t.id));
+            const QString gout = QDir::temp().filePath(QStringLiteral("ae_conf_%1.gif")
+                                                           .arg(QString(t.id).replace(QLatin1Char('.'),
+                                                                                      QLatin1Char('_'))));
+            ctrl::ExportRequest greq;
+            greq.outputPath = gout;
+            greq.sourceSize = QSize(640, 480); // deliberately non-square
+            greq.fps = 30;
+            greq.selection = ctrl::FrameSelection::fromCount(3);
+            const ctrl::ExportPlan gplan = ctrl::planExport(t, greq, ctrl::QualityBucket::Balanced);
+            check(gplan.ok(), QStringLiteral("%1: GIF plan builds (%2)").arg(t.id, gplan.error));
+            if (!gplan.ok()) continue;
+            QList<QImage> gframes;
+            for (int i = 0; i < gplan.frames(); ++i) {
+                const QImage f = makeFrame(gplan.renderSize.width(), gplan.renderSize.height(), i);
+                gframes.append(f.size() == gplan.size
+                                   ? f
+                                   : media::fitImage(f, gplan.size, gplan.config.fit));
+            }
+            media::GifEncoder gif;
+            media::GifEncoder::Config gcfg;
+            gcfg.outputPath = gout;
+            gcfg.fps = gplan.fps > 0 ? gplan.fps : 15;
+            gcfg.transparent = gplan.alphaEnabled;
+            QString gerr;
+            check(gif.encode(gframes, gcfg, &gerr),
+                  QStringLiteral("%1: GIF encodes (%2)").arg(t.id, gerr));
+            int gw = 0, gh = 0;
+            const int gn = decodeInfo(gout, &gw, &gh);
+            check(gn > 0 && gw == gplan.size.width() && gh == gplan.size.height(),
+                  QStringLiteral("%1: GIF decodes back at the planned size %2x%3 (got %4x%5, %6 frames)")
+                      .arg(t.id)
+                      .arg(gplan.size.width())
+                      .arg(gplan.size.height())
+                      .arg(gw)
+                      .arg(gh)
+                      .arg(gn));
+            QFile::remove(gout);
             continue;
         }
 
@@ -1775,6 +1841,95 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
             headerOk = head.startsWith("GIF8");
         }
         check(headerOk, "the fitted file is still a GIF (Fitting changed the size, not the format)");
+    }
+
+    // The quality search must respect the table's [best, worst] ROLES, not their
+    // numeric order. WebP's quality runs 80 (best) down to 30 (worst), and passing
+    // 80 -> 30 into a bisection that assumes a rising range returned the worst value
+    // on the first call: every capped WebP destination quantised as hard as allowed
+    // even when a middling quality fitted. The tell is the number of probes.
+    {
+        const ctrl::ExportTarget webp =
+            ctrl::ExportTargets::find(all, QStringLiteral("discord.emoji"));
+        check(webp.codec == QLatin1String("libwebp"), "the Discord emoji row is WebP");
+        const QSize src(320, 240);
+        QList<QImage> noisy;
+        for (int i = 0; i < 4; ++i)
+            noisy.append(makeNoiseFrame(src.width(), src.height(), i));
+        ctrl::ExportRequest wreq;
+        wreq.outputPath = QDir::temp().filePath("ae_webp_quality.webp");
+        wreq.sourceSize = src;
+        wreq.fps = 12;
+        wreq.selection = ctrl::FrameSelection::fromCount(noisy.size());
+        ctrl::ExportTarget capped = webp;
+        capped.degradeOrder = QStringList{QStringLiteral("quality")};
+        // The initial attempt (quality 80, the row's best) comes to ~21 KB at this
+        // size, so the cap has to be under that or the fit succeeds immediately and
+        // there is no search to observe.
+        capped.caps.maxBytes = 12000;
+        const ctrl::FitResult w =
+            ctrl::exportWithFit(capped, wreq, ctrl::QualityBucket::Balanced, noisy);
+        for (const QString& step : w.steps) QTextStream(stdout) << "      " << step << "\n";
+        int probes = 0;
+        for (const QString& step : w.steps) {
+            if (step.startsWith(QLatin1String("quality"))) ++probes;
+        }
+        check(probes > 1,
+              QStringLiteral("the WebP fit SEARCHES its quality range (%1 probes; 1 means it "
+                             "took the floor immediately)").arg(probes));
+        if (w.ok) {
+            check(w.bytes <= capped.caps.maxBytes,
+                  QStringLiteral("the WebP fit is inside the cap (%1 <= %2)")
+                      .arg((qlonglong)w.bytes)
+                      .arg((qlonglong)capped.caps.maxBytes));
+        }
+    }
+
+    // A GIF has no CRF, so before this it could only be fitted by shrinking the
+    // image or dropping frames — both of which change what the animation IS. Its
+    // palette size is the quality dimension, and it is declared in the same table
+    // as every other codec's knob.
+    {
+        ctrl::ExportTarget gifTarget = base; // wechat.sticker: a GIF with a 500 KB cap
+        gifTarget.degradeOrder = QStringList{QStringLiteral("quality")};
+        const QSize small(320, 240);
+        QList<QImage> noisy;
+        for (int i = 0; i < 4; ++i)
+            noisy.append(makeNoiseFrame(small.width(), small.height(), i));
+
+        ctrl::ExportRequest greq;
+        greq.outputPath = QDir::temp().filePath("ae_gif_palette.gif");
+        greq.sourceSize = small;
+        greq.fps = 12;
+        greq.selection = ctrl::FrameSelection::fromCount(noisy.size());
+
+        ctrl::ExportTarget capped = gifTarget;
+        capped.caps.maxBytes = 60000; // unreachable at 256 colours, reachable lower
+        const ctrl::FitResult g =
+            ctrl::exportWithFit(capped, greq, ctrl::QualityBucket::Balanced, noisy);
+        for (const QString& step : g.steps) QTextStream(stdout) << "      " << step << "\n";
+        check(g.ok, QStringLiteral("a capped GIF can be fitted by palette size (%1)").arg(g.error));
+        if (g.ok) {
+            check(g.bytes <= capped.caps.maxBytes,
+                  QStringLiteral("the colour-fitted GIF is inside the cap (%1 <= %2)")
+                      .arg((qlonglong)g.bytes)
+                      .arg((qlonglong)capped.caps.maxBytes));
+            // The point of this dimension: the DIMENSIONS survive. Fitting by scale
+            // would have changed them, which is why the quality phase must run first.
+            // The size to compare against is the PLAN's (this row forces 240x240), not
+            // the source's: a palette fit must not shrink it further.
+            const ctrl::ExportPlan gplan = ctrl::planExport(capped, greq, ctrl::QualityBucket::Balanced);
+            int w = 0, h = 0;
+            const int n = decodeInfo(g.path, &w, &h);
+            check(n > 0 && w == gplan.size.width() && h == gplan.size.height(),
+                  QStringLiteral("the GIF kept its planned size while it got smaller "
+                                 "(%1x%2, expected %3x%4, %5 frames)")
+                      .arg(w)
+                      .arg(h)
+                      .arg(gplan.size.width())
+                      .arg(gplan.size.height())
+                      .arg(n));
+        }
     }
 
     // The stride is a frame count. It was applied twice (once in the fit loop's

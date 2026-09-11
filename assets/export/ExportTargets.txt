@@ -125,7 +125,7 @@
                container="apng" codec="apng" pixfmt="rgba"
                alpha="required" audio="forbidden" loop="default-on"
                checked="2026-09-05" source="https://support.signal.org/hc/en-us/articles/360031836512-Stickers" verified="true">
-    <size mode="max" w="512" h="512"/>
+    <size mode="exact" w="512" h="512"/>
     <caps maxBytes="307200" maxDurationSec="3"/>
     <note>Animated stickers must be APNG ("Please do not upload GIFs").</note>
   </destination>
@@ -141,13 +141,21 @@
   </destination>
 
   <destination id="twitch.emote" label="Twitch emote" icon="brand-twitch" family="sticker"
-               class="fixed" codecSelect="fixed"
+               class="reencode" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="choice" audio="forbidden" loop="default-on"
-               checked="2025-01-01" source="(carried over, not re-verified)" verified="false">
-    <size mode="maxExactSide" side="112"/>
+               checked="2026-09-11" source="https://help.twitch.tv/s/article/emote-guidelines" verified="true">
+    <size mode="exact" w="112" h="112"/>
     <caps maxBytes="1048576" maxFrames="60"/>
-    <note>UNVERIFIED: square, 60 frames max, resize tiers 28/56/112, 3 flashes/sec max.</note>
+    <note>GIF only ("The image must be in .gif format"), and SQUARE: "GIF images must be
+          square shape". 112x112 is the upload for auto-resize, which is the mode a
+          single file belongs to, and 1 MB is that mode's cap; uploading the three
+          manual sizes instead caps each at 512 KB. 28/56/112 are the sizes Twitch
+          SERVES, not what you upload. At most 60 frames, and "must not flash or
+          flicker more than 3 times within a 1 second period". Twitch resizes and
+          re-serves its own variants. NOT PUBLISHED: any duration limit, any frame
+          rate limit, and any transparency rule for ANIMATED emotes (transparency is
+          stated for static ones), so transparency is offered but not promised.</note>
   </destination>
 
 
@@ -235,7 +243,7 @@
           duration limit.</note>
   </destination>
 
-  <destination id="chat.kakaotalk.video" label="KakaoTalk" icon="brand-kakaotalk" family="chat"
+  <destination id="chat.kakaotalk.video" label="KakaoTalk (카카오톡)" icon="brand-kakaotalk" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -247,7 +255,7 @@
           not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</note>
   </destination>
 
-  <destination id="chat.wechat.video" label="WeChat" icon="brand-wechat" family="chat"
+  <destination id="chat.wechat.video" label="WeChat (微信)" icon="brand-wechat" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -273,7 +281,7 @@
           are not published.</note>
   </destination>
 
-  <destination id="chat.vk.video" label="VK" icon="brand-vk" family="chat"
+  <destination id="chat.vk.video" label="VK (ВКонтакте)" icon="brand-vk" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -326,7 +334,7 @@
           files are NOT accepted. WebM/MOV are accepted alongside MP4.</note>
   </destination>
 
-  <destination id="post.bilibili.video" label="Bilibili" icon="brand-bilibili" family="post"
+  <destination id="post.bilibili.video" label="Bilibili (哔哩哔哩)" icon="brand-bilibili" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -340,7 +348,7 @@
           agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</note>
   </destination>
 
-  <destination id="post.weibo.video" label="Weibo" icon="brand-sinaweibo" family="post"
+  <destination id="post.weibo.video" label="Weibo (微博)" icon="brand-sinaweibo" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -394,7 +402,7 @@
           their 2017 launch post, and comment videos are capped much shorter.</note>
   </destination>
 
-  <destination id="wechat.sticker" label="WeChat sticker" icon="brand-wechat" family="sticker"
+  <destination id="wechat.sticker" label="WeChat sticker (微信表情)" icon="brand-wechat" family="sticker"
                class="fixed" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="required" audio="forbidden" loop="required"
@@ -407,7 +415,7 @@
           sets are 8 to 24 images.</note>
   </destination>
 
-  <destination id="kakaotalk.sticker" label="KakaoTalk sticker" icon="brand-kakaotalk" family="sticker"
+  <destination id="kakaotalk.sticker" label="KakaoTalk sticker (카카오톡 스티커)" icon="brand-kakaotalk" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webp" codec="libwebp" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="required"
@@ -423,12 +431,20 @@
                class="fixed" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="required" audio="forbidden" loop="required"
-               checked="2026-09-11" source="(the live spec page is gone; only a 2023 archive survives and it contradicts itself)" verified="false">
+               checked="2018-10-07" source="https://web.archive.org/web/20181007163610/http://yuanchuang.qq.com/html/design_rule.html" verified="false">
     <size mode="exact" w="300" h="300"/>
     <caps maxBytes="307200"/>
-    <note>UNVERIFIED: the specification survives only as a 2023 archived page, and it
-          contradicts itself about thumbnail size (200 KB vs 20 KB). 300x300 GIF,
-          300 KB, with a 3 px white stroke around the art.</note>
+    <note>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned
+          specification that exists anywhere. yuanchuang.qq.com no longer resolves and
+          archive.org holds no capture after October 2018, so the values below are what
+          Tencent said eight years ago and nothing current confirms them. 16 GIFs at
+          exactly 300x300, each 300 KB or less ("表情大小：≤300kb/个", raised from 90 KB
+          in 2016), on a transparent background ("文件均为无色透明底"). A white stroke
+          is required but 3 px is only PREFERRED ("以3像素的白色描边为佳"), not an exact
+          value. The same page contradicts itself about the 300x300 PNG thumbnail: its
+          table says 200 KB and its body text says 20 KB, so no thumbnail cap is
+          applied. Nothing is published about frame count, duration, frame rate, or
+          re-encoding.</note>
   </destination>
   <!-- Research batch 2, checked 2026-09-11. Two traps shape these rows: several
        widely repeated caps are ADVERTISING specs, not organic upload limits
@@ -437,7 +453,7 @@
        128 MB, DeviantArt 80 vs 95 MB). Where two official numbers exist, the
        smaller one is used and both are named in the note. -->
 
-  <destination id="post.niconico.video" label="Nico Nico Douga" icon="brand-niconico" family="post"
+  <destination id="post.niconico.video" label="Nico Nico Douga (ニコニコ動画)" icon="brand-niconico" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -451,7 +467,7 @@
           which is a different destination with the same name.</note>
   </destination>
 
-  <destination id="post.douyin.video" label="Douyin" icon="dest-film" family="post"
+  <destination id="post.douyin.video" label="Douyin (抖音)" icon="dest-film" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -637,7 +653,7 @@
           frames), which costs you the palette. Desktop site only.</note>
   </destination>
 
-  <destination id="still.niconico.seiga" label="Nico Nico Seiga (illustration)" icon="brand-niconico" family="post"
+  <destination id="still.niconico.seiga" label="Nico Nico Seiga (ニコニコ静画)" icon="brand-niconico" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -818,6 +834,10 @@
     <codec name="libx264"    option="crf" best="19" worst="34"/>
     <codec name="libx265"    option="crf" best="23" worst="38"/>
     <codec name="libwebp"    option="quality" best="80" worst="30"/>
+    <!-- GIF has no CRF: its quality knob is how many palette entries it may use,
+         which is what lets a capped GIF quantise harder before the fit loop starts
+         throwing away resolution or frames. -->
+    <codec name="gif"        option="palette" best="256" worst="8"/>
   </quality_control>
 
   <!-- ===== where each quality intent STARTS, within a codec's [best, worst] ==

@@ -1280,6 +1280,18 @@ static QString targetLabel(const ctrl::ExportTarget& aTarget) {
     return aTarget.label + QStringLiteral(" (") + QObject::tr("needs %1").arg(ctrl::platformName(aTarget.platform)) + QStringLiteral(")");
 }
 
+// The Quality row's index <-> the bucket the plan uses. ONE mapping, because the
+// dialog and the quick-export menu both need it and they disagreed: the menu
+// hardcoded Balanced while the dialog stored the user's choice.
+static ctrl::QualityBucket bucketFromSettingsIndex(int aIndex) {
+    switch (aIndex) {
+    case 0: return ctrl::QualityBucket::Smaller;
+    case 2: return ctrl::QualityBucket::Best;
+    case 3: return ctrl::QualityBucket::Lossless;
+    default: return ctrl::QualityBucket::Balanced;
+    }
+}
+
 // Returns true only when something was actually written. The callers need that:
 // "export again" and the status line both have to tell a completed export from a
 // refused one, and an export that reports success without a file is the failure
@@ -1593,6 +1605,81 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     return bool(res) && !fitFailed && QFileInfo(g.osExportTarget).exists();
 }
 
+// The destinations this user actually exports to, most recent first, capped at
+// what a menu can show without becoming a list to read.
+void MainWindow::rememberDestination(const QString& aId) {
+    if (aId.isEmpty()) return;
+    QSettings settings;
+    QStringList recent =
+        settings.value(QStringLiteral("export_recent_destinations")).toStringList();
+    recent.removeAll(aId);
+    recent.prepend(aId);
+    while (recent.size() > 8) recent.removeLast();
+    settings.setValue(QStringLiteral("export_recent_destinations"), recent);
+}
+
+// Where a project's remembered export inputs live. PER PROJECT: a frame range
+// belongs to the animation it was chosen in, and inheriting another project's
+// range would export frames that project does not have.
+QString MainWindow::exportInputsKey() const {
+    const QString name =
+        (mCurrent && !mCurrent->fileName().isEmpty()) ? mCurrent->fileName()
+                                                     : QStringLiteral("untitled");
+    return QStringLiteral("export_inputs/") + name;
+}
+
+// Put the last-used frame ranges, size and fps back into a freshly built dialog.
+//
+// They are per-run inputs, and they used to reset to the project's own values every
+// time the dialog opened: changing one checkbox meant re-selecting the range, the
+// size and the rate first. Applied BEFORE the plan is refreshed, so a destination
+// with a Free size rule reads the size the user last chose.
+void MainWindow::restoreExportInputs() {
+    QSettings settings;
+    const QString key = exportInputsKey();
+    const int projectFirst = mCurrent->currentTimeInfo().frameRange.min();
+    const int projectLast = mCurrent->currentTimeInfo().frameRange.max();
+
+    // JSON, not a QVariantList of QVariantList: QSettings flattens nested lists of
+    // simple types into one comma-separated string ("0, 3"), so reading the ranges
+    // back as pairs found single values, skipped every one of them, and restored
+    // nothing while the values sat right there in the file.
+    const QJsonArray ranges =
+        QJsonDocument::fromJson(settings.value(key + QStringLiteral("/ranges")).toString().toUtf8())
+            .array();
+    if (!ranges.isEmpty()) {
+        int row = 0;
+        for (const QJsonValue& v : ranges) {
+            const QJsonArray pair = v.toArray();
+            if (pair.size() != 2) continue;
+            // Extra rows are ADDED (the dialog starts with one); the values are
+            // clamped to this project's own range, because a remembered range can
+            // outlive the animation it was chosen for.
+            if (row >= exportUI->initialFrames->size()) {
+                exportUI->addRange(projectLast);
+            }
+            exportUI->initialFrames->at(row)->setValue(
+                std::clamp(pair.at(0).toInt(), projectFirst, projectLast));
+            exportUI->lastFrames->at(row)->setValue(
+                std::clamp(pair.at(1).toInt(), projectFirst, projectLast));
+            ++row;
+        }
+    }
+
+    const int w = settings.value(key + QStringLiteral("/width"), 0).toInt();
+    const int h = settings.value(key + QStringLiteral("/height"), 0).toInt();
+    if (w > 0 && h > 0) {
+        QSignalBlocker wBlock(exportUI->widthSpinBox);
+        QSignalBlocker hBlock(exportUI->heightSpinBox);
+        exportUI->widthSpinBox->setValue(w);
+        exportUI->heightSpinBox->setValue(h);
+        exportUI->latestWidth = w;
+        exportUI->latestHeight = h;
+    }
+    const int fps = settings.value(key + QStringLiteral("/fps"), 0).toInt();
+    if (fps > 0) exportUI->fpsSpinBox->setValue(fps);
+}
+
 // Remember where an export went, so the next one does not start from nowhere.
 //
 // Two levels: the directory+name the dialogs should open at, and the directory
@@ -1761,7 +1848,13 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
     exParam->generalParams = genParam;
     exParam->exportType = exportTarget::video;
     exParam->destinationId = aDestinationId;
-    exParam->qualityBucket = ctrl::QualityBucket::Balanced;
+    rememberDestination(aDestinationId);
+    // The quality the user last chose in the dialog, not a silent Balanced. The
+    // quick path used to pin Balanced, so a user who had set Telegram stickers to
+    // "Best" got Balanced again from the menu, with nothing anywhere saying why the
+    // file was smaller than the one the dialog produced for the same destination.
+    exParam->qualityBucket = bucketFromSettingsIndex(
+        settings.value(QStringLiteral("export_quality_bucket"), 1).toInt());
 
     std::vector<audioConfig> validAudioStreams =
         AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
@@ -2152,6 +2245,9 @@ void MainWindow::onExportTriggered() {
     // (the last frame box was set above); frames before it are pre-roll the
     // animation doesn't own.
     exportUI->firstFrameSpinBox->setValue(mCurrent->currentTimeInfo().frameRange.min());
+    // The user's own inputs, over the project defaults, BEFORE the plan is stated:
+    // a destination with a Free size rule takes the size from these boxes.
+    restoreExportInputs();
     // Now that the widgets hold the project's real values, state the
     // destination's facts and freeze whatever it decides. This is the one place
     // the plan is applied to the freshly built dialog.
@@ -2295,16 +2391,26 @@ void MainWindow::onExportTriggered() {
     }
     genParam.exportRange = *exportRanges;
     exParam->destinationId = exportUI->destinationCombo->currentData().toString();
-    switch (exportUI->qualityCombo->currentIndex()) {
-    case 0: exParam->qualityBucket = ctrl::QualityBucket::Smaller; break;
-    case 2: exParam->qualityBucket = ctrl::QualityBucket::Best; break;
-    case 3: exParam->qualityBucket = ctrl::QualityBucket::Lossless; break;
-    default: exParam->qualityBucket = ctrl::QualityBucket::Balanced; break;
-    }
+    exParam->qualityBucket = bucketFromSettingsIndex(exportUI->qualityCombo->currentIndex());
     {
         QSettings settings;
         settings.setValue("export_destination", exParam->destinationId);
+        rememberDestination(exParam->destinationId);
         settings.setValue("export_quality_bucket", exportUI->qualityCombo->currentIndex());
+        // The per-run inputs, so the next open starts where this one left off.
+        const QString inputsKey = exportInputsKey();
+        QJsonArray savedRanges;
+        for (int i = 0; i < exportUI->initialFrames->size(); ++i) {
+            QJsonArray pair;
+            pair << exportUI->initialFrames->at(i)->value()
+                 << exportUI->lastFrames->at(i)->value();
+            savedRanges << pair;
+        }
+        settings.setValue(inputsKey + QStringLiteral("/ranges"),
+                          QString::fromUtf8(QJsonDocument(savedRanges).toJson(QJsonDocument::Compact)));
+        settings.setValue(inputsKey + QStringLiteral("/width"), exportUI->widthSpinBox->value());
+        settings.setValue(inputsKey + QStringLiteral("/height"), exportUI->heightSpinBox->value());
+        settings.setValue(inputsKey + QStringLiteral("/fps"), exportUI->fpsSpinBox->value());
     }
     // The artifact decides the type: a sequence writes numbered stills, anything
     // else writes one video file. This used to be an independent combo, which let
