@@ -111,6 +111,54 @@ static bool run_exact_sum() {
     return true;
 }
 
+// The mapping from an editor's per-track settings onto a mixer track. It lives on
+// the mixer's type so it can be tested here, without a GUI.
+static bool run_track_mapping() {
+    // The per-track "include in the export" switch. A track used only as timing
+    // reference is heard while animating and must be ABSENT from the file; the GUI's
+    // converter hardcoded `enabled = true`, so the switch reached the plan's note
+    // ("no sound") and not the mixer.
+    const media::AudioMixer::Track on =
+        media::AudioMixer::Track::fromSettings(QStringLiteral("/tmp/a.wav"), 0.5f, 12, 48, true);
+    const media::AudioMixer::Track off =
+        media::AudioMixer::Track::fromSettings(QStringLiteral("/tmp/a.wav"), 0.5f, 12, 48, false);
+    check(on.enabled, "an export-enabled track arrives enabled");
+    check(!off.enabled, "a reference-only track arrives DISABLED (it was hardcoded enabled)");
+    check(off.path == QLatin1String("/tmp/a.wav") && off.startFrame == 12 && off.endFrame == 48 &&
+              std::fabs(off.volume - 0.5f) < 1e-6,
+          "the mapping carries the path, the frame window and the volume");
+
+    // And the mixer's side of the contract: a disabled track contributes nothing.
+    const QString f = QDir::temp().filePath("ae_map_disabled.wav");
+    writeWav(f, 48000, 1, 1, 440, 0.8);
+    media::AudioMixer mx;
+    media::AudioMixer::Config cfg;
+    cfg.fps = 24; cfg.totalFrames = 24; cfg.sampleRate = 48000; cfg.channels = 1;
+    const media::AudioMixer::Track silent =
+        media::AudioMixer::Track::fromSettings(f, 1.0f, 0, 0, false);
+    check(mx.mix({ silent }, cfg), "mix() succeeds with only a disabled track");
+    float peak = 0.0f;
+    for (int i = 0; i < mx.sampleCount(); ++i) peak = std::max(peak, std::fabs(mx.samples()[i]));
+    const QByteArray silentMsg =
+        QStringLiteral("a disabled track is silent in the mix (peak %1)").arg(peak).toUtf8();
+    check(peak < 1e-4f, silentMsg.constData());
+    // The same file ENABLED does produce sound, so the check above is not vacuous.
+    media::AudioMixer mx2;
+    const media::AudioMixer::Track loud =
+        media::AudioMixer::Track::fromSettings(f, 1.0f, 0, 0, true);
+    check(mx2.mix({ loud }, cfg), "mix() succeeds with the same track enabled");
+    float peak2 = 0.0f;
+    for (int i = 0; i < mx2.sampleCount(); ++i) peak2 = std::max(peak2, std::fabs(mx2.samples()[i]));
+    const QByteArray loudMsg =
+        QStringLiteral("the same track ENABLED is audible (peak %1), so the silence above is "
+                       "the switch and not a broken fixture")
+            .arg(peak2)
+            .toUtf8();
+    check(peak2 > 0.1f, loudMsg.constData());
+    QFile::remove(f);
+    return true;
+}
+
 static bool run_rate_conversion() {
     // 44.1 kHz mono mixed into a 48 kHz stereo output.
     const QString f = QDir::temp().filePath("ae_v2_441.wav");
@@ -248,6 +296,7 @@ int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     QTextStream(stdout) << "=== V2 media::AudioMixer suite ===\n";
     run_exact_sum();
+    run_track_mapping();
     run_rate_conversion();
     run_edge_cases();
     run_audio_edge_cases();

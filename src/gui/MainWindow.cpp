@@ -1217,13 +1217,11 @@ static QVector<media::AudioMixer::Track> toAudioTracks(const std::vector<audioCo
     QVector<media::AudioMixer::Track> tracks;
     tracks.reserve(int(aStreams.size()));
     for (const auto& ac : aStreams) {
-        media::AudioMixer::Track t;
-        t.path = ac.audioPath.absoluteFilePath();
-        t.startFrame = ac.startFrame;
-        t.endFrame = ac.endFrame;
-        t.volume = AudioPlaybackWidget::getVol(ac.volume);
-        t.enabled = true;
-        tracks.push_back(t);
+        // The mapping lives on the mixer's own type so it can be tested without the
+        // GUI; the volume curve stays here because it belongs to the widget.
+        tracks.push_back(media::AudioMixer::Track::fromSettings(
+            ac.audioPath.absoluteFilePath(), AudioPlaybackWidget::getVol(ac.volume),
+            ac.startFrame, ac.endFrame, ac.exportEnable));
     }
     return tracks;
 }

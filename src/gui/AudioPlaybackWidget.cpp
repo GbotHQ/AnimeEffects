@@ -283,6 +283,12 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
     // Playback
     curUIState.playAudio->setObjectName(QString::fromUtf8("playAudio"));
     gridLayout_2->addWidget(curUIState.playAudio, idxRow1, 0, 1, 1);
+    // Its own column, not a spare cell: every cell in the four columns is taken
+    // (row 0 holds the labels, row 1 the controls, row 2 the volume, row 3 the
+    // separator), and putting it at row 0 column 2 landed it on top of the
+    // "Playback end frame" label. The separator is widened to match.
+    curUIState.exportAudio->setObjectName(QString::fromUtf8("exportAudio"));
+    gridLayout_2->addWidget(curUIState.exportAudio, idxRow1, 4, 1, 1);
     // Frame end
     curUIState.endSpinBox->setObjectName(QString::fromUtf8("endSpinBox"));
     curUIState.endSpinBox->setMaximum(INT32_MAX);
@@ -332,7 +338,7 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
     curUIState.line->setObjectName(QString::fromUtf8("line"));
     curUIState.line->setFrameShape(QFrame::HLine);
     curUIState.line->setFrameShadow(QFrame::Sunken);
-    gridLayout_2->addWidget(curUIState.line, idxRow3, 0, 1, 4);
+    gridLayout_2->addWidget(curUIState.line, idxRow3, 0, 1, 5);
     // Frame text
     curUIState.musDurationLabel->setObjectName(QString::fromUtf8("musDurationLabel"));
     gridLayout_2->addWidget(curUIState.musDurationLabel, idxRow0, 3, 1, 1);
@@ -342,6 +348,16 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
     gridLayout_2->addWidget(curUIState.selectMusButton, idxRow1, 3, 1, 1);
     // Translate
     curUIState.playAudio->setText(QCoreApplication::translate("audioWidget", "Enable playback", nullptr));
+    // "Export" rather than "Include in export": the row is wide already and a fifth
+    // column clipped the longer label. The tooltip carries the distinction that
+    // matters, which is why this is NOT the checkbox next to it.
+    curUIState.exportAudio->setText(QCoreApplication::translate("audioWidget", "Export", nullptr));
+    curUIState.exportAudio->setToolTip(QCoreApplication::translate(
+        "audioWidget",
+        "Mix this track into exported files. Untick it for a track you only need as timing "
+        "reference (a voice pass, a temp music bed): it still plays while you animate, and it "
+        "stays out of the file.",
+        nullptr));
     curUIState.addNewTrack->setText(QCoreApplication::translate("audioWidget", "Add new audio track", nullptr));
     curUIState.startLabel->setText(QCoreApplication::translate("audioWidget", "<html><head/><body><p align=\"center\">Playback start frame</p></body></html>", nullptr));
     curUIState.endLabel->setText(QCoreApplication::translate("audioWidget", "<html><head/><body><p align=\"center\">Playback end frame</p></body></html>", nullptr));
@@ -350,6 +366,7 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
     curUIState.volumeLabel->setText(QString::number(config->at(index).volume) + QStringLiteral("%"));
     // Init
     curUIState.playAudio->setChecked(config->at(index).playbackEnable);
+    curUIState.exportAudio->setChecked(config->at(index).exportEnable);
     curUIState.startSpinBox->setValue(config->at(index).startFrame);
     curUIState.endSpinBox->setValue(config->at(index).endFrame);
     curUIState.volumeSlider->setValue(config->at(index).volume);
@@ -462,6 +479,12 @@ void AudioPlaybackWidget::addUIState(std::vector<audioConfig>* config, int index
         config->at(index).endFrame = val;
         curUIState.musDurationLabel->setText(QCoreApplication::translate("audioWidget", "<html><head/><body><p align=\"center\">Duration (in frames): </p></body></html>", nullptr) +
                                        "<html><head/><body><p align=\"center\">" + QString::number(val - config->at(index).startFrame) + "</p></body></html>");
+    }));
+    checkConnection(QCheckBox::connect(curUIState.exportAudio, &QCheckBox::checkStateChanged, [=](const Qt::CheckState val){
+        // Playback and export are separate switches, and the playback one next to
+        // this does NOT persist itself -- the project's audio config is written on
+        // save, so nothing else has to happen here.
+        config->at(index).exportEnable = (val == Qt::Checked);
     }));
     checkConnection(QCheckBox::connect(curUIState.playAudio, &QCheckBox::checkStateChanged, [=](const Qt::CheckState val){
         config->at(index).playbackEnable = (val == Qt::Checked);

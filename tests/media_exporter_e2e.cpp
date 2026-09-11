@@ -476,18 +476,47 @@ int main(int argc, char** argv) {
             check(padImg.size() == exact, msg1.toUtf8().constData());
 
             // Pad leaves transparent margin; a stretch to the same size would not.
-            // Row 0 is margin: the fitted art is shorter than the box. A stretch
-            // to the same size would paint it, so this distinguishes Pad from a
-            // plain resize — and it is only meaningful because the render is known
-            // to have content (asserted in scenario 1).
+            //
+            // The margin is on the axis the fitted art is SHORTER on, which depends on
+            // the project's aspect: a portrait project is padded left and right, a
+            // landscape one top and bottom. This used to assume row 0 is the margin,
+            // so it failed for any portrait project while the padding was correct --
+            // a test that only passed for one shape of project.
+            const bool horizontalMargin = pad.renderSize.width() < exact.width();
+            const bool verticalMargin = pad.renderSize.height() < exact.height();
             bool marginTransparent = padImg.hasAlphaChannel();
-            if (marginTransparent) {
-                const int y = 0; // fitted art is shorter than the box, so row 0 is margin
-                for (int x = 0; x < padImg.width() && marginTransparent; ++x) {
-                    if (qAlpha(padImg.pixel(x, y)) != 0) marginTransparent = false;
+            bool artHasContent = false;
+            if (marginTransparent && !padImg.isNull()) {
+                // Every pixel outside the fitted art must be transparent.
+                for (int y = 0; y < padImg.height() && marginTransparent; ++y) {
+                    for (int x = 0; x < padImg.width(); ++x) {
+                        const bool inArt =
+                            x >= (exact.width() - pad.renderSize.width()) / 2 &&
+                            x < (exact.width() + pad.renderSize.width()) / 2 &&
+                            y >= (exact.height() - pad.renderSize.height()) / 2 &&
+                            y < (exact.height() + pad.renderSize.height()) / 2;
+                        if (inArt) {
+                            if (qAlpha(padImg.pixel(x, y)) != 0) artHasContent = true;
+                        } else if (qAlpha(padImg.pixel(x, y)) != 0) {
+                            marginTransparent = false;
+                            break;
+                        }
+                    }
                 }
             }
-            check(marginTransparent,
+            fprintf(stderr, "    pad margin: %s (render %dx%d in %dx%d), art has content: %d\n",
+                    horizontalMargin ? "left/right" : (verticalMargin ? "top/bottom" : "none"),
+                    pad.renderSize.width(), pad.renderSize.height(),
+                    exact.width(), exact.height(), int(artHasContent));
+            check(horizontalMargin || verticalMargin,
+                  QStringLiteral("e2e exact-size: the fitted art is smaller than the box on one "
+                                 "axis (%1x%2 in %3x%4)")
+                      .arg(pad.renderSize.width()).arg(pad.renderSize.height())
+                      .arg(exact.width()).arg(exact.height())
+                      .toUtf8().constData());
+            // Both halves, so this cannot pass on a blank render: the margin must be
+            // clear AND the art must be there.
+            check(marginTransparent && artHasContent,
                   "e2e exact-size: Pad leaves a TRANSPARENT margin (art fitted, not stretched)");
             check(cropImg.size() == exact, "e2e exact-size: Crop output is the exact size too");
             check(!cropImg.isNull() && !padImg.isNull() && cropImg != padImg,
@@ -590,6 +619,30 @@ int main(int argc, char** argv) {
             return got ? QString::fromUtf8(buf).trimmed().toDouble() : -1.0;
         };
 
+        // The loudest sample in the exported file, in dBFS, or a very low number if it
+        // is silent. Used to tell "this track was mixed in" from "it was not".
+        auto ffmpegMaxVolume = [](const QString& aPath) -> double {
+            const QString cmd = QStringLiteral(
+                // NOT -v error: volumedetect prints its report at INFO level, so a
+                // quiet log level made every file measure as silent -- which is how
+                // this check first "passed" the silence assertion for the wrong
+                // reason.
+                "ffmpeg -hide_banner -nostats -i \"%1\" -af volumedetect -f null - 2>&1 | "
+                "grep max_volume").arg(aPath);
+            FILE* p = popen(cmd.toUtf8().constData(), "r");
+            if (!p) return -100.0;
+            char buf[256] = {0};
+            const bool got = fgets(buf, sizeof(buf), p) != nullptr;
+            pclose(p);
+            if (!got) return -100.0;
+            const QString line = QString::fromUtf8(buf);
+            const int at = line.indexOf(QLatin1String("max_volume:"));
+            if (at < 0) return -100.0;
+            // "max_volume: -4.3 dB" -> -4.3. Trimmed first, or section() on the
+            // leading space yields an empty field and every parse returns 0.
+            return line.mid(at + 11).trimmed().section(QLatin1Char(' '), 0, 0).toDouble();
+        };
+
         // A 1s 16-bit mono PCM WAV, so the mixer has something to decode.
         const QString wav = QDir::temp().filePath("ae_e2e_tone.wav");
         {
@@ -682,7 +735,98 @@ int main(int argc, char** argv) {
                       .arg(audioSeconds, 0, 'f', 3)
                       .arg(spanSeconds, 0, 'f', 3)
                       .toUtf8().constData());
-            QFile::remove(gapOut);
+        }
+
+        // 9c: a DISABLED track is not mixed in. The per-track switch exists so a
+        // reference track (a voice pass, a temp bed) can be heard while animating and
+        // kept out of the file, and the editor's converter used to hardcode
+        // `enabled = true` -- so the track was exported while the plan counted it as
+        // excluded. Two tracks make the leak audible: a SILENT track that is enabled
+        // (so a stream exists either way) and a LOUD one that is disabled. If the
+        // switch is ignored, the loud one lands in the file.
+        {
+            const QString loudWav = QDir::temp().filePath("ae_e2e_loud.wav");
+            {
+                QFile f(loudWav);
+                if (f.open(QIODevice::WriteOnly)) {
+                    const int rate = 48000, samples = rate;
+                    const int dataBytes = samples * 2;
+                    QByteArray h;
+                    auto put32 = [&](quint32 v) {
+                        h.append(char(v & 0xff)); h.append(char((v >> 8) & 0xff));
+                        h.append(char((v >> 16) & 0xff)); h.append(char((v >> 24) & 0xff));
+                    };
+                    auto put16 = [&](quint16 v) {
+                        h.append(char(v & 0xff)); h.append(char((v >> 8) & 0xff));
+                    };
+                    h.append("RIFF"); put32(36 + dataBytes); h.append("WAVE");
+                    h.append("fmt "); put32(16); put16(1); put16(1);
+                    put32(rate); put32(rate * 2); put16(2); put16(16);
+                    h.append("data"); put32(dataBytes);
+                    f.write(h);
+                    QByteArray tone(dataBytes, '\0');
+                    for (int i = 0; i < samples; ++i) {
+                        const qint16 v = qint16(20000 * std::sin(2.0 * M_PI * 440.0 * i / rate));
+                        tone[2 * i] = char(v & 0xff);
+                        tone[2 * i + 1] = char((v >> 8) & 0xff);
+                    }
+                    f.write(tone);
+                    f.close();
+                }
+            }
+
+            media::AudioMixer::Track silentOn = tr;          // silence, mixed in
+            silentOn.enabled = true;
+            media::AudioMixer::Track loudOff;
+            loudOff.path = loudWav;
+            loudOff.startFrame = minFrame; loudOff.endFrame = 0;
+            loudOff.volume = 1.0f; loudOff.enabled = false;   // the switch
+
+            std::unique_ptr<ctrl::Exporter> ex = makeExporter();
+            const QString out = QDir::temp().filePath("ae_e2e_audio_disabled.mp4");
+            QFile::remove(out);
+            ctrl::Exporter::CommonParam cp;
+            cp.path = out; cp.size = small; cp.fps = fps;
+            cp.selection = ctrl::FrameSelection::fromRange(minFrame, 2 * 3 - 1);
+            ctrl::Exporter::VideoParam vp;
+            vp.container = mp4Container; vp.codec = mp4Codec; vp.colorIndex = 0;
+            vp.bps = 1000; vp.pixfmt = "yuv420p";
+            ex->setAudioTracks(QVector<media::AudioMixer::Track>{ silentOn, loudOff });
+            const ctrl::Exporter::Result r = ex->execute(cp, vp);
+            check((bool)r, QStringLiteral("e2e audio: an export with a disabled track succeeds (%1)")
+                               .arg(ex->log()).toUtf8().constData());
+            check(ffprobeHasAudio(out),
+                  "e2e audio: the enabled (silent) track still produces a stream");
+            const double peak = ffmpegMaxVolume(out);
+            fprintf(stderr, "    disabled-track export: max_volume %.1f dB\n", peak);
+            check(peak < -60.0,
+                  QStringLiteral("e2e audio: the DISABLED track is absent from the file "
+                                 "(max_volume %1 dB, -91 is digital silence)").arg(peak, 0, 'f', 1)
+                      .toUtf8().constData());
+
+            // And the same loud track ENABLED does reach the file, so the assertion
+            // above is about the switch and not about a mixer that never sees it.
+            std::unique_ptr<ctrl::Exporter> ex2 = makeExporter();
+            const QString out2 = QDir::temp().filePath("ae_e2e_audio_enabled.mp4");
+            QFile::remove(out2);
+            ctrl::Exporter::CommonParam cp2;
+            cp2.path = out2; cp2.size = small; cp2.fps = fps;
+            cp2.selection = ctrl::FrameSelection::fromRange(minFrame, 2 * 3 - 1);
+            loudOff.enabled = true;
+            ctrl::Exporter::VideoParam vp2;
+            vp2.container = mp4Container; vp2.codec = mp4Codec; vp2.colorIndex = 0;
+            vp2.bps = 1000; vp2.pixfmt = "yuv420p";
+            ex2->setAudioTracks(QVector<media::AudioMixer::Track>{ loudOff });
+            const ctrl::Exporter::Result r2 = ex2->execute(cp2, vp2);
+            const double peak2 = ffmpegMaxVolume(out2);
+            fprintf(stderr, "    same track enabled:    max_volume %.1f dB\n", peak2);
+            check((bool)r2 && peak2 > -20.0,
+                  QStringLiteral("e2e audio: the same track ENABLED is audible (%1 dB), so the "
+                                 "silence above is the switch").arg(peak2, 0, 'f', 1)
+                      .toUtf8().constData());
+            QFile::remove(out);
+            QFile::remove(out2);
+            QFile::remove(loudWav);
         }
         QFile::remove(wav);
     }

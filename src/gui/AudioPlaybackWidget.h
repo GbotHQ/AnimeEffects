@@ -49,6 +49,10 @@ struct UIState{
     QToolButton *addNewTrack{ new QToolButton };
     QToolButton *selectMusButton{ new QToolButton };
     QCheckBox *playAudio{ new QCheckBox };
+    // Heard while animating vs mixed into an export. Separate on purpose (see
+    // audioConfig), and this is the only control that sets exportEnable: without it
+    // a reference track could not be kept out of the file at all.
+    QCheckBox *exportAudio{ new QCheckBox };
     QSpinBox *endSpinBox{ new QSpinBox };
     QSpinBox *startSpinBox{ new QSpinBox };
     QLabel *startLabel{ new QLabel };
