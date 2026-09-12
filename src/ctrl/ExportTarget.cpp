@@ -1160,6 +1160,32 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
 
     // No cap: one encode, no loop.
     qint64 smallest = 0; // smallest file seen (only used in the give-up message)
+    // What one attempt puts in front of the encoder at a given scale: the output
+    // size the file must have, and - written through aArt - the size the ART is
+    // drawn at when the scale reduces detail instead of the output. An EMPTY aArt
+    // means the frames reach the encoder untouched, at the size the file has.
+    //
+    // encodeOnce() and the scale phase's search domain both read the answer from
+    // here, so the domain cannot drift from what the loop actually does.
+    //
+    // Test emptiness with isEmpty(), never isNull(): a default QSize is (-1,-1),
+    // which isEmpty() reports as empty and isNull() does NOT.
+    const auto attemptShape = [&](double aScale, QSize* aArt) {
+        const QSize out = requiredSize
+                              ? plan.size
+                              : QSize(std::max(2, evenFloor(plan.size.width() * aScale)),
+                                      std::max(2, evenFloor(plan.size.height() * aScale)));
+        QSize art;
+        if (aScale != 1.0 && (requiredSize || !plan.gifPath)) {
+            art = requiredSize
+                      ? QSize(std::max(2, evenFloor(plan.renderSize.width() * aScale)),
+                              std::max(2, evenFloor(plan.renderSize.height() * aScale)))
+                      : out;
+        }
+        if (aArt) *aArt = art;
+        return out;
+    };
+
     auto encodeOnce = [&](int aCrf, double aScale, int aStride, const QString& aWhat) -> int {
         // The single choke point every attempt goes through, so one check here
         // covers the initial encode and both bisections.
@@ -1168,15 +1194,15 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
             result.error = QStringLiteral("canceled");
             return -1;
         }
-        const int w = std::max(2, evenFloor(plan.size.width() * aScale));
-        const int h = std::max(2, evenFloor(plan.size.height() * aScale));
         // The stride is applied ONCE, in encodeAttempt, which is the encoder
         // boundary. It used to be applied here as well, so asking for every 2nd
         // frame wrote every 4th and the stride in the log was not the stride in
         // the file. Only the first attempt (stride 1) was unaffected, which is
         // why it went unnoticed.
+        QSize artSize; // the size the art is drawn at, empty when it is not reduced
+        const QSize attemptSize = attemptShape(aScale, &artSize);
         QList<QImage> frames = base;
-        if (aScale != 1.0 && (requiredSize || !plan.gifPath)) {
+        if (!artSize.isEmpty()) {
             // The GIF path fits each frame to the output size itself (pad or
             // crop, per the destination's rule); scaling it here would distort
             // the art instead, because this scale ignores the aspect ratio.
@@ -1191,18 +1217,12 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
             // requirement. Detail is reduced in the RENDER space and the encoder's
             // own pad-or-crop then produces the required output size exactly as it
             // does for an uncapped export.
-            const QSize detailSize =
-                requiredSize
-                    ? QSize(std::max(2, evenFloor(plan.renderSize.width() * aScale)),
-                            std::max(2, evenFloor(plan.renderSize.height() * aScale)))
-                    : QSize(w, h);
             for (QImage& f : frames) {
-                f = f.scaled(detailSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                f = f.scaled(artSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 if (requiredSize)
                     f = f.scaled(plan.renderSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             }
         }
-        const QSize attemptSize = requiredSize ? plan.size : QSize(w, h);
         const Attempt a =
             encodeAttempt(plan, frames, attemptSize, aStride, aCrf, quality, aRequest,
                           &writtenByLastAttempt);
@@ -1210,15 +1230,18 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         QString step = QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
                            .arg(aWhat)
                            .arg(aCrf)
-                           .arg(w)
-                           .arg(h)
+                           .arg(attemptSize.width())
+                           .arg(attemptSize.height())
                            .arg(aStride)
                            .arg(a.wrote ? (qlonglong)a.bytes : (qlonglong)-1);
-        if (requiredSize && aScale != 1.0) {
-            // Say which happened: the art was reduced, the file was not.
-            step += QStringLiteral(" (art reduced, output kept at %1x%2)")
-                        .arg(plan.size.width())
-                        .arg(plan.size.height());
+        if (!artSize.isEmpty() && artSize != attemptSize) {
+            // These numbers are the encoder's: `attemptSize` is what the exporter
+            // was told to produce. The line used to print plan.size * percent,
+            // which on a required-size row is neither the size the encoder was
+            // handed nor the size it wrote - a 100x100 emoji row logged "50x50"
+            // for a file that is 100x100, in a log the export UI shows the user.
+            // The percent is not a pixel count, and the file's size is.
+            step += QStringLiteral(" (art drawn at %1x%2)").arg(artSize.width()).arg(artSize.height());
         }
         result.steps << step;
         if (aOnStep) aOnStep(step);
@@ -1402,27 +1425,46 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
                 crf = worst;
             }
         } else if (phase == QLatin1String("scale")) {
-            // Y searched in percent (integers), floor from the data: never shrink
-            // past it, because the cliff is visible. bytes RISE with the scale, so
-            // the search runs on the mirrored coordinate - t = floorPct + 100 - pct -
-            // where bytes fall as t rises and the same interpolated search applies.
-            // f(t=0) is pct 100 (no scaling), whose size is the last probe's: either
-            // the quality phase's failing worst-quality encode or, when the codec has
-            // no quality knob at all (APNG), the uncapped initial encode.
+            // The floor comes from the data: never shrink past minScalePct, because
+            // the cliff is visible. bytes RISE with the scale, so the search starts
+            // at the current setting (100%) and walks DOWN.
+            //
+            // The domain is the SETTINGS this knob can produce, not the percents,
+            // for the same reason the quality phase indexes the knob's own values:
+            // a percent is a proxy and the encoder is handed PIXELS. The attempt is
+            // drawn at evenFloor(size * pct/100), so on a small canvas two percents
+            // are one encode - and the search pays for it twice while learning
+            // nothing the second time, because encoding is deterministic. Counted
+            // over the 25%..100% floor this table uses: a canvas 240 wide or more
+            // has 76 percents and 76 distinct settings, 128x96 has 61, 96x64 has 49
+            // (27 percents that encode something already paid for). This is not
+            // theoretical: the pre-existing discord.emoji case, whose PLAN is
+            // 128x128, probed "scale: crf=30 124x124" twice for 32842 bytes both
+            // times. Deduplicating by what the encoder receives (attemptShape) makes
+            // a repeated probe impossible rather than unlikely.
             const int floorPct = std::max(1, aTarget.minScalePct);
+            QList<int> pcts;      // pct 100 first, then strictly smaller settings
+            QSize prevOut, prevArt;
+            for (int pct = 100; pct >= floorPct; --pct) {
+                QSize art;
+                const QSize out = attemptShape((double)pct / 100.0, &art);
+                if (!pcts.isEmpty() && out == prevOut && art == prevArt) continue;
+                pcts.append(pct);
+                prevOut = out;
+                prevArt = art;
+            }
             // pct 100 is unscaled, which is where the previous probe left it: no
             // earlier phase changes the scale, so its size is the last one measured.
+            // It is index 0 of the domain by construction above.
             const qint64 bytesAtFullScale = scale == 1.0 ? lastBytes : 0;
-            const int hiT = 100 - floorPct;
             const int win = searchSmallest(
-                bytesAtFullScale, hiT,
-                std::function<int(int)>([&](int t) {
-                    const int pct = floorPct + (100 - floorPct) - t;
-                    lastBytes = encodeOnce(crf, (double)pct / 100.0, stride, QStringLiteral("scale"));
+                bytesAtFullScale, (int)pcts.size() - 1,
+                std::function<int(int)>([&](int idx) {
+                    lastBytes = encodeOnce(crf, (double)pcts[idx] / 100.0, stride, QStringLiteral("scale"));
                     return lastBytes;
                 }));
             if (win >= 0) {
-                scale = (double)(floorPct + (100 - floorPct) - win) / 100.0;
+                scale = (double)pcts[win] / 100.0;
                 result.ok = true;
             } else if (win == -2) {
                 scale = (double)floorPct / 100.0; // keep the floor, keep going

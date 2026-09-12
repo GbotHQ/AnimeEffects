@@ -17,11 +17,13 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 
 #include "ctrl/ExportTarget.h"
 #include "decode_util.h"
+#include "temp_util.h"
 #include "media/FFmpegHelpers.h"
 #include "media/GifEncoder.h"
 #include "media/VideoEncoder.h"
@@ -306,7 +308,7 @@ static MagickInfo magickRead(const QString& aPath) {
     }
 
     // 2. the pixels, coalesced to full canvas frames.
-    const QString raw = QDir::temp().filePath(QStringLiteral("ae_magick_raw"));
+    const QString raw = aeTestTempPath(QStringLiteral("ae_magick_raw"));
     {
         const QString cmd = QStringLiteral("magick \"%1\" -coalesce -depth 8 RGBA:\"%2\" "
                                            "2>/dev/null").arg(aPath, raw);
@@ -641,7 +643,7 @@ TEST_SECTION("size rules", run_size_rules) {
     // Exact-size rows must also say what to RENDER at, so non-square art is
     // letterboxed with transparency rather than stretched.
     ctrl::ExportRequest exactReq;
-    exactReq.outputPath = QDir::temp().filePath("ae_exact.apng");
+    exactReq.outputPath = aeTestTempPath("ae_exact.apng");
     exactReq.sourceSize = QSize(1000, 800);
     exactReq.selection = ctrl::FrameSelection::fromCount(1);
     const ctrl::ExportPlan exactPlan =
@@ -736,7 +738,7 @@ TEST_SECTION("caps (deterministic pre-encode enforcement)", run_caps) {
     // which clamped to the same numbers but re-derived and re-appended every
     // cap note, so the user saw each warning twice.
     ctrl::ExportRequest creq;
-    creq.outputPath = QDir::temp().filePath("ae_caps_once.png");
+    creq.outputPath = aeTestTempPath("ae_caps_once.png");
     creq.sourceSize = QSize(320, 240);
     creq.fps = 30;
     creq.selection = ctrl::FrameSelection::fromCount(50); // LINE's cap is 20
@@ -834,7 +836,7 @@ TEST_SECTION("frame selection (several non-contiguous ranges)", run_frame_select
         ctrl::ExportTargets::find(all, QStringLiteral("line.sticker")); // 5-20 frames
 
     ctrl::ExportRequest req;
-    req.outputPath = QDir::temp().filePath("ae_selection.mp4");
+    req.outputPath = aeTestTempPath("ae_selection.mp4");
     req.sourceSize = QSize(320, 240);
     req.fps = 30;
     req.selection = multi;
@@ -853,7 +855,7 @@ TEST_SECTION("frame selection (several non-contiguous ranges)", run_frame_select
     // A cap must truncate the SELECTION, not merely a counter — otherwise the
     // caller cannot tell which frames survived.
     ctrl::ExportRequest lreq = req;
-    lreq.outputPath = QDir::temp().filePath("ae_selection.png");
+    lreq.outputPath = aeTestTempPath("ae_selection.png");
     lreq.selection = FrameSelection::fromCount(50);
     const ctrl::ExportPlan lplan = ctrl::planExport(line, lreq, ctrl::QualityBucket::Balanced);
     check(lplan.ok(), QStringLiteral("the capped plan builds (%1)").arg(lplan.error));
@@ -980,7 +982,7 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
         // (Twitch, WeChat, QQ) state exact sticker sizes, and a size rule nothing
         // exercises is a size rule that can silently stop being applied.
         if (t.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0) {
-            const QString gout = QDir::temp().filePath(QStringLiteral("ae_conf_%1.gif")
+            const QString gout = aeTestTempPath(QStringLiteral("ae_conf_%1.gif")
                                                            .arg(QString(t.id).replace(QLatin1Char('.'),
                                                                                       QLatin1Char('_'))));
             ctrl::ExportRequest greq;
@@ -1034,7 +1036,7 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
             check(iplan.ok(), QStringLiteral("%1: image plan builds (%2)").arg(t.id, iplan.error));
             if (!iplan.ok()) continue;
 
-            const QString dir = QDir::temp().filePath(QStringLiteral("ae_img_%1")
+            const QString dir = aeTestTempPath(QStringLiteral("ae_img_%1")
                                                           .arg(QString(t.id).replace(QLatin1Char('.'),
                                                                                      QLatin1Char('_'))));
             QDir().mkpath(dir);
@@ -1082,7 +1084,7 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
             continue;
         }
 
-        const QString out = QDir::temp().filePath(QStringLiteral("ae_conf_%1.%2")
+        const QString out = aeTestTempPath(QStringLiteral("ae_conf_%1.%2")
                                                       .arg(QString(t.id).replace(QLatin1Char('.'), QLatin1Char('_')),
                                                            t.container));
 
@@ -1153,12 +1155,12 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
             // Verify the verifier: a parser that says "valid" to everything would
             // make every assertion below it meaningless.
             {
-                const QString png = QDir::temp().filePath(QStringLiteral("ae_not_webp.png"));
+                const QString png = aeTestTempPath(QStringLiteral("ae_not_webp.png"));
                 QImage(8, 8, QImage::Format_ARGB32).save(png);
                 const WebpInfo notWebp = readWebpInfo(png);
                 check(!notWebp.valid && notWebp.frames == 0,
                       "the WebP reader rejects a file that is not a WebP (PNG)");
-                const WebpInfo missing = readWebpInfo(QDir::temp().filePath("ae_does_not_exist.webp"));
+                const WebpInfo missing = readWebpInfo(aeTestTempPath("ae_does_not_exist.webp"));
                 check(!missing.valid, "the WebP reader rejects a missing file");
                 QFile::remove(png);
             }
@@ -1180,7 +1182,7 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
             // Verify the verifier before trusting it: a blank animation must
             // measure 0% ink, or "ink > 0" below could never fail.
             if (magickAvailable()) {
-                const QString blank = QDir::temp().filePath(QStringLiteral("ae_blank_anim.webp"));
+                const QString blank = aeTestTempPath(QStringLiteral("ae_blank_anim.webp"));
                 const QString mk = QStringLiteral(
                     "magick -size 32x32 xc:none -delay 5 xc:none -loop 0 \"%1\" 2>/dev/null").arg(blank);
                 FILE* mp = popen(mk.toUtf8().constData(), "r");
@@ -1262,7 +1264,7 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
 TEST_SECTION("unknown encoder option is rejected", run_option_typo_is_fatal) {
 
     media::VideoEncoder::Config cfg;
-    cfg.outputPath = QDir::temp().filePath("ae_badopt.webm");
+    cfg.outputPath = aeTestTempPath("ae_badopt.webm");
     cfg.container = QStringLiteral("webm");
     cfg.codec = QStringLiteral("libvpx-vp9");
     cfg.pixFmt = QStringLiteral("yuva420p");
@@ -1336,7 +1338,7 @@ TEST_SECTION("audio is derived, not requested", run_audio_is_derived) {
     // count the actual audio streams in the produced file.
     auto audioStreams = [&](const ctrl::ExportTarget& t, bool aProjectHasAudio, bool aMute) -> int {
         ctrl::ExportRequest req;
-        req.outputPath = QDir::temp().filePath(QStringLiteral("ae_audio.%1").arg(t.container));
+        req.outputPath = aeTestTempPath(QStringLiteral("ae_audio.%1").arg(t.container));
         req.sourceSize = QSize(320, 240);
         req.fps = 30;
         req.selection = ctrl::FrameSelection::fromCount(3);
@@ -1582,8 +1584,8 @@ TEST_SECTION("quality intent reaches the encoder", run_bucket_quality) {
     {
         const ctrl::ExportTarget generic =
             ctrl::ExportTargets::find(targets, QStringLiteral("generic.file"));
-        const QString smallPath = QDir::temp().filePath(QStringLiteral("ae_bucket_small.mp4"));
-        const QString bestPath = QDir::temp().filePath(QStringLiteral("ae_bucket_best.mp4"));
+        const QString smallPath = aeTestTempPath(QStringLiteral("ae_bucket_small.mp4"));
+        const QString bestPath = aeTestTempPath(QStringLiteral("ae_bucket_best.mp4"));
         auto encodeAt = [&](ctrl::QualityBucket aBucket, const QString& aPath) -> qint64 {
             ctrl::ExportRequest r = req;
             r.outputPath = aPath;
@@ -1642,7 +1644,7 @@ TEST_SECTION("still and sequence destinations (image artifacts)", run_image_arti
               "the pixiv illustration row is a still");
 
         ctrl::ExportRequest req;
-        req.outputPath = QDir::temp().filePath("ae_still.png");
+        req.outputPath = aeTestTempPath("ae_still.png");
         req.sourceSize = QSize(1000, 800);
         req.fps = 30;
         req.selection = ctrl::FrameSelection::fromRange(0, 600); // the dialog's range
@@ -1665,7 +1667,7 @@ TEST_SECTION("still and sequence destinations (image artifacts)", run_image_arti
         // nothing and the failure surfaces as a missing file.
         QImage sample(64, 48, QImage::Format_RGBA8888);
         sample.fill(QColor(10, 20, 30, 128));
-        const QString written = QDir::temp().filePath("ae_still_probe." + plan.imageSuffix);
+        const QString written = aeTestTempPath("ae_still_probe." + plan.imageSuffix);
         check(sample.save(written), QStringLiteral("Qt can write .%1").arg(plan.imageSuffix));
         const QImage back(written);
         check(!back.isNull() && back.size() == sample.size(),
@@ -1682,7 +1684,7 @@ TEST_SECTION("still and sequence destinations (image artifacts)", run_image_arti
               "the ugoira row is a frame sequence");
 
         ctrl::ExportRequest req;
-        req.outputPath = QDir::temp().filePath("ae_ugoira");
+        req.outputPath = aeTestTempPath("ae_ugoira");
         req.sourceSize = QSize(800, 600);
         req.fps = 30;
         req.selection = ctrl::FrameSelection::fromRange(0, 399); // 400 frames
@@ -1711,7 +1713,7 @@ TEST_SECTION("still and sequence destinations (image artifacts)", run_image_arti
             const QString suffix = t.container.toLower();
             QImage probe(8, 8, QImage::Format_RGBA8888);
             probe.fill(Qt::red);
-            const QString path = QDir::temp().filePath("ae_suffix_probe." + suffix);
+            const QString path = aeTestTempPath("ae_suffix_probe." + suffix);
             const bool writable = probe.save(path);
             QFile::remove(path);
             check(writable, QStringLiteral("%1: .%2 is a writable image format")
@@ -1733,7 +1735,7 @@ TEST_SECTION("post-encode fit-to-cap", run_fit_to_cap) {
     for (int i = 0; i < 6; ++i) frames.append(makeFrame(640, 480, i));
 
     ctrl::ExportRequest req;
-    req.outputPath = QDir::temp().filePath("ae_fit.webm");
+    req.outputPath = aeTestTempPath("ae_fit.webm");
     req.sourceSize = QSize(640, 480);
     req.fps = 30;
     req.selection = ctrl::FrameSelection::fromCount(frames.size());
@@ -1803,7 +1805,7 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
     for (int i = 0; i < 8; ++i) frames.append(makeNoiseFrame(source.width(), source.height(), i));
 
     ctrl::ExportRequest req;
-    req.outputPath = QDir::temp().filePath("ae_gif_fit.gif");
+    req.outputPath = aeTestTempPath("ae_gif_fit.gif");
     req.sourceSize = source;
     req.fps = 15;
     req.selection = ctrl::FrameSelection::fromCount(frames.size());
@@ -1857,7 +1859,7 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
         for (int i = 0; i < 4; ++i)
             noisy.append(makeNoiseFrame(src.width(), src.height(), i));
         ctrl::ExportRequest wreq;
-        wreq.outputPath = QDir::temp().filePath("ae_webp_quality.webp");
+        wreq.outputPath = aeTestTempPath("ae_webp_quality.webp");
         wreq.sourceSize = src;
         wreq.fps = 12;
         wreq.selection = ctrl::FrameSelection::fromCount(noisy.size());
@@ -1898,7 +1900,7 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
             noisy.append(makeNoiseFrame(small.width(), small.height(), i));
 
         ctrl::ExportRequest greq;
-        greq.outputPath = QDir::temp().filePath("ae_gif_palette.gif");
+        greq.outputPath = aeTestTempPath("ae_gif_palette.gif");
         greq.sourceSize = small;
         greq.fps = 12;
         greq.selection = ctrl::FrameSelection::fromCount(noisy.size());
@@ -1946,7 +1948,7 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
             noisy.append(makeNoiseFrame(small.width(), small.height(), i));
 
         ctrl::ExportRequest freq;
-        freq.outputPath = QDir::temp().filePath("ae_gif_stride.gif");
+        freq.outputPath = aeTestTempPath("ae_gif_stride.gif");
         freq.sourceSize = small;
         freq.fps = 10;
         freq.selection = ctrl::FrameSelection::fromCount(noisy.size());
@@ -2023,6 +2025,46 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
 static const int kFitAttemptCeiling = 11;
 static const int kFitAttemptBudget = 34; // four cases; measured 29, bisection 40
 
+// What one attempt actually put in front of the encoder, read back out of the
+// loop's own log. A line looks like
+//
+//   "scale: crf=29 165x165 stride=1 -> 51234 bytes"
+//
+// and a required-size row adds the size the ART was drawn at, because there the
+// file keeps the size the destination demands:
+//
+//   "scale: crf=26 512x512 stride=1 -> 20735 bytes (art drawn at 128x128)"
+//
+// Two lines with the same setting are one encode paid for twice: encoding is
+// deterministic, so the second measurement cannot differ from the first and
+// cannot move the search. That is the whole cost this loop is judged on, so it is
+// asserted rather than eyeballed. The `final` line re-encodes the winning setting
+// on purpose (the search's last probe is not the setting it chose) and is not a
+// probe, so it is not part of the invariant.
+static int duplicateSettings(const QStringList& aSteps, QString* aWhat) {
+    static const QRegularExpression re(QStringLiteral(
+        "^(initial|quality|scale|frames): crf=(-?\\d+) (\\d+)x(\\d+) stride=(\\d+) ->"));
+    static const QRegularExpression art(QStringLiteral("\\(art drawn at (\\d+)x(\\d+)\\)"));
+    QSet<QString> seen;
+    int dups = 0;
+    for (const QString& step : aSteps) {
+        const QRegularExpressionMatch m = re.match(step);
+        if (!m.hasMatch()) continue; // the `final` re-encode, or a summary line
+        const QRegularExpressionMatch am = art.match(step);
+        const QString key = QStringLiteral("crf%1/%2x%3/stride%4/%5")
+                                .arg(m.captured(2), m.captured(3), m.captured(4), m.captured(5),
+                                     am.hasMatch() ? QStringLiteral("art%1x%2").arg(am.captured(1), am.captured(2))
+                                                   : QStringLiteral("art-"));
+        if (seen.contains(key)) {
+            ++dups;
+            if (aWhat) *aWhat = step;
+        } else {
+            seen.insert(key);
+        }
+    }
+    return dups;
+}
+
 TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
     const QList<ctrl::ExportTarget> all =
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
@@ -2050,7 +2092,7 @@ TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
         }
 
         ctrl::ExportRequest req;
-        req.outputPath = QDir::temp().filePath(QStringLiteral("ae_fit_cost_%1.%2")
+        req.outputPath = aeTestTempPath(QStringLiteral("ae_fit_cost_%1.%2")
                                                    .arg(QString::fromLatin1(c.id)
                                                             .replace(QLatin1Char('.'), QLatin1Char('_')),
                                                         row.container.isEmpty() ? QStringLiteral("out")
@@ -2100,6 +2142,13 @@ TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
                   .arg((qlonglong)r.bytes)
                   .arg((qlonglong)capped.caps.maxBytes));
         totalEncodes += r.attempts;
+        QString dupStep;
+        const int dups = duplicateSettings(r.steps, &dupStep);
+        check(dups == 0,
+              QStringLiteral("%1: no setting is encoded twice (%2 repeat(s); last: %3)")
+                  .arg(QString::fromLatin1(c.id))
+                  .arg(dups)
+                  .arg(dupStep));
         check(r.attempts <= kFitAttemptCeiling,
               QStringLiteral("%1: fitted in %2 encodes, ceiling %3 (a cap must not cost a second of "
                              "encoding per probe)")
@@ -2112,6 +2161,123 @@ TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
                          "allowed to multiply the work the user asked for)")
               .arg(totalEncodes)
               .arg(kFitAttemptBudget));
+
+    // ---------------------------------------------------------------------
+    // A percent is not a pixel count.
+    //
+    // The scale phase searches a percent, but the encoder is handed a SIZE: the
+    // attempt is drawn at evenFloor(size * pct/100), so on a small canvas several
+    // percents are the same encode, and a search that indexes percents can spend
+    // two probes on one setting. Counting the settings behind the 25%..100% floor
+    // this table uses: a canvas 240 wide or larger offers 76 percents and 76
+    // distinct settings (nothing wasted); 128x96 offers 61, and 96x64 offers 49 -
+    // 27 percents that encode something already paid for.
+    //
+    // The check above caught it before these cases existed, in discord.emoji: that
+    // row's PLAN is 128x128 however large the source is, and its scale phase probed
+    // "crf=30 124x124" twice for 32842 bytes both times - one wasted encode, whose
+    // second measurement could not have differed from the first. The PLAN size is
+    // what matters, not the source size, which is why the case set above had to be
+    // measured with the check in place rather than reasoned about. These cases cover
+    // the small end (49 and 61 settings) so the domain stays the settings themselves
+    // and not a proxy for them.
+    {
+        struct Small {
+            const char* id;
+            QSize source;
+            const char* why;
+            int capDivisor; // cap = best-quality size / this
+        };
+        const Small smalls[] = {
+            {"chat.generic.video", QSize(96, 64), "49 settings behind 76 percents", 2},
+            {"discord.emoji", QSize(128, 96), "61 settings behind 76 percents", 2},
+            {"wechat.sticker", QSize(128, 96), "61 settings, exact size required", 2},
+            // A REQUIRED size under a cap tight enough that the scale axis has to be
+            // searched rather than resolved in one probe. This is the case that makes
+            // the art size part of the duplicate key load-bearing: on these rows the
+            // OUTPUT is always the required size, so two attempts at different art
+            // sizes share their crf, their output size and their stride, and only the
+            // art size tells them apart. Without it in the key the check would report
+            // duplicates that are not duplicates. Verified by breaking the parse: this
+            // case fails, the other three do not notice.
+            {"telegram.emoji", QSize(512, 512), "required 100x100, tight cap", 8},
+        };
+        for (const Small& s : smalls) {
+            const ctrl::ExportTarget row = ctrl::ExportTargets::find(all, QString::fromLatin1(s.id));
+            if (row.id.isEmpty()) {
+                check(false, QStringLiteral("%1: row exists").arg(QString::fromLatin1(s.id)));
+                continue;
+            }
+            ctrl::ExportRequest req;
+            req.outputPath = aeTestTempPath(QStringLiteral("ae_fit_small_%1.%2")
+                                         .arg(QString::fromLatin1(s.id)
+                                                  .replace(QLatin1Char('.'), QLatin1Char('_')),
+                                              row.container));
+            req.sourceSize = s.source;
+            req.fps = 12;
+            req.selection = ctrl::FrameSelection::fromCount(6);
+
+            const ctrl::ExportPlan plan = ctrl::planExport(row, req, ctrl::QualityBucket::Balanced);
+            if (!plan.ok()) {
+                check(false, QStringLiteral("%1 @ %2x%3: plan builds (%4)")
+                                 .arg(QString::fromLatin1(s.id))
+                                 .arg(s.source.width())
+                                 .arg(s.source.height())
+                                 .arg(plan.error));
+                continue;
+            }
+            QList<QImage> frames;
+            for (int i = 0; i < plan.frames(); ++i)
+                frames.append(makeNoiseFrame(plan.renderSize.width(), plan.renderSize.height(), i));
+
+            ctrl::ExportTarget uncapped = row;
+            uncapped.caps.maxBytes = 0;
+            const ctrl::FitResult best = ctrl::exportWithFit(uncapped, req, ctrl::QualityBucket::Balanced, frames);
+            if (!best.ok) {
+                check(false, QStringLiteral("%1: uncapped encode (%2)")
+                                 .arg(QString::fromLatin1(s.id), best.error));
+                continue;
+            }
+            ctrl::ExportTarget capped = row;
+            capped.caps.maxBytes = std::max<qint64>(512, best.bytes / std::max(2, s.capDivisor));
+            const ctrl::FitResult r = ctrl::exportWithFit(capped, req, ctrl::QualityBucket::Balanced, frames);
+
+            QTextStream(stdout) << "      " << s.id << " @ " << s.source.width() << "x" << s.source.height()
+                                << " (" << s.why << "): best " << (qlonglong)best.bytes << " bytes, cap "
+                                << (qlonglong)capped.caps.maxBytes << " -> fitted " << (qlonglong)r.bytes
+                                << " in " << r.attempts << " encodes\n";
+            for (const QString& step : r.steps) QTextStream(stdout) << "        " << step << "\n";
+
+            check(r.ok, QStringLiteral("%1 @ %2x%3: the capped fit succeeds (%4)")
+                            .arg(QString::fromLatin1(s.id))
+                            .arg(s.source.width())
+                            .arg(s.source.height())
+                            .arg(r.error));
+            if (!r.ok) continue;
+            check(r.attempts > 1,
+                  QStringLiteral("%1 @ %2x%3: the cap actually bound (%4 encodes)")
+                      .arg(QString::fromLatin1(s.id))
+                      .arg(s.source.width())
+                      .arg(s.source.height())
+                      .arg(r.attempts));
+            check(r.bytes <= capped.caps.maxBytes,
+                  QStringLiteral("%1 @ %2x%3: fitted inside the cap (%4 <= %5)")
+                      .arg(QString::fromLatin1(s.id))
+                      .arg(s.source.width())
+                      .arg(s.source.height())
+                      .arg((qlonglong)r.bytes)
+                      .arg((qlonglong)capped.caps.maxBytes));
+            QString dupStep;
+            const int dups = duplicateSettings(r.steps, &dupStep);
+            check(dups == 0,
+                  QStringLiteral("%1 @ %2x%3: no setting is encoded twice (%4 repeat(s); last: %5)")
+                      .arg(QString::fromLatin1(s.id))
+                      .arg(s.source.width())
+                      .arg(s.source.height())
+                      .arg(dups)
+                      .arg(dupStep));
+        }
+    }
 
     // ---------------------------------------------------------------------
     // A Required size is not a knob.
@@ -2141,7 +2307,7 @@ TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
               "the row does allow the scale phase, so the guard is what has to stop it");
 
         ctrl::ExportRequest ereq;
-        ereq.outputPath = QDir::temp().filePath(QStringLiteral("ae_exact_size.apng"));
+        ereq.outputPath = aeTestTempPath(QStringLiteral("ae_exact_size.apng"));
         ereq.sourceSize = QSize(512, 512);
         ereq.fps = 12;
         ereq.selection = ctrl::FrameSelection::fromCount(6);
@@ -2215,7 +2381,7 @@ TEST_SECTION("live encode from a resolved plan", run_live_encode) {
             continue;
         }
 
-        const QString out = QDir::temp().filePath(QStringLiteral("ae_target_%1.%2").arg(
+        const QString out = aeTestTempPath(QStringLiteral("ae_target_%1.%2").arg(
             QString::fromLatin1(c.id).replace(QLatin1Char('.'), QLatin1Char('_')),
             QString::fromLatin1(c.ext)));
 
