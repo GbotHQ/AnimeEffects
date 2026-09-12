@@ -104,25 +104,22 @@ void Util::expandAlpha1Pixel(uint8* aImage, const QSize& aSize) {
     }
 }
 
-XCMemBlock Util::recreateForBiLinearSampling(XCMemBlock& aGrabbedImage, const QSize& aSize) {
+XCMemBlock Util::prepareForSampling(XCMemBlock& aGrabbedImage, const QSize& aSize) {
     XC_PTR_ASSERT(aGrabbedImage.data);
     XC_ASSERT(aSize.width() > 0);
     XC_ASSERT(aSize.height() > 0);
 
-    const int margin = kSamplingMargin;
-    const int w = aSize.width() + 2 * margin;
-    const int h = aSize.height() + 2 * margin;
-    const size_t dstSize = w * h * 4;
+    const int w = aSize.width();
+    const int h = aSize.height();
+    const size_t dstSize = (size_t)w * h * 4;
     uint8* dstData = new uint8[dstSize];
 
-    // copy original to dest
-    copyImage(dstData, QSize(w, h), QPoint(margin, margin), aGrabbedImage.data, aSize);
+    // copy original to dest, size for size: the artwork has to keep the texture's origin (see the
+    // header - a padding ring would put it off the mip chain's texel grid)
+    copyImage(dstData, aSize, QPoint(0, 0), aGrabbedImage.data, aSize);
 
     // kill original
     delete[] aGrabbedImage.data;
-
-    // clear edge
-    clearSamplingMargin(dstData, QSize(w, h), QColor(0, 0, 0, 0));
 
     // set zero alpha color
     {
@@ -178,34 +175,6 @@ XCMemBlock Util::recreateForBiLinearSampling(XCMemBlock& aGrabbedImage, const QS
     return XCMemBlock(dstData, dstSize);
 }
 
-void Util::clearSamplingMargin(uint8* aImage, const QSize& aSize, const QColor& aColor) {
-    const int margin = kSamplingMargin;
-    const int w = aSize.width();
-    const int h = aSize.height();
-    XC_ASSERT(w > 2 * margin);
-    XC_ASSERT(h > 2 * margin);
-
-    ColorRGBA* color = (ColorRGBA*)aImage;
-    ColorRGBA clear;
-    clear.set(aColor);
-
-    for (int y = 0; y < h; ++y) {
-        const bool contentRow = (margin <= y && y < h - margin);
-        ColorRGBA* line = color + (size_t)y * w;
-
-        if (contentRow) {
-            for (int x = 0; x < margin; ++x) {
-                line[x] = clear;
-                line[w - 1 - x] = clear;
-            }
-        } else {
-            for (int x = 0; x < w; ++x) {
-                line[x] = clear;
-            }
-        }
-    }
-}
-
 std::pair<XCMemBlock, QRect>
 Util::createTextureImage(const PSDFormat::Header& aHeader, const PSDFormat::Layer& aLayer) {
     // empty image
@@ -226,9 +195,7 @@ Util::createTextureImage(const PSDFormat::Header& aHeader, const PSDFormat::Laye
     QRect rect(aLayer.rect.left(), aLayer.rect.top(), aLayer.rect.width(), aLayer.rect.height());
 
     // modulate color bit
-    image = recreateForBiLinearSampling(image, rect.size());
-    rect.moveTopLeft(rect.topLeft() + QPoint(-kSamplingMargin, -kSamplingMargin));
-    rect.setSize(rect.size() + QSize(2 * kSamplingMargin, 2 * kSamplingMargin));
+    image = prepareForSampling(image, rect.size());
 
     return std::pair<XCMemBlock, QRect>(image, rect);
 }
@@ -251,11 +218,8 @@ std::pair<XCMemBlock, QRect> Util::createTextureImage(const QImage& aImage) {
     memcpy(workImage.data, aImage.bits(), length);
 
     // modulate color bit
-    auto image = recreateForBiLinearSampling(workImage, aImage.size());
-    const QRect rect(
-        QPoint(-kSamplingMargin, -kSamplingMargin),
-        aImage.size() + QSize(2 * kSamplingMargin, 2 * kSamplingMargin)
-    );
+    auto image = prepareForSampling(workImage, aImage.size());
+    const QRect rect(QPoint(0, 0), aImage.size());
 
     return std::pair<XCMemBlock, QRect>(image, rect);
 }

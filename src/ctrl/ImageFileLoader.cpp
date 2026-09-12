@@ -98,14 +98,10 @@ img::ResourceNode* createMergedResource(
         return nullptr;
     }
 
-    mem = img::Util::recreateForBiLinearSampling(mem, aCanvasSize);
-    // the content sits at the margin's offset inside the padded image; the rect has to describe
-    // the padded image, so the artwork's own position (and everything laid out from it) is
-    // unchanged by the width of the margin.
-    const QRect rect(
-        QPoint(-img::Util::kSamplingMargin, -img::Util::kSamplingMargin),
-        aCanvasSize + QSize(2 * img::Util::kSamplingMargin, 2 * img::Util::kSamplingMargin)
-    );
+    mem = img::Util::prepareForSampling(mem, aCanvasSize);
+    // the texture image is the layer's own rect, unpadded, so that the mip chain's texel grids
+    // stay aligned with the artwork's (see img::Util::prepareForSampling)
+    const QRect rect(QPoint(0, 0), aCanvasSize);
 
     auto resNode = new img::ResourceNode(aName);
     resNode->data().grabImage(mem, rect.size(), img::Format_RGBA8);

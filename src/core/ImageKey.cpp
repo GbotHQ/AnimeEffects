@@ -102,6 +102,12 @@ void ImageKey::resetTextureCache() {
         //
         // Alpha is left untouched, so consumers that use only alpha - the clipper writing
         // pass (ClipperWritingFrag) - are unaffected.
+        //
+        // The image is uploaded unpadded, so the artwork starts at the texture's origin and the
+        // mip chain's level-l boxes (anchored to multiples of 2^l in the texture) stay aligned
+        // with the artwork's own texel blocks at EVERY level. The transparent neighbour a
+        // minified or edge read needs comes from the border colour set below, not from a padding
+        // ring - see img::Util::prepareForSampling for the measurement behind that.
         const int texelCount = pixelSize.width() * pixelSize.height();
         std::vector<uint8> premultiplied((size_t)texelCount * 4);
         std::memcpy(premultiplied.data(), imageData, premultiplied.size());

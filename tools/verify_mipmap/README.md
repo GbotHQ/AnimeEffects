@@ -104,9 +104,20 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   2x2-box comparison exactly. Measured: one non-zero texel per level at 255/4^l - a plain box -
   and M12b confirms it on a broadband pseudo-random image (max delta 1).
 - **M13 - the texture margin parity.** The 2x over-blur isolated to a single variable: the same
-  artwork, sampler and zoom, with only the width of the transparent margin around the artwork
-  changing. Includes a direct assertion that the shipped margin is even, which is the invariant
-  that keeps level 1 aligned with the artwork.
+  artwork, sampler and zoom, with only the width of a transparent margin padded around the artwork
+  inside its texture changing. A margin of 1 (what the code shipped before this work) gives worst
+  delta 112 of 255; no padding at all, which is what ships now, gives 0.5.
+- **M14 - the margin at every level, not just level 1.** Level *l* is a box of 2^*l* base texels
+  whose grid is anchored to multiples of 2^*l* in the texture, so the artwork's origin has to be a
+  multiple of 2^*l* - being even is not enough. M14 measures levels 0 to 7 (1x to 128x minification)
+  at margins 0, 8, 16 and 32 against the exact 2^*l* x 2^*l* box of the artwork. Level 0 is the
+  control that validates the artwork-to-screen mapping independently of any mip behaviour (delta
+  0.0 at every margin). Result: a margin of 8 was aligned through level 3 and **misaligned from
+  level 4 up**, worst delta 111.0 and mean 6.99 of 255 on random artwork at 16x, 51.0/7.49 at 64x;
+  16 was wrong from level 5, 32 from level 6. No padding is exact at every level (worst 1.3, mean
+  0.66), which is why `img::Util::prepareForSampling` pads by nothing: the transparent neighbour a
+  bilinear read needs at the artwork's edge comes from the sampler's `GL_CLAMP_TO_BORDER` border
+  colour, which the hardware applies to every mip level.
 
 ## Figures
 
@@ -191,27 +202,61 @@ ground truth beside it instead of on one file with a magnified crop.
 
 ## The corpus verdict
 
-The change is judged on the supersampled truth over a sample of the corpus, and the sample is every
-fourth file of the 116-file corpus: 24 files (18 PSD, 6 ANIE), each at 2x and 4x minification.
-`--eval` writes the numbers; one figure per file shows them.
+The change is judged against the supersampled truth over a sample of the corpus: every fourth file of
+the 116-file one, 29 files, at 2x, 4x, 8x and 16x minification. `--eval` writes the numbers.
 
-| | better than level 0 | no change | worse |
-| --- | --- | --- | --- |
-| 2x minification | 7 | 4 | 13 |
-| 4x minification | 8 | 11 | 5 |
+Each row compares the central 64x64 pixels of the canvas-sized render against a supersampled
+reference of exactly that window (`ss` = two samples per base texel, rounded up to odd when a canvas
+dimension is odd so that the two pixel grids line up exactly; the `ref_align255` column reports the
+residual, and is 0 on all 116 rows). The window reference is cross-checked against the whole-canvas
+reference wherever that one still fits the 16384 device limit - `winref_delta` is 0 on 21 rows and 1
+on 10, so the two agree.
 
-Read together with the errors rather than instead of them. At 4x the worst-case error against the
-truth roughly halves, which is the point of the change: 000060.psd 255 -> 127, 006751.psd 151 -> 57,
-000063.psd 94 -> 49, 000145.psd 133 -> 95, 000169.psd 139 -> 91, seal.anie 96 -> 67. Those are the
-pixels where level-0 sampling aliases. At 2x it costs mean error on 13 of 24 files, by 0.1 to 0.25 of
-255 - level 1 is a wider kernel than level 0 at exactly 2x when the footprint is not centred on a
-texel boundary, so it smooths where level 0 was already the exact box. Every one of those
-differences is well under one 8-bit level except 000060.psd, whose canvas is clamped to ss=2 and
-whose reference is therefore weak.
+| minification | mip closer than level 0 | tied | level-0 closer | mean error: level 0 -> mip | worst pixel: level 0 -> mip | pixels off > 16 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2x | 7 | 5 | 17 | 0.905 -> 1.186 | 19.5 -> 25.8 | 858 -> 1475 |
+| 4x | 15 | 2 | 12 | 2.543 -> 2.362 | 54.8 -> 44.3 | 4911 -> 4736 |
+| 8x | 28 | 0 | 1 | 4.969 -> 3.382 | 107.2 -> 65.6 | 10437 -> 7301 |
+| 16x | 29 | 0 | 0 | 7.902 -> 4.577 | 142.7 -> 75.2 | 16338 -> 9775 |
 
-So: an upgrade where level-0 sampling aliases, and a small, measured cost at exactly 2x. Anything
-stronger than that is not supported by the 24 files, and every figure carries its own numbers so it
-can be checked file by file.
+So: an upgrade wherever level-0 sampling aliases (everything from 8x), a wash at 4x, and a small,
+measured cost at exactly 2x - level 1 is a wider kernel than level 0 there when the footprint is not
+centred on a texel boundary, so it smooths where level 0 was already the exact box. Every one of
+those 2x differences is under one 8-bit level on most files.
+
+### What removing the padding did, measured the same way
+
+Removing the 8-texel padding ring is a provable fix to the level grids (M14) and it changes the
+render materially at 16x - the two builds' 16x panels differ by a mean of 3.4 to 5.8 of 255 - but the
+corpus does not show a clear win:
+
+| 16x minification | mip mean error | worst pixel |
+| --- | --- | --- |
+| level 0 | 7.902 | 142.7 |
+| mipmapped, 8-texel padding ring | 4.429 | 70.4 |
+| mipmapped, no padding (shipped) | 4.577 | 75.2 |
+
+The fix is closer to the truth on 9 of the 29 files, further on 12, tied on 8. On the individual
+files inspected panel by panel it halves the error (000145.psd 4.82 -> 2.63, 000042.psd 2.96 ->
+2.29) and on one it is worse (000020.psd 4.94 -> 5.61). That is not a contradiction of M14, it is a
+statement about what dominates the 16x error: the remaining 4.5 of 255 is mostly the difference
+between a box filter and the tent-weighted integral the truth represents, which both builds share,
+while the padding's half-texel misalignment - provable, and 111 of 255 worst-case on a hard edge -
+costs about as much as the residual grid stretch below on real (smooth) artwork.
+
+### The third condition, still open: the level grid must not be stretched
+
+Alignment is not the only condition on these grids. Level *l* has `floor(size / 2^l)` texels and
+normalized texture coordinates map [0,1] onto them, so unless the texture size is a multiple of 2^*l*
+the level-*l* grid is stretched over the artwork: each of its texels then covers slightly more than
+2^*l* base texels, and the displacement grows linearly to `size mod 2^l` base texels at the far edge.
+Artwork sizes are arbitrary, so this is the rule, not the exception. M14 measures it at 16x and 32x
+on random content: size 512 (a multiple of 32) gives worst 1.3 / mean 0.49 against the exact box,
+size 504 gives worst 14.1 / mean 3.58, size 500 worst 14.6 / mean 3.78 - the same order as the
+padding bug it replaces, and the two can partly cancel, which is why the corpus washes out instead of
+improving cleanly. Fixing it means padding the texture to a multiple of 2^*l* **with the content at
+the origin**, which grows the layer's rect (what the selection box and layout use) unless the mesh's
+texture mapping is decoupled from the texture size - a geometry change, not a constant.
 
 ## Independent ground truth: supersampling
 
@@ -349,6 +394,16 @@ blocked it.
 
 Also outstanding: an ASan run over the new CPU premultiply pass, the glyph-cache decision, and
 measuring the load-time/memory cost of building the chain.
+
+Also outstanding, and measured rather than fixed: the level-grid *stretch* described under "The
+corpus verdict". It needs the texture padded to a multiple of 2^*l* with the content at the origin,
+which interacts with the layer's rect and the mesh's texture mapping.
+
+Also outstanding, from inspection rather than measurement: the editor overlay path
+(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear` and does not
+premultiply them. Qt generates the chain, so a `QImage` in a straight-alpha format gets the classic
+dark-fringe chain. This is upstream code, untouched by this branch, and its images are whatever
+Qt hands the paint engine; it has no measurement here at all.
 
 A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale
 changes. At 4x minification the quad is smaller than the crop, so the backdrop averaged in and

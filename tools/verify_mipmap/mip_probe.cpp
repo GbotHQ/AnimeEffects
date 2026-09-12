@@ -1773,31 +1773,25 @@ void suiteTwoXMechanism() {
 }
 
 //-------------------------------------------------------------------------------------------------
-// M13: the padding parity, isolated. This is the defect the corpus found at 2x, reproduced under
+// M13: the padding parity, isolated. This is a defect the corpus found at 2x, reproduced under
 // control, and it is a two-line difference: the same artwork, the same sampler, the same zoom, and
-// only the width of the transparent margin around the artwork inside its texture changes.
+// only the width of a transparent margin padded around the artwork inside its texture changes.
 //
 // The mip chain is built over the PADDED image, so its texel grids are anchored to the padded
 // image's (0,0). Level 1 is a box of 2 base texels, so it is aligned to EVEN base texel indices:
 // the artwork's own aligned 2x2 blocks fall inside single level-1 texels only if the artwork's
 // origin sits at an even index. With a margin of 1 the origin is at texel 1, every level-1 texel
 // is half artwork and half nothing, and a 2x minified pixel - whose footprint IS one level-1 texel
-// - is answered by a 0.75/0.25 mix of two of them, i.e. four base texels instead of two. A margin
-// of 8 puts the origin at a multiple of 8, which aligns levels 1, 2 and 3.
+// - is answered by a 0.75/0.25 mix of two of them, i.e. four base texels instead of two. The
+// shipped code pads by nothing at all: the artwork sits at the texture origin, which is a multiple
+// of every 2^l (see img::Util::prepareForSampling). M14 generalises this to every level.
 void suiteMarginParity() {
     suiteHeader("M13 texture margin parity: the 2x over-blur, isolated");
     const QSize canvas(64, 64);
     const int content = 64;
     const int lo = 20, hi = 44;
 
-    // The production padding, so this measures the constant the app actually uses rather than a
-    // number copied into a test.
-    expect(img::Util::kSamplingMargin % 2 == 0,
-        QString("M13 the texture margin must be even, or the artwork sits at an odd base texel and "
-                "level 1 is misaligned with it (margin is %1)")
-            .arg(img::Util::kSamplingMargin));
-
-    const char* kLabels[3] = {"margin 0 (even)", "margin 1 (odd - the old padding)", "margin 8 (even, shipped)"};
+    const char* kLabels[3] = {"margin 0 (no padding - shipped)", "margin 1 (the old padding)", "margin 8"};
     const int kMargins[3] = {0, 1, 8};
 
     for (int i = 0; i < 3; ++i) {
@@ -1854,6 +1848,222 @@ void suiteMarginParity() {
             label, gFails == caseFails,
             QString("delta vs the exact 2x2 box %1, contrast %2 of 255").arg(worst, 0, 'f', 1).arg(st.contrast())
         );
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// M14: the margin's arithmetic at EVERY level, not just level 1.
+//
+// M13 pins the level-1 case: a margin of 1 puts the artwork at an odd base texel, and a 2x minified
+// pixel - whose footprint IS one level-1 texel - is answered by a mix of two of them instead.
+//
+// The general statement is that level l is a box of 2^l base texels whose grid is anchored to
+// multiples of 2^l IN THE PADDED TEXTURE, so the artwork's origin has to be a multiple of 2^l. It
+// is not enough for the margin to be even: a padding of 8 is 0 modulo 2^l only for l <= 3, and
+// levels 4 and 5 (16x and 32x minification) were therefore misaligned as well - a read of them
+// straddles two boxes exactly like M13's margin-1 case does one level up. That is why the shipped
+// code now pads by nothing: the artwork's origin is the texture's origin, a multiple of every 2^l.
+//
+// Measured here at every level against the exact 2^l x 2^l box of the artwork, which is the answer
+// a footprint-aligned screen pixel must get. Level 0 is the control: its footprint is one texel and
+// no mip level is involved, so it validates the artwork-to-screen mapping independently of any
+// mipmap behaviour - a wrong mapping cannot pass the control and blame the chain.
+void suiteMarginDepth() {
+    suiteHeader("M14 level-l alignment: the margin must be a multiple of 2^l, not merely even");
+    const QSize canvas(64, 64);
+    const int content = 512;   // 512 texels: at 128x minification the artwork still covers 4 pixels
+    const int kLevels = 8;     // l = 0..7, i.e. 1x to 128x minification
+    const int kMargins[4] = {0, 8, 16, 32};
+    const char* kMarginLabels[4] = {"margin 0 (shipped)", "margin 8", "margin 16", "margin 32"};
+    const char* kPatternLabels[3] = {"hard edge", "1-texel cross", "random"};
+
+    // The three source patterns, all opaque (so premultiplying is the identity and the render's red
+    // channel IS the filtered red): a full-scale edge, whose transition is a step the width of one
+    // level-l texel and so is displaced by a straddling read at every level; a 1-texel cross, the
+    // sharpest instrument at level 1; and pseudo-random, which gives the realistic magnitude.
+    std::vector<uint8_t> pat[3];
+    pat[0].resize((size_t)content * content);
+    pat[1].resize((size_t)content * content);
+    pat[2].resize((size_t)content * content);
+    uint32_t rng = 12345u;
+    for (int y = 0; y < content; ++y) {
+        for (int x = 0; x < content; ++x) {
+            const size_t i = (size_t)y * content + x;
+            pat[0][i] = (x < content / 2) ? 255 : 0;
+            pat[1][i] = (x == content / 2 || y == content / 2) ? 255 : 0;
+            rng = rng * 1664525u + 1013904223u;
+            pat[2][i] = (uint8_t)(rng >> 24);
+        }
+    }
+
+    for (int l = 0; l < kLevels; ++l) {
+        const int step = 1 << l;   // 2^l base texels per screen pixel, i.e. per level-l texel
+        const float zoom = 1.0f / (float)step;
+        for (int mi = 0; mi < 4; ++mi) {
+            const int margin = kMargins[mi];
+            const bool aligned = (margin % step) == 0;
+
+            double worst[3] = {0, 0, 0};
+            double mean[3] = {0, 0, 0};
+            int counts[3] = {0, 0, 0};
+            int caseFails = gFails;
+
+            for (int pi = 0; pi < 3; ++pi) {
+                Img src;
+                src.w = src.h = content + 2 * margin;
+                src.d.assign((size_t)src.w * src.h * 4, 0);
+                for (int y = 0; y < content; ++y) {
+                    for (int x = 0; x < content; ++x) {
+                        uint8_t* p = src.at(x + margin, y + margin);
+                        p[0] = p[1] = p[2] = pat[pi][(size_t)y * content + x];
+                        p[3] = 255;
+                    }
+                }
+
+                const std::vector<uint8_t> out = renderLayer(canvas, src, zoom, img::BlendMode_Normal);
+
+                // The layer is centred on the canvas centre and the camera maps world (0,0) to the
+                // canvas origin, so the screen pixel centre (sx + 0.5, H - 0.5 - sy) sits at artwork
+                // coordinate ((p - canvas/2) / zoom + content/2), and its footprint is the 2^l x 2^l
+                // block centred there. The readback is bottom-up, hence the flip in y.
+                for (int sy = 0; sy < canvas.height(); ++sy) {
+                    for (int sx = 0; sx < canvas.width(); ++sx) {
+                        const double acx =
+                            (sx + 0.5) * step - (canvas.width() * 0.5) * step + content * 0.5;
+                        const double acy =
+                            (canvas.height() - 0.5 - sy) * step - (canvas.height() * 0.5) * step + content * 0.5;
+                        const int bx = (int)std::lround(acx - step * 0.5);
+                        const int by = (int)std::lround(acy - step * 0.5);
+                        if (bx < 0 || by < 0 || bx + step > content || by + step > content)
+                            continue;   // a footprint that reaches outside the artwork has partial
+                                        // coverage and is not the property under test
+                        double box = 0;
+                        for (int dy = 0; dy < step; ++dy)
+                            for (int dx = 0; dx < step; ++dx)
+                                box += src.at(bx + dx + margin, by + dy + margin)[0];
+                        box /= (double)(step * step);
+
+                        const int got = out[((size_t)sy * canvas.width() + sx) * 4];
+                        const double d = std::fabs(got - box);
+                        worst[pi] = std::max(worst[pi], d);
+                        mean[pi] += d;
+                        ++counts[pi];
+                    }
+                }
+
+                if (counts[pi] == 0)
+                    expect(false, QString("M14 level %1, %2: no fully covered footprint to measure")
+                                      .arg(l).arg(kMarginLabels[mi]));
+                else
+                    mean[pi] /= counts[pi];
+            }
+
+            // The edge pattern is the instrument: a straddling read displaces the edge's transition,
+            // so an aligned margin leaves the box exact to rounding and a misaligned one cannot.
+            const double edge = worst[0];
+            const QString label = QString("M14 level %1 (%2x minification), %3")
+                                      .arg(l).arg(step).arg(kMarginLabels[mi]);
+
+            if (aligned || l == 0) {
+                expect(edge <= 3.0,
+                    QString("%1: the margin is %2 modulo 2^%3, so the read lands on a level-%4 texel "
+                            "centre and the render must be the exact %5x%5 box (worst delta %6, %7 "
+                            "pixels)")
+                        .arg(label).arg(margin).arg(l).arg(l).arg(step)
+                        .arg(edge, 0, 'f', 1).arg(counts[0]));
+            } else {
+                // The negative check: if a misaligned level starts matching the box, this
+                // measurement has stopped having power and the arithmetic above is wrong.
+                expect(edge > 20.0,
+                    QString("%1: the margin is %2 modulo 2^%3, so the read straddles two level-%4 "
+                            "boxes and must NOT be the exact box (worst delta %5 - if this is small "
+                            "the mechanism has changed)")
+                        .arg(label).arg(margin).arg(l).arg(l).arg(edge, 0, 'f', 1));
+            }
+
+            caseReport(
+                label, gFails == caseFails,
+                QString("%1%2 | worst delta vs the exact %3x%3 box: %4 edge, %5 cross, %6 random | "
+                        "mean: %7 / %8 / %9 | %10 pixels")
+                    .arg(aligned ? "aligned" : "MISALIGNED")
+                    .arg(l == 0 ? " (control: no level involved)" : "")
+                    .arg(step).arg(worst[0], 0, 'f', 1).arg(worst[1], 0, 'f', 1).arg(worst[2], 0, 'f', 1)
+                    .arg(mean[0], 0, 'f', 2).arg(mean[1], 0, 'f', 2).arg(mean[2], 0, 'f', 2)
+                    .arg(counts[0])
+            );
+            (void)kPatternLabels;
+        }
+    }
+
+    // A second, independent condition on the same grids. Level l has floor(size/2^l) texels, and
+    // normalized texture coordinates map [0,1] onto those texels, so unless the texture size is a
+    // multiple of 2^l the level-l grid is STRETCHED over the artwork: level-l texel k then covers
+    // k*size/S_l base texels instead of 2^l*k, and the error grows linearly to (size mod 2^l) base
+    // texels at the far edge. That is a geometric shift of up to one level-l texel - one screen
+    // pixel at that zoom - and it is present whether or not the texture is padded, which is why the
+    // corpus does not move much when only the padding is removed. Measured here at levels 4 and 5
+    // for content sizes that are and are not multiples of 2^l.
+    {
+        const int kSizes[3] = {512, 504, 500};   // 512 = 32*16, 504 = 63*8, 500 = 31*16 + 4
+        for (int l = 4; l <= 5; ++l) {
+            const int step = 1 << l;
+            const float zoom = 1.0f / (float)step;
+            for (int si = 0; si < 3; ++si) {
+                const int size = kSizes[si];
+                for (int mi = 0; mi < 2; ++mi) {
+                    const int margin = (mi == 0) ? 0 : 8;
+                    Img src;
+                    src.w = src.h = size + 2 * margin;
+                    src.d.assign((size_t)src.w * src.h * 4, 0);
+                    uint32_t r = 99991u;
+                    for (int y = 0; y < size; ++y) {
+                        for (int x = 0; x < size; ++x) {
+                            uint8_t* p = src.at(x + margin, y + margin);
+                            r = r * 1664525u + 1013904223u;
+                            p[0] = p[1] = p[2] = (uint8_t)(r >> 24);
+                            p[3] = 255;
+                        }
+                    }
+                    const std::vector<uint8_t> out = renderLayer(canvas, src, zoom, img::BlendMode_Normal);
+                    double worst = 0, sum = 0;
+                    int n = 0;
+                    for (int sy = 0; sy < canvas.height(); ++sy) {
+                        for (int sx = 0; sx < canvas.width(); ++sx) {
+                            const double acx =
+                                (sx + 0.5) * step - (canvas.width() * 0.5) * step + size * 0.5;
+                            const double acy =
+                                (canvas.height() - 0.5 - sy) * step - (canvas.height() * 0.5) * step
+                                + size * 0.5;
+                            const int bx = (int)std::lround(acx - step * 0.5);
+                            const int by = (int)std::lround(acy - step * 0.5);
+                            if (bx < 0 || by < 0 || bx + step > size || by + step > size)
+                                continue;
+                            double box = 0;
+                            for (int dy = 0; dy < step; ++dy)
+                                for (int dx = 0; dx < step; ++dx)
+                                    box += src.at(bx + dx + margin, by + dy + margin)[0];
+                            box /= (double)(step * step);
+                            const double d = std::fabs(out[((size_t)sy * canvas.width() + sx) * 4] - box);
+                            worst = std::max(worst, d);
+                            sum += d;
+                            ++n;
+                        }
+                    }
+                    if (n)
+                        sum /= n;
+                    caseReport(
+                        QString("M14 size %1, level %2 (%3x), %4")
+                            .arg(size).arg(l).arg(step).arg(mi == 0 ? "margin 0 (shipped)" : "margin 8"),
+                        true,
+                        QString("size = %1*%2 + %3, so the level grid is stretched by %3 base texels "
+                                "| worst delta vs the exact box %4, mean %5, %6 pixels")
+                            .arg(size / step).arg(step).arg(size % step)
+                            .arg(worst, 0, 'f', 1).arg(sum, 0, 'f', 2).arg(n)
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -2356,6 +2566,26 @@ QImage boxDownsample(const QImage& aSrc, int aSS) {
 
 // renders the project at ss x the canvas with the same field of view as the 1x figure, and returns
 // the box-downsampled result at canvas size
+// The camera's leftTopPos that makes a supersampled render's screen 0 coincide with the left edge
+// of shipped pixel aX0, so the two pixel grids line up exactly instead of half a pixel apart.
+//
+// CameraInfo: screen(world) = center + scale * (world - imageSize/2), center = leftTopPos +
+// imageSize/2. So the shipped render (scale z, leftTopPos 0) and the supersampled one (scale z*ss,
+// leftTopPos L) satisfy screenS = ss*screen + L + (imageSize/2)*(1 - ss). Requiring screenS(aX0) = 0
+// gives L = (imageSize/2)*(ss-1) - ss*aX0, which is an integer only when (imageSize/2)*(ss-1) is -
+// for an odd canvas dimension that forces an ODD ss. Getting this wrong by rounding is a half-pixel
+// shift between the render and the truth it is compared against, which on edge-heavy artwork reads
+// as an error of 40+ of 255 in both chains and quietly invalidates the comparison; the winref_delta
+// column below is what catches it.
+int referenceLeftTop(float aCanvasW, float aCanvasH, int aSS, int aX0, int aY0, QPoint& aOut) {
+    const double cx = aCanvasW * 0.5, cy = aCanvasH * 0.5;
+    const double lx = cx * (aSS - 1) - (double)aSS * aX0;
+    const double ly = cy * (aSS - 1) - (double)aSS * aY0;
+    const double rx = std::fabs(lx - std::lround(lx)), ry = std::fabs(ly - std::lround(ly));
+    aOut = QPoint((int)std::lround(lx), (int)std::lround(ly));
+    return (int)std::lround(std::max(rx, ry) * 255.0);   // the misalignment that is left, in 1/255 px
+}
+
 QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int& aSS,
                              const uint8_t aBackdrop[3]) {
     // The supersampled target is canvas*ss, and canvas*ss can exceed what the device will allocate:
@@ -2368,9 +2598,12 @@ QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, floa
         ggl.glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
         ggl.glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRb);
         const int limit = std::min(maxTex > 0 ? (int)maxTex : 16384, maxRb > 0 ? (int)maxRb : 16384);
+        // Step by two, not one: the caller picks ss so that (imageSize/2)*(ss-1) is an integer,
+        // which is what lets the supersampled grid align with the shipped one. Decrementing by one
+        // would flip that parity and silently shift the reference by half a pixel.
         while (aSS > 1
                && (aCanvas.width() * aSS > limit || aCanvas.height() * aSS > limit)) {
-            --aSS;
+            aSS = std::max(1, aSS - 2);
         }
         if (aSS < 1)
             aSS = 1;
@@ -2387,15 +2620,14 @@ QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, floa
 
     // The camera maps world units to screen pixels by mScale ALONE (CameraInfo::toScreenVector),
     // and anchors content on centerOffset() = imageSize/2. So to render the same field of view at
-    // ss x: keep imageSize at the CANVAS (that is what the artwork is centred on), place the canvas
-    // centre at the centre of the larger frame via leftTopPos, and multiply the scale by ss. Passing
-    // the big size as imageSize instead - which is what this did first - halves the artwork into a
-    // corner at 1/ss scale and makes the "reference" meaningless.
+    // ss x: keep imageSize at the CANVAS (that is what the artwork is centred on), shift the world
+    // so shipped pixel 0 lands on this frame's pixel 0 via leftTopPos, and multiply the scale by
+    // ss. Passing the big size as imageSize instead - which is what this did first - halves the
+    // artwork into a corner at 1/ss scale and makes the "reference" meaningless.
+    QPoint leftTop;
+    referenceLeftTop(aCanvas.width(), aCanvas.height(), aSS, 0, 0, leftTop);
     core::CameraInfo camera;
-    camera.reset(
-        big, 1.0, aCanvas,
-        QPoint((big.width() - aCanvas.width()) / 2, (big.height() - aCanvas.height()) / 2)
-    );
+    camera.reset(big, 1.0, aCanvas, leftTop);
     camera.setScale(aZoom * (float)aSS);
     const std::vector<uint8_t> px = fx.render(aProject.objectTree(), camera, 0, aBackdrop);
     return boxDownsample(figures::readbackToImage(px, big), aSS);
@@ -2521,6 +2753,57 @@ DiffStats diffVsRef(const QImage& aA, const QImage& aB) {
     return st;
 }
 
+// The central aWindow x aWindow pixels of an image, or the whole image if it is smaller.
+QImage cropCentral(const QImage& aImg, int aWindow) {
+    const int w = std::min(aWindow, aImg.width());
+    const int h = std::min(aWindow, aImg.height());
+    return aImg.copy((aImg.width() - w) / 2, (aImg.height() - h) / 2, w, h);
+}
+
+// The supersampled ground truth for zooms too deep for a whole-canvas supersample. At 16x a 1920
+// px canvas needs a 30720 px target and the device stops at 16384, so supersampledReference
+// silently falls back to ss=8 - HALF a sample per base texel, which is not an integral of anything
+// and would flatter whichever chain happens to agree with a point sample. Instead, supersample
+// only the window the comparison looks at: a W x W block of screen pixels around the canvas centre
+// at ss samples each. imageSize stays at the canvas, so the artwork stays centred and the field of
+// view is the central W screen pixels of the shipped render; the cost is (W*ss)^2 instead of
+// (canvas*ss)^2. Validated against the full-frame reference wherever that one fits (the
+// winref_delta column in the eval CSV).
+QImage supersampledWindowReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int& aSS,
+                                   int aWindow, const uint8_t aBackdrop[3], int* aAlign255 = nullptr) {
+    {
+        auto& ggl = gl::Global::functions();
+        GLint maxTex = 0, maxRb = 0;
+        ggl.glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
+        ggl.glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRb);
+        const int limit = std::min(maxTex > 0 ? (int)maxTex : 16384, maxRb > 0 ? (int)maxRb : 16384);
+        while (aSS > 1 && aWindow * aSS > limit)
+            --aSS;
+        if (aSS < 1)
+            aSS = 1;
+    }
+    const int x0 = (aCanvas.width() - aWindow) / 2, y0 = (aCanvas.height() - aWindow) / 2;
+    QPoint leftTop;
+    const int align255 =
+        referenceLeftTop(aCanvas.width(), aCanvas.height(), aSS, x0, y0, leftTop);
+    if (aAlign255)
+        *aAlign255 = align255;
+
+    const QSize big(aWindow * aSS, aWindow * aSS);
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(big.width()).arg(big.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(big);
+        fixtures.emplace(key, std::move(fx));
+    }
+    core::CameraInfo camera;
+    camera.reset(big, 1.0, aCanvas, leftTop);
+    camera.setScale(aZoom * (float)aSS);
+    const std::vector<uint8_t> px = fixtures[key]->render(aProject.objectTree(), camera, 0, aBackdrop);
+    return boxDownsample(figures::readbackToImage(px, big), aSS);
+}
+
 int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) {
     gl::DeviceInfo dev;
     dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
@@ -2557,13 +2840,16 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         return 5;
     QTextStream ts(&out);
     if (fresh) {
-        ts << "file,type,canvas_w,canvas_h,layers,zoom,ss,before_mean,before_p99,before_p999,"
+        ts << "file,type,canvas_w,canvas_h,layers,zoom,ss,window,ref_align255,winref_delta,before_mean,before_p99,before_p999,"
               "before_max,before_over16,after_mean,after_p99,after_p999,after_max,after_over16,"
               "nocut_mean,nocut_p99,nocut_p999,nocut_max,nocut_over16,"
               "change_mean,change_p99,change_over16\n";
     }
 
-    const float zooms[] = {0.5f, 0.25f};
+    // 2x, 4x, 8x and 16x minification. The deeper two are where a texture padding ring shows: level
+    // l is a box of 2^l base texels, so a ring of 8 misaligns every level from 4 (16x) upward.
+    const float zooms[] = {0.5f, 0.25f, 0.125f, 0.0625f};
+    const int window = 64;
     for (float zoom : zooms) {
         core::CameraInfo camera;
         camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
@@ -2577,17 +2863,38 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         setLayerSampling(project, Sampling::MipmapNoCutoff); // the clamp removed
         const QImage nocut = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
 
-        int ss = 8;
-        const QImage ref = supersampledReference(project, canvas, zoom, ss, backdrop);
+        // Two samples per base texel at the shallowest, i.e. over-sampled at every zoom: an
+        // integral of the footprint rather than a point sample of it. An odd canvas dimension
+        // forces an odd ss, or no integer leftTopPos can align the reference with the render.
+        int ss = std::max(2, (int)std::lround(2.0f / zoom));
+        if (ss % 2 == 0 && (canvas.width() % 2 != 0 || canvas.height() % 2 != 0))
+            ++ss;
+        int refAlign = 0;
+        const QImage win = supersampledWindowReference(project, canvas, zoom, ss, window, backdrop, &refAlign);
 
-        const DiffStats db = diffVsRef(before, ref), da = diffVsRef(after, ref), dn = diffVsRef(nocut, ref);
+        // Cross-check the window against the whole-canvas reference wherever that one still fits.
+        int winrefDelta = -1;
+        {
+            int ssFull = ss;
+            const QImage full = supersampledReference(project, canvas, zoom, ssFull, backdrop);
+            if (ssFull == ss) {
+                const QImage fullWin = cropCentral(full, window);
+                winrefDelta = (int)std::lround(diffVsRef(fullWin, win).max);
+            }
+        }
+
+        const QImage beforeW = cropCentral(before, window);
+        const QImage afterW = cropCentral(after, window);
+        const QImage nocutW = cropCentral(nocut, window);
+        const DiffStats db = diffVsRef(beforeW, win), da = diffVsRef(afterW, win), dn = diffVsRef(nocutW, win);
         // |AFTER - BEFORE|: how much the change moved the pixels at all. This is the column the
         // crop picker ranks on, so "which artwork shows the change" is a measured question rather
         // than whoever looked at a figure last.
-        const DiffStats dc = diffVsRef(after, before);
+        const DiffStats dc = diffVsRef(afterW, beforeW);
         const QString type = QFileInfo(aPath).suffix().toLower();
         ts << QFileInfo(aPath).fileName() << "," << type << "," << canvas.width() << "," << canvas.height()
-           << "," << (int)layers.size() << "," << zoom << "," << ss
+           << "," << (int)layers.size() << "," << zoom << "," << ss << "," << window << "," << refAlign
+           << "," << winrefDelta
            << "," << QString::number(db.mean, 'f', 4) << "," << db.p99 << "," << db.p999 << "," << db.max << "," << db.over16
            << "," << QString::number(da.mean, 'f', 4) << "," << da.p99 << "," << da.p999 << "," << da.max << "," << da.over16
            << "," << QString::number(dn.mean, 'f', 4) << "," << dn.p99 << "," << dn.p999 << "," << dn.max << "," << dn.over16
@@ -2598,15 +2905,15 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         if (!aSaveDir.isEmpty() && QString::fromLocal8Bit(qgetenv("AE_EVAL_SAVE")) == QLatin1String("1")) {
             QDir().mkpath(aSaveDir);
             const QString base = QDir(aSaveDir).filePath(QFileInfo(aPath).completeBaseName() + QString("_z%1").arg((int)(zoom * 1000)));
-            after.save(base + "_after.png");
-            before.save(base + "_before.png");
-            nocut.save(base + "_nocut.png");
-            ref.save(base + "_ref.png");
+            afterW.save(base + "_after.png");
+            beforeW.save(base + "_before.png");
+            nocutW.save(base + "_nocut.png");
+            win.save(base + "_ref.png");
         }
         std::printf(
-            "  %s z=%.2f ss=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d | NO CUTOFF mean=%.3f max=%d | change mean=%.3f over16=%d\n",
-            qPrintable(QFileInfo(aPath).fileName()), zoom, ss, db.mean, db.max, da.mean, da.max,
-            dn.mean, dn.max, dc.mean, dc.over16
+            "  %s z=%.4f ss=%d win=%d align=%d refdelta=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d | NO CUTOFF mean=%.3f max=%d | change mean=%.3f over16=%d\n",
+            qPrintable(QFileInfo(aPath).fileName()), zoom, ss, window, refAlign, winrefDelta,
+            db.mean, db.max, da.mean, da.max, dn.mean, dn.max, dc.mean, dc.over16
         );
     }
     return 0;
@@ -3226,6 +3533,7 @@ int main(int argc, char** argv) {
     suiteMipKernel();
     suiteMipKernelRandom();
     suiteMarginParity();
+    suiteMarginDepth();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
