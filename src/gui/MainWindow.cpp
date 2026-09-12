@@ -1248,6 +1248,30 @@ static void translateVideoExport(exportParam& exParam, const std::vector<audioCo
     aVideo.transparent = g.allowTransparency;
     aVideo.bps = g.bitrate;              // kbps (the exporter converts to bits/sec)
     aAudio = g.exportWithAudio ? toAudioTracks(aValidStreams) : QVector<media::AudioMixer::Track>();
+
+    // The quality intent, through the codec's OWN knob - the same table
+    // ctrl::planExport() uses for a destination, so "Balanced" cannot mean one
+    // thing here and another thing there. Before this the intent reached only the
+    // destination path: in manual mode the Quality control set nothing, and the
+    // file went out at whatever the Bitrate field said (or at the encoder's own
+    // default, which is what "Auto" means). A destination overwrites encOptions
+    // afterwards, so this cannot fight the plan.
+    //
+    // An empty codec means "the container's probed default", which is what the
+    // exporter resolves, so it is resolved here too: the knob differs per codec
+    // ('crf' for H.264, 'quality' for WebP) and picking the wrong one would hand
+    // avcodec_open2 an option it rejects.
+    const QString codec = aVideo.codec.isEmpty()
+                              ? media::ffmpeg::defaultCodecForContainer(aVideo.container)
+                              : aVideo.codec;
+    const QString knob = ctrl::qualityKnobFor(codec);
+    if (!knob.isEmpty()) {
+        if (g.qualityOverride >= 0) {
+            aVideo.encOptions.insert(knob, QString::number(g.qualityOverride));
+        } else {
+            ctrl::applyQualityIntent(codec, exParam.qualityBucket, aVideo.encOptions);
+        }
+    }
 }
 
 // A non-selectable group heading inside a QComboBox. Qt's own idiom for this is
@@ -1771,9 +1795,11 @@ void MainWindow::onQuickExportTriggered() {
     if (picker.exec() != QDialog::Accepted) return;
     const QString id = picker.chosenId();
     if (id.isEmpty()) {
-        // "My platform isn't listed": that answer needs the dialog, because the
-        // format and codec are the user's to state.
-        onExportTriggered();
+        // "My platform isn't listed": that answer needs the form, because the
+        // format and codec are the user's to state. It opens the form directly -
+        // asking for a destination again would be asking the question the user
+        // just answered.
+        openExportDialog(QString());
         return;
     }
     QSettings().setValue(QStringLiteral("export_destination"), id);
@@ -1856,7 +1882,30 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
     }
 }
 
+// The destination is asked for FIRST, because everything the form asks afterwards
+// depends on it: the size, the codec, the byte cap, the duration limit, whether
+// transparency or audio can survive at all. The form used to open with the whole
+// legacy parameter sheet and hide the chooser behind a button on it, so the first
+// thing a user saw was a decision they could not make yet (a codec, a bitrate) and
+// the one decision they could make was two clicks in.
 void MainWindow::onExportTriggered() {
+    if (!mCurrent) { return; }
+    if (exporting) { exportWidget->showNormal(); return; }
+
+    DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+                             QSettings().value(QStringLiteral("export_destination")).toString(),
+                             this);
+    if (picker.exec() != QDialog::Accepted) return; // no destination, nothing to export yet
+    const QString id = picker.chosenId();
+    if (!id.isEmpty())
+        QSettings().setValue(QStringLiteral("export_destination"), id);
+    openExportDialog(id);
+}
+
+// aDestinationId empty means "my platform isn't listed": the form then states the
+// artifact itself, which is the only case where the encoder controls are the user's
+// to set.
+void MainWindow::openExportDialog(const QString& aDestinationId) {
     if (!mCurrent) { return; }
     if (exporting) { exportWidget->showNormal(); return; }
     // Stop animation and main display rendering
@@ -1878,12 +1927,12 @@ void MainWindow::onExportTriggered() {
     // per-container codec combos could not do that (getFormatAsInt() returns 0 for
     // every input, so every codec and pixel format chosen there was discarded).
     {
-        // The destination chooser is a modal with a search field (see
-        // gui/DestinationPicker): fifty-five destinations in a dropdown is a list to
-        // scroll, and as a menu the same list sits four levels deep. The button shows
-        // what is chosen and opens the picker.
+        // The chooser is a modal with a search field (see gui/DestinationPicker).
+        // It has already been answered once to get here; the row states which
+        // destination the form is working under and "Change..." reopens it, because
+        // a user who picked the wrong platform should not have to cancel the export.
         QSettings settings;
-        exportUI->setDestinationId(settings.value(QStringLiteral("export_destination")).toString());
+        exportUI->setDestinationId(aDestinationId);
         auto showDestinationButtonText = [this]() {
             const QString id = exportUI->destinationId();
             if (id.isEmpty()) {
@@ -2164,12 +2213,12 @@ void MainWindow::onExportTriggered() {
     // Sync
     settings.sync();
     // Value initialization
-    switch(*aspectRatio){
-        case 0: exportUI->oneToOneRatio->setChecked(true); break;
-        case 1: exportUI->keepAspectRatio->setChecked(true); break;
-        case 2: exportUI->customRatio->setChecked(true); break;
-        default: break;
-    }
+    // One question ("does editing Width move Height?") instead of three legacy
+    // radio buttons: One-to-one and Custom were size-LINK modes from the original
+    // dialog, and ctrl::ExportParams.h's `aspectRatio` — the only thing they ever
+    // set — is written here and read by nothing. A stored 0 (one-to-one) now means
+    // "keep", which is what it did in every export.
+    exportUI->keepAspectRatio->setChecked(*aspectRatio != 2);
     exportUI->transparencyCheckBox->setChecked(*allowTransparency);
     exportUI->loopCheckBox->setChecked(*loopAnim);
     exportUI->exportWithAudioCheckBox->setChecked(*exportWithAudio);
@@ -2251,10 +2300,7 @@ void MainWindow::onExportTriggered() {
     exportWidget->exec();
 
     // Save all settings
-    int aspectRatioIndex = 0;
-    if (exportUI->oneToOneRatio->isChecked()) { aspectRatioIndex = 0; }
-    else if (exportUI->keepAspectRatio->isChecked()) { aspectRatioIndex = 1; }
-    else { aspectRatioIndex = 2; }
+    const int aspectRatioIndex = exportUI->keepAspectRatio->isChecked() ? 1 : 2;
     {
         updateSettings(&aspectRatioV, &settings, aspectRatioIndex,
                        "export_aspect_ratio");
@@ -2324,17 +2370,7 @@ void MainWindow::onExportTriggered() {
     genParam.nativeHeight = mCurrent->attribute().imageSize().height();
     genParam.exportWidth = exportUI->widthSpinBox->value();
     genParam.exportHeight = exportUI->heightSpinBox->value();
-    switch(aspectRatioIndex) {
-    case 0:
-        genParam.aspectRatio = oneToOne;
-        break;
-    case 1:
-        genParam.aspectRatio = keep;
-        break;
-    case 2:
-        genParam.aspectRatio = custom;
-        break;
-    }
+    genParam.aspectRatio = aspectRatioIndex == 1 ? keep : custom;
     genParam.nativeFPS = mCurrent->attribute().fps();
     genParam.fps = exportUI->fpsSpinBox->value();
     genParam.bitrate =
@@ -2347,6 +2383,7 @@ void MainWindow::onExportTriggered() {
         // Does it contain only a positive number? If not then set to -1 for error handling.
         exportUI->bitrateLineEdit->text().trimmed().contains(QRegularExpression("^(?!0\\d+)\\d+$"))
             ? exportUI->bitrateLineEdit->text().toInt() : -1;
+    genParam.qualityOverride = exportUI->qualityOverrideSpin->value();
     genParam.imageExportQuality = exportUI->imageQualitySpinbox->value();
     genParam.allowTransparency = exportUI->transparencyCheckBox->isChecked();
     genParam.loop = exportUI->loopCheckBox->isChecked();

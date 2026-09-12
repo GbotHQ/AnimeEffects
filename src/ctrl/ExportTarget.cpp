@@ -47,6 +47,7 @@ const char* bucketName(QualityBucket aBucket) {
     return "balanced";
 }
 
+
 SizeMode parseSizeMode(const QString& aText) {
     if (aText == QLatin1String("exact")) return SizeMode::Exact;
     if (aText == QLatin1String("max")) return SizeMode::Max;
@@ -204,7 +205,43 @@ QString classClause(DestClass aClass) {
     }
 }
 
+
 } // namespace
+
+bool applyQualityIntent(const QString& aCodec, QualityBucket aBucket,
+                        QMap<QString, QString>& aEncOptions, QStringList* aNotes) {
+    const QualityControl control = ExportTargets::loadQualityControl().value(aCodec);
+    if (control.option.isEmpty()) return false; // no knob: nothing to trade
+    const QHash<QString, double> positions = ExportTargets::loadBucketPositions();
+    const QString bucket = QString::fromUtf8(bucketName(aBucket));
+    if (!positions.contains(bucket)) {
+        // A table without the policy cannot apply the intent, and saying nothing
+        // would leave a control that looks like a decision and is not one.
+        if (aNotes) {
+            *aNotes << QStringLiteral(
+                "Quality intent not applied: the destination table declares no "
+                "<bucket_positions>, so '%1' was left at its own default.").arg(aCodec);
+        }
+        return false;
+    }
+    const double position = positions.value(bucket);
+    const int value = (int)std::lround(control.best + (control.worst - control.best) * position);
+    aEncOptions.insert(control.option, QString::number(value));
+    if (aBucket == QualityBucket::Lossless && aNotes) {
+        // The knob exists precisely because the codec is lossy (the table's own
+        // rule: no knob means nothing to trade). Asking for lossless cannot be
+        // honoured, so say so instead of quietly delivering the best lossy setting.
+        *aNotes << QStringLiteral(
+            "'%1' is a lossy codec, so Lossless here means its highest quality, "
+            "not a lossless file.").arg(aCodec);
+    }
+    return true;
+}
+
+
+QString qualityKnobFor(const QString& aCodec) {
+    return ExportTargets::loadQualityControl().value(aCodec).option;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -899,38 +936,7 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     // media::VideoEncoder::Config::quality: that shorthands a 0-100 value onto
     // crf for H.264/H.265 only and is ignored for everything else, so it could
     // never have covered WebP or ProRes.
-    {
-        const QString codecKey = plan.config.codec;
-        const QHash<QString, QualityControl> controls = ExportTargets::loadQualityControl();
-        const QualityControl control = controls.value(codecKey);
-        const QHash<QString, double> positions = ExportTargets::loadBucketPositions();
-        const QString bucket = QString::fromUtf8(bucketName(aBucket));
-
-        if (!control.option.isEmpty()) {
-            if (!positions.contains(bucket)) {
-                // A table without the policy cannot apply the intent, and saying
-                // nothing would put us back where this started: a control that
-                // looks like a decision and is not one.
-                plan.notes << QStringLiteral(
-                    "Quality intent not applied: the destination table declares no "
-                    "<bucket_positions>, so '%1' was left at its own default.").arg(codecKey);
-            } else {
-                const double position = positions.value(bucket);
-                const int value = (int)std::lround(control.best
-                                                   + (control.worst - control.best) * position);
-                plan.config.encOptions.insert(control.option, QString::number(value));
-                if (aBucket == QualityBucket::Lossless) {
-                    // The knob exists precisely because the codec is lossy (the
-                    // table's own rule: no knob means nothing to trade). Asking
-                    // for lossless cannot be honoured, so say so instead of
-                    // quietly delivering the best lossy setting.
-                    plan.notes << QStringLiteral(
-                        "'%1' is a lossy codec, so Lossless here means its highest "
-                        "quality, not a lossless file.").arg(codecKey);
-                }
-            }
-        }
-    }
+    applyQualityIntent(plan.config.codec, aBucket, plan.config.encOptions, &plan.notes);
     // Enforce the audio capability here, not by convention. Telegram rejects a
     // video sticker that carries an audio stream, so a forbidden capability has
     // to actively strip the audio config rather than rely on the caller

@@ -361,6 +361,26 @@ public:
     static QHash<QString, double> loadBucketPositions(const QString& aPath = defaultPath());
 };
 
+// The user's quality intent, applied through the codec's OWN knob ('crf' for the
+// x264/x265/VP9/AV1 families, 'quality' for WebP): writes aEncOptions[option] and
+// returns true. Returns false when the codec has no knob in the table, in which
+// case there is nothing to trade and nothing is written.
+//
+// Shared by planExport() and by the export dialog's manual mode, so "Balanced"
+// cannot mean two different things depending on whether the user picked a
+// destination. Before this, only the destination path applied the intent at all:
+// the Quality control was inert in manual mode, and manual video exports went out
+// at whatever bitrate the old Bitrate field happened to say.
+//
+// aNotes receives the honest caveats (a table with no <bucket_positions>, or
+// "Lossless" asked of a lossy codec).
+bool applyQualityIntent(const QString& aCodec, QualityBucket aBucket,
+                        QMap<QString, QString>& aEncOptions, QStringList* aNotes = nullptr);
+
+// The knob a codec trades quality with ("crf", "quality"), or empty when it has
+// none. For a control that must name what it is about to set.
+QString qualityKnobFor(const QString& aCodec);
+
 // The human name of a `platform` value ("apple" -> "macOS"). The table stores a
 // token; a menu must not show the token, which reads as a missing feature rather
 // than a platform requirement.

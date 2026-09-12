@@ -69,6 +69,10 @@ public:
     void onTabCloseAllRequested();
     void onTabCopyPathRequested(core::Project&);
     void onExportTriggered();
+    // The export form itself, after the destination question has been answered.
+    // An empty aDestinationId is "my platform isn't listed", which is the only mode
+    // where the container and codec are the user's to choose.
+    void openExportDialog(const QString& aDestinationId);
     // "Quickly export as...": choose a destination, then export with no further
     // dialogs (the output folder is remembered per destination).
     void onQuickExportTriggered();

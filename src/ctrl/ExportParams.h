@@ -72,7 +72,13 @@ struct GeneralParams {
     targetRatio aspectRatio = keep;
     int nativeFPS = 24;
     int fps = 24;
+    // Bitrate is only for a codec with no quality knob at all (ProRes, FFV1,
+    // MJPEG); for everything else the knob below carries the user's intent.
     int bitrate = 0;
+    // The explicit value for the codec's own quality knob (CRF for the
+    // x264/x265/VP9/AV1 families, "quality" for WebP), or -1 for "the quality
+    // level decides". The dialog's Advanced section is the only writer.
+    int qualityOverride = -1;
     bool allowTransparency = true;
     bool loop = true;
     bool exportWithAudio = false;

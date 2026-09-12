@@ -43,14 +43,12 @@ QT_BEGIN_NAMESPACE
 class ExportWidgetUI {
 public:
     QVBoxLayout *verticalLayout_2;
-    QVBoxLayout *tabVBox;
-    QTabWidget *settingsTab;
     QWidget *globalParam;
     QVBoxLayout *verticalLayout_3;
     QScrollArea *globalParamScroll;
     QWidget *globalParamScrollContents;
     QGridLayout *gridLayout_2;
-    QRadioButton *keepAspectRatio;
+    QCheckBox *keepAspectRatio;   // the size link: does Width move Height?
     QLabel *lastFrameLabel;
     QLabel *formatLabel;
     QLabel *codecLabel;
@@ -77,7 +75,6 @@ public:
 
     QWidget *destinationBox;
     QGridLayout *destinationGrid;
-    QRadioButton *customRatio;
     QPushButton *insertFrameRangeButton;
     QPushButton *removeFrameRangeButton;
     QFrame *exportLine1;
@@ -85,7 +82,6 @@ public:
     QSpinBox *firstFrameSpinBox;
     QSpinBox *heightSpinBox;
     QLabel *widthLabel;
-    QRadioButton *oneToOneRatio;
     QPushButton *setWidthNative;
     QFrame *renderLine1;
     QFrame *exportLine2;
@@ -110,6 +106,19 @@ public:
     QLabel *bitrateLabel;
     QLabel *imageQualityLabel;
     QSpinBox *imageQualitySpinbox;
+    // The codec's own quality value, for a user who wants to name it instead of
+    // naming an intent. -1 = Auto, drawn as the word by setSpecialValueText, and
+    // only offered when the selected codec HAS such a knob (see
+    // qualityOverrideKnob()): a CRF box beside WebP, whose knob is 'quality'
+    // 0-100, would be a control named after the wrong number.
+    QLabel *qualityOverrideLabel;
+    QSpinBox *qualityOverrideSpin;
+    QPushButton *setQualityOverrideAuto;
+    // Everything an ordinary user cannot be asked: the artifact's capabilities
+    // and the encoder's own numbers. One disclosure, collapsed by default.
+    QToolButton *advancedToggle;
+    QWidget *advancedBox;
+    QGridLayout *advancedGrid;
     QPushButton *setImageQualityToAuto;
     QSpinBox * fpsSpinBox;
     QToolButton *selectPalettePathButton;
@@ -182,7 +191,7 @@ public:
         mPlayhead = aPlayhead;
         if (exportWidget->objectName().isEmpty())
             exportWidget->setObjectName(QString::fromUtf8("exportWidget"));
-        exportWidget->resize(550, 700);
+        exportWidget->resize(550, 640);
         // NOTE: the height stays 700 on purpose. Growing the window was tried and
         // reverted: it moves the Export and Cancel buttons, which is a worse
         // trade than the two real fixes below (a bounded, scrolling facts box and
@@ -195,12 +204,6 @@ public:
         exportWidget->setSizePolicy(sizePolicy);
         verticalLayout_2 = new QVBoxLayout(exportWidget);
         verticalLayout_2->setObjectName(QString::fromUtf8("verticalLayout_2"));
-        tabVBox = new QVBoxLayout();
-        tabVBox->setSpacing(7);
-        tabVBox->setObjectName(QString::fromUtf8("tabVBox"));
-        settingsTab = new QTabWidget(exportWidget);
-        settingsTab->setObjectName(QString::fromUtf8("settingsTab"));
-        settingsTab->setTabShape(QTabWidget::Rounded);
         globalParam = new QWidget();
         globalParam->setObjectName(QString::fromUtf8("globalParam"));
         verticalLayout_3 = new QVBoxLayout(globalParam);
@@ -222,11 +225,17 @@ public:
         gridLayout_2->setObjectName(QString::fromUtf8("gridLayout_2"));
 
 
-        keepAspectRatio = new QRadioButton(globalParamScrollContents);
+        // A CHECKBOX, not one of three radios. "One-to-one" and "Custom" were the
+        // original dialog's other two size-LINK modes (change both boxes by the same
+        // delta / by nothing at all), and the value they set - GeneralParams::
+        // aspectRatio - is written by MainWindow and read by nothing at all. What is
+        // left after removing dead data is the one question that has an answer in
+        // the export: does editing Width move Height?
+        keepAspectRatio = new QCheckBox(globalParamScrollContents);
         keepAspectRatio->setObjectName(QString::fromUtf8("keepAspectRatio"));
         keepAspectRatio->setChecked(true);
 
-        gridLayout_2->addWidget(keepAspectRatio, 5, 1, 1, 1);
+        gridLayout_2->addWidget(keepAspectRatio, 6, 1, 1, 2);
 
         lastFrameLabel = new QLabel(globalParamScrollContents);
         lastFrameLabel->setObjectName(QString::fromUtf8("lastFrameLabel"));
@@ -236,18 +245,13 @@ public:
         sizePolicy1.setHeightForWidth(lastFrameLabel->sizePolicy().hasHeightForWidth());
         lastFrameLabel->setSizePolicy(sizePolicy1);
 
-        gridLayout_2->addWidget(lastFrameLabel, 22, 2, 1, 1);
+        gridLayout_2->addWidget(lastFrameLabel, 1, 2, 1, 1);
 
         formatLabel = new QLabel(globalParamScrollContents);
         formatLabel->setObjectName(QString::fromUtf8("formatLabel"));
 
         gridLayout_2->addWidget(formatLabel, 9, 0, 1, 1);
 
-
-        customRatio = new QRadioButton(globalParamScrollContents);
-        customRatio->setObjectName(QString::fromUtf8("customRatio"));
-
-        gridLayout_2->addWidget(customRatio, 5, 2, 1, 1);
 
         insertFrameRangeButton = new QPushButton(globalParamScrollContents);
         insertFrameRangeButton->setObjectName(QString::fromUtf8("insertFrameRangeButton"));
@@ -259,7 +263,7 @@ public:
         QIcon icon = aResources.icon("plus-bold");
         insertFrameRangeButton->setIcon(icon);
 
-        gridLayout_2->addWidget(insertFrameRangeButton, 23, 0, 1, 1);
+        gridLayout_2->addWidget(insertFrameRangeButton, 2, 0, 1, 1);
 
         QWidget::connect(insertFrameRangeButton, &QPushButton::clicked, [=]{addRange(projectLastFrame);});
 
@@ -269,7 +273,7 @@ public:
         QIcon rfIcon = aResources.icon("minus-bold");
         removeFrameRangeButton->setIcon(rfIcon);
 
-        gridLayout_2->addWidget(removeFrameRangeButton, 24, 0, 1, 1);
+        gridLayout_2->addWidget(removeFrameRangeButton, 3, 0, 1, 1);
 
         QWidget::connect(removeFrameRangeButton, &QPushButton::clicked, [=]{removeRange(projectLastFrame);});
 
@@ -296,7 +300,7 @@ public:
         sizePolicy3.setHeightForWidth(firstFrameSpinBox->sizePolicy().hasHeightForWidth());
         firstFrameSpinBox->setSizePolicy(sizePolicy3);
 
-        gridLayout_2->addWidget(firstFrameSpinBox, 23, 1, 1, 1);
+        gridLayout_2->addWidget(firstFrameSpinBox, 2, 1, 1, 1);
 
         initialFrames->append(firstFrameSpinBox);
 
@@ -305,7 +309,7 @@ public:
         heightSpinBox->setMaximum(INT32_MAX);
         heightSpinBox->setMinimum(0);
 
-        gridLayout_2->addWidget(heightSpinBox, 4, 1, 1, 1);
+        gridLayout_2->addWidget(heightSpinBox, 5, 1, 1, 1);
 
 
 
@@ -317,20 +321,14 @@ public:
         sizePolicy4.setHeightForWidth(widthLabel->sizePolicy().hasHeightForWidth());
         widthLabel->setSizePolicy(sizePolicy4);
 
-        gridLayout_2->addWidget(widthLabel, 3, 0, 1, 1);
-
-        oneToOneRatio = new QRadioButton(globalParamScrollContents);
-        oneToOneRatio->setObjectName(QString::fromUtf8("oneToOneRatio"));
-        oneToOneRatio->setChecked(false);
-
-        gridLayout_2->addWidget(oneToOneRatio, 5, 0, 1, 1);
+        gridLayout_2->addWidget(widthLabel, 4, 0, 1, 1);
 
         setWidthNative = new QPushButton(globalParamScrollContents);
         setWidthNative->setObjectName(QString::fromUtf8("setWidthNative"));
         QIcon icon1 = aResources.icon("arrow-clockwise");
         setWidthNative->setIcon(icon1);
 
-        gridLayout_2->addWidget(setWidthNative, 3, 2, 1, 1);
+        gridLayout_2->addWidget(setWidthNative, 4, 2, 1, 1);
 
         renderLine1 = new QFrame(globalParamScrollContents);
         renderLine1->setObjectName(QString::fromUtf8("renderLine1"));
@@ -339,7 +337,7 @@ public:
         renderLine1->setFrameShape(QFrame::HLine);
         renderLine1->setFrameShadow(QFrame::Sunken);
 
-        gridLayout_2->addWidget(renderLine1, 2, 0, 1, 1);
+        gridLayout_2->addWidget(renderLine1, 0, 0, 1, 1);
 
         exportLine2 = new QFrame(globalParamScrollContents);
         exportLine2->setObjectName(QString::fromUtf8("exportLine2"));
@@ -361,14 +359,14 @@ public:
         widthSpinBox->setMaximum(INT32_MAX);
         widthSpinBox->setMinimum(0);
 
-        gridLayout_2->addWidget(widthSpinBox, 3, 1, 1, 1);
+        gridLayout_2->addWidget(widthSpinBox, 4, 1, 1, 1);
 
         heightLabel = new QLabel(globalParamScrollContents);
         heightLabel->setObjectName(QString::fromUtf8("heightLabel"));
         sizePolicy4.setHeightForWidth(heightLabel->sizePolicy().hasHeightForWidth());
         heightLabel->setSizePolicy(sizePolicy4);
 
-        gridLayout_2->addWidget(heightLabel, 4, 0, 1, 1);
+        gridLayout_2->addWidget(heightLabel, 5, 0, 1, 1);
 
         exportingLabel = new QLabel(globalParamScrollContents);
         exportingLabel->setObjectName(QString::fromUtf8("exportingLabel"));
@@ -384,12 +382,12 @@ public:
         setHeightNative->setObjectName(QString::fromUtf8("setHeightNative"));
         setHeightNative->setIcon(icon1);
 
-        gridLayout_2->addWidget(setHeightNative, 4, 2, 1, 1);
+        gridLayout_2->addWidget(setHeightNative, 5, 2, 1, 1);
 
         fpsLabel = new QLabel(globalParamScrollContents);
         fpsLabel->setObjectName(QString::fromUtf8("fpsLabel"));
 
-        gridLayout_2->addWidget(fpsLabel, 11, 0, 1, 1);
+        gridLayout_2->addWidget(fpsLabel, 7, 0, 1, 1);
 
         renderingLabel = new QLabel(globalParamScrollContents);
         renderingLabel->setObjectName(QString::fromUtf8("renderingLabel"));
@@ -399,7 +397,7 @@ public:
         sizePolicy7.setHeightForWidth(renderingLabel->sizePolicy().hasHeightForWidth());
         renderingLabel->setSizePolicy(sizePolicy7);
 
-        gridLayout_2->addWidget(renderingLabel, 2, 1, 1, 1);
+        gridLayout_2->addWidget(renderingLabel, 0, 1, 1, 1);
 
         // The escape hatch: the artifact, for a user who has no destination in
         // mind. This is the ONE place a format is genuinely the user's choice,
@@ -446,7 +444,7 @@ public:
         sizePolicy3.setHeightForWidth(lastFrameSpinBox->sizePolicy().hasHeightForWidth());
         lastFrameSpinBox->setSizePolicy(sizePolicy3);
 
-        gridLayout_2->addWidget(lastFrameSpinBox, 23, 2, 1, 1);
+        gridLayout_2->addWidget(lastFrameSpinBox, 2, 2, 1, 1);
 
         lastFrames->append(lastFrameSpinBox);
 
@@ -458,8 +456,7 @@ public:
         imageQualitySpinbox->setRange(-1, 100);
         imageQualitySpinbox->setValue(-1);
 
-        gridLayout_2->addWidget(bitrateLineEdit, 12, 1, 1, 1);
-        gridLayout_2->addWidget(imageQualitySpinbox, 13, 1, 1, 1);
+        gridLayout_2->addWidget(imageQualitySpinbox, 12, 1, 1, 1);
 
         setBitrateAuto = new QPushButton(globalParamScrollContents);
         setBitrateAuto->setObjectName(QString::fromUtf8("setBitrateAuto"));
@@ -469,8 +466,7 @@ public:
 
         setImageQualityToAuto->setIcon(icon1);
         setBitrateAuto->setIcon(icon1);
-        gridLayout_2->addWidget(setBitrateAuto, 12, 2, 1, 1);
-        gridLayout_2->addWidget(setImageQualityToAuto, 13, 2, 1, 1);
+        gridLayout_2->addWidget(setImageQualityToAuto, 12, 2, 1, 1);
 
         QWidget::connect(setBitrateAuto, &QPushButton::clicked,
                          [=]{bitrateLineEdit->setText("Auto");});
@@ -482,7 +478,7 @@ public:
         sizePolicy7.setHeightForWidth(renderedFramesLabel->sizePolicy().hasHeightForWidth());
         renderedFramesLabel->setSizePolicy(sizePolicy7);
 
-        gridLayout_2->addWidget(renderedFramesLabel, 22, 0, 1, 1);
+        gridLayout_2->addWidget(renderedFramesLabel, 1, 0, 1, 1);
 
         renderLine2 = new QFrame(globalParamScrollContents);
         renderLine2->setObjectName(QString::fromUtf8("renderLine2"));
@@ -491,24 +487,24 @@ public:
         renderLine2->setFrameShape(QFrame::HLine);
         renderLine2->setFrameShadow(QFrame::Sunken);
 
-        gridLayout_2->addWidget(renderLine2, 2, 2, 1, 1);
+        gridLayout_2->addWidget(renderLine2, 0, 2, 1, 1);
 
         firstFrameLabel = new QLabel(globalParamScrollContents);
         firstFrameLabel->setObjectName(QString::fromUtf8("firstFrameLabel"));
         sizePolicy1.setHeightForWidth(firstFrameLabel->sizePolicy().hasHeightForWidth());
         firstFrameLabel->setSizePolicy(sizePolicy1);
 
-        gridLayout_2->addWidget(firstFrameLabel, 22, 1, 1, 1);
+        gridLayout_2->addWidget(firstFrameLabel, 1, 1, 1, 1);
 
         bitrateLabel = new QLabel(globalParamScrollContents);
         bitrateLabel->setObjectName(QString::fromUtf8("bitrateLabel"));
 
-        gridLayout_2->addWidget(bitrateLabel, 12, 0, 1, 1);
+        
 
         imageQualityLabel = new QLabel(globalParamScrollContents);
         imageQualityLabel->setObjectName(QString::fromUtf8("imageQualityLabel"));
 
-        gridLayout_2->addWidget(imageQualityLabel, 13, 0, 1, 1);
+        gridLayout_2->addWidget(imageQualityLabel, 12, 0, 1, 1);
 
 
 
@@ -518,13 +514,13 @@ public:
         fpsSpinBox->setMinimum(1);
         fpsSpinBox->setMaximum(INT32_MAX);
 
-        gridLayout_2->addWidget(fpsSpinBox, 11, 1, 1, 1);
+        gridLayout_2->addWidget(fpsSpinBox, 7, 1, 1, 1);
 
         setFPSNative = new QPushButton(globalParamScrollContents);
         setFPSNative->setObjectName(QString::fromUtf8("setFPSNative"));
         setFPSNative->setIcon(icon1);
 
-        gridLayout_2->addWidget(setFPSNative, 11, 2, 1, 1);
+        gridLayout_2->addWidget(setFPSNative, 7, 2, 1, 1);
 
 
         selectPalettePathButton = new QToolButton(globalParamScrollContents);
@@ -543,6 +539,74 @@ public:
                              QString lbl = QFileInfo(paletteDir.absolutePath()).fileName();
                              selectPalettePathButton->setText(lbl);
                          });
+
+        // ---- one disclosure for the encoder's own numbers -------------------
+        // Collapsed by default: this is the only place the artifact's capabilities
+        // (transparency, looping, audio, palette) and the encoder's raw values live.
+        // The old form showed all of them at once, whatever artifact was selected,
+        // under labels like "Bitrate (kB/s)" and "Image quality" - so an MP4 export
+        // offered Image quality (that is the still-image writer's setting; the video
+        // encoder never sees it) and a JPEG sequence offered Bitrate (the stills
+        // path never sees that either). Neither was ever hidden or disabled by the
+        // format, only by whether a destination had been chosen.
+        advancedToggle = new QToolButton(globalParamScrollContents);
+        advancedToggle->setObjectName(QString::fromUtf8("advancedToggle"));
+        advancedToggle->setCheckable(true);
+        advancedToggle->setChecked(false);
+        advancedToggle->setArrowType(Qt::RightArrow);
+        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        advancedToggle->setAutoRaise(true);
+        gridLayout_2->addWidget(advancedToggle, 13, 0, 1, 3);
+
+        advancedBox = new QWidget(globalParamScrollContents);
+        advancedBox->setObjectName(QString::fromUtf8("advancedBox"));
+        // The leftover height of the dialog goes BELOW the form, not into every
+        // row of it. Without this the grid has no stretching member, so
+        // setWidgetResizable() hands the slack to all thirteen rows: collapsing
+        // Advanced moved the Format row 100px down the panel and every control
+        // changed position when the section was opened or closed.
+        gridLayout_2->setRowStretch(15, 1);
+        advancedGrid = new QGridLayout(advancedBox);
+        advancedGrid->setObjectName(QString::fromUtf8("advancedGrid"));
+        advancedGrid->setContentsMargins(0, 0, 0, 0);
+        advancedBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        gridLayout_2->addWidget(advancedBox, 14, 0, 1, 3);
+        advancedBox->setVisible(false); // collapsed until asked
+        QWidget::connect(advancedToggle, &QToolButton::toggled, [=](bool aOn) {
+            advancedBox->setVisible(aOn);
+            advancedToggle->setArrowType(aOn ? Qt::DownArrow : Qt::RightArrow);
+        });
+
+        advancedGrid->addWidget(transparencyCheckBox, 0, 0, 1, 3);
+        advancedGrid->addWidget(loopCheckBox, 1, 0, 1, 1);
+        advancedGrid->addWidget(exportWithAudioCheckBox, 1, 1, 1, 2);
+        advancedGrid->addWidget(customPaletteCheckBox, 2, 0, 1, 1);
+        advancedGrid->addWidget(selectPalettePathButton, 2, 1, 1, 2);
+
+        // The codec's own value, for a user who knows the number they want instead
+        // of the intent. -1 is drawn as the word "Auto" by setSpecialValueText, and
+        // the row is only offered when the selected codec HAS such a knob.
+        qualityOverrideLabel = new QLabel(advancedBox);
+        qualityOverrideLabel->setObjectName(QString::fromUtf8("qualityOverrideLabel"));
+        qualityOverrideSpin = new QSpinBox(advancedBox);
+        qualityOverrideSpin->setObjectName(QString::fromUtf8("qualityOverrideSpin"));
+        qualityOverrideSpin->setRange(-1, 100);
+        qualityOverrideSpin->setSpecialValueText(tr("Auto"));
+        qualityOverrideSpin->setValue(-1);
+        setQualityOverrideAuto = new QPushButton(advancedBox);
+        setQualityOverrideAuto->setObjectName(QString::fromUtf8("setQualityOverrideAuto"));
+        setQualityOverrideAuto->setIcon(icon1);
+        advancedGrid->addWidget(qualityOverrideLabel, 3, 0, 1, 1);
+        advancedGrid->addWidget(qualityOverrideSpin, 3, 1, 1, 1);
+        advancedGrid->addWidget(setQualityOverrideAuto, 3, 2, 1, 1);
+        QWidget::connect(setQualityOverrideAuto, &QPushButton::clicked,
+                         [=]{ qualityOverrideSpin->setValue(-1); });
+
+        // Bitrate is here for the codecs that have NO quality knob at all, and it is
+        // hidden for the ones that do (see applyArtifactConstraints).
+        advancedGrid->addWidget(bitrateLabel, 4, 0, 1, 1);
+        advancedGrid->addWidget(bitrateLineEdit, 4, 1, 1, 1);
+        advancedGrid->addWidget(setBitrateAuto, 4, 2, 1, 1);
 
         globalParamScroll->setWidget(globalParamScrollContents);
 
@@ -565,17 +629,22 @@ public:
         destinationButton->setToolTip(tr("Choose where this is going"));
         destinationGrid->addWidget(destinationButton, 0, 1, 1, 1);
 
-        qualityLabel = new QLabel(destinationBox);
+        // The quality intent is part of "how to encode", not of "where it is
+        // going": it is the one control that means the same thing with and without
+        // a destination (both routes now apply it through the codec's own knob),
+        // so it sits with the codec whose knob it sets rather than in the
+        // destination row.
+        qualityLabel = new QLabel(globalParamScrollContents);
         qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
-        destinationGrid->addWidget(qualityLabel, 1, 0, 1, 1);
+        gridLayout_2->addWidget(qualityLabel, 11, 0, 1, 1);
 
-        qualityCombo = new QComboBox(destinationBox);
+        qualityCombo = new QComboBox(globalParamScrollContents);
         qualityCombo->setObjectName(QString::fromUtf8("qualityCombo"));
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
         qualityCombo->addItem(QString());
-        destinationGrid->addWidget(qualityCombo, 1, 1, 1, 1);
+        gridLayout_2->addWidget(qualityCombo, 11, 1, 1, 2);
 
         // What the destination requires, in words. Filled by MainWindow from
         // planExport(): the codec it resolved and why, the size it forces, and
@@ -615,17 +684,20 @@ public:
         destinationFactsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         destinationFactsScroll->setMaximumHeight(kFactsMaxLines
                                                  * destinationFacts->fontMetrics().lineSpacing());
+        // ...and it must NOT absorb the dialog's leftover height. A QScrollArea
+        // expands by default, so with three lines of facts in a 700px dialog the box
+        // grew to whatever was left over and printed them at the top of a hand's
+        // width of empty panel. Maximum: its sizeHint (floored by the label's
+        // minimumHeight above) is a ceiling, not a target.
+        destinationFactsScroll->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
         destinationFactsScroll->setFocusPolicy(Qt::NoFocus);
         destinationGrid->addWidget(destinationFactsScroll, 2, 0, 1, 2);
 
         verticalLayout_3->addWidget(globalParamScroll);
 
-        settingsTab->addTab(globalParam, QString());
-
-        tabVBox->addWidget(settingsTab);
-
-
-        verticalLayout_2->addLayout(tabVBox);
+        // No QTabWidget: it had exactly one tab ("General Parameters"), so the tab
+        // bar was a row of chrome that announced a choice the user did not have.
+        verticalLayout_2->addWidget(globalParam);
 
         exportLayout = new QHBoxLayout();
         exportLayout->setObjectName(QString::fromUtf8("exportLayout"));
@@ -655,10 +727,7 @@ public:
                 return;
             }
             mSizeUpdating = true;
-            if(oneToOneRatio->isChecked()){
-                heightSpinBox->setValue(heightSpinBox->value() + (aValue - latestWidth));
-            }
-            else if(keepAspectRatio->isChecked()) {
+            if(keepAspectRatio->isChecked()) {
                 int res = (nativeH * aValue) / nativeW;
                 heightSpinBox->setValue(res % 2? res + 1 : res);
             }
@@ -673,10 +742,7 @@ public:
                 return;
             }
             mSizeUpdating = true;
-            if(oneToOneRatio->isChecked()){
-                widthSpinBox->setValue(widthSpinBox->value() + (aValue - latestHeight));
-            }
-            else if(keepAspectRatio->isChecked()) {
+            if(keepAspectRatio->isChecked()) {
                 int res = (nativeW * aValue) / nativeH;
                 widthSpinBox->setValue(res % 2? res + 1: res);
             }
@@ -684,9 +750,6 @@ public:
             latestWidth = widthSpinBox->value();
             mSizeUpdating = false;
         });
-
-        settingsTab->setCurrentIndex(0);
-
 
         QMetaObject::connectSlotsByName(exportWidget);
     } // setupUi
@@ -802,14 +865,112 @@ public:
                                 && media::ffmpeg::containerCarriesAudio(id);
         exportWithAudioCheckBox->setChecked(audioPossible ? mPreArtifact.audio : false);
         exportWithAudioCheckBox->setEnabled(audioPossible);
+        // ...and it is not shown at all when the format cannot carry a stream: a
+        // greyed "Export with audio" beside a GIF reads as a setting that is
+        // temporarily unavailable rather than one that does not exist.
+        setVisible({exportWithAudioCheckBox}, audioPossible);
+
+        // --- what this artifact cannot use is HIDDEN, not greyed -------------
+        // The two states this function used to know were "a destination is chosen"
+        // and "manual", and manual meant EVERY control was enabled, whatever format
+        // was selected: an MP4 export showed "Image quality" (the still-image
+        // writer's setting - the video encoder never sees it), a JPEG sequence
+        // showed "Bitrate (kB/s)" and an empty disabled "Codec" combo, and a WebP
+        // animation showed a palette box. A control that cannot affect the file is
+        // not information, and greying it out is not hiding it.
+        const bool isVideo = !isGif && !isSequence;
+        const QString knob = encoderQualityKnob();
+
+        // Which frames and what size belong to the project; these never go away.
+        setVisible({renderedFramesLabel, firstFrameLabel, lastFrameLabel,
+                    insertFrameRangeButton, removeFrameRangeButton, firstFrameSpinBox,
+                    lastFrameSpinBox},
+                   true);
+
+        // Codec: a real decision only when the container can carry more than one,
+        // and none at all for a directory of stills, which Qt writes.
+        setVisible({codecLabel, codecCombo}, !isSequence && codecCombo->count() > 1);
+
+        // Image quality is QImage::save()'s setting, so it belongs to the formats
+        // that go through QImage::save().
+        setVisible({imageQualityLabel, imageQualitySpinbox, setImageQualityToAuto}, isSequence);
+
+        // The codec's own value. Both halves have to hold: the codec must HAVE a
+        // knob, and the export must go through the video encoder that honours it.
+        // GIF has one in the table (its palette size) and does not honour it here:
+        // the palette is the FIT loop's lever, not a thing a plain export sets.
+        const bool knobUsable = isVideo && !knob.isEmpty();
+        setVisible({qualityOverrideLabel, qualityOverrideSpin, setQualityOverrideAuto}, knobUsable);
+        if (knobUsable) {
+            // Ranged to the codec's own span, and named after its own knob: "CRF"
+            // counts down from 0 and WebP's "quality" counts up from 100, so a
+            // control labelled with the wrong one is worse than no control.
+            const ctrl::QualityControl control = qualityControl();
+            qualityOverrideSpin->setRange(std::min(control.best, control.worst),
+                                          std::max(control.best, control.worst));
+            qualityOverrideLabel->setText(knob == QLatin1String("crf") ? tr("CRF:")
+                                                                       : tr("Quality:"));
+        }
+
+        // The quality INTENT is the codec's knob seen from further away, so it goes
+        // with it: for a sequence of stills, QImage::save()'s own number is the
+        // control, and "Balanced" beside it sets nothing at all.
+        setVisible({qualityLabel, qualityCombo}, !isSequence);
+
+        // Bitrate is what is left when there is no quality knob to turn (ProRes,
+        // FFV1, MJPEG). Offering both is offering two answers to one question.
+        setVisible({bitrateLabel, bitrateLineEdit, setBitrateAuto}, isVideo && knob.isEmpty());
+
+        // Transparency: a codec that cannot carry alpha must not offer to. The
+        // facts box already says so in words; a ticked box beside them reads as a
+        // promise the encoder has already been proven unable to keep.
+        setVisible({transparencyCheckBox}, selectedCodecCarriesAlpha());
+
+        // Looping is GIF's own extension. For a container it is the PLAYER's
+        // business, and exportProject() only ever passes it to the GIF writer, so
+        // "Loop animation" beside MP4 was a decision about nothing.
+        setVisible({loopCheckBox}, isGif);
+
+        // The palette is GIF's, and the path button is meaningless without the box.
+        setVisible({customPaletteCheckBox, selectPalettePathButton}, isGif);
+
+        // The disclosure itself: an empty Advanced section is a dead end, so it is
+        // only offered when something inside it applies to this artifact.
+        advancedToggle->setVisible(exportWithAudioCheckBox->isVisible()
+                                   || transparencyCheckBox->isVisible()
+                                   || loopCheckBox->isVisible()
+                                   || customPaletteCheckBox->isVisible()
+                                   || knobUsable
+                                   || (isVideo && knob.isEmpty()));
+        advancedBox->setVisible(advancedToggle->isVisible() && advancedToggle->isChecked());
     }
+
+    // The codec the current artifact would actually encode with: the manual combo's
+    // choice, or the container's probed default when the user left Codec alone.
+    // Empty for the artifacts no video encoder touches (GIF, a still sequence),
+    // whose "quality knob" is not a thing this dialog can set.
+    QString selectedCodecKey() const {
+        const QString id = formatCombo->currentData().toString();
+        if (id.startsWith(QLatin1String("image/")) || id == QLatin1String("gif"))
+            return QString();
+        const QString chosen = codecCombo->currentData().toString();
+        return chosen.isEmpty() ? media::ffmpeg::defaultCodecForContainer(id) : chosen;
+    }
+
+    ctrl::QualityControl qualityControl() const {
+        return ctrl::ExportTargets::loadQualityControl().value(selectedCodecKey());
+    }
+
+    QString encoderQualityKnob() const { return qualityControl().option; }
 
     // Whether the codec currently selected can carry alpha HERE. Asked of the
     // probe, not of a table: libx265 lists yuva420p and refuses to open with it.
     bool selectedCodecCarriesAlpha() const {
         const QString id = formatCombo->currentData().toString();
-        if (id.startsWith(QLatin1String("image/")))
-            return true; // PNG carries alpha; the JPEG case is stated in words
+        if (id == QLatin1String("image/png"))
+            return true;
+        if (id == QLatin1String("image/jpg"))
+            return false; // JPEG has no alpha channel at all
         if (id == QLatin1String("gif"))
             return true;
         const QString codec = codecCombo->currentData().toString();
@@ -912,7 +1073,7 @@ public:
         }
         mLastSizeDictated = !sizeIsUsers;
         setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
-                    setHeightNative, oneToOneRatio, keepAspectRatio, customRatio},
+                    setHeightNative, keepAspectRatio},
                    sizeIsUsers);
 
         // --- fps: bounded, not dictated -------------------------------------
@@ -943,8 +1104,14 @@ public:
         // which is where they are the decision (same rule as the axes above).
         setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
-                    setImageQualityToAuto},
+                    setImageQualityToAuto, qualityOverrideLabel, qualityOverrideSpin,
+                    setQualityOverrideAuto},
                    false);
+        // The disclosure closes with everything inside it frozen: a destination
+        // states the artifact and its capabilities, so the section would otherwise
+        // open onto four greyed boxes that repeat the facts above them.
+        advancedToggle->setChecked(false);
+        advancedToggle->setVisible(false);
 
         // --- palette: only a GIF has one ------------------------------------
         // media::GifEncoder owns the palette; every other codec ignores it
@@ -1017,14 +1184,16 @@ public:
     void clearPlan() {
         setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
-                    setImageQualityToAuto},
+                    setImageQualityToAuto, qualityOverrideLabel, qualityOverrideSpin,
+                    setQualityOverrideAuto, advancedToggle},
                    true);
         writeSize(mUserSizeKnown ? mUserSize : QSize(nativeW, nativeH));
         mLastSizeDictated = false;
         setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
-                    setHeightNative, oneToOneRatio, keepAspectRatio, customRatio, bitrateLabel,
+                    setHeightNative, keepAspectRatio, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
-                    setImageQualityToAuto, transparencyCheckBox, loopCheckBox,
+                    setImageQualityToAuto, qualityOverrideLabel, qualityOverrideSpin,
+                    setQualityOverrideAuto, transparencyCheckBox, loopCheckBox,
                     exportWithAudioCheckBox, customPaletteCheckBox, formatCombo, codecCombo},
                    true);
         restoreManualState();
@@ -1188,31 +1357,41 @@ public:
         qualityCombo->setItemText(1, QCoreApplication::translate("exportWidget", "Balanced", nullptr));
         qualityCombo->setItemText(2, QCoreApplication::translate("exportWidget", "Best quality", nullptr));
         qualityCombo->setItemText(3, QCoreApplication::translate("exportWidget", "Lossless", nullptr));
-        customRatio->setText(QCoreApplication::translate("exportWidget", "Custom", nullptr));
+
         insertFrameRangeButton->setText(QCoreApplication::translate("exportWidget", "Insert range", nullptr));
         removeFrameRangeButton->setText(QCoreApplication::translate("exportWidget", "Remove range", nullptr));
         customPaletteCheckBox->setText(QCoreApplication::translate("exportWidget", "Custom palette", nullptr));
         widthLabel->setText(QCoreApplication::translate("exportWidget", "Width: ", nullptr));
-        oneToOneRatio->setText(QCoreApplication::translate("exportWidget", "One-to-one", nullptr));
+
         setWidthNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
         heightLabel->setText(QCoreApplication::translate("exportWidget", "Height:", nullptr));
-        exportingLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Exporting</p></body></html>", nullptr));
+        exportingLabel->setText(QCoreApplication::translate("exportWidget", "How to encode", nullptr));
         setHeightNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
         fpsLabel->setText(QCoreApplication::translate("exportWidget", "FPS:", nullptr));
-        renderingLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">Rendering</p></body></html>", nullptr));
+        renderingLabel->setText(QCoreApplication::translate("exportWidget", "What to export", nullptr));
         setFPSNative->setText(QCoreApplication::translate("exportWidget", "Set to native", nullptr));
         transparencyCheckBox->setText(QCoreApplication::translate("exportWidget", "Export with transparency", nullptr));
         loopCheckBox->setText(QCoreApplication::translate("exportWidget", "Loop animation", nullptr));
         exportWithAudioCheckBox->setText(QCoreApplication::translate("exportWidget", "Export with audio", nullptr));
         bitrateLineEdit->setPlaceholderText(QCoreApplication::translate("exportWidget", "Auto", nullptr));
         setBitrateAuto->setText(QCoreApplication::translate("exportWidget", "Set to auto", nullptr));
-        renderedFramesLabel->setText(QCoreApplication::translate("exportWidget", "Frames rendered: ", nullptr));
+        // "Frames rendered" was the legacy label for a row that counts nothing;
+        // the two boxes beside it are the range.
+        renderedFramesLabel->setText(QCoreApplication::translate("exportWidget", "Frame range:", nullptr));
         firstFrameLabel->setText(QCoreApplication::translate("exportWidget", "<html><head/><body><p align=\"center\">- First frame -</p></body></html>", nullptr));
         bitrateLabel->setText(QCoreApplication::translate("exportWidget", "Bitrate (kB/s):", nullptr));
         imageQualityLabel->setText(QCoreApplication::translate("exportWidget", "Image quality:", nullptr));
+        advancedToggle->setText(QCoreApplication::translate("exportWidget", "Advanced", nullptr));
+        // Named by the knob it sets, because the number means nothing without it:
+        // CRF runs backwards from 0 (higher is smaller), WebP's quality runs
+        // forwards from 100. applyArtifactConstraints() rewrites this from the
+        // codec actually selected.
+        qualityOverrideLabel->setText(QCoreApplication::translate("exportWidget", "Quality override:", nullptr));
+        qualityOverrideSpin->setSpecialValueText(QCoreApplication::translate("exportWidget", "Auto", nullptr));
+        setQualityOverrideAuto->setText(QCoreApplication::translate("exportWidget", "Set to auto", nullptr));
         setImageQualityToAuto->setText(QCoreApplication::translate("exportWidget", "Set to auto", nullptr));
         selectPalettePathButton->setText(QCoreApplication::translate("exportWidget", "Select palette path", nullptr));
-        settingsTab->setTabText(settingsTab->indexOf(globalParam), QCoreApplication::translate("exportWidget", "General Parameters", nullptr));
+
 
         // "yuv420p", "yuva420p", "rgb24", "rgba", "bgr24", "bgra", "gray"
 
