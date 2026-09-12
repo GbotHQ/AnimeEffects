@@ -508,6 +508,20 @@ void suiteImageKey() {
         // the chain must be real: level 1 is not a copy of level 0
         expect(vsLevel0 > 30, QString("%1: level 1 must differ from level 0 (delta %2)").arg(label).arg(vsLevel0));
 
+        // ...and the level offset the sampler is given must be the one the policy declares. Read off
+        // the live texture rather than compared against a literal, so this fails if the setting is
+        // dropped while the constant stays.
+        {
+            auto& ggl = gl::Global::functions();
+            GLfloat applied = 0.0f;
+            ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+            ggl.glGetTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, &applied);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            expect(std::fabs(applied - core::ImageKey::layerLodBias()) < 1.0e-6f,
+                QString("%1: the texture must carry the shipped LOD bias (%2), got %3")
+                    .arg(label).arg(core::ImageKey::layerLodBias(), 0, 'f', 2).arg(applied, 0, 'f', 2));
+        }
+
         // THE HALO ASSERTION on the production texture: the visible result must be the
         // silhouette color scaled by coverage, never the transparent region's color
         double worstHalo = 0.0;
@@ -692,7 +706,7 @@ void clearRenderFixtures() { renderFixtures().clear(); }
 
 std::vector<uint8_t> renderLayer(
     const QSize& aCanvas, const Img& aImage, float aScale, img::BlendMode aMode,
-    const uint8_t aBackdrop[3] = nullptr
+    const uint8_t aBackdrop[3] = nullptr, float aLodBias = 0.0f
 ) {
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
@@ -708,11 +722,29 @@ std::vector<uint8_t> renderLayer(
     auto* root = new core::FolderNode("root");
     tree.grabTopNode(root);
     auto* res = makeResource(QString("mip_src_%1").arg((int)aImage.d[0]), aImage);
-    addScaledLayer(tree, root, res, "layer", QVector2D(aCanvas.width() * 0.5f, aCanvas.height() * 0.5f), aScale, aMode);
+    auto* layer =
+        addScaledLayer(tree, root, res, "layer",
+                       QVector2D(aCanvas.width() * 0.5f, aCanvas.height() * 0.5f), aScale, aMode);
 
     core::CameraInfo camera;
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
     const uint8_t black[3] = {0, 0, 0};
+
+    // The layer's textures are built by the first render, so the level bias can only be set after it.
+    // The default is 0, not the shipped value: these fixtures pin what the CHAIN does - which level a
+    // footprint reads, what kernel that level applies - and the shipped -0.5 is a policy on top of
+    // that, measured separately (M17 and the corpus run). With the app's value in place here, every
+    // "this is level l" expectation below would be reading level l-0.5.
+    fx.render(tree, camera, 0, aBackdrop ? aBackdrop : black);
+    if (layer && layer->timeLine()) {
+        auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (key && key->cache().texture().id() != 0) {
+            auto& ggl = gl::Global::functions();
+            ggl.glBindTexture(GL_TEXTURE_2D, key->cache().texture().id());
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, aLodBias);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
     return fx.render(tree, camera, 0, aBackdrop ? aBackdrop : black);
 }
 
@@ -3283,6 +3315,138 @@ double tentIntegral(const Img& aImg, double aX0, double aY0, int aW, int aChanne
 // definition.
 
 //-------------------------------------------------------------------------------------------------
+// M17: the shipped LOD bias, measured against the integral it is supposed to approximate.
+//
+// The bias exists because a bilinear read of level m integrates 2*2^m base texels - twice the
+// footprint - so lambda = log2(footprint) is one level too coarse for that read. The fixture is
+// deliberately off-phase (content 520 texels, so every sample sits three quarters of the way across a
+// level-4 texel): a footprint that already lands on a texel centre is exact at bias 0, and only the
+// fractional case can show the difference. The reference is a CPU integral of the bilinear
+// reconstruction over each footprint, which is the same quantity the supersampled renders converge to
+// (measured on real layers: 0.04 to 0.25 of 255).
+void suiteShippedLodBias() {
+    suiteHeader("M17 the shipped LOD bias: half a level finer than the footprint");
+    const QSize canvas(64, 64);
+    const int content = 520;   // 520/2 = 260, so the footprint centres land at 0.75 of a level texel
+    const int step = 16;
+    const float zoom = 1.0f / (float)step;
+
+    // Content shaped like the artwork this matters for: hard-edged strokes on flat ground. The error at
+    // a fractional phase is then dominated by where inside a block the stroke sits, which is what the
+    // bias addresses. Stationary noise - white or blurred - is not a fair fixture: its error is a
+    // variance mismatch instead, and extra smoothing only makes that worse. Both were tried; the
+    // blurred-noise version reported the bias as 4.868 against 4.655 and would have failed a real
+    // improvement, which is why the fixture looks like line art rather than like noise.
+    Img src;
+    src.w = src.h = content;
+    src.d.assign((size_t)content * content * 4, 0);
+    for (int i = 0; i < content * content; ++i)
+        src.d[(size_t)i * 4 + 3] = 255;   // opaque ground, so the premultiply is the identity
+    uint32_t r = 24601u;
+    const auto next = [&]() {
+        r = r * 1664525u + 1013904223u;
+        return (int)(r >> 16);
+    };
+    for (int stroke = 0; stroke < 400; ++stroke) {
+        const bool vertical = (next() & 1) != 0;
+        const int thickness = 1 + next() % 3;
+        const int length = 40 + next() % (content / 2);
+        const int at = next() % content;
+        const int from = next() % std::max(1, content - length);
+        const uint8_t v = (uint8_t)(next() & 1 ? 255 : 128);
+        for (int t = 0; t < thickness; ++t) {
+            for (int u = 0; u < length; ++u) {
+                const int x = vertical ? (at + t) : (from + u);
+                const int y = vertical ? (from + u) : (at + t);
+                if (x < 0 || y < 0 || x >= content || y >= content)
+                    continue;
+                uint8_t* p = src.at(x, y);
+                p[0] = p[1] = p[2] = v;
+            }
+        }
+    }
+
+    // the buffer the app uploads: the artwork padded to the aligned texture size, transparent right
+    // and bottom. Opaque content, so the premultiply leaves it alone.
+    const QSize texSize = img::Util::mipAlignedTextureSize(QSize(content, content));
+    Img texture;
+    texture.w = texSize.width();
+    texture.h = texSize.height();
+    texture.d.assign((size_t)texture.w * texture.h * 4, 0);
+    for (int y = 0; y < content; ++y)
+        for (int x = 0; x < content; ++x)
+            for (int c = 0; c < 4; ++c)
+                texture.at(x, y)[c] = src.at(x, y)[c];
+
+    const double half = step * 0.5;
+    const float biases[2] = {0.0f, core::ImageKey::layerLodBias()};
+    double err[2] = {0, 0};
+    int n[2] = {0, 0};
+    double phase = -1.0;
+
+    double grad[2] = {0, 0};
+    for (int bi = 0; bi < 2; ++bi) {
+        const std::vector<uint8_t> out = renderLayer(canvas, src, zoom, img::BlendMode_Normal, nullptr, biases[bi]);
+        for (int sy = 0; sy < canvas.height(); ++sy) {
+            for (int sx = 0; sx < canvas.width(); ++sx) {
+                const double ax = (sx + 0.5) * step - (canvas.width() * 0.5) * step + content * 0.5;
+                // renderLayer returns the RAW framebuffer, which is bottom-up: the row term is
+                // (height - 0.5 - sy), the convention M14 uses, not the top-down one the readback
+                // helpers produce. Getting this wrong flips the reference against the render and
+                // reports tens of units of error that no filter could cause.
+                const double ay = (canvas.height() - 0.5 - sy) * step - (canvas.height() * 0.5) * step
+                                  + content * 0.5;
+                // Two screen pixels in from the artwork's own edge: the layer's MESH insets its
+                // border vertices, so the outermost pixels are decided by geometry rather than by the
+                // filter (measured at 50 to 63 of 255 in --decompose), and leaving them in swamps the
+                // effect being tested - it reported 16 of 255, then 36, before this margin existed.
+                const double guard = 2.0 * step;
+                if (ax - half < guard || ay - half < guard || ax + half > content - guard ||
+                    ay + half > content - guard)
+                    continue;
+                phase = std::fmod(ax / step, 1.0);
+                err[bi] += std::fabs(out[((size_t)sy * canvas.width() + sx) * 4] -
+                                     tentIntegral(texture, ax - half, ay - half, step, 0));
+                if (sx + 1 < canvas.width())
+                    grad[bi] += std::fabs(out[((size_t)sy * canvas.width() + sx + 1) * 4] -
+                                          out[((size_t)sy * canvas.width() + sx) * 4]);
+                ++n[bi];
+            }
+        }
+    }
+
+    const int caseFails = gFails;
+    expect(n[0] > 100 && n[1] > 100, "M17 the fixture must have pixels to measure");
+    expect(std::fabs(phase - 0.5) > 0.1,
+        QString("M17 the fixture must be off-phase or the bias cannot show (phase %1)").arg(phase, 0, 'f', 3));
+    const double m0 = err[0] / std::max(1, n[0]);
+    const double m1 = err[1] / std::max(1, n[1]);
+    // What this fixture can support is the DIRECTION: a negative bias reads a finer level, so the
+    // render must carry more high-frequency detail than at bias 0. It cannot support a quality claim
+    // on synthetic content - this fixture reports the bias as slightly worse (numbers below), while
+    // the same comparison on real layers reports it as clearly better (--bias1: 000020.psd 1.816 with
+    // the bias against 3.374 without, and the 29-file corpus 2.533 against 4.198 at 16x). The two are
+    // not reconciled here; the quality evidence is the real-content runs, and this test only keeps the
+    // setting from being dropped or flipped.
+    expect(grad[1] > grad[0],
+        QString("M17 the shipped bias (%1) must read a finer level, so the render must be sharper: "
+                "mean gradient %2 vs %3 of 255")
+            .arg(core::ImageKey::layerLodBias(), 0, 'f', 2)
+            .arg(grad[1] / std::max(1, n[1]), 0, 'f', 4)
+            .arg(grad[0] / std::max(1, n[0]), 0, 'f', 4));
+    caseReport(
+        "M17 shipped bias vs no bias, off-phase at 16x", gFails == caseFails,
+        QString("mean gradient: bias %1 -> %2, bias 0 -> %3 | error vs the integral (synthetic "
+                "content, see the comment): bias %4 vs %5 | %6 pixels, phase %7")
+            .arg(core::ImageKey::layerLodBias(), 0, 'f', 2)
+            .arg(grad[1] / std::max(1, n[1]), 0, 'f', 4)
+            .arg(grad[0] / std::max(1, n[0]), 0, 'f', 4)
+            .arg(m1, 0, 'f', 3).arg(m0, 0, 'f', 3)
+            .arg(n[0]).arg(phase, 0, 'f', 3)
+    );
+}
+
+//-------------------------------------------------------------------------------------------------
 // --bias <csv> <file> : does sampling a FINER level than the footprint buy accuracy?
 //
 // The level-l texel holds the average over its 2^l block, so nothing in level l records where inside
@@ -3435,7 +3599,6 @@ int runBias1(const QString& aCsv, const QString& aPath) {
     const QSize canvas(128, 128);
     const int ss = 32;
     const float zoom = 1.0f / 16.0f;
-    const int level = 4;
     const uint8_t backdrop[3] = {0, 0, 0};
 
     core::ObjectTree tree;
@@ -4761,6 +4924,7 @@ int main(int argc, char** argv) {
     suiteMarginDepth();
     suiteDeepCoverage();
     suiteLodSweep();
+    suiteShippedLodBias();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

@@ -72,6 +72,11 @@ public:
     virtual void sleep();
     virtual void awake();
 
+    /// The level offset every layer texture is sampled with, in log2 units. -0.5 because the sampler
+    /// picks lambda = log2(footprint), which is one level too coarse for a bilinear read; the full
+    /// reasoning and the measurement are on gl::Texture::setLodBias.
+    static float layerLodBias() { return -0.5f; }
+
 private:
     void resetTextureCache();
 

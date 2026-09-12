@@ -44,6 +44,22 @@ public:
 
     void setWrap(GLint aParam, QColor aBorderColor = QColor(0, 0, 0, 0));
 
+    /// Offsets the level the minification filter picks, in log2 units. Only the minimum filter uses
+    /// it; magnification ignores it.
+    ///
+    /// A layer texture needs a negative one because of how a mip chain is read, not because of how it
+    /// is built. Bilinear filtering at level m takes two taps that are each a whole level-m texel, and
+    /// a level-m texel is the average over 2^m base texels, so the kernel it integrates is 2*2^m base
+    /// texels wide. A footprint of F = 2^lambda base texels is therefore matched by m = lambda - 1,
+    /// one level finer than the lambda = log2(F) that the derivatives pick - that value is right for
+    /// a nearest read and twice too wide for a bilinear one. Measured against supersampled ground
+    /// truth over eight corpus files (tools/verify_mipmap/README.md): a bias of -0.5 lowers the mean
+    /// error from 1.631 to 0.968 of 255 at 4x and from 4.198 to 2.533 at 16x, with the per-file
+    /// optimum between -0.5 and -1.0 and -1.5 past the point. The gain is in the fractional-phase
+    /// cases; a footprint that already lands on a level-texel centre is exact at bias 0 and is made
+    /// marginally softer by this, which is why the value is half a level and not a whole one.
+    void setLodBias(GLfloat aBias);
+
     void destroy();
 
     GLuint id() const { return mId; }

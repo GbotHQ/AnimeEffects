@@ -93,6 +93,13 @@ void Texture::setWrap(GLint aParam, QColor aBorderColor) {
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void Texture::setLodBias(GLfloat aBias) {
+    Global::Functions& ggl = Global::functions();
+    ggl.glBindTexture(GL_TEXTURE_2D, mId);
+    ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, aBias);
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void Texture::destroy() {
     if (mId != 0) {
         Global::functions().glDeleteTextures(1, &mId);

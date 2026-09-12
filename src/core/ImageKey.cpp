@@ -109,6 +109,10 @@ void ImageKey::resetTextureCache() {
         );
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
         mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+        // Half a level finer than the derivatives ask for, so that the bilinear read integrates the
+        // footprint instead of twice it. The reasoning and the measurement are on
+        // gl::Texture::setLodBias.
+        mCache.texture().setLodBias(layerLodBias());
         mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 }

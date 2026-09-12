@@ -6,6 +6,11 @@ alpha 0, which is the classic mipmap dark halo (and its mirror image, the light 
 
 ## Run
 
+Note on the bias: the fixtures in the suites pin `GL_TEXTURE_LOD_BIAS` to 0, because what they assert
+is which level a given footprint reads and what kernel that level applies - "this is level l" would
+otherwise be reading level l-0.5. The shipped -0.5 is a policy applied on top, measured by M17, by
+`--bias`, `--bias1` and the corpus run.
+
 Registered as a CMake target in `tests/CMakeLists.txt`, so it is part of the standard suite:
 
 ```sh
@@ -129,6 +134,9 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
 - **`--decompose` - what the remaining error is made of.** See the section below the corpus verdict:
   one real layer at 16x, four quantities (render, truth, the ideal box chain, the tent integral) and
   the inequality that separates the filter from the implementation.
+- **M17 - the shipped LOD bias.** Reads the bias off the live layer texture and compares it with
+  `core::ImageKey::layerLodBias()`, then checks that a negative bias makes the render sharper at a
+  fractional phase. See the section below for what it can and cannot assert.
 - **M16 - deep-level coverage of the artwork's last rows and columns.** Level l has
   max(1, floor(size/2^l)) texels, so unless the texture size is a multiple of 2^l the chain drops the
   last (size mod 2^l) base texels of that axis and the renderer shows that strip of the artwork as
@@ -421,7 +429,33 @@ arguable:
   about the truth does not rescue the chain at a fractional phase: under either definition the level-l
   texel, which only records its block's average, cannot say where inside the block the detail was.
 
-## What can actually be done about it: the LOD bias, measured
+## The LOD bias that ships: -0.5 levels, and an open contradiction about it
+
+`ImageKey` now sets `GL_TEXTURE_LOD_BIAS` to -0.5 on every layer texture (the constant is
+`core::ImageKey::layerLodBias()`, the reasoning is on `gl::Texture::setLodBias`). The reason is
+arithmetic: bilinear filtering at level m takes two taps that are each a whole level-m texel, so the
+kernel it integrates is 2*2^m base texels wide, and a footprint of 2^lambda is therefore matched by
+m = lambda - 1, one level finer than the derivatives pick.
+
+The evidence for the value is real content, and it is consistent:
+
+| source | bias 0 | bias -0.5 |
+| --- | --- | --- |
+| 29-file corpus at 16x, mean error | 4.198 | 2.533 |
+| 29-file corpus at 4x | 1.631 | 0.968 |
+| 000020.psd, one layer at 16x (`--bias1`) | 3.374 | 1.816 |
+| AUTUMN.psd, one layer at 16x | 3.718 | 1.792 |
+
+What is NOT consistent is a synthetic fixture. M17 builds line-art-like strokes and compares the
+render against a CPU integral of the bilinear reconstruction, the same kind of comparison as
+`--bias1`: it reports the bias as slightly WORSE, 16.656 against 15.066, while `--bias1` on the same
+kind of comparison over real layers reports it as clearly better. The two have not been reconciled.
+M17 therefore asserts only the direction the setting is defined by - a negative bias reads a finer
+level, so the render must be sharper, measured as 27.2653 against 17.0293 of mean per-pixel gradient -
+and prints both error numbers so the contradiction stays visible instead of being tuned away. The
+quality claim rests on the real-content rows above.
+
+## What can be done about it beyond a constant: the LOD bias, measured
 
 `--bias <csv> <file>` sweeps GL_TEXTURE_LOD_BIAS against the supersampled truth. The truth is an
 antialiased integral, so it penalises blurring and aliasing alike: whichever bias has the smallest
