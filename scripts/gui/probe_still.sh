@@ -42,8 +42,9 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mousemove 81 162 click 1; sleep 5
   import -window root "$SHOTS"/still_01_dialog.png
   # Export (destination mode puts the button here), then name the image.
-  xdotool mousemove 210 676 click 1; sleep 4
-  xdotool key ctrl+a; sleep 0.3
+  xdotool key alt+e; sleep 4
+  xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
   xdotool type --delay 25 "illustration.png"; sleep 0.5
   xdotool key Return
   sleep 40
@@ -83,8 +84,9 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool key ctrl+a; sleep 0.2; xdotool type --delay 30 "256"; sleep 0.3
   xdotool key Tab; sleep 1.0
   import -window root "$SHOTS"/ugoira_01_dialog.png
-  xdotool mousemove 210 676 click 1; sleep 4
-  xdotool key ctrl+a; sleep 0.3
+  xdotool key alt+e; sleep 4
+  xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
   xdotool type --delay 25 "ugoira.png"; sleep 0.5
   xdotool key Return
   sleep 150

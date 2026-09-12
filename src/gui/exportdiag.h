@@ -62,7 +62,11 @@ public:
     QLabel *qualityLabel;
     QLabel *destinationFacts;
     QScrollArea *destinationFactsScroll;
-    QComboBox *destinationCombo;
+    // A BUTTON, not a combo: the chooser is a modal with a search field (see
+    // gui/DestinationPicker). Fifty-five destinations in a dropdown is a list you
+    // scroll; with search it is a list you type at, and the button names what is
+    // currently selected so the dialog still states its own state.
+    QPushButton *destinationButton;
     QComboBox *qualityCombo;
     // Lines of facts reserved even when the text is shorter, so the form below
     // does not jump around while the user moves through the destination list.
@@ -136,6 +140,7 @@ public:
     QSize mUserSize;
     bool mUserSizeKnown = false;
     int mPlayhead = 0; // see setupUi(); the frame a Still destination writes
+    QString mDestinationId; // see destinationId()
     // Whether the boxes currently report a size the destination forced rather
     // than one the user set. This is what makes the hand-back above decidable.
     bool mLastSizeDictated = false;
@@ -555,9 +560,10 @@ public:
         destinationLabel->setObjectName(QString::fromUtf8("destinationLabel"));
         destinationGrid->addWidget(destinationLabel, 0, 0, 1, 1);
 
-        destinationCombo = new QComboBox(destinationBox);
-        destinationCombo->setObjectName(QString::fromUtf8("destinationCombo"));
-        destinationGrid->addWidget(destinationCombo, 0, 1, 1, 1);
+        destinationButton = new QPushButton(destinationBox);
+        destinationButton->setObjectName(QString::fromUtf8("destinationButton"));
+        destinationButton->setToolTip(tr("Choose where this is going"));
+        destinationGrid->addWidget(destinationButton, 0, 1, 1, 1);
 
         qualityLabel = new QLabel(destinationBox);
         qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
@@ -696,6 +702,11 @@ public:
     // The single number that does belong here is the FLOOR, so the form below
     // does not jump as the user moves through the destination list.
     int playhead() const { return mPlayhead; }
+
+    // The chosen destination id (empty = "my platform isn't listed", i.e. manual
+    // mode). The button is only the display; this is the state.
+    QString destinationId() const { return mDestinationId; }
+    void setDestinationId(const QString& aId) { mDestinationId = aId; }
 
     void setFacts(const QString& aText) {
         destinationFacts->setText(aText);
@@ -1214,7 +1225,12 @@ public:
 
     #if QT_CONFIG(tooltip)
     #endif // QT_CONFIG(tooltip)
-        exportButton->setText(QCoreApplication::translate("exportWidget", "Export", nullptr));
+        // A mnemonic, because this button is the whole point of the dialog and it sits
+        // at the bottom of a form whose height depends on how long the destination's
+        // notes are. Alt+E exports from anywhere in the form (and lets the GUI probes
+        // press it without depending on pixels that move when the layout does).
+        exportButton->setText(QCoreApplication::translate("exportWidget", "&Export", nullptr));
+        exportButton->setDefault(true);
         cancelButton->setText(QCoreApplication::translate("exportWidget", "Cancel", nullptr));
     } // translateUi
 

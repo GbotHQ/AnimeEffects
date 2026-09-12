@@ -38,8 +38,9 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   }
   # Export, then name the frames in the OS dialog.
   export_now() {
-    xdotool mousemove 210 676 click 1; sleep 4
-    xdotool key ctrl+a; sleep 0.3
+    xdotool key alt+e; sleep 4
+    xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
     xdotool type --delay 25 "$1"; sleep 0.5
     xdotool key Return; sleep 60
   }
@@ -50,7 +51,8 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # report a range that was never entered.
   set_spin() { # set_spin <x> <y> <value>
     xdotool mousemove "$1" "$2" click 1; sleep 0.8
-    xdotool key ctrl+a; sleep 0.3
+    xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
     xdotool type --delay 60 "$3"; sleep 0.5
     xdotool key Tab; sleep 0.8
   }

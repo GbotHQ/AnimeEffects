@@ -48,6 +48,22 @@ fi
 unset WAYLAND_DISPLAY
 export QT_QPA_PLATFORM=xcb
 
+# SANDBOX THE SETTINGS. A probe drives the real application, and the application
+# writes QSettings on every export: the remembered destination, the last output
+# directory and name, the per-destination folders, the remembered frame range and
+# size. Without this the probes edited the DEVELOPER'S OWN settings -- they set
+# export_destination to whatever the probe was testing and pointed the next real
+# export at /tmp -- which is both a rude thing to do and a way to make a passing
+# probe depend on state a previous probe left behind. One sandbox here covers every
+# probe, because they all source this file.
+if [ -z "${AE_KEEP_CONFIG:-}" ]; then
+    export XDG_CONFIG_HOME="$(mktemp -d)"
+fi
+# Probes that export also need a directory that is NOT the repository: the OS file
+# dialogs default to the process working directory, and a probe that forgets to
+# change it writes its test output into the checkout.
+export AE_PROBE_DIR="$(mktemp -d)"
+
 check() { # check <ok:0|1> <message>
     if [ "$1" -eq 0 ]; then
         echo "PASS  $2"

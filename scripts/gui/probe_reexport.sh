@@ -43,9 +43,10 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mousemove 81 162 click 1; sleep 5
   import -window root "$SHOTS"/re_01_dialog.png
   # Export. The button row is narrower in destination mode than in manual mode.
-  xdotool mousemove 210 676 click 1; sleep 4
+  xdotool key alt+e; sleep 4
   import -window root "$SHOTS"/re_02_first.png
-  xdotool key ctrl+a; sleep 0.3
+  xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
   xdotool type --delay 25 "'"$NAME"'"; sleep 0.5
   xdotool key Return
   sleep 60
@@ -58,7 +59,8 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 60 205 click 1; sleep 3
   import -window root "$SHOTS"/re_04_name_prompt.png
-  xdotool key ctrl+a; sleep 0.3
+  xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
   xdotool type --delay 25 "again.apng"; sleep 0.5
   xdotool key Return; sleep 3
   sleep 45

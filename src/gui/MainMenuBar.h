@@ -45,7 +45,6 @@ private:
     QAction* mExportAgainAction = nullptr;
     // "Quickly export as": rebuilt on every show, because its first entries are the
     // destinations this user has actually exported to.
-    QMenu* mQuickExport = nullptr;
     // The window the quick-export entries call into. Held as a member because the
     // menu is REBUILT (on every show), so the entries cannot capture a local.
     MainWindow* mMainWindow = nullptr;

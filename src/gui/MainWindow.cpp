@@ -7,6 +7,7 @@
 #include "gl/Global.h"
 #include "ctrl/Exporter.h"
 #include "gui/MainWindow.h"
+#include "gui/DestinationPicker.h"
 #include "gui/DockSash.h"
 #include "gui/NewProjectDialog.h"
 #include "gui/ProjectHook.h"
@@ -1251,17 +1252,6 @@ static void translateVideoExport(exportParam& exParam, const std::vector<audioCo
 
 // A non-selectable group heading inside a QComboBox. Qt's own idiom for this is
 // to clear the item's flags through the model.
-static void addComboHeader(QComboBox* aCombo, const QString& aText, const QIcon& aIcon = QIcon()) {
-    aCombo->addItem(aIcon, aText);
-    if (auto* model = qobject_cast<QStandardItemModel*>(aCombo->model())) {
-        if (QStandardItem* item = model->item(aCombo->count() - 1)) {
-            item->setFlags(Qt::NoItemFlags);
-            QFont f = item->font();
-            f.setBold(true);
-            item->setFont(f);
-        }
-    }
-}
 
 // The label a user picks from, which has to say when a row cannot be produced
 // here. The table declares `platform` for exactly this and nothing read it: on
@@ -1771,6 +1761,25 @@ void MainWindow::onExportAgainTriggered() {
     reportExportOutcome(*mLastExport, wrote);
 }
 
+// The File menu's "Quickly export as..." : the destination is chosen in the same
+// picker the export dialog uses, and then the export runs with no further dialogs.
+void MainWindow::onQuickExportTriggered() {
+    if (!mCurrent) return;
+    DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+                             QSettings().value(QStringLiteral("export_destination")).toString(),
+                             this);
+    if (picker.exec() != QDialog::Accepted) return;
+    const QString id = picker.chosenId();
+    if (id.isEmpty()) {
+        // "My platform isn't listed": that answer needs the dialog, because the
+        // format and codec are the user's to state.
+        onExportTriggered();
+        return;
+    }
+    QSettings().setValue(QStringLiteral("export_destination"), id);
+    onQuickExportDestinationTriggered(id);
+}
+
 void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId) {
     if (!mCurrent) {
         return;
@@ -1869,59 +1878,27 @@ void MainWindow::onExportTriggered() {
     // per-container codec combos could not do that (getFormatAsInt() returns 0 for
     // every input, so every codec and pixel format chosen there was discarded).
     {
-        // The destination list, grouped by what the user is making.
-        //
-        // It was fourteen flat entries because nothing consumed the table's
-        // `family` column. Four scannable groups is the difference between reading
-        // a list and hunting through one, and the grouping is data the table
-        // already carried.
-        const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-
-        // The first entry is not "(use the settings below)" any more. That is a
-        // description of the dialog's mechanics, and the person who lands here is
-        // someone whose platform is NOT in the list — the one question this control
-        // has to answer and did not. It is also the entry that reveals the Format
-        // and Codec rows, so the wording has to lead there.
-        exportUI->destinationCombo->addItem(
-            tr("My platform isn't listed (I'll choose the format)"), QString());
-
-        struct Family {
-            const char* key;
-            const char* title;
-            const char* icon;
-        };
-        // Ordered by what people actually do most: send something to a chat, then
-        // post it, then the sticker cases, then the specialist ones. "Chat" and
-        // "post" were missing entirely, and sending a FILE in a conversation is the
-        // most common thing anyone does with an animation.
-        const Family families[] = {
-            {"chat", QT_TR_NOOP("Send in a chat"), "dest-chat"},
-            {"post", QT_TR_NOOP("Post to a platform"), "dest-film"},
-            {"sticker", QT_TR_NOOP("Stickers and emoji"), "dest-sticker"},
-            {"overlay", QT_TR_NOOP("Overlays and transparency"), "dest-website"},
-            {"file", QT_TR_NOOP("A file"), "dest-attachment"},
-            {"archive", QT_TR_NOOP("Archive"), "dest-archive"},
-        };
-        for (const Family& family : families) {
-            bool wroteHeader = false;
-            for (const ctrl::ExportTarget& t : targets) {
-                if (t.family != QLatin1String(family.key))
-                    continue;
-                if (!wroteHeader) {
-                    addComboHeader(exportUI->destinationCombo, tr(family.title),
-                                   mGUIResources.icon(QString::fromLatin1(family.icon)));
-                    wroteHeader = true;
-                }
-                // The brand mark, from the row's own `icon` attribute: the table
-                // names it so the code does not carry a switch over 35 destinations.
-                const QIcon mark = mGUIResources.icon(t.icon);
-                exportUI->destinationCombo->addItem(mark, targetLabel(t), t.id);
-            }
-        }
+        // The destination chooser is a modal with a search field (see
+        // gui/DestinationPicker): fifty-five destinations in a dropdown is a list to
+        // scroll, and as a menu the same list sits four levels deep. The button shows
+        // what is chosen and opens the picker.
         QSettings settings;
-        const int saved = exportUI->destinationCombo->findData(
-            settings.value("export_destination", QString()));
-        exportUI->destinationCombo->setCurrentIndex(saved > 0 ? saved : 0);
+        exportUI->setDestinationId(settings.value(QStringLiteral("export_destination")).toString());
+        auto showDestinationButtonText = [this]() {
+            const QString id = exportUI->destinationId();
+            if (id.isEmpty()) {
+                exportUI->destinationButton->setText(
+                    tr("My platform isn't listed (I'll choose the format)"));
+                exportUI->destinationButton->setIcon(QIcon());
+                return;
+            }
+            const ctrl::ExportTarget t =
+                ctrl::ExportTargets::find(ctrl::ExportTargets::load(), id);
+            exportUI->destinationButton->setText(t.id.isEmpty() ? id : targetLabel(t));
+            exportUI->destinationButton->setIcon(t.id.isEmpty() ? QIcon()
+                                                               : mGUIResources.icon(t.icon));
+        };
+        showDestinationButtonText();
         const int savedQuality = settings.value("export_quality_bucket", 1).toInt();
         exportUI->qualityCombo->setCurrentIndex(savedQuality >= 0 && savedQuality <= 3 ? savedQuality : 1);
 
@@ -1940,7 +1917,7 @@ void MainWindow::onExportTriggered() {
         // fact they possess ("it is for Telegram") and the system applies the
         // consequences.
         auto refreshFacts = [this, currentBucket]() {
-            const QString id = exportUI->destinationCombo->currentData().toString();
+            const QString id = exportUI->destinationId();
             if (id.isEmpty()) {
                 exportUI->clearPlan();
                 // Manual mode states its own facts, for the same reason a
@@ -2084,9 +2061,15 @@ void MainWindow::onExportTriggered() {
             exportUI->applyPlan(plan, target);
         };
 
-        QObject::connect(exportUI->destinationCombo,
-                         util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
-                         [refreshFacts](int) { refreshFacts(); });
+        QObject::connect(exportUI->destinationButton, &QPushButton::clicked,
+                         [this, refreshFacts, showDestinationButtonText]() {
+                             DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+                                                      exportUI->destinationId(), exportWidget);
+                             if (picker.exec() != QDialog::Accepted) return;
+                             exportUI->setDestinationId(picker.chosenId());
+                             showDestinationButtonText();
+                             refreshFacts();
+                         });
         QObject::connect(exportUI->qualityCombo,
                          util::SelectArgs<int>::from(&QComboBox::currentIndexChanged),
                          [refreshFacts](int) { refreshFacts(); });
@@ -2312,19 +2295,25 @@ void MainWindow::onExportTriggered() {
         const QString lastName = s2.value(QStringLiteral("export_last_name")).toString();
         if (!lastDir.isEmpty() && QFileInfo(lastDir).isDir()) {
             fileDiag.setDirectory(lastDir);
-            if (!lastName.isEmpty()) {
-                // The remembered NAME must not contradict the artifact. Choosing
-                // APNG after a WEBM export used to pre-fill "test.webm", and the
-                // suffix is only appended when the name has none — so the export
-                // wrote APNG bytes into a file called .webm. Keep the base name
-                // (that is the part worth remembering) and take the extension from
-                // the artifact.
-                const QString base = QFileInfo(lastName).completeBaseName();
-                fileDiag.selectFile(base.isEmpty()
-                                        ? lastName
-                                        : base + QLatin1Char('.') + artifactSuffix);
-            }
         }
+        // ALWAYS pre-fill a name, and take its extension from the artifact.
+        //
+        // Two things went wrong without this. The remembered name could contradict
+        // the artifact (APNG after a WEBM export pre-filled "test.webm", and the
+        // suffix is only appended when a name has none, so APNG bytes were written
+        // into a .webm file) — that is why the base name is kept and the extension
+        // replaced. And with nothing to remember, the dialog opened with an empty
+        // name and focus in its SEARCH box: you had to click the name field before
+        // you could type a file name at all. Falling back to the project's own name
+        // fixes both, and it is the name most exports want anyway.
+        const QString rememberedBase = QFileInfo(lastName).completeBaseName();
+        // The project's own name is the default: this is a MainWindow member
+        // function, so the export parameter bag does not exist yet here.
+        const QString fallbackBase =
+            mCurrent ? QFileInfo(mCurrent->fileName()).completeBaseName() : QString();
+        const QString base =
+            !rememberedBase.isEmpty() ? rememberedBase : (fallbackBase.isEmpty() ? QStringLiteral("Export") : fallbackBase);
+        fileDiag.selectFile(base + QLatin1Char('.') + artifactSuffix);
     }
     fileDiag.setNameFilters({exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")"});
     fileDiag.selectNameFilter(exportUI->labelForFormat(artifactId) + " (*." + artifactSuffix + ")");
@@ -2372,7 +2361,7 @@ void MainWindow::onExportTriggered() {
         exportRanges->append(frame_export_range);
     }
     genParam.exportRange = *exportRanges;
-    exParam->destinationId = exportUI->destinationCombo->currentData().toString();
+    exParam->destinationId = exportUI->destinationId();
     exParam->qualityBucket = bucketFromSettingsIndex(exportUI->qualityCombo->currentIndex());
     {
         QSettings settings;

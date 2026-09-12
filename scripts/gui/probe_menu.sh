@@ -19,19 +19,18 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mousemove 16 10 click 1
   sleep 1.5
   import -window root '"$SHOTS"'/menu_01_file.png
-  # 2. hover the quick-export entry so its submenu opens
-  xdotool mousemove 60 182
-  sleep 1.5
+  # 2. the quick-export entry. It opens the destination picker (a modal with a
+  # search field) rather than a submenu tree, so this clicks it and captures what
+  # comes up.
+  xdotool mousemove 60 182 click 1
+  sleep 3
   import -window root '"$SHOTS"'/menu_02_quick.png
-  # 3. walk down the submenu entries
-  xdotool mousemove 300 190
+  xdotool key Escape
   sleep 1.0
   import -window root '"$SHOTS"'/menu_03_sub.png
   sleep 0.5
   kill $app 2>/dev/null
   wait $app 2>/dev/null
 ' 2>&1 | tail -5
-assert_rendered "$SHOTS/menu_03_sub.png" "the quick-export submenu"
-summary probe_menu
-assert_rendered "$SHOTS/menu_03_sub.png" "the quick-export submenu"
+assert_rendered "$SHOTS/menu_02_quick.png" "the destination picker from the File menu"
 summary probe_menu

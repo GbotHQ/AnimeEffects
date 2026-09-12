@@ -35,19 +35,26 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
     xdotool key Return; sleep 2
   fi
   # choose the artifact (Format row)
-  xdotool mousemove 658 337 click 1; sleep 1.0
+  xdotool mousemove 462 458 click 1; sleep 1.0
   xdotool key Home; sleep 0.2
   for i in $(seq 1 '"$FMT_INDEX"'); do xdotool key Down; sleep 0.15; done
   xdotool key Return; sleep 1.5
   # click a neutral spot so focus is back on the dialog, then the Export button
   xdotool mousemove 700 200 click 1; sleep 1.0
   import -window root '"$SHOTS"'/exp_01_dialog.png
-  xdotool mousemove 399 676 click 1; sleep 4
+  xdotool key alt+e; sleep 4
   import -window root '"$SHOTS"'/exp_02_filediag.png
   # type the target path into the file dialog and accept
+  # Click the Name field: the save dialog opens with focus in its SEARCH box, so
+  # without this the name is typed into a filter and Return does nothing.
+  xdotool mousemove 400 25 click 1; sleep 0.4
   xdotool key ctrl+a; sleep 0.3
   xdotool type --delay 25 "'"$OUTNAME"'"; sleep 0.5
-  xdotool key Return; sleep 25
+  xdotool key Return
+  # Long enough for the render to FINISH: 601 frames take ~45s, and the muxer
+  # writes its header the moment the export opens, so a short wait leaves a
+  # 48-byte file that still passes "non-empty".
+  sleep 75
   import -window root '"$SHOTS"'/exp_03_after.png
   # if the validator objected, open its details so the reason is visible
   xdotool mousemove 393 270 click 1; sleep 2
@@ -65,5 +72,12 @@ case "$f" in
     *) check 1 "the exported file is named from the typed base name (got '$f')";;
 esac
 [ -n "$f" ] && assert_exists "$f" "the exported file"
+# Non-empty is not "an export": a file containing only the muxer header is 48
+# bytes and used to satisfy this probe. Assert there are FRAMES in it.
+if [ -n "$f" ]; then
+    frames=$(ffprobe -v error -select_streams v -show_entries stream=nb_frames -of csv=p=0 "$f" 2>/dev/null | head -1)
+    [ -n "$frames" ] && [ "$frames" -gt 0 ] 2>/dev/null
+    check $? "the export contains video frames (nb_frames=${frames:-none})"
+fi
 assert_rendered "$SHOTS/exp_03_after.png" "the app after the export"
 summary probe_export

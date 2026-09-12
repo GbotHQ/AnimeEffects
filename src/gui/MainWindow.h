@@ -69,6 +69,9 @@ public:
     void onTabCloseAllRequested();
     void onTabCopyPathRequested(core::Project&);
     void onExportTriggered();
+    // "Quickly export as...": choose a destination, then export with no further
+    // dialogs (the output folder is remembered per destination).
+    void onQuickExportTriggered();
     // Quick export BY DESTINATION: the user names where the file is going and the
     // destination table decides the rest. This is what the quick menu offers now —
     // a format name is not a destination, and the table's rows bundle intent

@@ -48,8 +48,9 @@ run_case() {
       # Export, then accept the name the OS dialog opens with. The button row is
       # narrower in destination mode than in manual mode, where (399,676) is Export:
       # here it is CANCEL, which closes the dialog and writes nothing.
-      xdotool mousemove 210 676 click 1; sleep 4
-      xdotool key ctrl+a; sleep 0.3
+      xdotool key alt+e; sleep 4
+      xdotool mousemove 400 25 click 1; sleep 0.4
+xdotool key ctrl+a; sleep 0.3
       xdotool type --delay 25 '"$name"'; sleep 0.5
       xdotool key Return
       sleep 240

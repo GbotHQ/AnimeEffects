@@ -185,46 +185,24 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         // a second column the moment the chat and post families arrived. The
         // recents come first and the full grouped list is one level down, so
         // nothing became unreachable.
-        mQuickExport = new QMenu(tr("Quickly export as"), this);
-        mQuickExport->setObjectName(QString::fromUtf8("quickExportMenu"));
-        {
-            // ONE submenu per family, not one flat list of everything.
-            //
-            // The list is fifty-five destinations now, and as a single menu it came
-            // out forty rows tall with eight group headers, wrapped into TWO COLUMNS,
-            // and ran off the bottom of the screen: browsing, in a menu whose name
-            // promises a shortcut. Six entries you can scan beats fifty you cannot,
-            // and each submenu is a short single column. The families are the same
-            // ones the dialog groups by, from the same `family` column in the data.
-            //
-            // There is deliberately NO "recently used" promotion here: a destination
-            // sitting at the top with no explanation reads as favouritism, and
-            // "Export again" (in this menu) is what repeating an export is for.
-            const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-            struct Family { const char* key; const char* title; };
-            const QList<Family> families = {
-                { "chat", QT_TR_NOOP("Send in a chat") },
-                { "post", QT_TR_NOOP("Post to a platform") },
-                { "sticker", QT_TR_NOOP("Stickers and emoji") },
-                { "overlay", QT_TR_NOOP("Overlays and transparency") },
-                { "file", QT_TR_NOOP("A file") },
-                { "archive", QT_TR_NOOP("Archive") },
-            };
-            for (const auto& family : families) {
-                QMenu* sub = nullptr;
-                for (const ctrl::ExportTarget& target : targets) {
-                    if (target.family != QLatin1String(family.key)) continue;
-                    if (!sub) sub = mQuickExport->addMenu(QObject::tr(family.title));
-                    addQuickExportEntry(sub, target);
-                }
-            }
-        }
+        // "Quickly export as..." opens the destination picker (see
+        // gui/DestinationPicker) and exports as soon as one is chosen: no dialogs
+        // after that, the folder is remembered per destination.
+        //
+        // It was a submenu per family, which made this four levels deep
+        // (File -> Quickly export as -> family -> destination) and, at any level, a
+        // list of fifty-five rows. A menu cannot be searched; the picker can.
+        auto quickExport = new QAction(tr("Quickly export as..."), this);
+        quickExport->setObjectName(QString::fromUtf8("quickExportAction"));
+        connect(quickExport, &QAction::triggered, [mainWindow]() {
+            mainWindow->onQuickExportTriggered();
+        });
 
         mProjectActions.push_back(saveProject);
         mProjectActions.push_back(saveProjectAs);
         mProjectActions.push_back(closeProject);
         mProjectActions.push_back(exportWindow);
-        mProjectActions.push_back(mQuickExport->menuAction());
+        mProjectActions.push_back(quickExport);
 
         // Re-export: the same export, one click, no dialogs. Export is not a
         // one-shot here — the same sticker gets exported a dozen times while the
@@ -249,7 +227,7 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         fileMenu->addAction(saveProject);
         fileMenu->addAction(saveProjectAs);
         fileMenu->addAction(exportWindow);
-        fileMenu->addAction(mQuickExport->menuAction());
+        fileMenu->addAction(quickExport);
         fileMenu->addAction(mExportAgainAction);
         fileMenu->addSeparator();
         fileMenu->addAction(closeProject);
@@ -559,22 +537,6 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
 
     // reset status
     setProject(nullptr);
-}
-
-// One destination as a menu entry: the brand mark, the label, and the id captured
-// so the click exports exactly that row.
-void MainMenuBar::addQuickExportEntry(QMenu* aMenu, const ctrl::ExportTarget& aTarget) {
-    QString label = aTarget.label;
-    if (!aTarget.platform.isEmpty() && aTarget.platform != QLatin1String("any"))
-        label += QLatin1String(" (")
-                 + QObject::tr("needs %1").arg(ctrl::platformName(aTarget.platform))
-                 + QLatin1String(")");
-    auto action = new QAction(mGUIResources.icon(aTarget.icon), label, this);
-    const QString id = aTarget.id;
-    connect(action, &QAction::triggered, [this, id]() {
-        if (mMainWindow) mMainWindow->onQuickExportDestinationTriggered(id);
-    });
-    aMenu->addAction(action);
 }
 
 void MainMenuBar::setExportAgainEnabled(bool aOn) {

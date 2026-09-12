@@ -25,6 +25,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ../XCReport.h
     ../XCType.h
     CanvasMover.cpp CanvasMover.h
+    DestinationPicker.cpp DestinationPicker.h
     DockSash.cpp DockSash.h
     DriverHolder.cpp DriverHolder.h
     EasyDialog.cpp EasyDialog.h
