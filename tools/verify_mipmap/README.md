@@ -61,6 +61,12 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   (1-coverage)*backdrop` = 164 here). Equivalence alone passes under the `PREMULTIPLIED_INPUT`
   mutation, because both sides of it run through the same shader - the mutation takes the blur
   path to 114 instead of 164 and only the absolute assertion catches it.
+- **M6 — every mip level.** All the tests above minify by exactly 2x, so they only ever exercise
+  level 1. Export renders at its own resolution and the canvas can be zoomed, both of which select
+  deeper levels, so M6 sweeps 2x, 4x and 8x and asserts the same analytic interior value at each.
+  The source is chosen to make that value LEVEL-INDEPENDENT - a checkerboard of constant RGB
+  averages to constant RGB at alpha = coverage at every level - so the assertion has power against
+  the wrong level being selected, not just against a wrong chain.
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -91,7 +97,7 @@ Both halves were mutation-tested against the product, not just reasoned about:
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
 | `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`); M5's blur path also fails, `114.0` against the analytic `164.0` |
-| none (shipped code) | 76 checks, 0 failures |
+| none (shipped code) | 79 checks, 0 failures |
 
 The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
 texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
@@ -117,8 +123,16 @@ Verified so far: mip chain generation, the production `ImageKey` texture and its
 rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder
 composite path, and the grid/mesh overlay.
 
-Not yet verified: the export path (`ctrl::Exporter`) against the interactive render — the last
-explicitly-named path — and an ASan run over the new CPU premultiply pass.
+Not yet verified: the export path (`ctrl::Exporter`) end to end against the interactive render —
+the last explicitly-named path. M6 covers the part of it that matters for mipmapping (export
+renders at its own resolution, which selects a different mip level), but the exporter itself
+needs a `core::Project` and the harness stubs to drive. Also outstanding: an ASan run over the
+new CPU premultiply pass.
+
+A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale
+changes. At 4x minification the quad is smaller than the crop, so the backdrop averaged in and
+the "correct" value read 141.6 instead of 164.0 - a test bug that looks exactly like a product
+bug. The crop now follows the quad.
 
 Known open risk, not yet measured: `LayerMesh` keeps static `texCoords` while `positions` are
 deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle.

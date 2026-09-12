@@ -900,8 +900,8 @@ struct LayerSetup {
     float blur = 0.0f;                                 // layer blur: routes through FilterFrame
 };
 
-std::vector<uint8_t> renderScene(
-    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3]
+std::vector<uint8_t> renderSceneAtScale(
+    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3], float aScale
 ) {
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
@@ -932,7 +932,7 @@ std::vector<uint8_t> renderScene(
         layerPos = QVector2D(0.0f, 0.0f);
     }
 
-    auto* layer = addScaledLayer(tree, parent, res, "layer", layerPos, 0.5f, aSetup.mode);
+    auto* layer = addScaledLayer(tree, parent, res, "layer", layerPos, aScale, aSetup.mode);
     if (aSetup.hsv) {
         // Saturation to 50% is unambiguously non-identity. The key must be PUSHED at a frame,
         // not installed as a "default" key: LayerNode decides whether to run the HSV branch with
@@ -976,6 +976,12 @@ std::vector<uint8_t> renderScene(
     core::CameraInfo camera;
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
     return fx.render(tree, camera, 0, aBackdrop, aSetup.grid);
+}
+
+std::vector<uint8_t> renderScene(
+    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3]
+) {
+    return renderSceneAtScale(aCanvas, aImage, aSetup, aBackdrop, 0.5f);
 }
 
 void suitePaths() {
@@ -1088,6 +1094,56 @@ void suitePaths() {
     }
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M6: every mip level. The tests above all minify by exactly 2x, so they exercise level 1 only.
+// Export renders at its own resolution and the canvas can be zoomed, both of which pick different
+// levels - so correctness has to hold at every level, not just the first one.
+//
+// The source is chosen so the correct interior value is LEVEL-INDEPENDENT: a checkerboard with a
+// constant RGB averages to constant RGB with alpha = coverage at every level, so
+// coverage*source + (1-coverage)*backdrop is the analytic answer wherever the sampler lands. The
+// assertion therefore has power against a wrong level being selected as well as against a wrong
+// chain: the value must be the same at every minification factor.
+void suiteMipLevels() {
+    suiteHeader("M6 mip level sweep: correctness at every minification factor");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    // analytic: a half-covered source over this backdrop, independent of which level is sampled
+    const double expected = 0.5 * color[0] + 0.5 * backdrop[0];
+
+    const float scales[] = {0.5f, 0.25f, 0.125f};
+    const int expectedLevels[] = {1, 2, 3};
+
+    for (size_t i = 0; i < sizeof(scales) / sizeof(scales[0]); ++i) {
+        const int failsBefore = gFails;
+        const LayerSetup setup;
+        std::vector<uint8_t> rendered =
+            renderSceneAtScale(canvas, makeAlphaChecker(imageSize, color), setup, backdrop, scales[i]);
+
+        // The crop has to follow the quad: at scale s the layer covers the central 64*s pixels,
+        // so a fixed margin would straddle the quad's edge at the smaller scales and average the
+        // backdrop into the result (which is exactly what a fixed margin did here, reporting
+        // 141.6 instead of 164.0 at 4x).
+        const int margin = (int)std::lround(32.0 - 32.0 * scales[i]) + 3;
+        const double mean = interiorMeanRed(rendered, canvas, margin);
+
+        // the interior must be uniform AND equal to the analytic value at every level
+        expect(near(mean, expected, 4.0),
+            QString("scale %1 (level ~%2): interior must be %3, got %4")
+                .arg(scales[i], 0, 'f', 3)
+                .arg(expectedLevels[i])
+                .arg(expected, 0, 'f', 1)
+                .arg(mean, 0, 'f', 1));
+        caseReport(
+            QString("minified %1x (level %2)").arg(1.0 / scales[i], 0, 'f', 0).arg(expectedLevels[i]),
+            gFails == failsBefore, QString("interior=%1 (analytic %2)").arg(mean, 0, 'f', 1).arg(expected, 0, 'f', 1));
+    }
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -1194,6 +1250,7 @@ int main(int argc, char** argv) {
     suiteRender();
     suiteBlendModes();
     suitePaths();
+    suiteMipLevels();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
