@@ -104,6 +104,21 @@ premultiply removed from `ImageKey` and `PREMULTIPLIED_INPUT` set back to `0` - 
 is the shipped code against the straight-alpha implementation it replaces, not against a
 hand-drawn mock-up.
 
+`figures/fig9_paths_sheet.png` is the render-path contact sheet: the same project rendered
+normally, with the mesh overlay, through a composite folder (Multiply and Screen), with a layer
+blur, with an HSV adjust on every layer, and clipped to a circular clipper. Each panel was checked
+to differ from the baseline before being used as evidence.
+
+Two traps found while building that sheet, both recorded because they silently produce a figure
+that looks fine and proves nothing:
+
+- Keys pushed on the tree's TOP node have no visible effect (measured maxdiff 0). The panel has to
+  be produced by varying something the render actually reads.
+- Pushing a key onto a tree that has ALREADY been rendered also has no visible effect (maxdiff 0
+  again), because the time cache is not invalidated when a timeline is poked directly instead of
+  going through the command stack. Every key-based figure therefore gets its own fresh project
+  load. Applying the blur to all 19 layers did not help; loading fresh did.
+
 Measured on this artwork, fixed against naive: max channel difference 53/255 at 1:1 and 51/255 at
 8x minification, over roughly 500 edge pixels. The mean difference is tiny (0.014) because a halo
 is a thin fringe on alpha edges, which is why the figures magnify and amplify rather than show

@@ -1563,6 +1563,179 @@ int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
         std::printf("  export %s\n", ok ? "ok" : "FAILED");
     }
 
+    // the largest image layer: the blur and HSV figures go on a LAYER, because keys pushed on the
+    // tree's top node measurably do nothing here (maxdiff 0 against the baseline), while the same
+    // keys on a layer take the paths M5 verifies numerically
+    core::LayerNode* bigLayer = nullptr;
+    {
+        int bestArea = 0;
+        for (auto* layer : layers) {
+            auto* key = layer->timeLine()
+                            ? static_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image))
+                            : nullptr;
+            if (key && key->hasImage()) {
+                const QSize sz = key->data().resource()->image().pixelSize();
+                if (sz.width() * sz.height() > bestArea) {
+                    bestArea = sz.width() * sz.height();
+                    bigLayer = layer;
+                }
+            }
+        }
+    }
+
+    // ---- path figures: whole-project variations, so each figure is real artwork through the
+    // production path rather than a synthetic stand-in ----
+    {
+        auto* root = dynamic_cast<core::FolderNode*>(project.objectTree().topNode());
+        if (!root) {
+            std::printf("  (no folder root; skipping the path strip)\n");
+        }
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        camera.setScale(0.25f);
+
+        auto shot = [&](const QString& aName, bool aGrid) {
+            const std::vector<uint8_t> px = fx.render(project.objectTree(), camera, 0, backdrop, aGrid);
+            const QString path = QDir(aDir).filePath(QString("%1_path_%2.png").arg(aTag).arg(aName));
+            figures::readbackToImage(px, canvas).save(path);
+            std::printf("  wrote %s\n", qPrintable(path));
+        };
+
+        // baseline for the strip
+        shot("plain", false);
+
+        // grid / mesh overlay: isGrid renders the layer meshes as wireframe. GridDrawingFrag
+        // outputs a constant colour and samples no texture, so mipmapping cannot reach it.
+        shot("grid", true);
+
+        // folder composite: the project root IS a folder, and a non-Normal mode forces the
+        // subtree through the composite path (rendered into a FilterFrame slot, then blended)
+        if (root) {
+            root->setBlendMode(img::BlendMode_Multiply);
+            shot("folder_multiply", false);
+            root->setBlendMode(img::BlendMode_Screen);
+            shot("folder_screen", false);
+            root->setBlendMode(img::BlendMode_Normal);
+        }
+
+        (void)bigLayer;
+    }
+
+
+    // Key-based figures each get their OWN project load. Pushing a key onto a tree that has
+    // already been rendered measurably does nothing (maxdiff 0 against the baseline), because the
+    // time cache is not invalidated when a timeline is poked directly rather than through the
+    // command stack. Loading fresh sidesteps the stale cache and keeps each figure to exactly one
+    // variation.
+    auto freshKeyShot = [&](const QString& aName, const std::function<void(core::ObjectNode*)>& aApply) {
+        static std::vector<std::unique_ptr<MipAnimator>> animators;
+        animators.emplace_back(new MipAnimator());
+        core::Project fresh(aAnie, *animators.back(), nullptr);
+        ctrl::ProjectLoader ld;
+        if (!ld.load(aAnie, fresh, dev, reporter)) {
+            std::printf("  (%s figure: reload failed)\n", qPrintable(aName));
+            return;
+        }
+        std::vector<core::LayerNode*> freshLayers;
+        figures::collectLayers(fresh.objectTree().topNode(), freshLayers);
+        for (auto* layer : freshLayers)
+            aApply(layer);
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        camera.setScale(0.25f);
+        const std::vector<uint8_t> px = fx.render(fresh.objectTree(), camera, 0, backdrop);
+        const QString path = QDir(aDir).filePath(QString("%1_path_%2.png").arg(aTag).arg(aName));
+        figures::readbackToImage(px, canvas).save(path);
+        std::printf("  wrote %s\n", qPrintable(path));
+    };
+
+    freshKeyShot("blur", [](core::ObjectNode* aLayer) {
+        auto* key = new core::BlurKey();
+        key->setAmount(12.0f);
+        cmnd::Base* pusher = aLayer->timeLine()->createPusher(core::TimeKeyType_Blur, 0, key);
+        pusher->tryExec();
+        delete pusher;
+    });
+
+    freshKeyShot("hsv", [](core::ObjectNode* aLayer) {
+        auto* key = new core::HSVKey();
+        key->setHSV(QList<int>{140, 100, 100, 0});   // a large hue rotation
+        cmnd::Base* pusher = aLayer->timeLine()->createPusher(core::TimeKeyType_HSV, 0, key);
+        pusher->tryExec();
+        delete pusher;
+    });
+
+    // ---- clipping: a real artwork layer clipped by a synthetic circular clipper. The clippee is
+    // pushed first and the clipper second, because ObjectNodeUtil::isClipper is true for a node
+    // whose PREVIOUS sibling is clipped. ----
+    {
+        img::ResourceHandle art;
+        int bestArea = 0;
+        for (auto* layer : layers) {
+            auto* key = layer->timeLine()
+                            ? static_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image))
+                            : nullptr;
+            if (key && key->hasImage()) {
+                const QSize sz = key->data().resource()->image().pixelSize();
+                if (sz.width() * sz.height() > bestArea) {
+                    bestArea = sz.width() * sz.height();
+                    art = key->data().resource();
+                }
+            }
+        }
+        if (art) {
+            core::ObjectTree tree;
+            auto* figRoot = new core::FolderNode("figroot");
+            tree.grabTopNode(figRoot);
+            const QVector2D centre(canvas.width() * 0.5f, canvas.height() * 0.5f);
+            // Fill the canvas with the artwork, and give the clipper the same footprint, so the
+            // figure reads at the same size as the other path figures instead of as a speck.
+            const QSize artSize = art->image().pixelSize();
+            const float fill = (float)canvas.width() / (float)std::max(1, artSize.width());
+            const float scale = fill * 0.95f;
+
+            auto* clippee = new core::LayerNode("clippee", tree.shaderHolder());
+            clippee->setDefaultImage(art, img::BlendMode_Normal);
+            clippee->setDefaultPosture(centre);
+            clippee->setDefaultOpacity(1.0f);
+            core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*clippee->timeLine())
+                ->setScale(QVector2D(scale, scale));
+            figRoot->children().pushBack(clippee);
+            clippee->setClipped(true);
+
+            // a circular clipper, so the clipped-away region is obvious
+            Img clip;
+            clip.w = clip.h = 512;
+            clip.d.assign((size_t)512 * 512 * 4, 0);
+            for (int y = 0; y < 512; ++y)
+                for (int x = 0; x < 512; ++x) {
+                    const double dx = x - 256.0, dy = y - 256.0;
+                    const bool in = (dx * dx + dy * dy) < 210.0 * 210.0;
+                    uint8_t* q = clip.at(x, y);
+                    q[0] = q[1] = q[2] = 255;
+                    q[3] = in ? 255 : 0;
+                }
+            auto* clipper = new core::LayerNode("clipper", tree.shaderHolder());
+            clipper->setDefaultImage(makeResource("fig_clipper", clip)->handle(), img::BlendMode_Normal);
+            clipper->setDefaultPosture(centre);
+            clipper->setDefaultOpacity(1.0f);
+            const float clipScale = scale * (float)artSize.width() / 512.0f;
+            core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*clipper->timeLine())
+                ->setScale(QVector2D(clipScale, clipScale));
+            figRoot->children().pushBack(clipper);
+
+            core::CameraInfo camera;
+            camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+            camera.setScale(0.25f);
+            const std::vector<uint8_t> px = fx.render(tree, camera, 0, backdrop);
+            const QString path = QDir(aDir).filePath(QString("%1_path_clip.png").arg(aTag));
+            figures::readbackToImage(px, canvas).save(path);
+            std::printf("  wrote %s\n", qPrintable(path));
+        } else {
+            std::printf("  no image layer found for the clipping figure\n");
+        }
+    }
+
     // blend-mode / HSV / blur strip on the largest image layer, at a minifying zoom
     if (!layers.empty()) {
         // pick the layer whose image is largest: the most visible one
