@@ -1988,6 +1988,204 @@ TEST_SECTION("a capped GIF destination is fitted, not just told about", run_gif_
     }
 }
 
+// ---------------------------------------------------------------------------
+// What a byte cap COSTS.
+//
+// A capped destination is not one encode: the loop encodes, measures, and
+// re-encodes until the file fits, and every attempt is a full encode from the
+// retained frames. The search used to bisect its whole quality range, which is
+// ~7 probes wherever the cap falls, plus the initial attempt and the final
+// re-encode of the winner: 9 encodes for a file the user asked for once.
+//
+// The cap is placed at HALF the codec's own best-quality size rather than at
+// the row's published number, because the row's number depends on how
+// compressible the fixture is (a 512x512 noise frame is 2 MB, a flat one is
+// 20 KB, and Telegram's 256 KB cap binds on one and not the other). What is
+// under test here is how many encodes the search spends crossing the cap, and
+// that must not depend on the fixture.
+//
+// The ceiling is a gate, not a hope: it is the measured attempt count of the
+// shipped search plus nothing. Tightening it is how a smarter search proves
+// itself, and the numbers that set it are in the printed report.
+// Measured on this fixture set, one run each, identical input:
+//
+//   row                  codec      blind bisection   interpolated search
+//   telegram.sticker     libvpx-vp9        10                 5
+//   chat.generic.video   libx264           10                 5
+//   discord.emoji        libwebp           11                10
+//   wechat.sticker       gif                9                 9
+//   total                                  40                29
+//
+// The ceiling is one above the worst measured case (the WebP scale axis, where the
+// byte curve is steepest near the cap so the crossing is hardest to localise), and the
+// budget covers the set: a single case drifting back up to the old cost is caught even
+// if another improves.
+static const int kFitAttemptCeiling = 11;
+static const int kFitAttemptBudget = 34; // four cases; measured 29, bisection 40
+
+TEST_SECTION("a byte cap costs a bounded number of encodes", run_fit_cost) {
+    const QList<ctrl::ExportTarget> all =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+
+    struct Case {
+        const char* id;          // the row, so the codec and its quality knob are the real ones
+        ctrl::QualityBucket bucket;
+        QSize source;
+        int frames;
+        int fps;
+    };
+    const Case cases[] = {
+        {"telegram.sticker", ctrl::QualityBucket::Balanced, QSize(512, 512), 6, 15}, // VP9, crf
+        {"chat.generic.video", ctrl::QualityBucket::Balanced, QSize(320, 240), 6, 15}, // H.264, crf
+        {"discord.emoji", ctrl::QualityBucket::Balanced, QSize(320, 320), 6, 12},     // WebP, quality
+        {"wechat.sticker", ctrl::QualityBucket::Balanced, QSize(320, 240), 6, 12},    // GIF, palette
+    };
+
+    int totalEncodes = 0;
+    for (const Case& c : cases) {
+        const ctrl::ExportTarget row = ctrl::ExportTargets::find(all, QString::fromLatin1(c.id));
+        if (row.id.isEmpty()) {
+            check(false, QStringLiteral("%1: row exists").arg(QString::fromLatin1(c.id)));
+            continue;
+        }
+
+        ctrl::ExportRequest req;
+        req.outputPath = QDir::temp().filePath(QStringLiteral("ae_fit_cost_%1.%2")
+                                                   .arg(QString::fromLatin1(c.id)
+                                                            .replace(QLatin1Char('.'), QLatin1Char('_')),
+                                                        row.container.isEmpty() ? QStringLiteral("out")
+                                                                                : row.container));
+        req.sourceSize = c.source;
+        req.fps = c.fps;
+        req.selection = ctrl::FrameSelection::fromCount(c.frames);
+
+        const ctrl::ExportPlan plan = ctrl::planExport(row, req, c.bucket);
+        if (!plan.ok()) {
+            check(false, QStringLiteral("%1: plan builds (%2)").arg(QString::fromLatin1(c.id), plan.error));
+            continue;
+        }
+        QList<QImage> frames;
+        for (int i = 0; i < plan.frames(); ++i)
+            frames.append(makeNoiseFrame(plan.renderSize.width(), plan.renderSize.height(), i));
+
+        // 1. What the codec's own best quality produces, uncapped. One encode.
+        ctrl::ExportTarget uncapped = row;
+        uncapped.caps.maxBytes = 0; // 0 = no cap, one encode, no loop
+        const ctrl::FitResult best = ctrl::exportWithFit(uncapped, req, c.bucket, frames);
+        if (!best.ok) {
+            check(false, QStringLiteral("%1: uncapped encode (%2)").arg(QString::fromLatin1(c.id), best.error));
+            continue;
+        }
+
+        // 2. A cap the first attempt cannot meet, so the search has to work.
+        ctrl::ExportTarget capped = row;
+        capped.caps.maxBytes = std::max<qint64>(1024, best.bytes / 2);
+        const ctrl::FitResult r = ctrl::exportWithFit(capped, req, c.bucket, frames);
+
+        QTextStream(stdout) << "      " << c.id << " (" << plan.config.codec << "): best "
+                            << (qlonglong)best.bytes << " bytes, cap " << (qlonglong)capped.caps.maxBytes
+                            << " -> fitted " << (qlonglong)r.bytes << " in " << r.attempts
+                            << " encodes\n";
+        for (const QString& step : r.steps) QTextStream(stdout) << "        " << step << "\n";
+
+        check(r.ok, QStringLiteral("%1: the capped fit succeeds (%2)").arg(QString::fromLatin1(c.id), r.error));
+        if (!r.ok)
+            continue;
+        // Non-vacuity: if the first attempt already fitted, this measured nothing.
+        check(r.attempts > 1,
+              QStringLiteral("%1: the cap actually bound (%2 encodes)").arg(QString::fromLatin1(c.id)).arg(r.attempts));
+        check(r.bytes <= capped.caps.maxBytes,
+              QStringLiteral("%1: fitted inside the cap (%2 <= %3)")
+                  .arg(QString::fromLatin1(c.id))
+                  .arg((qlonglong)r.bytes)
+                  .arg((qlonglong)capped.caps.maxBytes));
+        totalEncodes += r.attempts;
+        check(r.attempts <= kFitAttemptCeiling,
+              QStringLiteral("%1: fitted in %2 encodes, ceiling %3 (a cap must not cost a second of "
+                             "encoding per probe)")
+                  .arg(QString::fromLatin1(c.id))
+                  .arg(r.attempts)
+                  .arg(kFitAttemptCeiling));
+    }
+    check(totalEncodes <= kFitAttemptBudget,
+          QStringLiteral("four capped fits cost %1 encodes together, budget %2 (a cap is not "
+                         "allowed to multiply the work the user asked for)")
+              .arg(totalEncodes)
+              .arg(kFitAttemptBudget));
+
+    // ---------------------------------------------------------------------
+    // A Required size is not a knob.
+    //
+    // Eight rows in the table demand an EXACT output size AND cap the bytes
+    // (telegram.emoji 100x100/256 KB, discord.sticker 320x320/512 KB,
+    // whatsapp.sticker and signal.sticker 512x512/500+300 KB, twitch.emote
+    // 112x112/1 MB, wechat.sticker 240x240/500 KB, kakaotalk.sticker
+    // 360x360/650 KB, qq.sticker 300x300/300 KB). Their size rule is the same
+    // kind of hard requirement as the byte cap: Telegram rejects an emoji that is
+    // not 100x100 exactly, Signal rejects a sticker that is not 512x512.
+    //
+    // So the fit loop may not buy bytes with the size on those rows. Scaling is
+    // the one degrade phase that would: it produces a file that is small enough
+    // and the wrong shape, which the platform rejects for the other reason. This
+    // is the failure mode the scale phase was written for on Max rows, where
+    // shrinking is legal, and it must not run on Exact ones.
+    {
+        const ctrl::ExportTarget row =
+            ctrl::ExportTargets::find(all, QStringLiteral("signal.sticker"));
+        check(!row.id.isEmpty() && row.size.mode == ctrl::SizeMode::Exact && row.size.w == 512
+                  && row.size.h == 512,
+              QStringLiteral("the row demands an exact 512x512 (%1, cap %2 bytes)")
+                  .arg(row.id)
+                  .arg((qlonglong)row.caps.maxBytes));
+        check(row.degradeOrder.contains(QLatin1String("scale")),
+              "the row does allow the scale phase, so the guard is what has to stop it");
+
+        ctrl::ExportRequest ereq;
+        ereq.outputPath = QDir::temp().filePath(QStringLiteral("ae_exact_size.apng"));
+        ereq.sourceSize = QSize(512, 512);
+        ereq.fps = 12;
+        ereq.selection = ctrl::FrameSelection::fromCount(6);
+        const ctrl::ExportPlan eplan = ctrl::planExport(row, ereq, ctrl::QualityBucket::Balanced);
+        if (!eplan.ok()) {
+            check(false, QStringLiteral("signal.sticker: plan builds (%1)").arg(eplan.error));
+        } else {
+            QList<QImage> eframes;
+            for (int i = 0; i < eplan.frames(); ++i)
+                eframes.append(makeNoiseFrame(eplan.renderSize.width(), eplan.renderSize.height(), i));
+
+            ctrl::ExportTarget euncapped = row;
+            euncapped.caps.maxBytes = 0;
+            const ctrl::FitResult ebest = ctrl::exportWithFit(euncapped, ereq, ctrl::QualityBucket::Balanced, eframes);
+            ctrl::ExportTarget ecapped = row;
+            ecapped.caps.maxBytes = std::max<qint64>(1024, ebest.bytes / 3);
+            const ctrl::FitResult e = ctrl::exportWithFit(ecapped, ereq, ctrl::QualityBucket::Balanced, eframes);
+            for (const QString& step : e.steps) QTextStream(stdout) << "        " << step << "\n";
+            QTextStream(stdout) << "      signal.sticker: best " << (qlonglong)ebest.bytes << " bytes, cap "
+                                << (qlonglong)ecapped.caps.maxBytes << " -> " << (qlonglong)e.bytes
+                                << " bytes at " << e.finalSize.width() << "x" << e.finalSize.height() << "\n";
+
+            int ew = 0, eh = 0;
+            const int en = e.ok ? decodeInfo(e.path, &ew, &eh) : 0;
+            check(e.ok, QStringLiteral("signal.sticker: the capped fit succeeds (%1)").arg(e.error));
+            if (e.ok) {
+                check(ew == 512 && eh == 512,
+                      QStringLiteral("the fitted sticker is still the exact size the destination "
+                                     "requires (%1x%2 decoded, %3x%4 in the result; the cap is not "
+                                     "allowed to buy bytes with the size)")
+                          .arg(ew)
+                          .arg(eh)
+                          .arg(e.finalSize.width())
+                          .arg(e.finalSize.height()));
+                check(en > 0, QStringLiteral("the fitted sticker decodes (%1 frames)").arg(en));
+                check(e.bytes <= ecapped.caps.maxBytes,
+                      QStringLiteral("signal.sticker: fitted inside the cap (%1 <= %2)")
+                          .arg((qlonglong)e.bytes)
+                          .arg((qlonglong)ecapped.caps.maxBytes));
+            }
+        }
+    }
+}
+
 TEST_SECTION("live encode from a resolved plan", run_live_encode) {
 
     const QList<ctrl::ExportTarget> all =

@@ -1132,6 +1132,18 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
 
     const qint64 cap = aTarget.caps.maxBytes;
 
+    // Whether the OUTPUT size is a requirement rather than a ceiling. Eight rows
+    // demand an exact size AND cap the bytes (telegram.emoji 100x100, signal.sticker
+    // 512x512, whatsapp.sticker 512x512, discord.sticker 320x320, twitch.emote
+    // 112x112, wechat.sticker 240x240, kakaotalk.sticker 360x360, qq.sticker
+    // 300x300), and both constraints are hard upload rejections. The scale phase
+    // therefore may not move the output dimensions on those rows: it reduces how
+    // much detail the art carries and leaves the size alone. On a Max row the
+    // opposite is true and shrinking is the better trade, because a smaller canvas
+    // is sharper per byte and the platform accepts anything under its maximum.
+    const bool requiredSize = (aTarget.size.mode == SizeMode::Exact
+                                || aTarget.size.mode == SizeMode::MaxExactSide);
+
     QList<QImage> base;
     for (const QImage& f : aFrames) {
         base.append(f.size() == plan.renderSize
@@ -1164,33 +1176,57 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         // the file. Only the first attempt (stride 1) was unaffected, which is
         // why it went unnoticed.
         QList<QImage> frames = base;
-        if (aScale != 1.0 && !plan.gifPath) {
+        if (aScale != 1.0 && (requiredSize || !plan.gifPath)) {
             // The GIF path fits each frame to the output size itself (pad or
             // crop, per the destination's rule); scaling it here would distort
             // the art instead, because this scale ignores the aspect ratio.
-            const QSize size(w, h);
+            //
+            // Which size the scale REDUCES depends on whether the destination
+            // requires an exact size. When it does, the scale must not touch the
+            // output dimensions: the art is rendered with less detail and placed
+            // back at the size the platform demands, so the cap is paid for with
+            // softness instead of with the shape. Measured before this: a 512x512
+            // Signal sticker under its 300 KB cap came out 296x296, which Signal
+            // rejects for its size - the cap was met by breaking the other hard
+            // requirement. Detail is reduced in the RENDER space and the encoder's
+            // own pad-or-crop then produces the required output size exactly as it
+            // does for an uncapped export.
+            const QSize detailSize =
+                requiredSize
+                    ? QSize(std::max(2, evenFloor(plan.renderSize.width() * aScale)),
+                            std::max(2, evenFloor(plan.renderSize.height() * aScale)))
+                    : QSize(w, h);
             for (QImage& f : frames) {
-                f = f.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                f = f.scaled(detailSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                if (requiredSize)
+                    f = f.scaled(plan.renderSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             }
         }
+        const QSize attemptSize = requiredSize ? plan.size : QSize(w, h);
         const Attempt a =
-            encodeAttempt(plan, frames, QSize(w, h), aStride, aCrf, quality, aRequest,
+            encodeAttempt(plan, frames, attemptSize, aStride, aCrf, quality, aRequest,
                           &writtenByLastAttempt);
         ++result.attempts;
-        const QString step = QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
-                                 .arg(aWhat)
-                                 .arg(aCrf)
-                                 .arg(w)
-                                 .arg(h)
-                                 .arg(aStride)
-                                 .arg(a.wrote ? (qlonglong)a.bytes : (qlonglong)-1);
+        QString step = QStringLiteral("%1: crf=%2 %3x%4 stride=%5 -> %6 bytes")
+                           .arg(aWhat)
+                           .arg(aCrf)
+                           .arg(w)
+                           .arg(h)
+                           .arg(aStride)
+                           .arg(a.wrote ? (qlonglong)a.bytes : (qlonglong)-1);
+        if (requiredSize && aScale != 1.0) {
+            // Say which happened: the art was reduced, the file was not.
+            step += QStringLiteral(" (art reduced, output kept at %1x%2)")
+                        .arg(plan.size.width())
+                        .arg(plan.size.height());
+        }
         result.steps << step;
         if (aOnStep) aOnStep(step);
         if (!a.wrote) { result.error = a.error; return -1; }
         // `bytes` is the file the caller gets; `smallest` is only for the
         // failure message (the last probe is not necessarily the smallest).
         result.bytes = a.bytes;
-        result.finalSize = QSize(w, h);
+        result.finalSize = attemptSize;
         if (smallest == 0 || a.bytes < smallest) smallest = a.bytes;
         return (int)std::min<qint64>(a.bytes, (qint64)INT_MAX);
     };
@@ -1221,72 +1257,139 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     if (bytes < 0) return result;
     if (bytes <= cap) { result.ok = true; return result; }
 
-    // ---- monotone bisection ------------------------------------------------
-    // Each knob trades bytes monotonically, so the least destructive setting
-    // that fits can be SEARCHED for rather than guessed:
-    //   quality: bytes fall as CRF rises
+    // ---- searching the degradation knobs -----------------------------------
+    // Each knob trades bytes monotonically, so the least destructive setting that
+    // fits can be SEARCHED for rather than guessed:
+    //   quality: bytes fall as the knob rises
     //   scale:   bytes rise with area
     //   frames:  bytes fall as the stride rises
-    // Bisection converges inside the range and needs NO accurate size model —
-    // which matters, because the published "+-6 CRF halves/doubles the bitrate"
-    // rule measurably fails at the extremes: CRF 24 -> 52 on VP9 gave ~3x here,
-    // not the ~25x the rule predicts. A model-driven jump undershot and
-    // converged worse than a plain search, so: search, don't predict.
+    // What the search must not do is guess from a MODEL of the curve. The published
+    // "+-6 CRF halves/doubles the bitrate" rule measurably fails at the extremes: CRF
+    // 24 -> 52 on VP9 gave ~3x here, not the ~25x the rule predicts, and a version
+    // driven by it converged worse than a plain bisection.
+    //
+    // It may, however, use the bytes it MEASURED. Bisection ignores them: it halves
+    // its interval whatever the two probes said, and on these knobs that wastes
+    // encodes twice over.
+    //   * The search domain was 101 percentages while the knob has far fewer values
+    //     (H.264 has 16 CRF points between this table's best and worst, VP9 29), so
+    //     two probes of "different" percentages encoded the identical setting. In the
+    //     measured baseline one H.264 fit probed CRF 29 three times and one VP9 fit
+    //     probed 43 and 44 twice each. The domain is now the knob's own values.
+    //   * The curve is smooth, so the two measurements bracket the cap closely and
+    //     interpolating between them (regula falsi) lands on the crossing instead of
+    //     on the midpoint of an interval that is nowhere near it.
+    // The interpolation is guarded twice so it can only ever help: the retained
+    // endpoint's error is halved when the same side is kept twice (the Illinois step,
+    // which stops one-sided crawling on a convex curve), and a step that would not
+    // shrink the interval falls back to its midpoint. Worst case is therefore the
+    // bisection it replaces, and every step is still decided by a real encode.
     //
     // `lastBytes` carries each probe's result out of the evaluator. -1 = error,
     // -2 = even the extreme end of the range does not fit.
     int lastBytes = bytes;
     const int kMaxAttempts = 16;
 
-    // Bisect [lo,hi] for the SMALLEST value whose encode fits (bytes
-    // non-increasing over the range). Returns the winning value, or -1/-2.
-    auto bisectSmallest = [&](int lo, int hi, const std::function<int(int)>& eval) -> int {
+    // Searches [0,hi] for the SMALLEST setting whose encode fits, for a bytes()
+    // that is NON-INCREASING over the range. `aBytesAtZero` is the size already
+    // measured at setting 0; it must be over the cap (it is - a search only starts
+    // while the current setting does not fit, and setting 0 IS the current setting).
+    // Knowing it is what lets the first step interpolate instead of probing a
+    // midpoint. Pass 0 when the knob has already been degraded by an earlier phase,
+    // in which case setting 0 was never measured and the first step bisects.
+    // Returns the winning index, -1 on an encode error, -2 when even `hi` is too big.
+    auto searchSmallest = [&](qint64 aBytesAtZero, int hi, const std::function<int(int)>& eval) -> int {
+        if (hi <= 0) return -2;
         if (eval(hi) < 0) return -1;
         if (lastBytes > cap) return -2;
-        int a = lo, b = hi; // invariant: f(a) > cap, f(b) <= cap
+        // g() is what the secant interpolates, and its root is the answer: the crossing
+        // of the cap. Plain bytes were measured against log(bytes) - these knobs trade
+        // size multiplicatively, so on paper log is the straighter axis - and the log
+        // version came out WORSE on the fixture set: WebP improved (10 -> 8 probes on its
+        // scale axis) while VP9 and H.264 went 5 -> 6 and the GIF palette axis 9 -> 11,
+        // 31 encodes against 29. One mechanism, the one that measured better, with the
+        // Illinois step below handling the convexity a straight line gets wrong.
+        auto g = [&](qint64 aBytes) {
+            return (double)(aBytes - cap);
+        };
+        int a = 0, b = hi;              // invariant: f(a) > cap >= f(b)
+        double ga = aBytesAtZero > 0 ? g(aBytesAtZero) : 0.0;
+        double gb = g(lastBytes);                   // <= 0
+        int keptLast = 0;               // which side was retained by the previous step
+        int atEdge = 0;                 // consecutive steps that only moved one unit
         while (b - a > 1) {
             if (result.attempts >= kMaxAttempts) break;
-            const int m = a + (b - a) / 2;
+            int m = -1;
+            if (ga > 0.0) {
+                const double frac = ga / (ga - gb);
+                m = a + (int)std::llround((double)(b - a) * frac);
+                // Clamp into the OPEN interval rather than falling back to its
+                // midpoint. An interpolation that lands on `a` says the crossing is
+                // immediately beside it, and a+1 is then the single most informative
+                // probe there is: the midpoint throws that away and needs log2 of the
+                // gap to find it (measured: 236, 234, 233 to cover a gap of one).
+                if (m <= a) { m = a + 1; ++atEdge; }
+                else if (m >= b) { m = b - 1; ++atEdge; }
+                else atEdge = 0;
+            }
+            if (m < 0 || atEdge >= 3) {
+                // No measurement at index 0 to interpolate from, or the crossing really
+                // is being approached one unit at a time and bisection is the faster
+                // way in.
+                m = a + (b - a) / 2;
+                atEdge = 0;
+            }
             if (eval(m) < 0) return -1;
-            if (lastBytes <= cap) b = m; else a = m;
+            const double gm = g(lastBytes);
+            if (gm <= 0) {
+                b = m;
+                gb = gm;
+                // Illinois: b has now been moved twice in a row, so the endpoint the
+                // interval is NOT shrinking from is a, and its weight is what has to
+                // drop. Without this the search crawls into the fitting side one step
+                // at a time (measured on a WebP scale search: 104, 116, 120, 122, 124,
+                // 126 - five probes to move one step), because on a convex curve
+                // interpolation keeps landing on the same side of the root.
+                if (keptLast > 0) ga /= 2.0;
+                keptLast = 1;
+            } else {
+                a = m;
+                ga = gm;
+                if (keptLast < 0) gb /= 2.0;
+                keptLast = -1;
+            }
         }
         return b;
-    };
-
-    // Bisect [lo,hi] for the LARGEST value that fits (bytes non-decreasing).
-    auto bisectLargest = [&](int lo, int hi, const std::function<int(int)>& eval) -> int {
-        if (eval(lo) < 0) return -1;
-        if (lastBytes > cap) return -2;
-        int a = lo, b = hi; // invariant: f(a) <= cap, f(b) > cap
-        while (b - a > 1) {
-            if (result.attempts >= kMaxAttempts) break;
-            const int m = a + (b - a) / 2;
-            if (eval(m) < 0) return -1;
-            if (lastBytes <= cap) a = m; else b = m;
-        }
-        return a;
     };
 
     for (const QString& phase : aTarget.degradeOrder) {
         if (result.ok || result.canceled) break;
         if (phase == QLatin1String("quality") && quality) {
-            // The search runs over a NORMALISED 0..100 domain, where 0 is the
-            // table's `best` and 100 its `worst`, and maps back to the codec's own
-            // numbers. It used to bisect straight between best and worst, which
-            // assumes the range RISES from best to worst: true for CRF, false for
-            // WebP's quality (80 -> 30) and for GIF's palette size (256 -> 8), where
-            // "best" is the larger number. Passing 80 -> 30 into a bisection that
-            // needs lo < hi made it return hi at once, so a capped WebP destination
-            // silently took the WORST quality even when a middling one fitted.
+            // The knob's OWN values, indexed from the table's `best` (index 0, the
+            // largest file) to its `worst` (the last index). This used to bisect
+            // straight between best and worst, which assumes the range RISES from
+            // best to worst: true for CRF, false for WebP's quality (80 -> 30) and
+            // for GIF's palette size (256 -> 8), where "best" is the larger number.
+            // Passing 80 -> 30 into a bisection that needs lo < hi made it return hi
+            // at once, so a capped WebP destination silently took the WORST quality
+            // even when a middling one fitted. An index has no direction, so that
+            // class of mistake is gone rather than guarded against.
             const int best = quality->best;
             const int worst = quality->worst;
-            auto valueAt = [best, worst](int aPercent) {
-                return best + ((worst - best) * aPercent) / 100;
+            const int n = std::abs(worst - best) + 1;
+            auto valueAt = [best, worst, n](int aIndex) {
+                if (n <= 1) return best;
+                return best + ((worst - best) * aIndex) / (n - 1);
             };
-            const int win = bisectSmallest(
-                0, 100,
-                std::function<int(int)>([&](int pct) {
-                    lastBytes = encodeOnce(valueAt(pct), scale, stride, QStringLiteral("quality"));
+            // f(0) is valueAt(0) == best. The initial encode measured exactly that,
+            // but only if no earlier phase already moved the scale or the frames - a
+            // row may declare any degrade order, and a stale hint would only cost a
+            // step, so it is passed as "unknown" rather than assumed.
+            const qint64 atBest = (scale == 1.0 && stride == 1) ? bytes : 0;
+            const int win = searchSmallest(
+                atBest, n - 1,
+                std::function<int(int)>([&](int idx) {
+                    lastBytes = encodeOnce(valueAt(idx), scale, stride, QStringLiteral("quality"));
                     return lastBytes;
                 }));
             if (win >= 0) {
@@ -1299,31 +1402,46 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
                 crf = worst;
             }
         } else if (phase == QLatin1String("scale")) {
-            // Search the scale in percent so bisection works in integers.
-            // Floor comes from the data (never shrink past it: a visible cliff).
+            // Y searched in percent (integers), floor from the data: never shrink
+            // past it, because the cliff is visible. bytes RISE with the scale, so
+            // the search runs on the mirrored coordinate - t = floorPct + 100 - pct -
+            // where bytes fall as t rises and the same interpolated search applies.
+            // f(t=0) is pct 100 (no scaling), whose size is the last probe's: either
+            // the quality phase's failing worst-quality encode or, when the codec has
+            // no quality knob at all (APNG), the uncapped initial encode.
             const int floorPct = std::max(1, aTarget.minScalePct);
-            const int win = bisectLargest(
-                floorPct, 100,
-                std::function<int(int)>([&](int pct) {
+            // pct 100 is unscaled, which is where the previous probe left it: no
+            // earlier phase changes the scale, so its size is the last one measured.
+            const qint64 bytesAtFullScale = scale == 1.0 ? lastBytes : 0;
+            const int hiT = 100 - floorPct;
+            const int win = searchSmallest(
+                bytesAtFullScale, hiT,
+                std::function<int(int)>([&](int t) {
+                    const int pct = floorPct + (100 - floorPct) - t;
                     lastBytes = encodeOnce(crf, (double)pct / 100.0, stride, QStringLiteral("scale"));
                     return lastBytes;
                 }));
             if (win >= 0) {
-                scale = (double)win / 100.0;
+                scale = (double)(floorPct + (100 - floorPct) - win) / 100.0;
                 result.ok = true;
             } else if (win == -2) {
                 scale = (double)floorPct / 100.0; // keep the floor, keep going
             }
         } else if (phase == QLatin1String("frames")) {
             if (base.size() < 2) continue;
-            const int win = bisectSmallest(
-                stride, (int)base.size(),
-                std::function<int(int)>([&](int st) {
+            // Stride 1 at the setting the previous phase left is the last probe, so
+            // the size at the un-degraded end is already in hand - unless an earlier
+            // phase already dropped frames, which is why it is conditional.
+            const qint64 atStrideOne = stride == 1 ? lastBytes : 0;
+            const int win = searchSmallest(
+                atStrideOne, (int)base.size() - 1,
+                std::function<int(int)>([&](int idx) {
+                    const int st = idx + 1;
                     lastBytes = encodeOnce(crf, scale, st, QStringLiteral("frames"));
                     return lastBytes;
                 }));
             if (win >= 0) {
-                stride = win;
+                stride = win + 1;
                 result.ok = true;
             } else if (win == -2) {
                 stride = (int)base.size(); // nothing left to drop
