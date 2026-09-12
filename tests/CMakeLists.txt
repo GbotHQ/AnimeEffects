@@ -136,6 +136,32 @@ target_link_libraries(easing_picker_layout PRIVATE
 # Interactive behavior probe for the EasingPickWidget (mode switch, slider
 # drag-outside, knob clip, bezier spin input). Same source set as the layout
 # gate; prints PASS/FAIL lines for each behavior.
+# What the destination picker shows, offscreen: the list's own state, which is the
+# part a person is affected by (what is selected when it opens, what typing selects).
+# No display: the GUI probes ask the same question and need a bus and a window manager
+# to do it, which is why this went unnoticed.
+add_executable(destination_picker
+    destination_picker.cpp
+    ../src/gui/DestinationPicker.cpp
+    ../src/gui/GUIResources.cpp
+    ../src/gui/AppStyle.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/theme/Theme.cpp
+    ../src/ctrl/ExportTarget.cpp)
+target_include_directories(destination_picker PRIVATE .. ../src/gui)
+target_compile_definitions(destination_picker PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/assets"
+    AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+)
+target_link_libraries(destination_picker PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
+    media
+)
+
 add_executable(picker_probe
     picker_probe.cpp
     ../src/gui/prop/EasingPickWidget.cpp

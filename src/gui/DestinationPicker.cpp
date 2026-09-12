@@ -156,7 +156,20 @@ void DestinationPicker::applyFilter(const QString& aQuery) {
         item->setHidden(!match);
         if (match && firstVisible < 0) firstVisible = i;
     }
-    if (firstVisible >= 0) mList->setCurrentRow(firstVisible);
+    // Move the highlight only when the current row can no longer be chosen.
+    //
+    // The constructor selects the REMEMBERED destination (MainWindow passes
+    // "export_destination" in as aCurrentId, and the header calls it "preselects a
+    // destination"), and this function is called at the end of that constructor -
+    // where it used to overwrite the selection with the first visible row. So the
+    // picker always opened on row 0, "A video for a chat app", and Enter or the
+    // default button exported THERE rather than where the user last exported: a
+    // remembered setting the screen contradicts. See tests/destination_picker.cpp,
+    // which is display-free and asks exactly this question.
+    const QListWidgetItem* current = mList->currentItem();
+    if ((!current || current->isHidden()) && firstVisible >= 0) {
+        mList->setCurrentRow(firstVisible);
+    }
     mList->scrollToItem(mList->currentItem());
 }
 
