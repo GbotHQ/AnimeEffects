@@ -12,6 +12,7 @@
 #include "gl/Vector3.h"
 #include "gl/BufferObject.h"
 #include "img/GridMeshCreator.h"
+#include "img/MeshContentLevel.h"
 #include "core/LayerMesh.h"
 #include "core/Serializer.h"
 #include "core/Deserializer.h"
@@ -53,7 +54,15 @@ public:
 
     void swap(GridMesh& aRhs);
     void setOriginOffset(const QVector2D& aOffset) { mOriginOffset = aOffset; }
-    void createFromImage(const void* aImagePtr, const QSize& aSize, int aCellPx);
+    // aContentAlphaThreshold: the alpha level at which a pixel counts as CONTENT, i.e. the level
+    // at which a cell starts to exist (img::GridMeshCreator::Image::hasRawAlpha). It is a creation
+    // parameter because it decides the mesh's silhouette.
+    //
+    // The default is img::MeshContentLevel::kDerive: production derives the level from the layer's
+    // own alpha statistics (see that header for the rule and why). Pass an explicit level to force
+    // one - the comparison tooling and the tests do that to hold the level still.
+    void createFromImage(const void* aImagePtr, const QSize& aSize, int aCellPx,
+                         int aContentAlphaThreshold = img::MeshContentLevel::kDerive);
     void writeHeightMap(const HeightMap& aMap, const QVector2D& aMinPos);
     util::ArrayBlock<gl::Vector3>
     createFFD(util::ArrayBlock<const gl::Vector3> aPrevFFD, const Transitions& aTrans) const;
@@ -103,6 +112,7 @@ private:
     QSize mSize;
     QVector2D mOriginOffset;
     int mCellPx;
+    int mContentAlphaThreshold;
     int mIndexCount;
     int mVertexCount;
     QRect mVertexRect;

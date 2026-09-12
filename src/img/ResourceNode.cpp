@@ -20,6 +20,37 @@ ResourceHandle ResourceNode::updateHandle(XCMemBlock aGrabbedImage, const QRect&
     return oldHandle;
 }
 
+ResourceHandle ResourceNode::updateHandleContent(Content aContent) {
+    ResourceHandle oldHandle = mHandle;
+    auto id = mHandle->identifier();
+
+    mHandle = ResourceHandle(new ResourceData(id, this), new int(0));
+    *mHandle = *oldHandle;
+    if (aContent.setBlend) {
+        mHandle->setBlendMode(aContent.blend);
+    }
+    if (aContent.setVisible) {
+        mHandle->setIsVisible(aContent.visible);
+    }
+    mHandle->setPos(aContent.rect.topLeft());
+    if (aContent.setMask) {
+        if (aContent.hasMask) {
+            mHandle->grabMask(aContent.mask, aContent.rect.size());
+            mHandle->setMaskEnabled(aContent.maskEnabled);
+            mHandle->setMaskInverted(aContent.maskInverted);
+        } else {
+            mHandle->freeMask();
+            mHandle->setMaskEnabled(true);
+            mHandle->setMaskInverted(false);
+        }
+    }
+    // last: grabbing the pixels re-derives whatever derived channels are wanted, from THESE
+    // pixels (see ResourceData::grabImage)
+    mHandle->grabImage(aContent.pixels, aContent.rect.size(), img::Format_RGBA8);
+
+    return oldHandle;
+}
+
 void ResourceNode::swapData(ResourceHandle& aRhs) {
     XC_ASSERT(aRhs->identifier() == mHandle->identifier());
     XC_ASSERT(aRhs->serialAddress() == mHandle->serialAddress());
@@ -32,10 +63,10 @@ int ResourceNode::getCountOfSameSiblings() const {
 
     if (parent) {
         for (auto child : parent->children()) {
-            if (child != this && child->mHandle->identifier() == this->mHandle->identifier()) {
-                if (child->mHandle->isLayer() == this->mHandle->isLayer()) {
-                    ++count;
-                }
+            // the same identity rule the reload matches with, so "which sibling is this?" has one
+            // answer everywhere: a stable id when both sides have one, else the name
+            if (child != this && child->mHandle->matchesIdentity(*this->mHandle)) {
+                ++count;
             }
         }
     }

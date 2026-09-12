@@ -115,6 +115,24 @@ namespace prop {
     }
 
     //-------------------------------------------------------------------------------------------------
+    ButtonItem::ButtonItem(QWidget* aParent): mButton() {
+        mButton = new QPushButton(aParent);
+        mButton->setFocusPolicy(Qt::NoFocus);
+        mButton->connect(mButton, &QPushButton::clicked, [=]() {
+            if (onPressed) {
+                onPressed();
+            }
+        });
+    }
+
+    void ButtonItem::setItemEnabled(bool aEnable) {
+        mButton->setEnabled(aEnable);
+    }
+
+    void ButtonItem::setItemVisible(bool aVisible) {
+        mButton->setVisible(aVisible);
+    }
+
     ComboItem::ComboItem(QWidget* aParent): mBox(), mStamp(), mSignal(true) {
         mBox = new QComboBox(aParent);
         // fill the shared form field column (ExpandingFieldsGrow)

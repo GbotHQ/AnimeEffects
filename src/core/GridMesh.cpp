@@ -19,6 +19,7 @@ GridMesh::GridMesh():
     mSize(),
     mOriginOffset(),
     mCellPx(0),
+    mContentAlphaThreshold(img::GridMeshCreator::kContentAlphaThreshold),
     mIndexCount(0),
     mVertexCount(0),
     mVertexRect(),
@@ -38,6 +39,7 @@ GridMesh::GridMesh(const GridMesh& aRhs):
     mSize(aRhs.mSize),
     mOriginOffset(aRhs.mOriginOffset),
     mCellPx(aRhs.mCellPx),
+    mContentAlphaThreshold(aRhs.mContentAlphaThreshold),
     mIndexCount(aRhs.mIndexCount),
     mVertexCount(aRhs.mVertexCount),
     mVertexRect(aRhs.mVertexRect),
@@ -59,6 +61,7 @@ GridMesh& GridMesh::operator=(const GridMesh& aRhs) {
     mSize = aRhs.mSize;
     mOriginOffset = aRhs.mOriginOffset;
     mCellPx = aRhs.mCellPx;
+    mContentAlphaThreshold = aRhs.mContentAlphaThreshold;
     mIndexCount = aRhs.mIndexCount;
     mVertexCount = aRhs.mVertexCount;
     mVertexRect = aRhs.mVertexRect;
@@ -84,6 +87,7 @@ void GridMesh::swap(GridMesh& aRhs) {
     std::swap(mSize, aRhs.mSize);
     std::swap(mOriginOffset, aRhs.mOriginOffset);
     std::swap(mCellPx, aRhs.mCellPx);
+    std::swap(mContentAlphaThreshold, aRhs.mContentAlphaThreshold);
     std::swap(mIndexCount, aRhs.mIndexCount);
     std::swap(mVertexCount, aRhs.mVertexCount);
     std::swap(mVertexRect, aRhs.mVertexRect);
@@ -139,7 +143,8 @@ void GridMesh::initializeVertexBuffers(int aVertexCount) {
     }
 }
 
-void GridMesh::createFromImage(const void* aImagePtr, const QSize& aSize, int aCellPx) {
+void GridMesh::createFromImage(const void* aImagePtr, const QSize& aSize, int aCellPx,
+                               int aContentAlphaThreshold) {
     XC_ASSERT(aCellPx > 0);
 
     // free old buffers
@@ -147,6 +152,10 @@ void GridMesh::createFromImage(const void* aImagePtr, const QSize& aSize, int aC
 
     mSize = aSize;
     mCellPx = aCellPx;
+    // kDerive: the layer's OWN alpha statistics decide its level (img::MeshContentLevel)
+    mContentAlphaThreshold = (aContentAlphaThreshold == img::MeshContentLevel::kDerive)
+                                 ? img::MeshContentLevel::derive(aImagePtr, aSize)
+                                 : aContentAlphaThreshold;
 
     if (!aImagePtr || aSize.isEmpty() || (aSize == QSize(1, 1) && *((uint32*)aImagePtr) == 0)) {
         mVertexRect = QRect(QPoint(), QSize());
@@ -160,7 +169,7 @@ void GridMesh::createFromImage(const void* aImagePtr, const QSize& aSize, int aC
 }
 
 void GridMesh::createGridMesh(const void* aImagePtr) {
-    img::GridMeshCreator creator((const uint8*)aImagePtr, mSize, mCellPx);
+    img::GridMeshCreator creator((const uint8*)aImagePtr, mSize, mCellPx, mContentAlphaThreshold);
 
     mVertexRect = creator.vertexRect();
     mVertexCount = creator.vertexCount();

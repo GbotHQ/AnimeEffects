@@ -1,3 +1,4 @@
+#include <cstring>
 #include "core/Deserializer.h"
 #include "util/PackBits.h"
 #include <memory>
@@ -182,6 +183,71 @@ bool Deserializer::read(const XCMemBlock& aValue) {
         XC_PTR_ASSERT(aValue.data);
         mIn.readBuf(aValue.data, size);
     }
+    return true;
+}
+
+bool Deserializer::readMaskImage(XCMemBlock& aValue) {
+    XC_ASSERT(aValue.data == nullptr);
+
+    const uint32 compType = mIn.readUInt32();
+    if (compType > 1)
+        return false;
+
+    const uint32 w = mIn.readUInt32();
+    const uint32 h = mIn.readUInt32();
+
+    if (compType == 0) {
+        if (w != 0 || h != 0)
+            return false;
+        return true;
+    }
+
+    const uint32 maxSize = (uint32)mGLDeviceInfo.maxTextureSize;
+    if (w <= 0 || h <= 0 || maxSize < w || maxSize < h)
+        return false;
+
+    const uint64 length = mIn.readUInt64();
+    if (std::numeric_limits<size_t>::max() < length)
+        return false;
+    if (getRestSize() < (size_t)length)
+        return false;
+
+    auto pos = mIn.tellg();
+
+    const size_t dstSize = (size_t)w * h;
+    std::unique_ptr<uint8[]> dst(new uint8[dstSize]);
+    if (!dst)
+        return false;
+
+    const size_t srcSize = util::PackBits::worstEncodedSize((size_t)w);
+    const size_t wrkSize = (size_t)w;
+    std::unique_ptr<uint8[]> src(new uint8[srcSize]);
+    std::unique_ptr<uint8[]> wrk(new uint8[wrkSize]);
+    XCMemBlock wrkBlock(wrk.get(), wrkSize);
+    if (!src || !wrk)
+        return false;
+
+    util::PackBits decoder;
+
+    uint8* dstp = dst.get();
+    for (uint32 y = 0; y < h; ++y) {
+        const size_t linelen = (size_t)mIn.readUInt32();
+        mIn.readBuf(src.get(), linelen);
+
+        if (!decoder.decode(XCMemBlock(src.get(), linelen), wrkBlock))
+            return false;
+
+        std::memcpy(dstp, wrk.get(), wrkSize);
+        dstp += w;
+    }
+
+    if ((length + pos) != (uint64)mIn.tellg())
+        return false;
+
+    alignBy(length);
+
+    aValue.size = dstSize;
+    aValue.data = dst.release();
     return true;
 }
 

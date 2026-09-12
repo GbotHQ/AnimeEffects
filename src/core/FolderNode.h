@@ -34,6 +34,8 @@ public:
     // and blends the group result against the scene)
     virtual bool hasBlendMode() const { return true; }
     virtual img::BlendMode blendMode() const { return mBlendMode; }
+    virtual BlendIf blendIf() const { return mBlendIf; }
+    virtual void setBlendIf(const BlendIf& aBlendIf) { mBlendIf = aBlendIf; }
     virtual void setBlendMode(img::BlendMode aMode) { mBlendMode = aMode; }
 
     // from ObjectNode
@@ -76,6 +78,7 @@ private:
     TimeLine mTimeLine;
     bool mIsClipped;
     img::BlendMode mBlendMode;
+    BlendIf mBlendIf;
 
     std::vector<Renderer::SortUnit> mClippees; // a cache for performance
 };

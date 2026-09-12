@@ -23,6 +23,26 @@ public:
     void swapData(ResourceHandle& aRhs);
     ResourceHandle updateHandle(XCMemBlock aGrabbedImage, const QRect& aRect);
 
+    // Everything a source reload can hand over for one resource, applied in a single swap so a
+    // reload never leaves a resource half-updated (and never applies only part of what it
+    // detected). The identifier is deliberately NOT part of it: the resource's name is this
+    // app's own label for it (and the fallback identity), so a rename in the source file is
+    // reported rather than applied - the reload (gui::res::ResourceUpdater) says so in the log.
+    struct Content {
+        XCMemBlock pixels;          // the layer's image in aRect (padded, like the importer's)
+        QRect rect;                 // the resource's rect, from the file
+        bool setMask = false;       // false = leave the mask alone
+        XCMemBlock mask;            // A8 in aRect when setMask and hasMask
+        bool hasMask = false;       // false with setMask = the file has no mask: drop it
+        bool maskEnabled = true;
+        bool maskInverted = false;
+        bool setBlend = false;
+        BlendMode blend = BlendMode_Normal;
+        bool setVisible = false;
+        bool visible = true;
+    };
+    ResourceHandle updateHandleContent(Content aContent);
+
     ResourceHandle handle() const { return mHandle; }
 
     bool isReferenced() const { return mHandle.referenceCount() > 1; }

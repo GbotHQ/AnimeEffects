@@ -28,6 +28,7 @@ add_library(${PROJECT_NAME}
     ProjectSaver.cpp ProjectSaver.h
     SRTEditor.cpp SRTEditor.h
     SRTParam.h
+    SourceDocument.cpp SourceDocument.h
     ScopedModifier.h
     System.cpp System.h
     TimeLineEditor.cpp TimeLineEditor.h

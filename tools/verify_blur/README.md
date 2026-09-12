@@ -11,10 +11,13 @@ tools/verify_blur/build_and_run.sh        # rebuild libs + harness, then run
 tools/verify_blur/build_and_run.sh --no-build
 ```
 
-Must run from the repo root (the script cds there; shaders load from `./data/shader`).
-Tries `QT_QPA_PLATFORM=offscreen` first, falls back to X11 (`DISPLAY=:0`) when offscreen
-GL is unavailable. Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap failure
-(triggers the X11 fallback).
+Must run from the repo root (the script cds there). Shaders come from the embedded Qt
+resources, so the script compiles `assets/assets.qrc` into the harness binary itself (the GUI
+target normally supplies it). `AE_BUILD_DIR` selects the build tree to link against (default
+`build-asan`; point it at `build` when no ASan tree exists — the suite then runs without
+sanitizer coverage). Tries `QT_QPA_PLATFORM=offscreen` first, falls back to X11 (`DISPLAY=:0`)
+when offscreen GL is unavailable. Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap
+failure (triggers the X11 fallback).
 
 ## Suites
 
@@ -69,6 +72,96 @@ GL is unavailable. Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap 
 - **S10 performance** — informational snapshot: filtered vs unfiltered ms/frame at
   1920x1080 (direct-path and ladder radii), 10 timed renders each including one
   readback.
+
+(The suites also cover PSD/ORA import (S11/S13), folder blend modes (S12), golden images
+against reference exports (S14) and the shader-variant matrix (S15); they are documented at
+their definitions in `verify_blur.cpp`.)
+
+- **S18 layer effects** — Photoshop's `lfx2` block: the descriptor reader
+  (`img/PSDDescriptor`, pinned against a hand-written block including the two-word
+  `DescriptorBlock2` header, truncated input and an unknown OSType), the parsed model
+  (`core/LayerEffects`: what is drawn vs what is only recognised — an enabled effect with
+  nothing this build draws, such as a bevel or a blur-less chrome, must mark the result as
+  not fully faithful), the gradient overlay's placement against an independently written
+  reference at two angles, the carry-through that keeps effects from changing coverage (a
+  fully transparent gradient is byte-identical to no effect), the import leg (a PSD written
+  with an `lfx2` block, a chrome silhouette and an `iOpa` fill opacity) and the project
+  round-trip of the gradient, the silhouette's geometry/tint/blend mode and the fill opacity.
+- **S16 Blend If, GPU vs CPU reference** — including one case that deliberately does *not*
+  compare against the CPU reference, because that reference shares the semantics and agreeing
+  with it would prove nothing: a backdrop of exactly luma 128 under a **crossed** destination
+  range (`blackLo 64, blackHi 192, whiteLo 96, whiteHi 224`) with an opaque `(200,40,40)` top
+  layer must land on the hand-computed `(164,84,84)` — the black edge is 0.5, the white edge
+  0.75, and Photoshop's weight is `min(0.5, 0.75)`. The product reading would give
+  `(155,95,95)`. The two rules coincide on every uncrossed range, which is why the earlier
+  cases could not see the difference; see BLEND_IF_ASSESSMENT.md §14.
+- **S22 layer mesh coverage** — the deform mesh must not change what a layer draws. Every layer
+  is drawn through a triangular mesh generated from its own alpha (`img::GridMeshCreator`), so
+  whatever that mesh calls empty is never rasterized: the pixels it calls content have to be
+  exactly the layer's support. The suite draws one layer twice — through the generated mesh and
+  through an exact bounding quad (a cell size at or above the bitmap size makes
+  `GridMesh::createFromImage` build a quad) — and requires the two renders to be **byte
+  identical**, then requires both to reproduce the layer's own bitmap drawn 1:1 at an integer
+  offset. Its fixture contains an alpha-6 haze block and a ramp down to alpha 1, i.e. content the
+  old `alpha > 10` content test called empty, so it fails on the previous code. (Regenerating a
+  mesh is only legal before the layer is first rendered: the cached FFD vertex data in
+  `TimeKeyExpans` is a copy of the mesh, and `LayerNode::transformShape` asserts on a mismatch.)
+- **S21 resource identity** — the rule a source reload uses to answer "which layer in the
+  project is this layer in the file?". It pins the policy in the model
+  (`img::ResourceData::matchesIdentity`): a Photoshop `lyid` decides when both sides have one
+  (so a rename keeps correspondence and two same-named layers stay apart), the layer name is
+  the fallback when it does not (the migration path for a project written before ids), the
+  layer/folder kind is always checked, same-named siblings with distinct ids are not duplicates
+  while an id-less same-named sibling remains ambiguous, the importer reads `lyid` for layers
+  *and* groups, and the ids survive a project round-trip.
+- **S20 layer stroke** — Photoshop's Stroke (`FrFX`) and the outline distance field it needs
+  (`core/DistanceField.h`): the exact separable Euclidean transform against a brute-force
+  reference on four shapes (plus the degenerate all-empty/all-full planes, which must produce
+  no field at all), then the band itself — a 32x32 square with a 3 px inside stroke must land
+  exactly on the pixels the *analytic* rectangle distance puts in the band, in the stroke's
+  colour, and must leave the layer's pixels alone (this passes with a max channel difference of
+  0). It also pins the fallbacks (a stroke with no field on the resource is byte-identical to
+  no stroke; an outside or pattern stroke is reported, not drawn), the descriptor (size,
+  position, paint type, blend mode, gradient stops, angle and scale), and the import plus
+  project round-trip: a PSD whose layer carries an `FrFX` block bakes a field that peaks at the
+  shape's inradius and survives ProjectSaver -> ProjectLoader byte-identically. The paint type
+  is pinned to Photoshop's own value (`PntT` = `SClr` for a solid stroke; the helper used to be
+  called with `SCol`, a key no producer writes, which is why a solid stroke reading as neither
+  solid nor gradient went unnoticed - restoring `SCol` makes six checks here fail). It also
+  pins the reporting: a PSD whose effects are all drawn reports nothing, a PSD carrying a bevel
+  reports it by layer and by effect name, and a bevel the file switches *off* is not reported.
+- **S19 layer effects (fill opacity and silhouettes)** — Photoshop's FILL opacity (`iOpa`)
+  as its own value rather than a factor on the layer opacity, and the blurred-silhouette
+  effects (drop shadow, outer glow, chrome): a 0 % fill with no style draws nothing (alpha 0
+  everywhere) while the same layer at 100 % does; a 50 % fill halves the coverage without
+  moving it; an opaque style survives a 0 % fill byte-identically (the glow-only layer);
+  the silhouette lands exactly one `distance` from the shape at the effect's angle
+  (centroid measured for 0/90/180 degrees, in GL-readback rows so the direction is pinned);
+  an outer glow reproduces the independent Gaussian reference at both a direct and a
+  laddered radius; and a `Scrn` silhouette really lightens its backdrop, which a Normal
+  present could not.
+- **S17 layer mask** — PSD layer masks (`img/ResourceData`'s mask plane + the shader's
+  GL_R8 fetch) against the CPU reference, plus the import and persistence legs: coverage
+  multiply per blend mode, inverted, disabled (byte-identical to no mask), composition with
+  layer opacity and Blend If, the composite/blur path (an all-black mask must erase even a
+  blurred layer), a PSD written with a user mask imported with its plane and flags, and the
+  mask surviving ProjectSaver -> ProjectLoader byte-identically. It also checks the
+  production CPU range weight (`core::blendIfRangeWeight`) against the reference over all 256
+  values (both now combine a slider's two edges with `min`; that pair agrees by construction, so
+  the rule itself is pinned by S16's hand-computed crossed case, not here), and covers the
+  authoring command: baking a layer's Blend If SOURCE range into its
+  mask (`core::LayerMaskBake`) must be render-equivalent to leaving the range live, and its
+  undo must restore both the ranges and the previous mask pixels. The suite's first case pins
+  the mask row order empirically (image row 0 lands at the canvas top) instead of assuming
+  it, and the reference builds its mask in the readbacks' row order.
+- **S16 blend if** — Photoshop "Blend If" (`core/BlendIf.h`) against the CPU reference,
+  on flat canvas-sized identity layers (texel-exact, border band excluded like the golden
+  suite): the destination range over a luma ramp, the source range, both multiplied, an
+  emptied range drawing nothing, the default-range no-op gate, the weight composed with
+  layer opacity and alpha, a folder present, and the composite/blur present path (an active
+  range must weight the presented composite; the blurred content itself is S4's subject).
+  The reference is `ref::blendPresent(..., &ranges)`: a Rec.601 trapezoid over the 8-bit
+  channel values, applied as an alpha scale.
 
 ## Layout
 

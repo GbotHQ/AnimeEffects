@@ -85,6 +85,28 @@ namespace prop {
     };
 
     //-------------------------------------------------------------------------------------------------
+    // a plain push button for authoring actions (e.g. baking a Blend If source range into a
+    // layer mask); the owning panel supplies the action through onPressed
+    class ButtonItem: public ItemBase {
+    public:
+        typedef std::function<void()> UpdateType;
+
+        ButtonItem(QWidget* aParent);
+
+        QPushButton& button() { return *mButton; }
+        const QPushButton& button() const { return *mButton; }
+
+        virtual QWidget* itemWidget() { return mButton; }
+        virtual void setItemEnabled(bool aEnable);
+        virtual void setItemVisible(bool aVisible);
+
+        UpdateType onPressed;
+
+    private:
+        QPushButton* mButton;
+    };
+
+    //-------------------------------------------------------------------------------------------------
     class ComboItem: public ItemBase {
     public:
         typedef std::function<void(int, int)> UpdateType;

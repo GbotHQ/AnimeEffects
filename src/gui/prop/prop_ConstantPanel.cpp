@@ -1,10 +1,14 @@
 #include "cmnd/ScopedMacro.h"
 #include "cmnd/BasicCommands.h"
 #include "core/Constant.h"
+#include "core/ImageKey.h"
+#include "core/LayerMaskBake.h"
+#include "core/TimeLine.h"
 #include "ctrl/CmndName.h"
 #include "gui/ResourceDialog.h"
 #include "gui/prop/prop_ConstantPanel.h"
 #include "gui/prop/prop_Items.h"
+#include "img/ResourceData.h"
 #include <QEvent>
 #include <QTimer>
 
@@ -46,6 +50,23 @@ public:
         return QObject::eventFilter(aWatched, aEvent);
     }
 };
+// the layer's image resource (the mask lives there, next to the pixels)
+const img::ResourceData* imageResourceOf(const core::ObjectNode* aNode) {
+    if (!aNode) {
+        return nullptr;
+    }
+    const core::TimeLine* timeLine = aNode->timeLine();
+    if (!timeLine) {
+        return nullptr;
+    }
+    const core::TimeKey* key = timeLine->defaultKey(core::TimeKeyType_Image);
+    return key ? static_cast<const core::ImageKey*>(key)->data().resource().get() : nullptr;
+}
+
+img::ResourceData* imageResourceOf(core::ObjectNode* aNode) {
+    return const_cast<img::ResourceData*>(imageResourceOf(const_cast<const core::ObjectNode*>(aNode)));
+}
+
 } // namespace
 
 namespace gui {
@@ -61,7 +82,17 @@ namespace prop {
         mLabelWidth(),
         mRenderingAttributes(),
         mBlendMode(),
-        mClipped() {
+        mClipped(),
+        mDstBlendIfGroup(),
+        mSrcBlendIfGroup(),
+        mDstBlendIf(),
+        mSrcBlendIf(),
+        mDstBlendIfReset(),
+        mSrcBlendIfReset(),
+        mMaskGroup(),
+        mMaskEnabled(),
+        mMaskInverted(),
+        mMaskBake() {
         mLabelWidth = this->fontMetrics().boundingRect(tr("MaxTextWidth")).width();
 
         build();
@@ -153,7 +184,101 @@ namespace prop {
             mRenderingAttributes->addItem(tr("Clipped"), mClipped);
         }
 
+        // Blend If: Photoshop's per-layer blending ranges. The weights are applied by the
+        // renderer against the captured backdrop, so they stay live (and are imported from
+        // PSD files); values are the split-slider pairs, 0..255, default = no restriction.
+        auto buildBlendIfGroup = [&](bool aDst) {
+            auto* group = new AttrGroup(
+                aDst ? tr("Blend If: Underlying Layer") : tr("Blend If: This Layer"), mLabelWidth, mGUIResources);
+            this->addGroup(group);
+
+            IntegerItem** items = aDst ? mDstBlendIf : mSrcBlendIf;
+            // literal tr() calls (not a label table) so lupdate extracts them
+            const QString labels[4] = {tr("Black low"), tr("Black high"), tr("White low"), tr("White high")};
+            for (int i = 0; i < 4; ++i) {
+                items[i] = new IntegerItem(group);
+                items[i]->setRange(0, 255);
+                items[i]->onValueUpdated = [=](int, int) {
+                    core::BlendIf::Range range;
+                    range.blackLo = (uint8_t)items[0]->value();
+                    range.blackHi = (uint8_t)items[1]->value();
+                    range.whiteLo = (uint8_t)items[2]->value();
+                    range.whiteHi = (uint8_t)items[3]->value();
+                    assignBlendIfSide(this->mProject, this->mTarget, aDst, range);
+                };
+                group->addItem(labels[i], items[i]);
+            }
+
+            auto* reset = new ButtonItem(group);
+            reset->button().setText(tr("Reset (no restriction)"));
+            reset->onPressed = [=]() { resetBlendIfSide(this->mProject, this->mTarget, aDst); };
+            group->addItem(tr("Range"), reset);
+            if (aDst) {
+                mDstBlendIfReset = reset;
+            } else {
+                mSrcBlendIfReset = reset;
+            }
+            return group;
+        };
+        mDstBlendIfGroup = buildBlendIfGroup(true);
+        mSrcBlendIfGroup = buildBlendIfGroup(false);
+
+        // layer mask: imported from the PSD's user-mask channel, or baked from the source
+        // range below
+        mMaskGroup = new AttrGroup(tr("Mask"), mLabelWidth, mGUIResources);
+        {
+            this->addGroup(mMaskGroup);
+
+            mMaskEnabled = new CheckItem(mMaskGroup);
+            mMaskEnabled->onValueUpdated = [=](bool aNext) {
+                assignMaskEnabled(this->mProject, this->mTarget, aNext);
+            };
+            mMaskGroup->addItem(tr("Apply"), mMaskEnabled);
+
+            mMaskInverted = new CheckItem(mMaskGroup);
+            mMaskInverted->onValueUpdated = [=](bool aNext) {
+                assignMaskInverted(this->mProject, this->mTarget, aNext);
+            };
+            mMaskGroup->addItem(tr("Invert"), mMaskInverted);
+
+            mMaskBake = new ButtonItem(mMaskGroup);
+            mMaskBake->button().setText(tr("Bake This Layer range"));
+            mMaskBake->onPressed = [=]() { bakeSourceRange(this->mProject, this->mTarget); };
+            mMaskGroup->addItem(tr("Create mask"), mMaskBake);
+        }
+
         this->addStretch();
+    }
+
+    void ConstantPanel::updateBlendIfItems() {
+        const bool available = mTarget && mTarget->renderer();
+        const core::BlendIf blendIf = available ? mTarget->renderer()->blendIf() : core::BlendIf();
+
+        IntegerItem** dst = mDstBlendIf;
+        IntegerItem** src = mSrcBlendIf;
+        const core::BlendIf::Range ranges[2] = {blendIf.dst, blendIf.src};
+        for (int side = 0; side < 2; ++side) {
+            IntegerItem** items = side == 0 ? dst : src;
+            const core::BlendIf::Range& r = ranges[side];
+            const int values[4] = {r.blackLo, r.blackHi, r.whiteLo, r.whiteHi};
+            for (int i = 0; i < 4; ++i) {
+                items[i]->setItemEnabled(available);
+                items[i]->setValue(values[i]);
+            }
+        }
+        mDstBlendIfReset->setItemEnabled(available);
+        mSrcBlendIfReset->setItemEnabled(available);
+    }
+
+    void ConstantPanel::updateMaskItems() {
+        const img::ResourceData* res = imageResourceOf(mTarget);
+        const bool hasMask = res && res->hasMask();
+        mMaskEnabled->setItemEnabled(hasMask);
+        mMaskInverted->setItemEnabled(hasMask);
+        mMaskEnabled->setValue(hasMask && res->isMaskEnabled(), false);
+        mMaskInverted->setValue(hasMask && res->isMaskInverted(), false);
+        // the bake action needs an image and a non-default source range
+        mMaskBake->setItemEnabled(mTarget && core::LayerMaskBake::isAvailable(*mTarget));
     }
 
     void ConstantPanel::updateAttribute() {
@@ -176,6 +301,9 @@ namespace prop {
                 mClipped->setItemEnabled(false);
             }
         }
+
+        updateBlendIfItems();
+        updateMaskItems();
     }
 
     void ConstantPanel::assignBlendMode(core::Project& aProject, core::ObjectNode* aTarget, img::BlendMode aValue) {
@@ -190,6 +318,80 @@ namespace prop {
 
         auto exec = [=]() { aTarget->renderer()->setBlendMode(aValue); };
         auto undo = [=]() { aTarget->renderer()->setBlendMode(prev); };
+        aProject.commandStack().push(new cmnd::Delegatable(exec, undo));
+    }
+
+    void ConstantPanel::assignBlendIfSide(
+        core::Project& aProject, core::ObjectNode* aTarget, bool aDst, const core::BlendIf::Range& aRange
+    ) {
+        if (!aTarget || !aTarget->renderer()) {
+            return;
+        }
+
+        const core::BlendIf prev = aTarget->renderer()->blendIf();
+        if ((aDst ? prev.dst : prev.src) == aRange) {
+            return; // no change (the spin boxes also fire on programmatic updates)
+        }
+        core::BlendIf next = prev;
+        (aDst ? next.dst : next.src) = aRange;
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("update blend if ranges"));
+        macro.grabListener(new ObjectNodeAttrNotifier(aProject, *aTarget));
+
+        auto exec = [=]() { aTarget->renderer()->setBlendIf(next); };
+        auto undo = [=]() { aTarget->renderer()->setBlendIf(prev); };
+        aProject.commandStack().push(new cmnd::Delegatable(exec, undo));
+    }
+
+    void ConstantPanel::resetBlendIfSide(core::Project& aProject, core::ObjectNode* aTarget, bool aDst) {
+        assignBlendIfSide(aProject, aTarget, aDst, core::BlendIf::Range());
+    }
+
+    void ConstantPanel::assignMaskEnabled(core::Project& aProject, core::ObjectNode* aTarget, bool aValue) {
+        img::ResourceData* res = imageResourceOf(aTarget);
+        if (!res || !res->hasMask() || res->isMaskEnabled() == aValue) {
+            return;
+        }
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("update a layer mask"));
+        macro.grabListener(new ObjectNodeAttrNotifier(aProject, *aTarget));
+
+        auto exec = [=]() { res->setMaskEnabled(aValue); };
+        auto undo = [=]() { res->setMaskEnabled(!aValue); };
+        aProject.commandStack().push(new cmnd::Delegatable(exec, undo));
+    }
+
+    void ConstantPanel::assignMaskInverted(core::Project& aProject, core::ObjectNode* aTarget, bool aValue) {
+        img::ResourceData* res = imageResourceOf(aTarget);
+        if (!res || !res->hasMask() || res->isMaskInverted() == aValue) {
+            return;
+        }
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("update a layer mask"));
+        macro.grabListener(new ObjectNodeAttrNotifier(aProject, *aTarget));
+
+        auto exec = [=]() { res->setMaskInverted(aValue); };
+        auto undo = [=]() { res->setMaskInverted(!aValue); };
+        aProject.commandStack().push(new cmnd::Delegatable(exec, undo));
+    }
+
+    void ConstantPanel::bakeSourceRange(core::Project& aProject, core::ObjectNode* aTarget) {
+        core::LayerMaskBake bake;
+        if (!aTarget || !core::LayerMaskBake::prepare(*aTarget, bake)) {
+            return; // fail-safe: nothing to bake
+        }
+        auto* layer = dynamic_cast<core::LayerNode*>(aTarget);
+        if (!layer) {
+            return;
+        }
+
+        cmnd::ScopedMacro macro(aProject.commandStack(), CmndName::tr("bake blend if range into a mask"));
+        macro.grabListener(new ObjectNodeAttrNotifier(aProject, *aTarget));
+
+        // the mask pixels are edited in place; the GPU copy is rebuilt lazily by the render
+        // path (ImageKey::syncMaskTexture), so no GL context is needed here
+        auto exec = [=]() { bake.bake(*layer); };
+        auto undo = [=]() { bake.restore(*layer); };
         aProject.commandStack().push(new cmnd::Delegatable(exec, undo));
     }
 

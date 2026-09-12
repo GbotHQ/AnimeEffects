@@ -66,6 +66,26 @@ const gl::Texture* TimeKeyExpans::areaTexture() const {
     return mAreaImageKey ? &(mAreaImageKey->cache().texture()) : nullptr;
 }
 
+const gl::Texture* TimeKeyExpans::areaMaskTexture() const {
+    if (!mAreaImageKey)
+        return nullptr;
+    // rebuilds the GPU copy when an authoring command edited the mask pixels (this runs in
+    // the render path, where a GL context is current)
+    mAreaImageKey->syncMaskTexture();
+    const auto& res = *mAreaImageKey->data().resource();
+    return res.hasMask() ? &(mAreaImageKey->cache().maskTexture()) : nullptr;
+}
+
+const gl::Texture* TimeKeyExpans::areaDistanceTexture() const {
+    if (!mAreaImageKey)
+        return nullptr;
+    // same lazy-rebuild rule as the mask: the field travels with the resource and only the
+    // GPU copy is refreshed here, where a GL context is current
+    mAreaImageKey->syncDistanceTexture();
+    const auto& res = *mAreaImageKey->data().resource();
+    return res.hasDistance() ? &(mAreaImageKey->cache().distanceTexture()) : nullptr;
+}
+
 img::BlendMode TimeKeyExpans::blendMode() const {
     return mAreaImageKey ? mAreaImageKey->data().blendMode() : img::BlendMode_Normal;
 }

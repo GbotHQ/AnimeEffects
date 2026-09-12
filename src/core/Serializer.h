@@ -48,6 +48,10 @@ public:
     void write(const XCMemBlock& aValue);
     void write(const util::IndexTable& aTable);
 
+    // one byte per pixel (img::Format_A8), for layer masks: the RGBA image block writes
+    // four PackBits planes per scanline, which would quadruple a mask's footprint
+    void writeMaskImage(const XCMemBlock& aImage, const QSize& aSize);
+
     void writeGL(const GLint* aArray, int aCount);
     void writeGL(const GLuint* aArray, int aCount);
     void writeGL(const GLfloat* aArray, int aCount);

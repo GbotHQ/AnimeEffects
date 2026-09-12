@@ -1,8 +1,6 @@
 #ifndef CTRL_IMAGEFILELOADER_H
 #define CTRL_IMAGEFILELOADER_H
 
-#define NEW_ORA_PARSER
-
 #include <QFileInfo>
 #include <QString>
 #include <QScopedPointer>
@@ -10,13 +8,11 @@
 #include "gl/DeviceInfo.h"
 #include "core/Project.h"
 #include "core/ObjectTree.h"
-#include "img/Util.h"
 #include "core/FolderNode.h"
-#ifdef OLD_ORA_PARSER
-#include "img/ORAReader.h"
-#endif
 
 namespace ctrl {
+
+class SourceDocument;
 
 class ImageFileLoader {
 public:
@@ -37,14 +33,17 @@ public:
 private:
     bool createEmptyCanvas(core::Project& aProject, const QString& aTopName, const QSize& aCanvasSize);
 
+    // Appends what the file asks for and this build cannot draw (ctrl::undrawnEffectNotes) to
+    // the log, so a "success" says what the picture is missing instead of implying it is the
+    // file's. Every path that finishes an import calls it.
+    void appendUndrawnEffects(const SourceDocument& aDocument);
+
     bool loadPsd(core::Project& aProject, util::IProgressReporter& aReporter);
 
     bool loadOra(core::Project& aProject, util::IProgressReporter& aReporter);
 
     bool loadImage(core::Project& aProject, util::IProgressReporter& aReporter);
 
-    static QRect calculateBoundingRectFromChildren(const core::ObjectNode& aNode);
-    static void setDefaultPosturesFromInitialRects(core::ObjectNode& aNode);
     bool checkTextureSizeError(uint32 aWidth, uint32 aHeight);
 
     QString mLog;
@@ -53,8 +52,6 @@ private:
     QSize mCanvasSize;
     bool mForceCanvasSize;
     OraImportMode mOraImportMode = OraImportMode::Ask;
-    static void parseOraLayer(layer &lyr, core::FolderNode* current, img::ResourceNode* resCurrent, const float* globalDepth, const float* parentDepth, core::Project* aProject);
-    static void parseOraStack(stack &stk, std::vector<core::FolderNode*>& treeStack, std::vector<img::ResourceNode*>& resStack, float* globalDepth, QRect rect, core::Project* aProject, int* progress, util::IProgressReporter& aReporter);
 };
 
 } // namespace ctrl

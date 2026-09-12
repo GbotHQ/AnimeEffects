@@ -27,6 +27,25 @@ inline bool psdHasCspTslyFlag(const PSDFormat::Layer& aLayer) {
     return false;
 }
 
+// Photoshop's "lyid" layer id: a stable identity that survives renames, unique within its
+// document (layers and groups both carry one). It is what a source reload should match on,
+// because the layer NAME is a display label the artist may change and may even repeat. An
+// empty result means the file has no id for this layer (an older Photoshop, or another
+// producer), and matching falls back to the name.
+inline QString psdLayerStableId(const PSDFormat::Layer& aLayer) {
+    for (const auto& info : aLayer.additionalInfos) {
+        if (info->key != "lyid" || info->dataLength < 4 || !info->data) {
+            continue;
+        }
+        const uint32 id = ((uint32)info->data[0] << 24) | ((uint32)info->data[1] << 16)
+            | ((uint32)info->data[2] << 8) | (uint32)info->data[3];
+        if (id != 0) {
+            return QStringLiteral("lyid:%1").arg(id);
+        }
+    }
+    return QString();
+}
+
 class PSDUtil {
 public:
     enum ColorFormat { ColorFormat_RGB8, ColorFormat_RGBA8 };

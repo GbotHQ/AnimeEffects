@@ -63,15 +63,39 @@ public:
     virtual bool hasBlendMode() const { return true; }
     virtual img::BlendMode blendMode() const;
     virtual void setBlendMode(img::BlendMode);
+    virtual BlendIf blendIf() const { return mBlendIf; }
+    virtual void setBlendIf(const BlendIf& aBlendIf) { mBlendIf = aBlendIf; }
+    virtual LayerEffects layerEffects() const { return mLayerEffects; }
+
+    // Photoshop's FILL opacity (the PSD "iOpa" key): it scales the layer's own pixels only,
+    // so it is NOT the layer opacity (which also fades the layer's effects). 1.0 = opaque.
+    virtual float fillOpacity() const override { return mFillOpacity; }
+    void setFillOpacity(float aValue) { mFillOpacity = aValue; }
+    virtual void setLayerEffects(const LayerEffects& aEffects) { mLayerEffects = aEffects; }
     
     private:
     void transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&);
-    void renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor&, bool useHSV, QList<int> HSVData);
+    // aApplyBlendIf=false when the caller renders this layer as ISOLATED content (the
+    // composite/blur path draws into a slot with no scene behind it): the Blend If
+    // destination range has no backdrop there, so the weight is left to the presentation
+    // pass, which applies it against the captured scene (mirroring Photoshop's
+    // "Underlying Layer" being the backdrop the layer finally composites onto)
+    // aShapePass=true draws ONLY the layer's shape coverage: the fill opacity and the
+    // fill-replacing effects are left out, because Photoshop derives a layer's shadow / glow
+    // silhouettes from the layer's pixels, not from its fill opacity (a 0 % fill still glows)
+    void renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor&, bool useHSV, QList<int> HSVData,
+        bool aApplyBlendIf = true, bool aShapePass = false);
     void renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor&);
     void renderClippees(const RenderInfo& aInfo, const TimeCacheAccessor&);
     bool isClipper() const;
     bool hasActiveBlurKey(const TimeInfo& aTime) const;
     bool isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const;
+
+    // true when the layer's effects need the isolated composite slot even without a blur
+    // key: Photoshop's drop shadow / outer glow / chrome blur a copy of the layer's alpha
+    bool hasSilhouetteEffects() const;
+
+    float mFillOpacity = 1.0f;
     
     QString mName;
     bool mIsVisible;
@@ -80,6 +104,8 @@ public:
     TimeLine mTimeLine;
     ShaderHolder& mShaderHolder;
     bool mIsClipped;
+    BlendIf mBlendIf;
+    LayerEffects mLayerEffects;
 
     MeshTransformer mMeshTransformer;
     LayerMesh* mCurrentMesh;

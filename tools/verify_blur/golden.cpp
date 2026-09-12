@@ -214,7 +214,7 @@ struct PsdEmitter {
     void emitFolderRecord(const QString& aName, Mode aMode, int aOpacity255, bool aIsBounding) {
         auto* rec = new img::PSDFormat::Layer();
         rec->name = aName.toStdString();
-        // mimic the folder records real writers emit (data/sample.psd): 0x0 rect, flags
+        // mimic the folder records real writers emit (assets/sample.psd): 0x0 rect, flags
         // 0x18, four RLE channels with empty payloads (PSDWriter adds the compression-id
         // bytes to the record's length field). A zero-channel/full-canvas record like
         // S11 writes loads fine in AE but Krita silently refuses to open the file.

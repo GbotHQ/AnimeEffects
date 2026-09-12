@@ -1,3 +1,4 @@
+#include <cstring>
 #include "core/Serializer.h"
 #include "util/PackBits.h"
 
@@ -234,6 +235,57 @@ void Serializer::writeImage(const XCMemBlock& aImage, const QSize& aSize) {
 Serializer::PosType Serializer::beginBlock(const std::array<uint8, 8>& aSignature) {
     mOut.write(aSignature);
     return mOut.reserveLength();
+}
+
+void Serializer::writeMaskImage(const XCMemBlock& aImage, const QSize& aSize) {
+    const int w = aSize.width();
+    const int h = aSize.height();
+
+    if (!aImage.data || aImage.size == 0) {
+        // null data (same shape as writeImage's null case)
+        mOut.write((uint32)0);
+        mOut.write((uint32)0);
+        mOut.write((uint32)0);
+        return;
+    }
+    XC_ASSERT(aImage.size == (size_t)(w * h));
+
+    // compression type
+    mOut.write((uint32)1);
+
+    // image size
+    mOut.write((uint32)w);
+    mOut.write((uint32)h);
+
+    const uint8* src = aImage.data;
+    const size_t wrkSize = (size_t)w;
+    const size_t dstSize = util::PackBits::worstEncodedSize(wrkSize);
+
+    std::unique_ptr<uint8[]> wrk(new uint8[wrkSize]);
+    std::unique_ptr<uint8[]> dst(new uint8[dstSize]);
+    const XCMemBlock wrkBlock(wrk.get(), wrkSize);
+
+    util::PackBits encoder;
+
+    // total length
+    auto pos = mOut.reserveLength();
+
+    for (int y = 0; y < h; ++y) {
+        std::memcpy(wrk.get(), src, wrkSize);
+        src += w;
+
+        const size_t size = encoder.encode(wrkBlock, dst.get());
+        // line length
+        mOut.write((uint32)size);
+        // compressed bytes
+        mOut.writeBytes(XCMemBlock(dst.get(), size), 1);
+    }
+
+    // write total length
+    mOut.writeLength(pos);
+
+    // align
+    mOut.alignFrom(pos, 4);
 }
 
 void Serializer::endBlock(PosType aPos) { mOut.writeLength(aPos); }

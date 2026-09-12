@@ -119,7 +119,7 @@ std::vector<uint8_t> Fixture::readTexture(GLuint aTex, const QSize& aSize) {
 core::TimeInfo makeTimeInfo(int aFrame) {
     core::TimeInfo info;
     info.fps = 24;
-    info.frameMax = 200;
+    info.frameRange = util::Range(0, 200); // TimeInfo carries an inclusive range (419e17f), not a max count
     info.loop = false;
     info.frame = core::Frame(aFrame);
     return info;

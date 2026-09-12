@@ -1,6 +1,8 @@
 #include "Project.h"
 #include "img/ResourceNode.h"
 #include "img/BlendMode.h"
+#include "gl/Global.h"
+#include "core/DistanceField.h"
 #include "core/ImageKey.h"
 #include "core/Constant.h"
 #include "qjsonobject.h"
@@ -36,7 +38,9 @@ void ImageKey::Data::setImageOffset(const QVector2D& aOffset) {
 }
 
 //-------------------------------------------------------------------------------------------------
-ImageKey::Cache::Cache(): mTexture() {}
+ImageKey::Cache::Cache():
+    mTexture(), mMaskTexture(), mMaskRevision(-1), mDistanceTexture(), mDistanceRevision(-1),
+    mDistanceImageRevision(-1) {}
 
 //-------------------------------------------------------------------------------------------------
 ImageKey::ImageKey(): mData(), mCache(), mSleepCount(0) { mData.resource().setOriginKeeping(true); }
@@ -92,6 +96,61 @@ void ImageKey::resetTextureCache() {
         mCache.texture().setFilter(GL_LINEAR);
         mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
+
+    syncMaskTexture();
+    syncDistanceTexture(); // the field is derived from the pixels this just re-uploaded
+}
+
+// the layer's derived outline distance field: this is an UPLOAD, nothing more. The resource
+// owns the derivation - it computed the plane when the need was declared and recomputes it after
+// every pixel change (ResourceData::grabImage -> deriveChannels) - so no CPU work happens here,
+// inside a draw. A wanted channel that is missing or stale is simply not uploaded, and the
+// stroke pass is left off rather than drawn from pixels that no longer exist.
+void ImageKey::syncDistanceTexture() {
+    auto& resource = *mData.resource();
+    const auto kind = img::ResourceData::Derivation_Distance;
+    if (mCache.distanceRevision() == resource.derivedRevision(kind)) {
+        return;
+    }
+
+    const bool usable = resource.hasDistance() && !resource.isDistanceStale();
+    if (usable) {
+        const auto& field = resource.distance();
+        auto& ggl = gl::Global::functions();
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // odd widths are not 4-aligned
+        mCache.distanceTexture().create(field.pixelSize(), field.data(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        mCache.distanceTexture().setFilter(GL_LINEAR);
+        mCache.distanceTexture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
+    } else {
+        mCache.distanceTexture().destroy();
+    }
+    mCache.setDistanceRevision(resource.distanceRevision());
+}
+
+void ImageKey::syncMaskTexture() {
+    auto& resource = *mData.resource();
+    if (mCache.maskRevision() == resource.maskRevision()) {
+        return; // unchanged since the last build (a missing mask is revision 0 as well)
+    }
+
+    // the mask shares the image's rect, so its texture is sampled with the image's texture
+    // coordinates; one channel, GL_R8 (the border is irrelevant: the mask covers the rect)
+    if (resource.hasMask()) {
+        const auto& mask = resource.mask();
+        // a mask row is width bytes and the width need not be 4-aligned (the importer's
+        // rects are odd-sized), while GL's default unpack alignment is 4: set it for this
+        // upload only, so the RGBA image uploads keep the default
+        auto& ggl = gl::Global::functions();
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        mCache.maskTexture().create(mask.pixelSize(), mask.data(), GL_RED, GL_R8, GL_UNSIGNED_BYTE);
+        ggl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        mCache.maskTexture().setFilter(GL_LINEAR);
+        mCache.maskTexture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
+    } else {
+        mCache.maskTexture().destroy();
+    }
+    mCache.setMaskRevision(resource.maskRevision());
 }
 
 void ImageKey::sleep() {

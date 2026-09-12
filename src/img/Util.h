@@ -40,9 +40,6 @@ public:
     createTextureImage(const PSDFormat::Header& aHeader, const PSDFormat::Layer& aLayer);
     static std::pair<XCMemBlock, QRect> createTextureImage(const QImage& aImage);
 
-    static ResourceNode* createResourceNodes(PSDFormat& aFormat, bool aLoadImage);
-    static ResourceNode* createResourceNodes(bool merged, const std::string& aFilePath, bool aLoadImage);
-    static ResourceNode* createResourceNode(const QImage& aImage, const QString& aName, bool aLoadImage);
 };
 
 } // namespace img

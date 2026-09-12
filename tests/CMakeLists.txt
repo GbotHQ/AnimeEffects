@@ -18,7 +18,12 @@ target_link_libraries(bonekey_regression PRIVATE
 
 # Round-trip project loader/saver harness (open -> serialize -> reload -> close).
 # Takes .anie paths on the command line; used to exercise real project files.
-add_executable(roundtrip roundtrip_main.cpp)
+# links assets.qrc: loading a project builds LayerNodes, whose MeshTransformer compiles
+# :/shaders/* at construction, so the target aborts with a shader FileIO error without it
+# (the same reason media_exporter_e2e lists it)
+add_executable(roundtrip roundtrip_main.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
 target_include_directories(roundtrip PRIVATE ..)
 target_compile_definitions(roundtrip PRIVATE
     AE_MAJOR_VERSION=1
@@ -357,4 +362,80 @@ target_link_libraries(media_exporter_e2e PRIVATE
     Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     media cmnd core ctrl gl img thr util pugixml
+)
+
+# Property-panel widget test: drives the real gui::prop::ConstantPanel (the widget the property
+# dock builds for a selected node) and checks the Photoshop "Blend If" surface - the values it
+# shows, the single undoable command an edit produces, and the reset path. It compiles the panel
+# and the widget classes it builds (the same curated-subset approach easing_picker_layout uses),
+# because the gui is an executable rather than a library. Two pieces of the gui that the panel
+# never touches are stubbed in the test rather than compiled, so its dependency cone stops at
+# the widgets: gui::ViaPoint's logger methods (whose only real body opens the resource dialog)
+# and AudioPlaybackWidget::deserialize (referenced by core::Project's constructor). assets.qrc is
+# linked because building a LayerNode compiles its transform shader through gl::Global.
+add_executable(panel_blendif panel_blendif.cpp
+    ../src/gui/GUIResources.cpp
+    ../src/gui/AppStyle.cpp
+    ../src/gui/theme/Theme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/prop/prop_Items.cpp
+    ../src/gui/prop/bezierCurveEditor.cpp
+    ../src/gui/prop/prop_AttrGroup.cpp
+    ../src/gui/prop/prop_Panel.cpp
+    ../src/gui/prop/prop_HeaderButton.cpp
+    ../src/gui/prop/prop_KeyGroup.cpp
+    ../src/gui/prop/prop_ConstantPanel.cpp
+    ../src/gui/prop/EasingPickWidget.cpp
+    ../src/gui/prop/splineWidget.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(panel_blendif PRIVATE
+    ..
+    ${CMAKE_SOURCE_DIR}/src/gui   # the gui headers include themselves as "prop/...", "GUIResources.h"
+)
+target_compile_definitions(panel_blendif PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+# the widget classes carry Q_OBJECT (prop_Items.h, prop_HeaderButton.h, ...)
+set_target_properties(panel_blendif PROPERTIES AUTOMOC ON)
+target_link_libraries(panel_blendif PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# ---------------------------------------------------------------------------------------
+# The source RELOAD path: import a written PSD, reload it after the file changed, and check
+# what the project ends up with. The expectations are defined by the fixtures the test writes
+# itself, not by the code under test.
+#
+# The reload is gui::res::ResourceUpdater, so this compiles that (and the pieces it needs) and
+# stubs the GUI it does not touch - the same approach as panel_blendif above. Run it with
+# tests/import_reload.sh, which handles the GL context fallback (exit 2 = no GL, retry on X11).
+add_executable(import_reload import_reload.cpp
+    ../src/gui/res/res_ResourceUpdater.cpp
+    ../src/gui/res/res_Notifier.cpp
+    ../src/gui/res/res_Item.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(import_reload PRIVATE
+    ..
+    ${CMAKE_SOURCE_DIR}/src/gui
+)
+target_compile_definitions(import_reload PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+set_target_properties(import_reload PROPERTIES AUTOMOC ON)
+target_link_libraries(import_reload PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
 )

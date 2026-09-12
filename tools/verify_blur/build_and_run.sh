@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# Builds the directional-blur verification harness against the ASan-instrumented
-# libraries in build-asan/ and runs it (from the repo root, shaders load from ./data).
+# Builds the directional-blur verification harness against the libraries in a build tree
+# and runs it from the repo root.
+#
+#   AE_BUILD_DIR   build tree to link against (default: build-asan, the ASan build the
+#                  suite was written for). Point it at an ordinary build (e.g. build) when
+#                  no ASan tree exists; the harness then runs without sanitizer coverage.
+#
+# The shaders are loaded from the embedded Qt resources (:/shaders/*), so assets.qrc is
+# compiled into the harness binary here; without it the first LayerNode aborts with an
+# XC_FATAL_ERROR shader FileIO error.
+#
 # Usage: tools/verify_blur/build_and_run.sh [--no-build] [harness args...]
 #   harness args are passed to the binary, e.g.:
 #     tools/verify_blur/build_and_run.sh --no-build --golden-gen   # regenerate golden inputs
@@ -8,30 +17,48 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-ASAN_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
+BUILD_DIR="${AE_BUILD_DIR:-build-asan}"
+ASAN_FLAGS="${AE_SANITIZE_FLAGS--fsanitize=address -fno-omit-frame-pointer}"
 QT_MODULES="Qt6Core Qt6Gui Qt6Widgets Qt6OpenGL Qt6OpenGLWidgets Qt6Xml Qt6Core5Compat Qt6Multimedia Qt6MultimediaWidgets"
+# ctrl::Exporter (exercised by S9) goes through the media library, which owns the FFmpeg
+# linkage; both must be on the link line or the harness no longer links.
+FFMPEG_MODULES="libavformat libavutil libswscale libswresample libavcodec"
 export ASAN_OPTIONS=abort_on_error=1:detect_leaks=0
 
 if [[ "${1:-}" != "--no-build" ]]; then
-    cmake --build build-asan --config Debug
+    cmake --build "$BUILD_DIR" --config Debug
+
+    # assets.qrc -> embedded shaders/icons (the GUI target normally provides these; the
+    # harness links the libraries only, so it must link the resource itself)
+    RCC="${RCC:-}"
+    if [[ -z "$RCC" ]]; then
+        if command -v qtpaths6 >/dev/null; then
+            RCC="$(qtpaths6 --query QT_INSTALL_LIBEXECS)/rcc"
+        else
+            RCC=/usr/lib64/qt6/libexec/rcc
+        fi
+    fi
+    "$RCC" --name assets --output "$BUILD_DIR/qrc_assets.cpp" assets/assets.qrc
 
     clang++ -std=c++17 -fPIC -O1 $ASAN_FLAGS \
         -DUSE_GL_CORE_PROFILE \
         -Isrc -Isrc/deps/pugixml/src \
         $(pkg-config --cflags $QT_MODULES) \
         tools/verify_blur/verify_blur.cpp tools/verify_blur/scene.cpp tools/verify_blur/golden.cpp \
+        "$BUILD_DIR/qrc_assets.cpp" \
         -Wl,--start-group \
-        build-asan/src/core/Debug/libcore.a \
-        build-asan/src/ctrl/Debug/libctrl.a \
-        build-asan/src/cmnd/Debug/libcmnd.a \
-        build-asan/src/img/Debug/libimg.a \
-        build-asan/src/gl/Debug/libgl.a \
-        build-asan/src/thr/Debug/libthr.a \
-        build-asan/src/util/Debug/libutil.a \
-        build-asan/src/deps/pugixml/Debug/libpugixml.a \
+        "$BUILD_DIR"/src/core/Debug/libcore.a \
+        "$BUILD_DIR"/src/ctrl/Debug/libctrl.a \
+        "$BUILD_DIR"/src/media/Debug/libmedia.a \
+        "$BUILD_DIR"/src/cmnd/Debug/libcmnd.a \
+        "$BUILD_DIR"/src/img/Debug/libimg.a \
+        "$BUILD_DIR"/src/gl/Debug/libgl.a \
+        "$BUILD_DIR"/src/thr/Debug/libthr.a \
+        "$BUILD_DIR"/src/util/Debug/libutil.a \
+        "$BUILD_DIR"/src/deps/pugixml/Debug/libpugixml.a \
         -Wl,--end-group \
-        $(pkg-config --libs $QT_MODULES) -lGL \
-        -o build-asan/verify_blur
+        $(pkg-config --libs $QT_MODULES) $(pkg-config --libs $FFMPEG_MODULES) -lGL \
+        -o "$BUILD_DIR/verify_blur"
 else
     shift # --no-build consumed; the rest goes to the binary
 fi
@@ -39,7 +66,7 @@ fi
 run() { # $1 = Qt platform, rest = harness args
     local platform="$1"; shift
     echo "--- running with QT_QPA_PLATFORM=$platform ---"
-    QT_QPA_PLATFORM="$platform" ./build-asan/verify_blur "$@"
+    QT_QPA_PLATFORM="$platform" "./$BUILD_DIR/verify_blur" "$@"
 }
 
 set +e
@@ -48,7 +75,7 @@ code=$?
 if [[ $code -eq 2 ]]; then
     # exit code 2 = GL bootstrap failure; retry on the real display
     echo "offscreen GL unavailable, retrying on X11 (DISPLAY=${DISPLAY:-:0})"
-    QT_QPA_PLATFORM=xcb DISPLAY="${DISPLAY:-:0}" ./build-asan/verify_blur "$@"
+    QT_QPA_PLATFORM=xcb DISPLAY="${DISPLAY:-:0}" "./$BUILD_DIR/verify_blur" "$@"
     code=$?
 fi
 exit $code

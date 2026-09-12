@@ -13,6 +13,7 @@ add_library(${PROJECT_NAME}
     BoneKey.cpp BoneKey.h
     BoneKeyUpdater.cpp BoneKeyUpdater.h
     BoneShape.cpp BoneShape.h
+    BlendIf.cpp BlendIf.h
     CameraInfo.cpp CameraInfo.h
     ClippingFrame.cpp ClippingFrame.h
     Constant.h
@@ -32,6 +33,9 @@ add_library(${PROJECT_NAME}
     HsvKey.h
     ImageKey.cpp ImageKey.h
     ImageKeyUpdater.cpp ImageKeyUpdater.h
+    DistanceField.cpp DistanceField.h
+    LayerEffects.cpp LayerEffects.h
+    LayerMaskBake.cpp LayerMaskBake.h
     LayerMesh.cpp LayerMesh.h
     LayerNode.cpp LayerNode.h
     MeshKey.cpp MeshKey.h

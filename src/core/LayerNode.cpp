@@ -17,6 +17,7 @@
 #include "core/WorldBlurMath.h"
 #include "core/DestinationTexturizer.h"
 #include "core/FilterFrame.h"
+#include "core/LayerEffects.h"
 
 namespace core {
 
@@ -107,7 +108,7 @@ void LayerNode::render(const RenderInfo& aInfo, const TimeCacheAccessor& aAccess
     bool useHSV = !mTimeLine.isEmpty(TimeKeyType_HSV) && aInfo.time.frame.get() >= mTimeLine.map(TimeKeyType_HSV).values().first()->frame();
     const QList<int> hsvData = useHSV ? aAccessor.get(mTimeLine).hsv().hsv() : QList<int>{};
 
-    if (!aInfo.isGrid && isCompositeLayer(aInfo.time, aAccessor)) {
+    if (!aInfo.isGrid && (isCompositeLayer(aInfo.time, aAccessor) || hasSilhouetteEffects())) {
         renderComposite(aInfo, aAccessor);
     } else {
         renderLayer(aInfo, aAccessor, useHSV, hsvData);
@@ -123,6 +124,12 @@ bool LayerNode::hasActiveBlurKey(const TimeInfo& aTime) const {
         && aTime.frame.get() >= mTimeLine.map(TimeKeyType_Blur).values().first()->frame();
 }
 
+bool LayerNode::hasSilhouetteEffects() const {
+    // Photoshop's drop shadow / outer glow / chrome blur a copy of the layer's alpha, so
+    // they need the same isolated slot the layer blur uses even when no blur key is set
+    return mLayerEffects.hasSilhouettes();
+}
+
 bool LayerNode::isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor& aAccessor) const {
     // a BlurKey whose blended radius is at or below the epsilon has no visible effect
     // (identity kernel, see FilterFrame::kMinActiveBlurRadius), so it must not force
@@ -130,6 +137,141 @@ bool LayerNode::isCompositeLayer(const TimeInfo& aTime, const TimeCacheAccessor&
     // interpolations ramping in smoothly from zero
     return hasActiveBlurKey(aTime)
         && aAccessor.get(mTimeLine).maxBlurRadius() > FilterFrame::kMinActiveBlurRadius;
+}
+
+// Blurs the content of a slot IN PLACE (the slot's texture is overwritten) and returns the
+// texture holding the result: the ladder path already writes back into the slot, the direct
+// two-pass path ping-pongs through one scratch slot.
+static GLuint fBlurSlotInPlace(
+    FilterFrame& aFrame, int aSlot, const QVector2D& aDirX, float aRadiusX, const QVector2D& aDirY, float aRadiusY
+) {
+    if (aRadiusX <= FilterFrame::kMinActiveBlurRadius && aRadiusY <= FilterFrame::kMinActiveBlurRadius) {
+        return aFrame.texture(aSlot);
+    }
+
+    if (FilterFrame::blurLadderLevel(aRadiusX, aRadiusY, aFrame.size()) > 0) {
+        return aFrame.blurApply(aSlot, aDirX, aRadiusX, aDirY, aRadiusY);
+    }
+
+    // the composite slot holds the screen image y-flipped (texture row = H - screen y), so a
+    // screen-space direction (dx, dy) appears in slot space as (dx, -dy); the ladder path
+    // needs no adjustment (its first downsample flips back)
+    FilterFrame::BlurParams h;
+    h.direction = QVector2D(aDirX.x(), -aDirX.y());
+    h.radiusTexels = aRadiusX;
+    FilterFrame::BlurParams v;
+    v.direction = QVector2D(aDirY.x(), -aDirY.y());
+    v.radiusTexels = aRadiusY;
+
+    auto& ggl = gl::Global::functions();
+    const auto clearAndBind = [&](int aTargetSlot) {
+        aFrame.bind(aTargetSlot);
+        gl::Util::setViewportAsActualPixels(aFrame.size());
+        gl::Util::resetRenderState();
+        ggl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        ggl.glClear(GL_COLOR_BUFFER_BIT);
+    };
+
+    FilterFrame::ScopedSlot scratch(aFrame);
+    clearAndBind(scratch.slot());
+    aFrame.drawQuad(aFrame.texture(aSlot), FilterFrame::Kind_Blur, QList<int>(), h, 1.0f);
+
+    // the second pass writes back into the source slot (the same reuse the ladder path
+    // applies on its final upsample), so the direct blur holds one scratch slot
+    clearAndBind(aSlot);
+    aFrame.drawQuad(scratch.texture(), FilterFrame::Kind_Blur, QList<int>(), v, 1.0f);
+
+    return aFrame.texture(aSlot);
+}
+
+static void fClearAndBindSlot(FilterFrame& aFrame, int aSlot) {
+    aFrame.bind(aSlot);
+    gl::Util::setViewportAsActualPixels(aFrame.size());
+    gl::Util::resetRenderState();
+    gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
+}
+
+// The layer's own silhouette effects (Photoshop's drop shadow, outer glow and chrome):
+// each one blurs a copy of the layer's alpha, tints it with the effect colour and
+// composites THAT against the backdrop — under the layer's pixels for shadows and glows,
+// over them for chrome. aOverTheLayer selects which half of the split runs, so the caller
+// can sandwich the layer's own present between them. All positions are in document pixels
+// scaled by the camera zoom, like the layer's own blur radius. Returns the number of
+// effects presented.
+static int fPresentSilhouettes(
+    const RenderInfo& aInfo, FilterFrame& aFrame, GLuint aShapeTexture, const LayerEffects& aEffects,
+    float aLayerOpacity, bool aOverTheLayer
+) {
+    if (!aEffects.hasSilhouettes()) {
+        return 0;
+    }
+
+    auto& ggl = gl::Global::functions();
+    const float zoom = aInfo.camera.scale();
+    int drawn = 0;
+
+    for (const auto& s : aEffects.silhouettes) {
+        if (!s.isUsable() || s.isUnder() == aOverTheLayer) {
+            continue;
+        }
+
+        const float radius = s.blur * zoom;
+        const float angleRad = (float)(s.angleDeg * M_PI / 180.0);
+        // Photoshop's effect angle is counter-clockwise with 0 pointing right, so the
+        // silhouette lands at (distance*cos, distance*sin) from the layer. A draw samples
+        // the source at (+offset), which moves the sampled content by (-offset), so the
+        // offset passed down is the negated displacement.
+        const QVector2D offset(
+            -s.distance * zoom * std::cos(angleRad), -s.distance * zoom * std::sin(angleRad));
+
+        // 1. a blurred copy of the layer's silhouette (the isolated content the layer blur
+        //    produced), tinted with the effect colour; the copy is blurred through the same
+        //    Gaussian the layer blur uses, with the effect's radius
+        GLuint silhouette = 0;
+        {
+            // The offset is applied to the COPY, not to the tint pass: the tint pass also samples
+            // the unblurred shape to clip an inner effect, and a source offset shifts every
+            // sample of that pass - including the clip - which would move the clip along with the
+            // silhouette and clip nothing (measured: the chrome then spilled a 15 px halo outside
+            // the glyphs, 18-24 levels brighter than the file's own composite). Copying through
+            // the offset and blurring the shifted copy is equivalent, because the Gaussian is
+            // symmetric, and it leaves the tint pass unshifted so the clip lands on the real shape.
+            FilterFrame::ScopedSlot work(aFrame);
+            fClearAndBindSlot(aFrame, work.slot());
+            aFrame.drawQuad(aShapeTexture, FilterFrame::Kind_Resample, QList<int>(), FilterFrame::BlurParams(),
+                1.0f, false, QSizeF(), QSizeF(), false, img::BlendMode_Normal, 0, BlendIf(),
+                QColor(255, 255, 255, 255), offset);
+            silhouette = fBlurSlotInPlace(
+                aFrame, work.slot(), QVector2D(1.0f, 0.0f), radius, QVector2D(0.0f, 1.0f), radius);
+
+            FilterFrame::ScopedSlot tinted(aFrame);
+            fClearAndBindSlot(aFrame, tinted.slot());
+            // an inner effect (chrome) is capped by the unblurred shape, so it paints only inside
+            // the layer; an outer one (shadow, glow) is free to spread past it
+            const GLuint clipTexture = s.isInner() ? aShapeTexture : 0;
+            aFrame.drawQuad(
+                silhouette, FilterFrame::Kind_Tint, QList<int>(), FilterFrame::BlurParams(), 1.0f, false,
+                QSizeF(), QSizeF(), false, img::BlendMode_Normal, 0, BlendIf(),
+                QColor::fromRgbF(xc_clamp(s.r, 0.0f, 1.0f), xc_clamp(s.g, 0.0f, 1.0f), xc_clamp(s.b, 0.0f, 1.0f)),
+                QVector2D(), clipTexture);
+
+            // 2. composite the tinted silhouette against the scene behind the layer with the
+            //    effect's own blend mode. The layer's opacity fades its effects with it.
+            ggl.glBindFramebuffer(GL_FRAMEBUFFER, aInfo.framebuffer);
+            const img::BlendMode mode = s.mode;
+            GLuint destTexture = 0;
+            if (mode != img::BlendMode_Normal) {
+                XC_PTR_ASSERT(aInfo.destTexturizer);
+                aInfo.destTexturizer->updateAll(aInfo.framebuffer, aInfo.dest);
+                destTexture = aInfo.destTexturizer->texture().id();
+            }
+            aFrame.drawBlendPresent(tinted.texture(), mode, destTexture, aLayerOpacity * s.opacity);
+            ++drawn;
+        }
+    }
+
+    return drawn;
 }
 
 // A blurred layer is isolated: the layer draws into a composite slot (its own HSV, blend
@@ -167,7 +309,9 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
         childInfo.framebuffer = composite.framebuffer();
         childInfo.dest = composite.texture();
         childInfo.opacityScale = 1.0f / worldOpacity;
-        renderLayer(childInfo, aAccessor, useHSV, hsvData);
+        // the slot holds the layer alone: its Blend If ranges are applied when this content
+        // is presented against the scene (step 3), not against the empty slot
+        renderLayer(childInfo, aAccessor, useHSV, hsvData, false);
     }
 
     // 2. blur the isolated content (same radius space as the folder filter: the amount is
@@ -175,78 +319,79 @@ void LayerNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccessor
     // content ellipse maps to an ellipse in the composite via the accumulated world
     // transform M (composed as M*E), so the separable passes run along its principal axes
     // with the resulting singular values as radii, scaled by the camera zoom)
+    // The layer's blur, if any: the ellipse lives in the layer's content space and is mapped
+    // into the composite slot's screen space (the slot holds the scene as rendered through
+    // the camera, whose view linear part is R(rotate) * diag(flip ? -1 : 1, 1); zoom is
+    // isotropic, so directions stay unit). The silhouette pass reuses the same radii.
+    const WorldBlurEllipse ellipse = worldBlurEllipse(
+        aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());
+    const float zoom = aInfo.camera.scale();
+    const float radiusX = ellipse.majorRadius * zoom;
+    const float radiusY = ellipse.minorRadius * zoom;
+    const bool layerBlurActive =
+        expans.maxBlurRadius() > FilterFrame::kMinActiveBlurRadius && hasActiveBlurKey(aInfo.time);
+    const float flipX = aInfo.camera.flip ? -1.0f : 1.0f;
+    const float cr = std::cos(aInfo.camera.rotate());
+    const float sr = std::sin(aInfo.camera.rotate());
+    const auto screenDir = [=](const QVector2D& d) {
+        const float x = flipX * d.x();
+        const float y = d.y();
+        return QVector2D(cr * x - sr * y, sr * x + cr * y);
+    };
+    const QVector2D majorScreen = screenDir(ellipse.majorDir);
+    const QVector2D minorScreen = screenDir(ellipse.minorDir);
+
     GLuint srcTexture = composite.texture();
-    if (expans.maxBlurRadius() > FilterFrame::kMinActiveBlurRadius && hasActiveBlurKey(aInfo.time)) {
-        const WorldBlurEllipse ellipse = worldBlurEllipse(
-            aAccessor, this, expans.blurX(), expans.blurY(), expans.angleDeg());
-        const float zoom = aInfo.camera.scale();
-        const float radiusX = ellipse.majorRadius * zoom;
-        const float radiusY = ellipse.minorRadius * zoom;
+    if (layerBlurActive) {
+        srcTexture = fBlurSlotInPlace(frame, composite.slot(), majorScreen, radiusX, minorScreen, radiusY);
+    }
 
-        // map the world-space ellipse directions into the composite slot's screen space:
-        // the slot holds the scene as rendered through the camera, whose view linear part
-        // is R(rotate) * diag(flip ? -1 : 1, 1) (zoom is isotropic, directions stay unit)
-        const float flipX = aInfo.camera.flip ? -1.0f : 1.0f;
-        const float cr = std::cos(aInfo.camera.rotate());
-        const float sr = std::sin(aInfo.camera.rotate());
-        const auto screenDir = [=](const QVector2D& d) {
-            const float x = flipX * d.x();
-            const float y = d.y();
-            return QVector2D(cr * x - sr * y, sr * x + cr * y);
-        };
-        const QVector2D majorScreen = screenDir(ellipse.majorDir);
-        const QVector2D minorScreen = screenDir(ellipse.minorDir);
+    const float presentOpacity = worldOpacity * aInfo.opacityScale;
 
-        if (FilterFrame::blurLadderLevel(radiusX, radiusY, frame.size()) > 0) {
-            srcTexture = frame.blurApply(
-                composite.slot(), majorScreen, radiusX, minorScreen, radiusY);
-        } else {
-            // the composite slot holds the screen image y-flipped (texture row = H - screen
-            // y), so a screen-space direction (dx, dy) appears in slot space as (dx, -dy);
-            // the ladder path needs no adjustment (its first downsample flips back)
-            FilterFrame::BlurParams h;
-            h.direction = QVector2D(majorScreen.x(), -majorScreen.y());
-            h.radiusTexels = radiusX;
-            FilterFrame::BlurParams v;
-            v.direction = QVector2D(minorScreen.x(), -minorScreen.y());
-            v.radiusTexels = radiusY;
-
-            FilterFrame::ScopedSlot hSlot(frame);
-            frame.bind(hSlot.slot());
-            gl::Util::setViewportAsActualPixels(frame.size());
-            gl::Util::resetRenderState();
-            gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
-            frame.drawQuad(srcTexture, FilterFrame::Kind_Blur, QList<int>(), h, 1.0f);
-
-            // the vertical pass writes back into the composite slot (the same reuse the
-            // ladder path applies on its final upsample), so the direct blur holds one
-            // scratch slot instead of two
-            frame.bind(composite.slot());
-            gl::Util::setViewportAsActualPixels(frame.size());
-            gl::Util::resetRenderState();
-            gl::Global::functions().glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-            gl::Global::functions().glClear(GL_COLOR_BUFFER_BIT);
-            frame.drawQuad(hSlot.texture(), FilterFrame::Kind_Blur, QList<int>(), v, 1.0f);
-
-            srcTexture = composite.texture();
+    // 3. the silhouette source for the layer's own effects: Photoshop feeds a layer's shadow
+    // and glow the layer's SHAPE, so a fill opacity below 100 % must not thin the silhouette.
+    // The content above already is that shape whenever the fill is opaque (the shader's inner
+    // coverage is then exactly the fill coverage, leaving the alpha untouched); a partially
+    // transparent fill needs its own pass, drawn without the fill opacity and without the
+    // fill-replacing effects, and blurred like the content.
+    FilterFrame::ScopedSlot shapeSlot(frame);
+    GLuint shapeTexture = srcTexture;
+    if (mLayerEffects.hasSilhouettes() && this->fillOpacity() < 1.0f) {
+        fClearAndBindSlot(frame, shapeSlot.slot());
+        RenderInfo shapeInfo = aInfo;
+        shapeInfo.framebuffer = shapeSlot.framebuffer();
+        shapeInfo.dest = shapeSlot.texture();
+        shapeInfo.opacityScale = 1.0f / worldOpacity;
+        renderLayer(shapeInfo, aAccessor, useHSV, hsvData, false, true);
+        shapeTexture = shapeSlot.texture();
+        if (layerBlurActive) {
+            shapeTexture = fBlurSlotInPlace(frame, shapeSlot.slot(), majorScreen, radiusX, minorScreen, radiusY);
         }
     }
 
-    // 3. present onto the scene with the layer's blend mode and accumulated opacity.
+    // 4. the layer's silhouette effects that sit UNDER it (drop shadow, outer glow): they
+    // composite against the backdrop first, so the layer's own pixels cover them
+    fPresentSilhouettes(aInfo, frame, shapeTexture, mLayerEffects, presentOpacity, false);
+
+    // 5. present onto the scene with the layer's blend mode and accumulated opacity.
     // non-Normal blend modes sample the captured scene behind the layer (DestinationText
     // capture), so the blend sees real background pixels instead of the composite itself.
     const img::BlendMode blendMode = expans.blendMode();
-    const float presentOpacity = worldOpacity * aInfo.opacityScale;
+    const BlendIf blendIf = this->blendIf();
     auto& ggl = gl::Global::functions();
     ggl.glBindFramebuffer(GL_FRAMEBUFFER, aInfo.framebuffer);
-    if (blendMode != img::BlendMode_Normal) {
+    if (blendMode != img::BlendMode_Normal || blendIf.isActive()) {
         XC_PTR_ASSERT(aInfo.destTexturizer);
         aInfo.destTexturizer->updateAll(aInfo.framebuffer, aInfo.dest);
-        frame.drawBlendPresent(srcTexture, blendMode, aInfo.destTexturizer->texture().id(), presentOpacity);
+        frame.drawBlendPresent(
+            srcTexture, blendMode, aInfo.destTexturizer->texture().id(), presentOpacity, blendIf);
     } else {
-        frame.drawBlendPresent(srcTexture, blendMode, 0, presentOpacity);
+        frame.drawBlendPresent(srcTexture, blendMode, 0, presentOpacity, blendIf);
     }
+
+    // 6. the silhouette effects that sit OVER the layer (chrome). Like the under-effects they
+    // read the layer's SHAPE, not the fill-scaled content: a 0 % fill still has a chrome.
+    fPresentSilhouettes(aInfo, frame, shapeTexture, mLayerEffects, presentOpacity, true);
 }
 
 void LayerNode::renderClippees(const RenderInfo& i, const TimeCacheAccessor& a)
@@ -364,7 +509,10 @@ void LayerNode::transformShape(const RenderInfo& aInfo, const TimeCacheAccessor&
     mCurrentMesh = mesh;
 }
 
-void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, bool useHSV, QList<int> HSVData = {}) {
+void LayerNode::renderLayer(
+    const RenderInfo& aInfo, const TimeCacheAccessor& aAccessor, bool useHSV, QList<int> HSVData,
+    bool aApplyBlendIf, bool aShapePass
+) {
     if (!mCurrentMesh)
         return;
 
@@ -383,14 +531,23 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
 
     auto& shader = aInfo.isGrid ? mShaderHolder.gridShader() : mShaderHolder.shader(blendMode, isClippee, useHSV);
 
+    // Blend If reads the backdrop's channel values, so a Normal-blend layer with active
+    // ranges captures the scene behind it too (not just the non-Normal blend modes)
+    const BlendIf blendIf = aApplyBlendIf ? this->blendIf() : BlendIf();
+
     // update destination color
     XC_PTR_ASSERT(aInfo.destTexturizer);
     auto destTextureId = aInfo.destTexturizer->texture().id();
-    if (!aInfo.isGrid && blendMode != img::BlendMode_Normal) {
+    if (!aInfo.isGrid && (blendMode != img::BlendMode_Normal || blendIf.isActive())) {
         aInfo.destTexturizer->update(
             aInfo.framebuffer, aInfo.dest, viewMatrix, *mCurrentMesh, mMeshTransformer.positions()
         );
     }
+
+    // the layer's mask texture, only on the non-grid path (the grid uses a plain shader)
+    const gl::Texture* maskTexture = !aInfo.isGrid ? expans.areaMaskTexture() : nullptr;
+    // the outline distance field a stroke needs, from the same resource
+    const gl::Texture* distanceTexture = !aInfo.isGrid ? expans.areaDistanceTexture() : nullptr;
 
     if (aInfo.isGrid) {
         ggl.glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -404,8 +561,13 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         ggl.glActiveTexture(GL_TEXTURE1);
         ggl.glBindTexture(GL_TEXTURE_2D, destTextureId);
 
+        // layer mask on unit 2 (0 = unused); when the layer has none the image texture is
+        // bound as a dummy, since the shader's uniform-conditional fetch never runs
+        ggl.glActiveTexture(GL_TEXTURE2);
+        ggl.glBindTexture(GL_TEXTURE_2D, maskTexture ? maskTexture->id() : textureId);
+
         if (isClippee) {
-            ggl.glActiveTexture(GL_TEXTURE2);
+            ggl.glActiveTexture(GL_TEXTURE3);
             ggl.glBindTexture(GL_TEXTURE_2D, aInfo.clippingFrame->texture().id());
         }
     }
@@ -425,12 +587,46 @@ void LayerNode::renderLayer(const RenderInfo& aInfo, const TimeCacheAccessor& aA
         shader.setUniformValue("uImageSize", QSizeF(textureSize));
         shader.setUniformValue("uTexCoordOffset", texCoordOffset);
         shader.setUniformValue("uColor", color);
+        // the fill opacity scales the layer's own pixels inside the shader; a grid draw is a
+        // debug view of the raw image, so it stays at 1 (an unset uniform reads as 0)
+        shader.setUniformValue(
+            "uFillOpacity", (aInfo.isGrid || aShapePass) ? 1.0f : this->fillOpacity());
         shader.setUniformValue("uTexture", 0);
         shader.setUniformValue("uDestTexture", 1);
+        if (!aInfo.isGrid) {
+            // the ranges live in the linked program, so every draw states them: a layer
+            // without Blend If disables the weight explicitly (the grid shader has none)
+            applyBlendIfUniforms(shader, blendIf);
+            // fill-replacing layer effects ride the content pass, like the mask: they change
+            // what the layer looks like, not how much of it the scene receives. A shape pass
+            // (the silhouette source of the layer's own effects) leaves them off.
+            applyEffectsUniforms(shader, aShapePass ? LayerEffects() : this->layerEffects());
+        }
+
+        if (!aInfo.isGrid) {
+            // a disabled mask keeps its pixels but must not be applied; the mask texture
+            // rides the image's texture coordinates, so no extra mapping is needed
+            const auto& maskRes = *expans.areaImageKey()->data().resource();
+            const int maskEnable =
+                (maskTexture && maskRes.isMaskEnabled()) ? (maskRes.isMaskInverted() ? 2 : 1) : 0;
+            shader.setUniformValue("uMaskTexture", 2);
+            shader.setUniformValue("uMaskEnable", maskEnable);
+
+            // the stroke's outline distance field, in the image's coordinates as well. A
+            // layer without a usable field leaves the stroke pass off (a shape pass, which
+            // draws the bare silhouette, never strokes).
+            shader.setUniformValue("uDistanceTexture", 4);
+            if (aShapePass || !distanceTexture) {
+                shader.setUniformValue("uStrokeEnable", 0);
+            } else {
+                ggl.glActiveTexture(GL_TEXTURE4);
+                ggl.glBindTexture(GL_TEXTURE_2D, distanceTexture->id());
+            }
+        }
 
         if (isClippee) {
             shader.setUniformValue("uClippingId", (int)aInfo.clippingId);
-            shader.setUniformValue("uClippingTexture", 2);
+            shader.setUniformValue("uClippingTexture", 3);
         }
 
         if (useHSV && !HSVData.isEmpty()) {
@@ -501,14 +697,237 @@ void LayerNode::reserveShadersFromTimeline() {
 
 bool LayerNode::serialize(Serializer& aOut) const {
     static const std::array<uint8, 8> sig = {'L', 'a', 'y', 'e', 'r', 'N', 'd', '_'};
-    return ObjectNodeUtil::writeObjectBlock(aOut, sig, mName, mIsVisible, mIsSlimmedDown,
-                                  mInitialRect, mIsClipped, mTimeLine);
+    if (!ObjectNodeUtil::writeObjectBlock(aOut, sig, mName, mIsVisible, mIsSlimmedDown,
+            mInitialRect, mIsClipped, mTimeLine)) {
+        return false;
+    }
+    // the Blend If ranges landed in AE_PROJECT_FORMAT_MINOR_VERSION 12; like the folder
+    // blend mode they ride the object block, appended after the time line so a stream read
+    // under an older version label stops exactly where that version's layout ended
+    aOut.write(mBlendIf.dst.packed());
+    aOut.write(mBlendIf.src.packed());
+
+    // layer effects (minor 14): the effects this build draws, plus which effect keys the file
+    // contained so the UI can report the ones that are only parsed
+    {
+        const int flags = (mLayerEffects.colorOverlay.enabled ? 1 : 0)
+            | (mLayerEffects.gradientOverlay.enabled ? 2 : 0) | (mLayerEffects.stroke.isUsable() ? 4 : 0);
+        aOut.write(flags);
+        if (mLayerEffects.colorOverlay.enabled) {
+            aOut.write(mLayerEffects.colorOverlay.r);
+            aOut.write(mLayerEffects.colorOverlay.g);
+            aOut.write(mLayerEffects.colorOverlay.b);
+            aOut.write(mLayerEffects.colorOverlay.opacity);
+        }
+        if (mLayerEffects.gradientOverlay.enabled) {
+            const auto& grad = mLayerEffects.gradientOverlay;
+            aOut.write(grad.opacity);
+            aOut.write(grad.angleDeg);
+            aOut.write(grad.scale);
+            aOut.write(grad.reverse);
+            aOut.write(grad.offsetX);
+            aOut.write(grad.offsetY);
+            aOut.write((int)grad.stops.size());
+            for (const auto& stop : grad.stops) {
+                aOut.write(stop.location);
+                aOut.write(stop.r);
+                aOut.write(stop.g);
+                aOut.write(stop.b);
+                aOut.write(stop.opacity);
+            }
+        }
+        if (mLayerEffects.stroke.isUsable()) {
+            // the stroke's own parameters: its band, paint and gradient anchoring. A file
+            // written before this field existed has no bit 2 in the flags word, so nothing is
+            // read for it.
+            const auto& st = mLayerEffects.stroke;
+            aOut.write(st.size);
+            aOut.write(QString::fromStdString(st.style));
+            aOut.write(QString::fromStdString(st.paintType));
+            aOut.write(st.r);
+            aOut.write(st.g);
+            aOut.write(st.b);
+            aOut.write(st.opacity);
+            aOut.write(QString::fromStdString(st.blendMode));
+            aOut.write((int)st.mode);
+            aOut.write((int)(st.blendModeKnown ? 1 : 0));
+            aOut.write(st.angleDeg);
+            aOut.write(st.scale);
+            aOut.write(st.offsetX);
+            aOut.write(st.offsetY);
+            aOut.write(st.reverse);
+            aOut.write((int)st.stops.size());
+            for (const auto& stop : st.stops) {
+                aOut.write(stop.location);
+                aOut.write(stop.r);
+                aOut.write(stop.g);
+                aOut.write(stop.b);
+                aOut.write(stop.opacity);
+            }
+        }
+        int seen = 0;
+        int active = 0;
+        for (int i = 0; i < LayerEffects::Type_TERM; ++i) {
+            if (mLayerEffects.seen[i]) {
+                seen |= (1 << i);
+            }
+            if (mLayerEffects.active[i]) {
+                active |= (1 << i);
+            }
+        }
+        aOut.write(seen);
+        aOut.write(active);
+        // the blurred-silhouette effects the renderer draws
+        aOut.write((int)mLayerEffects.silhouettes.size());
+        for (const auto& s : mLayerEffects.silhouettes) {
+            aOut.write((int)s.kind);
+            aOut.write(s.blur);
+            aOut.write(s.distance);
+            aOut.write(s.angleDeg);
+            aOut.write(s.r);
+            aOut.write(s.g);
+            aOut.write(s.b);
+            aOut.write(s.opacity);
+            aOut.write((int)s.blendMode.size());
+            for (char c : s.blendMode) {
+                aOut.write((int)(uint8)c);
+            }
+            aOut.write((int)s.mode);
+            aOut.write((int)(s.blendModeKnown ? 1 : 0));
+        }
+        aOut.write(mFillOpacity);
+    }
+    return aOut.checkStream();
 }
 
 bool LayerNode::deserialize(Deserializer& aIn) {
     auto res = ObjectNodeUtil::readObjectBlock(aIn, "LayerNd_", mName, mIsVisible, mIsSlimmedDown,
                             mInitialRect, mIsClipped, mTimeLine);
     if (!res) return res;
+
+    // projects saved before the Blend If bump (minor < 12) end here; the layer keeps the
+    // default (inactive) ranges
+    if (aIn.version().minorVersion() >= 12) {
+        int packed = 0;
+        aIn.read(packed);
+        mBlendIf.dst = BlendIf::Range::unpacked(packed);
+        aIn.read(packed);
+        mBlendIf.src = BlendIf::Range::unpacked(packed);
+    }
+    // layer effects (minor 14)
+    if (aIn.version().minorVersion() >= 14) {
+        int flags = 0;
+        aIn.read(flags);
+        if (flags & 1) {
+            mLayerEffects.colorOverlay.enabled = true;
+            aIn.read(mLayerEffects.colorOverlay.r);
+            aIn.read(mLayerEffects.colorOverlay.g);
+            aIn.read(mLayerEffects.colorOverlay.b);
+            aIn.read(mLayerEffects.colorOverlay.opacity);
+        }
+        if (flags & 2) {
+            auto& grad = mLayerEffects.gradientOverlay;
+            grad.enabled = true;
+            aIn.read(grad.opacity);
+            aIn.read(grad.angleDeg);
+            aIn.read(grad.scale);
+            aIn.read(grad.reverse);
+            aIn.read(grad.offsetX);
+            aIn.read(grad.offsetY);
+            int stopCount = 0;
+            aIn.read(stopCount);
+            for (int i = 0; i < stopCount; ++i) {
+                LayerEffects::Stop stop;
+                aIn.read(stop.location);
+                aIn.read(stop.r);
+                aIn.read(stop.g);
+                aIn.read(stop.b);
+                aIn.read(stop.opacity);
+                grad.stops.push_back(stop);
+            }
+            grad.style = "Lnr "; // the layout only carries the linear form this build draws
+            grad.blendMode = "Nrml";
+        }
+        if (flags & 4) {
+            auto& st = mLayerEffects.stroke;
+            st.enabled = true;
+            aIn.read(st.size);
+            QString style, paintType, blendMode;
+            aIn.read(style);
+            aIn.read(paintType);
+            st.style = style.toStdString();
+            st.paintType = paintType.toStdString();
+            aIn.read(st.r);
+            aIn.read(st.g);
+            aIn.read(st.b);
+            aIn.read(st.opacity);
+            aIn.read(blendMode);
+            st.blendMode = blendMode.toStdString();
+            int mode = 0;
+            int known = 1;
+            aIn.read(mode);
+            aIn.read(known);
+            st.mode = (img::BlendMode)mode;
+            st.blendModeKnown = (known != 0);
+            aIn.read(st.angleDeg);
+            aIn.read(st.scale);
+            aIn.read(st.offsetX);
+            aIn.read(st.offsetY);
+            aIn.read(st.reverse);
+            int stopCount = 0;
+            aIn.read(stopCount);
+            for (int i = 0; i < stopCount && i < LayerEffects::kMaxStops; ++i) {
+                LayerEffects::Stop stop;
+                aIn.read(stop.location);
+                aIn.read(stop.r);
+                aIn.read(stop.g);
+                aIn.read(stop.b);
+                aIn.read(stop.opacity);
+                st.stops.push_back(stop);
+            }
+        }
+        int seen = 0;
+        aIn.read(seen);
+        for (int i = 0; i < LayerEffects::Type_TERM; ++i) {
+            mLayerEffects.seen[i] = (seen & (1 << i)) != 0;
+        }
+        int active = 0;
+        aIn.read(active);
+        for (int i = 0; i < LayerEffects::Type_TERM; ++i) {
+            mLayerEffects.active[i] = (active & (1 << i)) != 0;
+        }
+        int silhouetteCount = 0;
+        aIn.read(silhouetteCount);
+        for (int i = 0; i < silhouetteCount && i < 32; ++i) {
+            LayerEffects::Silhouette s;
+            int kind = 0;
+            aIn.read(kind);
+            s.kind = (LayerEffects::Silhouette::Kind)kind;
+            s.enabled = true;
+            aIn.read(s.blur);
+            aIn.read(s.distance);
+            aIn.read(s.angleDeg);
+            aIn.read(s.r);
+            aIn.read(s.g);
+            aIn.read(s.b);
+            aIn.read(s.opacity);
+            int len = 0;
+            aIn.read(len);
+            for (int k = 0; k < len && k < 8; ++k) {
+                int c = 0;
+                aIn.read(c);
+                s.blendMode.push_back((char)(uint8)c);
+            }
+            int mode = 0;
+            int known = 1;
+            aIn.read(mode);
+            aIn.read(known);
+            s.mode = (img::BlendMode)mode;
+            s.blendModeKnown = (known != 0);
+            mLayerEffects.silhouettes.push_back(s);
+        }
+        aIn.read(mFillOpacity);
+    }
     reserveShadersFromTimeline();
     return res;
 }

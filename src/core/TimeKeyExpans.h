@@ -87,6 +87,9 @@ public:
     ImageKey* areaImageKey() { return mAreaImageKey; }
     const ImageKey* areaImageKey() const { return mAreaImageKey; }
     const gl::Texture* areaTexture() const;
+    // the layer mask texture of the area image key, or null when the layer has no mask
+    const gl::Texture* areaMaskTexture() const;
+    const gl::Texture* areaDistanceTexture() const;
     img::BlendMode blendMode() const;
     void setImageOffset(const QVector2D& aOffset) { mImageOffset = aOffset; }
     QVector2D imageOffset() const { return mImageOffset; }

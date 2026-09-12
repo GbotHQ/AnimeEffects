@@ -10,6 +10,7 @@
 #include "gl/Texture.h"
 #include "gl/BufferObject.h"
 #include "gl/EasyShaderProgram.h"
+#include "core/BlendIf.h"
 #include "img/BlendMode.h"
 #include "util/NonCopyable.h"
 
@@ -24,7 +25,9 @@ public:
         Kind_HSV, // presentation: applies per-pass HSV (folder key) and/or the given
                   // blend func against the captured scene
         Kind_Blur,
-        Kind_Resample // premultiplied passthrough (bilinear) for blur ladder down/upsampling
+        Kind_Resample, // premultiplied passthrough (bilinear) for blur ladder down/upsampling
+        Kind_Tint     // recolours a premultiplied coverage texture: out = (tint * a, a),
+                      // used to tint a blurred silhouette for the layer effects
     };
 
     // Largest radius rendered directly (two full-resolution passes). Larger radii go
@@ -112,11 +115,23 @@ public:
     // downsample and the last upsample so it works in image orientation (the composite
     // slot texture holds the scene y-flipped; a plain bilinear ladder is not
     // flip-invariant at the edges).
+    // aBlendIf carries the presenting node's Photoshop "Blend If" ranges (see
+    // core/BlendIf.h): an active range needs the real destination capture even for a
+    // Normal present, so aPresentDest must then be non-zero.
+    // aTintColor is the colour a Kind_Tint pass writes into the source's coverage
+    // (its alpha is ignored; aOpacity supplies the pass's coverage scale).
+    // aSrcOffsetTexels shifts which source texel each destination pixel samples: the
+    // draw still covers the whole target, but the source appears moved by minus the
+    // offset (used to place a layer effect's silhouette at its distance/angle).
+    // aClipTexture (Kind_Tint only) caps the tinted coverage by that texture's alpha: an inner
+    // layer effect (chrome) must not paint outside the layer's own shape.
     void drawQuad(
         GLuint aSrcTexture, Kind aKind, const QList<int>& aHSV, const BlurParams& aBlur, float aOpacity,
         bool aNeedHSV = false, const QSizeF& aTargetSize = QSizeF(), const QSizeF& aSrcSize = QSizeF(),
         bool aFlipY = false, img::BlendMode aPresentBlend = img::BlendMode_Normal,
-        GLuint aPresentDest = 0
+        GLuint aPresentDest = 0, const BlendIf& aBlendIf = BlendIf(),
+        const QColor& aTintColor = QColor(255, 255, 255, 255), const QVector2D& aSrcOffsetTexels = QVector2D(),
+        GLuint aClipTexture = 0
     );
 
     // LAYER-LEVEL PRESENTATION for the blend-aware composite:
@@ -124,7 +139,8 @@ public:
     // (the scene capture) instead of the self dummy. Used by LayerNode for blurred
     // layers whose own blend mode must apply to the isolated blurred content.
     void drawBlendPresent(
-        GLuint aSrcTexture, img::BlendMode aMode, GLuint aDestTexture, float aOpacity
+        GLuint aSrcTexture, img::BlendMode aMode, GLuint aDestTexture, float aOpacity,
+        const BlendIf& aBlendIf = BlendIf()
     );
 
 private:
@@ -165,7 +181,7 @@ private:
     std::array<QScopedPointer<gl::Texture>, kMaxLadderLevels> mTexturesL;
     std::array<QScopedPointer<gl::Framebuffer>, kMaxLadderLevels> mFramebuffersL2;
     std::array<QScopedPointer<gl::Texture>, kMaxLadderLevels> mTexturesL2;
-    gl::EasyShaderProgram mPassShaders[3];
+    gl::EasyShaderProgram mPassShaders[4];
     // per-blend present variants (see presentShader)
     std::array<QScopedPointer<gl::EasyShaderProgram>, img::BlendMode_TERM> mPresentShaders;
     // per-blend present variants with per-pass HSV (see presentHSVShader)

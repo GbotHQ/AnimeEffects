@@ -7,12 +7,18 @@
 #include "img/PSDReader.h"
 #include "img/PSDUtil.h"
 #include "img/BlendMode.h"
+#include "cmnd/BasicCommands.h"
 #include "cmnd/ScopedMacro.h"
 #include "cmnd/BasicCommands.h"
 #include "ctrl/CmndName.h"
+#include "core/ImageKey.h"
+#include "core/LayerNode.h"
+#include "core/OpaKey.h"
+#include "core/TimeKey.h"
 #include "gui/res/res_ImageSetter.h"
 #include "gui/res/res_ResourceUpdater.h"
 #include "img/Util.h"
+#include "ctrl/SourceDocument.h"
 #include "deps/zip_file.h"
 
 // #define RESOURCE_UPDATER_DUMP(...) XC_DEBUG_REPORT(__VA_ARGS__)
@@ -235,7 +241,7 @@ namespace gui::res {
 
     //-------------------------------------------------------------------------------------------------
     ResourceUpdater::ResourceUpdater(ViaPoint& aViaPoint, core::Project& aProject):
-        mViaPoint(aViaPoint), mProject(aProject), mPSDFormat() {}
+        mViaPoint(aViaPoint), mProject(aProject) {}
 
     //-------------------------------------------------------------------------------------------------
     void ResourceUpdater::load(QTreeWidget& aTree, const QString& aFilePath) {
@@ -266,393 +272,532 @@ namespace gui::res {
         }
     }
 
-    img::ResourceNode* ResourceUpdater::createResourceTree(const QString& aFilePath, bool aLoadImage) {
+    // One place that turns a source file into a description, whatever the container: a PSD is
+    // read by img::PSDReader, an ORA by the zip reader + its stack.xml, anything else by QImage.
+    // The importer and the reload both go through it, so a format is interpreted in exactly one
+    // place and the two paths cannot drift apart.
+    ctrl::SourceDocument ResourceUpdater::describeSource(const QString& aFilePath, bool aWantPixels) {
         const QFileInfo fileInfo(aFilePath);
-        if (!fileInfo.isFile())
-            return nullptr;
-
-        if (fileInfo.suffix() == "psd") {
-            return createPsdTree(aFilePath, aLoadImage);
+        if (!fileInfo.isFile()) {
+            return {};
         }
-        if (fileInfo.suffix() == "ora") {
-            return createOraTree(aFilePath, aLoadImage);
-        } else {
-            return createQImageTree(aFilePath, aLoadImage);
-        }
-    }
+        const QString suffix = fileInfo.suffix();
 
-    img::ResourceNode* ResourceUpdater::createQImageTree(const QString& aFilePath, bool aLoadImage) const {
-        const QFileInfo fileInfo(aFilePath);
-        if (!fileInfo.isFile())
-            return nullptr;
+        if (suffix == "psd") {
+            std::ifstream file(aFilePath.toLocal8Bit(), std::ios::binary);
+            if (file.fail()) {
+                QMessageBox::warning(nullptr, tr("FileIO Error"), tr("PSD file not found."));
+                return {};
+            }
+            img::PSDReader reader(file);
+            if (reader.resultCode() != img::PSDReader::ResultCode_Success) {
+                QMessageBox::warning(
+                    nullptr, tr("PSD parse error"),
+                    "error(" + QString::number(reader.resultCode()) + ") "
+                        + QString::fromStdString(reader.resultMessage()));
+                return {};
+            }
+            file.close();
+            ctrl::SourceDocument document =
+                ctrl::describePsd(*reader.format(), fileInfo.baseName(), aWantPixels);
+            if (document.isValid()) {
+                document.canvasSize =
+                    QSize((int)reader.format()->header().width, (int)reader.format()->header().height);
+            }
+            return document;
+        }
+
+        if (suffix == "ora") {
+            // The ORA format has two import modes and the file does not record which one was
+            // used, so the artist is asked - the same question the importer asks.
+            QMessageBox loadMerged;
+            loadMerged.setWindowTitle(tr("Select ORA type"));
+            loadMerged.setText(tr("How do you wish to load this ORA file?"));
+            loadMerged.addButton(tr("Load layered"), QMessageBox::YesRole);
+            QAbstractButton* mergeButton = loadMerged.addButton(tr("Load merged"), QMessageBox::YesRole);
+            QAbstractButton* cancelButton = loadMerged.addButton(tr("Cancel file load"), QMessageBox::NoRole);
+            loadMerged.exec();
+            if (loadMerged.clickedButton() == cancelButton) {
+                return {};
+            }
+            const bool merged = loadMerged.clickedButton() == mergeButton;
+            return ctrl::describeOra(aFilePath.toStdString(), merged, fileInfo.baseName(), aWantPixels);
+        }
 
         QImage image(aFilePath);
         if (image.isNull()) {
             QMessageBox::warning(nullptr, tr("QImage Error"), tr("Failed to load image file."));
-            return nullptr;
+            return {};
         }
-        return img::Util::createResourceNode(image, fileInfo.baseName(), aLoadImage);
+        return ctrl::describeImage(image, fileInfo.baseName(), aWantPixels);
     }
 
-    img::ResourceNode* ResourceUpdater::createPsdTree(const QString& aFilePath, bool aLoadImage) {
-        // open file
-        std::ifstream file(aFilePath.toLocal8Bit(), std::ios::binary);
-        if (file.fail()) {
-            QMessageBox::warning(nullptr, tr("FileIO Error"), tr("PSD file not found."));
-            return nullptr;
-        }
-
-        // read psd
-        img::PSDReader reader(file);
-        if (reader.resultCode() != img::PSDReader::ResultCode_Success) {
-            const QString errorText =
-                "error(" + QString::number(reader.resultCode()) + ") " + QString::fromStdString(reader.resultMessage());
-            QMessageBox::warning(nullptr, tr("PSD parse error"), errorText);
-            return nullptr;
-        }
-        file.close();
-
-        mPSDFormat = std::move(reader.format());
-
-        // create resource tree
-        return img::Util::createResourceNodes(*mPSDFormat, aLoadImage);
-    }
-
-    img::ResourceNode* ResourceUpdater::createOraTree(const QString& aFilePath, bool aLoadImage) {
-        miniz_cpp::zip_file ora(aFilePath.toStdString());
-        {
-            const auto& path = aFilePath;
-            XC_DEBUG_REPORT() << "ora path =" << path;
-            try{
-                if (!ora.has_file("mimetype")){
-                    QMessageBox::warning(nullptr, tr("ORA parse error"), tr("Unable to find the MIME type of the selected file."));
-                    return nullptr;
-                }
-                auto mimetype = ora.read("mimetype");
-                if (mimetype != "image/openraster"){
-                    QMessageBox::warning(nullptr, tr("ORA parse error"), tr("The MIME type is not valid."));
-                    return nullptr;
-                }
-                XC_DEBUG_REPORT() << "ora file has valid mimetype";
+    img::ResourceNode* ResourceUpdater::createResourceTree(const QString& aFilePath, bool aLoadImage) {
+        ctrl::SourceDocument document = describeSource(aFilePath, aLoadImage);
+        if (!document.isValid()) {
+            if (!document.error.isEmpty()) {
+                QMessageBox::warning(nullptr, tr("Parse error"), document.error);
             }
-            catch (...){
-                QMessageBox::warning(nullptr, tr("ORA parse error"), tr("The file could not be read."));
-                    return nullptr;
-            }
+            return nullptr;
         }
-        ora.reset();
-        QMessageBox loadMerged;
-        loadMerged.setWindowTitle(tr("Select ORA type"));
-        loadMerged.setText(tr("How do you wish to load this ORA file?"));
-        loadMerged.addButton(tr("Load layered"), QMessageBox::YesRole);
-        QAbstractButton* mergeButton = loadMerged.addButton(tr("Load merged"), QMessageBox::YesRole);
-        QAbstractButton* cancelButton = loadMerged.addButton(tr("Cancel file load"), QMessageBox::NoRole);
-        loadMerged.exec();
-        if(loadMerged.clickedButton() == cancelButton){ return nullptr; }
-        bool merged = loadMerged.clickedButton() == mergeButton;
-        // create resource tree
-        return img::Util::createResourceNodes(merged, aFilePath.toStdString(), aLoadImage);
+        // Say what the imported picture is missing, at the moment the file is added: the
+        // effects this build cannot draw would otherwise be silently absent from the render.
+        pushEffectNotes(document);
+        return ctrl::buildResourceTree(document);
     }
 
+    void ResourceUpdater::pushEffectNotes(const ctrl::SourceDocument& aDocument) {
+        for (const QString& note : ctrl::undrawnEffectNotes(aDocument)) {
+            mViaPoint.pushLog(note, ctrl::UILogType_Warn);
+        }
+    }
 
     //-------------------------------------------------------------------------------------------------
-    void ResourceUpdater::reload(Item& aItem) {
+    // RECONCILIATION
+    //
+    // A reload used to descend the file and the project in parallel, require the GUI item's child
+    // count to equal the model's (it aborted the whole reload with a modal error when they
+    // disagreed), tag every node as abandoned and then un-tag the ones it visited, and apply only
+    // pixels. It now computes a PLAN first - match by identity, then keep / update / append /
+    // remove - and applies it, which is what makes the four guarantees hold:
+    //
+    //   - nothing depends on the GUI tree mirroring the model (items are looked up BY NODE);
+    //   - the model carries no transient state, so stopping half way leaves nothing behind;
+    //   - a structural change updates the project instead of refusing it;
+    //   - what the plan detects is what it applies (ctrl::diffResource / diffObject), and the
+    //     commands are collected before any are pushed, so a reload that finds nothing to do
+    //     leaves the project unedited.
+    namespace {
+
+        // the GUI item that shows a given resource node. A reload must not assume the item tree
+        // and the model agree by index, so this searches by node.
+        res::Item* findItemFor(QTreeWidgetItem& aParent, const img::ResourceNode& aNode) {
+            for (int i = 0; i < aParent.childCount(); ++i) {
+                auto* child = dynamic_cast<res::Item*>(aParent.child(i));
+                if (child && &child->node() == &aNode) {
+                    return child;
+                }
+            }
+            return nullptr;
+        }
+
+        // The object nodes a resource node stands for.
+        //   - a LAYER resource is whatever draws it: the image key of every object node that holds
+        //     this resource (the resource tree is a palette, so there can be several);
+        //   - a FOLDER resource has no image key, so it is found by the object tree mirroring the
+        //     resource tree's structure - the import builds both from one description, so the
+        //     folder with the same name along the same path is it. Best effort by construction,
+        //     which is why a miss is reported rather than silently ignored.
+        QVector<core::ObjectNode*> correspondingObjectNodes(
+            core::Project& aProject, const img::ResourceNode& aNode
+        ) {
+            QVector<core::ObjectNode*> result;
+            auto* top = aProject.objectTree().topNode();
+            if (!top) {
+                return result;
+            }
+
+            if (aNode.data().isLayer()) {
+                core::ObjectNode::Iterator itr(top);
+                while (itr.hasNext()) {
+                    auto node = itr.next();
+                    if (auto* timeLine = node->timeLine()) {
+                        if (auto* key =
+                                dynamic_cast<core::ImageKey*>(timeLine->defaultKey(core::TimeKeyType_Image))) {
+                            if (key->data().resource().get() == &aNode.data()) {
+                                result.push_back(node);
+                            }
+                        }
+                    }
+                }
+                return result;
+            }
+
+            // the names from the tree root down to this folder
+            QStringList path;
+            for (auto ptr = &aNode; ptr != nullptr; ptr = ptr->parent()) {
+                path.push_front(ptr->data().identifier());
+            }
+            path.removeFirst(); // the tree root's name is the document's, not a node name
+
+            auto* current = (core::ObjectNode*)top;
+            for (const QString& name : path) {
+                core::ObjectNode* next = nullptr;
+                for (auto child : current->children()) {
+                    if (child->name() == name && child->type() == core::ObjectType_Folder) {
+                        next = child;
+                        break;
+                    }
+                }
+                if (!next) {
+                    return {};
+                }
+                current = next;
+            }
+            result.push_back(current);
+            return result;
+        }
+
+    }
+
+    void ResourceUpdater::buildPlanRecursive(
+        const img::ResourceNode& aParent, const ctrl::SourceDocument::Entry& aEntry, PlanNode& aOut,
+        QStringList& aOutAmbiguous
+    ) {
+        for (const auto& child : aEntry.children) {
+            QVector<img::ResourceNode*> candidates;
+            for (auto current : aParent.children()) {
+                if (ctrl::matchesIdentity(*current, child)) {
+                    candidates.push_back(current);
+                }
+            }
+            if (candidates.count() > 1) {
+                // two siblings the identity rule cannot tell apart: reported, and this entry is
+                // left alone rather than guessed at (the rest of the reload still happens)
+                aOutAmbiguous.push_back(QString("%1 (%2 candidates)").arg(child.name).arg(candidates.count()));
+                continue;
+            }
+            PlanNode node;
+            node.entry = &child;
+            node.current = candidates.isEmpty() ? nullptr : candidates.front();
+            aOut.children.push_back(std::move(node));
+        }
+
+        // everything the file no longer mentions is a removal
+        for (auto current : aParent.children()) {
+            bool found = false;
+            for (const auto& child : aEntry.children) {
+                if (ctrl::matchesIdentity(*current, child)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                PlanNode node;
+                node.current = current;
+                aOut.children.push_back(std::move(node));
+            }
+        }
+
+        // and recurse into the pairs
+        for (auto& node : aOut.children) {
+            if (node.current && node.entry) {
+                buildPlanRecursive(*node.current, *node.entry, node, aOutAmbiguous);
+            }
+        }
+    }
+
+    void ResourceUpdater::applyPlanRecursive(QTreeWidgetItem& aItem, PlanNode& aPlan, ApplyContext& aContext) {
+        for (auto& child : aPlan.children) {
+            if (child.isAppend()) {
+                // the file gained a node: build it exactly as the importer would (same masks,
+                // same derivation hook, same declared derived-channel needs) and add it with its
+                // whole subtree
+                std::function<img::ResourceNode*(ctrl::SourceDocument::Entry&)> buildSubtree =
+                    [&](ctrl::SourceDocument::Entry& aEntry) {
+                        auto* node = ctrl::buildResourceNode(aContext.document, aEntry);
+                        aContext.notifier.event().pushTarget(*node);
+                        for (auto& grandChild : aEntry.children) {
+                            node->children().pushBack(buildSubtree(grandChild));
+                        }
+                        return node;
+                    };
+                auto* newChild =
+                    buildSubtree(const_cast<ctrl::SourceDocument::Entry&>(*child.entry));
+                RESOURCE_UPDATER_DUMP("append %s", child.entry->name.toUtf8().constData());
+                auto* parentItem = res::Item::cast(&aItem);
+                XC_PTR_ASSERT(parentItem);
+                aContext.commands.push_back(new cmnd::PushBackNewTreeObject<img::ResourceNode>(
+                    &parentItem->node().children(), newChild));
+                auto* newItem = new res::Item(*aItem.treeWidget(), *newChild, newChild->data().identifier());
+                aContext.commands.push_back(new GUITreeItemAppender(aItem, newItem));
+                if (child.entry->children.empty()) {
+                    continue;
+                }
+                // the appended subtree's own items (its resources are already in the model)
+                std::function<void(QTreeWidgetItem&, const img::ResourceNode&)> addItems =
+                    [&](QTreeWidgetItem& aParentItem, const img::ResourceNode& aParentNode) {
+                        for (auto grandChild : aParentNode.children()) {
+                            auto* grandItem = new res::Item(
+                                *aItem.treeWidget(), *grandChild, grandChild->data().identifier());
+                            aContext.commands.push_back(new GUITreeItemAppender(aParentItem, grandItem));
+                            addItems(*grandItem, *grandChild);
+                        }
+                    };
+                addItems(*newItem, *newChild);
+                continue;
+            }
+
+            auto* current = child.current;
+            XC_PTR_ASSERT(current);
+            auto* item = findItemFor(aItem, *current);
+            if (!item) {
+                // the model is authoritative: if the GUI never showed this node, show it now
+                item = new res::Item(*aItem.treeWidget(), *current, current->data().identifier());
+                aContext.commands.push_back(new GUITreeItemAppender(aItem, item));
+            }
+            // NOTE: the node is addressed from here on, never by index into the GUI tree
+
+            if (child.isRemove()) {
+                // the file no longer has it. Anything an object node still draws is KEPT: the
+                // art may be placed in the timeline even though the source dropped it
+                bool keeped = current->isKeeped();
+                if (!keeped) {
+                    img::ResourceNode::ConstIterator itr(current);
+                    while (itr.hasNext()) {
+                        if (itr.next()->isKeeped()) {
+                            keeped = true;
+                            break;
+                        }
+                    }
+                }
+                if (keeped) {
+                    aContext.keptInUse.push_back(current->data().identifier());
+                    continue;
+                }
+                XC_PTR_ASSERT(current->parent());
+                XC_PTR_ASSERT(item->parent());
+                aContext.commands.push_back(
+                    new cmnd::RemoveTreeByObj<img::ResourceNode>(&current->parent()->children(), current));
+                aContext.commands.push_back(new cmnd::GrabDeleteObject<img::ResourceNode>(current));
+                RESOURCE_UPDATER_DUMP("remove %s", current->data().identifier().toUtf8().constData());
+                aContext.commands.push_back(new GUITreeItemDeleter(*item->parent(), item));
+                continue;
+            }
+
+            // ---- matched: apply the object side first (it is per object node), then the resource
+            QVector<core::ObjectNode*> objects = correspondingObjectNodes(mProject, *current);
+            if (objects.isEmpty() && !current->data().isLayer()) {
+                // a group whose object node could not be found by name: its own properties
+                // (blend mode, opacity, Blend If) cannot be applied, so say so instead of
+                // pretending the two sides agree
+                aContext.unmatchedGroups.push_back(current->data().identifier());
+            }
+            for (auto* objectNode : objects) {
+                const ctrl::ObjectDiff objDiff = ctrl::diffObject(*objectNode, *child.entry);
+                RESOURCE_UPDATER_DUMP(
+                    "update %s: visible=%d blend=%d blendIf=%d clip=%d effects=%d fill=%d opacity=%d",
+                    objectNode->name().toUtf8().constData(), (int)objDiff.visibility, (int)objDiff.blend,
+                    (int)objDiff.blendIf, (int)objDiff.clipping, (int)objDiff.effects,
+                    (int)objDiff.fillOpacity, (int)objDiff.opacity);
+                if (!aContext.force && !objDiff.any()) {
+                    continue;
+                }
+                auto* renderer = objectNode->renderer();
+                if (!renderer) {
+                    continue;
+                }
+                const bool wantVisible = child.entry->visible;
+                if (aContext.force || objDiff.visibility) {
+                    const bool prev = objectNode->isVisible();
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [objectNode, wantVisible]() { objectNode->setVisibility(wantVisible); },
+                        [objectNode, prev]() { objectNode->setVisibility(prev); }));
+                }
+                if (aContext.force || objDiff.blend) {
+                    const img::BlendMode prev = renderer->blendMode();
+                    const img::BlendMode next = child.entry->blendMode;
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [renderer, next]() { renderer->setBlendMode(next); },
+                        [renderer, prev]() { renderer->setBlendMode(prev); }));
+                }
+                if (aContext.force || objDiff.blendIf) {
+                    const core::BlendIf prev = renderer->blendIf();
+                    const core::BlendIf next = child.entry->blendIf;
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [renderer, next]() { renderer->setBlendIf(next); },
+                        [renderer, prev]() { renderer->setBlendIf(prev); }));
+                }
+                if (aContext.force || objDiff.clipping) {
+                    const bool prev = renderer->isClipped();
+                    const bool next = child.entry->clipped;
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [renderer, next]() { renderer->setClipped(next); },
+                        [renderer, prev]() { renderer->setClipped(prev); }));
+                }
+                if ((aContext.force || objDiff.effects) && objectNode->type() == core::ObjectType_Layer) {
+                    const core::LayerEffects prev = renderer->layerEffects();
+                    const core::LayerEffects next = child.entry->effects;
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [renderer, next]() { renderer->setLayerEffects(next); },
+                        [renderer, prev]() { renderer->setLayerEffects(prev); }));
+                }
+                if ((aContext.force || objDiff.fillOpacity) && objectNode->type() == core::ObjectType_Layer) {
+                    auto* layer = static_cast<core::LayerNode*>(objectNode);
+                    const float prev = layer->fillOpacity();
+                    const float next = (float)child.entry->fillOpacity255 / 255.0f;
+                    aContext.commands.push_back(new cmnd::Delegatable(
+                        [layer, next]() { layer->setFillOpacity(next); },
+                        [layer, prev]() { layer->setFillOpacity(prev); }));
+                }
+                if (aContext.force || objDiff.opacity) {
+                    auto* timeLine = objectNode->timeLine();
+                    auto* key = timeLine
+                        ? dynamic_cast<core::OpaKey*>(timeLine->defaultKey(core::TimeKeyType_Opa))
+                        : nullptr;
+                    if (key) {
+                        const float prev = key->opacity();
+                        const float next = (float)child.entry->opacity255 / 255.0f;
+                        aContext.commands.push_back(new cmnd::Delegatable(
+                            [key, next]() { key->setOpacity(next); },
+                            [key, prev]() { key->setOpacity(prev); }));
+                    }
+                }
+            }
+
+            // ---- the resource side
+            const ctrl::ResourceDiff resDiff = ctrl::diffResource(*current, *child.entry);
+            if (aContext.force || resDiff.any()) {
+                auto& entry = const_cast<ctrl::SourceDocument::Entry&>(*child.entry);
+                img::ResourceNode::Content content;
+                content.rect = entry.rect;
+                content.pixels = aContext.document.takePixels(entry);
+                content.setMask = true; // the file is the truth about the mask, present or not
+                content.hasMask = entry.mask.data != nullptr;
+                if (content.hasMask) {
+                    content.mask = entry.mask;
+                    entry.mask = XCMemBlock();
+                }
+                content.maskEnabled = entry.maskEnabled;
+                content.maskInverted = entry.maskInverted;
+                content.setBlend = true;
+                content.blend = entry.blendMode;
+                content.setVisible = true;
+                content.visible = entry.visible;
+                if (content.pixels.data) {
+                    RESOURCE_UPDATER_DUMP(
+                        "content %s: pixels=%d mask=%d blend=%d visible=%d",
+                        current->data().identifier().toUtf8().constData(), (int)resDiff.pixels,
+                        (int)resDiff.mask, (int)resDiff.blend, (int)resDiff.visible);
+                    aContext.notifier.event().pushTarget(*current);
+                    aContext.commands.push_back(new ContentSetter(*current, std::move(content)));
+                }
+            }
+
+            if (resDiff.name) {
+                // reported, not applied: the resource's name is this app's own label for it (and
+                // the fallback identity), so a rename in the file must not overwrite what the
+                // artist called it here - the stable id keeps the correspondence either way
+                aContext.renamed.push_back(
+                    QString("%1 -> %2").arg(current->data().identifier()).arg(child.entry->name));
+            }
+
+            applyPlanRecursive(*item, child, aContext);
+        }
+    }
+
+    void ResourceUpdater::reconcile(Item& aItem, bool aForce) {
         auto& holder = mProject.resourceHolder();
 
         img::ResourceNode& node = aItem.node();
         img::ResourceNode& topNode = util::TreeUtil::getTreeRoot(node);
-        QString filePath = holder.findAbsoluteFilePath(topNode);
+        const QString filePath = holder.findAbsoluteFilePath(topNode);
         if (filePath.isEmpty())
             return;
 
-        QScopedPointer<img::ResourceNode> newTree(createResourceTree(filePath, false));
-        if (!newTree)
+        // the file, read ONCE into the description the importer consumes
+        ctrl::SourceDocument document = describeSource(filePath, true);
+        if (!document.isValid()) {
+            if (!document.error.isEmpty()) {
+                QMessageBox::warning(nullptr, tr("Parse error"), document.error);
+            }
             return;
+        }
+        // the reload reports what it does not draw, exactly as the import does: the file may
+        // have gained an effect this build has no model for
+        pushEffectNotes(document);
+
+        // the entry the reloaded node corresponds to: the path down from the tree root, matched
+        // by identity at every step
+        const ctrl::SourceDocument::Entry* targetEntry = &document.top;
+        {
+            std::list<img::ResourceNode*> path;
+            for (auto ptr = &node; ptr->parent(); ptr = ptr->parent()) {
+                path.push_front(ptr);
+            }
+            for (auto pathNode : path) {
+                const ctrl::SourceDocument::Entry* found = nullptr;
+                for (const auto& child : targetEntry->children) {
+                    if (ctrl::matchesIdentity(*pathNode, child)) {
+                        found = &child;
+                        break;
+                    }
+                }
+                if (!found) {
+                    QMessageBox::warning(
+                        nullptr, tr("Operation Error"),
+                        tr("Failed to find a corresponding node.") + " (" + pathNode->data().identifier() + ")");
+                    return;
+                }
+                targetEntry = found;
+            }
+        }
 
         RESOURCE_UPDATER_DUMP("begin reload");
 
-        // reload images
-        if (!tryReloadCorrespondingImages(aItem, newTree.data())) {
-            return;
-        }
-        RESOURCE_UPDATER_DUMP("end reload");
-    }
+        PlanNode plan;
+        plan.current = &node;
+        plan.entry = targetEntry;
+        QStringList ambiguous;
+        buildPlanRecursive(node, *targetEntry, plan, ambiguous);
 
-    void ResourceUpdater::forceReload(Item &aItem) {
-        // reload images
-        tryReloadCorrespondingImages(aItem, &aItem.node());
-        RESOURCE_UPDATER_DUMP("end reload");
-    }
+        auto& stack = mProject.commandStack();
+        auto* notifier = new ModificationNotifier(mViaPoint, mProject, aItem.treePos());
+        notifier->event().setRoot(node);
 
-    std::pair<int, img::ResourceNode*>
-    findCorrespondingNode(const img::ResourceNode::Children& aSearchList, const img::ResourceNode& aNode) {
-        {
-            const int count = aNode.getCountOfSameSiblings();
-            if (count > 0)
-                return std::pair<int, img::ResourceNode*>(count + 1, nullptr);
-        }
+        ApplyContext context{ *notifier, document, {}, aForce };
+        context.ambiguous = ambiguous;
+        applyPlanRecursive(aItem, plan, context);
+        RESOURCE_UPDATER_DUMP(
+            "reload command count %d (ambiguous %d, renamed %d, kept %d)", (int)context.commands.size(),
+            (int)context.ambiguous.size(), (int)context.renamed.size(), (int)context.keptInUse.size());
 
-        // search
-        QVector<img::ResourceNode*> sameNames;
-        const bool targetIsLayer = aNode.data().isLayer();
-        for (auto searchChild : aSearchList) {
-            if (searchChild->data().identifier() == aNode.data().identifier()) {
-                if (targetIsLayer == searchChild->data().isLayer()) {
-                    sameNames.push_back(searchChild);
-                }
-            }
-        }
-
-        if (sameNames.count() == 1) {
-            return std::pair<int, img::ResourceNode*>(1, sameNames.front());
-        } else {
-            return std::pair<int, img::ResourceNode*>(sameNames.count(), nullptr);
-        }
-    }
-
-    std::pair<bool, QVector<img::ResourceNode*>>
-    allChildrenCanBeIdentified(img::ResourceNode& aCurNode, img::ResourceNode& aNewNode) {
-        std::pair<bool, QVector<img::ResourceNode*>> result;
-        result.first = true;
-
-        for (auto child : aNewNode.children()) {
-            auto corresponds = findCorrespondingNode(aCurNode.children(), *child);
-            if (corresponds.first > 1) {
-                result.first = false;
-                result.second.push_back(child);
-            } else if (corresponds.first == 1) {
-                auto childRes = allChildrenCanBeIdentified(*corresponds.second, *child);
-                if (!childRes.first) {
-                    result.first = false;
-                    for (auto childError : childRes.second) {
-                        result.second.push_back(childError);
-                    }
-                }
-            }
-        }
-        return result;
-    }
-
-    img::ResourceNode* createNewAppendNode(ModificationNotifier& aNotifier, img::ResourceNode& aNode) {
-        using img::PSDFormat;
-
-        auto newNode = new img::ResourceNode(aNode.data().identifier());
-        newNode->data().copyFrom(aNode.data());
-
-        aNotifier.event().pushTarget(*newNode);
-
-        if (newNode->data().isLayer()) {
-            auto success = newNode->data().loadImage();
-            XC_ASSERT(success);
-            (void)success;
-            XC_ASSERT(newNode->data().hasImage());
-        }
-
-        for (auto child : aNode.children()) {
-            auto newChild = createNewAppendNode(aNotifier, *child);
-            newNode->children().pushBack(newChild);
-        }
-
-        return newNode;
-    }
-
-    //-------------------------------------------------------------------------------------------------
-    bool ResourceUpdater::createImageReloaderRecursive(
-        cmnd::Stack& aStack,
-        ModificationNotifier& aNotifier,
-        QTreeWidgetItem& aCurItem,
-        img::ResourceNode& aCurNode,
-        img::ResourceNode& aNewNode
-    ) {
-        using img::PSDFormat;
-
-        // This is to prevent a crash
-        if (!(aCurItem.childCount() == (int)aCurNode.children().size())) {
-            QMessageBox msgBox;
-            QString aInfo =
-                tr("Expected layer not found, if you wish to remove a layer or change its name, please do "
-                   "so from within AnimeEffects.");
-            msgBox.setIcon(QMessageBox::Critical);
-            msgBox.setWindowTitle(tr("Import Error: Unable to find layer"));
-            msgBox.setText(aInfo);
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.setDefaultButton(QMessageBox::Ok);
-            msgBox.exec();
-            return false;
-        }
-
-        RESOURCE_UPDATER_DUMP("reload image %s", aCurNode.data().identifier().toLatin1().data());
-
-        // update abandon setting
-        aCurNode.setAbandon(false);
-
-        if (aCurNode.data().isLayer()) {
-            XC_ASSERT(aNewNode.data().isLayer());
-
-            // load new image
-            auto success = aNewNode.data().loadImage();
-            if (!success) {
-                return false;
-            }
-            (void)success;
-
-            // if layer data be modified
-            if (!aCurNode.data().hasSameLayerDataWith(aNewNode.data())) {
-                // push to targets
-                aNotifier.event().pushTarget(aCurNode);
-
-                // push reload image command
-                XCMemBlock newImagePtr = aNewNode.data().image().block();
-                const QRect newImageRect(aNewNode.data().pos(), aNewNode.data().image().pixelSize());
-                aNewNode.data().releaseImage();
-                aStack.push(new ImageSetter(aCurNode, newImagePtr, newImageRect));
-            } else {
-                aNewNode.data().freeImage();
-            }
-        }
-
-        // each child
-        for (auto child : aNewNode.children()) {
-            auto corresponds = findCorrespondingNode(aCurNode.children(), *child);
-            XC_ASSERT(corresponds.first <= 1); // check identifiability
-
-
-            if (corresponds.first == 1) {
-                auto childIndex = aCurNode.children().indexOf(corresponds.second);
-                auto childItem = aCurItem.child(childIndex);
-                XC_PTR_ASSERT(childItem);
-
-                // reload node
-                XC_PTR_ASSERT(corresponds.second);
-                createImageReloaderRecursive(aStack, aNotifier, *childItem, *corresponds.second, *child);
-            } else {
-                // append new node
-                auto newChild = createNewAppendNode(aNotifier, *child);
-                aStack.push(new cmnd::PushBackNewTreeObject<img::ResourceNode>(&aCurNode.children(), newChild));
-
-                // append new item
-                auto newItem = new res::Item(*aCurItem.treeWidget(), *newChild, newChild->data().identifier());
-                aStack.push(new GUITreeItemAppender(aCurItem, newItem));
-            }
-        }
-        return true;
-    }
-
-    //-------------------------------------------------------------------------------------------------
-    void ResourceUpdater::createAbandonedImageRemoverRecursive(
-        cmnd::Stack& aStack, QTreeWidgetItem& aItem, img::ResourceNode& aNode
-    ) {
-        bool isKeeped = aNode.isKeeped();
-
-        if (!isKeeped) {
-            img::ResourceNode::ConstIterator itr(&aNode);
-            while (itr.hasNext()) {
-                if (itr.next()->isKeeped()) {
-                    isKeeped = true;
-                    break;
-                }
-            }
-        }
-
-        if (!isKeeped && aNode.isAbandoned()) {
-            XC_PTR_ASSERT(aNode.parent()); // topnode will never be abandoned
-            XC_PTR_ASSERT(aItem.parent());
-            aStack.push(new cmnd::RemoveTreeByObj<img::ResourceNode>(&aNode.parent()->children(), &aNode));
-            aStack.push(new cmnd::GrabDeleteObject<img::ResourceNode>(&aNode));
-            aStack.push(new GUITreeItemDeleter(*aItem.parent(), &aItem));
-            return;
-        }
-
-        XC_ASSERT(aItem.childCount() == (int)aNode.children().size());
-        int childIndex = 0;
-        for (auto child : aNode.children()) {
-            auto childItem = aItem.child(childIndex);
-            XC_PTR_ASSERT(childItem);
-
-            createAbandonedImageRemoverRecursive(aStack, *childItem, *child);
-            ++childIndex;
-        }
-    }
-
-    //-------------------------------------------------------------------------------------------------
-    bool ResourceUpdater::tryReloadCorrespondingImages(QTreeWidgetItem& aTarget, img::ResourceNode* aNewTree) {
-        XC_PTR_ASSERT(aNewTree);
-
-        auto item = res::Item::cast(&aTarget);
-        XC_PTR_ASSERT(item);
-        img::ResourceNode& targetNode = item->node();
-
-        // read current tree position
-        std::list<img::ResourceNode*> pos;
-        for (auto ptr = &targetNode; ptr->parent(); ptr = ptr->parent()) {
-            pos.push_front(ptr);
-        }
-
-        // find corresponding node
-        img::ResourceNode* newNode = aNewTree;
-        for (auto node : pos) {
-            auto corresponds = findCorrespondingNode(newNode->children(), *node);
-            if (corresponds.first != 1) {
-                auto text = tr("Failed to find a corresponding node.") + " (" + node->data().identifier() + ")";
-                QMessageBox::warning(nullptr, tr("Operation Error"), text);
-                return false;
-            }
-            XC_PTR_ASSERT(corresponds.second);
-            newNode = corresponds.second;
-        }
-
-        // check reloadable
-        auto beIdentified = allChildrenCanBeIdentified(targetNode, *newNode);
-        if (!beIdentified.first) {
-            auto text = tr("Failed to identify nodes due to the following duplicates.") + "\n";
-            for (auto& duplicated : beIdentified.second) {
-                text += duplicated->treePath() + "\n";
-            }
-            QMessageBox::warning(nullptr, tr("Operation Error"), text);
-            return false;
-        }
-
-        // reset abandon settings
-        {
-            img::ResourceNode::Iterator itr(&targetNode);
-            while (itr.hasNext()) {
-                auto node = itr.next();
-                if (!node->parent())
-                    continue; // topnode never be abandoned
-                node->setAbandon(true);
-            }
-        }
-
-        // reload
-        {
-            RESOURCE_UPDATER_DUMP(
-                "create reload command %s, %s",
-                targetNode.data().identifier().toLatin1().data(),
-                newNode->data().identifier().toLatin1().data()
-            );
-
-            auto& stack = mProject.commandStack();
+        if (!context.commands.empty()) {
             cmnd::ScopedMacro macro(stack, CmndName::tr("Reload images"));
-
-            // notifier
-            auto notifier = new ModificationNotifier(mViaPoint, mProject, item->treePos());
-            notifier->event().setRoot(targetNode);
             macro.grabListener(notifier);
-
-            // create reload commands
-            if (!createImageReloaderRecursive(stack, *notifier, aTarget, targetNode, *newNode)) {
-                return false;
+            for (auto* command : context.commands) {
+                stack.push(command);
             }
-
-            // create remove abandoned commands
-            createAbandonedImageRemoverRecursive(stack, aTarget, targetNode);
-
-            // create key updating commands
             stack.push(mProject.objectTree().createResourceUpdater(notifier->event()));
+        } else {
+            // nothing to do: no command, no undo step, no edit to the project
+            delete notifier;
         }
 
-        return true;
+        RESOURCE_UPDATER_DUMP("end reload");
+
+        // What the reload did NOT take from the file is reported - to the app's log, not to a
+        // modal box (this is informational and can happen on every reload), and never silently:
+        // a difference the plan detected but does not apply is exactly what this list is for.
+        if (!context.ambiguous.isEmpty()) {
+            mViaPoint.pushLog(
+                tr("Reload: left alone, two siblings share an identity: ") + context.ambiguous.join(", "),
+                ctrl::UILogType_Warn);
+        }
+        if (!context.renamed.isEmpty()) {
+            mViaPoint.pushLog(
+                tr("Reload: named differently in the file, the project keeps its own name: ")
+                    + context.renamed.join(", "),
+                ctrl::UILogType_Info);
+        }
+        if (!context.keptInUse.isEmpty()) {
+            mViaPoint.pushLog(
+                tr("Reload: no longer in the file but the timeline draws them, so they were kept: ")
+                    + context.keptInUse.join(", "),
+                ctrl::UILogType_Warn);
+        }
+        if (!context.unmatchedGroups.isEmpty()) {
+            mViaPoint.pushLog(
+                tr("Reload: no object node matches these groups, so their own properties were left "
+                   "alone: ")
+                    + context.unmatchedGroups.join(", "),
+                ctrl::UILogType_Warn);
+        }
     }
+
+    void ResourceUpdater::reload(Item& aItem) { reconcile(aItem, false); }
+
+    void ResourceUpdater::forceReload(Item& aItem) { reconcile(aItem, true); }
 
     //-------------------------------------------------------------------------------------------------
     void ResourceUpdater::remove(QTreeWidget& aTree, Item& aTopItem) {

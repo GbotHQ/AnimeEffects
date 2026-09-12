@@ -42,6 +42,30 @@ static const char* kResampleFrag =
 // radius renders as a 3-tap kernel whose off-center weights are ~0, i.e. identity, so
 // interpolations can ramp in from zero without a step (FilterFrame::kMinActiveBlurRadius
 // matches this floor).
+// Silhouette tint for the layer effects: the source is a premultiplied coverage texture
+// (a blurred copy of the layer's alpha), the output keeps that coverage as the alpha and
+// replaces the colour with uColor.rgb scaled by the pass opacity, so the result is still
+// premultiplied and can go straight through a blend present.
+// uClipTexture (when uClipEnable is set) is the UNBLURRED shape: the coverage is capped by it,
+// which is how an inner effect stays inside the layer's own alpha (a blurred copy alone would
+// spill a halo outside the shape).
+static const char* kTintFrag =
+    "#version 330 \n"
+    "uniform vec4 uColor;"
+    "uniform sampler2D uTexture;"
+    "uniform sampler2D uClipTexture;"
+    "uniform int uClipEnable;"
+    "in vec2 vTexCoord;"
+    "layout(location = 0, index = 0) out vec4 oFragColor;"
+    "void main() {"
+    "  float coverage = texture(uTexture, vTexCoord).a;"
+    "  if (uClipEnable != 0) {"
+    "    coverage = min(coverage, texture(uClipTexture, vTexCoord).a);"
+    "  }"
+    "  coverage *= uColor.a;"
+    "  oFragColor = vec4(uColor.rgb * coverage, coverage);"
+    "}";
+
 static const char* kBlurFrag =
     "#version 330 \n"
     "uniform vec4 uColor;"
@@ -316,6 +340,7 @@ void FilterFrame::createShaders() {
     };
     build(Kind_Blur, kFullscreenVert, kBlurFrag);
     build(Kind_Resample, kFullscreenVert, kResampleFrag);
+    build(Kind_Tint, kFullscreenVert, kTintFrag);
 
     // HSV pass: shared layer fragment shader with variations
     fBuildLayerDrawingVariant(mPassShaders[Kind_HSV], QString("BlendNormal"), 0, 1, 1, 0, 0);
@@ -352,7 +377,8 @@ gl::EasyShaderProgram& FilterFrame::presentHSVShader(img::BlendMode aMode) {
 void FilterFrame::drawQuad(
     GLuint aSrcTexture, Kind aKind, const QList<int>& aHSV, const BlurParams& aBlur, float aOpacity,
     bool aNeedHSV, const QSizeF& aTargetSize, const QSizeF& aSrcSize, bool aFlipY, img::BlendMode aPresentBlend,
-    GLuint aPresentDest
+    GLuint aPresentDest, const BlendIf& aBlendIf, const QColor& aTintColor, const QVector2D& aSrcOffsetTexels,
+    GLuint aClipTexture
 ) {
     if (mSize.isEmpty())
         return;
@@ -395,12 +421,14 @@ void FilterFrame::drawQuad(
     ggl.glActiveTexture(GL_TEXTURE0);
     ggl.glBindTexture(GL_TEXTURE_2D, aSrcTexture);
     if (aKind == Kind_HSV) {
-        // BlendNormal present reads the dest only as a dummy; the blend-aware present
-        // samples the real captured scene instead (aPresentDest).
-        const GLuint destTexture = (aPresentBlend != img::BlendMode_Normal) ? aPresentDest : aSrcTexture;
+        // A Normal present with no Blend If reads the dest only as a dummy; the
+        // blend-aware (or range-restricted) present samples the real captured scene
+        // instead (aPresentDest).
+        const bool needsDest = (aPresentBlend != img::BlendMode_Normal) || aBlendIf.isActive();
+        const GLuint destTexture = needsDest ? aPresentDest : aSrcTexture;
         // a blend-aware present texelFetches unit1 in LayerDrawingFrag.glsl; an unset
         // dest (0) would silently sample the default texture, so require the capture
-        XC_ASSERT(aPresentBlend == img::BlendMode_Normal || aPresentDest != 0);
+        XC_ASSERT(!needsDest || aPresentDest != 0);
         ggl.glActiveTexture(GL_TEXTURE1);
         ggl.glBindTexture(GL_TEXTURE_2D, destTexture);
         ggl.glActiveTexture(GL_TEXTURE0);
@@ -424,17 +452,24 @@ void FilterFrame::drawQuad(
     shader->setAttributeArray("inPosition", positions.data(), 4);
     shader->setAttributeArray("inTexCoord", texCoords.data(), 4);
 
+    // a coverage-tint pass states its own colour; every other pass is a white multiply
     QColor color(255, 255, 255, xc_clamp((int)(255 * aOpacity), 0, 255));
+    if (aKind == Kind_Tint) {
+        color = QColor(aTintColor.red(), aTintColor.green(), aTintColor.blue(), color.alpha());
+    }
     shader->setUniformValue("uColor", color);
     shader->setUniformValue("uTexture", 0);
     shader->setUniformValue("uScreenSize", QSizeF(target));
     shader->setUniformValue("uImageSize", QSizeF(src));
-    shader->setUniformValue("uTexCoordOffset", QVector2D(0, 0));
+    shader->setUniformValue("uTexCoordOffset", aSrcOffsetTexels);
 
     if (aKind == Kind_HSV) {
         QMatrix4x4 ident;
         shader->setUniformValue("uViewMatrix", ident);
         shader->setUniformValue("uDestTexture", 1);
+        // the layer's fill opacity is already baked into the composite this pass presents
+        shader->setUniformValue("uFillOpacity", 1.0f);
+        applyBlendIfUniforms(*shader, aBlendIf);
         if (aNeedHSV) {
             // per-pass HSV (folder presentation of its own key)
             shader->setUniformValue("setColor", bool(aHSV.size() > 3 ? aHSV[3] : 0));
@@ -446,6 +481,14 @@ void FilterFrame::drawQuad(
         shader->setUniformValue("uTexelSize", QVector2D(1.0f / target.width(), 1.0f / target.height()));
         shader->setUniformValue("uBlurDirection", aBlur.direction);
         shader->setUniformValue("uBlurRadius", aBlur.radiusTexels);
+    } else if (aKind == Kind_Tint) {
+        // an inner layer effect's coverage is capped by the unblurred shape, so it cannot paint
+        // outside the layer (unit 1: the tint pass never reads the destination)
+        shader->setUniformValue("uClipTexture", 1);
+        shader->setUniformValue("uClipEnable", aClipTexture != 0 ? 1 : 0);
+        ggl.glActiveTexture(GL_TEXTURE1);
+        ggl.glBindTexture(GL_TEXTURE_2D, aClipTexture);
+        ggl.glActiveTexture(GL_TEXTURE0);
     }
 
     gl::Util::drawElements(GL_TRIANGLE_STRIP, GL_UNSIGNED_INT, mIndices);
@@ -457,11 +500,12 @@ void FilterFrame::drawQuad(
 }
 
 void FilterFrame::drawBlendPresent(
-    GLuint aSrcTexture, img::BlendMode aMode, GLuint aDestTexture, float aOpacity
+    GLuint aSrcTexture, img::BlendMode aMode, GLuint aDestTexture, float aOpacity, const BlendIf& aBlendIf
 ) {
     // a blurred layer's own HSV is already baked into its composite, so the present never
-    // applies per-pass HSV; it only selects the blend func and the real dest capture
+    // applies per-pass HSV; it only selects the blend func, the real dest capture and the
+    // layer's Blend If ranges
     drawQuad(aSrcTexture, Kind_HSV, QList<int>(), BlurParams(), aOpacity, false, QSizeF(), QSizeF(), false, aMode,
-        aDestTexture);
+        aDestTexture, aBlendIf);
 }
 } // namespace core

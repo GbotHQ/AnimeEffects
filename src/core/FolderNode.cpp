@@ -201,15 +201,18 @@ void FolderNode::renderComposite(const RenderInfo& aInfo, const TimeCacheAccesso
     // (DestinationTexturizer capture), so the blend sees the real background instead
     // of the composite itself; the opacity rides uColor.a exactly like the Normal
     // present (the folder's own opacity is applied here, ancestors' at their presents)
-    if (mBlendMode != img::BlendMode_Normal) {
+    // Blend If ranges restrict the folder's presented composite against the scene behind
+    // it, so they need the same capture a non-Normal blend mode does
+    const BlendIf blendIf = this->blendIf();
+    if (mBlendMode != img::BlendMode_Normal || blendIf.isActive()) {
         XC_PTR_ASSERT(aInfo.destTexturizer);
         aInfo.destTexturizer->updateAll(aInfo.framebuffer, aInfo.dest);
         frame.drawQuad(
             srcTexture, FilterFrame::Kind_HSV, aAccessor.get(mTimeLine).hsv().hsv(), FilterFrame::BlurParams(),
-            ownOpacity, needHSV, QSizeF(), QSizeF(), false, mBlendMode, aInfo.destTexturizer->texture().id());
+            ownOpacity, needHSV, QSizeF(), QSizeF(), false, mBlendMode, aInfo.destTexturizer->texture().id(), blendIf);
     } else {
         frame.drawQuad(srcTexture, FilterFrame::Kind_HSV, aAccessor.get(mTimeLine).hsv().hsv(), FilterFrame::BlurParams(),
-            ownOpacity, needHSV);
+            ownOpacity, needHSV, QSizeF(), QSizeF(), false, mBlendMode, 0, blendIf);
     }
 }
 
@@ -247,6 +250,9 @@ bool FolderNode::serialize(Serializer& aOut) const {
     // the folder blend mode landed in AE_PROJECT_FORMAT_MINOR_VERSION 10; the 4CC layout
     // mirrors ImageKey/ResourceHolder so a folder mode survives the binary round-trip
     aOut.writeFixedString(img::getQuadIdFromBlendMode(mBlendMode), 4);
+    // Blend If ranges (minor 12), appended after the mode for the same reason
+    aOut.write(mBlendIf.dst.packed());
+    aOut.write(mBlendIf.src.packed());
     return aOut.checkStream();
 }
 
@@ -265,6 +271,14 @@ bool FolderNode::deserialize(Deserializer& aIn) {
             return aIn.errored("invalid folder blending mode");
         }
         mBlendMode = bmode;
+    }
+    // projects saved before the Blend If bump (minor < 12) end here
+    if (aIn.version().minorVersion() >= 12) {
+        int packed = 0;
+        aIn.read(packed);
+        mBlendIf.dst = BlendIf::Range::unpacked(packed);
+        aIn.read(packed);
+        mBlendIf.src = BlendIf::Range::unpacked(packed);
     }
     return aIn.checkStream();
 }

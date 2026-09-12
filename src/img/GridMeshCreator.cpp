@@ -14,7 +14,8 @@ void GridMeshCreator::HexaConnection::clear() {
 }
 
 //-------------------------------------------------------------------------------------------------
-GridMeshCreator::Image::Image(const uint8* aPtr, const QSize& aSize): mBuffer(), mData(), mSize(aSize) {
+GridMeshCreator::Image::Image(const uint8* aPtr, const QSize& aSize, int aContentAlphaThreshold):
+    mBuffer(), mData(), mSize(aSize), mContentAlphaThreshold(aContentAlphaThreshold) {
     XC_PTR_ASSERT(aPtr);
     XC_ASSERT(!aSize.isEmpty());
 
@@ -27,7 +28,7 @@ GridMeshCreator::Image::Image(const uint8* aPtr, const QSize& aSize): mBuffer(),
 bool GridMeshCreator::Image::hasSomeAlphaIn3x3(int aX, int aY) const {
     for (int i = -1; i < 2; ++i) {
         for (int k = -1; k < 2; ++k) {
-            if (hasAlpha(aX + i, aY + k))
+            if (hasEdgeAlpha(aX + i, aY + k))
                 return true;
         }
     }
@@ -321,6 +322,23 @@ GridMeshCreator::Cell* GridMeshCreator::CellTable::findExistingCell(int aX, int 
 }
 
 //-------------------------------------------------------------------------------------------------
+GridMeshCreator::Cell* GridMeshCreator::CellTable::cellAtPixel(int aPixX, int aPixY) {
+    const float halfWidth = mCellSize.width() * 0.5f;
+    const int row = (int)((float)aPixY / mCellSize.height());
+    const int col = (int)((float)aPixX / halfWidth) + 1;
+
+    // the row's triangles zig-zag, so the pixel can belong to the column either side of the
+    // estimate: take the first existing one
+    for (int dy = 0; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            if (Cell* cell = findExistingCell(col + dx, row + dy))
+                return cell;
+        }
+    }
+    return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 int GridMeshCreator::getCellTableCount(const QSize& aImageSize, int aCellWidth) {
     auto cellSize = CellTable::calculateCellSize(aCellWidth);
     auto tableSize = CellTable::calculateCellTableSize(aImageSize, cellSize);
@@ -328,8 +346,10 @@ int GridMeshCreator::getCellTableCount(const QSize& aImageSize, int aCellWidth) 
 }
 
 //-------------------------------------------------------------------------------------------------
-GridMeshCreator::GridMeshCreator(const uint8* aPtr, const QSize& aSize, int aCellPx):
-    mCells(), mVertices(), mVertexCount(), mIndexCount(), mImageSize(aSize) {
+GridMeshCreator::GridMeshCreator(const uint8* aPtr, const QSize& aSize, int aCellPx,
+                                 int aContentAlphaThreshold):
+    mCells(), mVertices(), mVertexCount(), mIndexCount(), mImageSize(aSize),
+    mContentAlphaThreshold(aContentAlphaThreshold) {
     execute(aPtr, aSize, aCellPx);
 }
 
@@ -404,7 +424,7 @@ void GridMeshCreator::writeConnections(HexaConnection* aDest) {
 }
 
 void GridMeshCreator::execute(const uint8* aPtr, const QSize& aSize, int aCellPx) {
-    Image image(aPtr, aSize);
+    Image image(aPtr, aSize, mContentAlphaThreshold);
 
     mCells.reset(new CellTable(aCellPx));
     mIndexCount = 3 * mCells->initCells(image);
@@ -558,7 +578,46 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
         }
     }
 
-    // shorten reducing vectors if they are riding on an opaque pixel.
+    // Shorten a reducing vector while the pull it describes still has to stop short of the picture.
+    //
+    // The reduction moves a boundary vertex inward, and the question is where it may stop. Testing
+    // only the PULLED POSITION is not enough, because a pull is up to a cell wide (16 px) and a line
+    // of paint can be thinner than that: the endpoint then lands in the empty space on the far side
+    // of the line and the test reports "nothing here", which leaves the full pull in place and cuts
+    // the line out of the mesh. Measured on 000031 of the corpus (findings in tools/verify_blur S25):
+    // the vertex at image row 1427.2, one pixel under a two-row opaque band (alpha 207..210) that
+    // sits on top of a row of erase residue, has maxReduce 8.0 and a pull of 7.6 px; its endpoint
+    // lands 6.6 px above, in a 3x3 window of pure zero, while the path to it crosses alpha 72, 67,
+    // 211, 210. The old test therefore kept the full pull, and those two opaque rows - 18 px wide in
+    // two places, all of them matching the PSD's own stored composite - were no longer drawn.
+    //
+    // So the test walks the pull and asks whether it sweeps over ink anywhere: a pull may not step
+    // over the picture. The walk samples one pixel of travel at a time and asks the 3x3 question at
+    // each sample: the spacing leaves no gap on the path, and the 3x3 covers the pixel a vertex can
+    // sit inside of (measured: sampling the centre pixel only costs 8 of the 2304 deliberate pixels
+    // of S25 and 186 pixels on the corpus file, so the window stays). One pixel of travel per sample
+    // is more than the geometry needs - with a 3x3 window, samples 3 px apart still touch, and S24
+    // and S25 (thin 1:1 and 2:1 diagonal ink included) lose nothing at 2, 3 or 4 px - but no import
+    // time is saved by spacing them out (44.5 s vs 45.8 s on the 122 MB corpus file, i.e. noise), so
+    // the walk stays dense and cheap to reason about. Everything inside an existing cell is drawn whether or not the content test
+    // counts it, so "ink" here is ANY alpha - see Image::hasEdgeAlpha - while which cells exist at
+    // all stays the artist's content rule.
+    auto sweepsInk = [&](const Vertex& aVtx) {
+        const QVector2D from = aVtx.pos();
+        const QVector2D to = aVtx.posReduced();
+        const float dx = to.x() - from.x();
+        const float dy = to.y() - from.y();
+        const int steps = std::max(1, (int)std::ceil(std::sqrt(dx * dx + dy * dy)));
+        for (int i = 0; i <= steps; ++i) {
+            const float t = (float)i / (float)steps;
+            const int sx = (int)(from.x() + dx * t);
+            const int sy = (int)(from.y() + dy * t);
+            if (aImage.hasSomeAlphaIn3x3(sx, sy)) {
+                return true;
+            }
+        }
+        return false;
+    };
     for (int y = 0; y < aTable.height(); ++y) {
         for (int x = 0; x < aTable.width(); ++x) {
             auto& vtx = aTable.vertex(x, y);
@@ -568,9 +627,7 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
                     const float maxReduce = vtx.maxReduce;
 
                     for (int div = 0; div < 9; ++div) {
-                        auto pos = vtx.posReduced();
-
-                        if (!aImage.hasSomeAlphaIn3x3((int)pos.x(), (int)pos.y())) {
+                        if (!sweepsInk(vtx)) {
                             break;
                         }
                         vtx.maxReduce = (1.0f - (div + 1) * 0.125f) * maxReduce;
@@ -683,11 +740,21 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
             for (int x = 0; x < iw; ++x) {
                 auto pix = line + x;
                 uint8& usebit = useBits[pix];
-                if (usebit == 1) {
-                    auto cellIdx = cellIds[pix];
-                    const int cellY = cellIdx / cellTableWidth;
-                    const int cellX = cellIdx - cellY * cellTableWidth;
-                    Cell* cell = &(mCells->cell(cellX, cellY));
+                if (usebit != 1) {
+                    continue;
+                }
+
+                // Content the image counts (see Image::hasRawAlpha) that NO cell covers at its
+                // reduced extent. cellIds is only written where a cell was rasterized over the
+                // pixel, so it is still -1 here, and indexing the table with
+                // (-1 / tableWidth, -1 - that * tableWidth) = (0, -1) is out of bounds - the
+                // old code wrote through that pointer and tripped an XC_ASSERT. Recover the
+                // cell that owns the pixel geometrically instead (cell.x = halfWidth * (x - 1),
+                // cell.y = height * y) and un-reduce it, exactly as the covered case below does.
+                const int cellIdx = cellIds[pix];
+                const int cellY = cellIdx >= 0 ? cellIdx / cellTableWidth : 0;
+                const int cellX = cellIdx >= 0 ? cellIdx - cellY * cellTableWidth : 0;
+                Cell* cell = cellIdx >= 0 ? &(mCells->cell(cellX, cellY)) : mCells->cellAtPixel(x, y);
 
     #if 1
                     if (cell && !cell->nonReducing) {
@@ -701,7 +768,7 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
                         cell,
                         mCells->findExistingCell(cellX - 1, cellY),
                         mCells->findExistingCell(cellX + 1, cellY),
-                        mCells->findExistingCell(cellX, cellY + (cell->inverted ? -1 : 1))};
+                        mCells->findExistingCell(cellX, cellY + (cell && cell->inverted ? -1 : 1))};
 
                     for (int i = 0; i < 4; ++i) {
                         Cell* a = arounds[i];
@@ -713,13 +780,11 @@ void GridMeshCreator::reduceBurrs(VertexTable& aTable, const Image& aImage) {
                         }
                     }
     #endif
-                }
             }
         }
     }
 
     mVertices->shortenReducingVectorsOnePixel();
-
 #endif
 }
 

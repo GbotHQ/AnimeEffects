@@ -62,6 +62,9 @@ public:
     void read(QPolygonF& aValue);
     void read(QString& aValue, int aMax = 0);
     bool read(const XCMemBlock& aValue);
+    // counterpart of Serializer::writeMaskImage: allocates a w*h single-channel block
+    bool readMaskImage(XCMemBlock& aValue);
+
     bool readWithAlloc(XCMemBlock& aEmptyValue);
     bool readWithAlloc(util::IndexTable& aEmptyValue);
 

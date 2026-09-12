@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "core/BlendIf.h"
+#include "core/LayerEffects.h"
 #include "img/BlendMode.h"
 
 namespace ref {
@@ -435,7 +437,7 @@ inline double blendChannel(img::BlendMode aMode, double a, double b) {
 inline double blendLum(const double c[3]) { return 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]; }
 // ClipColor is deliberately NOT denominator-clamped (a follow-up review suggested
 // clamping l-n / x-l in the replica): the replica must mirror the shader bit-for-bit
-// (data/shader/LayerDrawingFrag.glsl BlendClipColor). The ratios are algebraically
+// (assets/shaders/LayerDrawingFrag.glsl BlendClipColor). The ratios are algebraically
 // bounded anyway wherever the branches fire in the non-separable path: each mode ends
 // in BlendSetLum(c, BlendLum(A)) with A a background color, so the target luma is
 // L in [0,1]; the n<0 branch then has l-n > l >= 0 and the x>1 branch has x-l > 1-l,
@@ -507,7 +509,102 @@ inline void blendRgb(img::BlendMode aMode, const double a[3], const double b[3],
     for (int i = 0; i < 3; ++i)
         out[i] = t[i];
 }
-inline Image blendPresent(const Image& aSrc, const Image& aDst, img::BlendMode aMode, double aOpacity) {
+// Photoshop "Blend If" (core/BlendIf.h): the layer's contribution is scaled per pixel by the
+// product of a trapezoid over the source pixels' Rec.601 luma ("This Layer") and one over the
+// backdrop's ("Underlying Layer"). Both ranges are the PSD's 4 bytes - blackLo -> blackHi
+// rising, whiteLo -> whiteHi falling - compared against the 8-bit channel value (luma * 255),
+// with equal thresholds acting as steps so the default (0,0,255,255) is all-pass. The two edges
+// of ONE slider combine with min() (see core/BlendIf.cpp for the measurement): that only differs
+// from the product when the handles cross, which is why an ordinary range is unaffected.
+// Written from the semantics, not from the shader.
+inline double blendIfRangeWeight(double aValue255, uint8_t aBlackLo, uint8_t aBlackHi, uint8_t aWhiteLo, uint8_t aWhiteHi) {
+    const double lo = (aBlackHi > aBlackLo)
+        ? std::min(1.0, std::max(0.0, (aValue255 - aBlackLo) / (double)(aBlackHi - aBlackLo)))
+        : (aValue255 >= (double)aBlackLo ? 1.0 : 0.0);
+    const double hi = (aWhiteHi > aWhiteLo)
+        ? std::min(1.0, std::max(0.0, (aWhiteHi - aValue255) / (double)(aWhiteHi - aWhiteLo)))
+        : (aValue255 <= (double)aWhiteHi ? 1.0 : 0.0);
+    return std::min(lo, hi);
+}
+inline double blendIfWeight(
+    const core::BlendIf& aBlendIf, const double aSrcStraight[3], const double aDstStraight[3]
+) {
+    double w = 1.0;
+    if (!aBlendIf.src.isDefault()) {
+        w *= blendIfRangeWeight(
+            blendLum(aSrcStraight) * 255.0, aBlendIf.src.blackLo, aBlendIf.src.blackHi, aBlendIf.src.whiteLo,
+            aBlendIf.src.whiteHi);
+    }
+    if (!aBlendIf.dst.isDefault()) {
+        w *= blendIfRangeWeight(
+            blendLum(aDstStraight) * 255.0, aBlendIf.dst.blackLo, aBlendIf.dst.blackHi, aBlendIf.dst.whiteLo,
+            aBlendIf.dst.whiteHi);
+    }
+    return w;
+}
+
+// The optional aBlendIf scales the fragment alpha by the weight above (the shader does the
+// same in all three blend branches: src.a * weight, and `weight` alone for the
+// premultiplied-src branch whose result replaces the backdrop).
+// aMask (optional) is the layer mask as a single-channel image (the red channel is the
+// coverage, matching the shader's GL_R8 fetch): the shader scales the fragment alpha by it
+// before blending, so the weight multiplies into `sa` (and therefore also into the
+// premultiplied-src blend input, which is computed from that same alpha). Indexed in the
+// same GL-ordered space as aSrc/aDst.
+// Photoshop's gradient overlay, written from its documented behaviour (the gradient runs
+// across the layer's bounding box along the given angle, centred; 90 degrees puts the first
+// stop at the bottom, i.e. towards -y in image rows; `scale` is the percentage of the box's
+// extent along that axis that the gradient spans) rather than from the shader's algebra.
+inline double gradientOverlayT(
+    double aX, double aY, int aW, int aH, double aAngleDeg, double aScalePercent, bool aReverse
+) {
+    const double rad = aAngleDeg * kPi / 180.0;
+    const double dirX = std::cos(rad);
+    const double dirY = -std::sin(rad); // image rows run downwards
+    const double centeredX = aX - aW * 0.5;
+    const double centeredY = aY - aH * 0.5;
+    const double along = centeredX * dirX + centeredY * dirY;
+    const double extent = std::abs(dirX) * aW + std::abs(dirY) * aH;
+    const double span = std::max(extent * aScalePercent * 0.01, 1e-3);
+    const double t = 0.5 + along / span;
+    return std::min(1.0, std::max(0.0, aReverse ? 1.0 - t : t));
+}
+
+// the merged colour + transparency stop list sampled at t, interpolating linearly between
+// stops (Photoshop's midpoints default to 50, i.e. linear)
+inline void gradientSample(const std::vector<core::LayerEffects::Stop>& aStops, double aT, double aOutRgba[4]) {
+    if (aStops.empty()) {
+        aOutRgba[0] = aOutRgba[1] = aOutRgba[2] = 0.0;
+        aOutRgba[3] = 0.0;
+        return;
+    }
+    const auto& first = aStops.front();
+    const auto& last = aStops.back();
+    if (aT <= first.location) {
+        aOutRgba[0] = first.r; aOutRgba[1] = first.g; aOutRgba[2] = first.b; aOutRgba[3] = first.opacity;
+        return;
+    }
+    if (aT >= last.location) {
+        aOutRgba[0] = last.r; aOutRgba[1] = last.g; aOutRgba[2] = last.b; aOutRgba[3] = last.opacity;
+        return;
+    }
+    for (size_t i = 1; i < aStops.size(); ++i) {
+        if (aT <= aStops[i].location) {
+            const double span = aStops[i].location - aStops[i - 1].location;
+            const double k = span > 0.0 ? (aT - aStops[i - 1].location) / span : 0.0;
+            aOutRgba[0] = aStops[i - 1].r + (aStops[i].r - aStops[i - 1].r) * k;
+            aOutRgba[1] = aStops[i - 1].g + (aStops[i].g - aStops[i - 1].g) * k;
+            aOutRgba[2] = aStops[i - 1].b + (aStops[i].b - aStops[i - 1].b) * k;
+            aOutRgba[3] = aStops[i - 1].opacity + (aStops[i].opacity - aStops[i - 1].opacity) * k;
+            return;
+        }
+    }
+}
+
+inline Image blendPresent(
+    const Image& aSrc, const Image& aDst, img::BlendMode aMode, double aOpacity,
+    const core::BlendIf* aBlendIf = nullptr, const Image* aMask = nullptr
+) {
     Image dst(aSrc.w, aSrc.h);
     for (int y = 0; y < aSrc.h; ++y) {
         for (int x = 0; x < aSrc.w; ++x) {
@@ -516,7 +613,9 @@ inline Image blendPresent(const Image& aSrc, const Image& aDst, img::BlendMode a
             float* d = dst.at(x, y);
             const double da = t[3];
             const double inv = 1.0 / std::max((double)s[3], 0.001);
-            const double sa = (double)s[3] * aOpacity; // result.a = src.a after `color *= uColor`
+            double sa = (double)s[3] * aOpacity; // result.a = src.a after `color *= uColor`
+            if (aMask) // layer mask: `color.a *= mask` in the shader
+                sa *= (double)aMask->at(x, y)[0];
             // shader order: straight = s[c] * inv, then `color *= uColor` scales the
             // alpha by the present opacity (uColor.rgb is white = 1.0), then the
             // blend, then the over-rule
@@ -539,11 +638,16 @@ inline Image blendPresent(const Image& aSrc, const Image& aDst, img::BlendMode a
                 const double psrc[3] = {std::floor(straight[0] * sa * 255.0 + 0.5) / 255.0,
                     std::floor(straight[1] * sa * 255.0 + 0.5) / 255.0, std::floor(straight[2] * sa * 255.0 + 0.5) / 255.0};
                 blendRgb(aMode, destStraight, psrc, blended);
+                const double w = aBlendIf ? blendIfWeight(*aBlendIf, straight, destStraight) : 1.0;
+                // the branch replaces the backdrop, so the weight mixes the replacement
+                // with the untouched scene (alpha 1.0 means a full replace)
                 for (int c = 0; c < 3; ++c)
-                    d[c] = (float)blended[c];
-                d[3] = 1.0f;
+                    d[c] = (float)(blended[c] * w + t[c] * (1.0 - w));
+                d[3] = (float)(w + da * (1.0 - w));
                 continue;
             }
+            if (aBlendIf)
+                sa *= blendIfWeight(*aBlendIf, straight, destStraight);
             blendRgb(aMode, img::isNonSeparableBlendMode(aMode) ? destStraight : dest, straight, blended);
             for (int c = 0; c < 3; ++c) {
                 const double v = da * blended[c] + (1.0 - da) * straight[c];
