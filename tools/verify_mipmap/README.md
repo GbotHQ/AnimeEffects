@@ -76,6 +76,13 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   runs as a POSITIVE CONTROL - there LOD is 0 by construction and contrast MUST be high, which is what
   proves the detector can see level 0 at all. Measured: 127.5 (the maximum possible) at LOD 0, and
   exactly 0.00 with zero spatial spread at LOD 1, 2 and 3.
+- **M8 — the configuration the exporter renders in.** NOT the exporter itself: it covers the two
+  things `ctrl::Exporter` changes about the render call that matter for mipmapping. The camera - the
+  exporter sets it from the project's image size to the OUTPUT size, so an export at a size other
+  than the canvas minifies differently from the interactive view and lands on a different level -
+  and `aUseWorkingCache`, which the exporter passes as `true` while the canvas passes `false`. The
+  analytic interior value must hold at each camera scale (levels 1, 2, 3), and the two cache modes
+  must render byte-identically (delta 0).
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -106,7 +113,7 @@ Both halves were mutation-tested against the product, not just reasoned about:
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
 | `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`); M5's blur path also fails, `114.0` against the analytic `164.0` |
-| none (shipped code) | 86 checks, 0 failures |
+| none (shipped code) | 91 checks, 0 failures |
 
 The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
 texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
@@ -132,11 +139,17 @@ Verified so far: mip chain generation, the production `ImageKey` texture and its
 rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder
 composite path, and the grid/mesh overlay.
 
-Not yet verified: the export path (`ctrl::Exporter`) end to end against the interactive render —
-the last explicitly-named path. M6 covers the part of it that matters for mipmapping (export
-renders at its own resolution, which selects a different mip level), but the exporter itself
-needs a `core::Project` and the harness stubs to drive. Also outstanding: an ASan run over the
-new CPU premultiply pass.
+Not yet verified: the export path END TO END. M6 and M8 cover what the exporter changes about the
+render that matters for mipmapping - its output-resolution camera (hence a different mip level)
+and its `aUseWorkingCache=true` render mode - but the exporter itself is not driven, so its own
+framebuffer readback and PNG write are untested here. Driving it is tractable: `core::Project`
+takes a filename and its attribute setters (`setImageSize`/`setFps`/`setFrameRange`) allow a
+project to be populated programmatically, and `tests/media_exporter_e2e.cpp` shows the
+`CommonParam`/`ImageParam`/`execute` shape. It was left undone for budget, not because anything
+blocked it.
+
+Also outstanding: an ASan run over the new CPU premultiply pass, the glyph-cache decision, and
+measuring the load-time/memory cost of building the chain.
 
 A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale
 changes. At 4x minification the quad is smaller than the crop, so the backdrop averaged in and

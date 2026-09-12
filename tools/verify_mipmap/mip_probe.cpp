@@ -601,7 +601,7 @@ struct RenderFixture {
 
     std::vector<uint8_t> render(
         core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3],
-        bool aIsGrid = false
+        bool aIsGrid = false, bool aWorkingCache = false
     ) {
         auto& ggl = gl::Global::functions();
 
@@ -641,7 +641,7 @@ struct RenderFixture {
         info.opacityScale = 1.0f;
         info.camera = aCamera;
 
-        aTree.render(info, false);
+        aTree.render(info, aWorkingCache);
 
         std::vector<uint8_t> out((size_t)size.width() * size.height() * 4, 0);
         ggl.glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
@@ -901,7 +901,8 @@ struct LayerSetup {
 };
 
 std::vector<uint8_t> renderSceneAtScale(
-    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3], float aScale
+    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3], float aScale,
+    float aCameraZoom = 1.0f, bool aWorkingCache = false
 ) {
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
@@ -975,7 +976,9 @@ std::vector<uint8_t> renderSceneAtScale(
 
     core::CameraInfo camera;
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
-    return fx.render(tree, camera, 0, aBackdrop, aSetup.grid);
+    if (aCameraZoom != 1.0f)
+        camera.setScale(aCameraZoom);
+    return fx.render(tree, camera, 0, aBackdrop, aSetup.grid, aWorkingCache);
 }
 
 std::vector<uint8_t> renderScene(
@@ -1262,6 +1265,78 @@ void suiteLodUniformity() {
     }
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M8: the configuration ctrl::Exporter puts the render in.
+//
+// This is not the exporter itself - driving it needs a core::Project and the harness stubs. It is
+// the two things the exporter changes about the render call that matter for mipmapping, tested
+// directly:
+//
+//   * the camera. The exporter sets its camera from the project's image size to the OUTPUT size
+//     (ctrl::Exporter does camera.reset(originSize, 1.0, originSize, QPoint())), so an export at a
+//     size other than the canvas minifies differently from the interactive view and lands on a
+//     different mip level than the canvas would.
+//   * aUseWorkingCache, which the exporter passes as true (the canvas passes false).
+//
+// The source is level-independent, so the analytic interior value must hold whatever level the
+// export's camera selects - which is the property that makes "correct in export" follow from
+// "correct at every level".
+void suiteExportLike() {
+    suiteHeader("M8 export-like render configuration (camera scale, working cache)");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    const uint8_t backdrop[3] = {128, 128, 128};
+    const double expected = 0.5 * color[0] + 0.5 * backdrop[0];
+
+    const LayerSetup setup;
+
+    // An export camera that renders the same canvas smaller: zooming out minifies the layer
+    // further, so between the layer's own 0.5 and the camera this lands at LOD 2.
+    struct Case {
+        const char* name;
+        float cameraZoom;
+        bool workingCache;
+        int level;
+    };
+    const Case cases[] = {
+        {"canvas view, time cache", 1.0f, false, 1},
+        {"export-like, working cache", 1.0f, true, 1},
+        {"export-like, camera zoomed out", 0.5f, true, 2},
+        {"export-like, camera zoomed out further", 0.25f, true, 3},
+    };
+
+    for (const Case& c : cases) {
+        const int failsBefore = gFails;
+        const std::vector<uint8_t> rendered = renderSceneAtScale(
+            canvas, makeAlphaChecker(imageSize, color), setup, backdrop, 0.5f, c.cameraZoom, c.workingCache
+        );
+        const int margin = (int)std::lround(32.0 - 32.0 * 0.5f * c.cameraZoom) + 3;
+        const double mean = interiorMeanRed(rendered, canvas, margin);
+
+        expect(near(mean, expected, 5.0),
+            QString("%1: interior must be the analytic %2, got %3")
+                .arg(c.name).arg(expected, 0, 'f', 1).arg(mean, 0, 'f', 1));
+        caseReport(QString("export-like: %1").arg(c.name), gFails == failsBefore,
+            QString("interior=%1 (analytic %2, ~level %3)").arg(mean, 0, 'f', 1).arg(expected, 0, 'f', 1).arg(c.level));
+    }
+
+    // the working cache must not change the picture: the canvas and the exporter read the same
+    // timeline, only through a different cache
+    {
+        const int failsBefore = gFails;
+        const std::vector<uint8_t> timeCache =
+            renderSceneAtScale(canvas, makeAlphaChecker(imageSize, color), setup, backdrop, 0.5f, 1.0f, false);
+        const std::vector<uint8_t> workCache =
+            renderSceneAtScale(canvas, makeAlphaChecker(imageSize, color), setup, backdrop, 0.5f, 1.0f, true);
+        const int delta = interiorMaxDelta(timeCache, workCache, canvas, 19);
+        expect(delta == 0,
+            QString("the working cache must render identically to the time cache (delta %1)").arg(delta));
+        caseReport("export-like: working cache == time cache", gFails == failsBefore, QString("delta=%1").arg(delta));
+    }
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -1370,6 +1445,7 @@ int main(int argc, char** argv) {
     suitePaths();
     suiteMipLevels();
     suiteLodUniformity();
+    suiteExportLike();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
