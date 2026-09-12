@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+"""Address the application's widgets by NAME, through the accessibility bus.
+
+Why this exists. The GUI probes drive the real application under Xvfb to check the
+parts no unit test can reach (the export dialog's wiring, the file dialog, whether
+an export lands inside a platform's cap). They used to do it by PIXEL COORDINATES:
+"click 462,458 for the Format row". That is wrong twice over.
+
+  * It silently tests the WRONG THING after any layout change. The probes assert
+    that a screenshot is not black, so a click that misses lands on another widget
+    and the probe still passes. Restructuring the export form moved the Format row
+    from y=458 to y=389 and every one of the ten probes kept passing while driving
+    something else.
+  * It makes a layout change cost a re-recording of every probe, which is exactly
+    the cost that stops anyone from fixing a form.
+
+A widget that a screen reader cannot name is a widget this cannot name either, so
+the two problems have one fix: the dialog sets accessibleName() on the controls a
+user has to reach (see exportdiag.h), and these helpers find them by that name.
+
+Usage (see any probe_*.sh):
+  ae_ui.py dump                       tree of every window, for debugging
+  ae_ui.py wait   <name>              exit 0 once the widget exists
+  ae_ui.py click  <name>              press a button / click a check box
+  ae_ui.py combo  <name> <item text>  pick an item in a combo box by its text
+  ae_ui.py set    <name> <value>      write a spin box / line edit
+  ae_ui.py value  <name>              print a spin box / line edit's value
+  ae_ui.py label  <name>              print a label's text
+  ae_ui.py text                       print every label, in tree order
+
+Every command exits non-zero with a message when the widget is not there, so a
+probe fails loudly instead of clicking whatever happens to be at that pixel.
+"""
+import sys
+import time
+import warnings
+
+import gi
+
+# pyatspi still marks get_action_name() deprecated; the noise buries the probe's
+# own diagnostics, and the replacement is not available in every pyatspi we run on.
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi  # noqa: E402
+
+TIMEOUT = float(10.0)
+
+
+def _roots():
+    """Every accessible application whose name is ours, newest last.
+
+    There can be SEVERAL: the developer's own running instance is on the same bus
+    as the one a probe launches under Xvfb, and an instance started without the
+    accessibility bridge exposes an empty tree. Matching by name alone therefore
+    risks driving the developer's window (or silently finding nothing). The probes
+    export AE_UI_PID with the pid they launched, and that is the only reliable
+    handle: accessibility gives us the application's process id.
+    """
+    desktop = Atspi.get_desktop(0)
+    out = []
+    for i in range(desktop.get_child_count()):
+        try:
+            app = desktop.get_child_at_index(i)
+            if "AnimeEffects" in (app.get_name() or ""):
+                out.append(app)
+        except Exception:
+            continue
+    return out
+
+
+def _app():
+    import os
+
+    want = os.environ.get("AE_UI_PID", "").strip()
+    roots = _roots()
+    if want:
+        # One process registers SEVERAL roots, and only one of them carries the
+        # tree (the others report zero children): pick the populated one, or every
+        # query answers "no widget named ..." while the window is plainly there.
+        best = None
+        for app in roots:
+            try:
+                if str(app.get_process_id()) != want:
+                    continue
+                kids = app.get_child_count()
+            except Exception:
+                continue
+            if best is None or kids > best[0]:
+                best = (kids, app)
+        return best[1] if best is not None else None
+    # No pid given: the last registered instance is the one just started, and any
+    # instance without a live tree cannot answer a query anyway.
+    for app in reversed(roots):
+        try:
+            if app.get_child_count() > 0:
+                return app
+        except Exception:
+            continue
+    return roots[-1] if roots else None
+
+
+def _walk(node, depth=0, maxdepth=14):
+    """Every descendant, as (depth, role, name, node). Qt exposes the tree lazily,
+    so a node that raises is skipped rather than fatal."""
+    if depth > maxdepth:
+        return
+    try:
+        count = node.get_child_count()
+    except Exception:
+        return
+    for i in range(count):
+        try:
+            child = node.get_child_at_index(i)
+            yield (depth, child.get_role_name(), child.get_name() or "", child)
+        except Exception:
+            continue
+        yield from _walk(child, depth + 1, maxdepth)
+
+
+def names_of(node):
+    """What this node answers to: its name, and its description.
+
+    A QComboBox reports its current VALUE as the name (Qt's rule, good for a screen
+    reader: "WebM") and ignores accessibleName, so the dialog puts the control's
+    identity in the description as well and this matches either.
+    """
+    out = []
+    try:
+        out.append(node.get_name() or "")
+    except Exception:
+        pass
+    try:
+        desc = node.get_description()
+        if desc:
+            out.append(desc)
+    except Exception:
+        pass
+    return [n for n in out if n]
+
+
+def showing(node):
+    """Whether the widget is actually on screen, ancestors included.
+
+    The accessibility tree keeps HIDDEN widgets: every control the export form
+    hides for the selected artifact is still in the tree, so "the widget exists"
+    proves nothing about what the user can see - a probe asserting presence would
+    pass while the form showed the wrong thing.
+
+    The node's own SHOWING state is not enough either: a control inside a COLLAPSED
+    section still reports itself as showing, which is how "Loop animation" read as
+    visible while its section was closed and its toggle (buggily) hidden. So every
+    ancestor has to be showing too.
+    """
+    seen = 0
+    while node is not None and seen < 32:
+        try:
+            if not node.get_state_set().contains(Atspi.StateType.SHOWING):
+                return False
+        except Exception:
+            return False
+        try:
+            node = node.get_parent()
+        except Exception:
+            return True
+        seen += 1
+    return True
+
+
+def find(name, role=None, timeout=TIMEOUT, visible=True):
+    """The first node whose name matches, optionally restricted by role. Retries,
+    because the dialog under test is built in response to a click."""
+    deadline = time.time() + timeout
+    while True:
+        app = _app()
+        if app is not None:
+            for _, r, _n, node in _walk(app):
+                if role is not None and r != role:
+                    continue
+                if name in names_of(node) and (not visible or showing(node)):
+                    return node
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.25)
+
+
+def do(node, action="click"):
+    """Run a named action, or the first one the widget offers."""
+    iface = node.get_action_iface()
+    if iface is None:
+        return False
+    names = [iface.get_action_name(i) or "" for i in range(iface.get_n_actions())]
+    index = 0
+    for i, n in enumerate(names):
+        if n.lower() == action:
+            index = i
+            break
+    else:
+        if action != "click":
+            return False
+    try:
+        return bool(iface.do_action(index))
+    except Exception as exc:
+        # "Did not receive a reply" is what an action that OPENS A MODAL DIALOG
+        # looks like: the handler runs, the dialog starts its own event loop, and
+        # the D-Bus reply never comes. The click landed. Callers must assert the
+        # effect (ae_ui.py wait <the widget that should now exist>), which is what
+        # makes this safe to swallow rather than a silent failure.
+        print(f"note: {action} on the widget did not reply ({exc}); "
+              f"the caller must verify the effect", file=sys.stderr)
+        return True
+
+
+def children(node):
+    out = []
+    try:
+        for i in range(node.get_child_count()):
+            out.append(node.get_child_at_index(i))
+    except Exception:
+        pass
+    return out
+
+
+def cmd_dump():
+    app = _app()
+    if app is None:
+        print("no AnimeEffects window on the accessibility bus", file=sys.stderr)
+        return 2
+    for depth, role, name, node in _walk(app):
+        if role in ("list item", "menu item") and depth > 8:
+            continue
+        print(f"{'  ' * depth}{role:<14} | {name[:70]}")
+    return 0
+
+
+def cmd_wait(name):
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_click(name):
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r} to click", file=sys.stderr)
+        return 1
+    if not do(node):
+        print(f"{name!r} has no click action", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_combo(name, item):
+    combo = find(name, role="combo box")
+    if combo is None:
+        print(f"no combo box named {name!r}", file=sys.stderr)
+        return 1
+    if not do(combo):
+        print(f"{name!r} could not be opened", file=sys.stderr)
+        return 1
+    # The popup is a child of the combo box in Qt's accessibility tree once open.
+    entry = None
+    for node in children(combo) + [combo]:
+        for _, role, text, child in _walk(node, maxdepth=4):
+            if role in ("menu item", "list item", "table cell") and item.lower() in text.lower():
+                entry = child
+                break
+        if entry is not None:
+            break
+    if entry is None:
+        # Not fatal for the caller's intent: the popup may expose the rows only
+        # through the combo's own selection interface. Fall back to the current
+        # text, and let the caller's assertion catch a wrong selection.
+        current = combo.get_name()
+        if item.lower() in current.lower():
+            return 0
+        print(f"{name!r} has no item containing {item!r}", file=sys.stderr)
+        return 1
+    return 0 if do(entry) else 1
+
+
+def cmd_set(name, value):
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    editable = node.get_editable_text_iface()
+    if editable is not None:
+        editable.set_text_contents(value)
+        return 0
+    value_iface = node.get_value_iface()
+    if value_iface is not None:
+        try:
+            value_iface.set_current_value(float(value))
+            return 0
+        except Exception as exc:
+            print(f"cannot set {name!r}: {exc}", file=sys.stderr)
+            return 1
+    print(f"{name!r} is not editable", file=sys.stderr)
+    return 1
+
+
+def cmd_value(name):
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    editable = node.get_editable_text_iface()
+    if editable is not None:
+        print(editable.get_text(0, -1))
+        return 0
+    value_iface = node.get_value_iface()
+    if value_iface is not None:
+        print(value_iface.get_current_value())
+        return 0
+    print(node.get_name())
+    return 0
+
+
+def cmd_label(name):
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    print(node.get_name())
+    return 0
+
+
+def cmd_extents(name):
+    """The widget's rectangle on screen, as `x y w h`.
+
+    Input is still synthesized with xdotool (mailbox-free, and the only way to send
+    keystrokes), but the POSITION comes from the widget itself, so it survives a
+    layout change: that is the whole difference from a hardcoded coordinate, which
+    goes on clicking whatever has since moved underneath it.
+    """
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    component = node.get_component_iface()
+    if component is None:
+        print(f"{name!r} has no geometry", file=sys.stderr)
+        return 1
+    try:
+        rect = component.get_extents(Atspi.CoordType.SCREEN)
+    except Exception as exc:
+        print(f"cannot read {name!r}'s geometry: {exc}", file=sys.stderr)
+        return 1
+    print(f"{rect.x} {rect.y} {rect.width} {rect.height}")
+    return 0
+
+
+def cmd_report(names):
+    """One line per name: `present <name>` or `absent <name>`.
+
+    Presence and absence are both assertions a probe wants: the export form HIDES
+    what the selected artifact cannot use, so "there is no Bitrate control in front
+    of me" is the feature. A single snapshot answers them all, and the shell side
+    turns each line into a PASS/FAIL.
+    """
+    # An EMPTY tree is not evidence of absence: Qt builds the accessibility tree
+    # lazily, and the first query after a window appears can come back with
+    # nothing in it (measured: a report at 13s reported every widget absent, while
+    # the same query a moment later found them all). Wait for a populated tree, so
+    # "absent" means the widget is not there rather than "not there yet".
+    wanted = set(names)
+    deadline = time.time() + TIMEOUT
+    visible = set()
+    hidden = set()
+    while True:
+        app = _app()
+        if app is None:
+            print("no AnimeEffects window on the accessibility bus", file=sys.stderr)
+            return 2
+        visible, hidden = set(), set()
+        for _, _role, _n, node in _walk(app):
+            for n in names_of(node):
+                (visible if showing(node) else hidden).add(n)
+        # Wait for the names ASKED ABOUT, not merely for a populated tree: the main
+        # window's tree is always populated, so "the tree is not empty" is satisfied
+        # immediately and the answer would describe the window instead of the dialog
+        # that is still coming up. A report whose names are all genuinely absent
+        # takes the full timeout - ask for an anchor (the button that proves the
+        # dialog is open) and it is immediate.
+        if (visible & wanted) or (hidden & wanted) or time.time() >= deadline:
+            break
+        time.sleep(0.4)
+    for name in names:
+        if name in visible:
+            print("showing " + name)
+        elif name in hidden:
+            print("hidden  " + name)
+        else:
+            print("absent  " + name)
+    return 0
+
+
+def cmd_absent(name, seconds="2"):
+    deadline = time.time() + float(seconds)
+    while time.time() < deadline:
+        if find(name, timeout=0.3) is None:
+            return 0
+        time.sleep(0.2)
+    print(f"{name!r} is present but should not be", file=sys.stderr)
+    return 1
+
+
+def cmd_text():
+    app = _app()
+    if app is None:
+        return 2
+    for _, role, name, _node in _walk(app):
+        if role == "label" and name.strip():
+            print(name)
+    return 0
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(__doc__)
+        return 2
+    cmd, rest = argv[1], argv[2:]
+    table = {
+        "dump": (cmd_dump, 0),
+        "wait": (cmd_wait, 1),
+        "click": (cmd_click, 1),
+        "combo": (cmd_combo, 2),
+        "set": (cmd_set, 2),
+        "value": (cmd_value, 1),
+        "label": (cmd_label, 1),
+        "text": (cmd_text, 0),
+        "report": (cmd_report, None),
+        "extents": (cmd_extents, 1),
+        "absent": (cmd_absent, None),
+    }
+    if cmd not in table:
+        print(f"unknown command {cmd!r}", file=sys.stderr)
+        return 2
+    fn, argc = table[cmd]
+    if cmd == "report":
+        return fn(rest)
+    if cmd == "absent":
+        return fn(*rest) if rest else 2
+    if len(rest) != argc:
+        print(f"{cmd} takes {argc} argument(s)", file=sys.stderr)
+        return 2
+    return fn(*rest)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

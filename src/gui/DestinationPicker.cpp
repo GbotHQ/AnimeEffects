@@ -60,6 +60,10 @@ DestinationPicker::DestinationPicker(const QList<ctrl::ExportTarget>& aTargets,
     mSearch->setPlaceholderText(
         tr("Search: telegram, sticker, reels, illustration, 微信..."));
     mSearch->setClearButtonEnabled(true);
+    // A name for the accessibility tree: a QLineEdit with only a placeholder is
+    // announced as "text" and cannot be addressed by name at all (see
+    // scripts/gui/ae_ui.py, which drives the probes through this tree).
+    mSearch->setAccessibleName(tr("Search destinations"));
     layout->addWidget(mSearch);
 
     mList = new QListWidget(this);

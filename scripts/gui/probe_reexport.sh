@@ -41,6 +41,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # 1. File -> Export project as, with the Discord sticker already selected.
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 5
+  require_export_flow
   import -window root "$SHOTS"/re_01_dialog.png
   # Export. The button row is narrower in destination mode than in manual mode.
   xdotool key alt+e; sleep 4

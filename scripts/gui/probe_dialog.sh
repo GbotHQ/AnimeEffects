@@ -11,6 +11,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 3
+  require_export_flow
   import -window root '"$SHOTS"'/dlg_01.png
   sleep 0.3
   kill $app 2>/dev/null; wait $app 2>/dev/null

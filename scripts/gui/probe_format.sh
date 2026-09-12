@@ -12,6 +12,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 3
+  require_export_flow
   pick() {  # $1 = index, $2 = name
     xdotool mousemove 658 337 click 1; sleep 1.0
     xdotool key Home; sleep 0.2

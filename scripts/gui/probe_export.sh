@@ -27,6 +27,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 5
+  require_export_flow
   # optionally choose a destination first (its plan overrides the artifact)
   if [ -n "'"$DEST_INDEX"'" ]; then
     xdotool mousemove 658 61 click 1; sleep 1.0

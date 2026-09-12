@@ -936,13 +936,18 @@ public:
 
         // The disclosure itself: an empty Advanced section is a dead end, so it is
         // only offered when something inside it applies to this artifact.
-        advancedToggle->setVisible(exportWithAudioCheckBox->isVisible()
-                                   || transparencyCheckBox->isVisible()
-                                   || loopCheckBox->isVisible()
-                                   || customPaletteCheckBox->isVisible()
-                                   || knobUsable
-                                   || (isVideo && knob.isEmpty()));
-        advancedBox->setVisible(advancedToggle->isVisible() && advancedToggle->isChecked());
+        //
+        // Asked of the FLAGS above, never of isVisible(): isVisible() is false for
+        // every child of a hidden parent, and these children's parent is the very
+        // section this decides whether to show. Computing it from isVisible() hid
+        // Advanced for GIF and for every still sequence - the two cases where the
+        // palette, the loop flag and transparency are the ONLY things in there - so
+        // a GIF's palette box and its loop flag became unreachable.
+        const bool advancedApplies = audioPossible || isGif || knobUsable
+                                     || (isVideo && knob.isEmpty())
+                                     || selectedCodecCarriesAlpha();
+        advancedToggle->setVisible(advancedApplies);
+        advancedBox->setVisible(advancedApplies && advancedToggle->isChecked());
     }
 
     // The codec the current artifact would actually encode with: the manual combo's
@@ -1408,6 +1413,55 @@ public:
         // at the bottom of a form whose height depends on how long the destination's
         // notes are. Alt+E exports from anywhere in the form (and lets the GUI probes
         // press it without depending on pixels that move when the layout does).
+        // Accessible names for every control a user (or a probe) has to reach.
+        //
+        // A QComboBox and a QSpinBox expose NO name of their own: their QLabel is
+        // not a buddy, so a screen reader announces "combo box" and nothing else,
+        // and the GUI probes could only address them by pixel - which is how ten
+        // probes kept passing after a layout change moved the Format row 70px (they
+        // click a coordinate and then assert the screenshot is not black, so a click
+        // that lands on the wrong widget still passes). One name serves both. See
+        // scripts/gui/ae_ui.py.
+        widthSpinBox->setAccessibleName(tr("Width"));
+        heightSpinBox->setAccessibleName(tr("Height"));
+        fpsSpinBox->setAccessibleName(tr("Frame rate"));
+        firstFrameSpinBox->setAccessibleName(tr("First frame"));
+        lastFrameSpinBox->setAccessibleName(tr("Last frame"));
+        formatCombo->setAccessibleName(tr("Format"));
+        codecCombo->setAccessibleName(tr("Codec"));
+        qualityCombo->setAccessibleName(tr("Quality"));
+        qualityOverrideSpin->setAccessibleName(tr("Quality override"));
+        imageQualitySpinbox->setAccessibleName(tr("Image quality"));
+        bitrateLineEdit->setAccessibleName(tr("Bitrate"));
+        destinationButton->setAccessibleName(tr("Destination"));
+        advancedToggle->setAccessibleName(tr("Advanced"));
+        exportButton->setAccessibleName(tr("Export"));
+        cancelButton->setAccessibleName(tr("Cancel"));
+        transparencyCheckBox->setAccessibleName(tr("Export with transparency"));
+        loopCheckBox->setAccessibleName(tr("Loop animation"));
+        exportWithAudioCheckBox->setAccessibleName(tr("Export with audio"));
+        customPaletteCheckBox->setAccessibleName(tr("Custom palette"));
+        keepAspectRatio->setAccessibleName(tr("Keep aspect ratio"));
+        insertFrameRangeButton->setAccessibleName(tr("Insert range"));
+        removeFrameRangeButton->setAccessibleName(tr("Remove range"));
+        setWidthNative->setAccessibleName(tr("Set width to native"));
+        setHeightNative->setAccessibleName(tr("Set height to native"));
+        setFPSNative->setAccessibleName(tr("Set frame rate to native"));
+        setImageQualityToAuto->setAccessibleName(tr("Image quality to auto"));
+        setQualityOverrideAuto->setAccessibleName(tr("Quality override to auto"));
+        setBitrateAuto->setAccessibleName(tr("Bitrate to auto"));
+        // A QComboBox exposes its CURRENT VALUE as its accessible name ("WebM",
+        // "VP9", "Balanced") and ignores accessibleName entirely - Qt's rule, and a
+        // sensible one for a screen reader. That leaves a combo box unaddressable by
+        // what it IS, so the same words go in the description as well, which Qt does
+        // not override: see ae_ui.py, which matches on either.
+        for (QWidget* w : {static_cast<QWidget*>(formatCombo), static_cast<QWidget*>(codecCombo),
+                           static_cast<QWidget*>(qualityCombo),
+                           static_cast<QWidget*>(qualityOverrideSpin),
+                           static_cast<QWidget*>(imageQualitySpinbox),
+                           static_cast<QWidget*>(bitrateLineEdit)}) {
+            w->setAccessibleDescription(w->accessibleName());
+        }
         exportButton->setText(QCoreApplication::translate("exportWidget", "&Export", nullptr));
         exportButton->setDefault(true);
         cancelButton->setText(QCoreApplication::translate("exportWidget", "Cancel", nullptr));

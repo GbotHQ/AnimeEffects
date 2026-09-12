@@ -14,6 +14,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 5
+  require_export_flow
   # destination: Telegram sticker, through the picker (type, then Enter)
   xdotool mousemove 462 82 click 1; sleep 3
   xdotool type --delay 60 "telegram sticker"; sleep 1.2

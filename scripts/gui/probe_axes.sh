@@ -12,6 +12,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 3
+  require_export_flow
   # $1 = what to type in the picker search field, $2 = shot name. Typing a name is
   # how a person chooses a destination now, so it is how the probe does it: no index
   # into a list that reorders whenever the table gains a row. (No apostrophes here:

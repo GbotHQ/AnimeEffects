@@ -12,6 +12,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool windowactivate --sync $W 2>/dev/null
   xdotool mousemove 16 10 click 1; sleep 1.2
   xdotool mousemove 81 162 click 1; sleep 3
+  require_export_flow
   # The destination button (first row of the dialog) opens the picker: a search
   # field and a list, instead of a combo holding fifty-five entries.
   xdotool mousemove 462 82 click 1; sleep 3

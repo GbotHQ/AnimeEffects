@@ -44,6 +44,7 @@ run_case() {
       xdotool windowactivate --sync $W 2>/dev/null
       xdotool mousemove 16 10 click 1; sleep 1.2
       xdotool mousemove 81 162 click 1; sleep 5
+  require_export_flow
       import -window root '"$SHOTS"'/cap_'"$dest"'_01_dialog.png
       # Export, then accept the name the OS dialog opens with. The button row is
       # narrower in destination mode than in manual mode, where (399,676) is Export:
