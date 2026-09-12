@@ -88,6 +88,27 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
   that the halo assertion holds on the shipped texture.
 
+## Figures
+
+`figures/` holds renders of real artwork (`~/Downloads/ANIE/pagedoll.anie`, 1200x1500, 19 layers)
+through the production pipeline, over an opaque mid-grey backdrop so both halo directions read.
+Regenerate with the probe's figure mode:
+
+```sh
+QT_QPA_PLATFORM=offscreen ./build/tests/Debug/verify_mipmap \
+    --figures <outdir> <tag> ~/Downloads/ANIE/pagedoll.anie
+```
+
+The "naive" set is produced by running the same command with two mutations applied - the
+premultiply removed from `ImageKey` and `PREMULTIPLIED_INPUT` set back to `0` - so the comparison
+is the shipped code against the straight-alpha implementation it replaces, not against a
+hand-drawn mock-up.
+
+Measured on this artwork, fixed against naive: max channel difference 53/255 at 1:1 and 51/255 at
+8x minification, over roughly 500 edge pixels. The mean difference is tiny (0.014) because a halo
+is a thin fringe on alpha edges, which is why the figures magnify and amplify rather than show
+plain full frames.
+
 ## Why the ground truth is analytic here
 
 There is no third-party author to diff against: Krita and GIMP (which author the

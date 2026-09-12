@@ -47,6 +47,8 @@
 #include <vector>
 
 #include <QApplication>
+#include <QDir>
+#include <QImage>
 #include <QMainWindow>
 #include <QOpenGLVersionFunctionsFactory>
 #include <QOpenGLWidget>
@@ -56,6 +58,7 @@
 #include <QSurfaceFormat>
 
 #include "XC.h"
+#include "core/Animator.h"
 #include "core/BlurKey.h"
 #include "core/CameraInfo.h"
 #include "core/ClippingFrame.h"
@@ -66,17 +69,21 @@
 #include "core/ImageKey.h"
 #include "core/LayerNode.h"
 #include "core/ObjectTree.h"
+#include "core/Project.h"
 #include "core/RenderInfo.h"
 #include "core/ScaleKey.h"
 #include "core/TimeInfo.h"
 #include "gl/DeviceInfo.h"
 #include "gl/Framebuffer.h"
 #include "gl/Util.h"
+#include "ctrl/Exporter.h"
+#include "ctrl/ProjectLoader.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
 #include "gl/VertexArrayObject.h"
 #include "gui/AudioPlaybackWidget.h"
 #include "img/ResourceData.h"
+#include "util/IProgressReporter.h"
 #include "img/ResourceNode.h"
 
 //-------------------------------------------------------------------------------------------------
@@ -1337,6 +1344,263 @@ void suiteExportLike() {
     }
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M9: the REAL ctrl::Exporter. M8 covered the render configuration the exporter uses; this drives
+// the exporter itself, so its own framebuffer setup, camera and PNG write are exercised.
+//
+// The exporter clears to TRANSPARENT black and writes straight-alpha PNGs, so the value to assert
+// is the analytic one composed over black: a half-covered source shows source*coverage, and a
+// straight-alpha chain dragged toward the transparent region's colour would show
+// source*coverage^2 instead. PNG is straight-alpha while the framebuffer holds premultiplied
+// pixels, so the composition is done here rather than comparing raw bytes.
+class MipAnimator: public core::Animator {
+public:
+    core::Frame currentFrame() const override { return core::Frame(0); }
+    void stop() override {}
+    void suspend() override {}
+    void resume() override {}
+    bool isSuspended() const override { return false; }
+};
+
+class MipReporter: public util::IProgressReporter {
+public:
+    void setSection(const QString&) override {}
+    void setMaximum(int) override {}
+    void setProgress(int) override {}
+    bool wasCanceled() const override { return false; }
+};
+
+void suiteExport() {
+    suiteHeader("M9 real ctrl::Exporter: the exported PNG carries no halo");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    const int margin = 19;
+
+    MipAnimator animator;
+    MipReporter reporter;
+
+    core::Project project(QString(), animator, nullptr);
+    project.attribute().setImageSize(canvas);
+    project.attribute().setFps(24);
+    project.attribute().setFrameRange(util::Range(0, 0));
+
+    auto* root = new core::FolderNode("root");
+    project.objectTree().grabTopNode(root);
+    auto* res = makeResource("export_src", makeAlphaChecker(imageSize, color));
+    addScaledLayer(
+        project.objectTree(), root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 0.5f,
+        img::BlendMode_Normal
+    );
+
+    const QString dir = QDir::temp().filePath("ae_mipmap_export");
+    QDir(dir).removeRecursively();
+    QDir().mkpath(dir);
+
+    const int failsBefore = gFails;
+
+    bool ok = false;
+    {
+        // the app builds a NEW Exporter per export (reuse segfaults in the pre-existing GL
+        // framebuffer lifecycle, see tests/media_exporter_e2e.cpp)
+        ctrl::Exporter ex(project);
+        ex.setOverwriteConfirmer([](const QString&) -> bool { return true; });
+        ex.setProgressReporter(reporter);
+        ctrl::Exporter::CommonParam cp;
+        cp.path = dir;
+        cp.size = canvas;
+        cp.selection = ctrl::FrameSelection::fromRange(0, 0);
+        cp.fps = 24;
+        ctrl::Exporter::ImageParam ip;
+        ip.name = "frame";
+        ip.suffix = "png";
+        ip.quality = 100;
+        ip.singleFile = true;
+        ok = (bool)ex.execute(cp, ip);
+    }
+    expect(ok, "the export must succeed");
+
+    const QStringList pngs = QDir(dir).entryList(QStringList{"*.png"}, QDir::Files);
+    expect(!pngs.isEmpty(), "the export must write a PNG");
+    if (pngs.isEmpty()) {
+        caseReport("exported PNG", false, "no file written");
+        return;
+    }
+
+    const QString path = QDir(dir).filePath(pngs.first());
+    const QImage png(path);
+    expect(!png.isNull(), "the exported PNG must decode");
+    if (png.isNull()) {
+        caseReport("exported PNG", false, "undecodable");
+        return;
+    }
+    expect(png.size() == canvas,
+        QString("exported size must be the requested %1x%2, got %3x%4")
+            .arg(canvas.width()).arg(canvas.height()).arg(png.width()).arg(png.height()));
+
+    // compose the straight-alpha PNG over black and read the interior
+    const QImage rgba = png.convertToFormat(QImage::Format_RGBA8888);
+    const int expected = (int)std::lround(color[0] * 0.5);   // source * coverage
+    const int haloed = (int)std::lround(color[0] * 0.25);    // source * coverage^2
+    double sum = 0;
+    int n = 0, maxAlpha = 0;
+    for (int y = margin; y < canvas.height() - margin; ++y) {
+        for (int x = margin; x < canvas.width() - margin; ++x) {
+            const uchar* px = rgba.constScanLine(y) + (size_t)x * 4;
+            sum += px[0] * (px[3] / 255.0);   // over black
+            maxAlpha = std::max(maxAlpha, (int)px[3]);
+            ++n;
+        }
+    }
+    const double mean = n ? sum / n : 0.0;
+
+    expect(maxAlpha > 100, QString("the exported frame must contain artwork (max alpha %1)").arg(maxAlpha));
+    expect(near(mean, expected, 5.0),
+        QString("the exported frame must show source*coverage (%1) over black, got %2")
+            .arg(expected).arg(mean, 0, 'f', 1));
+    expect(std::fabs(mean - haloed) > 20.0,
+        QString("the exported frame must not be the haloed %1 (got %2)").arg(haloed).arg(mean, 0, 'f', 1));
+
+    caseReport("exported PNG via ctrl::Exporter", gFails == failsBefore,
+        QString("%1, alpha<=%2, over-black=%3 (correct %4, halo %5)")
+            .arg(pngs.first()).arg(maxAlpha).arg(mean, 0, 'f', 1).arg(expected).arg(haloed));
+
+    QDir(dir).removeRecursively();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// Figure generation: renders REAL artwork through the production pipeline so the change can be
+// looked at, not only measured. Driven by --figures; the numbers in the report come from the same
+// code path, but a halved red channel is not a picture.
+namespace figures {
+
+QImage readbackToImage(const std::vector<uint8_t>& aBytes, const QSize& aSize) {
+    QImage img(aBytes.data(), aSize.width(), aSize.height(), QImage::Format_RGBA8888);
+    return img.copy().flipped(Qt::Vertical);   // GL row 0 is the bottom
+}
+
+// collects image-bearing layers, deepest last
+void collectLayers(core::ObjectNode* aNode, std::vector<core::LayerNode*>& aDest) {
+    if (!aNode)
+        return;
+    if (auto* layer = dynamic_cast<core::LayerNode*>(aNode))
+        aDest.push_back(layer);
+    for (auto* child : aNode->children())
+        collectLayers(child, aDest);
+}
+
+} // namespace figures
+
+int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
+    QDir().mkpath(aDir);
+
+    gl::DeviceInfo dev;
+    dev.vender = "harness";
+    dev.renderer = "harness";
+    dev.version = "5";
+    dev.maxTextureSize = 16384;
+    dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static MipAnimator animator;
+    static MipReporter reporter;
+    core::Project project(aAnie, animator, nullptr);
+    ctrl::ProjectLoader loader;
+    if (!loader.load(aAnie, project, dev, reporter)) {
+        std::fprintf(stderr, "FATAL: cannot load %s: %s\n", qPrintable(aAnie), qPrintable(loader.log().join("; ")));
+        return 3;
+    }
+    const QSize canvas = project.attribute().imageSize();
+    std::printf("figures: %s  %dx%d\n", qPrintable(aAnie), canvas.width(), canvas.height());
+
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+    std::printf("figures: %d layers\n", (int)layers.size());
+
+    // a mid-grey opaque backdrop: dark halos read as darkening, light halos as brightening, and a
+    // transparent backdrop would hide both
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    RenderFixture& fx = *fixtures[key];
+
+    const float zooms[] = {1.0f, 0.5f, 0.25f, 0.125f};
+    for (float zoom : zooms) {
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        if (zoom != 1.0f)
+            camera.setScale(zoom);
+        const std::vector<uint8_t> px = fx.render(project.objectTree(), camera, 0, backdrop);
+        const QString path = QDir(aDir).filePath(QString("%1_zoom%2.png").arg(aTag).arg((int)(zoom * 1000)));
+        figures::readbackToImage(px, canvas).save(path);
+        std::printf("  wrote %s\n", qPrintable(path));
+    }
+
+    // the same frame through the real exporter, for canvas-vs-export comparison
+    {
+        ctrl::Exporter ex(project);
+        ex.setOverwriteConfirmer([](const QString&) -> bool { return true; });
+        ex.setProgressReporter(reporter);
+        ctrl::Exporter::CommonParam cp;
+        cp.path = aDir;
+        cp.size = canvas;
+        cp.selection = ctrl::FrameSelection::fromRange(0, 0);
+        cp.fps = project.attribute().fps() > 0 ? project.attribute().fps() : 24;
+        ctrl::Exporter::ImageParam ip;
+        ip.name = aTag + "_export";
+        ip.suffix = "png";
+        ip.quality = 100;
+        ip.singleFile = true;
+        const bool ok = (bool)ex.execute(cp, ip);
+        std::printf("  export %s\n", ok ? "ok" : "FAILED");
+    }
+
+    // blend-mode / HSV / blur strip on the largest image layer, at a minifying zoom
+    if (!layers.empty()) {
+        // pick the layer whose image is largest: the most visible one
+        core::LayerNode* target = layers.front();
+        auto& ggl = gl::Global::functions();
+        (void)ggl;
+        for (auto* layer : layers) {
+            if (layer->timeLine() && layer->timeLine()->defaultKey(core::TimeKeyType_Image)) {
+                auto* key = static_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+                if (key && key->hasImage()) {
+                    const QSize sz = key->data().resource()->image().pixelSize();
+                    if (target == layers.front() || sz.width() * sz.height() > 0)
+                        target = layer;
+                }
+            }
+        }
+        std::printf("figures: path strip on layer '%s'\n", qPrintable(target->name()));
+
+        const img::BlendMode modes[] = {
+            img::BlendMode_Normal, img::BlendMode_Multiply, img::BlendMode_Screen, img::BlendMode_Overlay,
+            img::BlendMode_Luminosity, img::BlendMode_AddGlow,
+        };
+        for (img::BlendMode mode : modes) {
+            target->setBlendMode(mode);   // also re-reserves the shader variant for this mode
+            core::CameraInfo camera;
+            camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+            camera.setScale(0.25f);
+            const std::vector<uint8_t> px = fx.render(project.objectTree(), camera, 0, backdrop);
+            const QString path = QDir(aDir).filePath(QString("%1_mode%2.png").arg(aTag).arg((int)mode));
+            figures::readbackToImage(px, canvas).save(path);
+            std::printf("  wrote %s\n", qPrintable(path));
+        }
+        target->setBlendMode(img::BlendMode_Normal);
+    }
+
+    return 0;
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -1438,6 +1702,15 @@ int main(int argc, char** argv) {
     }
     glWidget->makeCurrent();
 
+    // --figures <dir> <tag> <anie>
+    if (argc > 4 && QString(argv[1]) == "--figures") {
+        const int rc = runFigures(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]), QString::fromLocal8Bit(argv[4])
+        );
+        clearRenderFixtures();
+        return rc;
+    }
+
     suiteChain();
     suiteImageKey();
     suiteRender();
@@ -1446,6 +1719,7 @@ int main(int argc, char** argv) {
     suiteMipLevels();
     suiteLodUniformity();
     suiteExportLike();
+    suiteExport();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
