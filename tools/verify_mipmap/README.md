@@ -88,6 +88,26 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
   that the halo assertion holds on the shipped texture.
 
+- **M10 - where the sampler reads.** The texture-coordinate convention, measured rather than
+  assumed. A source whose value alternates every texel, rendered 1:1 onto a canvas of exactly its
+  size, must come back as that pattern: a bilinear filter returns a texel unchanged only when the
+  sample sits on its centre, so any misalignment shows up as a collapse of contrast. Measured
+  255 of 255 and 0.000 texels off the nearest centre, with the sub-texel sweep matching the
+  predicted 255/127/0/127 profile.
+- **M11 - 2x minification.** A 2x2-block pattern (whose exact 2x answer is the block itself) and a
+  1-texel checkerboard (whose exact 2x answer is uniformly 127.5). Pins both the block the level-1
+  read lands in (delta 0.0 vs the box) and the position inside it (contrast 0, where a
+  quarter-texel phase error would give 127).
+- **M12 - the shape of `glGenerateMipmap`'s filter.** An impulse response, because a checkerboard
+  is the one pattern that cannot tell two symmetric filters apart: every aligned 2x2 block of it
+  averages to 127.5, and so does every 4x4 block, so a driver filtering with a 4x4 box would pass a
+  2x2-box comparison exactly. Measured: one non-zero texel per level at 255/4^l - a plain box -
+  and M12b confirms it on a broadband pseudo-random image (max delta 1).
+- **M13 - the texture margin parity.** The 2x over-blur isolated to a single variable: the same
+  artwork, sampler and zoom, with only the width of the transparent margin around the artwork
+  changing. Includes a direct assertion that the shipped margin is even, which is the invariant
+  that keeps level 1 aligned with the artwork.
+
 ## Figures
 
 | file | what it shows |
@@ -220,41 +240,84 @@ would have been a strong - and wrong - claim that the change does nothing. A sti
 set the level-0 filter before the first zoom and never restored it, so from the second zoom on both
 variants were level-0. The sampler is now set explicitly before every variant.
 
-## The 2x regression: investigated
+## The 2x regression: found, fixed, and verified
 
-The corpus evaluation showed the shipped render is WORSE than level-0 sampling at 2x minification
+The corpus evaluation showed the shipped render was WORSE than level-0 sampling at 2x minification
 (median mean error 0.225 -> 0.258, p99.9 16 -> 29, only 19% of files better). fig16 shows it:
-`fig16_2x_regression.png`, a 4500x4500 PSD at 2x, worst window, 4x nearest-neighbour.
+`fig16_2x_regression.png`, a 4500x4500 PSD at 2x, worst window, 4x nearest-neighbour, and
+`fig17_margin_parity.png`, the same window before and after the fix.
 
-- BEFORE (level 0) keeps the fabric grain and its error map against ground truth is almost black
-  (mean 2.32).
-- AFTER (mipmapped) is visibly SMOOTHER than ground truth - fine grain lost - and its error map is
-  speckled (mean 6.44).
-- GROUND TRUTH has the grain.
+Every hypothesis I had about it first was wrong, and each was killed by a measurement:
 
-So the mipmapped path is OVER-BLURRING here, not under-sampling.
+- **A half-texel error in the texture coordinates** (`GridMeshCreator::writeVertices` writes the
+  texture coordinate as the vertex POSITION, and the shader divides by the image size, with no
+  half-texel term anywhere). **Refuted by M10**: a 1-texel checkerboard rendered 1:1 onto a canvas
+  of exactly its size comes back at full 255 contrast, mean 127.5 - the source pattern, texel for
+  pixel. Nothing is being averaged. The sub-texel sweep confirms it: moving the layer 0, 1/4, 1/2
+  and 3/4 of a texel gives contrast 255, 127, 0, 127, exactly the predicted profile for a sample
+  sitting on texel centres.
+- **Level selection.** `--lodscan` reports LOD exactly 1.000 at 2x with zero spread over 183300
+  triangles, and M12 measures the chain itself: `glGenerateMipmap`'s filter is a plain 2x2 box at
+  every level (a single bright texel produces exactly ONE non-zero texel at level 1, 2 and 3,
+  holding 255/4^l; M12b confirms level 1 of a broadband 128x128 image is the hand-written box to
+  the last bit, max delta 1).
+- **A quarter-texel phase error at level 1.** **Refuted by M11**: at 2x minification of a
+  2x2-block pattern the render IS the exact box, to a worst delta of 0.0, and a 1-texel
+  checkerboard - whose exact 2x answer is uniformly 127.5 - comes back with contrast 0 instead of
+  the 127 a quarter-texel phase would produce.
 
-Level selection is not the cause. `--lodscan` on that file reports LOD exactly 1.000 at 2x and
-2.000 at 4x, with zero spread over 183300 triangles - the correct level IS being chosen, and at 2x
-level 1 is exactly the 2x2 box the reference computes.
+What it actually is: **the parity of the transparent margin the loader pads every texture with.**
+`img::Util::recreateForBiLinearSampling` copied the artwork into a texture two texels larger, at
+offset (1,1) - an ODD offset. A mip level is a box of 2^l base texels, so the level-l texel grid is
+anchored to multiples of 2^l in base-texel coordinates. Level 1 therefore holds boxes of texels
+(0,1), (2,3), (4,5)..., while the artwork's own 2x2 blocks, starting at texel 1, are (1,2), (3,4),
+(5,6)... - every one of them half in one level-1 texel and half in the next.
 
-That points at the texture-coordinate alignment. `GridMeshCreator::writeVertices` writes each
-vertex's texture coordinate as its POSITION:
+At exactly 2x minification the footprint of one output pixel IS the artwork's 2x2 block, and both
+sampler states claim to answer it: level 0 because bilinear's four taps land exactly on it, level 1
+because that block is supposed to be a single level-1 texel. With the odd margin level 0 is right
+and level 1 is wrong - it blends two level-1 texels, i.e. averages a 4x4 region of level 0 where
+2x2 is wanted. That is exactly a halving of contrast on one-texel detail, and it is why enabling
+mipmaps made the render *softer than the level-0 path it replaced*, while still being the correct
+thing to do at 4x and beyond (where level 0 aliases).
 
-    texPtr[0] = pos.x();  texPtr[1] = pos.y();
+**M13** is the isolated minimal pair: the same artwork, the same sampler, the same zoom, and only
+the margin width changes.
 
-and the vertex shader divides by the image size, so UV = position / imageSize with no half-texel
-term anywhere. A sample that lands on a texel CORNER blends four neighbours at level 0 - which at
-exactly 2x minification still yields the correct 2x2 box, because the four neighbours ARE that box.
-The same sample at level 1 blends four LEVEL-1 texels, each already a 2x2 box of level 0, so it
-averages a 4x4 region of level 0: twice the blur the reference has. That fits the figure exactly,
-and it also fits the zoom dependence - at 4x the level-0 path aliases badly enough that the
-over-blurred mip still wins on the tail, while at 2x the level-0 path is already exact and the
-over-blur is pure loss.
+| margin | delta vs the exact 2x2 box | contrast of a 1-texel cross |
+| --- | --- | --- |
+| 0 (even) | 0.5 - exact | 191 |
+| 1 (odd, the old padding) | 112.0 | 112 |
+| 8 (even, shipped) | 0.5 - exact | 191 |
 
-This is a HYPOTHESIS with supporting evidence, not a proven mechanism: it has not been confirmed by
-applying a half-texel correction and re-measuring. That is the next step, and it is a one-line
-change in the vertex shader or in the texture-coordinate generation, testable against this corpus.
+The fix is `img::Util::kSamplingMargin = 8`: an even margin puts the artwork's origin at a multiple
+of 8, which aligns levels 1, 2 and 3 (2x, 4x, 8x minification). The same number is what the margin
+is FOR - at level l a bilinear read at the artwork's edge reaches 2^l base texels outward, so level
+l needs 2^l texels of real transparent margin rather than the clamp-to-border colour. The margin is
+symmetric, so the artwork stays exactly where it was: the loader's rect is derived from the same
+constant, and `setImageOffsetByCenter` re-centres on the padded size, so the geometry is unchanged
+by construction (verified by the golden suites, `media_exporter_e2e`, and the probe).
+
+Measured after the fix, same files and zooms as the corpus that found it (`change_mean` is
+|AFTER - BEFORE| over the canvas, which was 1.10 on the worst file):
+
+| file | 2x BEFORE | 2x AFTER before fix | 2x AFTER after fix | change_mean |
+| --- | --- | --- | --- | --- |
+| 000049.psd (1 layer, canvas-aligned) | 0.317 | 0.825 | **0.317** | 1.102 -> **0.008** |
+| 006750.psd (2 layers) | 0.226 | 0.596 | **0.225** | -> **0.005** |
+| 000022.psd (199 layers) | 0.284 | 0.704 | **0.287** | -> **0.013** |
+| 000128.psd (27 layers) | 0.316 | 0.647 | 0.344 | -> 0.234 |
+| 000143.psd (51 layers) | 0.318 | 0.597 | 0.425 | -> 0.411 |
+| 000168.psd (43 layers) | 0.345 | 0.697 | 0.376 | -> 0.186 |
+
+For the canvas-aligned files the two paths are now numerically identical at 2x - which is what
+correct looks like, since at exactly 2x both must produce the same box. On the multi-layer PSDs a
+small difference remains (0.32 against 0.34 mean error): their layers sit at fractional screen
+positions, so the footprint is not centred on a texel boundary and level 0 and level 1 are two
+different 4-tap approximations of it. Their LOD is still exactly 1.000 (`--lodscan` on 000128.psd:
+27 meshes, all 1.000..1.000, zero adjacent delta), so this is interpolation, not misalignment. The
+4x column of the same files moves 0.216 -> 0.141, 0.223 -> 0.151, 0.246 -> 0.164: the mip path is
+still a clear win where level 0 aliases.
 
 ## Independent ground truth: supersampling
 

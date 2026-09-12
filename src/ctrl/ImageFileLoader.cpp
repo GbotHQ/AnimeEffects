@@ -99,7 +99,13 @@ img::ResourceNode* createMergedResource(
     }
 
     mem = img::Util::recreateForBiLinearSampling(mem, aCanvasSize);
-    const QRect rect(QPoint(-1, -1), aCanvasSize + QSize(2, 2));
+    // the content sits at the margin's offset inside the padded image; the rect has to describe
+    // the padded image, so the artwork's own position (and everything laid out from it) is
+    // unchanged by the width of the margin.
+    const QRect rect(
+        QPoint(-img::Util::kSamplingMargin, -img::Util::kSamplingMargin),
+        aCanvasSize + QSize(2 * img::Util::kSamplingMargin, 2 * img::Util::kSamplingMargin)
+    );
 
     auto resNode = new img::ResourceNode(aName);
     resNode->data().grabImage(mem, rect.size(), img::Format_RGBA8);

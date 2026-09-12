@@ -87,6 +87,7 @@
 #include "img/ResourceData.h"
 #include "util/IProgressReporter.h"
 #include "img/ResourceNode.h"
+#include "img/Util.h"
 
 //-------------------------------------------------------------------------------------------------
 // reporting
@@ -1474,6 +1475,512 @@ void suiteExport() {
 
 
 //-------------------------------------------------------------------------------------------------
+// M10: WHERE the sampler reads. Every check above asks whether the mip CHAIN and the shader's
+// handling of it are right. Not one of them asks whether the renderer reads that chain at the
+// right PLACE, and the two questions are independent: a perfectly built chain is still blurred by
+// texture coordinates that land between texels.
+//
+// The measurement needs no assumption about anybody's texel convention. A bilinear filter returns
+// a texel UNCHANGED only when the sample position is that texel's centre; at any other position it
+// averages it with a neighbour. So take a source whose value alternates every texel and render it
+// 1:1 onto a canvas of exactly its size - the picture the user expects is the source pattern, texel
+// for pixel. If it comes back grey, the renderer is reading between texels. That is a fact about
+// the render, not about a convention.
+
+// kind 0: 1-texel checkerboard (tests both axes), 1: period-2 stripes in x, 2: in y,
+// 3: 2x2-block checkerboard - period 4 texels, which is exactly one texel of mip level 1.
+Img makeOpaquePattern(int aSize, int aKind) {
+    Img img;
+    img.w = img.h = aSize;
+    img.d.assign((size_t)aSize * aSize * 4, 0);
+    for (int y = 0; y < aSize; ++y) {
+        for (int x = 0; x < aSize; ++x) {
+            bool on = false;
+            switch (aKind) {
+            case 0: on = ((x + y) % 2) == 0; break;
+            case 1: on = (x % 2) == 0; break;
+            case 2: on = (y % 2) == 0; break;
+            default: on = (((x / 2) + (y / 2)) % 2) == 0; break;
+            }
+            uint8_t* p = img.at(x, y);
+            p[0] = p[1] = p[2] = on ? 255 : 0;
+            // Fully opaque on purpose: every cell of the grid mesh exists, and reduceBurrs leaves
+            // every vertex at its exact grid position (its 3x3 alpha test always finds alpha), so
+            // the geometry contributes no displacement of its own to what is being measured.
+            p[3] = 255;
+        }
+    }
+    return img;
+}
+
+struct ChannelStats {
+    int minV = 255;
+    int maxV = 0;
+    double mean = 0;
+    int n = 0;
+    int contrast() const { return maxV - minV; }
+};
+
+ChannelStats channelStats(const std::vector<uint8_t>& aImg, const QSize& aSize, int aMargin, int aChannel) {
+    ChannelStats st;
+    double sum = 0;
+    for (int y = aMargin; y < aSize.height() - aMargin; ++y) {
+        for (int x = aMargin; x < aSize.width() - aMargin; ++x) {
+            const int v = aImg[((size_t)y * aSize.width() + x) * 4 + aChannel];
+            st.minV = std::min(st.minV, v);
+            st.maxV = std::max(st.maxV, v);
+            sum += v;
+            ++st.n;
+        }
+    }
+    st.mean = st.n ? sum / st.n : 0.0;
+    return st;
+}
+
+// What a bilinear filter returns for a period-2 pattern whose sample position has fractional part
+// aPhase in texel coordinates. aPhase 0.5 is a texel centre (full contrast, the pattern survives);
+// aPhase 0 is exactly between two texels (the two are averaged, contrast collapses to zero).
+// Derived by hand from the two taps - not fitted to the measurement.
+double predictedPeriod2Contrast(double aPhase) {
+    const double d = std::fabs(aPhase - std::floor(aPhase));
+    const double m = std::min(d, 1.0 - d);   // distance to the nearest texel boundary
+    return 255.0 * 2.0 * m;                  // 0 at a boundary, 255 at a texel centre
+}
+
+// A bilinear read of aLevel at texel coordinate (aTX, aTY), clamped at the edges. This is the CPU
+// replica of GL_LINEAR used to turn "the blur looks like X" into "the blur IS exactly X": the two
+// candidate positions differ, so matching one of them identifies the sample position.
+double bilinearAt(const Img& aLevel, double aTX, double aTY, int aChannel) {
+    const double fx = aTX - 0.5, fy = aTY - 0.5;
+    const int x0 = (int)std::floor(fx), y0 = (int)std::floor(fy);
+    const double wx = fx - x0, wy = fy - y0;
+    const auto at = [&](int x, int y) {
+        x = std::max(0, std::min(aLevel.w - 1, x));
+        y = std::max(0, std::min(aLevel.h - 1, y));
+        return (double)aLevel.at(x, y)[aChannel];
+    };
+    return (1.0 - wy) * ((1.0 - wx) * at(x0, y0) + wx * at(x0 + 1, y0))
+         + wy * ((1.0 - wx) * at(x0, y0 + 1) + wx * at(x0 + 1, y0 + 1));
+}
+
+// Copies a source (straight alpha, opaque) into the level-0 reference the comparisons read.
+Img asLevel(const Img& aSrc) { return aSrc; }
+
+void suiteTexelPhase() {
+    suiteHeader("M10 texel phase: is a 1:1 render read at texel centres?");
+    const QSize canvas(64, 64);
+    const int margin = 6;
+
+    const char* kKindName[4] = {"1-texel checkerboard", "period-2 stripes in x", "period-2 stripes in y",
+                                "2x2-block checkerboard"};
+
+    for (int kind = 0; kind < 3; ++kind) {
+        const Img src = makeOpaquePattern(canvas.width(), kind);
+        // scale 1.0 and the layer centred: the artwork fills the canvas exactly, texel for pixel.
+        const std::vector<uint8_t> out = renderLayer(canvas, src, 1.0f, img::BlendMode_Normal);
+        const ChannelStats st = channelStats(out, canvas, margin, 0);
+        const double measured = (double)st.contrast();
+        const int caseFails = gFails;
+        const QString label = QString("M10 %1 at 1:1").arg(kKindName[kind]);
+
+        // An aligned render reads each texel at its centre, so the source pattern - which is what
+        // the user sees in any image viewer at 100% - survives at full contrast. Anything less is
+        // the renderer averaging texels that the user can see are different.
+        expect(measured >= 250.0,
+            QString("%1: the source pattern must survive at full contrast (got %2, min %3 max %4)")
+                .arg(label).arg(measured, 0, 'f', 1).arg(st.minV).arg(st.maxV));
+        expect(near(st.mean, 127.5, 12.0),
+            QString("%1: the mean must stay the pattern's own mean 127.5 (got %2)").arg(label).arg(st.mean, 0, 'f', 1));
+
+        // ...and the loss, if any, is quantified as a phase error rather than described
+        const double phaseTexels = measured / 510.0;             // contrast = 510 * phase
+        const double offCentre = std::fabs(0.5 - phaseTexels);   // distance from the nearest centre
+        caseReport(
+            label, gFails == caseFails,
+            QString("contrast=%1 of 255, mean=%2 -> samples %3 texels off the nearest centre")
+                .arg(measured, 0, 'f', 1).arg(st.mean, 0, 'f', 2).arg(offCentre, 0, 'f', 3)
+        );
+    }
+
+    // The same measurement as a function of the layer's sub-texel position. This is what makes the
+    // result a PHASE and not an accident of one position: moving the layer by a quarter of a texel
+    // must move the sample position by a quarter of a texel, so contrast must follow the predicted
+    // V - full at the aligned position, zero a half texel away.
+    {
+        const Img src = makeOpaquePattern(canvas.width(), 1);
+        double measuredQ[4] = {0, 0, 0, 0};
+        double predictedQ[4] = {0, 0, 0, 0};
+        for (int q = 0; q < 4; ++q) {
+            const float pos = 32.0f + q * 0.25f;
+            core::ObjectTree tree;
+            auto* root = new core::FolderNode("root");
+            tree.grabTopNode(root);
+            auto* res = makeResource(QString("mip_phase_%1").arg(q), src);
+            addScaledLayer(tree, root, res, "layer", QVector2D(pos, pos), 1.0f, img::BlendMode_Normal);
+            core::CameraInfo camera;
+            camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+
+            auto& fixtures = renderFixtures();
+            const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+            if (fixtures.find(key) == fixtures.end()) {
+                std::unique_ptr<RenderFixture> fx(new RenderFixture());
+                fx->init(canvas);
+                fixtures.emplace(key, std::move(fx));
+            }
+            const uint8_t black[3] = {0, 0, 0};
+            const std::vector<uint8_t> out = fixtures[key]->render(tree, camera, 0, black);
+            measuredQ[q] = (double)channelStats(out, canvas, margin, 0).contrast();
+
+            // The sample position the vertex shader asks for, in texel coordinates: the shader
+            // divides a texel-unit coordinate by the image size, so the sampler reads
+            // (texel - 0.5) and the fractional part of what it reads is what sets the contrast.
+            // The layer moved by q/4 of a texel, so the position moves by the same amount.
+            predictedQ[q] = predictedPeriod2Contrast(0.0 - q * 0.25 + 0.5);
+        }
+
+        const int caseFails = gFails;
+        // The layer exactly filling the canvas is the aligned case, so it must be the sharpest of
+        // the four, and the profile must be the predicted V around it.
+        expect(measuredQ[0] >= 250.0,
+            QString("M10 phase sweep: the layer exactly filling the canvas must be the sharpest case (got %1)")
+                .arg(measuredQ[0], 0, 'f', 1));
+        expect(measuredQ[0] >= measuredQ[1] && measuredQ[0] >= measuredQ[3],
+            QString("M10 phase sweep: no sub-texel offset may be sharper than the aligned one (%1 vs %2, %3)")
+                .arg(measuredQ[0], 0, 'f', 1).arg(measuredQ[1], 0, 'f', 1).arg(measuredQ[3], 0, 'f', 1));
+        caseReport(
+            "M10 phase sweep (stripe pattern, layer at 32 + q/4 texels)", gFails == caseFails,
+            QString("measured %1 %2 %3 %4 | predicted %5 %6 %7 %8 for a sample at the texel position")
+                .arg(measuredQ[0], 0, 'f', 1).arg(measuredQ[1], 0, 'f', 1).arg(measuredQ[2], 0, 'f', 1)
+                .arg(measuredQ[3], 0, 'f', 1)
+                .arg(predictedQ[0], 0, 'f', 1).arg(predictedQ[1], 0, 'f', 1).arg(predictedQ[2], 0, 'f', 1)
+                .arg(predictedQ[3], 0, 'f', 1)
+        );
+    }
+}
+
+//-------------------------------------------------------------------------------------------------
+// M11: why 2x minification got WORSE. This is the mechanism, isolated.
+//
+// At exactly 2x minification the correct answer for each output pixel is the 2x2 box of level 0 -
+// which is precisely one texel of mip level 1. So on a source that is constant inside every 2x2
+// block, a correct renderer picks level 1 and reads the texel whose box it wants: contrast
+// preserved, 255. Half a texel of error in the texture coordinate moves the level-1 read a quarter
+// of a level-1 texel off that texel's centre, which averages it with its neighbour - a 0.75/0.25
+// mix of two blocks that the user can see are different, and the over-blur that the corpus
+// measured at 2x.
+//
+// The two candidates are 64 units of red apart, so which one the render matches is not a judgement
+// call: it is a measurement of where the sample lands.
+void suiteTwoXMechanism() {
+    suiteHeader("M11 2x minification: which texel does the level-1 read land on?");
+    const QSize canvas(64, 64);
+    const float scale = 0.5f;
+    const Img src = makeOpaquePattern(canvas.width(), 3);
+    const Img lvl1 = downsamplePremultiplied(src);   // opaque source, so this is the plain box
+
+    const std::vector<uint8_t> out = renderLayer(canvas, src, scale, img::BlendMode_Normal);
+
+    // The layer is centred, so it spans screen [16, 48) in both axes; keep clear of its border.
+    const int lo = 20, hi = 44;
+    double worstVsBox = 0, worstVsPhase = 0, worstVsFixed = 0;
+    int boxContrast = 0, renderContrast = 0;
+    int rMin = 255, rMax = 0, bMin = 255, bMax = 0;
+    for (int sy = lo; sy < hi; ++sy) {
+        for (int sx = lo; sx < hi; ++sx) {
+            // image coordinate of this output pixel's centre: the layer covers 32 screen pixels
+            // with 64 texels, so one screen pixel is 2 texels. The raw readback's row 0 is the
+            // canvas BOTTOM while the source image's row 0 is its top, so the vertical texel
+            // coordinate is mirrored - and on a pattern whose value depends on y parity a mirror
+            // image is a different pattern, not the same one shifted. The artwork's top edge is
+            // screen row 48, so its own row coordinate for buffer row sy is (48 - (sy + 0.5)) * 2.
+            const double u = 2.0 * (sx + 0.5) - 32.0;
+            const double v = 95.0 - 2.0 * sy;   // mirrored into source row index
+
+            const double box = bilinearAt(asLevel(src), u, v, 0);
+            const double phase = bilinearAt(lvl1, (u - 0.5) / 2.0, (v - 0.5) / 2.0, 0);
+            const double fixed = bilinearAt(lvl1, u / 2.0, v / 2.0, 0);
+
+            const int got = out[((size_t)sy * canvas.width() + sx) * 4];
+            worstVsBox = std::max(worstVsBox, std::fabs(got - box));
+            worstVsPhase = std::max(worstVsPhase, std::fabs(got - phase));
+            worstVsFixed = std::max(worstVsFixed, std::fabs(got - fixed));
+
+            rMin = std::min(rMin, got);
+            rMax = std::max(rMax, got);
+            bMin = std::min(bMin, (int)box);
+            bMax = std::max(bMax, (int)box);
+        }
+    }
+    renderContrast = rMax - rMin;
+    boxContrast = bMax - bMin;
+
+    // The two hypotheses this started from, kept as measurements because neither may be quietly
+    // assumed away: a level-1 read a quarter texel off its centre would give this, and a read at
+    // the aligned centre would give that. The render matches NEITHER, which is the point - it is
+    // the box itself, so the level-1 texel is read at its centre and the chain is being used
+    // exactly. (This is the no-margin geometry; with the 1-texel margin the same render lands
+    // half a level-1 texel off and does match the quarter-phase mix - see M13.)
+    const int caseFails = gFails;
+    const QString prefix = "M11 2x minification of a 2x2-block checkerboard";
+    expect(worstVsPhase > 30.0,
+        QString("%1: the render must NOT be a quarter-texel level-1 mix (that delta is %2)")
+            .arg(prefix).arg(worstVsPhase, 0, 'f', 1));
+    expect(worstVsFixed <= 6.0,
+        QString("%1: the render must be the level-1 texel whose box it wants (delta %2)")
+            .arg(prefix).arg(worstVsFixed, 0, 'f', 1));
+
+    // THE ASSERTION: the output pixel's footprint is exactly one level-1 texel, so the correct
+    // render is the box - 255 of contrast, matching it pixel for pixel.
+    expect(worstVsBox <= 6.0,
+        QString("%1: each output pixel must be the exact 2x2 box = one level-1 texel (worst delta %2)")
+            .arg(prefix).arg(worstVsBox, 0, 'f', 1));
+    expect(renderContrast >= 250,
+        QString("%1: the block pattern must survive (contrast %2 of %3, box gives %4)")
+            .arg(prefix).arg(renderContrast).arg(255).arg(boxContrast));
+    // Non-vacuity: the two candidates really are far apart on this pattern
+    expect(boxContrast >= 250,
+        QString("%1: the candidates must be distinguishable (box contrast %2)").arg(prefix).arg(boxContrast));
+
+    caseReport(
+        prefix, gFails == caseFails,
+        QString("render contrast %1 (box %2) | delta vs box %3, vs level-1 quarter-phase %4, "
+                "vs aligned level-1 %5")
+            .arg(renderContrast).arg(boxContrast)
+            .arg(worstVsBox, 0, 'f', 1).arg(worstVsPhase, 0, 'f', 1).arg(worstVsFixed, 0, 'f', 1)
+    );
+
+    // A block-uniform pattern cannot see a sub-texel error: every 2x2 block averages to itself, so
+    // the check above pins the BLOCK the read lands in, not the position inside it. A 1-texel
+    // checkerboard is the complement - its exact 2x minification is uniformly 127.5, so ANY phase
+    // error shows up as the pattern reappearing at level 1.
+    {
+        const Img fine = makeOpaquePattern(canvas.width(), 0);
+        const std::vector<uint8_t> out2 = renderLayer(canvas, fine, scale, img::BlendMode_Normal);
+        const ChannelStats st = channelStats(out2, canvas, lo, 0);
+        const int fails2 = gFails;
+        expect(st.contrast() <= 3,
+            QString("M11 1-texel checkerboard at 2x: the exact answer is uniform, a phase error "
+                    "reappears as pattern (contrast %1, values %2..%3)")
+                .arg(st.contrast()).arg(st.minV).arg(st.maxV));
+        expect(near(st.mean, 127.5, 2.0),
+            QString("M11 1-texel checkerboard at 2x: must average to 127.5 (got %1)").arg(st.mean, 0, 'f', 2));
+        caseReport(
+            "M11 1-texel checkerboard at 2x", gFails == fails2,
+            QString("contrast %1 of 255 (a quarter-texel level-1 phase would give 127), mean %2")
+                .arg(st.contrast()).arg(st.mean, 0, 'f', 2)
+        );
+    }
+}
+
+//-------------------------------------------------------------------------------------------------
+// M13: the padding parity, isolated. This is the defect the corpus found at 2x, reproduced under
+// control, and it is a two-line difference: the same artwork, the same sampler, the same zoom, and
+// only the width of the transparent margin around the artwork inside its texture changes.
+//
+// The mip chain is built over the PADDED image, so its texel grids are anchored to the padded
+// image's (0,0). Level 1 is a box of 2 base texels, so it is aligned to EVEN base texel indices:
+// the artwork's own aligned 2x2 blocks fall inside single level-1 texels only if the artwork's
+// origin sits at an even index. With a margin of 1 the origin is at texel 1, every level-1 texel
+// is half artwork and half nothing, and a 2x minified pixel - whose footprint IS one level-1 texel
+// - is answered by a 0.75/0.25 mix of two of them, i.e. four base texels instead of two. A margin
+// of 8 puts the origin at a multiple of 8, which aligns levels 1, 2 and 3.
+void suiteMarginParity() {
+    suiteHeader("M13 texture margin parity: the 2x over-blur, isolated");
+    const QSize canvas(64, 64);
+    const int content = 64;
+    const int lo = 20, hi = 44;
+
+    // The production padding, so this measures the constant the app actually uses rather than a
+    // number copied into a test.
+    expect(img::Util::kSamplingMargin % 2 == 0,
+        QString("M13 the texture margin must be even, or the artwork sits at an odd base texel and "
+                "level 1 is misaligned with it (margin is %1)")
+            .arg(img::Util::kSamplingMargin));
+
+    const char* kLabels[3] = {"margin 0 (even)", "margin 1 (odd - the old padding)", "margin 8 (even, shipped)"};
+    const int kMargins[3] = {0, 1, 8};
+
+    for (int i = 0; i < 3; ++i) {
+        const int margin = kMargins[i];
+        // The artwork: a 1-texel cross. One texel wide, so the exact 2x2 box that covers an arm
+        // holds one bright texel of four (64) and a straddled pair of level-1 texels spreads that
+        // over twice the area at half the value - a difference no rounding can explain away.
+        Img src;
+        src.w = src.h = content + 2 * margin;
+        src.d.assign((size_t)src.w * src.h * 4, 0);
+        for (int y = 0; y < src.h; ++y) {
+            for (int x = 0; x < src.w; ++x) {
+                uint8_t* p = src.at(x, y);
+                const int cx = content / 2 + margin, cy = content / 2 + margin;
+                const bool on = (x == cx || y == cy);
+                const bool inside = (margin <= x && x < src.w - margin && margin <= y && y < src.h - margin);
+                p[0] = p[1] = p[2] = (on && inside) ? 255 : 0;
+                p[3] = inside ? 255 : 0;   // transparent margin, exactly as the padding produces
+            }
+        }
+
+        const std::vector<uint8_t> out = renderLayer(canvas, src, 0.5f, img::BlendMode_Normal);
+
+        // The exact answer: the 2x2 box of the artwork, read off the source. The layer is centred
+        // and covers 32 screen pixels, so screen pixel sx samples artwork texel coordinate
+        // 2 * (sx + 0.5) - 32, and the sampler's coordinate is that plus the margin.
+        double worst = 0;
+        for (int sy = lo; sy < hi; ++sy) {
+            for (int sx = lo; sx < hi; ++sx) {
+                const double u = 2.0 * (sx + 0.5) - 32.0 + margin;
+                const double v = (95.0 - 2.0 * sy) + margin;
+                const double box = bilinearAt(src, u, v, 0);
+                const int got = out[((size_t)sy * canvas.width() + sx) * 4];
+                worst = std::max(worst, std::fabs(got - box));
+            }
+        }
+        const ChannelStats st = channelStats(out, canvas, lo, 0);
+
+        const int caseFails = gFails;
+        const QString label = QString("M13 2x minification, %1").arg(kLabels[i]);
+        if (margin % 2 == 0) {
+            expect(worst <= 3.0,
+                QString("%1: an even margin aligns level 1 with the artwork, so the render is the "
+                        "exact 2x2 box (worst delta %2)").arg(label).arg(worst, 0, 'f', 1));
+        } else {
+            // ...and this is the assertion that would fail the moment the margin is made odd
+            // again: the same artwork, rendered by the same code, stops being the box.
+            expect(worst > 20.0,
+                QString("%1: an ODD margin misaligns level 1 and the render stops being the exact "
+                        "box (worst delta %2 - if this is small the mechanism has changed)")
+                    .arg(label).arg(worst, 0, 'f', 1));
+        }
+        caseReport(
+            label, gFails == caseFails,
+            QString("delta vs the exact 2x2 box %1, contrast %2 of 255").arg(worst, 0, 'f', 1).arg(st.contrast())
+        );
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// M12: the SHAPE of glGenerateMipmap's filter, measured rather than assumed.
+//
+// M2 checks level 1 against a hand-written 2x2 box - but it does so on a CHECKERBOARD, and a
+// checkerboard is the one pattern that cannot tell two symmetric filters apart: every aligned
+// 2x2 block of it averages to the same 127.5, and so does every aligned 4x4 block, so a driver
+// whose level 1 is a 4x4 box passes a 2x2-box comparison exactly. If the filter is wider than a
+// box, minification is softer than the ground truth, which is precisely the 2x over-blur the
+// corpus measured - and this is the measurement that can see it.
+//
+// A single bright texel is the whole kernel: push an impulse through the chain and level l IS the
+// filter's footprint at that level, scaled by the normalization. A 2x2 box answers with exactly
+// one texel holding a quarter of the impulse; anything wider spreads it.
+void suiteMipKernel() {
+    suiteHeader("M12 glGenerateMipmap filter shape (impulse response)");
+    const int size = 64;
+    Img src;
+    src.w = src.h = size;
+    src.d.assign((size_t)size * size * 4, 0);
+    for (int i = 3; i < (int)src.d.size(); i += 4)
+        src.d[i] = 255;                       // opaque, so premultiplying is the identity
+    uint8_t* imp = src.at(size / 2, size / 2);
+    imp[0] = imp[1] = imp[2] = 255;           // one bright texel at (32, 32)
+
+    const std::vector<Img> levels = readChain(src, true);
+
+    for (int l = 1; l <= 3 && l < (int)levels.size(); ++l) {
+        const Img& lv = levels[l];
+        const int ex = (size / 2) >> l, ey = (size / 2) >> l;   // where the impulse lands
+        int nonzero = 0;
+        int peak = 0;
+        double total = 0;
+        for (int i = 0; i < (int)lv.d.size(); i += 4) {
+            const int v = lv.d[i];
+            total += v;
+            if (v > 0) {
+                ++nonzero;
+                peak = std::max(peak, v);
+            }
+        }
+        // The footprint, printable: a 5x5 neighbourhood around the impulse
+        QString foot;
+        for (int y = ey + 2; y >= ey - 2; --y) {     // print top row first, as the image reads
+            for (int x = ex - 2; x <= ex + 2; ++x) {
+                const bool in = x >= 0 && x < lv.w && y >= 0 && y < lv.h;
+                foot += QString("%1 ").arg(in ? lv.at(x, y)[0] : 0, 3);
+            }
+            foot += "| ";
+        }
+
+        const int caseFails = gFails;
+        const QString label = QString("M12 level %1 impulse response").arg(l);
+        // A box filter of width 2 keeps exactly one texel per level, holding 1/4 of the impulse
+        // (255/4 = 64 at level 1, 255/16 = 16 at level 2, 255/64 = 4 at level 3).
+        const double expected = 255.0 / std::pow(4.0, l);
+        expect(nonzero == 1,
+            QString("%1: a 2x2 box keeps exactly one texel per level, this one spreads over %2")
+                .arg(label).arg(nonzero));
+        expect(near(peak, expected, 2.0),
+            QString("%1: the single tap must hold %2, got %3").arg(label).arg(expected, 0, 'f', 1).arg(peak));
+        expect(near(total, expected, 2.0),
+            QString("%1: the filter must be normalized (total %2, expected %3)")
+                .arg(label).arg(total, 0, 'f', 1).arg(expected, 0, 'f', 1));
+        caseReport(
+            label, gFails == caseFails,
+            QString("nonzero %1, peak %2 (box would be %3, total %4) | %5")
+                .arg(nonzero).arg(peak).arg(expected, 0, 'f', 1).arg(total, 0, 'f', 1).arg(foot)
+        );
+    }
+}
+
+// M12b: the same question at the level the render actually uses. The impulse is a point sample;
+// real artwork is broadband, so check the thing that matters - is level 1 of a HIGH-FREQUENCY
+// image the 2x2 box, to the last bit? The checkerboard in M2 is invariant to kernel width; this
+// pseudo-random image is not, and the maximum deviation over the level says how far the driver's
+// filter is from the box on content that has detail at every frequency.
+void suiteMipKernelRandom() {
+    suiteHeader("M12b level 1 of a broadband image vs the exact 2x2 box");
+    const int size = 128;
+    Img src;
+    src.w = src.h = size;
+    src.d.assign((size_t)size * size * 4, 0);
+    uint32_t rng = 0x12345678u;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            uint8_t* p = src.at(x, y);
+            rng = rng * 1664525u + 1013904223u;
+            p[0] = (uint8_t)(rng >> 24);
+            p[1] = (uint8_t)(rng >> 16);
+            p[2] = (uint8_t)(rng >> 8);
+            p[3] = 255;   // opaque: the box is then also the premultiplied box, so no branch
+        }
+    }
+
+    const std::vector<Img> levels = readChain(src, true);
+    const Img box1 = downsamplePremultiplied(src);
+    const Img box2 = downsamplePremultiplied(box1);
+
+    const int d1 = maxAnyChannelDelta(levels[1].d, box1.d);
+    const int d2 = maxAnyChannelDelta(levels[2].d, box2.d);
+    const double m1 = [&] {
+        double s = 0;
+        int n = 0;
+        for (size_t i = 0; i < levels[1].d.size() && i < box1.d.size(); ++i) {
+            s += std::fabs((double)levels[1].d[i] - (double)box1.d[i]);
+            ++n;
+        }
+        return n ? s / n : 0.0;
+    }();
+
+    const int caseFails = gFails;
+    expect(d1 <= 2,
+        QString("M12b level 1 must be the exact 2x2 box of a broadband image (worst channel delta %1)").arg(d1));
+    expect(d2 <= 2,
+        QString("M12b level 2 must be the exact box of level 1 (worst channel delta %1)").arg(d2));
+    caseReport(
+        "M12b 128x128 pseudo-random image", gFails == caseFails,
+        QString("level 1 vs box: max %1, mean %2 | level 2 vs box: max %3").arg(d1).arg(m1, 0, 'f', 3).arg(d2)
+    );
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // Figure generation: renders REAL artwork through the production pipeline so the change can be
 // looked at, not only measured. Driven by --figures; the numbers in the report come from the same
 // code path, but a halved red channel is not a picture.
@@ -2105,6 +2612,209 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
     return 0;
 }
 
+//-------------------------------------------------------------------------------------------------
+// --levels <file> : what the mip chain of a REAL artwork's texture actually contains.
+//
+// M12b shows that glGenerateMipmap is the exact 2x2 box for a 128x128 power-of-two texture. The
+// corpus, however, finds the 2x over-blur on 4500x4500 non-power-of-two PSD layers, where the
+// render is measurably softer than the box. So the property that was verified in the lab has to be
+// verified on the object it is claimed about: read this layer's own level 0 and level 1 back off
+// the GPU and compare level 1 with the box, the 3x3 and the 4x4 average of level 0.
+int runLevels(const QString& aPath) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    const QSize canvas = project.attribute().imageSize();
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    const uint8_t backdrop[3] = {128, 128, 128};
+    fixtures[key]->render(project.objectTree(), camera, 0, backdrop);   // build the textures
+
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+    std::printf("levels %s : canvas %dx%d, %d layers\n", qPrintable(aPath), canvas.width(), canvas.height(),
+                (int)layers.size());
+
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* ikey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!ikey)
+            continue;
+        gl::Texture& tex = ikey->cache().texture();
+        if (tex.id() == 0)
+            continue;
+        const QSize size = tex.size();
+        const int levels = tex.mipmapLevels();
+        // WHERE the artwork sits inside the texture. The mip grid of level l is aligned to
+        // multiples of 2^l in base-texel coordinates, so if the artwork's origin sits at an ODD
+        // texel the artwork's own 2x2 blocks straddle level-1 texels and a level-1 read averages
+        // four texels where the footprint holds two. This number is the whole difference between
+        // the 2x cases that improve and those that get worse.
+        const QVector2D off = ikey->data().imageOffset();
+        std::printf("  texture '%s' %dx%d, %d levels, imageOffset (%.1f, %.1f), image %dx%d\n",
+                    qPrintable(layer->name()), size.width(), size.height(), levels, off.x(), off.y(),
+                    ikey->data().resource()->image().pixelSize().width(),
+                    ikey->data().resource()->image().pixelSize().height());
+        if (levels < 2)
+            continue;
+
+        Img l0;
+        l0.w = size.width(); l0.h = size.height();
+        l0.d = readLevel(tex.id(), 0, size);
+        const QSize s1(std::max(1, size.width() / 2), std::max(1, size.height() / 2));
+        const std::vector<uint8_t> gl1 = readLevel(tex.id(), 1, s1);
+
+        // the box, on the GPU's own level 0 (so this measures the FILTER, not the upload)
+        Img box = downsamplePremultiplied(l0);
+        const auto mix = [&](int aTap) {
+            // aTap x aTap mean of level 0, rounded to nearest: the shape a wider kernel would have
+            Img dst;
+            dst.w = s1.width(); dst.h = s1.height();
+            dst.d.assign((size_t)dst.w * dst.h * 4, 0);
+            const int off = aTap / 2;
+            for (int y = 0; y < dst.h; ++y) {
+                for (int x = 0; x < dst.w; ++x) {
+                    for (int c = 0; c < 4; ++c) {
+                        int sum = 0;
+                        for (int dy = 0; dy < aTap; ++dy) {
+                            for (int dx = 0; dx < aTap; ++dx) {
+                                const int sx = std::max(0, std::min(l0.w - 1, 2 * x - off + dx));
+                                const int sy = std::max(0, std::min(l0.h - 1, 2 * y - off + dy));
+                                sum += l0.at(sx, sy)[c];
+                            }
+                        }
+                        dst.at(x, y)[c] = (uint8_t)((sum + aTap * aTap / 2) / (aTap * aTap));
+                    }
+                }
+            }
+            return dst;
+        };
+
+        const auto report = [&](const char* aWhat, const Img& aRef) {
+            const int mx = maxAnyChannelDelta(gl1, aRef.d);
+            double sum = 0;
+            int n = 0;
+            for (size_t i = 0; i < gl1.size() && i < aRef.d.size(); ++i) {
+                sum += std::fabs((double)gl1[i] - (double)aRef.d[i]);
+                ++n;
+            }
+            std::printf("    level 1 vs %-16s max %3d  mean %.4f\n", aWhat, mx, n ? sum / n : 0.0);
+        };
+        (void)box;
+        report("2x2 box", downsamplePremultiplied(l0));
+        report("3x3 mean", mix(3));
+        report("4x4 mean", mix(4));
+        // ...and, for the shape of it: how much energy the level has lost to smoothing
+        double var1 = 0, var0 = 0;
+        {
+            double m1 = 0, m0 = 0;
+            int n1 = 0, n0 = 0;
+            for (size_t i = 0; i < gl1.size(); i += 4) { m1 += gl1[i]; ++n1; }
+            for (size_t i = 0; i < l0.d.size(); i += 4) { m0 += l0.d[i]; ++n0; }
+            m1 /= std::max(1, n1); m0 /= std::max(1, n0);
+            for (size_t i = 0; i < gl1.size(); i += 4) var1 += (gl1[i] - m1) * (gl1[i] - m1);
+            for (size_t i = 0; i < l0.d.size(); i += 4) var0 += (l0.d[i] - m0) * (l0.d[i] - m0);
+            var1 /= std::max(1, n1); var0 /= std::max(1, n0);
+        }
+        std::printf("    red-channel variance: level 0 %.2f, level 1 %.2f\n", var0, var1);
+    }
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+// --parity <file> <zoom> : the same render at two sub-texel parities of the artwork.
+//
+// At exactly 2x minification the footprint of one output pixel is 2x2 texels, and BOTH sampler
+// states are supposed to produce that box: level 0 because bilinear's four taps land exactly on
+// it, level 1 because the box IS one texel of level 1. That is only true when the 2x2 footprint
+// coincides with a level-1 texel, which needs the footprint to start at an EVEN base-texel index.
+// Move the artwork by a single texel and that parity flips: level 0 still returns the box (its
+// taps follow the footprint wherever it is), but the level-1 read now straddles two level-1 texels
+// and averages four texels where two are wanted.
+//
+// So this test needs no reference image at all. At the parity where the levels line up, enabling
+// mipmaps must change nothing - BEFORE and AFTER are the same box, pixel for pixel. At the other
+// parity they must differ, and by the amount of one extra halving of the filter. One integer shift
+// of the layer separates the two cases and changes nothing else.
+int runParity(const QString& aPath, float aZoom) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+    const QSize canvas = project.attribute().imageSize();
+
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+    std::vector<core::MoveKey*> moves;
+    for (auto* layer : layers) {
+        if (layer->timeLine()) {
+            auto* mv = dynamic_cast<core::MoveKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Move));
+            if (mv)
+                moves.push_back(mv);
+        }
+    }
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    RenderFixture& fx = *fixtures[key];
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(aZoom);
+
+    std::printf("parity %s zoom %.2f, %d layers, %d move keys\n", qPrintable(QFileInfo(aPath).fileName()),
+                aZoom, (int)layers.size(), (int)moves.size());
+
+    // A shift in WORLD units is a shift in base texels, since the layer's image is drawn 1:1 in
+    // world units. One texel is one output pixel at zoom 1 and half of one at zoom 0.5.
+    for (int shift = 0; shift <= 1; ++shift) {
+        if (shift == 1) {
+            for (auto* mv : moves)
+                mv->setPos(mv->pos() + QVector2D(1.0f, 0.0f));
+        }
+
+        setLayerSampling(project, Sampling::MipmapCutoff);
+        const QImage after = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+        setLayerSampling(project, Sampling::Level0);
+        const QImage before = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+
+        const DiffStats d = diffVsRef(after, before);
+        std::printf("  artwork shifted by %d texel | AFTER vs BEFORE: mean %.4f  p99 %d  p999 %d  max %d  over16 %d\n",
+                    shift, d.mean, d.p99, d.p999, d.max, d.over16);
+    }
+    return 0;
+}
+
 int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
     QDir().mkpath(aDir);
     gl::DeviceInfo dev;
@@ -2141,12 +2851,12 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
         // AFTER: shipped (mipmapped minification). Set explicitly before every variant - a sticky
         // one-shot flag here silently made the "mip" render level-0 from the second zoom onward, so
         // before and after came out identical and the comparison proved nothing.
-        setLayerSampling(project, true);
+        setLayerSampling(project, Sampling::MipmapCutoff);
         const QImage mip = figures::readbackToImage(
             fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
         );
         // BEFORE: level-0 only, which is what shipped when no mip chain existed at all.
-        setLayerSampling(project, false);
+        setLayerSampling(project, Sampling::Level0);
         const QImage before = figures::readbackToImage(
             fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
         );
@@ -2459,6 +3169,20 @@ int main(int argc, char** argv) {
         return rc;
     }
 
+    // --parity <file> <zoom>
+    if (argc > 3 && QString(argv[1]) == "--parity") {
+        const int rc = runParity(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toFloat());
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --levels <file>
+    if (argc > 2 && QString(argv[1]) == "--levels") {
+        const int rc = runLevels(QString::fromLocal8Bit(argv[2]));
+        clearRenderFixtures();
+        return rc;
+    }
+
     // --lodscan <anie> <frame>
     if (argc > 3 && QString(argv[1]) == "--lodscan") {
         const int rc = runLodScan(
@@ -2497,6 +3221,11 @@ int main(int argc, char** argv) {
     suiteLodUniformity();
     suiteExportLike();
     suiteExport();
+    suiteTexelPhase();
+    suiteTwoXMechanism();
+    suiteMipKernel();
+    suiteMipKernelRandom();
+    suiteMarginParity();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
