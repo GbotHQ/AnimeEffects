@@ -315,6 +315,10 @@ four quantities on the same pixels:
 | `box` | a CPU box pyramid over those exact uploaded bytes, read bilinearly at the footprint centres - the ideal chain |
 | `tent` | the integral of the TENT reconstruction of the same artwork over the same footprints |
 
+`--eval` also writes `box4_*` columns: the same scene rendered with level 4 forced (see the corpus
+section), which is the ideal box chain for that footprint and the panel that makes "the sampling is
+not what is left" visible rather than argued.
+
 `|render - truth| <= |render - box| + |box - tent| + |tent - truth|`, so the three terms say which
 part is the filter and which part is the implementation. Measured on six real layers (the largest
 layer of six corpus files), channel 0, interior footprints, in 1/255:
@@ -338,6 +342,33 @@ Three things this shows, none of them by construction:
   are the same number to within their own noise (e.g. 3.374 / 3.592 / 3.582), while `render-vs-box` -
   the part the implementation contributes - is 0.2 to 1.1. The chain is doing exactly what a box
   pyramid does; the box pyramid is what disagrees with the integral.
+- **The shipped render IS the ideal box chain at 16x.** `--eval` gained a fourth panel per zoom
+  that renders the same scene with level 4 FORCED (`GL_TEXTURE_MIN_LOD = GL_TEXTURE_MAX_LOD = 4`),
+  i.e. the box pyramid's ideal output regardless of what the zoom would have picked. At 16x the
+  shipped render and that forced render are the same pixels - mean difference 0.000, worst 0 on the
+  first file measured, and across the 29-file corpus a mean of 0.09 of 255 (the residual is the
+  0.001 trilinear blend with level 5 that `--lodscan` reports) - while at 2x, 4x and 8x forcing
+  level 4 is plainly the wrong level (10.5, 9.8 and 7.6 of 255 from the shipped render), which is
+  how the forced column is known to do what it says. So the distance from the truth at 16x is not
+  the sampling: it is what the box pyramid gives, and the figures show it as a fourth column
+  (third and fourth identical at 16x, visibly different below it).
+- **The box pyramid is measurably smoother than the truth, and by how much.** The forced-level-4
+  column measures 4.264 of 255 from the supersampled truth against the shipped render's 4.296
+  (corpus means at 16x): the whole of the remaining error. Per-pixel gradients say the same thing in
+  another way: on real layers the box model keeps 84-87% of the truth's mean per-pixel gradient,
+  13-16% of it gone. The mechanism is the kernel's ends: a box has hard ends and the truth's kernel
+  (tent convolved with the footprint) is tapered, so the two differ by the content's structure at the
+  footprint's boundary - a couple of 8-bit levels on average and up to 60 at a hard step, which is
+  where the largest differences sit. A box reduction is what glGenerateMipmap does and what every
+  mip chain does; matching the tapered kernel instead would mean generating the chain with a
+  different reduction filter, which is a change to the chain, not to the sampling.
+- **The axis imbalance in a figure is the content's, not the render's.** On portrait artwork the
+  render keeps more per-pixel detail along one axis than the other, which looks like anisotropic
+  blur. Measured on 000020.psd (1127x2120): truth gradients 13.863 along x and 10.284 along y, render
+  87.0% and 84.1%, and the ideal box model 86.7% and 83.7% - the box model has the same imbalance. On
+  000063.psd it points the other way (render 78.5% x and 86.6% y, box model 78.7% and 87.3%). An
+  anisotropic kernel would show as the render disagreeing with the box model per axis, and it does
+  not: the two agree to within 0.3 percentage points.
 - **Where `render-vs-box` is large it is not the filter.** Its worst pixels reach 50 to 63 of 255 on
   three files, at footprints whose box texel has partial alpha (e.g. alpha 84 of 255) - the layer's
   silhouette, where the pixel's value is decided by the MESH's geometric coverage, which neither CPU

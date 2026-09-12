@@ -6,14 +6,22 @@ Each figure shows ONE file, at each zoom that was measured:
     <file>  <canvas>  <layers> layers
 
     2x minification   mean/max error vs truth: level 0 a/b   mipmapped c/d   [better|same|worse]
-    [ truth (supersampled) ]   [ level 0 only ]   [ mipmapped: what ships ]   <- WHOLE artwork as
+    [ truth (supersampled) ]   [ level 0 only ]   [ mipmapped ]   [ level 4 forced ]   <- WHOLE artwork as
                                                                                   it appears at this
                                                                                   zoom, at 1:1; red
                                                                                   and blue boxes mark
                                                                                   the crops below
-    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the RED box, x4 nearest
-    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the BLUE box, x4 nearest
+    [ truth ]   [ level 0 ]   [ mipmapped ]   [ level 4 ]   <- crop in the RED box, x4 nearest
+    [ truth ]   [ level 0 ]   [ mipmapped ]   [ level 4 ]   <- crop in the BLUE box, x4 nearest
     ... the same three rows again at 4x, 8x and 16x ...
+
+The fourth column is the same scene with level 4 FORCED (GL_TEXTURE_MIN_LOD = GL_TEXTURE_MAX_LOD =
+4), which is the box pyramid's ideal output for a 16x footprint whatever the zoom would have chosen.
+At 16x the shipped render reads level 4 anyway, so the third and fourth columns are then the same
+pixels; at the other zooms forcing level 4 is visibly the wrong level, which is how the column is
+known to be doing what it says. Read the two together and the question "is the mipmapped panel
+blurrier than the truth because the sampling is wrong, or because a box filter is not the integral"
+has a picture: where columns three and four agree, whatever is left is the filter.
 
 The whole-artwork row is the render at ACTUAL resolution - one figure pixel is one render pixel,
 never resampled, so it is exactly what a screen pixel shows at that zoom, and panels from different
@@ -40,10 +48,9 @@ render_dir, csv_path, out_dir = sys.argv[1:4]
 files = sys.argv[4:]
 
 CROP, MAG, GAP = 128, 4, 14          # MAG is THE constant: every crop, every figure
-PANELW = CROP * MAG                  # crop panel size, identical in every figure
 X0 = 12
-COPX = [X0 + i * (PANELW + GAP) for i in range(3)]
 LINE, CAP = 22, 20
+NCOL = 4                             # truth | level 0 | mipmapped | level 4 forced
 LABEL_H = 4 + 2 * LINE + CAP
 
 try:
@@ -91,12 +98,12 @@ for name in files:
         row = BY_ZOOM.get(key, {}).get(name)
         if not row:
             continue
-        ref, before, after = (load(base, zoom_tag, k) for k in ("ref", "before", "after"))
-        if ref is None or before is None or after is None:
+        ref, before, after, box4 = (load(base, zoom_tag, k) for k in ("ref", "before", "after", "box4"))
+        if ref is None or before is None or after is None or box4 is None:
             continue
-        if not (ref.shape == before.shape == after.shape):
+        if not (ref.shape == before.shape == after.shape == box4.shape):
             continue
-        zooms.append((row, ref, before, after))
+        zooms.append((row, ref, before, after, box4))
     if not zooms:
         continue
 
@@ -104,51 +111,56 @@ for name in files:
     # The artwork panels are pasted at 1:1, so the figure's width follows the artwork: wide for a
     # large canvas, and never resampled to make it fit.
     width, height = 0, LABEL_H
-    for row, ref, before, after in zooms:
-        cw = int(round(int(row["canvas_w"]) * float(row["zoom"])))
-        ch = int(round(int(row["canvas_h"]) * float(row["zoom"])))
-        width = max(width, X0 + 3 * cw + 2 * GAP, X0 + 3 * PANELW + 2 * GAP)
-        height += LINE + ch + CAP + 2 * (PANELW + CAP) + GAP
+    for row, ref, before, after, box4 in zooms:
+        cw = ref.shape[1]
+        ch = ref.shape[0]
+        cr = min(CROP, cw, ch)
+        width = max(width, X0 + NCOL * cw + (NCOL - 1) * GAP,
+                    X0 + NCOL * (cr * MAG) + (NCOL - 1) * GAP)
+        height += LINE + ch + CAP + 2 * (cr * MAG + CAP) + GAP
     fig = Image.new("RGB", (width, height + CAP), (18, 18, 18))
     draw = ImageDraw.Draw(fig)
     draw.text((X0, 8), f"{r0['file']}    {r0['canvas_w']}x{r0['canvas_h']}    "
                        f"{r0['layers']} layers", fill=(255, 214, 110), font=FONT_B)
     draw.text((X0, 8 + LINE), "columns:  supersampled ground truth   |   level 0 only (the behaviour before "
-                              "this work)   |   mipmapped (what ships now).   "
-                              f"Panels are the render at ACTUAL resolution, 1:1;   crops are {CROP} render pixels "
-                              f"at x{MAG} nearest, the same factor in every figure",
+                              "this work)   |   mipmapped (what ships now)   |   level 4 forced (the box "
+                              f"pyramid\'s ideal output).   Panels are the render at ACTUAL resolution, 1:1;   "
+                              f"crops are at x{MAG} nearest, the same factor in every figure",
               fill=(160, 160, 160), font=FONT)
     y = LABEL_H
 
-    for row, ref, before, after in zooms:
+    for row, ref, before, after, box4 in zooms:
         zoom = float(row["zoom"])
-        cw = int(round(int(row["canvas_w"]) * zoom))
-        ch = int(round(int(row["canvas_h"]) * zoom))
-        ox, oy = (ref.shape[1] - cw) // 2, (ref.shape[0] - ch) // 2
+        cw, ch = ref.shape[1], ref.shape[0]
+        ox, oy = 0, 0
 
         win_old = worst_window(before, ref, CROP)
         win_new = worst_window(after, ref, CROP)
 
         def clamp(at):
-            return (min(max(at[0], ox), max(ox, ox + cw - CROP)),
-                    min(max(at[1], oy), max(oy, oy + ch - CROP)))
+            return (min(max(at[0], ox), max(ox, ox + cw - min(CROP, cw))),
+                    min(max(at[1], oy), max(oy, oy + ch - min(CROP, ch))))
 
         at_old, at_new = clamp(win_old), clamp(win_new)
 
         mb, xb = errs(ref, before)
         ma, xa = errs(ref, after)
+        m4, x4 = errs(ref, box4)
+        impl, implmax = errs(after, box4)
         verdict = "same" if abs(ma - mb) < 0.02 else ("better" if ma < mb else "worse")
         colour = (190, 230, 190) if verdict == "better" else (
             (240, 175, 175) if verdict == "worse" else (205, 205, 205)
         )
-        draw.text((X0, y), f"{int(round(1 / zoom))}x minification      mean/max error vs truth:  "
-                           f"level 0  {mb:.2f} / {xb}      mipmapped  {ma:.2f} / {xa}      "
-                           f"[{verdict} than level 0]" if verdict != "same" else "[no change vs level 0]", fill=colour, font=FONT)
+        draw.text((X0, y), f"{int(round(1 / zoom))}x minification      mean/max vs truth:  level 0  "
+                           f"{mb:.2f} / {xb}      mipmapped  {ma:.2f} / {xa}      level 4 forced  {m4:.2f} / {x4}"
+                           f"      |  mipmapped vs level 4 forced (the sampling\'s own error):  {impl:.2f} / {implmax}"
+                           f"      [{verdict} than level 0]" if verdict != "same"
+                  else f"      [no change vs level 0]", fill=colour, font=FONT)
         y += LINE
 
         # ACTUAL RESOLUTION: the render is pasted 1:1, never resampled, so the panel is exactly
         # what a screen pixel shows at this zoom and figures are comparable across files.
-        for i, img in enumerate((ref, before, after)):
+        for i, img in enumerate((ref, before, after, box4)):
             tile = Image.fromarray(img[oy : oy + ch, ox : ox + cw])
             if i == 0:
                 d = ImageDraw.Draw(tile)
@@ -158,20 +170,24 @@ for name in files:
             fig.paste(tile, (X0 + i * (cw + GAP), y))
         y += ch + CAP
 
-        def colx(i, cw):
-            return X0 + i * (cw + GAP) + (cw - PANELW) // 2
+        # Crops on their own grid, four columns wide, each panel exactly MAG x its window: with the
+        # window following the panel, the MAGNIFICATION is the constant and the layout cannot
+        # overlap - the earlier version centred the crops under panels narrower than a crop and the
+        # three panels ran into each other at 8x and 16x.
+        cr = min(CROP, cw, ch)
+        cw2 = cr * MAG
 
         for at, caption, col in (
-            (at_old, f"RED box: {CROP}px of the render at x{MAG} nearest - where level 0 is furthest "
+            (at_old, f"RED box: {cr}px of the render at x{MAG} nearest - where level 0 is furthest "
                      f"from the truth", (255, 100, 100)),
-            (at_new, f"BLUE box: {CROP}px of the render at x{MAG} nearest - where mipmapped is "
+            (at_new, f"BLUE box: {cr}px of the render at x{MAG} nearest - where mipmapped is "
                      f"furthest from the truth", (100, 190, 255)),
         ):
-            for i, img in enumerate((ref, before, after)):
-                tile = Image.fromarray(img[at[1] : at[1] + CROP, at[0] : at[0] + CROP])
-                fig.paste(tile.resize((PANELW, PANELW), Image.NEAREST), (colx(i, cw), y))
-            draw.text((X0, y + PANELW + 3), caption, fill=col, font=FONT)
-            y += PANELW + CAP
+            for i, img in enumerate((ref, before, after, box4)):
+                tile = Image.fromarray(img[at[1] : at[1] + cr, at[0] : at[0] + cr])
+                fig.paste(tile.resize((cw2, cw2), Image.NEAREST), (X0 + i * (cw2 + GAP), y))
+            draw.text((X0, y + cw2 + 3), caption, fill=col, font=FONT)
+            y += cw2 + CAP
         y += GAP
 
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("_") or "artwork"

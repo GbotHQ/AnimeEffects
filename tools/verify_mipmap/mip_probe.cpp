@@ -2936,6 +2936,12 @@ enum class Sampling {
     Level0,           // what shipped before the change: no chain, level-0 minification, aliases
     MipmapCutoff,     // shipped: mipmapped, GL_TEXTURE_MAX_LEVEL pinned to the chain that exists
     MipmapNoCutoff,   // mipmapped, MAX_LEVEL left at GL's default 1000 - the clamp removed
+    // The level-4 read FORCED, whatever the zoom would have picked. At exactly 16x the shipped
+    // render reads level 4 anyway, so this panel is the chain's ideal output for that footprint and
+    // nothing else: if it matches the shipped render, then whatever separates either of them from
+    // the supersampled truth is the box filter itself and not the sampling. Without this there is
+    // no way to see the difference between "the chain is wrong" and "the box is not the integral".
+    ForceLevel4,
 };
 
 const char* samplingName(Sampling aSampling) {
@@ -2943,6 +2949,7 @@ const char* samplingName(Sampling aSampling) {
     case Sampling::Level0: return "level-0 (pre-change)";
     case Sampling::MipmapCutoff: return "mipmapped (shipped)";
     case Sampling::MipmapNoCutoff: return "mipmapped, no MAX_LEVEL cutoff";
+    case Sampling::ForceLevel4: return "level 4 forced (the ideal box chain)";
     }
     return "?";
 }
@@ -2972,12 +2979,26 @@ void setTreeSampling(core::ObjectTree& aTree, Sampling aSampling) {
             tex.setFilter(GL_LINEAR, GL_LINEAR);
             ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
             ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, -1000.0f);   // GL's default
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, 1000.0f);
             ggl.glBindTexture(GL_TEXTURE_2D, 0);
             break;
         case Sampling::MipmapCutoff:
             tex.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
             ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
             ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, tex.mipmapLevels() - 1);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, -1000.0f);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, 1000.0f);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            break;
+        case Sampling::ForceLevel4:
+            // MIN_LOD and MAX_LOD are both 4, so the sampler reads level 4 no matter what the
+            // derivatives say - and MAX_LEVEL must be at least 4 for that level to exist.
+            tex.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+            ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+            ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, std::max(4, tex.mipmapLevels() - 1));
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, 4.0f);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, 4.0f);
             ggl.glBindTexture(GL_TEXTURE_2D, 0);
             break;
         case Sampling::MipmapNoCutoff:
@@ -2986,6 +3007,8 @@ void setTreeSampling(core::ObjectTree& aTree, Sampling aSampling) {
             tex.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
             ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
             ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1000);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_LOD, -1000.0f);
+            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_LOD, 1000.0f);
             ggl.glBindTexture(GL_TEXTURE_2D, 0);
             break;
         }
@@ -3296,6 +3319,8 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     struct Sample {
         double r, t, ax, ay;
     };
+    double gradXRender = 0, gradYRender = 0, gradXTruth = 0, gradYTruth = 0, gradXBox = 0, gradYBox = 0;
+    int gradN = 0;
     std::vector<Sample> samples;
 
     for (int sy = 0; sy < canvas.height(); ++sy) {
@@ -3317,6 +3342,27 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
             const double r = render.pixelColor(sx, sy).red();
             const double t = truth.pixelColor(sx, sy).red();
             const double b = bilinearAt(boxed, ax / (double)step, ay / (double)step, 0);
+
+            // Directional detail, per axis: is the render losing more along x than along y compared
+            // with the truth (which would be an anisotropy - a different kernel per axis), or the
+            // same in both (which is what a separable box pyramid does)? The neighbours are read
+            // from the same images. The box model is evaluated at the neighbouring sample positions
+            // too, so "the filter does this" and "the render does this" can be told apart.
+            if (sx > 0 && sy > 0 && sx + 1 < canvas.width() && sy + 1 < canvas.height()) {
+                const double rxp = render.pixelColor(sx + 1, sy).red();
+                const double ryp = render.pixelColor(sx, sy + 1).red();
+                const double txp = truth.pixelColor(sx + 1, sy).red();
+                const double typ = truth.pixelColor(sx, sy + 1).red();
+                const double bxp = bilinearAt(boxed, (ax + step) / (double)step, ay / (double)step, 0);
+                const double byp = bilinearAt(boxed, ax / (double)step, (ay + step) / (double)step, 0);
+                gradXRender += std::fabs(rxp - r);
+                gradYRender += std::fabs(ryp - r);
+                gradXTruth += std::fabs(txp - t);
+                gradYTruth += std::fabs(typ - t);
+                gradXBox += std::fabs(bxp - b);
+                gradYBox += std::fabs(byp - b);
+                ++gradN;
+            }
             const double tn = tentIntegral(texture, ax - half, ay - half, (int)step, 0);
             samples.push_back({r, t, ax, ay});
             sumRT += std::fabs(r - t);
@@ -3346,7 +3392,7 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     // is not, the pixel's value is decided by the mesh's geometric coverage, which the CPU models
     // do not model at all - so if the large differences live exactly there, that is what they are,
     // and this is the measurement that says so rather than the claim.
-    double sumFull = 0;
+    double sumFull = 0, sumFullRT = 0, sumFullBT = 0;
     int maxFull = 0, nFull = 0;
     for (const Sample& sp : samples) {
         const double boxA = bilinearAt(boxed, sp.ax / (double)step, sp.ay / (double)step, 3);
@@ -3355,6 +3401,8 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
         const double bb = bilinearAt(boxed, sp.ax / (double)step, sp.ay / (double)step, 0);
         const double d = std::fabs(sp.r - bb);
         sumFull += d;
+        sumFullRT += std::fabs(sp.r - sp.t);
+        sumFullBT += std::fabs(bb - sp.t);
         maxFull = std::max(maxFull, (int)std::lround(d));
         ++nFull;
     }
@@ -3410,11 +3458,33 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     );
     if (!worstAt.isEmpty())
         std::printf("    worst render-vs-box %s\n", qPrintable(worstAt));
+    if (gradN > 0) {
+        const double gn = (double)gradN;
+        const double xR = gradXRender / gn, yR = gradYRender / gn;
+        const double xT = gradXTruth / gn, yT = gradYTruth / gn;
+        const double xB = gradXBox / gn, yB = gradYBox / gn;
+        std::printf(
+            "    directional detail, mean |delta| per axis: truth x %.3f y %.3f | render x %.3f y %.3f "
+            "| box model x %.3f y %.3f\n",
+            xT, yT, xR, yR, xB, yB
+        );
+        std::printf(
+            "    detail kept vs truth: render x %.3f%% y %.3f%% | box model x %.3f%% y %.3f%%\n",
+            100.0 * xR / (xT > 1e-9 ? xT : 1.0), 100.0 * yR / (yT > 1e-9 ? yT : 1.0),
+            100.0 * xB / (xT > 1e-9 ? xT : 1.0), 100.0 * yB / (yT > 1e-9 ? yT : 1.0)
+        );
+    }
     std::printf(
         "    render-vs-box: all footprints mean %.3f max %d | fully opaque box texel (%d of %d "
         "pixels): mean %.3f max %d\n",
         sumRB / dd, maxRB, nFull, n, nFull ? sumFull / nFull : 0.0, maxFull
     );
+    if (nFull > 0)
+        std::printf(
+            "    fully opaque footprints only: render-vs-truth %.3f | box-vs-truth %.3f "
+            "(all footprints: %.3f and %.3f)\n",
+            sumFullRT / nFull, sumFullBT / nFull, sumRT / dd, sumBT / dd
+        );
     std::printf(
         "    render-vs-box at sample position: mean %.3f max %d | best offset (%.2f, %.2f): mean %.3f "
         "max %d\n",
@@ -3463,7 +3533,8 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         ts << "file,type,canvas_w,canvas_h,layers,zoom,ss,window,ref_align255,winref_delta,before_mean,before_p99,before_p999,"
               "before_max,before_over16,after_mean,after_p99,after_p999,after_max,after_over16,"
               "nocut_mean,nocut_p99,nocut_p999,nocut_max,nocut_over16,"
-              "change_mean,change_p99,change_over16\n";
+              "change_mean,change_p99,change_over16,box4_mean,box4_max,box4_vs_after_mean,"
+              "box4_vs_after_max\n";
     }
 
     // 2x, 4x, 8x and 16x minification. The deeper two are where a texture padding ring shows: level
@@ -3482,6 +3553,14 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         const QImage before = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
         setLayerSampling(project, Sampling::MipmapNoCutoff); // the clamp removed
         const QImage nocut = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+        // The same footprint with level 4 FORCED: the chain's ideal output for this zoom, which at
+        // 16x is the level the shipped render picks anyway and at the other zooms is not.
+        setLayerSampling(project, Sampling::ForceLevel4);
+        const QImage box4 = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+        // ...and back to the shipped state BEFORE the reference renders: with the LOD clamp in
+        // place the supersampled render would be forced to read level 4 as well and would stop
+        // being a ground truth at all.
+        setLayerSampling(project, Sampling::MipmapCutoff);
 
         // Two samples per base texel at the shallowest, i.e. over-sampled at every zoom: an
         // integral of the footprint rather than a point sample of it. An odd canvas dimension
@@ -3508,6 +3587,7 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         const QImage beforeW = cropCentral(before, window);
         const QImage afterW = cropCentral(after, window);
         const QImage nocutW = cropCentral(nocut, window);
+        const QImage box4W = cropCentral(box4, window);
 
         // A second window, sized to what the artwork covers on the canvas at this zoom, so the
         // saved panels show the whole artwork at ACTUAL resolution at every zoom - at 16x that is
@@ -3523,6 +3603,10 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         const QImage afterFig = cropAt(after, figAt, figW, figH);
         const QImage beforeFig = cropAt(before, figAt, figW, figH);
         const DiffStats db = diffVsRef(beforeW, win), da = diffVsRef(afterW, win), dn = diffVsRef(nocutW, win);
+        const DiffStats d4 = diffVsRef(box4W, win);
+        // what separating the shipped render from the ideal box chain actually costs at this zoom:
+        // at 16x it is the level the render picks, so this is the implementation's own error
+        const DiffStats d4a = diffVsRef(box4W, afterW);
         // |AFTER - BEFORE|: how much the change moved the pixels at all. This is the column the
         // crop picker ranks on, so "which artwork shows the change" is a measured question rather
         // than whoever looked at a figure last.
@@ -3535,6 +3619,8 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
            << "," << QString::number(da.mean, 'f', 4) << "," << da.p99 << "," << da.p999 << "," << da.max << "," << da.over16
            << "," << QString::number(dn.mean, 'f', 4) << "," << dn.p99 << "," << dn.p999 << "," << dn.max << "," << dn.over16
            << "," << QString::number(dc.mean, 'f', 4) << "," << dc.p99 << "," << dc.over16
+           << "," << QString::number(d4.mean, 'f', 4) << "," << d4.max
+           << "," << QString::number(d4a.mean, 'f', 4) << "," << d4a.max
            << "\n";
         ts.flush();
 
@@ -3544,11 +3630,13 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
             afterFig.save(base + "_after.png");
             beforeFig.save(base + "_before.png");
             fig.save(base + "_ref.png");
+            cropAt(box4, figAt, figW, figH).save(base + "_box4.png");
         }
         std::printf(
-            "  %s z=%.4f ss=%d win=%d align=%d refdelta=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d | NO CUTOFF mean=%.3f max=%d | change mean=%.3f over16=%d\n",
+            "  %s z=%.4f ss=%d win=%d align=%d refdelta=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d "
+            "| LEVEL4-FORCED mean=%.3f max=%d | after-vs-forced mean=%.3f max=%d | change mean=%.3f over16=%d\n",
             qPrintable(QFileInfo(aPath).fileName()), zoom, ss, window, refAlign, winrefDelta,
-            db.mean, db.max, da.mean, da.max, dn.mean, dn.max, dc.mean, dc.over16
+            db.mean, db.max, da.mean, da.max, d4.mean, d4.max, d4a.mean, d4a.max, dc.mean, dc.over16
         );
     }
     return 0;
