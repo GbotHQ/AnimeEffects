@@ -163,7 +163,14 @@ void GLCorePaintEngine::drawImage(
 
     auto texture = mTextureCaches.get(key, [=]() {
         auto cache = new TextureCaches::Cache();
-        cache->obj.reset(new QOpenGLTexture(ptr->flipped(Qt::Horizontal | Qt::Vertical)));
+        // Qt's QOpenGLTexture builds a mip chain for this image, and a chain is only correct for
+        // ALPHA-PREMULTIPLIED data: glGenerateMipmap averages the channels independently, so a
+        // straight-alpha image lets the color of transparent texels bleed into the silhouette and
+        // the overlay gets a dark fringe wherever it is minified. QImage::Format_ARGB32_Premultiplied
+        // is that representation (and is what QPixmap already carries), so convert rather than upload
+        // whatever format the caller happened to pass.
+        const QImage premultiplied = ptr->convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        cache->obj.reset(new QOpenGLTexture(premultiplied.flipped(Qt::Horizontal | Qt::Vertical)));
         cache->key = key;
         cache->size = (size_t)ptr->sizeInBytes();
 
@@ -182,7 +189,9 @@ void GLCorePaintEngine::drawPixmap(const QRectF& aRect, const QPixmap& aPixmap, 
 
         auto texture = mTextureCaches.get(key, [=]() {
             auto cache = new TextureCaches::Cache();
-            auto image = ptr->toImage();
+            // QPixmap::toImage() is already premultiplied; converted anyway so the invariant is
+            // stated once, where the mipmapped upload happens, rather than assumed from Qt's canvas
+            auto image = ptr->toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
             cache->obj.reset(new QOpenGLTexture(image.flipped(Qt::Horizontal | Qt::Vertical)));
             cache->key = key;
             cache->size = (size_t)image.sizeInBytes();

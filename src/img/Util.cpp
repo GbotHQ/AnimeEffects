@@ -175,6 +175,31 @@ XCMemBlock Util::prepareForSampling(XCMemBlock& aGrabbedImage, const QSize& aSiz
     return XCMemBlock(dstData, dstSize);
 }
 
+QSize Util::mipAlignedTextureSize(const QSize& aImageSize) {
+    const auto aligned = [](int aSide) {
+        XC_ASSERT(aSide > 0);
+        int alignment = 1;
+        while (alignment * 2 <= aSide && alignment < kMipTextureAlignmentMax)
+            alignment *= 2;
+        return ((aSide + alignment - 1) / alignment) * alignment;
+    };
+    return QSize(aligned(aImageSize.width()), aligned(aImageSize.height()));
+}
+
+XCMemBlock Util::padImageToTextureSize(const uint8* aData, const QSize& aSize, const QSize& aPaddedSize) {
+    XC_ASSERT(aData);
+    XC_ASSERT(aPaddedSize.width() >= aSize.width());
+    XC_ASSERT(aPaddedSize.height() >= aSize.height());
+
+    const size_t size = (size_t)aPaddedSize.width() * aPaddedSize.height() * 4;
+    uint8* dstData = new uint8[size];
+    // transparent black everywhere, so the chain's edge texels average the artwork against
+    // nothing - the same value the sampler's border colour gives on the other two sides
+    std::memset(dstData, 0, size);
+    copyImage(dstData, aPaddedSize, QPoint(0, 0), aData, aSize);
+    return XCMemBlock(dstData, size);
+}
+
 std::pair<XCMemBlock, QRect>
 Util::createTextureImage(const PSDFormat::Header& aHeader, const PSDFormat::Layer& aLayer) {
     // empty image

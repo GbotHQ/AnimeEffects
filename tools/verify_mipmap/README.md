@@ -118,6 +118,22 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   0.66), which is why `img::Util::prepareForSampling` pads by nothing: the transparent neighbour a
   bilinear read needs at the artwork's edge comes from the sampler's `GL_CLAMP_TO_BORDER` border
   colour, which the hardware applies to every mip level.
+- **M15 - level selection across a continuous zoom sweep.** M6/M11 pin the integer zooms, where the
+  level is unambiguous; the interesting case is between them, where trilinear blends two levels. The
+  instrument is a hard edge: a pixel's value is the kernel convolved with the step, sampled at the
+  pixel centre, so the profile's steepest step measures the kernel width - and the kernel width IS
+  2^lambda base texels. The measured step is compared against the same statistic computed on the
+  ideal profile for lambda = -log2(zoom), a blend of the two neighbouring boxes, which removes the
+  statistic's own bias between levels instead of hiding it in a tolerance. 15 zooms from 0.9 to
+  0.0625, i.e. lambda 0.152 to 4.000: measured and predicted agree within 1 of 255 at every one.
+- **M16 - deep-level coverage of the artwork's last rows and columns.** Level l has
+  max(1, floor(size/2^l)) texels, so unless the texture size is a multiple of 2^l the chain drops the
+  last (size mod 2^l) base texels of that axis and the renderer shows that strip of the artwork as
+  the neighbouring block. Checked as arithmetic on the size the app uploads, and once on the GPU by
+  reading the chain back for a 513-texel artwork (odd, and 1 modulo every 2^l - the worst case for
+  the floor rule) and comparing level l against the exact box of the artwork plus its padding: levels
+  1..3 match to 2 of 255. Every level 1..7 now covers the artwork whole; before the size was aligned,
+  a 500-texel artwork would have lost its last 116 rows and columns at level 7.
 
 ## Figures
 
@@ -212,51 +228,68 @@ residual, and is 0 on all 116 rows). The window reference is cross-checked again
 reference wherever that one still fits the 16384 device limit - `winref_delta` is 0 on 21 rows and 1
 on 10, so the two agree.
 
-| minification | mip closer than level 0 | tied | level-0 closer | mean error: level 0 -> mip | worst pixel: level 0 -> mip | pixels off > 16 |
+| minification | mip closer than level 0 | tied | level-0 closer | mean error: level 0 -> shipped | worst pixel: level 0 -> shipped | pixels off > 16 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 2x | 7 | 5 | 17 | 0.905 -> 1.186 | 19.5 -> 25.8 | 858 -> 1475 |
-| 4x | 15 | 2 | 12 | 2.543 -> 2.362 | 54.8 -> 44.3 | 4911 -> 4736 |
-| 8x | 28 | 0 | 1 | 4.969 -> 3.382 | 107.2 -> 65.6 | 10437 -> 7301 |
-| 16x | 29 | 0 | 0 | 7.902 -> 4.577 | 142.7 -> 75.2 | 16338 -> 9775 |
+| 2x | 8 | 6 | 15 | 0.905 -> 1.074 | 20.1 -> 21.9 | 861 -> 1122 |
+| 4x | 16 | 1 | 12 | 2.543 -> 2.095 | 54.5 -> 36.7 | 4911 -> 3880 |
+| 8x | 27 | 0 | 2 | 4.969 -> 3.089 | 107.1 -> 57.0 | 10444 -> 6290 |
+| 16x | 29 | 0 | 0 | 7.902 -> 4.296 | 142.5 -> 63.5 | 16332 -> 8966 |
 
-So: an upgrade wherever level-0 sampling aliases (everything from 8x), a wash at 4x, and a small,
-measured cost at exactly 2x - level 1 is a wider kernel than level 0 there when the footprint is not
-centred on a texel boundary, so it smooths where level 0 was already the exact box. Every one of
-those 2x differences is under one 8-bit level on most files.
+So: an upgrade wherever level-0 sampling aliases (everything from 8x, and 27 of 29 files at 8x),
+a wash to slightly better at 4x, and a small measured cost at exactly 2x - level 1 is a wider kernel
+than level 0 there when the footprint is not centred on a texel boundary, so it smooths where level 0
+was already the exact box. Most of those 2x differences are under one 8-bit level.
 
-### What removing the padding did, measured the same way
+### What the two texture-geometry fixes did, measured the same way
 
-Removing the 8-texel padding ring is a provable fix to the level grids (M14) and it changes the
-render materially at 16x - the two builds' 16x panels differ by a mean of 3.4 to 5.8 of 255 - but the
-corpus does not show a clear win:
+Both fixes are in the upload, not in the sampling, and both show up only where the level grids are
+wrong. Three configurations of the same probe over the same 29 files against the same truth:
 
-| 16x minification | mip mean error | worst pixel |
-| --- | --- | --- |
-| level 0 | 7.902 | 142.7 |
-| mipmapped, 8-texel padding ring | 4.429 | 70.4 |
-| mipmapped, no padding (shipped) | 4.577 | 75.2 |
+| minification | level 0 | 8-texel ring (before) | no ring | no ring + size-aligned (shipped) |
+| --- | --- | --- | --- | --- |
+| 2x mean / worst pixel | 0.905 / 20.1 | 1.186 / 25.8 | 1.185 / 26.1 | **1.074 / 21.9** |
+| 4x mean / worst pixel | 2.543 / 54.5 | 2.362 / 44.3 | 2.356 / 44.3 | **2.095 / 36.7** |
+| 8x mean / worst pixel | 4.969 / 107.1 | 3.382 / 65.6 | 3.383 / 65.5 | **3.089 / 57.0** |
+| 16x mean / worst pixel | 7.902 / 142.5 | 4.429 / 70.4 | 4.577 / 75.2 | **4.296 / 63.5** |
 
-The fix is closer to the truth on 9 of the 29 files, further on 12, tied on 8. On the individual
-files inspected panel by panel it halves the error (000145.psd 4.82 -> 2.63, 000042.psd 2.96 ->
-2.29) and on one it is worse (000020.psd 4.94 -> 5.61). That is not a contradiction of M14, it is a
-statement about what dominates the 16x error: the remaining 4.5 of 255 is mostly the difference
-between a box filter and the tent-weighted integral the truth represents, which both builds share,
-while the padding's half-texel misalignment - provable, and 111 of 255 worst-case on a hard edge -
-costs about as much as the residual grid stretch below on real (smooth) artwork.
+Against level 0 the shipped chain is closer on 8 of 29 files at 2x, 16 at 4x, 27 at 8x and 29 at 16x.
 
-### The third condition, still open: the level grid must not be stretched
+Two things are worth reading off that table rather than off a summary. Removing the ring alone was a
+wash at 16x - 9 files better, 12 worse - because the size stretch it left behind costs the same
+order, so the two defects partly cancelled file by file. Aligning the size as well improves on the
+ring at every zoom, 2x included, where the small cost of the change is halved (1.186 -> 1.074): part
+of what looked like "level 1 is a wider kernel than level 0 at exactly 2x" was the level-1 grid being
+stretched on artwork whose side is odd. What remains at 16x - about 4.3 of 255 mean - is mostly the
+difference between a box filter and the tent-weighted integral the truth represents, which no mip
+chain reproduces, plus whatever stretch is left beyond the alignment cap.
+
+### The third condition: the grid must not be stretched either (fixed, with a documented cap)
 
 Alignment is not the only condition on these grids. Level *l* has `floor(size / 2^l)` texels and
 normalized texture coordinates map [0,1] onto them, so unless the texture size is a multiple of 2^*l*
-the level-*l* grid is stretched over the artwork: each of its texels then covers slightly more than
-2^*l* base texels, and the displacement grows linearly to `size mod 2^l` base texels at the far edge.
-Artwork sizes are arbitrary, so this is the rule, not the exception. M14 measures it at 16x and 32x
-on random content: size 512 (a multiple of 32) gives worst 1.3 / mean 0.49 against the exact box,
-size 504 gives worst 14.1 / mean 3.58, size 500 worst 14.6 / mean 3.78 - the same order as the
-padding bug it replaces, and the two can partly cancel, which is why the corpus washes out instead of
-improving cleanly. Fixing it means padding the texture to a multiple of 2^*l* **with the content at
-the origin**, which grows the layer's rect (what the selection box and layout use) unless the mesh's
-texture mapping is decoupled from the texture size - a geometry change, not a constant.
+the level-*l* grid is stretched over the artwork - each of its texels covers slightly more than 2^*l*
+base texels, the displacement growing linearly to `size mod 2^l` base texels at the far edge - and the
+chain drops the last `size mod 2^l` base texels of that axis entirely, so the artwork's own last rows
+and columns are represented by the neighbouring block.
+
+Both are fixed in the upload: `img::Util::mipAlignedTextureSize` pads the texture to the right and
+bottom, up to a multiple of the largest power of two that fits in that side (capped at 128), and the
+artwork stays at the origin, so alignment is untouched. It costs no geometry: the mesh and the layer's
+rect come from the image, while the shader divides texture coordinates by the texture's size, so the
+artwork's coordinates land on [0, size/padded] by themselves. Each axis is aligned separately, so a
+1-pixel-wide image is not padded out to a cap-sized texture; a 1000-pixel side goes to 1024, a
+2049-pixel side to 2112.
+
+M14 measures the result against the whole expected chain rather than a hand-picked box: the render
+must equal `boxLevel()` of the texture the app would upload, sampled bilinearly at the footprint
+centre. Sizes 512, 504, 500 and 513, levels 2 to 5, with and without a ring: worst delta 1.5 to 2.5 of
+255, mean at most 1.24 - 8-bit rounding - and the same at every size, which is the part that used to
+fail.
+
+The cap is a real limit. Beyond level 7 (128x minification) the stretch returns, bounded by one
+level-*l* texel - under one screen pixel at that zoom - and the level's coverage of the artwork is
+again short by up to 2^*l* texels, also under one screen pixel. Lifting it entirely would mean padding
+each side up to a power of two, which for a 2049-pixel side costs 4x the texture memory.
 
 ## Independent ground truth: supersampling
 
@@ -399,11 +432,12 @@ Also outstanding, and measured rather than fixed: the level-grid *stretch* descr
 corpus verdict". It needs the texture padded to a multiple of 2^*l* with the content at the origin,
 which interacts with the layer's rect and the mesh's texture mapping.
 
-Also outstanding, from inspection rather than measurement: the editor overlay path
-(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear` and does not
-premultiply them. Qt generates the chain, so a `QImage` in a straight-alpha format gets the classic
-dark-fringe chain. This is upstream code, untouched by this branch, and its images are whatever
-Qt hands the paint engine; it has no measurement here at all.
+Also outstanding, closed by construction rather than by measurement: the editor overlay path
+(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear`, so Qt builds a
+chain for whatever the paint engine hands it. It now converts to
+`QImage::Format_ARGB32_Premultiplied` before the upload, the representation a chain is correct for,
+but there is no pixel-level measurement of that path here - it only runs inside a widget with a
+QPainter, which this harness does not drive.
 
 A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale
 changes. At 4x minification the quad is smaller than the crop, so the backdrop averaged in and

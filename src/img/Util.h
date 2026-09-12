@@ -52,6 +52,36 @@ public:
     /// to bleed into under a clamping wrap mode.
     static XCMemBlock prepareForSampling(XCMemBlock& aGrabbedImage, const QSize& aSize);
 
+    /// The largest power of two a texture side is padded up to (see mipAlignedTextureSize).
+    static const int kMipTextureAlignmentMax = 128;
+
+    /// The size the layer image must be UPLOADED at, for the mip chain to be a box pyramid that
+    /// lines up with the artwork at every level.
+    ///
+    /// prepareForSampling() keeps the artwork at the texture's origin, which is the alignment
+    /// condition for level l (the origin has to be a multiple of 2^l). Alignment is not the whole
+    /// condition: level l has floor(size / 2^l) texels and normalized texture coordinates map [0,1]
+    /// onto them, so unless the size is a multiple of 2^l the level-l grid is STRETCHED over the
+    /// artwork - each of its texels covers a little more than 2^l base texels, and the displacement
+    /// grows linearly to (size mod 2^l) base texels at the far edge. The chain also drops the last
+    /// (size mod 2^l) base texels of that axis entirely, so the artwork's last rows and columns are
+    /// represented by the neighbouring block instead of by themselves. Padding the upload up to a
+    /// multiple of a power of two fixes both, and costs nothing in geometry: the mesh and the
+    /// layer's rect come from the IMAGE (still aSize), while the shader divides texture coordinates
+    /// by the TEXTURE's size (LayerNode sets uImageSize from areaTexture()->size()), so the
+    /// artwork's texture coordinates land on [0, size/padded] by themselves.
+    ///
+    /// The padding is transparent and sits to the right and bottom, which is where it is needed:
+    /// the sampler's border colour covers the other two sides. Each axis is aligned to the largest
+    /// power of two that fits in it, capped, so a 1-pixel-wide image is not padded out to a
+    /// cap-sized texture, a 1000-pixel side goes to 1024, and a 2049-pixel side goes to 2112.
+    /// Levels up to the cap (128x minification) are then exact; beyond it the stretch returns but
+    /// stays under one screen pixel, which is what the cap buys.
+    static QSize mipAlignedTextureSize(const QSize& aImageSize);
+
+    /// Copies aSize texels of aData into the top-left of a zeroed aPaddedSize buffer.
+    static XCMemBlock padImageToTextureSize(const uint8* aData, const QSize& aSize, const QSize& aPaddedSize);
+
     static void
     copyImage(uint8* aDst, const QSize& aDstSize, const QPoint& aTopLeft, const uint8* aSrc, const QSize& aSrcSize);
 

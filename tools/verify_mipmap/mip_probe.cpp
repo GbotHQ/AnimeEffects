@@ -1566,6 +1566,46 @@ double bilinearAt(const Img& aLevel, double aTX, double aTY, int aChannel) {
 // Copies a source (straight alpha, opaque) into the level-0 reference the comparisons read.
 Img asLevel(const Img& aSrc) { return aSrc; }
 
+// The expected chain: what a correct box pyramid over aTexture would hold at aLevel, computed on
+// the CPU from the same texels the GPU was given. Level l+1 is the exact 2x2 box of level l (M12
+// measured glGenerateMipmap doing precisely that), so this is not a model of a driver - it is the
+// definition, evaluated independently of the rendering path. Requires every side to divide by 2^l,
+// which is what mipAlignedTextureSize guarantees; the assertion is the point, not a convenience:
+// a side that does not divide is exactly the stretched-grid defect this models.
+Img boxLevel(const Img& aLevel0, int aLevel) {
+    XC_ASSERT(aLevel >= 0);
+    Img cur = aLevel0;
+    for (int l = 0; l < aLevel; ++l) {
+        XC_ASSERT(cur.w % 2 == 0 && cur.h % 2 == 0);
+        Img next;
+        next.w = cur.w / 2;
+        next.h = cur.h / 2;
+        next.d.assign((size_t)next.w * next.h * 4, 0);
+        for (int y = 0; y < next.h; ++y) {
+            for (int x = 0; x < next.w; ++x) {
+                for (int c = 0; c < 4; ++c) {
+                    int sum = 0;
+                    for (int dy = 0; dy < 2; ++dy)
+                        for (int dx = 0; dx < 2; ++dx)
+                            sum += cur.at(x * 2 + dx, y * 2 + dy)[c];
+                    next.at(x, y)[c] = (uint8_t)((sum + 2) / 4);
+                }
+            }
+        }
+        cur = next;
+    }
+    return cur;
+}
+
+// The value a correct chain returns for a sample at texture coordinate (aTX, aTY) - texel units,
+// GL convention (integer coordinates are texel boundaries) - asked at aLevel, read with the same
+// bilinear the sampler uses. glGenerateMipmap's box is exact (M12), so the only thing this does not
+// model is the driver's own arithmetic.
+double expectedChainSample(const Img& aTexture, int aLevel, double aTX, double aTY, int aChannel) {
+    const Img level = boxLevel(aTexture, aLevel);
+    return bilinearAt(level, aTX / (double)(1 << aLevel), aTY / (double)(1 << aLevel), aChannel);
+}
+
 void suiteTexelPhase() {
     suiteHeader("M10 texel phase: is a 1:1 render read at texel centres?");
     const QSize canvas(64, 64);
@@ -1996,20 +2036,22 @@ void suiteMarginDepth() {
         }
     }
 
-    // A second, independent condition on the same grids. Level l has floor(size/2^l) texels, and
-    // normalized texture coordinates map [0,1] onto those texels, so unless the texture size is a
-    // multiple of 2^l the level-l grid is STRETCHED over the artwork: level-l texel k then covers
-    // k*size/S_l base texels instead of 2^l*k, and the error grows linearly to (size mod 2^l) base
-    // texels at the far edge. That is a geometric shift of up to one level-l texel - one screen
-    // pixel at that zoom - and it is present whether or not the texture is padded, which is why the
-    // corpus does not move much when only the padding is removed. Measured here at levels 4 and 5
-    // for content sizes that are and are not multiples of 2^l.
+    // A second, independent condition on the same grids, measured against the whole expected chain
+    // rather than against a hand-picked box. Level l has floor(size/2^l) texels over normalized
+    // [0,1], so unless the size is a multiple of 2^l the level grid is STRETCHED over the artwork
+    // (each texel covers slightly more than 2^l base texels, the displacement growing to
+    // size mod 2^l base texels at the far edge) and the chain drops the last size mod 2^l base
+    // texels of that axis entirely, so the artwork's last rows and columns are represented by the
+    // neighbouring block instead of by themselves. Both are fixed by uploading a texture whose size
+    // divides evenly (img::Util::mipAlignedTextureSize, applied by ImageKey), which is what this
+    // measures: the render must equal boxLevel() of the texture the app would upload, sampled
+    // bilinearly at the footprint centre, with the artwork's own last texel included.
     {
-        const int kSizes[3] = {512, 504, 500};   // 512 = 32*16, 504 = 63*8, 500 = 31*16 + 4
-        for (int l = 4; l <= 5; ++l) {
+        const int kSizes[4] = {512, 504, 500, 513};
+        for (int l = 2; l <= 5; ++l) {
             const int step = 1 << l;
             const float zoom = 1.0f / (float)step;
-            for (int si = 0; si < 3; ++si) {
+            for (int si = 0; si < 4; ++si) {
                 const int size = kSizes[si];
                 for (int mi = 0; mi < 2; ++mi) {
                     const int margin = (mi == 0) ? 0 : 8;
@@ -2025,9 +2067,25 @@ void suiteMarginDepth() {
                             p[3] = 255;
                         }
                     }
+
+                    // the buffer the app uploads: the image padded up to the aligned texture size,
+                    // transparent to the right and bottom
+                    const QSize texSize = img::Util::mipAlignedTextureSize(QSize(src.w, src.h));
+                    Img texture;
+                    texture.w = texSize.width();
+                    texture.h = texSize.height();
+                    texture.d.assign((size_t)texture.w * texture.h * 4, 0);
+                    for (int y = 0; y < src.h; ++y)
+                        for (int x = 0; x < src.w; ++x)
+                            for (int c = 0; c < 4; ++c)
+                                texture.at(x, y)[c] = src.at(x, y)[c];
+
                     const std::vector<uint8_t> out = renderLayer(canvas, src, zoom, img::BlendMode_Normal);
+                    // the expected level, built ONCE: expectedChainSample() rebuilds the whole
+                    // pyramid from level 0, which per pixel is quadratic
+                    const Img level = boxLevel(texture, l);
                     double worst = 0, sum = 0;
-                    int n = 0;
+                    int n = 0, worstSx = -1, worstSy = -1;
                     for (int sy = 0; sy < canvas.height(); ++sy) {
                         for (int sx = 0; sx < canvas.width(); ++sx) {
                             const double acx =
@@ -2035,31 +2093,48 @@ void suiteMarginDepth() {
                             const double acy =
                                 (canvas.height() - 0.5 - sy) * step - (canvas.height() * 0.5) * step
                                 + size * 0.5;
+                            // Fully covered footprints only, i.e. the interior. The outermost row
+                            // and column of the layer are excluded because the layer's MESH insets
+                            // its border vertices, so the sample position there is not the one the
+                            // geometry implies - every suite here excludes that band (M6's crop, the
+                            // golden suite's borderCrop). What happens at the artwork's own last
+                            // rows and columns is not measured through the render at all but in the
+                            // chain, by M16, where no mesh is involved.
                             const int bx = (int)std::lround(acx - step * 0.5);
                             const int by = (int)std::lround(acy - step * 0.5);
                             if (bx < 0 || by < 0 || bx + step > size || by + step > size)
                                 continue;
-                            double box = 0;
-                            for (int dy = 0; dy < step; ++dy)
-                                for (int dx = 0; dx < step; ++dx)
-                                    box += src.at(bx + dx + margin, by + dy + margin)[0];
-                            box /= (double)(step * step);
-                            const double d = std::fabs(out[((size_t)sy * canvas.width() + sx) * 4] - box);
-                            worst = std::max(worst, d);
+                            const double expected =
+                                bilinearAt(level, (acx + margin) / (double)step,
+                                           (acy + margin) / (double)step, 0);
+                            const double d =
+                                std::fabs(out[((size_t)sy * canvas.width() + sx) * 4] - expected);
+                            if (d > worst) {
+                                worst = d;
+                                worstSx = sx;
+                                worstSy = sy;
+                            }
                             sum += d;
                             ++n;
                         }
                     }
                     if (n)
                         sum /= n;
+                    const QString label = QString("M14 size %1, level %2 (%3x), %4")
+                                              .arg(size).arg(l).arg(step)
+                                              .arg(mi == 0 ? "margin 0" : "margin 8");
+                    expect(worst <= 12.0 && n > 100,
+                        QString("%1: the render must be the expected chain over the texture the app "
+                                "uploads (worst delta %2, %3 pixels)")
+                            .arg(label).arg(worst, 0, 'f', 1).arg(n));
                     caseReport(
-                        QString("M14 size %1, level %2 (%3x), %4")
-                            .arg(size).arg(l).arg(step).arg(mi == 0 ? "margin 0 (shipped)" : "margin 8"),
-                        true,
-                        QString("size = %1*%2 + %3, so the level grid is stretched by %3 base texels "
-                                "| worst delta vs the exact box %4, mean %5, %6 pixels")
-                            .arg(size / step).arg(step).arg(size % step)
-                            .arg(worst, 0, 'f', 1).arg(sum, 0, 'f', 2).arg(n)
+                        label,
+                        worst <= 12.0 && n > 100,
+                        QString("size = %1*%2 + %3, uploaded %4x%4 | worst delta vs the expected "
+                                "chain %5 (at %6,%7), mean %8, %9 pixels")
+                            .arg(size / step).arg(step).arg(size % step).arg(texSize.width())
+                            .arg(worst, 0, 'f', 1).arg(worstSx).arg(worstSy)
+                            .arg(sum, 0, 'f', 2).arg(n)
                     );
                 }
             }
@@ -2067,6 +2142,234 @@ void suiteMarginDepth() {
     }
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M15: is the level actually selected lambda = -log2(zoom), at zooms that are not powers of two?
+//
+// M6/M11 pin the integer zooms, where the level is unambiguous; between them trilinear blends two
+// levels, and that is where a level-selection error hides. The instrument is the step response of a
+// hard edge: a screen pixel's value is the kernel convolved with the step, sampled at the pixel
+// centre, so the edge profile's steepest step measures the kernel's width, and the kernel's width
+// IS 2^lambda base texels - one footprint. For the ideal chain the kernel is a blend of the two
+// neighbouring box filters, so the whole profile can be predicted from the zoom alone:
+//   lambda = -log2(zoom), l = floor(lambda), t = lambda - l
+//   K = (1-t)*box(2^l * zoom px) + t*box(2^(l+1) * zoom px), E = step response of K
+//   predicted value at pixel centre x = E(x - edge)
+// The comparison is against that prediction rather than against lambda directly, because the
+// steepest-step statistic is itself biased between levels (it is a discrete sample of a
+// piecewise-linear profile); comparing the same statistic on both sides removes the bias instead of
+// hiding it in a tolerance. Measured at 15 zooms from 0.9 down to 0.05, i.e. lambda from 0.15 to
+// 4.3, including the whole of levels 1, 2, 3 and 4.
+void suiteLodSweep() {
+    suiteHeader("M15 level selection across a continuous zoom sweep");
+    const QSize canvas(64, 64);
+    const int content = 1024;   // long enough that the half-plane edge is at the canvas centre at
+                                // every zoom in the sweep
+    Img src;
+    src.w = src.h = content;
+    src.d.assign((size_t)content * content * 4, 0);
+    for (int y = 0; y < content; ++y) {
+        for (int x = 0; x < content; ++x) {
+            uint8_t* p = src.at(x, y);
+            p[0] = p[1] = p[2] = (x < content / 2) ? 0 : 255;
+            p[3] = 255;
+        }
+    }
+
+    const float kZooms[15] = {0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.42f, 0.35f, 0.3f, 0.25f,
+                              0.2f, 0.17f, 0.125f, 0.1f, 0.071f, 0.0625f};
+
+    for (int zi = 0; zi < 15; ++zi) {
+        const double zoom = kZooms[zi];
+        const double lambda = -std::log2(zoom);
+        const int l = (int)std::floor(lambda);
+        const double t = lambda - l;
+        const double w1 = std::pow(2.0, l) * zoom;       // kernel widths in screen pixels
+        const double w2 = std::pow(2.0, l + 1) * zoom;
+
+        // step response of the box blend, per axis, in normalised units
+        const auto boxStep = [](double aX, double aW) {
+            const double half = aW * 0.5;
+            if (aX <= -half)
+                return 0.0;
+            if (aX >= half)
+                return 1.0;
+            return (aX + half) / aW;
+        };
+        const auto profile = [&](double aX) {
+            return 255.0 * ((1.0 - t) * boxStep(aX, w1) + t * boxStep(aX, w2));
+        };
+
+        const std::vector<uint8_t> out = renderLayer(canvas, src, zoom, img::BlendMode_Normal);
+
+        // the artwork's centre - the edge - lands on the canvas centre, a pixel boundary
+        const double edge = canvas.width() * 0.5;
+        int measured = 0, predicted = 0;
+        for (int sy = 8; sy < canvas.height() - 8; ++sy) {
+            for (int sx = 8; sx < canvas.width() - 8; ++sx) {
+                const int a = out[((size_t)sy * canvas.width() + sx) * 4];
+                const int b = out[((size_t)sy * canvas.width() + sx + 1) * 4];
+                const int mp = (int)std::lround(profile(sx + 1.5 - edge) - profile(sx + 0.5 - edge));
+                measured = std::max(measured, std::abs(b - a));
+                predicted = std::max(predicted, std::abs(mp));
+            }
+        }
+
+        // the width the measurement implies, for the record: w = 255 / steepest step
+        const double wMeasured = measured > 0 ? 255.0 / measured : 0.0;
+        const double lambdaFromWidth = wMeasured > 0 ? std::log2(wMeasured / zoom) : -1.0;
+
+        const QString label = QString("M15 zoom %1 (2^-%2)").arg(zoom, 0, 'f', 4).arg(lambda, 0, 'f', 2);
+        const int caseFails = gFails;
+        expect(std::abs(measured - predicted) <= 12,
+            QString("%1: the edge's steepest step must be the one the ideal chain predicts for "
+                    "lambda = -log2(zoom) (measured %2, predicted %3 of 255)")
+                .arg(label).arg(measured).arg(predicted));
+        expect(l == (int)std::floor(-std::log2(zoom)) && measured > 0,
+            QString("%1: sanity - the sweep must actually be sampling a level").arg(label));
+        caseReport(
+            label, gFails == caseFails,
+            QString("lambda=%1 level %2 blend %3 | kernel %4..%5 px | steepest step measured %6 "
+                    "predicted %7 | width implies lambda %8")
+                .arg(lambda, 0, 'f', 3).arg(l).arg(t, 0, 'f', 3)
+                .arg(w1, 0, 'f', 3).arg(w2, 0, 'f', 3)
+                .arg(measured).arg(predicted).arg(lambdaFromWidth, 0, 'f', 2)
+        );
+    }
+}
+
+//-------------------------------------------------------------------------------------------------
+// M16: are the artwork's own last rows and columns represented by the deepest levels?
+//
+// This is the third condition on the level grids and it is arithmetic, so it is checked as
+// arithmetic - and then checked once on the GPU, on the chain itself, where no mesh geometry or
+// sampling position can confuse it. Level l has max(1, floor(size / 2^l)) texels, which together
+// cover base texels [0, 2^l * floor(size / 2^l)) of that axis. Unless the TEXTURE size is a
+// multiple of 2^l that is less than the artwork, so the last (size mod 2^l) base texels of the
+// axis are not in the level at all: the chain dropped them, and the renderer represents that strip
+// of the artwork with the neighbouring block. The artwork's origin also has to stay at the
+// texture's origin (M14), which is why the fix is to pad the texture to the right and bottom
+// (img::Util::mipAlignedTextureSize) rather than to add a ring on all four sides.
+void suiteDeepCoverage() {
+    suiteHeader("M16 deep-level coverage of the artwork's last rows and columns");
+    const int kSizes[4] = {512, 513, 500, 504};
+    const int kMargins[2] = {0, 8};
+    const int kMaxLevel = 7;   // the cap mipAlignedTextureSize documents
+
+    for (int si = 0; si < 4; ++si) {
+        const int size = kSizes[si];
+        for (int mi = 0; mi < 2; ++mi) {
+            const int margin = kMargins[mi];
+            const int imageSide = size + 2 * margin;
+            const QSize aligned = img::Util::mipAlignedTextureSize(QSize(imageSide, imageSide));
+
+            // what the texture covers at level l, as base texels, for the size actually uploaded
+            // and for the size the code used to upload (the image itself)
+            int alignedCover[kMaxLevel + 1] = {0};
+            int unalignedCover[kMaxLevel + 1] = {0};
+            for (int l = 0; l <= kMaxLevel; ++l) {
+                const int lev = 1 << l;
+                alignedCover[l] = lev * std::max(1, aligned.width() / lev);
+                unalignedCover[l] = lev * std::max(1, imageSide / lev);
+            }
+            const int contentEnd = margin + size;   // one past the artwork's last texel
+
+            const int caseFails = gFails;
+            const QString label = QString("M16 artwork %1 texels, margin %2").arg(size).arg(margin);
+
+            expect(aligned.width() >= imageSide && aligned.width() % 32 == 0,
+                QString("%1: the uploaded texture (%2) must contain the image (%3) and divide by "
+                        "2^l up to the cap")
+                    .arg(label).arg(aligned.width()).arg(imageSide));
+
+            // What the unpadded upload would have lost, if anything. The old code's image carried
+            // a ring, so its size was larger than the artwork and the floor rule was harmless for
+            // the margin cases; with no ring the image IS the artwork, and any size that is not a
+            // multiple of 2^l loses the artwork's own last rows and columns to the deepest levels.
+            int worstLoss = 0;
+            QString lossAt = "nothing (the size divides evenly at every level)";
+            for (int l = 1; l <= kMaxLevel; ++l) {
+                if (unalignedCover[l] < contentEnd) {
+                    const int lost = contentEnd - unalignedCover[l];
+                    if (lost > worstLoss) {
+                        worstLoss = lost;
+                        lossAt = QString("level %1 (%2x) would have covered %3 of %4 texels, dropping "
+                                         "the artwork's last %5 rows and columns")
+                                     .arg(l).arg(1 << l).arg(unalignedCover[l]).arg(contentEnd).arg(lost);
+                    }
+                }
+            }
+            // Only the shipped configuration has power here: the old code's ring made its image
+            // larger than the artwork, so it covered the artwork (and paid for it with the
+            // misalignment M14 measures) - with no ring the image is the artwork, and an
+            // unaligned size drops the artwork's own last rows and columns.
+            if (mi == 0 && size % (1 << kMaxLevel) != 0)
+                expect(worstLoss > 0,
+                    QString("%1: an image side of %2 texels does not divide by the level widths, so "
+                            "the unpadded upload had to be dropping artwork texels - if it was not, "
+                            "this measurement has no power")
+                        .arg(label).arg(imageSide));
+
+            caseReport(
+                label, gFails == caseFails,
+                QString("uploaded %1x%1, every level 1..%2 covers the artwork whole (%3 texels "
+                        "including its last row and column); unpadded it would have been %4")
+                    .arg(aligned.width()).arg(kMaxLevel).arg(contentEnd).arg(lossAt)
+            );
+        }
+    }
+
+    // ...and once on the GPU, on the chain the app's upload actually produces, so the arithmetic
+    // above is anchored to what glGenerateMipmap is handed. Level l of a correctly sized texture is
+    // the exact box of the texels below it, including the artwork's last row and column.
+    {
+        const int size = 513;   // odd, and 1 modulo every 2^l: the worst case for the floor rule
+        const int margin = 0;
+        const QSize aligned = img::Util::mipAlignedTextureSize(QSize(size + 2 * margin, size + 2 * margin));
+        Img src;
+        src.w = aligned.width();
+        src.h = aligned.height();
+        src.d.assign((size_t)src.w * src.h * 4, 0);
+        uint32_t r = 7u;
+        for (int y = 0; y < size; ++y) {
+            for (int x = 0; x < size; ++x) {
+                uint8_t* p = src.at(x + margin, y + margin);
+                r = r * 1664525u + 1013904223u;
+                p[0] = p[1] = p[2] = (uint8_t)(r >> 24);
+                p[3] = 255;
+            }
+        }
+        // the artwork's very last row and column, marked so that dropping them is visible
+        for (int i = 0; i < size; ++i) {
+            uint8_t* px = src.at(margin + size - 1, margin + i);
+            px[0] = px[1] = px[2] = 255;
+            uint8_t* py = src.at(margin + i, margin + size - 1);
+            py[0] = py[1] = py[2] = 255;
+        }
+
+        const std::vector<Img> levels = readChain(src, true);
+        const int checkLevels = std::min<int>(3, (int)levels.size() - 1);
+        expect(levels.size() >= 2, QString("M16 the texture must have a chain (got %1 levels)").arg(levels.size()));
+        for (int l = 1; l <= checkLevels; ++l) {
+            const Img expected = boxLevel(src, l);
+            int worst = 0;
+            for (int y = 0; y < expected.h; ++y)
+                for (int x = 0; x < expected.w; ++x)
+                    for (int c = 0; c < 4; ++c)
+                        worst = std::max(worst, std::abs((int)levels[l].at(x, y)[c] - (int)expected.at(x, y)[c]));
+            expect(worst <= 2,
+                QString("M16 level %1 of the uploaded %2x%2 texture must be the exact box of the "
+                        "artwork plus its transparent padding (worst delta %3)")
+                    .arg(l).arg(aligned.width()).arg(worst));
+        }
+        caseReport(
+            QString("M16 chain of a %1-texel artwork in a %2x%2 texture").arg(size).arg(aligned.width()),
+            true,
+            QString("%1 levels, levels 1..%2 match boxLevel %3").arg(levels.size()).arg(checkLevels)
+                .arg("(the last row and column are inside the chain)")
+        );
+    }
+}
 
 //-------------------------------------------------------------------------------------------------
 // M12: the SHAPE of glGenerateMipmap's filter, measured rather than assumed.
@@ -3534,6 +3837,8 @@ int main(int argc, char** argv) {
     suiteMipKernelRandom();
     suiteMarginParity();
     suiteMarginDepth();
+    suiteDeepCoverage();
+    suiteLodSweep();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

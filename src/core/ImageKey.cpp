@@ -4,6 +4,7 @@
 #include "img/Buffer.h"
 #include "img/ResourceNode.h"
 #include "img/BlendMode.h"
+#include "img/Util.h"
 #include "core/ImageKey.h"
 #include "core/Constant.h"
 #include "qjsonobject.h"
@@ -103,11 +104,17 @@ void ImageKey::resetTextureCache() {
         // Alpha is left untouched, so consumers that use only alpha - the clipper writing
         // pass (ClipperWritingFrag) - are unaffected.
         //
-        // The image is uploaded unpadded, so the artwork starts at the texture's origin and the
-        // mip chain's level-l boxes (anchored to multiples of 2^l in the texture) stay aligned
-        // with the artwork's own texel blocks at EVERY level. The transparent neighbour a
-        // minified or edge read needs comes from the border colour set below, not from a padding
-        // ring - see img::Util::prepareForSampling for the measurement behind that.
+        // The image is uploaded unpadded on its left and top, so the artwork starts at the
+        // texture's origin and the mip chain's level-l boxes (anchored to multiples of 2^l in the
+        // texture) stay aligned with the artwork's own texel blocks at EVERY level. The transparent
+        // neighbour a minified or edge read needs comes from the border colour set below, not from
+        // a padding ring - see img::Util::prepareForSampling for the measurement behind that.
+        //
+        // The texture IS padded to the right and bottom, up to a size whose level grids divide
+        // evenly; that is a separate condition from the alignment above and the upload is the right
+        // place for it, because the mesh and the layer's rect come from the image while the shader
+        // divides texture coordinates by the texture's size, so the artwork's coordinates land
+        // correctly by themselves. See img::Util::mipAlignedTextureSize.
         const int texelCount = pixelSize.width() * pixelSize.height();
         std::vector<uint8> premultiplied((size_t)texelCount * 4);
         std::memcpy(premultiplied.data(), imageData, premultiplied.size());
@@ -122,9 +129,13 @@ void ImageKey::resetTextureCache() {
             p[2] = (uint8)((p[2] * a + 127) / 255);
         }
 
+        const QSize textureSize = img::Util::mipAlignedTextureSize(pixelSize);
+        const XCMemBlock padded =
+            img::Util::padImageToTextureSize(premultiplied.data(), pixelSize, textureSize);
+
         // make a gl texture
         mCache.texture().create(
-            pixelSize, premultiplied.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+            textureSize, padded.data, GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
         );
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
         mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
