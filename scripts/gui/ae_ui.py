@@ -26,6 +26,7 @@ Usage (see any probe_*.sh):
   ae_ui.py set    <name> <value>      write a spin box / line edit
   ae_ui.py value  <name>              print a spin box / line edit's value
   ae_ui.py label  <name>              print a label's text
+  ae_ui.py labeled <name>            the text of the label that names this widget
   ae_ui.py text                       print every label, in tree order
 
 Every command exits non-zero with a message when the widget is not there, so a
@@ -90,7 +91,22 @@ def _app():
                 best = (kids, app)
         return best[1] if best is not None else None
     # No pid given: the last registered instance is the one just started, and any
-    # instance without a live tree cannot answer a query anyway.
+    # instance without a live tree cannot answer a query anyway. This is a GUESS,
+    # and it was a silent one: no probe set AE_UI_PID (the contract this file
+    # documented was never implemented), so with any other AnimeEffects on the bus -
+    # a developer's own window, or one left running for a manual look - every probe
+    # drove that instance instead, where "Export project as" is disabled because no
+    # project is open, and reported the flow as stale. Say so rather than guess
+    # quietly: the caller can still proceed, but the log names the window it used.
+    if len(roots) > 1:
+        import sys
+
+        print(
+            "ae_ui: AE_UI_PID is not set and %d AnimeEffects instances are on the bus; "
+            "using pid %s. A probe must export AE_UI_PID with the process it launched."
+            % (len(roots), _pid_of(roots[-1])),
+            file=sys.stderr,
+        )
     for app in reversed(roots):
         try:
             if app.get_child_count() > 0:
@@ -98,6 +114,13 @@ def _app():
         except Exception:
             continue
     return roots[-1] if roots else None
+
+
+def _pid_of(aApp):
+    try:
+        return aApp.get_process_id()
+    except Exception:
+        return "?"
 
 
 def _walk(node, depth=0, maxdepth=14):
@@ -150,7 +173,17 @@ def showing(node):
     The node's own SHOWING state is not enough either: a control inside a COLLAPSED
     section still reports itself as showing, which is how "Loop animation" read as
     visible while its section was closed and its toggle (buggily) hidden. So every
-    ancestor has to be showing too.
+    ancestor has to be showing too - WITHIN THE APPLICATION, and no further.
+
+    Walking above the application is what made every probe report STALE. The chain
+    is button < panel < dialog < application < desktop frame, and under Xvfb there
+    is no window manager, so the DESKTOP frame reports showing=False while the
+    dialog and the application report True (measured, with the picker plainly on
+    screen). Every widget in the process therefore read as hidden, `wait` for any
+    name timed out, and require_export_flow called ten working probes stale - a
+    verdict that hid the real state instead of reporting it, which is the one thing
+    a stale marker must never do. The desktop is the session's business, not the
+    window's.
     """
     seen = 0
     while node is not None and seen < 32:
@@ -159,6 +192,12 @@ def showing(node):
                 return False
         except Exception:
             return False
+        try:
+            role = node.get_role_name()
+        except Exception:
+            return True
+        if role == "application":
+            return True
         try:
             node = node.get_parent()
         except Exception:
@@ -328,6 +367,41 @@ def cmd_label(name):
     return 0
 
 
+def cmd_labeled(name):
+    """The text of the label that names this widget, or nothing when none does.
+
+    An accessible name is what a control answers to; the LABELLED_BY relation is what
+    says which words on screen belong to it. They are set by different code - the
+    dialog's setAccessibleName() and its setBuddy() - so a control can be addressable
+    and still have nothing on the form that reads as its label. That is what a screen
+    reader announces before it reads the control, so it is worth asserting rather than
+    assuming. Exit 1 when no label names it.
+    """
+    node = find(name)
+    if node is None:
+        print(f"no widget named {name!r}", file=sys.stderr)
+        return 1
+    try:
+        relations = node.get_relation_set()
+    except Exception as exc:
+        print(f"no relations on {name!r} ({exc})", file=sys.stderr)
+        return 1
+    for relation in relations:
+        try:
+            if relation.get_relation_type() != Atspi.RelationType.LABELLED_BY:
+                continue
+            for i in range(relation.get_n_targets()):
+                target = relation.get_target(i)
+                text = (target.get_name() or "").strip()
+                if text:
+                    print(text)
+                    return 0
+        except Exception:
+            continue
+    print(f"{name!r} has no label of its own", file=sys.stderr)
+    return 1
+
+
 def cmd_extents(name):
     """The widget's rectangle on screen, as `x y w h`.
 
@@ -431,6 +505,7 @@ def main(argv):
         "set": (cmd_set, 2),
         "value": (cmd_value, 1),
         "label": (cmd_label, 1),
+        "labeled": (cmd_labeled, 1),
         "text": (cmd_text, 0),
         "report": (cmd_report, None),
         "extents": (cmd_extents, 1),

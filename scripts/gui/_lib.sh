@@ -77,16 +77,50 @@ export AE_PROBE_DIR="$(mktemp -d)"
 # The application must expose its accessibility tree, and the probe must say WHICH
 # instance is its own: the developer's running app is on the same bus, and matching
 # by name alone could drive that window instead. AE_UI_PID is set by the probe from
-# the pid it launched.
+# the pid it launched - each probe does this on the line after its launch, because
+# the contract used to be documented here and implemented nowhere.
 AE_UI="$ROOT/scripts/gui/ae_ui.py"
 # Exported for the same reason ROOT/APP/SHOTS are: the probes interpolate it inside
 # the single-quoted `bash -c` string xvfb-run executes, and without the export the
 # inner shell sees an empty path and every ae_* helper fails at once (37 assertions
 # failing loudly is the good outcome; silently is what the old pixel clicks did).
 export AE_UI
-# Set by require_export_flow when a probe cannot reach the screen it asserts on.
-export AE_STALE_FLAG="$(mktemp)"
+# The PATH of a flag file that does not exist yet. require_export_flow creates it when
+# a probe cannot reach the screen it asserts on, check() goes quiet while it is there,
+# and summary() reports STALE.
+#
+# It used to be `$(mktemp)`, which CREATES the file. The flag was therefore set from
+# the moment this file was sourced: every check() returned without asserting anything,
+# every probe printed STALE, and the marker that exists to make a dead probe visible
+# was the only thing hiding the fact that ten of them had stopped testing. Measured,
+# not guessed: the trace of a probe run shows check() taking the early return on the
+# first assertion and summary() reporting STALE with no FAIL line anywhere.
+export AE_STALE_FLAG="$(mktemp -u)"
 export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+
+# THE REVISION OF THE EXPORT FLOW THE PROBES ARE RECORDED AGAINST.
+#
+# Bump this whenever the flow changes SHAPE. A probe declares the revision it was
+# recorded against with RECORDED_AGAINST (exported, because its body runs in a child
+# shell), and one that has not been re-recorded reports STALE naming both numbers.
+#
+# This exists because the old stale marker could not tell the two cases apart. It
+# waited for the destination picker, and it was blind for reasons that had nothing to
+# do with navigation: showing() walked the ancestor chain past the application to the
+# DESKTOP frame, which reports showing=False under Xvfb (no window manager), so every
+# widget in the process read as hidden; and no probe set AE_UI_PID, so with a second
+# AnimeEffects on the bus the tooling addressed that instance instead, where the menu
+# is disabled for want of a project. Ten probes declared stale for two tooling faults
+# while the question "is this probe's navigation out of date" went unanswered.
+#
+# 1: the parameter sheet opened first, and the picker was behind a button on it.
+# 2: the destination picker opens first and decides the form that follows.
+AE_FLOW_REVISION=2
+export AE_FLOW_REVISION
+# What a new probe is recorded against. An OLD probe sets nothing, which is 0, and
+# that is what makes it report itself stale instead of clicking pixels that now mean
+# something else.
+export RECORDED_AGAINST="${RECORDED_AGAINST:-0}"
 
 ae() { python3 "$AE_UI" "$@" 2>/dev/null; }
 
@@ -110,32 +144,41 @@ ae_press() { # ae_press <name> <what-the-caller-expects-to-happen>
     check 0 "$2"
 }
 
-# A probe whose navigation was recorded against the OLD export flow must not go on
-# quietly clicking where widgets used to be: Export now opens the destination picker
-# FIRST, so every probe that expected the parameter sheet at that point is driving
-# something else, and its assertions (mostly "the screenshot is not black") pass
-# anyway. Called right after the navigation prefix; exit 3 is STALE, which
+# A probe must be re-recorded when the export flow changes SHAPE, and it must SAY SO
+# rather than click pixels that now belong to another widget: Export opens the
+# destination picker FIRST, so a probe that expects the parameter sheet at that point
+# is driving something else, and its assertions (mostly "the screenshot is not black")
+# pass anyway. Called right after the navigation prefix; exit 3 is STALE, which
 # run_probes.sh reports as neither a pass nor a failure of the application.
+#
+# The revision check comes FIRST and needs no application: it is a property of the
+# probe, so it is decided before anything is clicked. What follows it is a genuine
+# assertion about the application (the flow opens the picker), and it is a FAILURE
+# rather than a stale marker, because a probe recorded against the current revision
+# that cannot reach the picker is reporting on the application.
 # Exported as a FUNCTION, not just defined: the probes call it inside the
 # single-quoted `bash -c` body xvfb-run runs, which is a new shell.
 require_export_flow() {
+    if [ "${RECORDED_AGAINST:-0}" != "$AE_FLOW_REVISION" ]; then
+        echo "STALE  this probe is recorded against flow revision ${RECORDED_AGAINST:-0}; the current revision is $AE_FLOW_REVISION." >&2
+        echo "STALE  Its navigation and its clicks belong to the previous flow, so what it" >&2
+        echo "STALE  asserts on now is not what it was written for. Re-record it against" >&2
+        echo "STALE  scripts/gui/ae_ui.py, which addresses widgets by name, not by pixel," >&2
+        echo "STALE  then set RECORDED_AGAINST=$AE_FLOW_REVISION at the top of the probe." >&2
+        : > "$AE_STALE_FLAG"
+        exit 3
+    fi
     if ae wait "Use this destination" >/dev/null 2>&1; then
         return 0
     fi
-    echo "STALE  navigation: the export flow did not open the destination picker." >&2
-    echo "STALE  This probe's coordinates predate the destination-first flow." >&2
-    echo "STALE  Re-record it against scripts/gui/ae_ui.py, which addresses widgets" >&2
-    echo "STALE  by name instead of by pixel." >&2
-    # The guard runs INSIDE the xvfb-run body, which is a child shell:
-    # `exit 3` there ends that shell, not the probe. The flag is what the
-    # outer script acts on: check() goes quiet and summary() reports STALE,
-    # so a stale probe stops asserting instead of reporting failures of an
-    # application it never reached.
-    : > "$AE_STALE_FLAG"
-    exit 3
+    echo "FAIL  the export flow did not open the destination picker: no widget named" >&2
+    echo "FAIL  'Use this destination' appeared within the wait. This probe is recorded" >&2
+    echo "FAIL  against the current flow revision, so this is the application." >&2
+    check 1 "the export click opens the destination picker"
+    return 1
 }
 
-export -f ae require_export_flow
+
 
 # One line per name: "showing", "hidden" or "absent". The shell asserts on it.
 ae_report() { # ae_report <file> <name>...
@@ -156,10 +199,17 @@ check() { # check <ok:0|1> <message>
     [ -n "${AE_STALE_FLAG:-}" ] && [ -f "$AE_STALE_FLAG" ] && return 0
     if [ "$1" -eq 0 ]; then
         echo "PASS  $2"
-    else
-        echo "FAIL  $2"
-        FAILURES=$((FAILURES + 1))
+        return 0
     fi
+    echo "FAIL  $2"
+    FAILURES=$((FAILURES + 1))
+    # In the probe BODY (a child shell) the count above belongs to that shell and
+    # dies with it, so the failure is also written where the outer summary can see
+    # it. AE_OUTER_PID is the shell that sourced this file.
+    if [ -n "${AE_OUTER_PID:-}" ] && [ "$$" != "$AE_OUTER_PID" ] && [ -n "${AE_FAIL_FLAG:-}" ]; then
+        echo "$2" >> "$AE_FAIL_FLAG"
+    fi
+    return 1
 }
 
 # A capture that is entirely black means the app never rendered (crashed, or the
@@ -187,9 +237,19 @@ assert_under() { # assert_under <path> <max bytes> <what>
 summary() { # summary <probe name>
     if [ -n "${AE_STALE_FLAG:-}" ] && [ -f "$AE_STALE_FLAG" ]; then
         rm -f "$AE_STALE_FLAG"
-        echo "=== $1: STALE (its navigation no longer matches the application) ==="
+        echo "=== $1: STALE (recorded against an older revision of the export flow) ==="
         exit 3
     fi
+    # Failures from the probe BODY, which ran in a child shell and could not count
+    # them here. Printed, not just counted: a number that disagrees with the lines
+    # above it is how a failure goes unnoticed.
+    if [ -n "${AE_FAIL_FLAG:-}" ] && [ -s "$AE_FAIL_FLAG" ]; then
+        while IFS= read -r line; do
+            echo "FAIL  $line (from the probe body)"
+            FAILURES=$((FAILURES + 1))
+        done < "$AE_FAIL_FLAG"
+    fi
+    rm -f "$AE_FAIL_FLAG" "${AE_STALE_FLAG:-/dev/null}" 2>/dev/null
     if [ "$FAILURES" -eq 0 ]; then
         echo "=== $1: OK ==="
     else
@@ -197,3 +257,20 @@ summary() { # summary <probe name>
     fi
     exit $((FAILURES > 0 ? 1 : 0))
 }
+
+# ---- the two shells a probe runs in --------------------------------------
+#
+# A probe's BODY runs in a child shell (`bash -c` under xvfb-run) and its ASSERTIONS
+# run in the outer script, because that is where the helpers and the failure count
+# live. Two things follow, and both used to be got wrong:
+#
+#   * the body needs the by-name helpers, so they are exported as FUNCTIONS (export
+#     -f, after their definitions - an export before the `def` exports nothing and
+#     says so out loud: "export: ae_report: not a function");
+#   * a FAILURE inside the body has to reach the outer verdict. It used to be
+#     printed by the child and counted by nobody, which is an invisible failure.
+#     check() therefore appends it to AE_FAIL_FLAG when it is running in the child,
+#     and summary() counts and prints those lines as its own.
+export AE_OUTER_PID=$$
+export AE_FAIL_FLAG="$(mktemp -u)"
+export -f ae ae_center ae_press ae_report check require_export_flow

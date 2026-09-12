@@ -28,6 +28,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   unset WAYLAND_DISPLAY; export QT_QPA_PLATFORM=xcb
   cd "$OUT_A" && /home/gambot/dev/AnimeEffects/build/src/gui/Debug/AnimeEffects "$0" >/tmp/probe_inputs.log 2>&1 &
   app=$!
+  AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
   sleep 14
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null

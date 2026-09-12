@@ -1,31 +1,91 @@
 #!/bin/bash
 # See _lib.sh: these drive the real app under Xvfb because the wiring they check
 # is not reachable from a unit test.
+#
+# This probe is about the FLOW: Export asks WHERE first, the picker is a tree of
+# platforms, typing narrows it, and the form that follows states the destination it
+# was given. Every step addresses widgets by NAME (ae_ui.py): the previous version
+# clicked recorded pixels, so it kept passing after the flow changed underneath it,
+# which is how this probe spent the destination-first rewrite asserting nothing.
+#
+# The BODY only navigates and leaves evidence (screenshots, report files). The
+# assertions run out here, where the helpers and the failure count live.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/_lib.sh" "$@"
+# The revision of the export flow this probe's navigation was recorded against. See
+# AE_FLOW_REVISION in _lib.sh: the guard refuses to run a probe that predates it.
+export RECORDED_AGAINST=2
+
+rm -f /tmp/dst_picker.txt /tmp/dst_form.txt /tmp/dst_label.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   '"$APP"' "'"$PROJ"'" >/tmp/probe_app.log 2>&1 &
   app=$!
+  AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
   sleep 12
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
-  xdotool mousemove 16 10 click 1; sleep 1.2
-  xdotool mousemove 81 162 click 1; sleep 3
+
+  # 1. Export asks WHERE, before anything else. One click on the menu, then the item
+  #    by name: nothing here depends on where a menu happens to be drawn.
+  ae_press "File" "the File menu opens"
+  ae_press "Export project as" "the export entry is there"
   require_export_flow
-  # The destination button (first row of the dialog) opens the picker: a search
-  # field and a list, instead of a combo holding fifty-five entries.
-  xdotool mousemove 462 82 click 1; sleep 3
-  import -window root '"$SHOTS"'/dst_01_list.png
-  # Search narrows the list, then Enter takes the highlighted row. This is the whole
-  # point of the picker: "wec" reaches WeChat without scrolling anything.
-  xdotool type --delay 60 "wec"; sleep 1.5
+  ae_report /tmp/dst_picker.txt "Search destinations" "Use this destination"
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/dst_01_picker.png
+
+  # 2. Typing narrows the tree, opens the platform it found and selects a
+  #    destination inside it, so Enter is a complete answer.
+  ae set "Search destinations" "insta" >/dev/null
+  sleep 1.2
+  xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/dst_02_search.png
-  xdotool key Return; sleep 2
-  import -window root '"$SHOTS"'/dst_03_chosen.png
+
+  # 3. The default button answers with that destination, and the form that follows
+  #    states it: what the picker chose must be what the dialog shows.
+  ae_press "Use this destination" "the chosen destination is accepted"
+  sleep 3
+  ae_report /tmp/dst_form.txt "Destination" "Width" "Height" "Format" "Quality"
+  ae text > /tmp/dst_form_text.txt 2>/dev/null
+  # Which words on screen belong to which field. This is the OTHER half of
+  # addressing a form: a control can answer to a name and still have nothing beside
+  # it that reads as its label.
+  ae labeled "Width" > /tmp/dst_labeled_width.txt 2>/dev/null
+  ae labeled "Frame rate" > /tmp/dst_labeled_fps.txt 2>/dev/null
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/dst_03_form.png
+  ae_press "Cancel" "the form closes on Cancel"
+  sleep 1
   kill $app 2>/dev/null; wait $app 2>/dev/null
-' 2>&1 | tail -3
-ls -1 "$SHOTS" | grep dst
-assert_rendered "$SHOTS/dst_01_list.png" "the destination picker"
-assert_rendered "$SHOTS/dst_03_chosen.png" "the dialog after choosing a destination"
+' 2>&1 | tail -4
+
+assert_showing /tmp/dst_picker.txt "Search destinations" "Export asks where first, in a searchable picker"
+assert_showing /tmp/dst_picker.txt "Use this destination" "and that picker can be answered"
+assert_rendered "$SHOTS/dst_01_picker.png" "the destination picker"
+assert_rendered "$SHOTS/dst_02_search.png" "the picker after typing insta"
+assert_showing /tmp/dst_form.txt "Destination" "the export form opens once a destination is chosen"
+# The destination DICTATES the format, so the form states it as a fact instead of
+# offering a control: asserting "Format is showing" would be asserting the bug this
+# work removed. What the facts must carry is the consequence - Instagram photo is one
+# JPG, capped at 8 MB - which is the destination's own data arriving through
+# planExport(), so this checks the wiring and not the wording.
+assert_hidden /tmp/dst_form.txt "Format" "the destination dictates the format, so there is no Format control"
+if grep -qi jpg /tmp/dst_form_text.txt && grep -q "8 MB" /tmp/dst_form_text.txt; then
+    check 0 "and the facts state what the chosen destination requires (one JPG, 8 MB)"
+else
+    check 1 "and the facts state what the chosen destination requires (got: $(tr '\n' ' ' < /tmp/dst_form_text.txt 2>/dev/null | head -c 200))"
+fi
+# The expectation is the words ON SCREEN, which are not the accessible name:
+# the fps box answers to "Frame rate" and is labelled "FPS:" on the form.
+for pair in "Width:/tmp/dst_labeled_width.txt" "FPS:/tmp/dst_labeled_fps.txt"; do
+    name=${pair%%:*}
+    file=${pair#*:}
+    if grep -qi "$name" "$file"; then
+        check 0 "the $name field is labelled on screen by its own label"
+    else
+        check 1 "the $name field is labelled on screen by its own label (got: $(tr -d '\n' < "$file" 2>/dev/null))"
+    fi
+done
+assert_rendered "$SHOTS/dst_03_form.png" "the export form carrying the chosen destination"
 summary probe_dest

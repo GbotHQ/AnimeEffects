@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/_lib.sh" "$@"
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   '"$APP"' "'"$PROJ"'" >/tmp/probe_app.log 2>&1 &
   app=$!
+  AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
   sleep 12
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
