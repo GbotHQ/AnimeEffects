@@ -133,9 +133,6 @@ private:
     // project, so reopening the dialog to change one thing does not mean selecting
     // the range again.
     QString exportInputsKey() const;
-    // Remember which destinations this user exports to, most recent first, so
-    // "Quickly export as" can lead with them instead of listing the whole table.
-    static void rememberDestination(const QString& aId);
     void restoreExportInputs();
     void reportExportOutcome(const exportParam& aParam, bool aWrote);
 

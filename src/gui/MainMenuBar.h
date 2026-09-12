@@ -49,7 +49,6 @@ private:
     // The window the quick-export entries call into. Held as a member because the
     // menu is REBUILT (on every show), so the entries cannot capture a local.
     MainWindow* mMainWindow = nullptr;
-    void rebuildQuickExport();
     void addQuickExportEntry(QMenu* aMenu, const ctrl::ExportTarget& aTarget);
 public:
     // Enabled by the main window once an export has succeeded: "again" means the

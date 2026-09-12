@@ -187,7 +187,38 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
         // nothing became unreachable.
         mQuickExport = new QMenu(tr("Quickly export as"), this);
         mQuickExport->setObjectName(QString::fromUtf8("quickExportMenu"));
-        connect(mQuickExport, &QMenu::aboutToShow, this, [this]() { rebuildQuickExport(); });
+        {
+            // ONE submenu per family, not one flat list of everything.
+            //
+            // The list is fifty-five destinations now, and as a single menu it came
+            // out forty rows tall with eight group headers, wrapped into TWO COLUMNS,
+            // and ran off the bottom of the screen: browsing, in a menu whose name
+            // promises a shortcut. Six entries you can scan beats fifty you cannot,
+            // and each submenu is a short single column. The families are the same
+            // ones the dialog groups by, from the same `family` column in the data.
+            //
+            // There is deliberately NO "recently used" promotion here: a destination
+            // sitting at the top with no explanation reads as favouritism, and
+            // "Export again" (in this menu) is what repeating an export is for.
+            const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
+            struct Family { const char* key; const char* title; };
+            const QList<Family> families = {
+                { "chat", QT_TR_NOOP("Send in a chat") },
+                { "post", QT_TR_NOOP("Post to a platform") },
+                { "sticker", QT_TR_NOOP("Stickers and emoji") },
+                { "overlay", QT_TR_NOOP("Overlays and transparency") },
+                { "file", QT_TR_NOOP("A file") },
+                { "archive", QT_TR_NOOP("Archive") },
+            };
+            for (const auto& family : families) {
+                QMenu* sub = nullptr;
+                for (const ctrl::ExportTarget& target : targets) {
+                    if (target.family != QLatin1String(family.key)) continue;
+                    if (!sub) sub = mQuickExport->addMenu(QObject::tr(family.title));
+                    addQuickExportEntry(sub, target);
+                }
+            }
+        }
 
         mProjectActions.push_back(saveProject);
         mProjectActions.push_back(saveProjectAs);
@@ -544,68 +575,6 @@ void MainMenuBar::addQuickExportEntry(QMenu* aMenu, const ctrl::ExportTarget& aT
         if (mMainWindow) mMainWindow->onQuickExportDestinationTriggered(id);
     });
     aMenu->addAction(action);
-}
-
-// "Quickly export as" is a shortcut, so it shows the destinations this user
-// exports to, most recent first, then the full grouped list one level down.
-//
-// It used to list all fifty-five destinations flat with six headers: browsing, in
-// a menu whose name promises a shortcut, and it wrapped into two columns as soon
-// as the sixth family existed. Nothing is lost -- every destination is still there,
-// one submenu deeper -- and the entries that matter stop moving as the table grows.
-void MainMenuBar::rebuildQuickExport() {
-    if (!mQuickExport) return;
-    mQuickExport->clear();
-
-    const QList<ctrl::ExportTarget> targets = ctrl::ExportTargets::load();
-    QSettings settings;
-    const QStringList recent =
-        settings.value(QStringLiteral("export_recent_destinations")).toStringList();
-
-    int shown = 0;
-    for (const QString& id : recent) {
-        const ctrl::ExportTarget t = ctrl::ExportTargets::find(targets, id);
-        if (t.id.isEmpty()) continue; // a row that has since been removed or renamed
-        addQuickExportEntry(mQuickExport, t);
-        if (++shown >= 8) break;
-    }
-    if (shown > 0) {
-        mQuickExport->addSeparator();
-    } else {
-        // Nothing used yet: say so rather than offering an empty-looking menu.
-        QAction* none = mQuickExport->addAction(tr("No destination used yet"));
-        none->setEnabled(false);
-    }
-
-    QMenu* all = mQuickExport->addMenu(tr("All destinations"));
-    all->setObjectName(QString::fromUtf8("allDestinationsMenu"));
-    struct Family { const char* key; const char* title; };
-    const QList<Family> families = {
-        { "chat", QT_TR_NOOP("Send in a chat") },
-        { "post", QT_TR_NOOP("Post to a platform") },
-        { "sticker", QT_TR_NOOP("Stickers and emoji") },
-        { "overlay", QT_TR_NOOP("Overlays and transparency") },
-        { "file", QT_TR_NOOP("A file") },
-        { "archive", QT_TR_NOOP("Archive") },
-    };
-    for (const auto& family : families) {
-        bool wroteAny = false;
-        for (const ctrl::ExportTarget& target : targets) {
-            if (target.family != QLatin1String(family.key)) continue;
-            if (!wroteAny) {
-                // A disabled bold action, not QMenu::addSection: the section header
-                // this application's stylesheet draws is a bare line, so the grouping
-                // was invisible.
-                QAction* header = all->addAction(QObject::tr(family.title));
-                header->setEnabled(false);
-                QFont headerFont = header->font();
-                headerFont.setBold(true);
-                header->setFont(headerFont);
-                wroteAny = true;
-            }
-            addQuickExportEntry(all, target);
-        }
-    }
 }
 
 void MainMenuBar::setExportAgainEnabled(bool aOn) {

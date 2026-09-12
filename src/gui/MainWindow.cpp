@@ -1601,19 +1601,6 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QDialog* widge
     return bool(res) && !fitFailed && QFileInfo(g.osExportTarget).exists();
 }
 
-// The destinations this user actually exports to, most recent first, capped at
-// what a menu can show without becoming a list to read.
-void MainWindow::rememberDestination(const QString& aId) {
-    if (aId.isEmpty()) return;
-    QSettings settings;
-    QStringList recent =
-        settings.value(QStringLiteral("export_recent_destinations")).toStringList();
-    recent.removeAll(aId);
-    recent.prepend(aId);
-    while (recent.size() > 8) recent.removeLast();
-    settings.setValue(QStringLiteral("export_recent_destinations"), recent);
-}
-
 // Where a project's remembered export inputs live. PER PROJECT: a frame range
 // belongs to the animation it was chosen in, and inheriting another project's
 // range would export frames that project does not have.
@@ -1844,7 +1831,6 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
     exParam->generalParams = genParam;
     exParam->exportType = exportTarget::video;
     exParam->destinationId = aDestinationId;
-    rememberDestination(aDestinationId);
     // The quality the user last chose in the dialog, not a silent Balanced. The
     // quick path used to pin Balanced, so a user who had set Telegram stickers to
     // "Best" got Balanced again from the menu, with nothing anywhere saying why the
@@ -2391,7 +2377,6 @@ void MainWindow::onExportTriggered() {
     {
         QSettings settings;
         settings.setValue("export_destination", exParam->destinationId);
-        rememberDestination(exParam->destinationId);
         settings.setValue("export_quality_bucket", exportUI->qualityCombo->currentIndex());
         // The per-run inputs, so the next open starts where this one left off.
         const QString inputsKey = exportInputsKey();
