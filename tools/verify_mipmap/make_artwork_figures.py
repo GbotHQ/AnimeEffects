@@ -6,7 +6,7 @@ Each figure shows ONE file, at each zoom that was measured:
     <file>  <canvas>  <layers> layers
 
     2x minification   mean/max error vs truth: level 0 a/b   mipmapped c/d   [better|same|worse]
-    [ truth (supersampled) ]   [ level 0: what shipped ]   [ mipmapped: now ]   <- WHOLE artwork as
+    [ truth (supersampled) ]   [ level 0 only ]   [ mipmapped: what ships ]   <- WHOLE artwork as
                                                                                   it appears at this
                                                                                   zoom, at 1:1; red
                                                                                   and blue boxes mark
@@ -113,9 +113,10 @@ for name in files:
     draw = ImageDraw.Draw(fig)
     draw.text((X0, 8), f"{r0['file']}    {r0['canvas_w']}x{r0['canvas_h']}    "
                        f"{r0['layers']} layers", fill=(255, 214, 110), font=FONT_B)
-    draw.text((X0, 8 + LINE), "columns:  supersampled ground truth   |   what shipped (level 0 minification)   |   "
-                              f"now (mipmapped).   Artwork panels are the render at ACTUAL resolution, 1:1;   "
-                              f"crops are {CROP} render pixels at x{MAG} nearest, the same factor in every figure",
+    draw.text((X0, 8 + LINE), "columns:  supersampled ground truth   |   level 0 only (the behaviour before "
+                              "this work)   |   mipmapped (what ships now).   "
+                              f"Panels are the render at ACTUAL resolution, 1:1;   crops are {CROP} render pixels "
+                              f"at x{MAG} nearest, the same factor in every figure",
               fill=(160, 160, 160), font=FONT)
     y = LABEL_H
 
