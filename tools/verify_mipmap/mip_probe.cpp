@@ -1921,6 +1921,136 @@ void setLayerSampling(core::Project& aProject, bool aMipmapped) {
     std::printf("  %s sampling on %d textures\n", aMipmapped ? "mipmapped" : "level-0 (pre-change)", n);
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// Corpus evaluation.
+//
+// Sixteen figures, each one artwork, is a set of anecdotes: it cannot support a judgement about
+// whether the change is an improvement. This runs the before/after/ground-truth comparison over a
+// whole corpus and emits one CSV row per (file, zoom), so the result is a distribution rather than
+// an example.
+//
+// Per row: the error of LEVEL-0 sampling (the state this change replaces - what shipped when no mip
+// chain existed) and of the shipped MIPMAPPED render, both measured against the supersampled
+// reference. Errors are max-channel over premultiplied RGB, which is the framebuffer representation
+// and the one that behaves correctly across alpha edges.
+struct DiffStats {
+    double mean = 0;
+    int p99 = 0, p999 = 0, max = 0, over16 = 0;
+};
+
+DiffStats diffVsRef(const QImage& aA, const QImage& aB) {
+    DiffStats st;
+    const int w = std::min(aA.width(), aB.width()), h = std::min(aA.height(), aB.height());
+    std::vector<int> d;
+    d.reserve((size_t)w * h);
+    for (int y = 0; y < h; ++y) {
+        const uchar* ra = aA.constScanLine(y);
+        const uchar* rb = aB.constScanLine(y);
+        for (int x = 0; x < w; ++x) {
+            int worst = 0;
+            for (int c = 0; c < 3; ++c) {
+                // premultiply so a difference under a transparent pixel cannot outrank a visible one
+                const int pa = ra[x * 4 + c] * ra[x * 4 + 3] / 255;
+                const int pb = rb[x * 4 + c] * rb[x * 4 + 3] / 255;
+                worst = std::max(worst, std::abs(pa - pb));
+            }
+            d.push_back(worst);
+        }
+    }
+    if (d.empty())
+        return st;
+    double sum = 0;
+    for (int v : d) {
+        sum += v;
+        if (v > 16)
+            ++st.over16;
+    }
+    st.mean = sum / d.size();
+    st.max = *std::max_element(d.begin(), d.end());
+    std::sort(d.begin(), d.end());
+    st.p99 = d[(size_t)(d.size() * 0.99)];
+    st.p999 = d[(size_t)std::min(d.size() - 1, (size_t)(d.size() * 0.999))];
+    return st;
+}
+
+int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    const QSize canvas = project.attribute().imageSize();
+    if (canvas.isEmpty())
+        return 4;
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    RenderFixture& fx = *fixtures[key];
+
+    QFile out(aCsv);
+    const bool fresh = !out.exists() || out.size() == 0;
+    if (!out.open(QIODevice::Append | QIODevice::Text))
+        return 5;
+    QTextStream ts(&out);
+    if (fresh) {
+        ts << "file,type,canvas_w,canvas_h,layers,zoom,ss,before_mean,before_p99,before_p999,"
+              "before_max,before_over16,after_mean,after_p99,after_p999,after_max,after_over16\n";
+    }
+
+    const float zooms[] = {0.5f, 0.25f};
+    for (float zoom : zooms) {
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        if (zoom != 1.0f)
+            camera.setScale(zoom);
+
+        setLayerSampling(project, true);   // AFTER
+        const QImage after = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+        setLayerSampling(project, false);  // BEFORE: level 0 only
+        const QImage before = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+
+        int ss = 8;
+        const QImage ref = supersampledReference(project, canvas, zoom, ss, backdrop);
+
+        const DiffStats db = diffVsRef(before, ref), da = diffVsRef(after, ref);
+        const QString type = QFileInfo(aPath).suffix().toLower();
+        ts << QFileInfo(aPath).fileName() << "," << type << "," << canvas.width() << "," << canvas.height()
+           << "," << (int)layers.size() << "," << zoom << "," << ss
+           << "," << QString::number(db.mean, 'f', 4) << "," << db.p99 << "," << db.p999 << "," << db.max << "," << db.over16
+           << "," << QString::number(da.mean, 'f', 4) << "," << da.p99 << "," << da.p999 << "," << da.max << "," << da.over16
+           << "\n";
+        ts.flush();
+
+        if (!aSaveDir.isEmpty() && QString::fromLocal8Bit(qgetenv("AE_EVAL_SAVE")) == QLatin1String("1")) {
+            QDir().mkpath(aSaveDir);
+            const QString base = QDir(aSaveDir).filePath(QFileInfo(aPath).completeBaseName() + QString("_z%1").arg((int)(zoom * 1000)));
+            after.save(base + "_after.png");
+            before.save(base + "_before.png");
+            ref.save(base + "_ref.png");
+        }
+        std::printf("  %s z=%.2f ss=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d\n", qPrintable(QFileInfo(aPath).fileName()),
+                    zoom, ss, db.mean, db.max, da.mean, da.max);
+    }
+    return 0;
+}
+
 int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
     QDir().mkpath(aDir);
     gl::DeviceInfo dev;
@@ -2264,6 +2394,16 @@ int main(int argc, char** argv) {
         return 2;
     }
     glWidget->makeCurrent();
+
+    // --eval <csv> <file> [saveDir]
+    if (argc > 3 && QString(argv[1]) == "--eval") {
+        const int rc = runEval(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]),
+            argc > 4 ? QString::fromLocal8Bit(argv[4]) : QString()
+        );
+        clearRenderFixtures();
+        return rc;
+    }
 
     // --lodscan <anie> <frame>
     if (argc > 3 && QString(argv[1]) == "--lodscan") {
