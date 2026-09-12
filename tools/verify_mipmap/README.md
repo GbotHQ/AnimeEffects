@@ -392,6 +392,58 @@ Three things this shows, none of them by construction:
   of the model over +/-0.5 base texel confirms it is not a sub-texel sample-position difference: the
   best offset is (0, 0) on every file.
 
+## What "truth" means here, and how much the definition matters
+
+The ground truth above is the integral over the destination pixel's footprint of the BILINEAR
+reconstruction of the artwork. Two things are bundled in that sentence and only one of them is
+arguable:
+
+- **The footprint integration is not a choice.** Rendering at ss x and box-averaging ss x ss blocks
+  is the integral over the footprint as ss grows; the box is the correct operation, not a filter that
+  was picked. How far from the limit the harness actually is is measurable: the same scene rendered
+  at ss and at ss/2 differs by 0.004 to 0.031 of 255, so the quadrature is two orders of magnitude
+  below the effects being discussed.
+- **The reconstruction model is a choice.** GL_LINEAR is what the renderer shows when magnifying, so
+  bilinear is the self-consistent model, but someone could equally declare the artwork to be a
+  piecewise-CONSTANT array of texels - in which case the right answer is the coverage-weighted
+  average of those texels, i.e. area downsampling in the image-processing sense, which is also what a
+  mip chain approximates. `--decompose` now computes both, plus a CPU model of each:
+
+  | file | pass | area model vs truth | tent model vs truth | the two definitions differ by | chain vs area | chain vs tent |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 000020.psd | as it falls | 0.144 | 0.142 | 0.015 | 3.593 | 3.582 |
+  | 000020.psd | aligned | 0.151 | 0.142 | 0.037 | 0.243 | 0.250 |
+  | AUTUMN.psd | as it falls | 0.047 | 0.040 | 0.025 | 3.800 | 3.780 |
+  | AUTUMN.psd | aligned | 0.045 | 0.040 | 0.023 | 0.052 | 0.057 |
+
+  So the choice of truth is worth 0.02 to 0.04 of 255, and the chain is off from BOTH definitions by
+  the same amount (3.59 vs area and 3.58 vs tent as it falls; 0.24 and 0.25 aligned). Being sceptical
+  about the truth does not rescue the chain at a fractional phase: under either definition the level-l
+  texel, which only records its block's average, cannot say where inside the block the detail was.
+
+## What can actually be done about it: the LOD bias, measured
+
+`--bias <csv> <file>` sweeps GL_TEXTURE_LOD_BIAS against the supersampled truth. The truth is an
+antialiased integral, so it penalises blurring and aliasing alike: whichever bias has the smallest
+error there has the smallest total error by this measure, not merely the sharpest picture. Mean error
+over eight files (64x64 central window, channel max):
+
+| zoom | -1.5 | -1.0 | -0.5 | 0.0 (shipped) | +0.5 | +1.0 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4x | 1.694 | 1.132 | **0.968** | 1.631 | 2.864 | 4.338 |
+| 16x | 3.299 | **2.465** | 2.533 | 4.198 | 5.995 | 8.171 |
+
+Per file the best bias is -0.5 on five of eight and -1.0 on two at 4x, and -1.0 on five and -0.5 on
+three at 16x. So the shipped lambda is systematically on the blurry side of the optimum: about half
+the error is recoverable by sampling a partly finer level, and past about -1.5 the under-filtering
+starts to cost more than it gains. Nothing in the shipped code sets a bias; this is where the setting
+would be, and it is a fidelity trade, so it is measured and left alone rather than changed quietly.
+
+The two other routes, for the record, both out of the mip chain rather than in it: resample each
+layer once per display scale with an area/Lanczos filter and cache it (exact by the measurements
+above - the CPU area model matches the truth to 0.05 - and affordable precisely because layer content
+is static between edits), or supersample the composite for export.
+
 ## Independent ground truth: supersampling
 
 Everything above compares the render against something derived from the same machinery - an

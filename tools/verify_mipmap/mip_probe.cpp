@@ -3136,6 +3136,39 @@ QImage supersampledWindowReference(core::Project& aProject, const QSize& aCanvas
 }
 
 
+// The third candidate definition of the right answer: the artwork as a piecewise-CONSTANT array of
+// texels, each weighted by how much of the footprint it covers. This is "area downsampling" in the
+// image-processing sense and it is what a mip chain approximates; it differs from tentIntegral()
+// only in the reconstruction model it integrates, and the two differ by exactly the amount that
+// makes the choice of "truth" arguable. Both integrate the same footprint with the same box.
+double areaIntegral(const Img& aImg, double aX0, double aY0, int aSpan, int aChannel) {
+    const auto weights = [&](double aStart, int aBase, std::vector<double>& aOut) {
+        for (int t = 0; t < (int)aOut.size(); ++t) {
+            const double lo = std::max(aStart, (double)(aBase + t));
+            const double hi = std::min(aStart + aSpan, (double)(aBase + t + 1));
+            aOut[t] = std::max(0.0, hi - lo) / aSpan;
+        }
+    };
+    const int taps = aSpan + 2;
+    const int kx0 = (int)std::floor(aX0) - 1, ky0 = (int)std::floor(aY0) - 1;
+    std::vector<double> wx(taps, 0.0), wy(taps, 0.0);
+    weights(aX0, kx0, wx);
+    weights(aY0, ky0, wy);
+    double total = 0.0;
+    for (int j = 0; j < taps; ++j) {
+        const int y = ky0 + j;
+        for (int i = 0; i < taps; ++i) {
+            const int x = kx0 + i;
+            if (wx[i] == 0.0 || wy[j] == 0.0)
+                continue;
+            const double v = (x < 0 || y < 0 || x >= aImg.w || y >= aImg.h) ? 0.0
+                                                                            : (double)aImg.at(x, y)[aChannel];
+            total += wx[i] * wy[j] * v;
+        }
+    }
+    return total;
+}
+
 // The integral of the TENT reconstruction of an image over the footprint [x0, x0+w) x [y0, y0+w),
 // which is what a supersampled render converges to: the artwork as a continuous signal is the
 // bilinear interpolation of its texels, and the destination pixel's value is that signal's integral
@@ -3203,6 +3236,108 @@ double tentIntegral(const Img& aImg, double aX0, double aY0, int aW, int aChanne
 // part of the error is the filter and which part is the implementation. The last term is also a
 // test of the claim that the supersampled truth IS that integral, on real content instead of by
 // definition.
+
+//-------------------------------------------------------------------------------------------------
+// --bias <csv> <file> : does sampling a FINER level than the footprint buy accuracy?
+//
+// The level-l texel holds the average over its 2^l block, so nothing in level l records where inside
+// that block the detail sat. A footprint that covers a whole block can be answered from it exactly
+// (measured: 0.05 to 0.31 of 255 against the supersampled truth), but a footprint that straddles two
+// blocks cannot: the chain has to smear each block's content uniformly over the block. Sampling a
+// finer level keeps the sub-block structure, at the price of filtering less. This sweeps
+// GL_TEXTURE_LOD_BIAS against the supersampled truth, so the trade is measured rather than argued:
+// the truth is an antialiased integral, so it penalises both blurring and aliasing, and whichever
+// bias has the smallest error there is genuinely the smallest total error by this measure.
+void setTreeLodBias(core::ObjectTree& aTree, float aBias) {
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(aTree.topNode(), layers);
+    auto& ggl = gl::Global::functions();
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!key)
+            continue;
+        gl::Texture& tex = key->cache().texture();
+        if (tex.id() == 0)
+            continue;
+        ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+        ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, aBias);
+        ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    }
+}
+
+int runBias(const QString& aCsv, const QString& aPath) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    const QSize canvas = project.attribute().imageSize();
+    if (canvas.isEmpty())
+        return 4;
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    RenderFixture& fx = *fixtures[key];
+
+    QFile out(aCsv);
+    const bool fresh = !out.exists() || out.size() == 0;
+    if (!out.open(QIODevice::Append | QIODevice::Text))
+        return 5;
+    QTextStream ts(&out);
+    if (fresh)
+        ts << "file,zoom,lod_bias,mean,max,over16\n";
+
+    const float zooms[] = {0.25f, 0.0625f};
+    const float biases[] = {-1.5f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f};
+    const int window = 64;
+
+    for (float zoom : zooms) {
+        int ss = std::max(2, (int)std::lround(2.0f / zoom));
+        if (ss % 2 == 0 && (canvas.width() % 2 != 0 || canvas.height() % 2 != 0))
+            ++ss;
+        const QPoint at((canvas.width() - window) / 2, (canvas.height() - window) / 2);
+
+        // the shipped state first: the truth is rendered with the level bias at its default
+        setLayerSampling(project, Sampling::MipmapCutoff);
+        setTreeLodBias(project.objectTree(), 0.0f);
+        int ssRef = ss;
+        const QImage ref =
+            supersampledWindowReference(project, canvas, zoom, ssRef, QSize(window, window), at, backdrop);
+
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        camera.setScale(zoom);
+
+        std::printf("  %s z=%.4f\n", qPrintable(QFileInfo(aPath).fileName()), zoom);
+        for (float bias : biases) {
+            setTreeLodBias(project.objectTree(), bias);
+            const QImage img = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+            const DiffStats d = diffVsRef(cropCentral(img, window), ref);
+            ts << QFileInfo(aPath).fileName() << "," << zoom << "," << bias << ","
+               << QString::number(d.mean, 'f', 4) << "," << d.max << "," << d.over16 << "\n";
+            ts.flush();
+            std::printf("    lod bias %+4.1f : mean %7.4f  max %3d  pixels>16 %d\n", bias, d.mean, d.max, d.over16);
+        }
+        setTreeLodBias(project.objectTree(), 0.0f);
+    }
+    return 0;
+}
+
 int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     gl::DeviceInfo dev;
     dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
@@ -3298,6 +3433,28 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     setTreeSampling(tree, Sampling::MipmapCutoff);
     const QImage render = figures::readbackToImage(fixtures[key]->render(tree, camera, 0, backdrop), canvas);
 
+    // a second truth at half the sampling: if the error numbers move between the two, they are
+    // measuring the quadrature, not the filter
+    QImage truthCoarse;
+    {
+        const int ss2 = ss / 2;
+        const QSize big2(canvas.width() * ss2, canvas.height() * ss2);
+        const QString key2 = QString("%1x%2").arg(big2.width()).arg(big2.height());
+        if (fixtures.find(key2) == fixtures.end()) {
+            std::unique_ptr<RenderFixture> fx(new RenderFixture());
+            fx->init(big2);
+            fixtures.emplace(key2, std::move(fx));
+        }
+        QPoint lt2;
+        referenceLeftTop(canvas.width(), canvas.height(), ss2, 0, 0, lt2);
+        core::CameraInfo cam2;
+        cam2.reset(big2, 1.0, canvas, lt2);
+        cam2.setScale(zoom * (float)ss2);
+        truthCoarse = boxDownsample(
+            figures::readbackToImage(fixtures[key2]->render(tree, cam2, 0, backdrop), big2), ss2
+        );
+    }
+
     // the truth: the same scene at ss x, box-averaged down
     const QSize big(canvas.width() * ss, canvas.height() * ss);
     const QString bigKey = QString("%1x%2").arg(big.width()).arg(big.height());
@@ -3345,6 +3502,7 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     int gradN = 0;
     const double margin0 = 0.0;   // this texture keeps the artwork at the origin
     double sumRTc = 0, sumBTc = 0, sumTentc = 0, sumRTb = 0, sumBTb = 0, sumTentb = 0;
+    double sumAT = 0, sumAB = 0, sumAA = 0;
     int nc = 0, nb = 0;
     std::vector<Sample> samples;
 
@@ -3394,6 +3552,7 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
                 ++gradN;
             }
             const double tn = tentIntegral(texture, ax - half, ay - half, (int)step, 0);
+            const double ar = areaIntegral(texture, ax - half, ay - half, (int)step, 0);
             // Which phase the level-4 read is at: 0.5 means the footprint centre sits on a level
             // texel centre (the footprint is aligned with the artwork's own 16-texel grid, so the
             // read is a plain box), 0.0 or 1.0 means it sits between two texels (so the bilinear
@@ -3422,6 +3581,9 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
             sumRB += std::fabs(r - b);
             sumTT += std::fabs(tn - t);
             sumTB += std::fabs(tn - b);
+            sumAT += std::fabs(ar - t);
+            sumAB += std::fabs(ar - b);
+            sumAA += std::fabs(ar - tn);
             maxRT = std::max(maxRT, (int)std::lround(std::fabs(r - t)));
             if (std::fabs(r - b) > worstRB) {
                 worstRB = std::fabs(r - b);
@@ -3494,6 +3656,13 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
         ts << "file,layer,phase,art_w,art_h,tex_w,tex_h,render_vs_truth,box_vs_truth,render_vs_box,"
               "tent_vs_truth,box_vs_tent,render_vs_truth_max,render_vs_box_max\n";
     }
+    double sumConv = 0;
+    if (!truthCoarse.isNull())
+        for (int y = 0; y < canvas.height(); ++y)
+            for (int x = 0; x < canvas.width(); ++x)
+                sumConv += std::fabs(truth.pixelColor(x, y).red() - truthCoarse.pixelColor(x, y).red());
+    std::printf("    reference convergence: |ss=%d truth - ss=%d truth| mean %.4f\n", ss, ss / 2,
+                sumConv / ((double)canvas.width() * canvas.height()));
     const QString phase = aAligned ? "aligned" : "as-it-falls";
     ts << QFileInfo(aPath).fileName() << "," << bestName << "," << phase << "," << artwork.w << ","
        << artwork.h << "," << textureSize.width() << "," << textureSize.height()
@@ -3537,6 +3706,15 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
             nb ? sumRTb / nb : 0.0, nb ? sumBTb / nb : 0.0, nb ? sumTentb / nb : 0.0
         );
     }
+    std::printf(
+        "    candidate definitions: area(texels weighted by coverage)-vs-truth %.3f | "
+        "tent(integral of the bilinear reconstruction)-vs-truth %.3f | the two definitions differ by %.3f\n",
+        sumAT / dd, sumTT / dd, sumAA / dd
+    );
+    std::printf(
+        "    chain (box model) against each definition: vs area %.3f | vs tent %.3f\n", sumAB / dd,
+        sumTB / dd
+    );
     std::printf(
         "    render-vs-box: all footprints mean %.3f max %d | fully opaque box texel (%d of %d "
         "pixels): mean %.3f max %d\n",
@@ -4265,6 +4443,13 @@ int main(int argc, char** argv) {
     // --parity <file> <zoom>
     if (argc > 3 && QString(argv[1]) == "--parity") {
         const int rc = runParity(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toFloat());
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --bias <csv> <file>
+    if (argc > 3 && QString(argv[1]) == "--bias") {
+        const int rc = runBias(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
         clearRenderFixtures();
         return rc;
     }
