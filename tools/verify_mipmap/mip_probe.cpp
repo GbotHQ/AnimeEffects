@@ -56,6 +56,7 @@
 #include <QSurfaceFormat>
 
 #include "XC.h"
+#include "core/BlurKey.h"
 #include "core/CameraInfo.h"
 #include "core/ClippingFrame.h"
 #include "core/DestinationTexturizer.h"
@@ -896,6 +897,7 @@ struct LayerSetup {
     img::BlendMode folderMode = img::BlendMode_Multiply; // non-Normal forces the composite path
     bool grid = false;                                 // render the mesh overlay instead
     bool clipping = false;                             // add a clipper that half-covers the layer
+    float blur = 0.0f;                                 // layer blur: routes through FilterFrame
 };
 
 std::vector<uint8_t> renderScene(
@@ -960,6 +962,17 @@ std::vector<uint8_t> renderScene(
         layer->setClipped(true);
     }
 
+    if (aSetup.blur > 0.0f) {
+        // An active BlurKey puts the layer on its own composite path: the artwork is rendered
+        // into a FilterFrame slot and blurred through the downsample ladder. Mip sampling of the
+        // artwork still happens on that first render, so the equivalence reference applies.
+        auto* blurKey = new core::BlurKey();
+        blurKey->setAmount(aSetup.blur);
+        cmnd::Base* pusher = layer->timeLine()->createPusher(core::TimeKeyType_Blur, 0, blurKey);
+        pusher->tryExec();
+        delete pusher;
+    }
+
     core::CameraInfo camera;
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
     return fx.render(tree, camera, 0, aBackdrop, aSetup.grid);
@@ -974,12 +987,13 @@ void suitePaths() {
     const int margin = 19;
 
     const LayerSetup setups[] = {
-        {"normal", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, false},
-        {"HSV adjust", img::BlendMode_Normal, true, false, img::BlendMode_Normal, false, false},
-        {"in composite folder", img::BlendMode_Normal, false, true, img::BlendMode_Multiply, false, false},
-        {"HSV in composite folder", img::BlendMode_Normal, true, true, img::BlendMode_Multiply, false, false},
-        {"blend mode Multiply", img::BlendMode_Multiply, false, false, img::BlendMode_Normal, false, false},
-        {"clipped by a clipper", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, true},
+        {"normal", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, false, 0.0f},
+        {"HSV adjust", img::BlendMode_Normal, true, false, img::BlendMode_Normal, false, false, 0.0f},
+        {"in composite folder", img::BlendMode_Normal, false, true, img::BlendMode_Multiply, false, false, 0.0f},
+        {"HSV in composite folder", img::BlendMode_Normal, true, true, img::BlendMode_Multiply, false, false, 0.0f},
+        {"blend mode Multiply", img::BlendMode_Multiply, false, false, img::BlendMode_Normal, false, false, 0.0f},
+        {"clipped by a clipper", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, true, 0.0f},
+        {"with layer blur", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, false, 4.0f},
     };
 
     // the plain baseline, for the non-vacuity check below
@@ -1001,14 +1015,30 @@ void suitePaths() {
             QString("path %1: minified content must match the hand-prefiltered content (delta %2)")
                 .arg(setup.name).arg(delta));
         // This path must actually have done something, or the assertion above is vacuous.
-        // Compared over ALL channels: a saturation change leaves the max channel (here red)
-        // untouched and only moves the others, so a single-channel check would report "no
-        // change" for a path that ran perfectly well.
-        const int vsBaseline = interiorMaxDelta(mipmapped, baseRender, canvas, margin);
-        if (setup.hsv || setup.inFolder || setup.clipping || setup.mode != plain.mode)
+        // Two deliberate choices here. Compared over ALL channels, because a saturation change
+        // leaves the max channel (here red) untouched and only moves the others, so a
+        // single-channel check reports "no change" for a path that ran perfectly well. And
+        // compared over the WHOLE canvas, not the interior crop: a blur of an already-uniform
+        // interior is invisible, so its effect only shows at the quad's edge, which the crop
+        // deliberately excludes.
+        const int vsBaseline = interiorMaxDelta(mipmapped, baseRender, canvas, 0);
+        if (setup.hsv || setup.inFolder || setup.clipping || setup.blur > 0.0f || setup.mode != plain.mode)
             expect(vsBaseline > 8,
                 QString("path %1: must change the result vs the plain baseline (max channel delta %2, mean %3 vs %4)")
                     .arg(setup.name).arg(vsBaseline).arg(mean, 0, 'f', 2).arg(baseMean, 0, 'f', 2));
+
+        // The blur path needs an ABSOLUTE expectation, not only the equivalence one. Blurring a
+        // uniform region leaves its value where it was, and that value is analytic:
+        // coverage*source + (1-coverage)*backdrop. Equivalence alone cannot see a global shader
+        // error (both sides of it run through the same shader), so without this the blur case
+        // would pass even with PREMULTIPLIED_INPUT wrong.
+        if (setup.blur > 0.0f) {
+            const double expected = 0.5 * color[0] + 0.5 * backdrop[0];
+            expect(near(mean, expected, 4.0),
+                QString("blur: a blurred uniform region must keep the analytic value %1, got %2")
+                    .arg(expected, 0, 'f', 1)
+                    .arg(mean, 0, 'f', 1));
+        }
 
         // The clipping case must prove the CLIPPEE was clipped, not merely that a clipper got
         // drawn: the clipper covers only the right-hand part of the clippee, so left of that

@@ -44,9 +44,10 @@ this harness originally did.
 - **M5 — feature paths.** The M4 equivalence check applied to the paths a layer can be drawn
   through: an HSV adjust on the layer, a folder composite (which renders the subtree into a
   `FilterFrame` slot and blends that slot against the scene), the two combined, one non-Normal
-  layer blend mode, the grid/mesh overlay, and clipping (a clippee/clipper pair, which runs the
-  `IS_CLIPPEE` shader variant). Each path must also provably have changed the result versus the
-  plain baseline, or the equivalence assertion would be vacuous.
+  layer blend mode, the grid/mesh overlay, clipping (a clippee/clipper pair, which runs the
+  `IS_CLIPPEE` shader variant), and a layer blur (which routes the artwork through a
+  `FilterFrame` composite slot and the downsample ladder). Each path must also provably have
+  changed the result versus the plain baseline, or the equivalence assertion would be vacuous.
   The grid overlay is covered by inspection as well: `GridDrawingFrag` outputs a constant
   `uColor` and samples no texture, so mipmapping cannot affect it - the suite just pins that the
   path still runs. Clipping needs more than "the render changed": the clipper covers only the
@@ -54,6 +55,12 @@ this harness originally did.
   boundary and PRESENT right of it. Without that, a clipper that drew but clipped nothing would
   leave the `IS_CLIPPEE` variant unexercised while equivalence still passed. Measured: 128
   (backdrop) outside against 227 inside - the exact predicted `0.5*200 + 0.5*255`.
+
+The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a uniform region
+  leaves its value where it was, and that value is analytic (`coverage*source +
+  (1-coverage)*backdrop` = 164 here). Equivalence alone passes under the `PREMULTIPLIED_INPUT`
+  mutation, because both sides of it run through the same shader - the mutation takes the blur
+  path to 114 instead of 164 and only the absolute assertion catches it.
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -83,8 +90,8 @@ Both halves were mutation-tested against the product, not just reasoned about:
 |---|---|
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
-| `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`) |
-| none (shipped code) | 73 checks, 0 failures |
+| `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`); M5's blur path also fails, `114.0` against the analytic `164.0` |
+| none (shipped code) | 76 checks, 0 failures |
 
 The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
 texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
@@ -110,9 +117,8 @@ Verified so far: mip chain generation, the production `ImageKey` texture and its
 rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder
 composite path, and the grid/mesh overlay.
 
-Not yet verified: the blur/filter ladder over mipmapped artwork, the export path
-(`ctrl::Exporter`) against the interactive render - the last explicitly-named path - and an ASan
-run over the new CPU premultiply pass.
+Not yet verified: the export path (`ctrl::Exporter`) against the interactive render — the last
+explicitly-named path — and an ASan run over the new CPU premultiply pass.
 
 Known open risk, not yet measured: `LayerMesh` keeps static `texCoords` while `positions` are
 deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle.
