@@ -1895,6 +1895,32 @@ QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, floa
 }
 
 
+
+// Forces every layer texture to sample LEVEL 0 ONLY - the behaviour before this change, when no
+// mip chain existed at all. Reached through the public ImageKey::cache() rather than a mutation, so
+// the "before" and "after" renders come from ONE binary and differ only in the filter state.
+// ImageKey.invalidate() is not needed: the texture object is the same, only its sampler changes.
+void setLayerSampling(core::Project& aProject, bool aMipmapped) {
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(aProject.objectTree().topNode(), layers);
+    int n = 0;
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!key)
+            continue;
+        gl::Texture& tex = key->cache().texture();
+        if (tex.id() == 0)
+            continue;
+        // the chain stays allocated either way; only the sampler changes, so this is reversible
+        // without rebuilding any texture
+        tex.setFilter(aMipmapped ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR, GL_LINEAR);
+        ++n;
+    }
+    std::printf("  %s sampling on %d textures\n", aMipmapped ? "mipmapped" : "level-0 (pre-change)", n);
+}
+
 int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
     QDir().mkpath(aDir);
     gl::DeviceInfo dev;
@@ -1928,7 +1954,16 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
         camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
         if (zoom != 1.0f)
             camera.setScale(zoom);
+        // AFTER: shipped (mipmapped minification). Set explicitly before every variant - a sticky
+        // one-shot flag here silently made the "mip" render level-0 from the second zoom onward, so
+        // before and after came out identical and the comparison proved nothing.
+        setLayerSampling(project, true);
         const QImage mip = figures::readbackToImage(
+            fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
+        );
+        // BEFORE: level-0 only, which is what shipped when no mip chain existed at all.
+        setLayerSampling(project, false);
+        const QImage before = figures::readbackToImage(
             fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
         );
         int ss = aSS;
@@ -1939,6 +1974,7 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
 
         const QString z = QString::number((int)(zoom * 1000));
         mip.save(QDir(aDir).filePath(QString("%1_mip_zoom%2.png").arg(aTag).arg(z)));
+        before.save(QDir(aDir).filePath(QString("%1_level0_zoom%2.png").arg(aTag).arg(z)));
         ref.save(QDir(aDir).filePath(QString("%1_ref_zoom%2.png").arg(aTag).arg(z)));
         std::printf("  wrote %s mip/ref at zoom %s\n", qPrintable(aTag), qPrintable(z));
     }

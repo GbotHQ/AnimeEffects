@@ -184,6 +184,42 @@ differ by 128 in the color channels at level 1. Keep both patterns.
 discriminating channel is **alpha** alone (both levels premultiply to `rgb = 0` while coverage
 halves), so a color-only comparison reports "level 1 is identical to level 0".
 
+## The before/after comparison (fig13, fig14)
+
+The comparison that matters, and the one missing for several rounds. The state this change replaces
+is not "straight-alpha mips" - it is NO mipmapping at all, level-0 sampling, which aliases. The
+harness now renders three variants from ONE binary (only the sampler differs, so nothing else can
+account for a difference):
+
+- BEFORE: every layer texture pinned to `GL_LINEAR` minification - level 0 only, what shipped when
+  the mip chain did not exist. Reached through the public `ImageKey::cache()`, so no production
+  mutation and no second build.
+- AFTER: shipped, `GL_LINEAR_MIPMAP_LINEAR`.
+- GROUND TRUTH: the supersampled reference.
+
+Whole-frame means are a bad metric here (flat regions dominate): pagedoll 0.26 -> 0.26 at 1:1,
+0.15 -> 0.21 at 2x, 0.10 -> 0.095 at 4x. The effect is localised on high-frequency detail, so
+measure it there. In the worst 80x80 window per artwork:
+
+| artwork | window | BEFORE mean / max | AFTER mean / max |
+|---|---|---|---|
+| pagedoll.anie @4x | (485,810) | 2.23 / 109 | **1.45 / 37** |
+| pagedoll.anie @2x | (410,635) | 2.15 / 73 | **1.86 / 50** |
+| AUTUMN.psd @2x | (1010,935) | 5.17 / 108 | **3.23 / 50** |
+| AUTUMN.psd @4x | (910,1010) | 7.03 / 126 | **5.33 / 87** |
+
+`fig13_aliasing_before_after.png` shows those windows at 4x nearest-neighbour: BEFORE, AFTER and
+ground truth in a row per artwork. On AUTUMN.psd the BEFORE panel's linework is visibly jagged and
+broken up while AFTER matches the reference; the pagedoll window is a soft fur edge where the same
+difference is much subtler. `fig14_aliasing_error.png` is `|variant - ground truth| x4` for both.
+Nearest-neighbour is deliberate: it shows the actual rendered pixels rather than a smoothed
+reconstruction of them.
+
+A first attempt at this reported BEFORE and AFTER as numerically identical at every zoom, which
+would have been a strong - and wrong - claim that the change does nothing. A sticky one-shot flag
+set the level-0 filter before the first zoom and never restored it, so from the second zoom on both
+variants were level-0. The sampler is now set explicitly before every variant.
+
 ## Independent ground truth: supersampling
 
 Everything above compares the render against something derived from the same machinery - an
