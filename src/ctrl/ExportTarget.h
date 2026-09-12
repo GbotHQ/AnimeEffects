@@ -176,7 +176,14 @@ struct ExportTarget {
 // ORDER of these in the data file is the order of the sections on screen.
 struct ExportGroup {
     QString id;    // matches ExportTarget::group
-    QString title; // what the heading says ("Telegram")
+    QString title; // what the section says ("Telegram")
+    // Whether this section's rows are VARIANTS of one platform (Telegram: a sticker,
+    // a custom emoji, a video) or merely rows that share the absence of one
+    // ("general": a video for a chat app, a website, just a file, a master copy).
+    // Variants are a node you open; the others are destinations and are listed
+    // directly, because a platform holding one line, or holding four unrelated
+    // answers, is a level of hierarchy that asks nothing.
+    bool variants = true;
 };
 
 // An inclusive span of project frames. Inclusive rather than half-open because

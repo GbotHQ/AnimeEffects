@@ -7,36 +7,50 @@
 #include "ctrl/ExportTarget.h"
 
 class QLineEdit;
-class QListWidget;
-class QListWidgetItem;
 class QPushButton;
+class QTreeWidget;
+class QTreeWidgetItem;
 
 namespace gui {
 
 class GUIResources;
 
-// The destination chooser: a search field and a list of PLATFORM SECTIONS, in a
-// modal.
+// The destination chooser: a search field and a TREE of platforms, in a modal.
 //
 // WHY A MODAL AND NOT A MENU. There are fifty-five destinations. As a menu that is
-// four levels deep (File -> Quickly export as -> a section -> the destination), and
+// four levels deep (File -> Quickly export as -> a platform -> the destination), and
 // at any level the full list is forty rows that wrap into two columns and run off
 // the bottom of the screen. A menu cannot be typed into, and typing is exactly what
-// makes fifty-five rows navigable: three letters of "telegram", or "sticker" to see
-// every sticker destination, is faster than reading any grouping.
+// makes fifty-five destinations navigable: three letters of "telegram", or "sticker"
+// to see every sticker destination, is faster than reading any grouping.
 //
-// PLATFORM SECTIONS. The list is grouped by the platform a person is posting to
-// ("I am posting to Instagram"), which is the one thing they know before they
-// start, and within a section by the destination's label, so a platform's variants
-// ("Instagram Reels", "Instagram (photo)") sit together under one heading. The
-// sections and their order come from the <groups> block of the data file; a heading
-// is drawn only when its section has a row to show.
+// THE PLATFORMS ARE CLOSED. The first level is the platform ("I am posting to
+// Instagram"), which is the one thing a person knows before they start; its
+// destinations are one level down, and a platform is COLLAPSED until you open it.
+// Grouping that shows every destination at once is not a hierarchy, it is the same
+// flat list with bold lines in it.
 //
-// The escape hatch for a platform the list does not know is a button, not a
+// TWO LEVELS EXACTLY WHEN THERE IS SOMETHING TO CHOOSE BETWEEN:
+//  - a platform with more than one destination (Telegram: a sticker, a custom emoji,
+//    a video) is a node you open;
+//  - a platform with one destination is that destination, listed directly, because a
+//    section holding a single line costs a click and asks nothing;
+//  - a group whose rows are NOT variants of one platform ("general": a video for a
+//    chat app, a website, just a file, a master copy) is listed directly too, which
+//    is also what keeps the safe default one Enter away on a fresh install.
+// Which groups nest is DATA (see `variants` in the <groups> block of the table).
+//
+// WHAT ENTER DOES, in one sentence: on a platform it opens or closes it (never a
+// guess about which destination was meant), and on a destination it is the answer.
+// Searching selects a destination, never a platform, so "telegram" then Enter is two
+// keystrokes and no reading.
+//
+// The escape hatch for a platform the tree does not know is a button, not a
 // destination, so it cannot be filtered away.
 class DestinationPicker : public QDialog {
 public:
-    // aCurrentId preselects a destination (empty = none).
+    // aCurrentId preselects a destination (empty = none). The section holding it is
+    // opened, so the preselection is on screen and not merely current.
     //
     // The two constructors differ only in where the rows come from. The rows and
     // their sections are the SAME data file, so the convenience overload is the one
@@ -50,24 +64,21 @@ public:
     // The chosen destination id, or empty for "my platform isn't listed".
     QString chosenId() const { return mChosenId; }
 
-    // Rows currently shown, for tests and probes (the escape hatch excluded).
+    // Destinations currently on screen (a platform node is not one, and a hidden row
+    // is not on screen), for tests and probes.
     int visibleRowCount() const;
 
 private:
     void applyFilter(const QString& aQuery);
     void chooseCurrent();
-
-    // The nearest destination to a list position. A heading is a label, not an
-    // answer, but Qt lets the current index sit on one (its arrow keys and its
-    // mouse presses do not skip a non-selectable item, which is what a heading has
-    // to be), so every route that can move the highlight goes through here instead.
-    // aDirection: +1 searches downwards first, -1 upwards, 0 downwards and then up.
-    QListWidgetItem* nearestRow(int aFromRow, int aDirection) const;
+    // Open or close a platform node. The one thing a platform can do, whatever route
+    // asked: Enter, a click, or the dialog's own default button.
+    void toggleSection(QTreeWidgetItem* aSection);
 
     bool eventFilter(QObject* aWatched, QEvent* aEvent) override;
 
     QLineEdit* mSearch = nullptr;
-    QListWidget* mList = nullptr;
+    QTreeWidget* mTree = nullptr;
     QPushButton* mManualButton = nullptr;
     QString mChosenId;
 };

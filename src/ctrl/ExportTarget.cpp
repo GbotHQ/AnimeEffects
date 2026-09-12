@@ -269,6 +269,9 @@ QList<ExportGroup> ExportTargets::loadGroups(const QString& aPath) {
         // name but far better than a heading with no text, which reads as a bug.
         group.title = g.attribute(QStringLiteral("title"));
         if (group.title.isEmpty()) group.title = group.id;
+        // Absent means "these rows are variants of one platform", which is what most
+        // sections are; a section has to say so to be listed flat.
+        group.variants = g.attribute(QStringLiteral("variants")) != QLatin1String("false");
         out.push_back(group);
     }
     return out;

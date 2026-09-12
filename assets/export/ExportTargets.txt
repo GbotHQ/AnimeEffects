@@ -88,9 +88,17 @@
        Titles are SHORT names, not labels: the row underneath already says what
        it makes ("Telegram sticker"), so the section only has to say where. A
        group with no rows is not drawn, and a row whose group is not declared
-       here still appears, under its own key, at the end. -->
+       here still appears, under its own key, at the end.
+
+       @variants (default true) says the rows here are VARIANTS of one platform,
+       so the picker draws the platform as a section you OPEN, with the
+       destinations inside it. `variants="false"` means the rows merely share the
+       absence of a platform - they are not alternatives to each other - so they
+       are listed directly, and a platform with a single destination is listed
+       directly for the same reason: a level of hierarchy that asks nothing is a
+       click for nothing. -->
   <groups>
-    <group id="general" title="General"/>
+    <group id="general" title="General" variants="false"/>
     <group id="bilibili" title="Bilibili"/>
     <group id="bluesky" title="Bluesky"/>
     <group id="dailymotion" title="Dailymotion"/>
