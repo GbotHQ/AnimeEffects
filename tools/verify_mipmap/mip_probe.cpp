@@ -1144,6 +1144,124 @@ void suiteMipLevels() {
     }
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M7: is the mip level CONSTANT across the mesh?
+//
+// This is the seam question. UVs are interpolated linearly within a triangle, so the derivative the
+// sampler sees is constant per triangle: trilinear filtering picks one blend per triangle, and if
+// adjacent triangles land on different levels the boundary between them is a blurriness step. That
+// matters here because LayerMesh keeps static texCoords while positions are deformed, so a deformed
+// mesh has triangles of differing screen area - and before mipmapping every layer sampled level 0,
+// where such steps cannot exist.
+//
+// The detector uses a source that is level-SENSITIVE: an opaque white checkerboard on transparent
+// black. Level 0 is maximum contrast (opaque white alternating with the black backdrop), while
+// every level at or above 1 is a uniform 50% coverage - so ANY region that samples level 0 shows up
+// as non-zero local contrast. If LOD varied across the mesh, some region would leak level 0 and the
+// per-block contrast would spread.
+//
+// The same measurement is run at scale 1.0 as a positive control: there LOD is 0 by construction and
+// the contrast MUST be high, which proves the detector can see level 0 at all. Without that control
+// a "contrast is zero" result would be indistinguishable from a detector that does not work.
+struct BlockStats {
+    int count = 0;
+    double minSd = 0.0;
+    double maxSd = 0.0;
+    double meanSd = 0.0;
+};
+
+BlockStats interiorBlockContrast(
+    const std::vector<uint8_t>& aImg, const QSize& aSize, int aMargin, int aBlock
+) {
+    std::vector<double> sds;
+    for (int by = aMargin; by + aBlock <= aSize.height() - aMargin; by += aBlock) {
+        for (int bx = aMargin; bx + aBlock <= aSize.width() - aMargin; bx += aBlock) {
+            double sum = 0, sum2 = 0;
+            const int n = aBlock * aBlock;
+            for (int y = by; y < by + aBlock; ++y) {
+                for (int x = bx; x < bx + aBlock; ++x) {
+                    const double v = aImg[((size_t)y * aSize.width() + x) * 4];
+                    sum += v;
+                    sum2 += v * v;
+                }
+            }
+            const double mean = sum / n;
+            sds.push_back(std::sqrt(std::max(0.0, sum2 / n - mean * mean)));
+        }
+    }
+    BlockStats st;
+    if (sds.empty())
+        return st;
+    st.minSd = sds[0];
+    st.maxSd = sds[0];
+    double total = 0;
+    for (double v : sds) {
+        st.minSd = std::min(st.minSd, v);
+        st.maxSd = std::max(st.maxSd, v);
+        total += v;
+    }
+    st.meanSd = total / sds.size();
+    st.count = (int)sds.size();
+    return st;
+}
+
+void suiteLodUniformity() {
+    suiteHeader("M7 mip level is constant across the mesh (no LOD seams)");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t black[3] = {0, 0, 0};
+
+    const LayerSetup setup;
+
+    // POSITIVE CONTROL: at scale 1.0 the layer is at LOD 0, so the checkerboard is fully visible
+    // and the block contrast must be large. This is what proves the detector sees level 0.
+    {
+        const int failsBefore = gFails;
+        const std::vector<uint8_t> rendered =
+            renderSceneAtScale(canvas, makeAlphaChecker(imageSize, kPatterns[0].inside), setup, black, 1.0f);
+        const BlockStats st = interiorBlockContrast(rendered, canvas, 8, 8);
+        expect(st.maxSd > 60.0,
+            QString("control at LOD 0 (scale 1.0): block contrast must be high, got max %1")
+                .arg(st.maxSd, 0, 'f', 1));
+        caseReport("control: scale 1.0 (LOD 0)", gFails == failsBefore,
+            QString("block contrast max=%1 mean=%2 - level 0 is visible, so the detector works")
+                .arg(st.maxSd, 0, 'f', 1).arg(st.meanSd, 0, 'f', 1));
+    }
+
+    // THE ASSERTION: at every integer LOD the whole layer must sit at that level, so no block may
+    // retain level-0 contrast. A spread between blocks would mean LOD varies across the mesh.
+    const float scales[] = {0.5f, 0.25f, 0.125f};
+    const int levels[] = {1, 2, 3};
+    for (size_t i = 0; i < sizeof(scales) / sizeof(scales[0]); ++i) {
+        const int failsBefore = gFails;
+        const std::vector<uint8_t> rendered =
+            renderSceneAtScale(canvas, makeAlphaChecker(imageSize, kPatterns[0].inside), setup, black, scales[i]);
+        const int margin = (int)std::lround(32.0 - 32.0 * scales[i]) + 3;
+        const int block = std::max(2, (int)std::lround((32.0 * scales[i]) / 5.0));
+        const BlockStats st = interiorBlockContrast(rendered, canvas, margin, block);
+
+        expect(st.maxSd <= 2.0,
+            QString("scale %1 (LOD %2): no block may keep level-0 contrast (max block sd %3)")
+                .arg(scales[i], 0, 'f', 3)
+                .arg(levels[i])
+                .arg(st.maxSd, 0, 'f', 2));
+        expect(st.maxSd - st.minSd <= 2.0,
+            QString("scale %1 (LOD %2): contrast must be spatially uniform (spread %3) - a spread "
+                    "means triangles are landing on different mip levels")
+                .arg(scales[i], 0, 'f', 3)
+                .arg(levels[i])
+                .arg(st.maxSd - st.minSd, 0, 'f', 2));
+        caseReport(QString("scale %1 (LOD %2)").arg(scales[i], 0, 'f', 3).arg(levels[i]),
+            gFails == failsBefore,
+            QString("%1 blocks, sd max=%2 min=%3 mean=%4")
+                .arg(st.count)
+                .arg(st.maxSd, 0, 'f', 2)
+                .arg(st.minSd, 0, 'f', 2)
+                .arg(st.meanSd, 0, 'f', 2));
+    }
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -1251,6 +1369,7 @@ int main(int argc, char** argv) {
     suiteBlendModes();
     suitePaths();
     suiteMipLevels();
+    suiteLodUniformity();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

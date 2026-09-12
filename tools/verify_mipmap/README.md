@@ -67,6 +67,15 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   The source is chosen to make that value LEVEL-INDEPENDENT - a checkerboard of constant RGB
   averages to constant RGB at alpha = coverage at every level - so the assertion has power against
   the wrong level being selected, not just against a wrong chain.
+- **M7 — is the mip level constant across the mesh?** This is the seam question. UVs interpolate
+  linearly within a triangle, so the sampler's derivative is constant per triangle and trilinear
+  filtering picks one blend per triangle - if adjacent triangles land on different levels, the
+  boundary between them is a blurriness step. The detector uses a level-SENSITIVE source (an opaque
+  white checkerboard on transparent black): level 0 is maximum contrast, every level at or above 1 is
+  uniform 50% coverage, so any region sampling level 0 shows up as non-zero local contrast. Scale 1.0
+  runs as a POSITIVE CONTROL - there LOD is 0 by construction and contrast MUST be high, which is what
+  proves the detector can see level 0 at all. Measured: 127.5 (the maximum possible) at LOD 0, and
+  exactly 0.00 with zero spatial spread at LOD 1, 2 and 3.
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -97,7 +106,7 @@ Both halves were mutation-tested against the product, not just reasoned about:
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
 | `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`); M5's blur path also fails, `114.0` against the analytic `164.0` |
-| none (shipped code) | 79 checks, 0 failures |
+| none (shipped code) | 86 checks, 0 failures |
 
 The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
 texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
@@ -134,12 +143,25 @@ changes. At 4x minification the quad is smaller than the crop, so the backdrop a
 the "correct" value read 141.6 instead of 164.0 - a test bug that looks exactly like a product
 bug. The crop now follows the quad.
 
-Known open risk, not yet measured: `LayerMesh` keeps static `texCoords` while `positions` are
-deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle.
-Adjacent triangles can select different mip levels, which would show as a blurriness seam. Before
-mipmapping every layer sampled level 0, so such seams could not exist; correct prefiltering may
-have traded aliasing for a new artifact. This is the one place the change plausibly makes the
-product worse, and it needs a measurement.
+Known open risk, partly measured. `LayerMesh` keeps static `texCoords` while `positions` are
+deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle,
+and adjacent triangles can select different mip levels. Before mipmapping every layer sampled
+level 0, where such steps cannot exist, so this is the one place the change could plausibly make
+the product worse.
+
+M7 pins the UNDEFORMED case: on a uniformly scaled layer the level is constant across the whole
+mesh (zero spatial spread at LOD 1, 2 and 3), so neither the grid topology nor the mesh creator's
+edge-vertex reduction ("burr reduction") introduces LOD variation. It does NOT measure a deformed
+mesh. Constructing one needs the FFD machinery - `GridMesh` exposes no mutable positions, and
+`HeightMap::writeHeightMap` is dead in this branch, while the live FFD path runs through the
+editor's target/workspace (`ctrl/ffd/ffd_BrushMode`, `FFDKeyUpdater`) - so a probe cannot yet
+deform a mesh cheaply.
+
+Worth noting the risk window is narrower than it first looks: a layer drawn at or above 1:1 never
+samples a mip level at all, so only MINIFIED layers with a deformed mesh are exposed, and a visible
+seam needs adjacent triangles to differ by roughly a factor of two in local compression. If it does
+prove visible, the standard fix for a 2D tool is one LOD for the whole draw rather than per-fragment
+derivatives.
 
 Also unmeasured: anisotropic minification (a non-uniform layer scale compresses the texture on
 one axis, and trilinear LOD follows the largest derivative, so the other axis is over-blurred).
