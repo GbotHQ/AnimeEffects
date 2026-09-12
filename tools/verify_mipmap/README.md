@@ -90,6 +90,19 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
 
 ## Figures
 
+| file | what it shows |
+|---|---|
+| `fig1_reference.png` | the project at 1:1, the healthy baseline |
+| `fig2a_fixed_8x.png`, `fig2b_naive_8x.png` | the same frame at 8x minification, shipped vs naive |
+| `fig3_diff_x8.png` | `|fixed - naive| x8` - the halo as an outline tracing every alpha edge |
+| `fig4_halo_crop.png` | worst region magnified 7x, with the amplified difference beside it |
+| `fig5_scale_ladder.png` | one region at 1:1, 2x, 4x, 8x - the filter behaviour |
+| `fig6a_modes.png`, `fig6b_modes.png` | six blend modes on the same layer |
+| `fig7_multiply_halo.png` | Multiply, shipped vs naive - the halo is not Normal-only |
+| `fig8_export_vs_canvas.png` | canvas render vs the exported PNG (maxdiff 1) |
+| `fig9_paths_sheet.png` | render paths: plain, mesh overlay, folder Multiply/Screen, blur, HSV, clipping |
+
+
 `figures/` holds renders of real artwork (`~/Downloads/ANIE/pagedoll.anie`, 1200x1500, 19 layers)
 through the production pipeline, over an opaque mid-grey backdrop so both halo directions read.
 Regenerate with the probe's figure mode:
@@ -168,6 +181,18 @@ differ by 128 in the color channels at level 1. Keep both patterns.
 `maxAnyChannelDelta` exists for the same reason: for a premultiplied chain of that pattern the
 discriminating channel is **alpha** alone (both levels premultiply to `rgb = 0` while coverage
 halves), so a color-only comparison reports "level 1 is identical to level 0".
+
+## Known limitation: deformed meshes
+
+M7 pins the UNDEFORMED case, and that is as far as measurement currently reaches. On a deformed
+mesh the LOD is constant per triangle and can differ between adjacent triangles, which would show
+as a blurriness seam, and before mipmapping every layer sampled level 0 where such seams cannot
+exist. Measuring it needs the deformed vertex positions per triangle, and `LayerNode::mCurrentMesh`
+is private with no accessor, so a test cannot reach them without changing production code. The
+risk is bounded rather than eliminated: a layer drawn at or above 1:1 samples no mip level at all,
+and a visible seam needs adjacent triangles to differ by roughly 2x in local compression. If it
+proves visible, the standard fix for a 2D tool is one LOD per draw rather than per-fragment
+derivatives.
 
 ## Still to cover
 
