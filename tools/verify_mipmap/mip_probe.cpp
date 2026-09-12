@@ -3529,7 +3529,7 @@ int runBias1(const QString& aCsv, const QString& aPath) {
     return 0;
 }
 
-int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
+int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned, int aZoomDenom) {
     gl::DeviceInfo dev;
     dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
     dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
@@ -3576,8 +3576,9 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     // The scene: that one layer, centred, at 1:1, on a canvas small enough that the supersampled
     // reference (canvas * ss) fits the device. 128 * 32 = 4096.
     const QSize canvas(128, 128);
-    const int ss = 32;
-    const float zoom = 1.0f / 16.0f;
+    const int ss = std::max(2, 2 * aZoomDenom);
+    const float zoom = 1.0f / (float)aZoomDenom;
+    const int level = (int)std::lround(std::log2((double)aZoomDenom));
     const uint8_t backdrop[3] = {0, 0, 0};
 
     // The "aligned" pass shifts the layer by a fraction of a texel so that every footprint centre
@@ -3670,7 +3671,6 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     texture.w = textureSize.width();
     texture.h = textureSize.height();
     texture.d = upload;
-    const int level = 4;
     const Img boxed = boxLevel(texture, level);
     const Img finer = boxLevel(texture, level - 1);
 
@@ -4689,11 +4689,20 @@ int main(int argc, char** argv) {
         return rc;
     }
 
-    // --decompose <csv> <file>
+    // --decompose <csv> <file> [zoomDenom] [aligned]
     if (argc > 3 && QString(argv[1]) == "--decompose") {
+        bool decomAligned = false;
+        int decomDenom = 16;
+        for (int i = 4; i < argc; ++i) {
+            const QString a = QString::fromLocal8Bit(argv[i]);
+            if (a == QLatin1String("aligned"))
+                decomAligned = true;
+            else if (a.toInt() > 0)
+                decomDenom = a.toInt();
+        }
+        const int decomZoom = decomDenom;
         const int rc = runDecompose(
-            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]),
-            argc > 4 && QString(argv[4]) == QLatin1String("aligned")
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]), decomAligned, decomZoom
         );
         clearRenderFixtures();
         return rc;
