@@ -3203,7 +3203,7 @@ double tentIntegral(const Img& aImg, double aX0, double aY0, int aW, int aChanne
 // part of the error is the filter and which part is the implementation. The last term is also a
 // test of the claim that the supersampled truth IS that integral, on real content instead of by
 // definition.
-int runDecompose(const QString& aCsv, const QString& aPath) {
+int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     gl::DeviceInfo dev;
     dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
     dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
@@ -3254,12 +3254,21 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     const float zoom = 1.0f / 16.0f;
     const uint8_t backdrop[3] = {0, 0, 0};
 
-    core::ObjectTree tree;
-    auto* root = new core::FolderNode("root");
-    tree.grabTopNode(root);
-    auto* res = makeResource("decompose_src", artwork);
-    addScaledLayer(tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 1.0f,
-                   img::BlendMode_Normal);
+    // The "aligned" pass shifts the layer by a fraction of a texel so that every footprint centre
+    // lands exactly on a level-4 texel centre: then the level-4 read is a plain box and the only
+    // thing between it and the truth is the box's ends. "As it falls" leaves the phase wherever
+    // centring puts it, which is what happens in real artwork - and there the bilinear read blends
+    // two neighbouring boxes, a kernel twice as wide. The difference between the two passes is
+    // exactly the question of which filter is being applied.
+    // At exactly 16x one screen pixel is 16 texels, i.e. exactly one level-4 texel, so the phase is
+    // the same for every pixel in the frame: frac(w/32 + 0.5) in level units. Shifting the layer by
+    // 16 * (that - 0.5) texels puts every footprint centre on a level-texel centre.
+    const auto alignOffset = [](int aSide) {
+        const double frac = std::fmod((double)aSide / 32.0 + 0.5, 1.0);
+        return 16.0 * (frac - 0.5);
+    };
+    const double alignX = alignOffset(artwork.w);
+    const double alignY = alignOffset(artwork.h);
 
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
@@ -3271,6 +3280,19 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     core::CameraInfo camera;
     camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
     camera.setScale(zoom);
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("decompose_src", artwork);
+    addScaledLayer(
+        tree, root, res, "layer",
+        QVector2D(
+            canvas.width() * 0.5f + (aAligned ? (float)alignX : 0.0f),
+            canvas.height() * 0.5f + (aAligned ? (float)alignY : 0.0f)
+        ),
+        1.0f, img::BlendMode_Normal
+    );
 
     fixtures[key]->render(tree, camera, 0, backdrop);   // build the texture
     setTreeSampling(tree, Sampling::MipmapCutoff);
@@ -3321,15 +3343,23 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
     };
     double gradXRender = 0, gradYRender = 0, gradXTruth = 0, gradYTruth = 0, gradXBox = 0, gradYBox = 0;
     int gradN = 0;
+    const double margin0 = 0.0;   // this texture keeps the artwork at the origin
+    double sumRTc = 0, sumBTc = 0, sumTentc = 0, sumRTb = 0, sumBTb = 0, sumTentb = 0;
+    int nc = 0, nb = 0;
     std::vector<Sample> samples;
 
     for (int sy = 0; sy < canvas.height(); ++sy) {
         for (int sx = 0; sx < canvas.width(); ++sx) {
-            const double ax = (sx + 0.5) * step - (canvas.width() * 0.5) * step + artwork.w * 0.5;
+            // the model's coordinate frame moves with the layer: shifting the layer right by d puts
+            // the artwork at a smaller coordinate for the same screen pixel, so the model samples
+            // at (ideal position - d)
+            const double ax = (sx + 0.5) * step - (canvas.width() * 0.5) * step + artwork.w * 0.5
+                              - (aAligned ? alignX : 0.0);
             // render and truth are read back through readbackToImage, i.e. TOP-DOWN, while the
             // raw framebuffer that other suites index is bottom-up: the row term is (sy + 0.5),
             // not (canvas.height() - 0.5 - sy).
-            const double ay = (sy + 0.5) * step - (canvas.height() * 0.5) * step + artwork.h * 0.5;
+            const double ay = (sy + 0.5) * step - (canvas.height() * 0.5) * step + artwork.h * 0.5
+                              - (aAligned ? alignY : 0.0);
 
             // Footprints that reach outside the artwork are skipped: there the render shows the
             // backdrop (or a partial coverage) while bilinearAt clamps to the edge texel, so the
@@ -3364,7 +3394,29 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
                 ++gradN;
             }
             const double tn = tentIntegral(texture, ax - half, ay - half, (int)step, 0);
+            // Which phase the level-4 read is at: 0.5 means the footprint centre sits on a level
+            // texel centre (the footprint is aligned with the artwork's own 16-texel grid, so the
+            // read is a plain box), 0.0 or 1.0 means it sits between two texels (so the bilinear
+            // read blends two neighbouring boxes, a kernel twice as wide). Splitting the error by
+            // this is how "the box's ends are hard" and "bilinear blends two boxes" are told apart:
+            // the end taper is a sub-pixel effect, the blend is a whole extra texel of support.
+            const double phx = (ax + margin0) / (double)step;
+            const double phy = (ay + margin0) / (double)step;
+            const double dx = std::fabs(phx - std::floor(phx) - 0.5);
+            const double dy = std::fabs(phy - std::floor(phy) - 0.5);
+            const bool centred = (dx < 0.25 && dy < 0.25);
             samples.push_back({r, t, ax, ay});
+            if (centred) {
+                sumRTc += std::fabs(r - t);
+                sumBTc += std::fabs(b - t);
+                sumTentc += std::fabs(tn - t);
+                ++nc;
+            } else {
+                sumRTb += std::fabs(r - t);
+                sumBTb += std::fabs(b - t);
+                sumTentb += std::fabs(tn - t);
+                ++nb;
+            }
             sumRT += std::fabs(r - t);
             sumBT += std::fabs(b - t);
             sumRB += std::fabs(r - b);
@@ -3439,22 +3491,23 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
         return 5;
     QTextStream ts(&out);
     if (fresh) {
-        ts << "file,layer,art_w,art_h,tex_w,tex_h,render_vs_truth,box_vs_truth,render_vs_box,"
+        ts << "file,layer,phase,art_w,art_h,tex_w,tex_h,render_vs_truth,box_vs_truth,render_vs_box,"
               "tent_vs_truth,box_vs_tent,render_vs_truth_max,render_vs_box_max\n";
     }
-    ts << QFileInfo(aPath).fileName() << "," << bestName << "," << artwork.w << "," << artwork.h << ","
-       << textureSize.width() << "," << textureSize.height()
+    const QString phase = aAligned ? "aligned" : "as-it-falls";
+    ts << QFileInfo(aPath).fileName() << "," << bestName << "," << phase << "," << artwork.w << ","
+       << artwork.h << "," << textureSize.width() << "," << textureSize.height()
        << "," << QString::number(sumRT / dd, 'f', 4) << "," << QString::number(sumBT / dd, 'f', 4)
        << "," << QString::number(sumRB / dd, 'f', 4) << "," << QString::number(sumTT / dd, 'f', 4)
        << "," << QString::number(sumTB / dd, 'f', 4) << "," << maxRT << "," << maxRB << "\n";
     ts.flush();
 
     std::printf(
-        "  %-28s %s %dx%d -> texture %dx%d | render-vs-truth %.3f | box-vs-truth %.3f | "
-        "render-vs-box %.3f | tent-vs-truth %.3f | box-vs-tent %.3f | max render-vs-box %d\n",
-        qPrintable(QFileInfo(aPath).fileName()), qPrintable(bestName), artwork.w, artwork.h,
+        "  %-24s %-5s %dx%d -> tex %dx%d | render-vs-truth %.3f | box-vs-truth %.3f | "
+        "render-vs-box %.3f | tent-vs-truth %.3f | box-vs-tent %.3f\n",
+        qPrintable(QFileInfo(aPath).fileName()), qPrintable(phase), artwork.w, artwork.h,
         textureSize.width(), textureSize.height(), sumRT / dd, sumBT / dd, sumRB / dd, sumTT / dd,
-        sumTB / dd, maxRB
+        sumTB / dd
     );
     if (!worstAt.isEmpty())
         std::printf("    worst render-vs-box %s\n", qPrintable(worstAt));
@@ -3472,6 +3525,16 @@ int runDecompose(const QString& aCsv, const QString& aPath) {
             "    detail kept vs truth: render x %.3f%% y %.3f%% | box model x %.3f%% y %.3f%%\n",
             100.0 * xR / (xT > 1e-9 ? xT : 1.0), 100.0 * yR / (yT > 1e-9 ? yT : 1.0),
             100.0 * xB / (xT > 1e-9 ? xT : 1.0), 100.0 * yB / (yT > 1e-9 ? yT : 1.0)
+        );
+    }
+    {
+        std::printf(
+            "    by phase: footprint centred on a level texel (%d px): render-vs-truth %.3f, "
+            "box-vs-truth %.3f, tent-vs-truth %.3f\n"
+            "              footprint between two level texels (%d px): render-vs-truth %.3f, "
+            "box-vs-truth %.3f, tent-vs-truth %.3f\n",
+            nc, nc ? sumRTc / nc : 0.0, nc ? sumBTc / nc : 0.0, nc ? sumTentc / nc : 0.0, nb,
+            nb ? sumRTb / nb : 0.0, nb ? sumBTb / nb : 0.0, nb ? sumTentb / nb : 0.0
         );
     }
     std::printf(
@@ -4209,7 +4272,8 @@ int main(int argc, char** argv) {
     // --decompose <csv> <file>
     if (argc > 3 && QString(argv[1]) == "--decompose") {
         const int rc = runDecompose(
-            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3])
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]),
+            argc > 4 && QString(argv[4]) == QLatin1String("aligned")
         );
         clearRenderFixtures();
         return rc;

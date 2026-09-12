@@ -352,16 +352,31 @@ Three things this shows, none of them by construction:
   how the forced column is known to do what it says. So the distance from the truth at 16x is not
   the sampling: it is what the box pyramid gives, and the figures show it as a fourth column
   (third and fourth identical at 16x, visibly different below it).
-- **The box pyramid is measurably smoother than the truth, and by how much.** The forced-level-4
-  column measures 4.264 of 255 from the supersampled truth against the shipped render's 4.296
-  (corpus means at 16x): the whole of the remaining error. Per-pixel gradients say the same thing in
-  another way: on real layers the box model keeps 84-87% of the truth's mean per-pixel gradient,
-  13-16% of it gone. The mechanism is the kernel's ends: a box has hard ends and the truth's kernel
-  (tent convolved with the footprint) is tapered, so the two differ by the content's structure at the
-  footprint's boundary - a couple of 8-bit levels on average and up to 60 at a hard step, which is
-  where the largest differences sit. A box reduction is what glGenerateMipmap does and what every
-  mip chain does; matching the tapered kernel instead would mean generating the chain with a
-  different reduction filter, which is a change to the chain, not to the sampling.
+- **What the remaining difference actually is: the phase, not the filter's shape.** The forced-level-4
+  column measures 4.264 of 255 from the supersampled truth against the shipped render's 4.296 (corpus
+  means at 16x), so the whole of the remaining error is in what the chain gives. `--decompose` takes
+  the same layer twice, once where it happens to fall and once shifted by a fraction of a texel so
+  that every footprint centre lands on a level-4 texel centre, and the two passes separate the two
+  candidate mechanisms:
+
+  | file | pass | render-vs-truth | box-vs-truth | box-vs-tent |
+  | --- | --- | --- | --- | --- |
+  | 000020.psd | as it falls | 3.374 | 3.592 | 3.582 |
+  | 000020.psd | footprint aligned | **0.308** | **0.240** | 0.250 |
+  | AUTUMN.psd | as it falls | 3.718 | 3.780 | 3.780 |
+  | AUTUMN.psd | footprint aligned | **0.048** | **0.049** | 0.057 |
+  | 000077.psd | as it falls | 2.707 | 2.853 | 2.835 |
+  | 000077.psd | footprint aligned | **0.209** | **0.208** | 0.224 |
+
+  At exactly 16x one screen pixel IS one level-4 texel, so a footprint that lands on a texel centre is
+  read as a plain box and nothing else. There the whole difference from the truth is 0.05 to 0.31 of
+  255 - the box's hard ends against the truth's tapered ones cost that, and no more. Where the
+  footprint falls between two texels, which is the normal case, the value is a bilinear blend of two
+  neighbouring boxes: a kernel of support 2^(l+1) where the footprint is 2^l, twice as wide as it
+  should be. That is the 2.7 to 3.7 of 255, and it is a property of reading a mip chain with bilinear
+  interpolation at a fractional phase, not of the reduction filter's shape. An earlier version of
+  this file attributed the difference to the box's ends; that was wrong by an order of magnitude and
+  this table is how it was caught.
 - **The axis imbalance in a figure is the content's, not the render's.** On portrait artwork the
   render keeps more per-pixel detail along one axis than the other, which looks like anisotropic
   blur. Measured on 000020.psd (1127x2120): truth gradients 13.863 along x and 10.284 along y, render
