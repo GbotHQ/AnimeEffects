@@ -42,6 +42,8 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <map>
+#include <memory>
 #include <vector>
 
 #include <QApplication>
@@ -54,8 +56,20 @@
 #include <QSurfaceFormat>
 
 #include "XC.h"
+#include "core/CameraInfo.h"
+#include "core/ClippingFrame.h"
+#include "core/DestinationTexturizer.h"
+#include "core/FilterFrame.h"
+#include "core/FolderNode.h"
 #include "core/ImageKey.h"
+#include "core/LayerNode.h"
+#include "core/ObjectTree.h"
+#include "core/RenderInfo.h"
+#include "core/ScaleKey.h"
+#include "core/TimeInfo.h"
 #include "gl/DeviceInfo.h"
+#include "gl/Framebuffer.h"
+#include "gl/Util.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
 #include "gl/VertexArrayObject.h"
@@ -413,7 +427,6 @@ void suiteImageKey() {
     const int size = 64;
     const int expectedLevels = 1 + (int)std::floor(std::log2((double)size));
 
-    int failsBefore = gFails;
     const QString prefix = "ImageKey texture";
 
     // BOTH patterns are required here, and the reason is not cosmetic. When the transparent
@@ -424,7 +437,6 @@ void suiteImageKey() {
     // all: it stayed green when the premultiply was deliberately deleted from ImageKey.
     // The discriminating pattern is the bright-under-alpha-0 one, where the two chains
     // genuinely differ (0 vs 128 in the red channel at level 1).
-    bool first = true;
     for (const Pattern& pat : kPatterns) {
         const Img src = makeChecker(pat, size);
 
@@ -504,8 +516,365 @@ void suiteImageKey() {
                 .arg(vsStraight)
                 .arg(worstHalo, 0, 'f', 1)
         );
-        first = false;
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// M3: the production RENDER path. M1/M2 prove the texture is built correctly; these prove the
+// shader consumes it correctly, which is the other half of premultiplied mipmapping - the
+// layer shader has to divide the coverage back out (PREMULTIPLIED_INPUT).
+
+// The layer's source image: constant RGB in every texel, with alpha as a checkerboard. Every
+// mip level of this image is therefore constant RGB with alpha = coverage, which is exactly
+// what correctly prefiltered artwork looks like. A straight-alpha chain instead multiplies the
+// RGB by the coverage, and the shader then multiplies by coverage again - the halo.
+Img makeAlphaChecker(int aSize, const uint8_t aRgb[3]) {
+    Img img;
+    img.w = img.h = aSize;
+    img.d.assign((size_t)aSize * aSize * 4, 0);
+    for (int y = 0; y < aSize; ++y) {
+        for (int x = 0; x < aSize; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = aRgb[0];
+            p[1] = aRgb[1];
+            p[2] = aRgb[2];
+            p[3] = ((x + y) % 2 == 0) ? 255 : 0;
+        }
+    }
+    return img;
+}
+
+// The same content already prefiltered by hand: the equivalence reference.
+Img makeUniform(int aSize, const uint8_t aRgb[3], uint8_t aAlpha) {
+    Img img;
+    img.w = img.h = aSize;
+    img.d.assign((size_t)aSize * aSize * 4, 0);
+    for (int y = 0; y < aSize; ++y) {
+        for (int x = 0; x < aSize; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = aRgb[0];
+            p[1] = aRgb[1];
+            p[2] = aRgb[2];
+            p[3] = aAlpha;
+        }
+    }
+    return img;
+}
+
+img::ResourceNode* makeResource(const QString& aId, const Img& aSrc) {
+    auto* node = new img::ResourceNode(aId);
+    uint8_t* data = new uint8_t[aSrc.d.size()];
+    std::memcpy(data, aSrc.d.data(), aSrc.d.size());
+    node->data().grabImage(XCMemBlock(data, aSrc.d.size()), aSrc.size(), img::Format_RGBA8);
+    return node;
+}
+
+// Mirrors MainDisplayWidget::paintGL's per-frame state so the render goes through the same
+// wiring the app uses.
+struct RenderFixture {
+    QSize size;
+    QScopedPointer<core::ClippingFrame> clipping;
+    QScopedPointer<core::FilterFrame> filters;
+    QScopedPointer<core::DestinationTexturizer> texturizer;
+    QScopedPointer<gl::Texture> targetTex;
+    QScopedPointer<gl::Framebuffer> targetFbo;
+
+    void init(const QSize& aSize) {
+        size = aSize;
+        clipping.reset(new core::ClippingFrame());
+        clipping->resize(aSize);
+        filters.reset(new core::FilterFrame());
+        filters->resize(aSize);
+        texturizer.reset(new core::DestinationTexturizer());
+        texturizer->resize(aSize);
+        targetTex.reset(new gl::Texture());
+        targetTex->create(aSize);
+        targetTex->setFilter(GL_LINEAR, GL_LINEAR);
+        targetTex->setWrap(GL_CLAMP_TO_EDGE);
+        targetFbo.reset(new gl::Framebuffer());
+        targetFbo->setColorAttachment(0, targetTex->id());
+        XC_ASSERT(targetFbo->isComplete());
+    }
+
+    std::vector<uint8_t> render(
+        core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3]
+    ) {
+        auto& ggl = gl::Global::functions();
+
+        clipping->clearTexture();
+        clipping->resetClippingId();
+        texturizer->clearTexture();
+        filters->clearAll();
+
+        ggl.glBindFramebuffer(GL_FRAMEBUFFER, targetFbo->id());
+        gl::Util::setViewportAsActualPixels(size);
+        // an OPAQUE backdrop, as the clear colour - which is exactly the initial content of the
+        // destination texture the layer shader reads. Opaque black gives M3 a clean analytic
+        // value; a mid grey is what makes the blend modes actually discriminate in M4, because
+        // most blend functions evaluated against a black backdrop collapse to the same answer.
+        gl::Util::clearColorBuffer(
+            aBackdrop[0] / 255.0f, aBackdrop[1] / 255.0f, aBackdrop[2] / 255.0f, 1.0f
+        );
+        gl::Util::resetRenderState();
+
+        core::TimeInfo time;
+        time.fps = 24;
+        time.frameRange = util::Range(0, 200);
+        time.loop = false;
+        time.frame = core::Frame(aFrame);
+
+        core::RenderInfo info;
+        info.time = time;
+        info.framebuffer = targetFbo->id();
+        info.dest = targetTex->id();
+        info.isGrid = false;
+        info.nonPosed = false;
+        info.originMesh = false;
+        info.clippingId = 0;
+        info.clippingFrame = clipping.data();
+        info.destTexturizer = texturizer.data();
+        info.filterFrame = filters.data();
+        info.opacityScale = 1.0f;
+        info.camera = aCamera;
+
+        aTree.render(info, false);
+
+        std::vector<uint8_t> out((size_t)size.width() * size.height() * 4, 0);
+        ggl.glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+        ggl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return out;
+    }
+};
+
+core::LayerNode* addScaledLayer(
+    core::ObjectTree& aTree, core::ObjectNode* aParent, img::ResourceNode* aRes, const QString& aName,
+    const QVector2D& aPos, float aScale, img::BlendMode aMode
+) {
+    auto* layer = new core::LayerNode(aName, aTree.shaderHolder());
+    layer->setDefaultImage(aRes->handle(), aMode);
+    // setDefaultPosture is what creates the Move/Rotate/Scale default keys the transform
+    // chain reads; without it the layer is never laid out and renders nothing. The position
+    // matters too: the camera maps world (0,0) to the canvas ORIGIN, not its centre, so an
+    // image centred on the world origin would hang off the top-left of the canvas.
+    layer->setDefaultPosture(aPos);
+    layer->setDefaultOpacity(1.0f);
+    core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
+        ->setScale(QVector2D(aScale, aScale));
+    aParent->children().pushBack(layer);
+    return layer;
+}
+
+// Renders one layer (source image, scale, blend mode) over an opaque black backdrop.
+std::map<QString, std::unique_ptr<RenderFixture>>& renderFixtures() {
+    static std::map<QString, std::unique_ptr<RenderFixture>> fixtures;
+    return fixtures;
+}
+
+// Drops the cached fixtures. MUST be called while the GL context is still current: the
+// fixtures own GL objects, and a static destructor would run at process exit, after the
+// context is gone (glDeleteFramebuffers through a dangling function pointer - the crash this
+// harness originally had at exit).
+void clearRenderFixtures() { renderFixtures().clear(); }
+
+std::vector<uint8_t> renderLayer(
+    const QSize& aCanvas, const Img& aImage, float aScale, img::BlendMode aMode,
+    const uint8_t aBackdrop[3] = nullptr
+) {
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
+    auto it = fixtures.find(key);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(aCanvas);
+        it = fixtures.emplace(key, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource(QString("mip_src_%1").arg((int)aImage.d[0]), aImage);
+    addScaledLayer(tree, root, res, "layer", QVector2D(aCanvas.width() * 0.5f, aCanvas.height() * 0.5f), aScale, aMode);
+
+    core::CameraInfo camera;
+    camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
+    const uint8_t black[3] = {0, 0, 0};
+    return fx.render(tree, camera, 0, aBackdrop ? aBackdrop : black);
+}
+
+// max |a - b| over all channels, over the interior only: the layer's mesh insets its border
+// vertices and the canvas edge samples the CLAMP_TO_BORDER (transparent) margin, so the outer
+// band legitimately differs and is excluded, exactly like the golden suite's borderCrop.
+int interiorMaxDelta(const std::vector<uint8_t>& aA, const std::vector<uint8_t>& aB, const QSize& aSize, int aMargin) {
+    int worst = 0;
+    for (int y = aMargin; y < aSize.height() - aMargin; ++y) {
+        for (int x = aMargin; x < aSize.width() - aMargin; ++x) {
+            const size_t i = ((size_t)y * aSize.width() + x) * 4;
+            for (int c = 0; c < 4; ++c)
+                worst = std::max(worst, std::abs((int)aA[i + c] - (int)aB[i + c]));
+        }
+    }
+    return worst;
+}
+
+// mean over the interior, per channel, of the first channel only (enough for a solid color)
+double interiorMeanRed(const std::vector<uint8_t>& aImg, const QSize& aSize, int aMargin) {
+    double sum = 0;
+    int n = 0;
+    for (int y = aMargin; y < aSize.height() - aMargin; ++y) {
+        for (int x = aMargin; x < aSize.width() - aMargin; ++x) {
+            sum += aImg[((size_t)y * aSize.width() + x) * 4];
+            ++n;
+        }
+    }
+    return n ? sum / n : 0.0;
+}
+
+void suiteRender() {
+    suiteHeader("M3 production render: minified layer, no halo");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    // at scale 0.5 the quad is the central 32x32 of the 64x64 canvas; keep the crop inside it
+    const int margin = 19;
+
+    // The layer is drawn at half scale, so the artwork is minified 2x and the sampler reads
+    // mip level 1 - which, for this source, is constant RGB at 50% coverage.
+    const std::vector<uint8_t> rendered =
+        renderLayer(canvas, makeAlphaChecker(imageSize, color), 0.5f, img::BlendMode_Normal);
+
+    // GROUND TRUTH, analytic. The layer composites onto opaque black with straight-alpha
+    // blending, so a correct chain leaves the silhouette's own color scaled by coverage,
+    // while a chain that keeps straight data is darkened by coverage a second time.
+    const double correctRed = color[0] * 0.5;
+    const double haloRed = color[0] * 0.25;
+    const double discrimination = std::fabs(correctRed - haloRed);
+
+    const double measuredRed = interiorMeanRed(rendered, canvas, margin);
+    const double measuredGreen = [&] {
+        double sum = 0;
+        int n = 0;
+        for (int y = margin; y < canvas.height() - margin; ++y)
+            for (int x = margin; x < canvas.width() - margin; ++x) {
+                sum += rendered[((size_t)y * canvas.width() + x) * 4 + 1];
+                ++n;
+            }
+        return n ? sum / n : 0.0;
+    }();
+
+    const int failsBefore = gFails;
+    const QString prefix = "minified layer over black";
+
+    expect(discrimination > 30.0,
+        QString("%1: the halo must be distinguishable from the correct value (margin %2)")
+            .arg(prefix).arg(discrimination, 0, 'f', 1));
+    // THE ASSERTION: the rendered silhouette keeps its color, scaled only by coverage
+    expect(near(measuredRed, correctRed, 4.0),
+        QString("%1: red must be %2 (source*coverage), got %3").arg(prefix).arg(correctRed, 0, 'f', 1).arg(measuredRed, 0, 'f', 1));
+    expect(near(measuredGreen, color[1] * 0.5, 4.0),
+        QString("%1: green must be %2, got %3").arg(prefix).arg(color[1] * 0.5, 0, 'f', 1).arg(measuredGreen, 0, 'f', 1));
+    expect(!near(measuredRed, haloRed, 4.0),
+        QString("%1: red must NOT be the haloed %2 (got %3)").arg(prefix).arg(haloRed, 0, 'f', 1).arg(measuredRed, 0, 'f', 1));
+
+    // EQUIVALENCE: a correctly mipmapped checkerboard must render exactly like the same
+    // content prefiltered by hand (constant color at the equivalent coverage). This reference
+    // needs no mipmapping at all - the texture is uniform, so every level is identical - which
+    // makes it a ground truth independent of the mip machinery under test.
+    const std::vector<uint8_t> reference =
+        renderLayer(canvas, makeUniform(imageSize, color, 128), 0.5f, img::BlendMode_Normal);
+    const int equivDelta = interiorMaxDelta(rendered, reference, canvas, margin);
+    expect(equivDelta <= 4,
+        QString("%1: a correct chain must match the hand-prefiltered reference (delta %2)").arg(prefix).arg(equivDelta));
+
+    caseReport(
+        prefix,
+        gFails == failsBefore,
+        QString("red=%1 (correct %2, halo %3) equivDelta=%4")
+            .arg(measuredRed, 0, 'f', 1)
+            .arg(correctRed, 0, 'f', 1)
+            .arg(haloRed, 0, 'f', 1)
+            .arg(equivDelta)
+    );
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// M4: every blend mode. The halo fix lives in the shader's handling of the sampled texel, and
+// each blend mode takes a different branch over that texel - so the mode sweep is where a
+// mode-specific regression would hide.
+//
+// The reference here is the EQUIVALENCE one from M3: a correctly mipmapped checkerboard must
+// render like the same content prefiltered by hand (constant color, constant coverage). That
+// reference is mode-independent, which is what makes the sweep affordable - it needs no CPU
+// replica of 28 blend formulas.
+//
+// Its limitation is worth stating plainly: both renders go through the SAME shader, so a
+// global shader error cancels out and the equivalence check cannot see it. Only the analytic
+// assertion in M3 has power against a wrong PREMULTIPLIED_INPUT (verified by mutation). The
+// sweep's job is narrower and still real: catch anything that affects the mipmapped content
+// differently per mode.
+void suiteBlendModes() {
+    suiteHeader("M4 all blend modes: minified content == hand-prefiltered content");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    const int margin = 19;
+
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    std::vector<double> perModeMean;
+    int worstDelta = 0;
+    img::BlendMode worstMode = img::BlendMode_Normal;
+    int modeFails = 0;
+
+    for (int m = img::BlendMode_Normal; m < img::BlendMode_TERM; ++m) {
+        const img::BlendMode mode = (img::BlendMode)m;
+        const std::vector<uint8_t> mipmapped =
+            renderLayer(canvas, makeAlphaChecker(imageSize, color), 0.5f, mode, backdrop);
+        const std::vector<uint8_t> prefiltered =
+            renderLayer(canvas, makeUniform(imageSize, color, 128), 0.5f, mode, backdrop);
+
+        const int delta = interiorMaxDelta(mipmapped, prefiltered, canvas, margin);
+        if (delta > worstDelta) {
+            worstDelta = delta;
+            worstMode = mode;
+        }
+        if (delta > 4) {
+            ++modeFails;
+            expect(false,
+                QString("blend mode %1 (0x%2): minified content must match the hand-prefiltered content (delta %3)")
+                    .arg((int)mode).arg((int)mode, 0, 16).arg(delta));
+        }
+        perModeMean.push_back(interiorMeanRed(mipmapped, canvas, margin));
+    }
+
+    // NON-VACUITY: the sweep only means something if the modes actually changed the result.
+    // If blend-mode plumbing silently fell back to Normal, every entry would be identical and
+    // the equivalence assertion above would be trivially satisfied 28 times over.
+    std::vector<double> distinct = perModeMean;
+    std::sort(distinct.begin(), distinct.end());
+    distinct.erase(std::unique(distinct.begin(), distinct.end(),
+                       [](double a, double b) { return std::fabs(a - b) < 0.5; }),
+        distinct.end());
+
+    expect((int)perModeMean.size() == img::BlendMode_TERM,
+        QString("swept %1 of %2 blend modes").arg(perModeMean.size()).arg(img::BlendMode_TERM));
+    expect(distinct.size() >= 8,
+        QString("the modes must produce genuinely different results (%1 distinct of %2) - otherwise the sweep is vacuous")
+            .arg(distinct.size())
+            .arg(perModeMean.size()));
+    expect(modeFails == 0, QString("%1 blend mode(s) disagreed with the reference").arg(modeFails));
+
+    caseReport(
+        QString("all blend modes"),
+        modeFails == 0,
+        QString("%1 modes, %2 distinct results, worst delta %3 (mode 0x%4)")
+            .arg(perModeMean.size())
+            .arg(distinct.size())
+            .arg(worstDelta)
+            .arg((int)worstMode, 0, 16)
+    );
 }
 
 } // namespace
@@ -611,7 +980,13 @@ int main(int argc, char** argv) {
 
     suiteChain();
     suiteImageKey();
+    suiteRender();
+    suiteBlendModes();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
+    std::fflush(stdout);
+
+    // tear GL objects down while the context is still current
+    clearRenderFixtures();
     return gFails ? 1 : 0;
 }

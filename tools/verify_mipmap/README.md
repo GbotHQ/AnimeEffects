@@ -6,19 +6,22 @@ alpha 0, which is the classic mipmap dark halo (and its mirror image, the light 
 
 ## Run
 
+Registered as a CMake target in `tests/CMakeLists.txt`, so it is part of the standard suite:
+
 ```sh
-tools/verify_mipmap/build_and_run.sh              # rebuild libs + probe, then run
-tools/verify_mipmap/build_and_run.sh --no-build
-AE_MIPMAP_ASAN=1 tools/verify_mipmap/build_and_run.sh   # against build-asan/ instead of build/
+./scripts/run_suites.sh Debug                                  # includes verify_mipmap
+QT_QPA_PLATFORM=offscreen ./build/tests/Debug/verify_mipmap    # on its own
 ```
 
-Runs from the repo root. Tries `QT_QPA_PLATFORM=offscreen` first and falls back to X11
-(`DISPLAY=:0`) when offscreen GL is unavailable. Exit code: 0 = all pass, 1 = test failures,
-2 = GL bootstrap failure (which is what triggers the X11 fallback).
+Built by CMake rather than hand-rolled in `tools/` on purpose: `tools/verify_blur` rotted into
+not compiling at all (it still references `Project::Attribute::setMaxFrame`,
+`Exporter::CommonParam::frame` and `TimeInfo::frameMax`, all removed since) precisely because
+nothing kept building it. A registered target cannot drift out of the build.
 
-The probe loads no shaders — it reads mip levels back with `glGetTexImage` and drives the
-production `gl::Texture` / `core::ImageKey` directly — so it needs no `assets.qrc` and no
-`rcc`, unlike the export harnesses.
+Offscreen GL is enough here. Exit code: 0 = all pass, 1 = test failures, 2 = GL bootstrap
+failure. GL objects are freed by `clearRenderFixtures()` while the context is still current — a
+static destructor runs after the context is gone and crashes in `glDeleteFramebuffers`, which
+this harness originally did.
 
 ## Suites
 
@@ -28,6 +31,16 @@ production `gl::Texture` / `core::ImageKey` directly — so it needs no `assets.
   the CPU, what averaging *straight* data yields and what averaging *premultiplied* data
   yields, then asserts the GPU chain is the premultiplied one and that the composited result
   over an opaque black backdrop equals `source_color * coverage`.
+- **M3 — the production RENDER path.** Builds a real `core::ObjectTree` (a folder holding one
+  layer with a real `ImageKey`) and renders it offscreen through the same wiring
+  `MainDisplayWidget::paintGL` uses, over an opaque black backdrop, with the layer at half scale
+  so the sampler reads mip level 1. Asserts the rendered silhouette equals `source * coverage`
+  and is *not* the haloed value, and that it matches the same content prefiltered by hand.
+- **M4 — every blend mode.** The same equivalence check for all 28 `img::BlendMode` values over a
+  mid-grey backdrop, because the fix lives in the shader's handling of the sampled texel and each
+  mode takes a different branch over it. The mid-grey backdrop is required: against opaque black
+  most blend functions collapse to the same answer (4 distinct results of 28, which makes the
+  sweep nearly vacuous); mid-grey gives 16.
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -53,11 +66,16 @@ straight-alpha chain is rendered as a **positive control** and must *exhibit* th
 
 Both halves were mutation-tested against the product, not just reasoned about:
 
-| mutation to `ImageKey::resetTextureCache` | result |
+| mutation | result |
 |---|---|
-| premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
-| mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
-| none (shipped code) | 50 checks, 0 failures |
+| `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
+| `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
+| `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`) |
+| none (shipped code) | 58 checks, 0 failures |
+
+The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
+texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
+they never run the shader.
 
 ## A trap worth keeping in mind
 
@@ -75,7 +93,15 @@ halves), so a color-only comparison reports "level 1 is identical to level 0".
 
 ## Still to cover
 
-The probe currently verifies texture generation and the texture's parameters. It does **not**
-yet verify the rendered composite through the production shader across blend modes, clipping,
-folder composites, the blur ladder, deformed meshes, or the export path — those are the next
-suites (see the objective's path list).
+Verified so far: mip chain generation, the production `ImageKey` texture and its parameters, the
+rendered composite for a normal layer, and all 28 blend modes.
+
+Not yet verified: clipping (the clippee/clipper sibling structure), folder composites, the
+blur/filter ladder over mipmapped artwork, the grid/mesh overlay, deformed-mesh LOD behaviour
+(`LayerMesh` keeps static `texCoords` while `positions` are deformed, so LOD varies per
+triangle), the export path (`ctrl::Exporter`) against the interactive render, and an ASan run
+over the new CPU premultiply pass.
+
+M4's equivalence reference cannot catch a *global* shader error, because both sides of the
+comparison run through the same shader. Only M3's analytic assertion has power against that; the
+sweep is there for mode-specific differences.

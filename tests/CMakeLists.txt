@@ -384,3 +384,35 @@ target_link_libraries(media_exporter_e2e PRIVATE
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     media cmnd core ctrl gl img thr util pugixml
 )
+
+# Mipmap verification probe: asserts that layer artwork textures are mipmapped with
+# PREMULTIPLIED alpha, so minified layers keep their own silhouette color instead of
+# being dragged toward whatever RGB is stored under alpha 0 (the classic dark halo, and
+# its light mirror image). Ground truth is analytic - the content of a mip level is the
+# box average of the level above - computed independently on the CPU in both the
+# premultiplied and the straight representation, and the straight-alpha chain is rendered
+# as a positive control that must FAIL the halo assertion.
+#
+# Registered here rather than hand-rolled in tools/ so it is built and run by the standard
+# suite: tools/verify_blur rotted precisely because nothing kept compiling it.
+#
+# Needs assets.qrc to compile the layer shaders for the render suites (the same reason
+# roundtrip and media_exporter_e2e embed it - without it a GL scene dies on
+# ":/shaders/MeshTransformVert.glsl"). Offscreen GL is enough to run it.
+add_executable(verify_mipmap
+    ../tools/verify_mipmap/mip_probe.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(verify_mipmap PRIVATE ..)
+target_compile_definitions(verify_mipmap PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(verify_mipmap PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    media cmnd core ctrl gl img thr util pugixml
+)
