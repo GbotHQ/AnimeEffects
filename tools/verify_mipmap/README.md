@@ -208,6 +208,22 @@ render is supposed to approximate. Agreement, over real artwork:
 | test.anie | | 2x | 0.511 | 17 | 73 | 8806 |
 | test.anie | | 4x | 0.214 | 5 | 73 | 3704 |
 
+`--supersample` takes any project type: a `.anie` goes through `ProjectLoader`, a `.psd`/`.ora`/image
+through `ImageFileLoader` (with the `.ora` prompt forced off, since a harness has nobody to answer
+it). PSD results, same measurement:
+
+| source | canvas | zoom | mean | p99 | max | px > 16 |
+|---|---|---|---|---|---|---|
+| AUTUMN.psd | 1938x2531 | 1:1 | 0.602 | 20 | 103 | 64152 |
+| AUTUMN.psd | | 4x | 0.095 | 0 | 97 | 11054 |
+| black pearl cookie.psd | 1924x2500 | 1:1 | 0.096 | 2 | 58 | 4737 |
+| black pearl cookie.psd | | 4x | 0.020 | 0 | 77 | 1068 |
+
+`fig12_psd_ground_truth.png` shows those two. The first PSD run aborted with an XC_ASSERT deep
+inside `gl::Texture::create`, which read as a mipmapping defect: a 1938x2531 canvas at ss=8 wants a
+15504x20248 target, past the 16384 device limit. `--supersample` now clamps ss to what the device
+will allocate and SAYS SO, rather than failing or silently under-sampling.
+
 `fig10_ground_truth.png` shows ground truth, the mipmapped render and the amplified difference for
 all three. The two renders are visually indistinguishable; the residual is edge-localised and
 shrinks as minification increases. The residual is not zero and should not be: at finite ss the
@@ -222,6 +238,36 @@ content on `centerOffset() = imageSize/2`, so passing the supersampled size as `
 the artwork into a corner at 1/ss scale. The fix is to keep `imageSize` at the canvas, offset
 `leftTopPos` to the centre of the larger frame, and scale by `zoom * ss`. The tell was that the two
 bounding boxes disagreed; after the fix they match exactly.
+
+## Cost, measured against a control
+
+Same workload (a full `--figures` run on pagedoll.anie) built with the chain and with mip
+generation switched off, Release, two runs each:
+
+| build | wall | peak RSS |
+|---|---|---|
+| mipmapped (shipped) | 4.10 s / 4.20 s | 181 MB / 183 MB |
+| no mip chain (control) | 6.28 s / 6.23 s | 181 MB / 181 MB |
+
+The chain is FASTER for minified rendering, not slower - sampling a minified layer from a large
+level 0 thrashes the texture cache, while the small mip levels stay resident. Peak RSS does not
+isolate the chain's memory because the harness's own supersampled framebuffers dominate it; the
+analytic cost of a chain is +1/3 of the base texture bytes (a geometric series summing to 4/3), so
+about +2.4 MB per 1200x1500 RGBA layer, ~+46 MB across that project's 19 layers. That figure is
+analytic, not measured.
+
+## ASan
+
+The whole probe (98 checks) runs clean under AddressSanitizer against an ASan build of the
+libraries (`-DAE_ENABLE_ASAN=ON` in `build-asan/`), exit 0, no reports:
+
+```sh
+ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 QT_QPA_PLATFORM=offscreen \
+    ./build-asan/tests/Debug/verify_mipmap
+```
+
+That covers the new CPU premultiply loop in `ImageKey::resetTextureCache`, which is the only new
+code here that indexes a heap buffer.
 
 ## Deformed meshes: measured, not assumed
 

@@ -48,6 +48,7 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QImage>
 #include <QMainWindow>
 #include <QOpenGLVersionFunctionsFactory>
@@ -77,6 +78,7 @@
 #include "gl/Framebuffer.h"
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
+#include "ctrl/ImageFileLoader.h"
 #include "ctrl/ProjectLoader.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
@@ -1494,6 +1496,28 @@ void collectLayers(core::ObjectNode* aNode, std::vector<core::LayerNode*>& aDest
 
 } // namespace figures
 
+// Loads a project from any supported source. A .anie is a saved project (ProjectLoader); a .psd,
+// .ora or plain image is imported into a fresh one (ImageFileLoader, with the .ora prompt forced
+// off because a harness has nobody to answer it).
+bool loadAnyProject(const QString& aPath, core::Project& aProject, gl::DeviceInfo& aDev,
+                    util::IProgressReporter& aReporter) {
+    if (QFileInfo(aPath).suffix().toLower() == QLatin1String("anie")) {
+        ctrl::ProjectLoader loader;
+        if (!loader.load(aPath, aProject, aDev, aReporter)) {
+            std::fprintf(stderr, "FATAL: %s: %s\n", qPrintable(aPath), qPrintable(loader.log().join("; ")));
+            return false;
+        }
+        return true;
+    }
+    ctrl::ImageFileLoader loader(aDev);
+    loader.setOraImportMode(ctrl::ImageFileLoader::OraImportMode::Layered);
+    if (!loader.load(aPath, aProject, aReporter)) {
+        std::fprintf(stderr, "FATAL: %s: %s\n", qPrintable(aPath), qPrintable(loader.log()));
+        return false;
+    }
+    return true;
+}
+
 int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
     QDir().mkpath(aDir);
 
@@ -1508,12 +1532,20 @@ int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
     static MipAnimator animator;
     static MipReporter reporter;
     core::Project project(aAnie, animator, nullptr);
-    ctrl::ProjectLoader loader;
-    if (!loader.load(aAnie, project, dev, reporter)) {
-        std::fprintf(stderr, "FATAL: cannot load %s: %s\n", qPrintable(aAnie), qPrintable(loader.log().join("; ")));
+    if (!loadAnyProject(aAnie, project, dev, reporter))
         return 3;
-    }
     const QSize canvas = project.attribute().imageSize();
+    {
+        // an importer can leave a pending GL error behind; the next error-checked GL call (every
+        // gl::Texture::create) then aborts inside XC_ASSERT. Report the code instead of guessing.
+        auto& ggl0 = gl::Global::functions();
+        GLenum e = GL_NO_ERROR;
+        int n = 0;
+        while ((e = ggl0.glGetError()) != GL_NO_ERROR && n < 6) {
+            std::printf("  pending GL error after load: 0x%04x\n", (unsigned)e);
+            ++n;
+        }
+    }
     std::printf("figures: %s  %dx%d\n", qPrintable(aAnie), canvas.width(), canvas.height());
 
     std::vector<core::LayerNode*> layers;
@@ -1817,8 +1849,25 @@ QImage boxDownsample(const QImage& aSrc, int aSS) {
 
 // renders the project at ss x the canvas with the same field of view as the 1x figure, and returns
 // the box-downsampled result at canvas size
-QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int aSS,
+QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int& aSS,
                              const uint8_t aBackdrop[3]) {
+    // The supersampled target is canvas*ss, and canvas*ss can exceed what the device will allocate:
+    // a 1938x2531 PSD at ss=8 wants 15504x20248, past the 16384 limit, and the failure surfaces as
+    // an XC_ASSERT deep inside the first gl::Texture::create rather than as a clear "too big".
+    // Clamp ss to what actually fits and report it, rather than failing or silently under-sampling.
+    {
+        auto& ggl = gl::Global::functions();
+        GLint maxTex = 0, maxRb = 0;
+        ggl.glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
+        ggl.glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRb);
+        const int limit = std::min(maxTex > 0 ? (int)maxTex : 16384, maxRb > 0 ? (int)maxRb : 16384);
+        while (aSS > 1
+               && (aCanvas.width() * aSS > limit || aCanvas.height() * aSS > limit)) {
+            --aSS;
+        }
+        if (aSS < 1)
+            aSS = 1;
+    }
     const QSize big(aCanvas.width() * aSS, aCanvas.height() * aSS);
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(big.width()).arg(big.height());
@@ -1845,6 +1894,7 @@ QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, floa
     return boxDownsample(figures::readbackToImage(px, big), aSS);
 }
 
+
 int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
     QDir().mkpath(aDir);
     gl::DeviceInfo dev;
@@ -1858,11 +1908,8 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
     static MipAnimator animator;
     static MipReporter reporter;
     core::Project project(aAnie, animator, nullptr);
-    ctrl::ProjectLoader loader;
-    if (!loader.load(aAnie, project, dev, reporter)) {
-        std::fprintf(stderr, "FATAL: cannot load %s\n", qPrintable(aAnie));
+    if (!loadAnyProject(aAnie, project, dev, reporter))
         return 3;
-    }
     const QSize canvas = project.attribute().imageSize();
     const uint8_t backdrop[3] = {128, 128, 128};
     std::printf("supersample: %s  %dx%d  ss=%d\n", qPrintable(aAnie), canvas.width(), canvas.height(), aSS);
@@ -1884,7 +1931,11 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
         const QImage mip = figures::readbackToImage(
             fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
         );
-        const QImage ref = supersampledReference(project, canvas, zoom, aSS, backdrop);
+        int ss = aSS;
+        const QImage ref = supersampledReference(project, canvas, zoom, ss, backdrop);
+        if (ss != aSS)
+            std::printf("  (ss clamped %d -> %d to fit %dx%d in the device limit)\n", aSS, ss,
+                        canvas.width() * ss, canvas.height() * ss);
 
         const QString z = QString::number((int)(zoom * 1000));
         mip.save(QDir(aDir).filePath(QString("%1_mip_zoom%2.png").arg(aTag).arg(z)));
@@ -2029,10 +2080,8 @@ int runLodScan(const QString& aAnie, int aFrame) {
     core::Project project(aAnie, *animators.back(), nullptr);
     ctrl::ProjectLoader loader;
     static MipReporter reporter;
-    if (!loader.load(aAnie, project, dev, reporter)) {
-        std::fprintf(stderr, "FATAL: cannot load %s\n", qPrintable(aAnie));
+    if (!loadAnyProject(aAnie, project, dev, reporter))
         return 3;
-    }
     const QSize canvas = project.attribute().imageSize();
     const uint8_t backdrop[3] = {128, 128, 128};
 
