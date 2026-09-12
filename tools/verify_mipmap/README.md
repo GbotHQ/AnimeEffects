@@ -110,54 +110,34 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
 
 ## Figures
 
-| file | what it shows |
-|---|---|
-| `fig1_reference.png` | the project at 1:1, the healthy baseline |
-| `fig2a_fixed_8x.png`, `fig2b_naive_8x.png` | the same frame at 8x minification, shipped vs naive |
-| `fig3_diff_x8.png` | `|fixed - naive| x8` - the halo as an outline tracing every alpha edge |
-| `fig4_halo_crop.png` | worst region magnified 7x, with the amplified difference beside it |
-| `fig5_scale_ladder.png` | one region at 1:1, 2x, 4x, 8x - the filter behaviour |
-| `fig6a_modes.png`, `fig6b_modes.png` | six blend modes on the same layer |
-| `fig7_multiply_halo.png` | Multiply, shipped vs naive - the halo is not Normal-only |
-| `fig8_export_vs_canvas.png` | canvas render vs the exported PNG (maxdiff 1) |
-| `fig9_paths_sheet.png` | render paths: plain, mesh overlay, folder Multiply/Screen, blur, HSV, clipping |
-| `fig10_ground_truth.png` | ground truth vs mipmapped vs `|diff| x8`, for three real projects |
-| `fig11_f001_worst.png` | the worst window of the one project whose mesh has a 2.0 LOD spread |
+Every figure is generated from renders the probe itself produces, never drawn by hand, and there is
+one figure per artwork: cramming several artworks into one sheet makes it impossible to judge any of
+them, and a 30-pixel crop of "the window that differs most" shows nothing recognisable.
 
+`tools/verify_mipmap/make_artwork_figures.py` writes, for each file, one figure containing both
+measured zooms:
 
-`figures/` holds renders of real artwork (`~/Downloads/ANIE/pagedoll.anie`, 1200x1500, 19 layers)
-through the production pipeline, over an opaque mid-grey backdrop so both halo directions read.
-Regenerate with the probe's figure mode:
+- the whole artwork as **three panels at actual resolution** - one render pixel is one image pixel,
+  never resampled, so the panel is exactly what a screen pixel shows at that zoom and figures are
+  comparable with each other;
+- below each panel, **crops at one constant factor, x4 nearest-neighbour**, of the window where the
+  old path is furthest from the truth (red box) and the window where the shipped path is furthest
+  from it (blue box). The factor is the same in every figure on purpose: a magnification that
+  changes per figure makes two figures impossible to compare. Both windows are found by scanning
+  the file's own difference maps, not chosen by hand;
+- the mean and max error against the supersampled truth for the shipped chain and for level-0
+  minification, and which of the two is closer.
+
+They live outside the repository because at actual resolution they are 96 MB for 24 files, which has
+no business in git:
 
 ```sh
-QT_QPA_PLATFORM=offscreen ./build/tests/Debug/verify_mipmap \
-    --figures <outdir> <tag> ~/Downloads/ANIE/pagedoll.anie
+python3 tools/verify_mipmap/make_artwork_figures.py <renderDir> <csv> <outDir> <file...>
+ls ~/Downloads/mipmap-review/artwork/          # 24 figures, one per artwork
 ```
 
-The "naive" set is produced by running the same command with two mutations applied - the
-premultiply removed from `ImageKey` and `PREMULTIPLIED_INPUT` set back to `0` - so the comparison
-is the shipped code against the straight-alpha implementation it replaces, not against a
-hand-drawn mock-up.
-
-`figures/fig9_paths_sheet.png` is the render-path contact sheet: the same project rendered
-normally, with the mesh overlay, through a composite folder (Multiply and Screen), with a layer
-blur, with an HSV adjust on every layer, and clipped to a circular clipper. Each panel was checked
-to differ from the baseline before being used as evidence.
-
-Two traps found while building that sheet, both recorded because they silently produce a figure
-that looks fine and proves nothing:
-
-- Keys pushed on the tree's TOP node have no visible effect (measured maxdiff 0). The panel has to
-  be produced by varying something the render actually reads.
-- Pushing a key onto a tree that has ALREADY been rendered also has no visible effect (maxdiff 0
-  again), because the time cache is not invalidated when a timeline is poked directly instead of
-  going through the command stack. Every key-based figure therefore gets its own fresh project
-  load. Applying the blur to all 19 layers did not help; loading fresh did.
-
-Measured on this artwork, fixed against naive: max channel difference 53/255 at 1:1 and 51/255 at
-8x minification, over roughly 500 edge pixels. The mean difference is tiny (0.014) because a halo
-is a thin fringe on alpha edges, which is why the figures magnify and amplify rather than show
-plain full frames.
+The other scripts are `make_edge_figures.py` (the same idea restricted to alpha edges, where a halo
+would be) and the corpus CSV the probe appends to, which is the breadth evidence: 116 files.
 
 ## Why the ground truth is analytic here
 
@@ -204,120 +184,34 @@ differ by 128 in the color channels at level 1. Keep both patterns.
 discriminating channel is **alpha** alone (both levels premultiply to `rgb = 0` while coverage
 halves), so a color-only comparison reports "level 1 is identical to level 0".
 
-## The before/after comparison (fig13, fig14)
+## The before/after comparison
 
-The comparison that matters, and the one missing for several rounds. The state this change replaces
-is not "straight-alpha mips" - it is NO mipmapping at all, level-0 sampling, which aliases. The
-harness now renders three variants from ONE binary (only the sampler differs, so nothing else can
-account for a difference):
+Superseded by the per-artwork figures above, which show the same comparison on 24 files with the
+ground truth beside it instead of on one file with a magnified crop.
 
-- BEFORE: every layer texture pinned to `GL_LINEAR` minification - level 0 only, what shipped when
-  the mip chain did not exist. Reached through the public `ImageKey::cache()`, so no production
-  mutation and no second build.
-- AFTER: shipped, `GL_LINEAR_MIPMAP_LINEAR`.
-- GROUND TRUTH: the supersampled reference.
+## The corpus verdict
 
-Whole-frame means are a bad metric here (flat regions dominate): pagedoll 0.26 -> 0.26 at 1:1,
-0.15 -> 0.21 at 2x, 0.10 -> 0.095 at 4x. The effect is localised on high-frequency detail, so
-measure it there. In the worst 80x80 window per artwork:
+The change is judged on the supersampled truth over a sample of the corpus, and the sample is every
+fourth file of the 116-file corpus: 24 files (18 PSD, 6 ANIE), each at 2x and 4x minification.
+`--eval` writes the numbers; one figure per file shows them.
 
-| artwork | window | BEFORE mean / max | AFTER mean / max |
-|---|---|---|---|
-| pagedoll.anie @4x | (485,810) | 2.23 / 109 | **1.45 / 37** |
-| pagedoll.anie @2x | (410,635) | 2.15 / 73 | **1.86 / 50** |
-| AUTUMN.psd @2x | (1010,935) | 5.17 / 108 | **3.23 / 50** |
-| AUTUMN.psd @4x | (910,1010) | 7.03 / 126 | **5.33 / 87** |
+| | better than level 0 | no change | worse |
+| --- | --- | --- | --- |
+| 2x minification | 7 | 4 | 13 |
+| 4x minification | 8 | 11 | 5 |
 
-`fig13_aliasing_before_after.png` shows those windows at 4x nearest-neighbour: BEFORE, AFTER and
-ground truth in a row per artwork. On AUTUMN.psd the BEFORE panel's linework is visibly jagged and
-broken up while AFTER matches the reference; the pagedoll window is a soft fur edge where the same
-difference is much subtler. `fig14_aliasing_error.png` is `|variant - ground truth| x4` for both.
-Nearest-neighbour is deliberate: it shows the actual rendered pixels rather than a smoothed
-reconstruction of them.
+Read together with the errors rather than instead of them. At 4x the worst-case error against the
+truth roughly halves, which is the point of the change: 000060.psd 255 -> 127, 006751.psd 151 -> 57,
+000063.psd 94 -> 49, 000145.psd 133 -> 95, 000169.psd 139 -> 91, seal.anie 96 -> 67. Those are the
+pixels where level-0 sampling aliases. At 2x it costs mean error on 13 of 24 files, by 0.1 to 0.25 of
+255 - level 1 is a wider kernel than level 0 at exactly 2x when the footprint is not centred on a
+texel boundary, so it smooths where level 0 was already the exact box. Every one of those
+differences is well under one 8-bit level except 000060.psd, whose canvas is clamped to ss=2 and
+whose reference is therefore weak.
 
-A first attempt at this reported BEFORE and AFTER as numerically identical at every zoom, which
-would have been a strong - and wrong - claim that the change does nothing. A sticky one-shot flag
-set the level-0 filter before the first zoom and never restored it, so from the second zoom on both
-variants were level-0. The sampler is now set explicitly before every variant.
-
-## The 2x regression: found, fixed, and verified
-
-The corpus evaluation showed the shipped render was WORSE than level-0 sampling at 2x minification
-(median mean error 0.225 -> 0.258, p99.9 16 -> 29, only 19% of files better). fig16 shows it:
-`fig16_2x_regression.png`, a 4500x4500 PSD at 2x, worst window, 4x nearest-neighbour, and
-`fig17_margin_parity.png`, the same window before and after the fix.
-
-Every hypothesis I had about it first was wrong, and each was killed by a measurement:
-
-- **A half-texel error in the texture coordinates** (`GridMeshCreator::writeVertices` writes the
-  texture coordinate as the vertex POSITION, and the shader divides by the image size, with no
-  half-texel term anywhere). **Refuted by M10**: a 1-texel checkerboard rendered 1:1 onto a canvas
-  of exactly its size comes back at full 255 contrast, mean 127.5 - the source pattern, texel for
-  pixel. Nothing is being averaged. The sub-texel sweep confirms it: moving the layer 0, 1/4, 1/2
-  and 3/4 of a texel gives contrast 255, 127, 0, 127, exactly the predicted profile for a sample
-  sitting on texel centres.
-- **Level selection.** `--lodscan` reports LOD exactly 1.000 at 2x with zero spread over 183300
-  triangles, and M12 measures the chain itself: `glGenerateMipmap`'s filter is a plain 2x2 box at
-  every level (a single bright texel produces exactly ONE non-zero texel at level 1, 2 and 3,
-  holding 255/4^l; M12b confirms level 1 of a broadband 128x128 image is the hand-written box to
-  the last bit, max delta 1).
-- **A quarter-texel phase error at level 1.** **Refuted by M11**: at 2x minification of a
-  2x2-block pattern the render IS the exact box, to a worst delta of 0.0, and a 1-texel
-  checkerboard - whose exact 2x answer is uniformly 127.5 - comes back with contrast 0 instead of
-  the 127 a quarter-texel phase would produce.
-
-What it actually is: **the parity of the transparent margin the loader pads every texture with.**
-`img::Util::recreateForBiLinearSampling` copied the artwork into a texture two texels larger, at
-offset (1,1) - an ODD offset. A mip level is a box of 2^l base texels, so the level-l texel grid is
-anchored to multiples of 2^l in base-texel coordinates. Level 1 therefore holds boxes of texels
-(0,1), (2,3), (4,5)..., while the artwork's own 2x2 blocks, starting at texel 1, are (1,2), (3,4),
-(5,6)... - every one of them half in one level-1 texel and half in the next.
-
-At exactly 2x minification the footprint of one output pixel IS the artwork's 2x2 block, and both
-sampler states claim to answer it: level 0 because bilinear's four taps land exactly on it, level 1
-because that block is supposed to be a single level-1 texel. With the odd margin level 0 is right
-and level 1 is wrong - it blends two level-1 texels, i.e. averages a 4x4 region of level 0 where
-2x2 is wanted. That is exactly a halving of contrast on one-texel detail, and it is why enabling
-mipmaps made the render *softer than the level-0 path it replaced*, while still being the correct
-thing to do at 4x and beyond (where level 0 aliases).
-
-**M13** is the isolated minimal pair: the same artwork, the same sampler, the same zoom, and only
-the margin width changes.
-
-| margin | delta vs the exact 2x2 box | contrast of a 1-texel cross |
-| --- | --- | --- |
-| 0 (even) | 0.5 - exact | 191 |
-| 1 (odd, the old padding) | 112.0 | 112 |
-| 8 (even, shipped) | 0.5 - exact | 191 |
-
-The fix is `img::Util::kSamplingMargin = 8`: an even margin puts the artwork's origin at a multiple
-of 8, which aligns levels 1, 2 and 3 (2x, 4x, 8x minification). The same number is what the margin
-is FOR - at level l a bilinear read at the artwork's edge reaches 2^l base texels outward, so level
-l needs 2^l texels of real transparent margin rather than the clamp-to-border colour. The margin is
-symmetric, so the artwork stays exactly where it was: the loader's rect is derived from the same
-constant, and `setImageOffsetByCenter` re-centres on the padded size, so the geometry is unchanged
-by construction (verified by the golden suites, `media_exporter_e2e`, and the probe).
-
-Measured after the fix, same files and zooms as the corpus that found it (`change_mean` is
-|AFTER - BEFORE| over the canvas, which was 1.10 on the worst file):
-
-| file | 2x BEFORE | 2x AFTER before fix | 2x AFTER after fix | change_mean |
-| --- | --- | --- | --- | --- |
-| 000049.psd (1 layer, canvas-aligned) | 0.317 | 0.825 | **0.317** | 1.102 -> **0.008** |
-| 006750.psd (2 layers) | 0.226 | 0.596 | **0.225** | -> **0.005** |
-| 000022.psd (199 layers) | 0.284 | 0.704 | **0.287** | -> **0.013** |
-| 000128.psd (27 layers) | 0.316 | 0.647 | 0.344 | -> 0.234 |
-| 000143.psd (51 layers) | 0.318 | 0.597 | 0.425 | -> 0.411 |
-| 000168.psd (43 layers) | 0.345 | 0.697 | 0.376 | -> 0.186 |
-
-For the canvas-aligned files the two paths are now numerically identical at 2x - which is what
-correct looks like, since at exactly 2x both must produce the same box. On the multi-layer PSDs a
-small difference remains (0.32 against 0.34 mean error): their layers sit at fractional screen
-positions, so the footprint is not centred on a texel boundary and level 0 and level 1 are two
-different 4-tap approximations of it. Their LOD is still exactly 1.000 (`--lodscan` on 000128.psd:
-27 meshes, all 1.000..1.000, zero adjacent delta), so this is interpolation, not misalignment. The
-4x column of the same files moves 0.216 -> 0.141, 0.223 -> 0.151, 0.246 -> 0.164: the mip path is
-still a clear win where level 0 aliases.
+So: an upgrade where level-0 sampling aliases, and a small, measured cost at exactly 2x. Anything
+stronger than that is not supported by the 24 files, and every figure carries its own numbers so it
+can be checked file by file.
 
 ## Independent ground truth: supersampling
 
@@ -354,14 +248,13 @@ it). PSD results, same measurement:
 | black pearl cookie.psd | 1924x2500 | 1:1 | 0.096 | 2 | 58 | 4737 |
 | black pearl cookie.psd | | 4x | 0.020 | 0 | 77 | 1068 |
 
-`fig12_psd_ground_truth.png` shows those two. The first PSD run aborted with an XC_ASSERT deep
+The first PSD run aborted with an XC_ASSERT deep
 inside `gl::Texture::create`, which read as a mipmapping defect: a 1938x2531 canvas at ss=8 wants a
 15504x20248 target, past the 16384 device limit. `--supersample` now clamps ss to what the device
 will allocate and SAYS SO, rather than failing or silently under-sampling.
 
-`fig10_ground_truth.png` shows ground truth, the mipmapped render and the amplified difference for
-all three. The two renders are visually indistinguishable; the residual is edge-localised and
-shrinks as minification increases. The residual is not zero and should not be: at finite ss the
+The two renders are visually indistinguishable in the per-artwork figures; the residual against the
+truth is edge-localised and shrinks as minification increases. The residual is not zero and should not be: at finite ss the
 supersample is itself an approximation (the level-0 lookup is bilinear, not an exact area
 integral), and a mip chain is a box filter of the TEXTURE rather than of the rendered scene, so
 one-pixel-wide strokes are where the two legitimately disagree most. `test.anie` at 1:1 is the
@@ -430,7 +323,7 @@ Across **36 real projects** (about 2500 meshes) at frame 12:
 
 Rendering that layer at 4x minification and comparing against the supersampled reference shows
 agreement in line with every other project (mean 0.089, p99 0) and, in the worst 220-pixel window
-(`fig11_f001_worst.png`), **no triangle-shaped discontinuity**: the residual follows the artwork's
+**no triangle-shaped discontinuity**: the residual follows the artwork's
 thin strokes, not the mesh topology. The affected triangles are a ~1% minority and contribute
 nothing visible.
 
