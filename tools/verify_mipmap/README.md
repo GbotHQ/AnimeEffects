@@ -41,6 +41,14 @@ this harness originally did.
   mode takes a different branch over it. The mid-grey backdrop is required: against opaque black
   most blend functions collapse to the same answer (4 distinct results of 28, which makes the
   sweep nearly vacuous); mid-grey gives 16.
+- **M5 — feature paths.** The M4 equivalence check applied to the paths a layer can be drawn
+  through: an HSV adjust on the layer, a folder composite (which renders the subtree into a
+  `FilterFrame` slot and blends that slot against the scene), the two combined, one non-Normal
+  layer blend mode, and the grid/mesh overlay. Each path must also provably have changed the
+  result versus the plain baseline, or the equivalence assertion would be vacuous.
+  The grid overlay is covered by inspection as well: `GridDrawingFrag` outputs a constant
+  `uColor` and samples no texture, so mipmapping cannot affect it - the suite just pins that the
+  path still runs.
 - **M2 — the production `core::ImageKey` texture.** Builds a real `img::ResourceNode` the way
   the loaders do, lets `ImageKey` construct its texture, and asserts the level count, the
   min/mag/`GL_TEXTURE_MAX_LEVEL`/wrap parameters, that level 1 is the premultiplied chain, and
@@ -71,7 +79,7 @@ Both halves were mutation-tested against the product, not just reasoned about:
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
 | `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`) |
-| none (shipped code) | 58 checks, 0 failures |
+| none (shipped code) | 69 checks, 0 failures |
 
 The `ShaderHolder` row is the important one: it proves M3 verifies the *consumption* of the
 texture and not only its construction. M1/M2 cannot see a wrong `PREMULTIPLIED_INPUT`, because
@@ -94,14 +102,32 @@ halves), so a color-only comparison reports "level 1 is identical to level 0".
 ## Still to cover
 
 Verified so far: mip chain generation, the production `ImageKey` texture and its parameters, the
-rendered composite for a normal layer, and all 28 blend modes.
+rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder
+composite path, and the grid/mesh overlay.
 
-Not yet verified: clipping (the clippee/clipper sibling structure), folder composites, the
-blur/filter ladder over mipmapped artwork, the grid/mesh overlay, deformed-mesh LOD behaviour
-(`LayerMesh` keeps static `texCoords` while `positions` are deformed, so LOD varies per
-triangle), the export path (`ctrl::Exporter`) against the interactive render, and an ASan run
-over the new CPU premultiply pass.
+Not yet verified: clipping (the clippee/clipper sibling structure), the blur/filter ladder over
+mipmapped artwork, the export path (`ctrl::Exporter`) against the interactive render, and an ASan
+run over the new CPU premultiply pass.
 
-M4's equivalence reference cannot catch a *global* shader error, because both sides of the
-comparison run through the same shader. Only M3's analytic assertion has power against that; the
-sweep is there for mode-specific differences.
+Known open risk, not yet measured: `LayerMesh` keeps static `texCoords` while `positions` are
+deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle.
+Adjacent triangles can select different mip levels, which would show as a blurriness seam. Before
+mipmapping every layer sampled level 0, so such seams could not exist; correct prefiltering may
+have traded aliasing for a new artifact. This is the one place the change plausibly makes the
+product worse, and it needs a measurement.
+
+Also unmeasured: anisotropic minification (a non-uniform layer scale compresses the texture on
+one axis, and trilinear LOD follows the largest derivative, so the other axis is over-blurred).
+No anisotropic filtering is enabled anywhere in the pipeline.
+
+M4's and M5's equivalence reference cannot catch a *global* shader error, because both sides of
+the comparison run through the same shader. Only M3's analytic assertion has power against that
+(which the `PREMULTIPLIED_INPUT` mutation above confirms); the sweeps are there for mode- and
+path-specific differences, where they do have power because a checkerboard and a uniform image
+respond differently to anything that mishandles coverage.
+
+A trap worth remembering, hit while writing M5: `TimeLine::grabDefaultKey` files a key under
+`mDefaultKeys`, but `LayerNode` decides whether to run its HSV branch with
+`mTimeLine.isEmpty(TimeKeyType_HSV)`, which consults the key map. A *default* HSV key is
+therefore invisible to that check and silently does nothing - the key has to be pushed at a
+frame via `timeLine->createPusher(...)`. The non-vacuity assertion in M5 is what caught it.

@@ -61,6 +61,7 @@
 #include "core/DestinationTexturizer.h"
 #include "core/FilterFrame.h"
 #include "core/FolderNode.h"
+#include "core/HsvKey.h"
 #include "core/ImageKey.h"
 #include "core/LayerNode.h"
 #include "core/ObjectTree.h"
@@ -598,7 +599,8 @@ struct RenderFixture {
     }
 
     std::vector<uint8_t> render(
-        core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3]
+        core::ObjectTree& aTree, const core::CameraInfo& aCamera, int aFrame, const uint8_t aBackdrop[3],
+        bool aIsGrid = false
     ) {
         auto& ggl = gl::Global::functions();
 
@@ -628,7 +630,7 @@ struct RenderFixture {
         info.time = time;
         info.framebuffer = targetFbo->id();
         info.dest = targetTex->id();
-        info.isGrid = false;
+        info.isGrid = aIsGrid;
         info.nonPosed = false;
         info.originMesh = false;
         info.clippingId = 0;
@@ -877,6 +879,145 @@ void suiteBlendModes() {
     );
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// M5: the feature paths a layer can be drawn through. Same equivalence reference as M3/M4 - a
+// correctly mipmapped checkerboard must render like the same content prefiltered by hand - so
+// it applies unchanged to each path.
+//
+// Covers the layer HSV branch, the folder composite path (which renders the subtree into a
+// FilterFrame slot and then blends that slot against the scene), the two combined, and the
+// grid/mesh overlay.
+struct LayerSetup {
+    const char* name = "?";
+    img::BlendMode mode = img::BlendMode_Normal;
+    bool hsv = false;                                  // an HSV key on the layer
+    bool inFolder = false;                             // wrap the layer in a composite folder
+    img::BlendMode folderMode = img::BlendMode_Multiply; // non-Normal forces the composite path
+    bool grid = false;                                 // render the mesh overlay instead
+};
+
+std::vector<uint8_t> renderScene(
+    const QSize& aCanvas, const Img& aImage, const LayerSetup& aSetup, const uint8_t aBackdrop[3]
+) {
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
+    auto it = fixtures.find(key);
+    if (it == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(aCanvas);
+        it = fixtures.emplace(key, std::move(fx)).first;
+    }
+    RenderFixture& fx = *it->second;
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+
+    const QVector2D center(aCanvas.width() * 0.5f, aCanvas.height() * 0.5f);
+    auto* res = makeResource(QString("mip_scene_%1").arg((int)aImage.d[3]), aImage);
+
+    core::ObjectNode* parent = root;
+    QVector2D layerPos = center;
+    if (aSetup.inFolder) {
+        auto* folder = new core::FolderNode("folder");
+        folder->setDefaultPosture(center);   // folder at the canvas centre, layer local to it
+        folder->setDefaultOpacity(1.0f);
+        folder->setBlendMode(aSetup.folderMode);
+        root->children().pushBack(folder);
+        parent = folder;
+        layerPos = QVector2D(0.0f, 0.0f);
+    }
+
+    auto* layer = addScaledLayer(tree, parent, res, "layer", layerPos, 0.5f, aSetup.mode);
+    if (aSetup.hsv) {
+        // Saturation to 50% is unambiguously non-identity. The key must be PUSHED at a frame,
+        // not installed as a "default" key: LayerNode decides whether to run the HSV branch with
+        // mTimeLine.isEmpty(TimeKeyType_HSV), which consults the key map, while grabDefaultKey
+        // files the key under mDefaultKeys where that check cannot see it - so a default HSV key
+        // silently does nothing at all.
+        auto* hsv = new core::HSVKey();
+        hsv->setHSV(QList<int>{0, 50, 100, 0});   // hue, saturation%, value%, absolute-hue flag
+        cmnd::Base* pusher = layer->timeLine()->createPusher(core::TimeKeyType_HSV, 0, hsv);
+        pusher->tryExec();
+        delete pusher;
+    }
+
+    core::CameraInfo camera;
+    camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
+    return fx.render(tree, camera, 0, aBackdrop, aSetup.grid);
+}
+
+void suitePaths() {
+    suiteHeader("M5 feature paths: HSV, folder composite, grid overlay");
+    const QSize canvas(64, 64);
+    const int imageSize = 64;
+    const uint8_t color[3] = {200, 100, 50};
+    const uint8_t backdrop[3] = {128, 128, 128};
+    const int margin = 19;
+
+    const LayerSetup setups[] = {
+        {"normal", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false},
+        {"HSV adjust", img::BlendMode_Normal, true, false, img::BlendMode_Normal, false},
+        {"in composite folder", img::BlendMode_Normal, false, true, img::BlendMode_Multiply, false},
+        {"HSV in composite folder", img::BlendMode_Normal, true, true, img::BlendMode_Multiply, false},
+        {"blend mode Multiply", img::BlendMode_Multiply, false, false, img::BlendMode_Normal, false},
+    };
+
+    // the plain baseline, for the non-vacuity check below
+    const LayerSetup plain = setups[0];
+    const std::vector<uint8_t> baseRender =
+        renderScene(canvas, makeAlphaChecker(imageSize, color), plain, backdrop);
+    const double baseMean = interiorMeanRed(baseRender, canvas, margin);
+
+    for (const LayerSetup& setup : setups) {
+        const int failsBefore = gFails;
+        const std::vector<uint8_t> mipmapped =
+            renderScene(canvas, makeAlphaChecker(imageSize, color), setup, backdrop);
+        const std::vector<uint8_t> prefiltered =
+            renderScene(canvas, makeUniform(imageSize, color, 128), setup, backdrop);
+        const int delta = interiorMaxDelta(mipmapped, prefiltered, canvas, margin);
+        const double mean = interiorMeanRed(mipmapped, canvas, margin);
+
+        expect(delta <= 4,
+            QString("path %1: minified content must match the hand-prefiltered content (delta %2)")
+                .arg(setup.name).arg(delta));
+        // This path must actually have done something, or the assertion above is vacuous.
+        // Compared over ALL channels: a saturation change leaves the max channel (here red)
+        // untouched and only moves the others, so a single-channel check would report "no
+        // change" for a path that ran perfectly well.
+        const int vsBaseline = interiorMaxDelta(mipmapped, baseRender, canvas, margin);
+        if (setup.hsv || setup.inFolder || setup.mode != plain.mode)
+            expect(vsBaseline > 8,
+                QString("path %1: must change the result vs the plain baseline (max channel delta %2, mean %3 vs %4)")
+                    .arg(setup.name).arg(vsBaseline).arg(mean, 0, 'f', 2).arg(baseMean, 0, 'f', 2));
+
+        caseReport(
+            QString("path: %1").arg(setup.name), gFails == failsBefore,
+            QString("equivDelta=%1 mean=%2").arg(delta).arg(mean, 0, 'f', 1));
+    }
+
+    // the grid/mesh overlay draws wireframe geometry through GridDrawingFrag, which outputs a
+    // constant uColor and samples NO texture, so mipmapping provably cannot affect it. Assert
+    // it still renders and differs from the artwork - i.e. the path ran and was not skipped.
+    {
+        const int failsBefore = gFails;
+        LayerSetup grid = plain;
+        grid.grid = true;
+        const std::vector<uint8_t> gridRender = renderScene(canvas, makeAlphaChecker(imageSize, color), grid, backdrop);
+        int nonBackdrop = 0;
+        for (size_t i = 0; i < gridRender.size(); i += 4) {
+            if (std::abs((int)gridRender[i] - backdrop[0]) > 8)
+                ++nonBackdrop;
+        }
+        expect(nonBackdrop > 0, QString("grid overlay must draw its wireframe (found %1 pixels)").arg(nonBackdrop));
+        expect(interiorMaxDelta(gridRender, baseRender, canvas, margin) > 8,
+            "grid overlay must differ from the artwork render (the grid path really ran)");
+        caseReport("path: grid/mesh overlay", gFails == failsBefore,
+            QString("%1 wireframe pixels; GridDrawingFrag samples no texture").arg(nonBackdrop));
+    }
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -982,6 +1123,7 @@ int main(int argc, char** argv) {
     suiteImageKey();
     suiteRender();
     suiteBlendModes();
+    suitePaths();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
