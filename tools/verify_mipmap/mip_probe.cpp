@@ -3672,6 +3672,7 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     texture.d = upload;
     const int level = 4;
     const Img boxed = boxLevel(texture, level);
+    const Img finer = boxLevel(texture, level - 1);
 
     // sample positions: the layer is centred, so screen pixel (sx, sy) - the readback is bottom-up -
     // sits at artwork coordinate ((p - canvas/2) / zoom + artwork/2), and the texture's origin is
@@ -3693,7 +3694,7 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     int gradN = 0;
     const double margin0 = 0.0;   // this texture keeps the artwork at the origin
     double sumRTc = 0, sumBTc = 0, sumTentc = 0, sumRTb = 0, sumBTb = 0, sumTentb = 0;
-    double sumAT = 0, sumAB = 0, sumAA = 0;
+    double sumAT = 0, sumAB = 0, sumAA = 0, sumOT = 0;
     int nc = 0, nb = 0;
     std::vector<Sample> samples;
 
@@ -3744,6 +3745,12 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
             }
             const double tn = tentIntegral(texture, ax - half, ay - half, (int)step, 0);
             const double ar = areaIntegral(texture, ax - half, ay - half, (int)step, 0);
+            // the shader route: the same 2 taps per axis with overlap weights, but from one level
+            // finer than the footprint, so the reconstruction grid is half a block instead of a
+            // whole one. Two fetches per axis, no pyramid level matched to the footprint.
+            const double o2 = areaIntegral(
+                finer, (ax - half) / (step * 0.5), (ay - half) / (step * 0.5), 2, 0
+            );
             // Which phase the level-4 read is at: 0.5 means the footprint centre sits on a level
             // texel centre (the footprint is aligned with the artwork's own 16-texel grid, so the
             // read is a plain box), 0.0 or 1.0 means it sits between two texels (so the bilinear
@@ -3773,6 +3780,7 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
             sumTT += std::fabs(tn - t);
             sumTB += std::fabs(tn - b);
             sumAT += std::fabs(ar - t);
+            sumOT += std::fabs(o2 - t);
             sumAB += std::fabs(ar - b);
             sumAA += std::fabs(ar - tn);
             maxRT = std::max(maxRT, (int)std::lround(std::fabs(r - t)));
@@ -3905,6 +3913,11 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     std::printf(
         "    chain (box model) against each definition: vs area %.3f | vs tent %.3f\n", sumAB / dd,
         sumTB / dd
+    );
+    std::printf(
+        "    routes vs the reference: pyramid bias 0 (the render) %.3f | exact area over the footprint "
+        "%.3f | 2-tap overlap filter off level %d %.3f\n",
+        sumRT / dd, sumAT / dd, level - 1, sumOT / dd
     );
     std::printf(
         "    render-vs-box: all footprints mean %.3f max %d | fully opaque box texel (%d of %d "
