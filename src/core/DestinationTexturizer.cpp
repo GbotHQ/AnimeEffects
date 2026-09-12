@@ -29,7 +29,7 @@ void DestinationTexturizer::resize(const QSize& aSize) {
 
     // create texture
     mTexture->create(aSize);
-    mTexture->setFilter(GL_NEAREST);
+    mTexture->setFilter(GL_NEAREST, GL_NEAREST);
     mTexture->setWrap(GL_CLAMP_TO_EDGE);
 
     // attach textures

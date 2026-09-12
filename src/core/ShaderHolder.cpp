@@ -52,6 +52,15 @@ gl::EasyShaderProgram& ShaderHolder::reserveShader(img::BlendMode aBlendMode, bo
 
         source.setVariationValue("USE_HSV", aUseHSV ? "1" : "0");
 
+        // The layer texture (LayerNode's uTexture) is stored alpha-premultiplied: it is
+        // the mipmapped artwork texture built in ImageKey, and correct mipmap averaging
+        // requires premultiplied color (see ImageKey::resetTextureCache). This variation
+        // divides the coverage back out of the sampled texel, so the blend functions and
+        // the HSV adjust below keep operating on straight color. It is the only texture
+        // this shader samples with a filtered lookup - the destination is read with
+        // texelFetch and must stay premultiplied (see the scenebuffer/blend math).
+        source.setVariationValue("PREMULTIPLIED_INPUT", "1");
+
         if (!source.resolveVariation()) {
             XC_FATAL_ERROR("OpenGL Error", "Failed to resolve shader variation.\n", source.log());
         }

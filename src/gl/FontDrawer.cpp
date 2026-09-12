@@ -64,7 +64,7 @@ void FontDrawer::draw(const QFont& aFont, TextObject& aTextObj) {
     // reserve texture
     if (aTextObj.texture().size() != textureSize) {
         aTextObj.texture().create(textureSize);
-        aTextObj.texture().setFilter(GL_LINEAR);
+        aTextObj.texture().setFilter(GL_LINEAR, GL_LINEAR);
         aTextObj.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 
@@ -184,7 +184,7 @@ void FontDrawer::updateWorkTextureCache(TextObject& aTextObj, const QSize& aNeed
         // create new cache
         auto newCache = new gl::Texture();
         newCache->create(aNeedSize);
-        newCache->setFilter(GL_LINEAR);
+        newCache->setFilter(GL_LINEAR, GL_LINEAR);
         newCache->setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
 
         aTextObj.workCache().reset(newCache);

@@ -85,7 +85,7 @@ static void fCreateLadderLevel(
     aFbs[aLevel - 1].reset(new gl::Framebuffer());
     aTexs[aLevel - 1].reset(new gl::Texture());
     aTexs[aLevel - 1]->create(ls);
-    aTexs[aLevel - 1]->setFilter(GL_LINEAR);
+    aTexs[aLevel - 1]->setFilter(GL_LINEAR, GL_LINEAR);
     aTexs[aLevel - 1]->setWrap(GL_CLAMP_TO_EDGE);
     aFbs[aLevel - 1]->setColorAttachment(0, aTexs[aLevel - 1]->id());
     XC_ASSERT(aFbs[aLevel - 1]->isComplete());
@@ -108,7 +108,7 @@ void FilterFrame::appendSlot(const QSize& aSize) {
     mFramebuffers.emplace_back(new gl::Framebuffer());
     mTextures.emplace_back(new gl::Texture());
     mTextures[i]->create(aSize);
-    mTextures[i]->setFilter(GL_LINEAR);
+    mTextures[i]->setFilter(GL_LINEAR, GL_LINEAR);
     mTextures[i]->setWrap(GL_CLAMP_TO_EDGE);
     mFramebuffers[i]->setColorAttachment(0, mTextures[i]->id());
     XC_ASSERT(mFramebuffers[i]->isComplete());

@@ -1,4 +1,7 @@
+#include <cstring>
+#include <vector>
 #include "Project.h"
+#include "img/Buffer.h"
 #include "img/ResourceNode.h"
 #include "img/BlendMode.h"
 #include "core/ImageKey.h"
@@ -84,12 +87,41 @@ void ImageKey::resetGridMesh(int aCellSize) {
 
 void ImageKey::resetTextureCache() {
     if (mData.resource()->hasImage()) {
-        auto imageData = mData.resource()->image().data();
-        auto pixelSize = mData.resource()->image().pixelSize();
+        const img::Buffer& image = mData.resource()->image();
+        const uint8* imageData = image.data();
+        const QSize pixelSize = image.pixelSize();
+
+        // The layer texture is sampled with MIPMAPS, which requires premultiplied alpha.
+        // glGenerateMipmap box-filters every channel independently, so averaging STRAIGHT
+        // color mixes the RGB of transparent texels into the edge texels of each level.
+        // Artwork routinely carries black (or otherwise meaningless) RGB under alpha 0, so
+        // that average darkens the silhouette - the classic mipmap dark halo, worst exactly
+        // where the layer is minified. Premultiplying makes color and coverage average
+        // together; the layer shader divides the coverage back out (PREMULTIPLIED_INPUT in
+        // LayerDrawingFrag), so the blend math still sees straight color.
+        //
+        // Alpha is left untouched, so consumers that use only alpha - the clipper writing
+        // pass (ClipperWritingFrag) - are unaffected.
+        const int texelCount = pixelSize.width() * pixelSize.height();
+        std::vector<uint8> premultiplied((size_t)texelCount * 4);
+        std::memcpy(premultiplied.data(), imageData, premultiplied.size());
+        for (int i = 0; i < texelCount; ++i) {
+            uint8* p = premultiplied.data() + (size_t)i * 4;
+            const uint32 a = p[3];
+            if (a == 255)
+                continue;
+            // round-to-nearest, so an opaque-adjacent texel does not drift darker
+            p[0] = (uint8)((p[0] * a + 127) / 255);
+            p[1] = (uint8)((p[1] * a + 127) / 255);
+            p[2] = (uint8)((p[2] * a + 127) / 255);
+        }
 
         // make a gl texture
-        mCache.texture().create(pixelSize, imageData);
-        mCache.texture().setFilter(GL_LINEAR);
+        mCache.texture().create(
+            pixelSize, premultiplied.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+        );
+        // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
+        mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
         mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 }

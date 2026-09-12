@@ -60,7 +60,7 @@ void Fixture::init(const QSize& aSize) {
     texturizer->resize(aSize);
     targetTex.reset(new gl::Texture());
     targetTex->create(aSize);
-    targetTex->setFilter(GL_LINEAR);
+    targetTex->setFilter(GL_LINEAR, GL_LINEAR);
     targetTex->setWrap(GL_CLAMP_TO_EDGE);
     targetFbo.reset(new gl::Framebuffer());
     targetFbo->setColorAttachment(0, targetTex->id());
