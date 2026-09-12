@@ -1789,7 +1789,7 @@ void MainWindow::onExportAgainTriggered() {
 // picker the export dialog uses, and then the export runs with no further dialogs.
 void MainWindow::onQuickExportTriggered() {
     if (!mCurrent) return;
-    DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+    DestinationPicker picker(mGUIResources,
                              QSettings().value(QStringLiteral("export_destination")).toString(),
                              this);
     if (picker.exec() != QDialog::Accepted) return;
@@ -1892,7 +1892,7 @@ void MainWindow::onExportTriggered() {
     if (!mCurrent) { return; }
     if (exporting) { exportWidget->showNormal(); return; }
 
-    DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+    DestinationPicker picker(mGUIResources,
                              QSettings().value(QStringLiteral("export_destination")).toString(),
                              this);
     if (picker.exec() != QDialog::Accepted) return; // no destination, nothing to export yet
@@ -2112,7 +2112,7 @@ void MainWindow::openExportDialog(const QString& aDestinationId) {
 
         QObject::connect(exportUI->destinationButton, &QPushButton::clicked,
                          [this, refreshFacts, showDestinationButtonText]() {
-                             DestinationPicker picker(ctrl::ExportTargets::load(), mGUIResources,
+                             DestinationPicker picker(mGUIResources,
                                                       exportUI->destinationId(), exportWidget);
                              if (picker.exec() != QDialog::Accepted) return;
                              exportUI->setDestinationId(picker.chosenId());

@@ -249,6 +249,31 @@ QString ExportTargets::defaultPath() {
     return QStringLiteral(":/export/ExportTargets.txt");
 }
 
+QList<ExportGroup> ExportTargets::loadGroups(const QString& aPath) {
+    QList<ExportGroup> out;
+
+    QFile file(aPath);
+    if (!file.open(QIODevice::ReadOnly)) return out;
+    QDomDocument doc;
+    if (!doc.setContent(&file)) return out;
+    const QDomElement root = doc.firstChildElement(QStringLiteral("export_targets"));
+    if (root.isNull()) return out;
+
+    const QDomElement groups = root.firstChildElement(QStringLiteral("groups"));
+    for (QDomElement g = groups.firstChildElement(QStringLiteral("group")); !g.isNull();
+         g = g.nextSiblingElement(QStringLiteral("group"))) {
+        ExportGroup group;
+        group.id = g.attribute(QStringLiteral("id"));
+        if (group.id.isEmpty()) continue;
+        // A section whose title is missing still gets drawn: the KEY is worse than a
+        // name but far better than a heading with no text, which reads as a bug.
+        group.title = g.attribute(QStringLiteral("title"));
+        if (group.title.isEmpty()) group.title = group.id;
+        out.push_back(group);
+    }
+    return out;
+}
+
 QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
     QList<ExportTarget> out;
 
@@ -285,6 +310,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         t.label = d.attribute(QStringLiteral("label"));
 
         t.icon = d.attribute(QStringLiteral("icon"));
+        t.group = d.attribute(QStringLiteral("group"));
         t.family = d.attribute(QStringLiteral("family"));
         t.klass = parseClass(d.attribute(QStringLiteral("class")));
         t.codecLadder = d.attribute(QStringLiteral("codecSelect")) == QLatin1String("ladder");

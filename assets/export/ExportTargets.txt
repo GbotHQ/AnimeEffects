@@ -14,7 +14,16 @@
                 theme's tinting pass so it takes a theme colour like every other
                 glyph. See assets/icons/README.md for provenance and licence.
     label       user-facing name (the thing they recognize)
-    family      sticker | chat | post | overlay | file | archive  (the UI grouping)
+    group       the section this row is listed under in the destination picker,
+                keyed into the <groups> block above. The grouping axis is the
+                PLATFORM a person is posting to ("telegram"), because that is the
+                one thing they know before they start; `general` for the rows that
+                have no platform of their own.
+                NOT the family: that axis puts 29 of these 55 rows in one block and
+                mixes what a file IS (sticker) with what it is FOR (post).
+    family      sticker | chat | post | overlay | file | archive
+                WHAT KIND of handover this is, which is what decides how hard to
+                optimise for compatibility (and what the search field can match):
                 sticker  a sticker or emoji for a chat app
                 chat     sending a file in a conversation (an "attachment")
                 post     uploading to a platform's feed or video host
@@ -67,9 +76,60 @@
 -->
 <export_targets>
 
+  <!-- ===== groups: the picker's sections =============================
+       A group is the PLATFORM a person is posting to: the one thing they know
+       before they start, and therefore the axis the destination list is grouped
+       by. A destination names its group with @group, and the order here IS the
+       order of the sections on screen: `general` first, because the rows with no
+       platform of their own are the honest answer for someone who has not decided
+       (and the conservative floor, a 720p MP4 every chat app accepts, is then the
+       row a fresh install has selected), then the platforms alphabetically.
+
+       Titles are SHORT names, not labels: the row underneath already says what
+       it makes ("Telegram sticker"), so the section only has to say where. A
+       group with no rows is not drawn, and a row whose group is not declared
+       here still appears, under its own key, at the end. -->
+  <groups>
+    <group id="general" title="General"/>
+    <group id="bilibili" title="Bilibili"/>
+    <group id="bluesky" title="Bluesky"/>
+    <group id="dailymotion" title="Dailymotion"/>
+    <group id="deviantart" title="DeviantArt"/>
+    <group id="discord" title="Discord"/>
+    <group id="douyin" title="Douyin"/>
+    <group id="facebook" title="Facebook"/>
+    <group id="instagram" title="Instagram"/>
+    <group id="kakaotalk" title="KakaoTalk"/>
+    <group id="line" title="LINE"/>
+    <group id="mastodon" title="Mastodon"/>
+    <group id="messenger" title="Messenger"/>
+    <group id="newgrounds" title="Newgrounds"/>
+    <group id="niconico" title="Nico Nico"/>
+    <group id="obs" title="OBS"/>
+    <group id="pinterest" title="Pinterest"/>
+    <group id="pixiv" title="pixiv"/>
+    <group id="qq" title="QQ"/>
+    <group id="reddit" title="Reddit"/>
+    <group id="safari" title="Safari"/>
+    <group id="signal" title="Signal"/>
+    <group id="snapchat" title="Snapchat"/>
+    <group id="telegram" title="Telegram"/>
+    <group id="tiktok" title="TikTok"/>
+    <group id="tumblr" title="Tumblr"/>
+    <group id="twitch" title="Twitch"/>
+    <group id="vimeo" title="Vimeo"/>
+    <group id="vk" title="VK"/>
+    <group id="wechat" title="WeChat"/>
+    <group id="weibo" title="Weibo"/>
+    <group id="whatsapp" title="WhatsApp"/>
+    <group id="x" title="X"/>
+    <group id="youtube" title="YouTube"/>
+  </groups>
+
   <!-- ===== sticker / emote ============================================= -->
 
-  <destination id="telegram.sticker" label="Telegram sticker" icon="brand-telegram" family="sticker"
+  <destination id="telegram.sticker" group="telegram" label="Telegram sticker"
+               icon="brand-telegram" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="default-on"
@@ -80,7 +140,8 @@
     <note>Video must have no audio stream. Should loop.</note>
   </destination>
 
-  <destination id="telegram.emoji" label="Telegram custom emoji" icon="brand-telegram" family="sticker"
+  <destination id="telegram.emoji" group="telegram" label="Telegram custom emoji"
+               icon="brand-telegram" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="default-on"
@@ -90,7 +151,8 @@
     <encOptions><opt name="auto-alt-ref" value="0"/></encOptions>
   </destination>
 
-  <destination id="discord.sticker" label="Discord sticker" icon="brand-discord" family="sticker"
+  <destination id="discord.sticker" group="discord" label="Discord sticker"
+               icon="brand-discord" family="sticker"
                class="fixed" codecSelect="fixed"
                container="apng" codec="apng" pixfmt="rgba"
                alpha="required" audio="forbidden" loop="default-on"
@@ -100,7 +162,7 @@
     <note>Discord animated stickers are APNG (GIF and Lottie also accepted). 320x320 EXACT.</note>
   </destination>
 
-  <destination id="discord.emoji" label="Discord emoji" icon="brand-discord" family="sticker"
+  <destination id="discord.emoji" group="discord" label="Discord emoji" icon="brand-discord" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webp" codec="libwebp" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="default-on"
@@ -110,7 +172,8 @@
     <note>Animated emoji are served as animated WebP; upload accepts JPEG/PNG/GIF/WebP/AVIF.</note>
   </destination>
 
-  <destination id="whatsapp.sticker" label="WhatsApp sticker" icon="brand-whatsapp" family="sticker"
+  <destination id="whatsapp.sticker" group="whatsapp" label="WhatsApp sticker"
+               icon="brand-whatsapp" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webp" codec="libwebp" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="default-on"
@@ -120,7 +183,7 @@
     <note>Animated stickers are WebP ONLY. Minimum frame duration 8ms.</note>
   </destination>
 
-  <destination id="signal.sticker" label="Signal sticker" icon="brand-signal" family="sticker"
+  <destination id="signal.sticker" group="signal" label="Signal sticker" icon="brand-signal" family="sticker"
                class="fixed" codecSelect="fixed"
                container="apng" codec="apng" pixfmt="rgba"
                alpha="required" audio="forbidden" loop="default-on"
@@ -130,7 +193,7 @@
     <note>Animated stickers must be APNG ("Please do not upload GIFs").</note>
   </destination>
 
-  <destination id="line.sticker" label="LINE sticker" icon="brand-line" family="sticker"
+  <destination id="line.sticker" group="line" label="LINE sticker" icon="brand-line" family="sticker"
                class="fixed" codecSelect="fixed"
                container="apng" codec="apng" pixfmt="rgba"
                alpha="required" audio="forbidden" loop="required"
@@ -140,7 +203,7 @@
     <note>RGB colour space; transparent background required; 1-4 loops.</note>
   </destination>
 
-  <destination id="twitch.emote" label="Twitch emote" icon="brand-twitch" family="sticker"
+  <destination id="twitch.emote" group="twitch" label="Twitch emote" icon="brand-twitch" family="sticker"
                class="reencode" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="choice" audio="forbidden" loop="default-on"
@@ -161,7 +224,8 @@
 
   <!-- ===== chat attachments ============================================== -->
 
-  <destination id="chat.generic.video" label="A video for a chat app" icon="dest-film" family="chat"
+  <destination id="chat.generic.video" group="general" label="A video for a chat app"
+               icon="dest-film" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -174,7 +238,7 @@
           restrictive ones accept.</note>
   </destination>
 
-  <destination id="chat.whatsapp.video" label="WhatsApp" icon="brand-whatsapp" family="chat"
+  <destination id="chat.whatsapp.video" group="whatsapp" label="WhatsApp" icon="brand-whatsapp" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -188,7 +252,7 @@
           Status is limited to 90 seconds and is also not this row.</note>
   </destination>
 
-  <destination id="chat.telegram.video" label="Telegram" icon="brand-telegram" family="chat"
+  <destination id="chat.telegram.video" group="telegram" label="Telegram" icon="brand-telegram" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -202,7 +266,7 @@
           so transparency never survives here.</note>
   </destination>
 
-  <destination id="chat.discord.file" label="Discord" icon="brand-discord" family="chat"
+  <destination id="chat.discord.file" group="discord" label="Discord" icon="brand-discord" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -216,7 +280,7 @@
           compression, so a video that used to fit may not.</note>
   </destination>
 
-  <destination id="chat.signal.video" label="Signal" icon="brand-signal" family="chat"
+  <destination id="chat.signal.video" group="signal" label="Signal" icon="brand-signal" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -229,7 +293,8 @@
           is the number to stay under. Sending as a File skips the transcode.</note>
   </destination>
 
-  <destination id="chat.messenger.video" label="Messenger" icon="brand-messenger" family="chat"
+  <destination id="chat.messenger.video" group="messenger" label="Messenger"
+               icon="brand-messenger" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -243,7 +308,8 @@
           duration limit.</note>
   </destination>
 
-  <destination id="chat.kakaotalk.video" label="KakaoTalk (카카오톡)" icon="brand-kakaotalk" family="chat"
+  <destination id="chat.kakaotalk.video" group="kakaotalk" label="KakaoTalk (카카오톡)"
+               icon="brand-kakaotalk" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -255,7 +321,7 @@
           not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</note>
   </destination>
 
-  <destination id="chat.wechat.video" label="WeChat (微信)" icon="brand-wechat" family="chat"
+  <destination id="chat.wechat.video" group="wechat" label="WeChat (微信)" icon="brand-wechat" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -268,7 +334,7 @@
           a different thing entirely.</note>
   </destination>
 
-  <destination id="chat.qq.video" label="QQ" icon="brand-qq" family="chat"
+  <destination id="chat.qq.video" group="qq" label="QQ" icon="brand-qq" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -281,7 +347,7 @@
           are not published.</note>
   </destination>
 
-  <destination id="chat.vk.video" label="VK (ВКонтакте)" icon="brand-vk" family="chat"
+  <destination id="chat.vk.video" group="vk" label="VK (ВКонтакте)" icon="brand-vk" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -294,7 +360,7 @@
 
   <!-- ===== posting to a platform ========================================== -->
 
-  <destination id="post.x.video" label="X (Twitter)" icon="brand-x" family="post"
+  <destination id="post.x.video" group="x" label="X (Twitter)" icon="brand-x" family="post"
                class="reencode" codecSelect="ladder"
                container="mp4" codec="" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -308,7 +374,8 @@
           yuv420p, closed GOP.</note>
   </destination>
 
-  <destination id="post.instagram.reels" label="Instagram Reels" icon="brand-instagram" family="post"
+  <destination id="post.instagram.reels" group="instagram" label="Instagram Reels"
+               icon="brand-instagram" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -322,7 +389,7 @@
           rejected.</note>
   </destination>
 
-  <destination id="post.tiktok.video" label="TikTok" icon="brand-tiktok" family="post"
+  <destination id="post.tiktok.video" group="tiktok" label="TikTok" icon="brand-tiktok" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -334,7 +401,8 @@
           files are NOT accepted. WebM/MOV are accepted alongside MP4.</note>
   </destination>
 
-  <destination id="post.bilibili.video" label="Bilibili (哔哩哔哩)" icon="brand-bilibili" family="post"
+  <destination id="post.bilibili.video" group="bilibili" label="Bilibili (哔哩哔哩)"
+               icon="brand-bilibili" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -348,7 +416,7 @@
           agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</note>
   </destination>
 
-  <destination id="post.weibo.video" label="Weibo (微博)" icon="brand-sinaweibo" family="post"
+  <destination id="post.weibo.video" group="weibo" label="Weibo (微博)" icon="brand-sinaweibo" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -361,7 +429,7 @@
           2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</note>
   </destination>
 
-  <destination id="post.bluesky.video" label="Bluesky" icon="brand-bluesky" family="post"
+  <destination id="post.bluesky.video" group="bluesky" label="Bluesky" icon="brand-bluesky" family="post"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -374,7 +442,7 @@
           the aspect ratio travels as metadata.</note>
   </destination>
 
-  <destination id="post.mastodon.video" label="Mastodon" icon="brand-mastodon" family="post"
+  <destination id="post.mastodon.video" group="mastodon" label="Mastodon" icon="brand-mastodon" family="post"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="default-on"
@@ -389,7 +457,7 @@
           transparency does not survive.</note>
   </destination>
 
-  <destination id="post.reddit.video" label="Reddit" icon="brand-reddit" family="post"
+  <destination id="post.reddit.video" group="reddit" label="Reddit" icon="brand-reddit" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -402,7 +470,8 @@
           their 2017 launch post, and comment videos are capped much shorter.</note>
   </destination>
 
-  <destination id="wechat.sticker" label="WeChat sticker (微信表情)" icon="brand-wechat" family="sticker"
+  <destination id="wechat.sticker" group="wechat" label="WeChat sticker (微信表情)"
+               icon="brand-wechat" family="sticker"
                class="fixed" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="required" audio="forbidden" loop="required"
@@ -415,7 +484,8 @@
           sets are 8 to 24 images.</note>
   </destination>
 
-  <destination id="kakaotalk.sticker" label="KakaoTalk sticker (카카오톡 스티커)" icon="brand-kakaotalk" family="sticker"
+  <destination id="kakaotalk.sticker" group="kakaotalk" label="KakaoTalk sticker (카카오톡 스티커)"
+               icon="brand-kakaotalk" family="sticker"
                class="fixed" codecSelect="fixed"
                container="webp" codec="libwebp" pixfmt="yuva420p"
                alpha="required" audio="forbidden" loop="required"
@@ -427,7 +497,7 @@
           useful sign of exactly which encoder behaviour they expect.</note>
   </destination>
 
-  <destination id="qq.sticker" label="QQ sticker" icon="brand-qq" family="sticker"
+  <destination id="qq.sticker" group="qq" label="QQ sticker" icon="brand-qq" family="sticker"
                class="fixed" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="required" audio="forbidden" loop="required"
@@ -453,7 +523,8 @@
        128 MB, DeviantArt 80 vs 95 MB). Where two official numbers exist, the
        smaller one is used and both are named in the note. -->
 
-  <destination id="post.niconico.video" label="Nico Nico Douga (ニコニコ動画)" icon="brand-niconico" family="post"
+  <destination id="post.niconico.video" group="niconico" label="Nico Nico Douga (ニコニコ動画)"
+               icon="brand-niconico" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -467,7 +538,7 @@
           which is a different destination with the same name.</note>
   </destination>
 
-  <destination id="post.douyin.video" label="Douyin (抖音)" icon="dest-film" family="post"
+  <destination id="post.douyin.video" group="douyin" label="Douyin (抖音)" icon="dest-film" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -482,7 +553,8 @@
           ByteDance page. Short side under 2160, long side under 4096, 720p or above.</note>
   </destination>
 
-  <destination id="post.facebook.video" label="Facebook (video)" icon="brand-facebook" family="post"
+  <destination id="post.facebook.video" group="facebook" label="Facebook (video)"
+               icon="brand-facebook" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -498,7 +570,8 @@
           with AAC.</note>
   </destination>
 
-  <destination id="post.facebook.reels" label="Facebook Reels" icon="brand-facebook" family="post"
+  <destination id="post.facebook.reels" group="facebook" label="Facebook Reels"
+               icon="brand-facebook" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -512,7 +585,7 @@
           540x960 minimum, 24 to 60 fps, no published byte cap.</note>
   </destination>
 
-  <destination id="post.tumblr.video" label="Tumblr" icon="brand-tumblr" family="post"
+  <destination id="post.tumblr.video" group="tumblr" label="Tumblr" icon="brand-tumblr" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -526,7 +599,8 @@
           first frame.</note>
   </destination>
 
-  <destination id="post.pinterest.video" label="Pinterest (video Pin)" icon="brand-pinterest" family="post"
+  <destination id="post.pinterest.video" group="pinterest" label="Pinterest (video Pin)"
+               icon="brand-pinterest" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -540,7 +614,8 @@
           H.265, 9:16 recommended.</note>
   </destination>
 
-  <destination id="post.snapchat.spotlight" label="Snapchat Spotlight" icon="brand-snapchat" family="post"
+  <destination id="post.snapchat.spotlight" group="snapchat" label="Snapchat Spotlight"
+               icon="brand-snapchat" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -556,7 +631,8 @@
           force that, so the file is exported as composed.</note>
   </destination>
 
-  <destination id="post.dailymotion.video" label="Dailymotion" icon="brand-dailymotion" family="post"
+  <destination id="post.dailymotion.video" group="dailymotion" label="Dailymotion"
+               icon="brand-dailymotion" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -569,7 +645,7 @@
           practical target.</note>
   </destination>
 
-  <destination id="post.vimeo.video" label="Vimeo" icon="brand-vimeo" family="post"
+  <destination id="post.vimeo.video" group="vimeo" label="Vimeo" icon="brand-vimeo" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -584,7 +660,8 @@
           support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</note>
   </destination>
 
-  <destination id="post.deviantart.video" label="DeviantArt (video, Core members)" icon="brand-deviantart" family="post"
+  <destination id="post.deviantart.video" group="deviantart" label="DeviantArt (video, Core members)"
+               icon="brand-deviantart" family="post"
                class="reencode" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -598,7 +675,8 @@
           counts it as an image and gives it the much larger image cap.</note>
   </destination>
 
-  <destination id="post.newgrounds.movie" label="Newgrounds (animation)" icon="brand-newgrounds" family="post"
+  <destination id="post.newgrounds.movie" group="newgrounds" label="Newgrounds (animation)"
+               icon="brand-newgrounds" family="post"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="choice"
@@ -624,7 +702,8 @@
        accepts, which is a frame SEQUENCE rather than a video or a GIF.
        ===================================================================== -->
 
-  <destination id="still.pixiv.illustration" label="pixiv (illustration)" icon="brand-pixiv" family="post"
+  <destination id="still.pixiv.illustration" group="pixiv" label="pixiv (illustration)"
+               icon="brand-pixiv" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -638,7 +717,8 @@
           transparency.</note>
   </destination>
 
-  <destination id="post.pixiv.ugoira" label="pixiv (ugoira animation)" icon="brand-pixiv" family="post"
+  <destination id="post.pixiv.ugoira" group="pixiv" label="pixiv (ugoira animation)"
+               icon="brand-pixiv" family="post"
                class="reencode" artifact="sequence"
                container="png" minScalePct="25"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -653,7 +733,8 @@
           frames), which costs you the palette. Desktop site only.</note>
   </destination>
 
-  <destination id="still.niconico.seiga" label="Nico Nico Seiga (ニコニコ静画)" icon="brand-niconico" family="post"
+  <destination id="still.niconico.seiga" group="niconico" label="Nico Nico Seiga (ニコニコ静画)"
+               icon="brand-niconico" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -667,7 +748,8 @@
           still-image half of Nico Nico; videos go to Nico Nico Douga.</note>
   </destination>
 
-  <destination id="still.instagram.feed" label="Instagram (photo)" icon="brand-instagram" family="post"
+  <destination id="still.instagram.feed" group="instagram" label="Instagram (photo)"
+               icon="brand-instagram" family="post"
                class="reencode" artifact="still"
                container="jpg"
                alpha="forbidden" audio="forbidden" loop="forbidden"
@@ -680,7 +762,8 @@
           a separate destination and do take video.</note>
   </destination>
 
-  <destination id="still.facebook.photo" label="Facebook (photo)" icon="brand-facebook" family="post"
+  <destination id="still.facebook.photo" group="facebook" label="Facebook (photo)"
+               icon="brand-facebook" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -694,7 +777,7 @@
           be shown pixelated, because it is re-compressed.</note>
   </destination>
 
-  <destination id="still.tumblr.photo" label="Tumblr (photo)" icon="brand-tumblr" family="post"
+  <destination id="still.tumblr.photo" group="tumblr" label="Tumblr (photo)" icon="brand-tumblr" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -707,7 +790,8 @@
           instead of animating, so a long animation should go out as a video.</note>
   </destination>
 
-  <destination id="still.pinterest.image" label="Pinterest (image Pin)" icon="brand-pinterest" family="post"
+  <destination id="still.pinterest.image" group="pinterest" label="Pinterest (image Pin)"
+               icon="brand-pinterest" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -720,7 +804,8 @@
           safe zone, where the interface covers it.</note>
   </destination>
 
-  <destination id="still.deviantart.image" label="DeviantArt (image)" icon="brand-deviantart" family="post"
+  <destination id="still.deviantart.image" group="deviantart" label="DeviantArt (image)"
+               icon="brand-deviantart" family="post"
                class="reencode" artifact="still"
                container="png"
                alpha="default-on" audio="forbidden" loop="forbidden"
@@ -733,7 +818,8 @@
           IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</note>
   </destination>
 
-  <destination id="post.deviantart.gif" label="DeviantArt (animation)" icon="brand-deviantart" family="post"
+  <destination id="post.deviantart.gif" group="deviantart" label="DeviantArt (animation)"
+               icon="brand-deviantart" family="post"
                class="fixed" codecSelect="fixed"
                container="gif" codec="gif" pixfmt="pal8"
                alpha="required" audio="forbidden" loop="required"
@@ -749,7 +835,7 @@
 
   <!-- ===== overlay ===================================================== -->
 
-  <destination id="obs.overlay" label="Stream overlay (OBS)" icon="brand-obsstudio" family="overlay"
+  <destination id="obs.overlay" group="obs" label="Stream overlay (OBS)" icon="brand-obsstudio" family="overlay"
                class="fixed" codecSelect="fixed"
                container="webm" codec="libvpx-vp9" pixfmt="yuva420p"
                alpha="required" audio="choice" loop="choice"
@@ -760,7 +846,8 @@
     <note>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</note>
   </destination>
 
-  <destination id="safari.transparent" label="Transparent video (Safari / iOS)" icon="brand-obsstudio" family="overlay"
+  <destination id="safari.transparent" group="safari" label="Transparent video (Safari / iOS)"
+               icon="brand-obsstudio" family="overlay"
                class="fixed" codecSelect="fixed"
                platform="apple"
                container="mov" codec="hevc_videotoolbox" pixfmt="yuva420p"
@@ -776,7 +863,7 @@
 
   <!-- ===== file ======================================================== -->
 
-  <destination id="youtube.video" label="YouTube" icon="brand-youtube" family="post"
+  <destination id="youtube.video" group="youtube" label="YouTube" icon="brand-youtube" family="post"
                class="reencode" codecSelect="ladder"
                container="mp4" codec="" pixfmt="yuv420p"
                alpha="forbidden" audio="default-on" loop="forbidden"
@@ -787,7 +874,7 @@
           AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</note>
   </destination>
 
-  <destination id="website.video" label="Website" icon="dest-website" family="file"
+  <destination id="website.video" group="general" label="Website" icon="dest-website" family="file"
                class="direct" codecSelect="ladder"
                container="mp4" codec="" pixfmt="yuv420p"
                alpha="choice" audio="choice" loop="choice"
@@ -798,7 +885,8 @@
           For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</note>
   </destination>
 
-  <destination id="generic.file" label="Just a file (not sure yet)" icon="dest-chat" family="file"
+  <destination id="generic.file" group="general" label="Just a file (not sure yet)"
+               icon="dest-chat" family="file"
                class="direct" codecSelect="ladder"
                container="mp4" codec="" pixfmt="yuv420p"
                alpha="choice" audio="default-on" loop="forbidden"
@@ -810,7 +898,8 @@
 
   <!-- ===== archive ===================================================== -->
 
-  <destination id="archive.master" label="Keep a master copy" icon="dest-archive" family="archive"
+  <destination id="archive.master" group="general" label="Keep a master copy"
+               icon="dest-archive" family="archive"
                class="archive" codecSelect="ladder"
                container="mkv" codec="" pixfmt="yuva420p"
                alpha="default-on" audio="default-on" loop="forbidden"

@@ -111,6 +111,13 @@ struct ExportTarget {
     // but it belongs beside the label: the alternative is a switch over every
     // destination inside the UI code.
     QString icon;
+    // The section this row is listed under in the destination picker: the PLATFORM
+    // a person is posting to, keyed into the <groups> block of the data file.
+    // Deliberately not derived from the label (which is translated, and whose
+    // leading word is not always a platform) and deliberately not `family`: that
+    // axis is what kind of handover this is, and it puts 29 of the 55 rows in one
+    // block, mixing what a file IS with what it is FOR.
+    QString group;
     QString family;
     DestClass klass = DestClass::Fixed;
     bool codecLadder = false; // true => codec comes from the ladder, not @codec
@@ -163,6 +170,13 @@ struct ExportTarget {
     // VideoToolbox). Declared rather than discovered, so a row can be skipped
     // without pretending it is broken.
     QString platform; // empty/"any" = everywhere
+};
+
+// One section of the destination list: the platform a person is posting to. The
+// ORDER of these in the data file is the order of the sections on screen.
+struct ExportGroup {
+    QString id;    // matches ExportTarget::group
+    QString title; // what the heading says ("Telegram")
 };
 
 // An inclusive span of project frames. Inclusive rather than half-open because
@@ -342,6 +356,10 @@ public:
     static QString defaultPath();
 
     static QList<ExportTarget> load(const QString& aPath = defaultPath(), QString* aError = nullptr);
+
+    // The picker's sections, in the order the file lists them. Empty when the file
+    // has no <groups> block, in which case the picker falls back to one flat list.
+    static QList<ExportGroup> loadGroups(const QString& aPath = defaultPath());
 
     static ExportTarget find(const QList<ExportTarget>& aTargets, const QString& aId);
 
