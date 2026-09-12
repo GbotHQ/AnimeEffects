@@ -16,9 +16,11 @@
 #include <QFileInfo>
 #include <QTextStream>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 #include "XCAssert.h"
+#include "temp_util.h"
 #include "gl/Global.h"
 #include "gl/DeviceInfo.h"
 #include "core/Project.h"
@@ -183,7 +185,7 @@ int main(int argc, char** argv) {
     QTextStream(stdout) << "  project " << nativeW << "x" << nativeH << " @ " << fps
                         << "fps, frames " << minFrame << ".." << maxFrame << "\n";
 
-    const QString out = QDir::temp().filePath("ae_e2e.mp4");
+    const QString out = aeTestTempPath("ae_e2e.mp4");
     QFile::remove(out);
 
     // A fixed small export size for the synthetic scenarios (independent of the
@@ -293,7 +295,7 @@ int main(int argc, char** argv) {
 
     // Scenario 2: odd export size must round to even (no corrupt file, no crash).
     {
-        const QString oddPath = QDir::temp().filePath("ae_e2e_odd.mp4");
+        const QString oddPath = aeTestTempPath("ae_e2e_odd.mp4");
         bool ok = runVideo(mp4Container, mp4Codec, QSize(321, 241), util::Range(minFrame, maxFrame), "yuv420p", oddPath, true);
         check(ok, "e2e odd-size (321x241): export succeeds (rounded to even)");
         int w = 0, h = 0;
@@ -304,7 +306,7 @@ int main(int argc, char** argv) {
 
     // Scenario 3: single-frame export (range of exactly 1 frame).
     {
-        const QString sPath = QDir::temp().filePath("ae_e2e_single.mp4");
+        const QString sPath = aeTestTempPath("ae_e2e_single.mp4");
         bool ok = runVideo(mp4Container, mp4Codec, small, util::Range(minFrame, minFrame), "yuv420p", sPath, true);
         check(ok, "e2e single-frame: export succeeds");
         int w = 0, h = 0;
@@ -318,7 +320,7 @@ int main(int argc, char** argv) {
     // only by the libvpx decoder (ffprobe's stream pix_fmt stays yuv420p). We
     // assert alpha_mode is set (the V1 unit test verifies the values survive).
     {
-        const QString tPath = QDir::temp().filePath("ae_e2e_alpha.webm");
+        const QString tPath = aeTestTempPath("ae_e2e_alpha.webm");
         bool ok = runVideo(webmContainer, webmCodec, small, util::Range(minFrame, maxFrame), "yuva420p", tPath, true);
         check(ok, "e2e transparent (webm/vp9 @ yuva420p): export succeeds");
         FILE* p = popen(QStringLiteral(
@@ -340,7 +342,7 @@ int main(int argc, char** argv) {
 
     // Scenario 5: unwritable output path must fail cleanly (no crash, no success).
     {
-        const QString badPath = QDir::temp().filePath("ae_e2e_dir.mp4");
+        const QString badPath = aeTestTempPath("ae_e2e_dir.mp4");
         QDir().mkpath(badPath); // create a DIRECTORY at the output path
         bool ok = runVideo(mp4Container, mp4Codec, small, util::Range(minFrame, maxFrame), "yuv420p", badPath, false);
         check(ok, "e2e unwritable path: export rejected cleanly (no false success)");
@@ -350,7 +352,7 @@ int main(int argc, char** argv) {
     // Scenario 6: GIF export via the in-process ctrl::Exporter -> valid .gif.
     {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
-        const QString gPath = QDir::temp().filePath("ae_e2e.gif");
+        const QString gPath = aeTestTempPath("ae_e2e.gif");
         ctrl::Exporter::CommonParam cp;
         cp.path = gPath; cp.size = small; cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame); cp.fps = fps;
         ctrl::Exporter::GifParam gp;
@@ -383,7 +385,7 @@ int main(int argc, char** argv) {
     // Scenario 7: image sequence export (ImageParam) -> frames written to a dir.
     {
         std::unique_ptr<ctrl::Exporter> ex = makeExporter();
-        const QString imgDir = QDir::temp().filePath("ae_e2e_frames");
+        const QString imgDir = aeTestTempPath("ae_e2e_frames");
         QDir(imgDir).removeRecursively();
         QDir().mkpath(imgDir);
         ctrl::Exporter::CommonParam cp;
@@ -422,7 +424,7 @@ int main(int argc, char** argv) {
             check(false, "e2e multi-range: project is too short for this scenario");
         } else {
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
-            const QString mrDir = QDir::temp().filePath("ae_e2e_multirange");
+            const QString mrDir = aeTestTempPath("ae_e2e_multirange");
             QDir(mrDir).removeRecursively();
             QDir().mkpath(mrDir);
             ctrl::Exporter::CommonParam cp;
@@ -470,8 +472,8 @@ int main(int argc, char** argv) {
                 return QImage(QDir(aDir).filePath(pngs.first()));
             };
 
-            const QString padDir = QDir::temp().filePath("ae_e2e_fitpad");
-            const QString cropDir = QDir::temp().filePath("ae_e2e_fitcrop");
+            const QString padDir = aeTestTempPath("ae_e2e_fitpad");
+            const QString cropDir = aeTestTempPath("ae_e2e_fitcrop");
 
             ctrl::Exporter::CommonParam pad;
             pad.size = exact; pad.fps = fps;
@@ -566,7 +568,7 @@ int main(int argc, char** argv) {
         {
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
             ctrl::Exporter::CommonParam cp;
-            const QString bogus = QDir::temp().filePath("ae_e2e_bogusopt.mp4");
+            const QString bogus = aeTestTempPath("ae_e2e_bogusopt.mp4");
             QFile::remove(bogus);
             cp.path = bogus; cp.size = small; cp.fps = fps;
             cp.selection = ctrl::FrameSelection::fromRange(minFrame, maxFrame);
@@ -583,7 +585,7 @@ int main(int argc, char** argv) {
         {
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
             ctrl::Exporter::CommonParam cp;
-            const QString hevc = QDir::temp().filePath("ae_e2e_hvc1.mp4");
+            const QString hevc = aeTestTempPath("ae_e2e_hvc1.mp4");
             QFile::remove(hevc);
             cp.path = hevc; cp.size = small; cp.fps = fps;
             cp.selection = ctrl::FrameSelection::fromRange(minFrame, minFrame);
@@ -662,7 +664,7 @@ int main(int argc, char** argv) {
         };
 
         // A 1s 16-bit mono PCM WAV, so the mixer has something to decode.
-        const QString wav = QDir::temp().filePath("ae_e2e_tone.wav");
+        const QString wav = aeTestTempPath("ae_e2e_tone.wav");
         {
             QFile f(wav);
             if (f.open(QIODevice::WriteOnly)) {
@@ -690,7 +692,7 @@ int main(int argc, char** argv) {
 
         {   // 9a: contiguous selection + audio still exports, and the audio lands
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
-            const QString out = QDir::temp().filePath("ae_e2e_audio.mp4");
+            const QString out = aeTestTempPath("ae_e2e_audio.mp4");
             QFile::remove(out);
             ctrl::Exporter::CommonParam cp;
             cp.path = out; cp.size = small; cp.fps = fps;
@@ -725,7 +727,7 @@ int main(int argc, char** argv) {
             // carry 4 frames of sound, not the 12 of the span 0..11.
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
             ctrl::Exporter::CommonParam cp;
-            const QString gapOut = QDir::temp().filePath("ae_e2e_audio_gap.mp4");
+            const QString gapOut = aeTestTempPath("ae_e2e_audio_gap.mp4");
             QFile::remove(gapOut);
             cp.path = gapOut; cp.size = small; cp.fps = fps;
             ctrl::FrameSelection sel;
@@ -763,7 +765,7 @@ int main(int argc, char** argv) {
         // (so a stream exists either way) and a LOUD one that is disabled. If the
         // switch is ignored, the loud one lands in the file.
         {
-            const QString loudWav = QDir::temp().filePath("ae_e2e_loud.wav");
+            const QString loudWav = aeTestTempPath("ae_e2e_loud.wav");
             {
                 QFile f(loudWav);
                 if (f.open(QIODevice::WriteOnly)) {
@@ -801,7 +803,7 @@ int main(int argc, char** argv) {
             loudOff.volume = 1.0f; loudOff.enabled = false;   // the switch
 
             std::unique_ptr<ctrl::Exporter> ex = makeExporter();
-            const QString out = QDir::temp().filePath("ae_e2e_audio_disabled.mp4");
+            const QString out = aeTestTempPath("ae_e2e_audio_disabled.mp4");
             QFile::remove(out);
             ctrl::Exporter::CommonParam cp;
             cp.path = out; cp.size = small; cp.fps = fps;
@@ -825,7 +827,7 @@ int main(int argc, char** argv) {
             // And the same loud track ENABLED does reach the file, so the assertion
             // above is about the switch and not about a mixer that never sees it.
             std::unique_ptr<ctrl::Exporter> ex2 = makeExporter();
-            const QString out2 = QDir::temp().filePath("ae_e2e_audio_enabled.mp4");
+            const QString out2 = aeTestTempPath("ae_e2e_audio_enabled.mp4");
             QFile::remove(out2);
             ctrl::Exporter::CommonParam cp2;
             cp2.path = out2; cp2.size = small; cp2.fps = fps;
@@ -863,7 +865,7 @@ int main(int argc, char** argv) {
     {
         const ctrl::ExportTarget telegram =
             ctrl::ExportTargets::find(ctrl::ExportTargets::load(), QStringLiteral("telegram.sticker"));
-        const QString out = QDir::temp().filePath("ae_e2e_capped.webm");
+        const QString out = aeTestTempPath("ae_e2e_capped.webm");
         QFile::remove(out);
 
         ctrl::ExportRequest req;
@@ -928,6 +930,16 @@ int main(int argc, char** argv) {
         }
     }
 
-    QTextStream(stdout) << "=== result ===\n";
+    // Print the count, not just the word: the exit status alone cannot be trusted
+    // to describe this suite. Under `xvfb-run -a` two concurrent runs can be given
+    // the SAME display (measured: both got :99 in a pair, ~half of 6 pairs), the
+    // loser renders happily on the winner's server, and when the winner's teardown
+    // kills that server the loser's X connection dies during exit - Xlib's fatal
+    // I/O handler then exits 1 over main()'s 0. The log is the verdict; the status
+    // is not. (With a hand-started Xvfb both runs returned 0, 6 of 6.)
+    QTextStream(stdout) << "=== result === "
+                        << (failures == 0 ? QStringLiteral("all checks passed")
+                                          : QStringLiteral("%1 FAILED").arg(failures))
+                        << "\n";
     return failures == 0 ? 0 : 1;
 }

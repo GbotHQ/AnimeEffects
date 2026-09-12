@@ -38,8 +38,23 @@ for n in $targets; do
       continue
     fi
     proj="${AE_E2E_PROJECT:-tests/fixtures/e2e_stage.png}"
+    # One GL suite at a time, across concurrent invocations of THIS script.
+    #
+    # `xvfb-run -a` is not safe to run two copies of at once: it scans for a free
+    # display number and then starts Xvfb, so two runs that look inside the same
+    # window are both handed the same one (measured: both got :99, in about half of
+    # six pairs). The loser then connects to the WINNER's X server and renders fine,
+    # so it passes every check - and when the winner's teardown kills that server,
+    # the loser's X connection dies during its exit and Xlib's fatal I/O handler
+    # exits 1 in place of main()'s 0. The result is a suite that passed reporting a
+    # failure, which is the same disease this file already fixed twice. The lock
+    # costs nothing (the suite takes ~14s) and makes
+    # `run_suites.sh Debug & run_suites.sh Release &` mean what it says.
+    # flock is util-linux; without it the suite still runs, just not in parallel.
+    lock=""
+    command -v flock >/dev/null 2>&1 && lock="flock /tmp/ae_e2e_xvfb.lock"
     out=$(env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=xcb timeout 600 \
-              xvfb-run -a "$bin" "$proj" 2>&1); rc=$?
+              $lock xvfb-run -a "$bin" "$proj" 2>&1); rc=$?
   else
     out=$(QT_QPA_PLATFORM=offscreen timeout 180 "$bin" 2>&1); rc=$?
   fi

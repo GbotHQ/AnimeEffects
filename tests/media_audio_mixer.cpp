@@ -15,6 +15,8 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QTextStream>
+
+#include "temp_util.h"
 #include <QtMath>
 
 #include "media/AudioMixer.h"
@@ -72,8 +74,8 @@ static double expectedMix(int n, int rate, int startF1, double amp1, double f1,
 
 static bool run_exact_sum() {
     const int rate = 48000, fps = 24, totalFrames = 240; // 10 s
-    const QString f1 = QDir::temp().filePath("ae_v2_t1.wav");
-    const QString f2 = QDir::temp().filePath("ae_v2_t2.wav");
+    const QString f1 = aeTestTempPath("ae_v2_t1.wav");
+    const QString f2 = aeTestTempPath("ae_v2_t2.wav");
     // track1: 40% amp, 440 Hz, offset frame 24 (offsetSamples = 48000)
     // track2: 80% amp * 0.5 volume = 40% amp, 880 Hz, offset frame 72 (144000)
     const int start1 = 24, start2 = 72;
@@ -129,7 +131,7 @@ static bool run_track_mapping() {
           "the mapping carries the path, the frame window and the volume");
 
     // And the mixer's side of the contract: a disabled track contributes nothing.
-    const QString f = QDir::temp().filePath("ae_map_disabled.wav");
+    const QString f = aeTestTempPath("ae_map_disabled.wav");
     writeWav(f, 48000, 1, 1, 440, 0.8);
     media::AudioMixer mx;
     media::AudioMixer::Config cfg;
@@ -161,7 +163,7 @@ static bool run_track_mapping() {
 
 static bool run_rate_conversion() {
     // 44.1 kHz mono mixed into a 48 kHz stereo output.
-    const QString f = QDir::temp().filePath("ae_v2_441.wav");
+    const QString f = aeTestTempPath("ae_v2_441.wav");
     writeWav(f, 44100, 1, 2, 660, 0.6);
     media::AudioMixer::Track t;
     t.path = f; t.startFrame = 0; t.volume = 1.0f;
@@ -184,7 +186,7 @@ static bool run_rate_conversion() {
 }
 
 static bool run_edge_cases() {
-    const QString f = QDir::temp().filePath("ae_v2_edge.wav");
+    const QString f = aeTestTempPath("ae_v2_edge.wav");
     writeWav(f, 48000, 1, 1, 440, 0.5);
 
     media::AudioMixer::Config cfg;
@@ -225,7 +227,7 @@ static bool run_edge_cases() {
 
 static bool run_audio_edge_cases() {
     // A real 1s 48k mono tone that the other tests also use.
-    const QString good = QDir::temp().filePath("ae_v2_extra.wav");
+    const QString good = aeTestTempPath("ae_v2_extra.wav");
     writeWav(good, 48000, 1, 1, 440, 0.5);
 
     media::AudioMixer::Config cfg;
@@ -235,7 +237,7 @@ static bool run_audio_edge_cases() {
     //    is skipped + reported (a single bad track must not abort the export).
     media::AudioMixer bad;
     media::AudioMixer::Track gone;
-    gone.path = QDir::temp().filePath("ae_v2_does_not_exist.wav");
+    gone.path = aeTestTempPath("ae_v2_does_not_exist.wav");
     gone.startFrame = 0; gone.volume = 1.0f;
     bool okBad = bad.mix({ gone }, cfg);
     check(okBad, "missing audio file: mix still succeeds (track skipped)");
@@ -283,7 +285,7 @@ static bool run_audio_edge_cases() {
 
     // 5) No temp/output files are created by the mixer itself (the legacy CLI
     //    path wrote .mus.temp* files).
-    const QString marker = QDir::temp().filePath(".mus.temp");
+    const QString marker = aeTestTempPath(".mus.temp");
     const bool noMusTemp = QFileInfo::exists(marker);
     check(!noMusTemp, "no .mus.temp* files created by in-process mixing");
 
