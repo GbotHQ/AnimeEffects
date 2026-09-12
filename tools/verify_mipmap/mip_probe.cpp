@@ -3694,7 +3694,10 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
     int gradN = 0;
     const double margin0 = 0.0;   // this texture keeps the artwork at the origin
     double sumRTc = 0, sumBTc = 0, sumTentc = 0, sumRTb = 0, sumBTb = 0, sumTentb = 0;
-    double sumAT = 0, sumAB = 0, sumAA = 0, sumOT = 0, sumLT = 0, sumLA = 0, sumLTn = 0;
+    double sumAT = 0, sumAB = 0, sumAA = 0, sumOT = 0, sumLT = 0, sumLA = 0, sumLTn = 0, sumAC = 0;
+    // ss/2 is one sample per artwork texel at 16x, i.e. the reference reduced to exactly the
+    // artwork's own resolution - which is what "just render at artwork resolution" would mean
+    const bool ssHalfOk = (ss % 2 == 0);
     int nc = 0, nb = 0;
     std::vector<Sample> samples;
 
@@ -3780,6 +3783,8 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
             sumTT += std::fabs(tn - t);
             sumTB += std::fabs(tn - b);
             sumAT += std::fabs(ar - t);
+            if (ssHalfOk)
+                sumAC += std::fabs(ar - truthCoarse.pixelColor(sx, sy).red());
             sumOT += std::fabs(o2 - t);
             const double lz = lanczosIntegral(texture, ax - half, ay - half, (int)step, 0);
             sumLT += std::fabs(lz - t);
@@ -3918,6 +3923,12 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned) {
         "    chain (box model) against each definition: vs area %.3f | vs tent %.3f\n", sumAB / dd,
         sumTB / dd
     );
+    if (ssHalfOk)
+        std::printf(
+            "    reference at ONE sample per artwork texel (ss=%d) vs the area model: %.3f  "
+            "(and vs the shipped render: %.3f)\n",
+            ss / 2, sumAC / dd, sumRT / dd
+        );
     std::printf(
         "    model vs model (these all describe the SAME output pixel): area-vs-tent %.3f | "
         "area-vs-lanczos %.3f | tent-vs-lanczos %.3f\n",
