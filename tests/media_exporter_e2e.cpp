@@ -13,6 +13,7 @@
 #include <QOpenGLFunctions_4_0_Core>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <cstdio>
 #include <memory>
@@ -23,6 +24,7 @@
 #include "core/Project.h"
 #include "core/Animator.h"
 #include "ctrl/Exporter.h"
+#include "ctrl/ImageFileLoader.h"
 #include "ctrl/ProjectLoader.h"
 #include "gui/AudioPlaybackWidget.h"
 #include "util/IProgressReporter.h"
@@ -148,12 +150,29 @@ int main(int argc, char** argv) {
     NullAnimator animator;
     NullReporter reporter;
 
-    // Load the real project.
+    // Load the real project. A .anie is a saved project; a .psd/.ora/plain image goes
+    // through the importer, which is what the app does when one is opened. Accepting
+    // both is what lets this harness run against a COMMITTED fixture (tests/golden/*)
+    // instead of only against artwork that happens to be on the machine, which is the
+    // difference between a gate that runs and a gate that is skipped - and a gate that
+    // is skipped is how the capped-export wiring sat broken and unnoticed.
     core::Project project(src, animator, nullptr);
-    ctrl::ProjectLoader loader;
-    if (!loader.load(src, project, dev, reporter)) {
-        QTextStream(stdout) << "FAIL  load: " << loader.log().join("\n") << "\n";
-        return 1;
+    if (QFileInfo(src).suffix().toLower() == QLatin1String("anie")) {
+        ctrl::ProjectLoader loader;
+        if (!loader.load(src, project, dev, reporter)) {
+            QTextStream(stdout) << "FAIL  load: " << loader.log().join("\n") << "\n";
+            return 1;
+        }
+    } else {
+        ctrl::ImageFileLoader loader(dev);
+        // The importer asks the user how to treat an .ora's layer stack; a harness has
+        // nobody to answer, so the choice is made here (the same one the app's default
+        // offers).
+        loader.setOraImportMode(ctrl::ImageFileLoader::OraImportMode::Layered);
+        if (!loader.load(src, project, reporter)) {
+            QTextStream(stdout) << "FAIL  load: " << loader.log() << "\n";
+            return 1;
+        }
     }
     QTextStream(stdout) << "=== media exporter e2e: " << src << " ===\n";
     const int nativeW = project.attribute().imageSize().width();
