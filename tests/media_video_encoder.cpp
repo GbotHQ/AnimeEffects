@@ -18,6 +18,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QByteArray>
+#include <QHashFunctions>
 #include <QtMath>
 
 #include "decode_util.h"
@@ -638,6 +639,48 @@ static bool run_gif() {
                                      .arg(loopBlock(thrice.outputPath))
                                      .toUtf8();
     check(loopBlock(thrice.outputPath) == 3, thriceMsg.constData());
+
+    // The same frames must produce the same file, whatever Qt's per-process hash seed
+    // is. The adaptive palette keeps the most frequent colours, ties are the common case
+    // rather than the exception (every shade of a gradient counts once, and flat regions
+    // produce whole families of equal-frequency shades), and the tie-break used to be
+    // QHash iteration order - which Qt randomizes per PROCESS. Measured: one 6-frame
+    // export came out at 348001 bytes, the next at 348367, the next at 348093 for
+    // identical input. That is not merely unrepeatable output: a capped destination's
+    // fit loop re-encodes its winner to prove the file on disk is inside the cap, and a
+    // size that moves by a few tenths of a percent between process runs can make that
+    // check fail on a file that was perfectly fine.
+    //
+    // The seed is re-randomized between the two encodes because that is the only way to
+    // see the defect from inside ONE process: an ordinary pair of encodes in one run
+    // shares the seed and would agree even with the bug present.
+    {
+        media::GifEncoder::Config det1 = c;
+        det1.outputPath = QDir::temp().filePath("ae_gif_determinism_a.gif");
+        check(g.encode(frames, det1, &err), "gif encode (first of the pair) succeeds");
+        // QFile::readAll() returns nothing unless the file was opened first, which made
+        // this check compare two empty arrays until the non-empty half of it fired.
+        auto readFile = [](const QString& aPath) {
+            QFile f(aPath);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        const QByteArray firstBytes = readFile(det1.outputPath);
+
+        QHashSeed::resetRandomGlobalSeed(); // what a new process would have done anyway
+
+        media::GifEncoder::Config det2 = c;
+        det2.outputPath = QDir::temp().filePath("ae_gif_determinism_b.gif");
+        check(g.encode(frames, det2, &err), "gif encode (second of the pair) succeeds");
+        const QByteArray secondBytes = readFile(det2.outputPath);
+
+        const QByteArray detMsg =
+            QStringLiteral("the same frames give the same file under a different hash seed "
+                           "(%1 vs %2 bytes)")
+                .arg(firstBytes.size())
+                .arg(secondBytes.size())
+                .toUtf8();
+        check(!firstBytes.isEmpty() && firstBytes == secondBytes, detMsg.constData());
+    }
 
     // An unknown muxer option must be reported, not swallowed: an option that is
     // silently ignored is how a control stops meaning anything. Config::loop is

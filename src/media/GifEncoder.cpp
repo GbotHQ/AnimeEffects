@@ -61,8 +61,21 @@ void buildPalette(const QList<QImage>& aFrames, bool aTransparent, int aLimit,
                               ((b << 3) | (b >> 2));
         counted.push_back({ (color << 8) | 0xFF, it.value() }); // high byte = alpha (opaque)
     }
-    std::sort(counted.begin(), counted.end(),
-              [](const auto& x, const auto& y) { return x.second > y.second; });
+    // Frequency is NOT a total order - thousands of colors in a noisy frame tie at
+    // count 1, and every flat region's shades tie with each other - and std::sort is
+    // not stable, so the ties have to be broken by something in the data. They used to
+    // fall back to `counted`'s insertion order, which is QHash iteration order, which
+    // Qt randomizes per PROCESS. So the same export produced a different palette (and a
+    // different file size: 348001, 348093, 348367, 347679 bytes for one 6-frame fixture
+    // across runs) every time the application started. That is not only unrepeatable
+    // output: a capped destination's fit loop re-encodes its winner to verify it fits
+    // the cap, and a size that moves by a few tenths of a percent between process runs
+    // can make that verification fail on a file that was actually fine. Colour is the
+    // tie-break, so the palette is a function of the frames alone.
+    std::sort(counted.begin(), counted.end(), [](const auto& x, const auto& y) {
+        if (x.second != y.second) return x.second > y.second;
+        return x.first < y.first;
+    });
 
     aPalette.fill(0, kPaletteCount);
     int paletteIndex = 0;
