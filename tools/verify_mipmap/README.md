@@ -439,6 +439,24 @@ the error is recoverable by sampling a partly finer level, and past about -1.5 t
 starts to cost more than it gains. Nothing in the shipped code sets a bias; this is where the setting
 would be, and it is a fidelity trade, so it is measured and left alone rather than changed quietly.
 
+If the reference for tuning ought to be a high-quality resample rather than the supersampled
+render, the optimum could move - so `--bias1 <csv> <file>` scores one real layer at 16x against all
+four references at once: the supersampled render, and CPU models of area (coverage-weighted texels),
+tent (integral of the bilinear reconstruction) and Lanczos (windowed sinc, a = 3):
+
+| layer | bias | vs ssaa | vs area | vs tent | vs lanczos |
+| --- | --- | --- | --- | --- | --- |
+| 000020.psd | -0.5 | 1.816 | 1.837 | 1.833 | 1.926 |
+| 000020.psd | 0.0 | 3.374 | 3.396 | 3.388 | 3.428 |
+| AUTUMN.psd | -1.0 | 1.074 | 1.071 | 1.075 | 1.442 |
+| AUTUMN.psd | 0.0 | 3.718 | 3.737 | 3.717 | 3.964 |
+| 000063.psd | -1.0 | 0.418 | 0.487 | 0.488 | 0.435 |
+| 000063.psd | 0.0 | 2.303 | 2.357 | 2.347 | 2.149 |
+
+The four references sit within 0.02 to 0.3 of each other, and the bias that minimises each of them is
+the same bias on every layer. So: area/Lanczos is the better reference to argue about quality with,
+and it does not change what the tuning says.
+
 The two other routes, for the record, both out of the mip chain rather than in it: resample each
 layer once per display scale with an area/Lanczos filter and cache it (exact by the measurements
 above - the CPU area model matches the truth to 0.05 - and affordable precisely because layer content

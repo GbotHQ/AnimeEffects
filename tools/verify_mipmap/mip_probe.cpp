@@ -3136,6 +3136,51 @@ QImage supersampledWindowReference(core::Project& aProject, const QSize& aCanvas
 }
 
 
+// A third reference: the integral over the footprint of a LANCZOS reconstruction of the artwork
+// (windowed sinc, a = 3). This is the reconstruction a high-quality resampler assumes, so it is the
+// natural reference if the question is "how close is this to the best resample" rather than "how
+// close is this to what the renderer shows when magnifying" (that one is tentIntegral).
+double lanczosIntegral(const Img& aImg, double aX0, double aY0, int aSpan, int aChannel) {
+    const int a = 3;
+    const auto lanczos = [&](double x) {
+        if (x == 0.0)
+            return 1.0;
+        if (std::fabs(x) >= a)
+            return 0.0;
+        const double pix = M_PI * x;
+        return (a * std::sin(pix) * std::sin(pix / a)) / (pix * pix);
+    };
+    const int taps = aSpan + 2 * a + 2;
+    const int kx0 = (int)std::floor(aX0) - a - 1, ky0 = (int)std::floor(aY0) - a - 1;
+    std::vector<double> wx(taps, 0.0), wy(taps, 0.0);
+    const int samples = 16 * aSpan;
+    for (int t = 0; t < taps; ++t) {
+        const double cx = kx0 + t + 0.5;
+        double sum = 0.0;
+        for (int i = 0; i < samples; ++i)
+            sum += lanczos(aX0 + (i + 0.5) * (double)aSpan / samples - cx);
+        wx[t] = sum / samples;
+        const double cy = ky0 + t + 0.5;
+        sum = 0.0;
+        for (int i = 0; i < samples; ++i)
+            sum += lanczos(aY0 + (i + 0.5) * (double)aSpan / samples - cy);
+        wy[t] = sum / samples;
+    }
+    double total = 0.0;
+    for (int j = 0; j < taps; ++j) {
+        const int y = ky0 + j;
+        for (int i = 0; i < taps; ++i) {
+            const int x = kx0 + i;
+            if (wx[i] == 0.0 || wy[j] == 0.0)
+                continue;
+            const double v = (x < 0 || y < 0 || x >= aImg.w || y >= aImg.h) ? 0.0
+                                                                            : (double)aImg.at(x, y)[aChannel];
+            total += wx[i] * wy[j] * v;
+        }
+    }
+    return total;
+}
+
 // The third candidate definition of the right answer: the artwork as a piecewise-CONSTANT array of
 // texels, each weighted by how much of the footprint it covers. This is "area downsampling" in the
 // image-processing sense and it is what a mip chain approximates; it differs from tentIntegral()
@@ -3335,6 +3380,152 @@ int runBias(const QString& aCsv, const QString& aPath) {
         }
         setTreeLodBias(project.objectTree(), 0.0f);
     }
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// --bias1 <csv> <file> : the LOD-bias optimum against each candidate reference.
+//
+// The bias sweep on whole projects uses the supersampled render as its reference, which carries the
+// same tent reconstruction the magnifier uses. If the reference for tuning ought to be a high-quality
+// resample instead - area (piecewise-constant texels) or Lanczos (band-limited) - the optimum could
+// move. This renders ONE real layer at 16x under several biases and scores every one of them against
+// all four references: the supersampled render, and the CPU area / tent / Lanczos models.
+int runBias1(const QString& aCsv, const QString& aPath) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+    Img bestCopy;
+    QString bestName;
+    bool have = false;
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* ikey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!ikey || !ikey->data().resource()->hasImage())
+            continue;
+        const img::Buffer& image = ikey->data().resource()->image();
+        const QSize size = image.pixelSize();
+        if (size.width() < 256 || size.height() < 256)
+            continue;
+        if (have && (qint64)size.width() * size.height() <= (qint64)bestCopy.w * bestCopy.h)
+            continue;
+        bestCopy.w = size.width();
+        bestCopy.h = size.height();
+        bestCopy.d.assign(image.data(), image.data() + (size_t)size.width() * size.height() * 4);
+        bestName = layer->name();
+        have = true;
+    }
+    if (!have)
+        return 0;
+    const Img artwork = bestCopy;
+
+    const QSize canvas(128, 128);
+    const int ss = 32;
+    const float zoom = 1.0f / 16.0f;
+    const int level = 4;
+    const uint8_t backdrop[3] = {0, 0, 0};
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("bias1_src", artwork);
+    addScaledLayer(tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 1.0f,
+                   img::BlendMode_Normal);
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(zoom);
+
+    fixtures[key]->render(tree, camera, 0, backdrop);
+    setTreeSampling(tree, Sampling::MipmapCutoff);
+    setTreeLodBias(tree, 0.0f);
+
+    const QSize big(canvas.width() * ss, canvas.height() * ss);
+    const QString bigKey = QString("%1x%2").arg(big.width()).arg(big.height());
+    if (fixtures.find(bigKey) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(big);
+        fixtures.emplace(bigKey, std::move(fx));
+    }
+    QPoint leftTop;
+    referenceLeftTop(canvas.width(), canvas.height(), ss, 0, 0, leftTop);
+    core::CameraInfo bigCamera;
+    bigCamera.reset(big, 1.0, canvas, leftTop);
+    bigCamera.setScale(zoom * (float)ss);
+    const QImage truth = boxDownsample(
+        figures::readbackToImage(fixtures[bigKey]->render(tree, bigCamera, 0, backdrop), big), ss
+    );
+
+    const QSize textureSize = img::Util::mipAlignedTextureSize(QSize(artwork.w, artwork.h));
+    const std::vector<uint8> upload =
+        img::Util::makeTextureUpload(artwork.d.data(), QSize(artwork.w, artwork.h), textureSize);
+    Img texture;
+    texture.w = textureSize.width();
+    texture.h = textureSize.height();
+    texture.d = upload;
+
+    QFile out(aCsv);
+    const bool fresh = !out.exists() || out.size() == 0;
+    if (!out.open(QIODevice::Append | QIODevice::Text))
+        return 5;
+    QTextStream ts(&out);
+    if (fresh)
+        ts << "file,layer,lod_bias,vs_ssaa,vs_area,vs_tent,vs_lanczos\n";
+
+    const double step = 1.0 / zoom;
+    const double half = step * 0.5;
+    const float biases[] = {-1.5f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f};
+    std::printf("  %s  layer %s  %dx%d\n", qPrintable(QFileInfo(aPath).fileName()), qPrintable(bestName),
+                artwork.w, artwork.h);
+
+    for (float bias : biases) {
+        setTreeLodBias(tree, bias);
+        const QImage img = figures::readbackToImage(fixtures[key]->render(tree, camera, 0, backdrop), canvas);
+        double sS = 0, sA = 0, sT = 0, sL = 0;
+        int n = 0;
+        for (int sy = 0; sy < canvas.height(); ++sy) {
+            for (int sx = 0; sx < canvas.width(); ++sx) {
+                const double ax = (sx + 0.5) * step - (canvas.width() * 0.5) * step + artwork.w * 0.5;
+                const double ay = (sy + 0.5) * step - (canvas.height() * 0.5) * step + artwork.h * 0.5;
+                if (ax - half < 0.0 || ay - half < 0.0 || ax + half > artwork.w || ay + half > artwork.h)
+                    continue;
+                const double r = img.pixelColor(sx, sy).red();
+                sS += std::fabs(r - truth.pixelColor(sx, sy).red());
+                sA += std::fabs(r - areaIntegral(texture, ax - half, ay - half, (int)step, 0));
+                sT += std::fabs(r - tentIntegral(texture, ax - half, ay - half, (int)step, 0));
+                sL += std::fabs(r - lanczosIntegral(texture, ax - half, ay - half, (int)step, 0));
+                ++n;
+            }
+        }
+        const double d = n ? n : 1;
+        ts << QFileInfo(aPath).fileName() << "," << bestName << "," << bias << ","
+           << QString::number(sS / d, 'f', 4) << "," << QString::number(sA / d, 'f', 4) << ","
+           << QString::number(sT / d, 'f', 4) << "," << QString::number(sL / d, 'f', 4) << "\n";
+        ts.flush();
+        std::printf("    bias %+4.1f : vs ssaa %6.3f | vs area %6.3f | vs tent %6.3f | vs lanczos %6.3f\n",
+                    bias, sS / d, sA / d, sT / d, sL / d);
+    }
+    setTreeLodBias(tree, 0.0f);
     return 0;
 }
 
@@ -4450,6 +4641,13 @@ int main(int argc, char** argv) {
     // --bias <csv> <file>
     if (argc > 3 && QString(argv[1]) == "--bias") {
         const int rc = runBias(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --bias1 <csv> <file>
+    if (argc > 3 && QString(argv[1]) == "--bias1") {
+        const int rc = runBias1(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
         clearRenderFixtures();
         return rc;
     }
