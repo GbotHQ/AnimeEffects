@@ -1318,6 +1318,12 @@ public:
         newFirstRange->setMinimum(INT32_MIN); // projects may start before frame 0
         newLastRange->setMaximum(INT32_MAX);
         newLastRange->setMinimum(INT32_MIN); // projects may end before frame 0
+        // The first range is named by the labels above its column; a second one has no
+        // label of its own, so without a name here it is a control with no name at all
+        // - unreadable to a screen reader and unaddressable by the probes (ae_ui.py).
+        const int ordinal = initialFrames->size() + 1;
+        newFirstRange->setAccessibleName(tr("First frame %1").arg(ordinal));
+        newLastRange->setAccessibleName(tr("Last frame %1").arg(ordinal));
         int FRIndex = gridLayout_2->indexOf(initialFrames->last());
         int LRIndex = gridLayout_2->indexOf(lastFrames->last());
         int unused;
@@ -1450,6 +1456,32 @@ public:
         setImageQualityToAuto->setAccessibleName(tr("Image quality to auto"));
         setQualityOverrideAuto->setAccessibleName(tr("Quality override to auto"));
         setBitrateAuto->setAccessibleName(tr("Bitrate to auto"));
+
+        // ...and every label is its field's BUDDY.
+        //
+        // Two different things, and the form had only the first: an accessible NAME
+        // is what a control answers to ("Width"), while the buddy relation is what
+        // says which words on screen belong to it. Without it a screen reader
+        // announces the focused control as "spin box" with no idea which one, on a
+        // form whose whole problem was that rows were only associated with their
+        // labels by happening to sit in the same grid row. The relation is also what
+        // the probes read to check the association (ae_ui.py `labeled`), so the
+        // claim is testable rather than asserted.
+        widthLabel->setBuddy(widthSpinBox);
+        heightLabel->setBuddy(heightSpinBox);
+        fpsLabel->setBuddy(fpsSpinBox);
+        formatLabel->setBuddy(formatCombo);
+        codecLabel->setBuddy(codecCombo);
+        qualityLabel->setBuddy(qualityCombo);
+        imageQualityLabel->setBuddy(imageQualitySpinbox);
+        bitrateLabel->setBuddy(bitrateLineEdit);
+        qualityOverrideLabel->setBuddy(qualityOverrideSpin);
+        destinationLabel->setBuddy(destinationButton);
+        // The frame range's first pair. A label cannot be the buddy of four spin
+        // boxes, and the added rows carry their own accessible names ("First frame
+        // 2") because a column heading is a layout device, not a name.
+        firstFrameLabel->setBuddy(firstFrameSpinBox);
+        lastFrameLabel->setBuddy(lastFrameSpinBox);
         // A QComboBox exposes its CURRENT VALUE as its accessible name ("WebM",
         // "VP9", "Balanced") and ignores accessibleName entirely - Qt's rule, and a
         // sensible one for a screen reader. That leaves a combo box unaddressable by
