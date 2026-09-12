@@ -126,6 +126,9 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   ideal profile for lambda = -log2(zoom), a blend of the two neighbouring boxes, which removes the
   statistic's own bias between levels instead of hiding it in a tolerance. 15 zooms from 0.9 to
   0.0625, i.e. lambda 0.152 to 4.000: measured and predicted agree within 1 of 255 at every one.
+- **`--decompose` - what the remaining error is made of.** See the section below the corpus verdict:
+  one real layer at 16x, four quantities (render, truth, the ideal box chain, the tent integral) and
+  the inequality that separates the filter from the implementation.
 - **M16 - deep-level coverage of the artwork's last rows and columns.** Level l has
   max(1, floor(size/2^l)) texels, so unless the texture size is a multiple of 2^l the chain drops the
   last (size mod 2^l) base texels of that axis and the renderer shows that strip of the artwork as
@@ -141,8 +144,8 @@ Every figure is generated from renders the probe itself produces, never drawn by
 one figure per artwork: cramming several artworks into one sheet makes it impossible to judge any of
 them, and a 30-pixel crop of "the window that differs most" shows nothing recognisable.
 
-`tools/verify_mipmap/make_artwork_figures.py` writes, for each file, one figure containing both
-measured zooms:
+`tools/verify_mipmap/make_artwork_figures.py` writes, for each file, one figure containing all four
+measured zooms (2x, 4x, 8x and 16x):
 
 - the whole artwork as **three panels at actual resolution** - one render pixel is one image pixel,
   never resampled, so the panel is exactly what a screen pixel shows at that zoom and figures are
@@ -155,7 +158,13 @@ measured zooms:
 - the mean and max error against the supersampled truth for the shipped chain and for level-0
   minification, and which of the two is closer.
 
-They live outside the repository because at actual resolution they are 96 MB for 24 files, which has
+The panel is the artwork as it appears at that zoom, so its size follows the zoom - half the canvas
+at 2x, a sixteenth at 16x - which is the point of the deep zooms: at 16x a canvas-sized panel would be
+almost all backdrop. The crops stay 128 render pixels at x4 wherever the panel is big enough to hold
+them (at 16x the panel is itself smaller than 128 pixels, so the crop is the whole panel at x4); the
+magnification factor is the constant one, and it is the same in every figure.
+
+They live outside the repository because at actual resolution they are 133 MB for 29 files, which has
 no business in git:
 
 ```sh
@@ -290,6 +299,52 @@ The cap is a real limit. Beyond level 7 (128x minification) the stretch returns,
 level-*l* texel - under one screen pixel at that zoom - and the level's coverage of the artwork is
 again short by up to 2^*l* texels, also under one screen pixel. Lifting it entirely would mean padding
 each side up to a power of two, which for a 2049-pixel side costs 4x the texture memory.
+
+## What the remaining error IS: the decomposition
+
+The corpus numbers say how far the shipped render is from the supersampled truth. They do not say
+what that distance is made of, and "it is the difference between a box filter and the integral the
+truth represents" is exactly the kind of claim that is easy to assert and hard to check. `--decompose
+<csv> <file>` measures it on a real layer, rendered ALONE at exactly 16x (lambda = 4), by computing
+four quantities on the same pixels:
+
+| quantity | what it is |
+| --- | --- |
+| `render` | the shipped render: the GPU's level-4 read of the texture the app uploads |
+| `truth` | the supersampled render of the same scene, box-averaged: the integral |
+| `box` | a CPU box pyramid over those exact uploaded bytes, read bilinearly at the footprint centres - the ideal chain |
+| `tent` | the integral of the TENT reconstruction of the same artwork over the same footprints |
+
+`|render - truth| <= |render - box| + |box - tent| + |tent - truth|`, so the three terms say which
+part is the filter and which part is the implementation. Measured on six real layers (the largest
+layer of six corpus files), channel 0, interior footprints, in 1/255:
+
+| file | layer | render-vs-truth | box-vs-truth | render-vs-box | tent-vs-truth | box-vs-tent |
+| --- | --- | --- | --- | --- | --- | --- |
+| 000020.psd | 1127x2120 | 3.374 | 3.592 | 0.960 | 0.142 | 3.582 |
+| 000042.psd | 750x1500 | 2.279 | 2.285 | 0.984 | 0.254 | 2.268 |
+| 000077.psd | 2265x3000 | 2.707 | 2.853 | 0.609 | 0.131 | 2.835 |
+| 000145.psd | 1024x2048 | 0.094 | 0.094 | 0.000 | 0.001 | 0.093 |
+| AUTUMN.psd | 660x1204 | 3.718 | 3.780 | 0.203 | 0.040 | 3.780 |
+| 000063.psd | 2480x3393 | 2.303 | 2.222 | 1.111 | 0.250 | 2.189 |
+
+Three things this shows, none of them by construction:
+
+- **The supersampled truth IS the tent integral**, on real content: `tent-vs-truth` is 0.04 to 0.25
+  of 255. The ground truth is not defined as that integral anywhere in the harness; the CPU model of
+  the integral is computed from the artwork and agrees with the rendered truth to a quarter of an
+  8-bit level.
+- **The error is the filter, not the chain**: `render-vs-truth` and `box-vs-truth` and `box-vs-tent`
+  are the same number to within their own noise (e.g. 3.374 / 3.592 / 3.582), while `render-vs-box` -
+  the part the implementation contributes - is 0.2 to 1.1. The chain is doing exactly what a box
+  pyramid does; the box pyramid is what disagrees with the integral.
+- **Where `render-vs-box` is large it is not the filter.** Its worst pixels reach 50 to 63 of 255 on
+  three files, at footprints whose box texel has partial alpha (e.g. alpha 84 of 255) - the layer's
+  silhouette, where the pixel's value is decided by the MESH's geometric coverage, which neither CPU
+  model reproduces. Restricted to footprints whose box texel is fully opaque, the same measurement's
+  worst pixel drops to **2 of 255** on every one of those files (mean 0.1 to 0.9). A position sweep
+  of the model over +/-0.5 base texel confirms it is not a sub-texel sample-position difference: the
+  best offset is (0, 0) on every file.
 
 ## Independent ground truth: supersampling
 

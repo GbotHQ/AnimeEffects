@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """One figure per artwork: the whole artwork, plus magnified crops as additional evidence.
 
-Each figure shows ONE file, at both zooms that were measured:
+Each figure shows ONE file, at each zoom that was measured:
 
     <file>  <canvas>  <layers> layers
 
     2x minification   mean/max error vs truth: level 0 a/b   mipmapped c/d   [better|same|worse]
-    [ truth (supersampled) ]   [ level 0: what shipped ]   [ mipmapped: now ]   <- whole artwork;
-                                                                                  red and blue boxes
-                                                                                  mark the crops below
-    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the RED box, x2 nearest
-    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the BLUE box, x2 nearest
-    ... the same three rows again at 4x ...
+    [ truth (supersampled) ]   [ level 0: what shipped ]   [ mipmapped: now ]   <- WHOLE artwork as
+                                                                                  it appears at this
+                                                                                  zoom, at 1:1; red
+                                                                                  and blue boxes mark
+                                                                                  the crops below
+    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the RED box, x4 nearest
+    [ truth ]   [ level 0 ]   [ mipmapped ]      <- crop in the BLUE box, x4 nearest
+    ... the same three rows again at 4x, 8x and 16x ...
 
-The whole-artwork row is context: it is downscaled to fit, so it can hide what is being judged. The
-crop rows are the evidence: a 192-pixel window of the render, magnified x2 with nearest-neighbour
-and never resampled, so every pixel shown is a rendered pixel. The red window is where level-0
-sampling is furthest from the truth - the aliasing the change removes. The blue window is where the
-mipmapped render is furthest from the truth - what the change costs. Both windows are found by
-scanning the file's own difference maps, not chosen by hand.
+The whole-artwork row is the render at ACTUAL resolution - one figure pixel is one render pixel,
+never resampled, so it is exactly what a screen pixel shows at that zoom, and panels from different
+figures are comparable. Its size follows the zoom: at 2x the artwork covers half the canvas, at 16x a
+sixteenth of it, which is the whole point of the deep zooms. The crop rows are the evidence: a
+128-pixel window of the render, magnified x4 with nearest-neighbour, the same factor in every figure
+so two figures can be compared. The red window is where level-0 sampling is furthest from the truth -
+the aliasing the change removes. The blue window is where the mipmapped render is furthest from the
+truth - what the change costs. Both windows are found by scanning the file's own difference maps,
+not chosen by hand.
 
 Usage:
     make_artwork_figures.py <renderDir> <csv> <outDir> <file...>
@@ -82,7 +87,7 @@ written = []
 for name in files:
     base = os.path.splitext(name)[0]
     zooms = []
-    for zoom_tag, key in (("500", "0.5"), ("250", "0.25")):
+    for zoom_tag, key in (("500", "0.5"), ("250", "0.25"), ("125", "0.125"), ("62", "0.0625")):
         row = BY_ZOOM.get(key, {}).get(name)
         if not row:
             continue

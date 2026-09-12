@@ -2947,9 +2947,9 @@ const char* samplingName(Sampling aSampling) {
     return "?";
 }
 
-void setLayerSampling(core::Project& aProject, Sampling aSampling) {
+void setTreeSampling(core::ObjectTree& aTree, Sampling aSampling) {
     std::vector<core::LayerNode*> layers;
-    figures::collectLayers(aProject.objectTree().topNode(), layers);
+    figures::collectLayers(aTree.topNode(), layers);
     auto& ggl = gl::Global::functions();
     int n = 0;
     for (auto* layer : layers) {
@@ -2992,6 +2992,10 @@ void setLayerSampling(core::Project& aProject, Sampling aSampling) {
         ++n;
     }
     std::printf("  sampler: %s on %d textures\n", samplingName(aSampling), n);
+}
+
+void setLayerSampling(core::Project& aProject, Sampling aSampling) {
+    setTreeSampling(aProject.objectTree(), aSampling);
 }
 
 
@@ -3047,6 +3051,13 @@ DiffStats diffVsRef(const QImage& aA, const QImage& aB) {
     return st;
 }
 
+// aW x aH pixels of an image at (aAt), clamped to the image.
+QImage cropAt(const QImage& aImg, const QPoint& aAt, int aW, int aH) {
+    const int x = std::max(0, std::min(aImg.width() - 1, aAt.x()));
+    const int y = std::max(0, std::min(aImg.height() - 1, aAt.y()));
+    return aImg.copy(x, y, std::min(aW, aImg.width() - x), std::min(aH, aImg.height() - y));
+}
+
 // The central aWindow x aWindow pixels of an image, or the whole image if it is smaller.
 QImage cropCentral(const QImage& aImg, int aWindow) {
     const int w = std::min(aWindow, aImg.width());
@@ -3064,26 +3075,29 @@ QImage cropCentral(const QImage& aImg, int aWindow) {
 // (canvas*ss)^2. Validated against the full-frame reference wherever that one fits (the
 // winref_delta column in the eval CSV).
 QImage supersampledWindowReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int& aSS,
-                                   int aWindow, const uint8_t aBackdrop[3], int* aAlign255 = nullptr) {
+                                   const QSize& aWindow, const QPoint& aAt, const uint8_t aBackdrop[3],
+                                   int* aAlign255 = nullptr) {
     {
         auto& ggl = gl::Global::functions();
         GLint maxTex = 0, maxRb = 0;
         ggl.glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTex);
         ggl.glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRb);
         const int limit = std::min(maxTex > 0 ? (int)maxTex : 16384, maxRb > 0 ? (int)maxRb : 16384);
-        while (aSS > 1 && aWindow * aSS > limit)
-            --aSS;
+        // Step by two: the caller picks ss so that (canvas/2)*(ss-1) is an integer, which is what
+        // lets the supersampled grid align with the shipped one (see referenceLeftTop). Decrementing
+        // by one would flip that parity and silently shift the reference by half a pixel.
+        while (aSS > 1 && std::max(aWindow.width(), aWindow.height()) * aSS > limit)
+            aSS = std::max(1, aSS - 2);
         if (aSS < 1)
             aSS = 1;
     }
-    const int x0 = (aCanvas.width() - aWindow) / 2, y0 = (aCanvas.height() - aWindow) / 2;
     QPoint leftTop;
     const int align255 =
-        referenceLeftTop(aCanvas.width(), aCanvas.height(), aSS, x0, y0, leftTop);
+        referenceLeftTop(aCanvas.width(), aCanvas.height(), aSS, aAt.x(), aAt.y(), leftTop);
     if (aAlign255)
         *aAlign255 = align255;
 
-    const QSize big(aWindow * aSS, aWindow * aSS);
+    const QSize big(aWindow.width() * aSS, aWindow.height() * aSS);
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(big.width()).arg(big.height());
     if (fixtures.find(key) == fixtures.end()) {
@@ -3096,6 +3110,318 @@ QImage supersampledWindowReference(core::Project& aProject, const QSize& aCanvas
     camera.setScale(aZoom * (float)aSS);
     const std::vector<uint8_t> px = fixtures[key]->render(aProject.objectTree(), camera, 0, aBackdrop);
     return boxDownsample(figures::readbackToImage(px, big), aSS);
+}
+
+
+// The integral of the TENT reconstruction of an image over the footprint [x0, x0+w) x [y0, y0+w),
+// which is what a supersampled render converges to: the artwork as a continuous signal is the
+// bilinear interpolation of its texels, and the destination pixel's value is that signal's integral
+// over the pixel's footprint. Separable, so the 2-D tap weights are the product of two 1-D
+// integrals, each computed by fine sampling of the tent. This is the reference the box pyramid is
+// being compared against, so it must not be the box.
+double tentIntegral(const Img& aImg, double aX0, double aY0, int aW, int aChannel) {
+    XC_ASSERT(aW > 0);
+    const int taps = aW + 3;
+    const int samples = 8 * aW;
+    std::vector<double> wx(taps, 0.0), wy(taps, 0.0);
+    const int kx0 = (int)std::floor(aX0) - 1, ky0 = (int)std::floor(aY0) - 1;
+
+    const auto weights = [&](double aStart, std::vector<double>& aOut, int aBase) {
+        for (int t = 0; t < taps; ++t) {
+            const double centre = aBase + t + 0.5;   // the texel's centre, at half-integers
+            double sum = 0.0;
+            for (int i = 0; i < samples; ++i) {
+                const double x = aStart + (i + 0.5) * (double)aW / samples;
+                const double d = std::fabs(x - centre);
+                if (d < 1.0)
+                    sum += 1.0 - d;
+            }
+            aOut[t] = sum / samples;
+        }
+    };
+    weights(aX0, wx, kx0);
+    weights(aY0, wy, ky0);
+
+    double total = 0.0;
+    for (int j = 0; j < taps; ++j) {
+        if (wy[j] == 0.0)
+            continue;
+        const int y = ky0 + j;
+        for (int i = 0; i < taps; ++i) {
+            if (wx[i] == 0.0)
+                continue;
+            const int x = kx0 + i;
+            // outside the texture the artwork does not exist, and the padding this texture carries
+            // is transparent, so out-of-range taps contribute nothing
+            const double v = (x < 0 || y < 0 || x >= aImg.w || y >= aImg.h)
+                                 ? 0.0
+                                 : (double)aImg.at(x, y)[aChannel];
+            total += wx[i] * wy[j] * v;
+        }
+    }
+    return total;
+}
+
+//-------------------------------------------------------------------------------------------------
+// --decompose <csv> <file> : what the remaining error IS, term by term, on a real layer.
+//
+// The claim under test is that what is left at 16x is the difference between a box filter and the
+// tent-weighted integral the supersampled truth represents, and not an error in the chain or in how
+// it is sampled. One real layer, rendered ALONE at exactly 16x (lambda = 4), gives four quantities:
+//
+//   render  the shipped render: the GPU's level-4 read of the texture the app uploads
+//   truth   the supersampled render of the same scene, box-averaged: the integral
+//   box     a CPU box pyramid over those same uploaded bytes, read bilinearly at the footprint
+//           centres - the ideal chain, which M14 shows the render matches to a couple of 8-bit
+//           levels
+//   tent    the integral of the TENT reconstruction of the same artwork over the same footprints
+//
+// |render - truth| <= |render - box| + |box - tent| + |tent - truth|, so the three terms say which
+// part of the error is the filter and which part is the implementation. The last term is also a
+// test of the claim that the supersampled truth IS that integral, on real content instead of by
+// definition.
+int runDecompose(const QString& aCsv, const QString& aPath) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
+    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    // the largest layer by image area: the one whose minification is deepest and whose content is
+    // most likely to be real artwork rather than a flat fill
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(project.objectTree().topNode(), layers);
+    const Img* best = nullptr;
+    Img bestCopy;
+    QString bestName;
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* ikey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!ikey || !ikey->data().resource()->hasImage())
+            continue;
+        const img::Buffer& image = ikey->data().resource()->image();
+        const QSize size = image.pixelSize();
+        if (size.width() < 256 || size.height() < 256)
+            continue;
+        if (best && (qint64)size.width() * size.height() <= (qint64)best->w * best->h)
+            continue;
+        bestCopy.w = size.width();
+        bestCopy.h = size.height();
+        bestCopy.d.assign(image.data(), image.data() + (size_t)size.width() * size.height() * 4);
+        best = &bestCopy;
+        bestName = layer->name();
+    }
+    if (!best) {
+        std::printf("  decompose %s: no layer image large enough\n", qPrintable(QFileInfo(aPath).fileName()));
+        return 0;
+    }
+    const Img artwork = *best;
+
+    // The scene: that one layer, centred, at 1:1, on a canvas small enough that the supersampled
+    // reference (canvas * ss) fits the device. 128 * 32 = 4096.
+    const QSize canvas(128, 128);
+    const int ss = 32;
+    const float zoom = 1.0f / 16.0f;
+    const uint8_t backdrop[3] = {0, 0, 0};
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("decompose_src", artwork);
+    addScaledLayer(tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 1.0f,
+                   img::BlendMode_Normal);
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(zoom);
+
+    fixtures[key]->render(tree, camera, 0, backdrop);   // build the texture
+    setTreeSampling(tree, Sampling::MipmapCutoff);
+    const QImage render = figures::readbackToImage(fixtures[key]->render(tree, camera, 0, backdrop), canvas);
+
+    // the truth: the same scene at ss x, box-averaged down
+    const QSize big(canvas.width() * ss, canvas.height() * ss);
+    const QString bigKey = QString("%1x%2").arg(big.width()).arg(big.height());
+    if (fixtures.find(bigKey) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(big);
+        fixtures.emplace(bigKey, std::move(fx));
+    }
+    QPoint leftTop;
+    referenceLeftTop(canvas.width(), canvas.height(), ss, 0, 0, leftTop);
+    core::CameraInfo bigCamera;
+    bigCamera.reset(big, 1.0, canvas, leftTop);
+    bigCamera.setScale(zoom * (float)ss);
+    const QImage truth = boxDownsample(
+        figures::readbackToImage(fixtures[bigKey]->render(tree, bigCamera, 0, backdrop), big), ss
+    );
+
+    // the bytes the app uploads, and the ideal box pyramid over them
+    const QSize textureSize = img::Util::mipAlignedTextureSize(QSize(artwork.w, artwork.h));
+    const std::vector<uint8> upload = img::Util::makeTextureUpload(artwork.d.data(), QSize(artwork.w, artwork.h), textureSize);
+    Img texture;
+    texture.w = textureSize.width();
+    texture.h = textureSize.height();
+    texture.d = upload;
+    const int level = 4;
+    const Img boxed = boxLevel(texture, level);
+
+    // sample positions: the layer is centred, so screen pixel (sx, sy) - the readback is bottom-up -
+    // sits at artwork coordinate ((p - canvas/2) / zoom + artwork/2), and the texture's origin is
+    // the artwork's origin, so the same number is the texture coordinate.
+    const double step = 1.0 / zoom;
+    double sumRT = 0, sumBT = 0, sumRB = 0, sumTT = 0, sumTB = 0;
+    int n = 0, maxRT = 0, maxRB = 0;
+    double worstRB = 0;
+    QString worstAt;
+
+    // Every kept sample, so the box model can be re-evaluated at small position offsets without
+    // rendering again: the largest render-vs-box differences sit on content edges, and a sub-texel
+    // position difference shows up there as a large local error while leaving the mean alone. An
+    // offset sweep tells a position difference apart from a wrong kernel.
+    struct Sample {
+        double r, t, ax, ay;
+    };
+    std::vector<Sample> samples;
+
+    for (int sy = 0; sy < canvas.height(); ++sy) {
+        for (int sx = 0; sx < canvas.width(); ++sx) {
+            const double ax = (sx + 0.5) * step - (canvas.width() * 0.5) * step + artwork.w * 0.5;
+            // render and truth are read back through readbackToImage, i.e. TOP-DOWN, while the
+            // raw framebuffer that other suites index is bottom-up: the row term is (sy + 0.5),
+            // not (canvas.height() - 0.5 - sy).
+            const double ay = (sy + 0.5) * step - (canvas.height() * 0.5) * step + artwork.h * 0.5;
+
+            // Footprints that reach outside the artwork are skipped: there the render shows the
+            // backdrop (or a partial coverage) while bilinearAt clamps to the edge texel, so the
+            // two model different things. What is under test is the filter, and this is where both
+            // models are defined.
+            const double half = step * 0.5;
+            if (ax - half < 0.0 || ay - half < 0.0 || ax + half > artwork.w || ay + half > artwork.h)
+                continue;
+
+            const double r = render.pixelColor(sx, sy).red();
+            const double t = truth.pixelColor(sx, sy).red();
+            const double b = bilinearAt(boxed, ax / (double)step, ay / (double)step, 0);
+            const double tn = tentIntegral(texture, ax - half, ay - half, (int)step, 0);
+            samples.push_back({r, t, ax, ay});
+            sumRT += std::fabs(r - t);
+            sumBT += std::fabs(b - t);
+            sumRB += std::fabs(r - b);
+            sumTT += std::fabs(tn - t);
+            sumTB += std::fabs(tn - b);
+            maxRT = std::max(maxRT, (int)std::lround(std::fabs(r - t)));
+            if (std::fabs(r - b) > worstRB) {
+                worstRB = std::fabs(r - b);
+                maxRB = (int)std::lround(worstRB);
+                // the alpha the truth carries there, and the coverage the box texel holds: a
+                // disagreement at very low alpha is the un-premultiply rounding, not the filter
+                const int truthA = truth.pixelColor(sx, sy).alpha();
+                const int boxA =
+                    (int)std::lround(bilinearAt(boxed, ax / (double)step, ay / (double)step, 3));
+                worstAt = QString("at (%1,%2): render %3 truth %4 box %5 tent %6 | alpha render %7 "
+                                  "truth %8 box %9")
+                              .arg(sx).arg(sy).arg(r).arg(t).arg(b, 0, 'f', 1).arg(tn, 0, 'f', 1)
+                              .arg(render.pixelColor(sx, sy).alpha()).arg(truthA).arg(boxA);
+            }
+            ++n;
+        }
+    }
+
+    // ...and the same difference restricted to footprints whose box texel is FULLY opaque. Where it
+    // is not, the pixel's value is decided by the mesh's geometric coverage, which the CPU models
+    // do not model at all - so if the large differences live exactly there, that is what they are,
+    // and this is the measurement that says so rather than the claim.
+    double sumFull = 0;
+    int maxFull = 0, nFull = 0;
+    for (const Sample& sp : samples) {
+        const double boxA = bilinearAt(boxed, sp.ax / (double)step, sp.ay / (double)step, 3);
+        if (boxA < 254.5)
+            continue;
+        const double bb = bilinearAt(boxed, sp.ax / (double)step, sp.ay / (double)step, 0);
+        const double d = std::fabs(sp.r - bb);
+        sumFull += d;
+        maxFull = std::max(maxFull, (int)std::lround(d));
+        ++nFull;
+    }
+
+    // the position sweep: |render - box| at the sample position, and at the one the render behaves
+    // as if it used
+    double offsetMean[9] = {0};
+    int offsetMax[9] = {0};
+    const double kOffsets[3] = {-0.5, 0.0, 0.5};
+    int bestOffset = 4;
+    for (int ox = 0; ox < 3; ++ox) {
+        for (int oy = 0; oy < 3; ++oy) {
+            const int idx = ox * 3 + oy;
+            double sum = 0;
+            for (const Sample& sp : samples) {
+                const double bb = bilinearAt(
+                    boxed, (sp.ax + kOffsets[ox]) / (double)step, (sp.ay + kOffsets[oy]) / (double)step, 0
+                );
+                const double d = std::fabs(sp.r - bb);
+                sum += d;
+                offsetMax[idx] = std::max(offsetMax[idx], (int)std::lround(d));
+            }
+            offsetMean[idx] = samples.empty() ? 0.0 : sum / (double)samples.size();
+            if (offsetMean[idx] < offsetMean[bestOffset])
+                bestOffset = idx;
+        }
+    }
+
+    const double dd = n ? (double)n : 1.0;
+
+    QFile out(aCsv);
+    const bool fresh = !out.exists() || out.size() == 0;
+    if (!out.open(QIODevice::Append | QIODevice::Text))
+        return 5;
+    QTextStream ts(&out);
+    if (fresh) {
+        ts << "file,layer,art_w,art_h,tex_w,tex_h,render_vs_truth,box_vs_truth,render_vs_box,"
+              "tent_vs_truth,box_vs_tent,render_vs_truth_max,render_vs_box_max\n";
+    }
+    ts << QFileInfo(aPath).fileName() << "," << bestName << "," << artwork.w << "," << artwork.h << ","
+       << textureSize.width() << "," << textureSize.height()
+       << "," << QString::number(sumRT / dd, 'f', 4) << "," << QString::number(sumBT / dd, 'f', 4)
+       << "," << QString::number(sumRB / dd, 'f', 4) << "," << QString::number(sumTT / dd, 'f', 4)
+       << "," << QString::number(sumTB / dd, 'f', 4) << "," << maxRT << "," << maxRB << "\n";
+    ts.flush();
+
+    std::printf(
+        "  %-28s %s %dx%d -> texture %dx%d | render-vs-truth %.3f | box-vs-truth %.3f | "
+        "render-vs-box %.3f | tent-vs-truth %.3f | box-vs-tent %.3f | max render-vs-box %d\n",
+        qPrintable(QFileInfo(aPath).fileName()), qPrintable(bestName), artwork.w, artwork.h,
+        textureSize.width(), textureSize.height(), sumRT / dd, sumBT / dd, sumRB / dd, sumTT / dd,
+        sumTB / dd, maxRB
+    );
+    if (!worstAt.isEmpty())
+        std::printf("    worst render-vs-box %s\n", qPrintable(worstAt));
+    std::printf(
+        "    render-vs-box: all footprints mean %.3f max %d | fully opaque box texel (%d of %d "
+        "pixels): mean %.3f max %d\n",
+        sumRB / dd, maxRB, nFull, n, nFull ? sumFull / nFull : 0.0, maxFull
+    );
+    std::printf(
+        "    render-vs-box at sample position: mean %.3f max %d | best offset (%.2f, %.2f): mean %.3f "
+        "max %d\n",
+        offsetMean[4], offsetMax[4], kOffsets[bestOffset / 3], kOffsets[bestOffset % 3], offsetMean[bestOffset],
+        offsetMax[bestOffset]
+    );
+    return 0;
 }
 
 int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) {
@@ -3164,7 +3490,9 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         if (ss % 2 == 0 && (canvas.width() % 2 != 0 || canvas.height() % 2 != 0))
             ++ss;
         int refAlign = 0;
-        const QImage win = supersampledWindowReference(project, canvas, zoom, ss, window, backdrop, &refAlign);
+        const QPoint metricAt((canvas.width() - window) / 2, (canvas.height() - window) / 2);
+        const QImage win =
+            supersampledWindowReference(project, canvas, zoom, ss, QSize(window, window), metricAt, backdrop, &refAlign);
 
         // Cross-check the window against the whole-canvas reference wherever that one still fits.
         int winrefDelta = -1;
@@ -3180,6 +3508,20 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         const QImage beforeW = cropCentral(before, window);
         const QImage afterW = cropCentral(after, window);
         const QImage nocutW = cropCentral(nocut, window);
+
+        // A second window, sized to what the artwork covers on the canvas at this zoom, so the
+        // saved panels show the whole artwork at ACTUAL resolution at every zoom - at 16x that is
+        // canvas/16 pixels, and a canvas-sized panel of it would be almost all backdrop. The metric
+        // above keeps its own 64x64 window, so the CSV stays comparable with earlier runs.
+        const int figW = std::max((int)std::lround(canvas.width() * zoom), window);
+        const int figH = std::max((int)std::lround(canvas.height() * zoom), window);
+        const QPoint figAt((canvas.width() - figW) / 2, (canvas.height() - figH) / 2);
+        int ssFig = ss;
+        const QImage fig = supersampledWindowReference(
+            project, canvas, zoom, ssFig, QSize(figW, figH), figAt, backdrop
+        );
+        const QImage afterFig = cropAt(after, figAt, figW, figH);
+        const QImage beforeFig = cropAt(before, figAt, figW, figH);
         const DiffStats db = diffVsRef(beforeW, win), da = diffVsRef(afterW, win), dn = diffVsRef(nocutW, win);
         // |AFTER - BEFORE|: how much the change moved the pixels at all. This is the column the
         // crop picker ranks on, so "which artwork shows the change" is a measured question rather
@@ -3199,10 +3541,9 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         if (!aSaveDir.isEmpty() && QString::fromLocal8Bit(qgetenv("AE_EVAL_SAVE")) == QLatin1String("1")) {
             QDir().mkpath(aSaveDir);
             const QString base = QDir(aSaveDir).filePath(QFileInfo(aPath).completeBaseName() + QString("_z%1").arg((int)(zoom * 1000)));
-            afterW.save(base + "_after.png");
-            beforeW.save(base + "_before.png");
-            nocutW.save(base + "_nocut.png");
-            win.save(base + "_ref.png");
+            afterFig.save(base + "_after.png");
+            beforeFig.save(base + "_before.png");
+            fig.save(base + "_ref.png");
         }
         std::printf(
             "  %s z=%.4f ss=%d win=%d align=%d refdelta=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d | NO CUTOFF mean=%.3f max=%d | change mean=%.3f over16=%d\n",
@@ -3773,6 +4114,15 @@ int main(int argc, char** argv) {
     // --parity <file> <zoom>
     if (argc > 3 && QString(argv[1]) == "--parity") {
         const int rc = runParity(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toFloat());
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --decompose <csv> <file>
+    if (argc > 3 && QString(argv[1]) == "--decompose") {
+        const int rc = runDecompose(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3])
+        );
         clearRenderFixtures();
         return rc;
     }
