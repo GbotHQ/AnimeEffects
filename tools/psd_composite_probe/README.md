@@ -188,9 +188,12 @@ additionally need numpy + PIL.
 The artist compared the 30-file corpus and chose the MEAN rule: per layer,
 `T = clamp(round(0.05 x mean(alpha : alpha > 2)), 1, 10)`, instead of the fixed 10.
 
-Not landed as production behaviour yet. Landing it changes every import's mesh, so `verify_blur`
-(whose S22/S23 assert the shipped `T=10` default), the 24 external goldens and the corpus numbers all
-have to be re-run with it before it can ship.
+Landed in `src/img/MeshContentLevel.h` and used as the default level of
+`GridMesh::createFromImage`. `verify_blur` runs against it (S22 for the relaxing direction, S26 for
+the strict one), all 24 external goldens still pass because their layers are opaque, and the corpus
+renders of the "mean" variant are byte-identical to what the application now produces. In the batch
+trees the `mean` variant is therefore the current production behaviour and `const10` is the level it
+replaced.
 
 | `render_sanity.py <batchDir> [--files F ...]` | gates a render batch for GPU faults: each variant is a separate process and variants differ only by the mesh, so a pixel far from the PSD's own composite AND far from every sibling variant is not explainable by any cutoff. Found three bad renders in a 30-file corpus (sparse saturated speckles, up to 250 levels wrong) that re-rendering fixed; exits 1 when anything is flagged. |
 | `cutoff_batch.sh <list> <outDir> [variant ...]` | renders every PSD in the list once per cutoff: `constant` (dir `const10`, T=10, what ships today), `none` (dir `nocut`, T=0 - nothing cut, the "what does a cutoff still remove" reference), `fixed:<T>`, `mean`, `ratio:<anchor>`. Pins its engine with `PROBE_BIN=<binary>` so a rebuild cannot silently change which engine produced a tree. |

@@ -44,11 +44,11 @@ def dirlabel(v):
 def human(v):
     v = dirlabel(v)
     if v == 'const10':
-        return 'const10 (T=10, what ships today)'
+        return 'const10 (the fixed T=10 level, what shipped before)'
     if v == 'nocut':
         return 'nocut (no cutoff at all: alpha != 0)'
     if v == 'mean':
-        return 'mean rule (T = 0.05 x mean of alpha>2)'
+        return 'mean rule - NOW PRODUCTION (T = 0.05 x mean of alpha>2)'
     if v.startswith('ratio'):
         return 'ratio rule (anchor %s)' % v[5:]
     return v
@@ -167,7 +167,8 @@ def _build(base, site):
                 'a{color:#8cf}td,th{padding:4px 10px;border-bottom:1px solid #333;text-align:left}'
                 'img{max-width:100%;border:1px solid #444;margin:8px 0}</style></head><body>')
         f.write('<h1>alpha cutoff comparison, real renders</h1>')
-        f.write('<p><b>const10</b> is production (the mesh content level T=10). <b>nocut</b> is the '
+        f.write('<p><b>const10</b> is the old fixed level (T=10) and <b>mean</b> is what production '
+                'now derives per layer - the two together are the before/after of that change. <b>nocut</b> is the '
                 'same file with no cutoff at all (every nonzero alpha counts as content: the reference '
                 'for "what does a cutoff remove"). <b>mean</b> and <b>ratio0.5x</b> derive a level per '
                 'layer from that layer\'s own alpha statistics. Only the MESH changes - the pixels '
@@ -193,9 +194,10 @@ def _build(base, site):
                 'label says how many pixels in that tile really moved by more than 8 levels. Regions '
                 'are the four where some rule differs most visibly from nocut, which is why a file '
                 'whose whole-canvas numbers are large but faint can show few or no images.</p>')
-        f.write('<p><b>Decision (taken from this comparison): the mean rule is the best of the three</b> '
-                '- see the mean row of each file, and the README of tools/psd_composite_probe for the '
-                'formula and for what landing it still requires.</p>')
+        f.write('<p><b>The mean rule is the one that landed</b> (img/MeshContentLevel, committed): the '
+                'level is derived per layer instead of being the constant 10, so the "mean" row of '
+                'every file is now what the application does, and the "const10" row is the level it '
+                'used to apply.</p>')
         f.write('<p>%d files complete. Regenerate with tools/psd_composite_probe/cutoff_site.py.</p>' % len(rows))
         f.write('<table><tr><th>file</th><th>rule</th>'
                 '<th>vs const10: px changed</th><th>of which &gt;8</th>'
