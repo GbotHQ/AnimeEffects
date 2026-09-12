@@ -1597,15 +1597,6 @@ Img boxLevel(const Img& aLevel0, int aLevel) {
     return cur;
 }
 
-// The value a correct chain returns for a sample at texture coordinate (aTX, aTY) - texel units,
-// GL convention (integer coordinates are texel boundaries) - asked at aLevel, read with the same
-// bilinear the sampler uses. glGenerateMipmap's box is exact (M12), so the only thing this does not
-// model is the driver's own arithmetic.
-double expectedChainSample(const Img& aTexture, int aLevel, double aTX, double aTY, int aChannel) {
-    const Img level = boxLevel(aTexture, aLevel);
-    return bilinearAt(level, aTX / (double)(1 << aLevel), aTY / (double)(1 << aLevel), aChannel);
-}
-
 void suiteTexelPhase() {
     suiteHeader("M10 texel phase: is a 1:1 render read at texel centres?");
     const QSize canvas(64, 64);

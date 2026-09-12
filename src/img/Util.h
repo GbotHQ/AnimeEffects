@@ -2,6 +2,7 @@
 #define IMG_UTIL_H
 
 #include <QSize>
+#include <vector>
 #include <QRect>
 #include <QColor>
 #include <QImage>
@@ -79,8 +80,14 @@ public:
     /// stays under one screen pixel, which is what the cap buys.
     static QSize mipAlignedTextureSize(const QSize& aImageSize);
 
-    /// Copies aSize texels of aData into the top-left of a zeroed aPaddedSize buffer.
-    static XCMemBlock padImageToTextureSize(const uint8* aData, const QSize& aSize, const QSize& aPaddedSize);
+    /// The bytes to hand to glTexImage2D for a layer: aData (aSize texels) copied into the top-left
+    /// of a zeroed aTextureSize buffer, ALPHA-PREMULTIPLIED, with the padding transparent.
+    ///
+    /// Premultiplied because the texture is mipmapped - see ImageKey::resetTextureCache. Returned by
+    /// value because the caller owns it: this buffer is as large as the texture, and the previous
+    /// XCMemBlock-returning version of this leaked it (XCMemBlock has no destructor).
+    static std::vector<uint8> makeTextureUpload(
+        const uint8* aData, const QSize& aSize, const QSize& aTextureSize);
 
     static void
     copyImage(uint8* aDst, const QSize& aDstSize, const QPoint& aTopLeft, const uint8* aSrc, const QSize& aSrcSize);

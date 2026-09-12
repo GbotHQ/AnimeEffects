@@ -92,50 +92,20 @@ void ImageKey::resetTextureCache() {
         const uint8* imageData = image.data();
         const QSize pixelSize = image.pixelSize();
 
-        // The layer texture is sampled with MIPMAPS, which requires premultiplied alpha.
-        // glGenerateMipmap box-filters every channel independently, so averaging STRAIGHT
-        // color mixes the RGB of transparent texels into the edge texels of each level.
-        // Artwork routinely carries black (or otherwise meaningless) RGB under alpha 0, so
-        // that average darkens the silhouette - the classic mipmap dark halo, worst exactly
-        // where the layer is minified. Premultiplying makes color and coverage average
-        // together; the layer shader divides the coverage back out (PREMULTIPLIED_INPUT in
-        // LayerDrawingFrag), so the blend math still sees straight color.
-        //
-        // Alpha is left untouched, so consumers that use only alpha - the clipper writing
-        // pass (ClipperWritingFrag) - are unaffected.
-        //
-        // The image is uploaded unpadded on its left and top, so the artwork starts at the
-        // texture's origin and the mip chain's level-l boxes (anchored to multiples of 2^l in the
-        // texture) stay aligned with the artwork's own texel blocks at EVERY level. The transparent
-        // neighbour a minified or edge read needs comes from the border colour set below, not from
-        // a padding ring - see img::Util::prepareForSampling for the measurement behind that.
-        //
-        // The texture IS padded to the right and bottom, up to a size whose level grids divide
-        // evenly; that is a separate condition from the alignment above and the upload is the right
-        // place for it, because the mesh and the layer's rect come from the image while the shader
-        // divides texture coordinates by the texture's size, so the artwork's coordinates land
-        // correctly by themselves. See img::Util::mipAlignedTextureSize.
-        const int texelCount = pixelSize.width() * pixelSize.height();
-        std::vector<uint8> premultiplied((size_t)texelCount * 4);
-        std::memcpy(premultiplied.data(), imageData, premultiplied.size());
-        for (int i = 0; i < texelCount; ++i) {
-            uint8* p = premultiplied.data() + (size_t)i * 4;
-            const uint32 a = p[3];
-            if (a == 255)
-                continue;
-            // round-to-nearest, so an opaque-adjacent texel does not drift darker
-            p[0] = (uint8)((p[0] * a + 127) / 255);
-            p[1] = (uint8)((p[1] * a + 127) / 255);
-            p[2] = (uint8)((p[2] * a + 127) / 255);
-        }
-
+        // The image is uploaded premultiplied, unpadded on its left and top but padded to the
+        // right and bottom up to a size whose mip level grids divide evenly. Both are conditions on
+        // the chain, and both are documented where they are decided:
+        // img::Util::makeTextureUpload for the premultiply and the padding, and
+        // img::Util::mipAlignedTextureSize for the size. The transparent neighbour a minified or
+        // edge read needs on the other two sides comes from the border colour set below; the texture
+        // is created with GL_CLAMP_TO_BORDER, which the hardware applies to every mip level.
         const QSize textureSize = img::Util::mipAlignedTextureSize(pixelSize);
-        const XCMemBlock padded =
-            img::Util::padImageToTextureSize(premultiplied.data(), pixelSize, textureSize);
+        const std::vector<uint8> upload =
+            img::Util::makeTextureUpload(imageData, pixelSize, textureSize);
 
         // make a gl texture
         mCache.texture().create(
-            textureSize, padded.data, GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
+            textureSize, upload.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap
         );
         // trilinear minification; magnification must stay non-mipmap (see gl::Texture)
         mCache.texture().setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);

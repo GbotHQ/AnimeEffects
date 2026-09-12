@@ -364,16 +364,25 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (98 checks) runs clean under AddressSanitizer against an ASan build of the
-libraries (`-DAE_ENABLE_ASAN=ON` in `build-asan/`), exit 0, no reports:
+The whole probe (236 checks) runs under AddressSanitizer against an ASan build of the libraries
+(`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
+overflow or a double free:
 
 ```sh
 ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 QT_QPA_PLATFORM=offscreen \
     ./build-asan/tests/Debug/verify_mipmap
 ```
 
-That covers the new CPU premultiply loop in `ImageKey::resetTextureCache`, which is the only new
-code here that indexes a heap buffer.
+That covers the new CPU code that indexes heap buffers: the premultiply-and-pad loop in
+`img::Util::makeTextureUpload`.
+
+Leak detection is worth running too, and it caught a real one here. `XCMemBlock` is a plain struct
+with a raw `uint8*` and no destructor, so a helper that allocates and returns one has no owner; the
+first version of the padding helper did exactly that and leaked one texture-sized buffer per layer
+upload. Measured, same probe, `detect_leaks=1`: 464,095,874 bytes in 1,976 allocations before,
+210,897,574 in 1,730 after - the difference is the per-upload buffers, and what is left is the
+harness's own (projects, resources and GL objects it deliberately never frees). The helper returns a
+`std::vector<uint8>` now.
 
 ## Deformed meshes: measured, not assumed
 
