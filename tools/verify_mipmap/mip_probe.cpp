@@ -895,6 +895,7 @@ struct LayerSetup {
     bool inFolder = false;                             // wrap the layer in a composite folder
     img::BlendMode folderMode = img::BlendMode_Multiply; // non-Normal forces the composite path
     bool grid = false;                                 // render the mesh overlay instead
+    bool clipping = false;                             // add a clipper that half-covers the layer
 };
 
 std::vector<uint8_t> renderScene(
@@ -943,6 +944,22 @@ std::vector<uint8_t> renderScene(
         delete pusher;
     }
 
+    if (aSetup.clipping) {
+        // A clipper is a node whose PREVIOUS sibling is clipped (ObjectNodeUtil::isClipper), and
+        // children are walked back-to-front, so the clippee above is pushed first and the clipper
+        // second. The clipper only half-covers the clippee, so the clip is partial and visible.
+        const uint8_t clipColor[3] = {255, 255, 255};
+        auto* clipRes = makeResource("mip_clipper", makeUniform(aImage.w, clipColor, 255));
+        auto* clipper = new core::LayerNode("clipper", tree.shaderHolder());
+        clipper->setDefaultImage(clipRes->handle(), img::BlendMode_Normal);
+        clipper->setDefaultPosture(center + QVector2D(8.0f, 0.0f));
+        clipper->setDefaultOpacity(1.0f);
+        core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*clipper->timeLine())
+            ->setScale(QVector2D(0.5f, 0.5f));
+        parent->children().pushBack(clipper);
+        layer->setClipped(true);
+    }
+
     core::CameraInfo camera;
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
     return fx.render(tree, camera, 0, aBackdrop, aSetup.grid);
@@ -957,11 +974,12 @@ void suitePaths() {
     const int margin = 19;
 
     const LayerSetup setups[] = {
-        {"normal", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false},
-        {"HSV adjust", img::BlendMode_Normal, true, false, img::BlendMode_Normal, false},
-        {"in composite folder", img::BlendMode_Normal, false, true, img::BlendMode_Multiply, false},
-        {"HSV in composite folder", img::BlendMode_Normal, true, true, img::BlendMode_Multiply, false},
-        {"blend mode Multiply", img::BlendMode_Multiply, false, false, img::BlendMode_Normal, false},
+        {"normal", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, false},
+        {"HSV adjust", img::BlendMode_Normal, true, false, img::BlendMode_Normal, false, false},
+        {"in composite folder", img::BlendMode_Normal, false, true, img::BlendMode_Multiply, false, false},
+        {"HSV in composite folder", img::BlendMode_Normal, true, true, img::BlendMode_Multiply, false, false},
+        {"blend mode Multiply", img::BlendMode_Multiply, false, false, img::BlendMode_Normal, false, false},
+        {"clipped by a clipper", img::BlendMode_Normal, false, false, img::BlendMode_Normal, false, true},
     };
 
     // the plain baseline, for the non-vacuity check below
@@ -987,14 +1005,36 @@ void suitePaths() {
         // untouched and only moves the others, so a single-channel check would report "no
         // change" for a path that ran perfectly well.
         const int vsBaseline = interiorMaxDelta(mipmapped, baseRender, canvas, margin);
-        if (setup.hsv || setup.inFolder || setup.mode != plain.mode)
+        if (setup.hsv || setup.inFolder || setup.clipping || setup.mode != plain.mode)
             expect(vsBaseline > 8,
                 QString("path %1: must change the result vs the plain baseline (max channel delta %2, mean %3 vs %4)")
                     .arg(setup.name).arg(vsBaseline).arg(mean, 0, 'f', 2).arg(baseMean, 0, 'f', 2));
 
+        // The clipping case must prove the CLIPPEE was clipped, not merely that a clipper got
+        // drawn: the clipper covers only the right-hand part of the clippee, so left of that
+        // boundary the clippee's own color must be absent, and right of it present. Without
+        // this, a clipper that drew but clipped nothing would leave the IS_CLIPPEE shader
+        // variant unexercised while the equivalence assertion above still passed.
+        QString clipInfo = "";
+        if (setup.clipping) {
+            const auto redAt = [&](int x, int y) { return (int)mipmapped[((size_t)y * canvas.width() + x) * 4]; };
+            const int outsideClip = redAt(18, 32); // inside the clippee, outside the clipper
+            const int insideClip = redAt(36, 32);  // inside both
+            expect(std::abs(outsideClip - (int)backdrop[0]) <= 6,
+                QString("clipping: left of the clipper boundary the clippee must be clipped away "
+                        "(red %1, backdrop %2)")
+                    .arg(outsideClip)
+                    .arg(backdrop[0]));
+            expect(insideClip > outsideClip + 30,
+                QString("clipping: inside the clipper the clippee must show through (red %1 vs %2)")
+                    .arg(insideClip)
+                    .arg(outsideClip));
+            clipInfo = QString(" clip[outside=%1 inside=%2]").arg(outsideClip).arg(insideClip);
+        }
+
         caseReport(
             QString("path: %1").arg(setup.name), gFails == failsBefore,
-            QString("equivDelta=%1 mean=%2").arg(delta).arg(mean, 0, 'f', 1));
+            QString("equivDelta=%1 mean=%2%3").arg(delta).arg(mean, 0, 'f', 1).arg(clipInfo));
     }
 
     // the grid/mesh overlay draws wireframe geometry through GridDrawingFrag, which outputs a
