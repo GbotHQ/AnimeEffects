@@ -220,6 +220,42 @@ would have been a strong - and wrong - claim that the change does nothing. A sti
 set the level-0 filter before the first zoom and never restored it, so from the second zoom on both
 variants were level-0. The sampler is now set explicitly before every variant.
 
+## The 2x regression: investigated
+
+The corpus evaluation showed the shipped render is WORSE than level-0 sampling at 2x minification
+(median mean error 0.225 -> 0.258, p99.9 16 -> 29, only 19% of files better). fig16 shows it:
+`fig16_2x_regression.png`, a 4500x4500 PSD at 2x, worst window, 4x nearest-neighbour.
+
+- BEFORE (level 0) keeps the fabric grain and its error map against ground truth is almost black
+  (mean 2.32).
+- AFTER (mipmapped) is visibly SMOOTHER than ground truth - fine grain lost - and its error map is
+  speckled (mean 6.44).
+- GROUND TRUTH has the grain.
+
+So the mipmapped path is OVER-BLURRING here, not under-sampling.
+
+Level selection is not the cause. `--lodscan` on that file reports LOD exactly 1.000 at 2x and
+2.000 at 4x, with zero spread over 183300 triangles - the correct level IS being chosen, and at 2x
+level 1 is exactly the 2x2 box the reference computes.
+
+That points at the texture-coordinate alignment. `GridMeshCreator::writeVertices` writes each
+vertex's texture coordinate as its POSITION:
+
+    texPtr[0] = pos.x();  texPtr[1] = pos.y();
+
+and the vertex shader divides by the image size, so UV = position / imageSize with no half-texel
+term anywhere. A sample that lands on a texel CORNER blends four neighbours at level 0 - which at
+exactly 2x minification still yields the correct 2x2 box, because the four neighbours ARE that box.
+The same sample at level 1 blends four LEVEL-1 texels, each already a 2x2 box of level 0, so it
+averages a 4x4 region of level 0: twice the blur the reference has. That fits the figure exactly,
+and it also fits the zoom dependence - at 4x the level-0 path aliases badly enough that the
+over-blurred mip still wins on the tail, while at 2x the level-0 path is already exact and the
+over-blur is pure loss.
+
+This is a HYPOTHESIS with supporting evidence, not a proven mechanism: it has not been confirmed by
+applying a half-texel correction and re-measuring. That is the next step, and it is a one-line
+change in the vertex shader or in the texture-coordinate generation, testable against this corpus.
+
 ## Independent ground truth: supersampling
 
 Everything above compares the render against something derived from the same machinery - an

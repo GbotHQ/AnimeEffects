@@ -1896,13 +1896,28 @@ QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, floa
 
 
 
-// Forces every layer texture to sample LEVEL 0 ONLY - the behaviour before this change, when no
-// mip chain existed at all. Reached through the public ImageKey::cache() rather than a mutation, so
-// the "before" and "after" renders come from ONE binary and differ only in the filter state.
-// ImageKey.invalidate() is not needed: the texture object is the same, only its sampler changes.
-void setLayerSampling(core::Project& aProject, bool aMipmapped) {
+// The three sampler states a comparison needs. Reached through the public ImageKey::cache() rather
+// than a mutation, so every variant comes from ONE binary and only the sampler differs - nothing
+// else can account for a difference between the panels.
+enum class Sampling {
+    Level0,           // what shipped before the change: no chain, level-0 minification, aliases
+    MipmapCutoff,     // shipped: mipmapped, GL_TEXTURE_MAX_LEVEL pinned to the chain that exists
+    MipmapNoCutoff,   // mipmapped, MAX_LEVEL left at GL's default 1000 - the clamp removed
+};
+
+const char* samplingName(Sampling aSampling) {
+    switch (aSampling) {
+    case Sampling::Level0: return "level-0 (pre-change)";
+    case Sampling::MipmapCutoff: return "mipmapped (shipped)";
+    case Sampling::MipmapNoCutoff: return "mipmapped, no MAX_LEVEL cutoff";
+    }
+    return "?";
+}
+
+void setLayerSampling(core::Project& aProject, Sampling aSampling) {
     std::vector<core::LayerNode*> layers;
     figures::collectLayers(aProject.objectTree().topNode(), layers);
+    auto& ggl = gl::Global::functions();
     int n = 0;
     for (auto* layer : layers) {
         if (!layer->timeLine())
@@ -1913,12 +1928,37 @@ void setLayerSampling(core::Project& aProject, bool aMipmapped) {
         gl::Texture& tex = key->cache().texture();
         if (tex.id() == 0)
             continue;
-        // the chain stays allocated either way; only the sampler changes, so this is reversible
-        // without rebuilding any texture
-        tex.setFilter(aMipmapped ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR, GL_LINEAR);
+        // The chain stays allocated in every state; only the sampler and the sampled level RANGE
+        // change, so this is reversible without rebuilding any texture. Every state writes BOTH
+        // parameters, because MAX_LEVEL is sticky: a state that only wrote the filter would inherit
+        // the previous state's range and produce a variant that is not the one it claims to be.
+        switch (aSampling) {
+        case Sampling::Level0:
+            // the pre-change state exactly: a texture with no chain at all, which Texture.cpp
+            // pins to MAX_LEVEL 0 rather than leaving at the default
+            tex.setFilter(GL_LINEAR, GL_LINEAR);
+            ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+            ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            break;
+        case Sampling::MipmapCutoff:
+            tex.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+            ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+            ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, tex.mipmapLevels() - 1);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            break;
+        case Sampling::MipmapNoCutoff:
+            // The clamp removed, everything else identical: MAX_LEVEL stays at GL's default of
+            // 1000, so the sampled range runs past the levels that exist.
+            tex.setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+            ggl.glBindTexture(GL_TEXTURE_2D, tex.id());
+            ggl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1000);
+            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            break;
+        }
         ++n;
     }
-    std::printf("  %s sampling on %d textures\n", aMipmapped ? "mipmapped" : "level-0 (pre-change)", n);
+    std::printf("  sampler: %s on %d textures\n", samplingName(aSampling), n);
 }
 
 
@@ -2011,7 +2051,9 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
     QTextStream ts(&out);
     if (fresh) {
         ts << "file,type,canvas_w,canvas_h,layers,zoom,ss,before_mean,before_p99,before_p999,"
-              "before_max,before_over16,after_mean,after_p99,after_p999,after_max,after_over16\n";
+              "before_max,before_over16,after_mean,after_p99,after_p999,after_max,after_over16,"
+              "nocut_mean,nocut_p99,nocut_p999,nocut_max,nocut_over16,"
+              "change_mean,change_p99,change_over16\n";
     }
 
     const float zooms[] = {0.5f, 0.25f};
@@ -2021,20 +2063,28 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         if (zoom != 1.0f)
             camera.setScale(zoom);
 
-        setLayerSampling(project, true);   // AFTER
+        setLayerSampling(project, Sampling::MipmapCutoff);   // AFTER: shipped
         const QImage after = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
-        setLayerSampling(project, false);  // BEFORE: level 0 only
+        setLayerSampling(project, Sampling::Level0);         // BEFORE: level 0 only
         const QImage before = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
+        setLayerSampling(project, Sampling::MipmapNoCutoff); // the clamp removed
+        const QImage nocut = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
 
         int ss = 8;
         const QImage ref = supersampledReference(project, canvas, zoom, ss, backdrop);
 
-        const DiffStats db = diffVsRef(before, ref), da = diffVsRef(after, ref);
+        const DiffStats db = diffVsRef(before, ref), da = diffVsRef(after, ref), dn = diffVsRef(nocut, ref);
+        // |AFTER - BEFORE|: how much the change moved the pixels at all. This is the column the
+        // crop picker ranks on, so "which artwork shows the change" is a measured question rather
+        // than whoever looked at a figure last.
+        const DiffStats dc = diffVsRef(after, before);
         const QString type = QFileInfo(aPath).suffix().toLower();
         ts << QFileInfo(aPath).fileName() << "," << type << "," << canvas.width() << "," << canvas.height()
            << "," << (int)layers.size() << "," << zoom << "," << ss
            << "," << QString::number(db.mean, 'f', 4) << "," << db.p99 << "," << db.p999 << "," << db.max << "," << db.over16
            << "," << QString::number(da.mean, 'f', 4) << "," << da.p99 << "," << da.p999 << "," << da.max << "," << da.over16
+           << "," << QString::number(dn.mean, 'f', 4) << "," << dn.p99 << "," << dn.p999 << "," << dn.max << "," << dn.over16
+           << "," << QString::number(dc.mean, 'f', 4) << "," << dc.p99 << "," << dc.over16
            << "\n";
         ts.flush();
 
@@ -2043,10 +2093,14 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
             const QString base = QDir(aSaveDir).filePath(QFileInfo(aPath).completeBaseName() + QString("_z%1").arg((int)(zoom * 1000)));
             after.save(base + "_after.png");
             before.save(base + "_before.png");
+            nocut.save(base + "_nocut.png");
             ref.save(base + "_ref.png");
         }
-        std::printf("  %s z=%.2f ss=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d\n", qPrintable(QFileInfo(aPath).fileName()),
-                    zoom, ss, db.mean, db.max, da.mean, da.max);
+        std::printf(
+            "  %s z=%.2f ss=%d  BEFORE mean=%.3f max=%d | AFTER mean=%.3f max=%d | NO CUTOFF mean=%.3f max=%d | change mean=%.3f over16=%d\n",
+            qPrintable(QFileInfo(aPath).fileName()), zoom, ss, db.mean, db.max, da.mean, da.max,
+            dn.mean, dn.max, dc.mean, dc.over16
+        );
     }
     return 0;
 }
@@ -2231,7 +2285,7 @@ void collectLayerNodes(core::ObjectNode* aNode, std::vector<const core::LayerNod
         collectLayerNodes(c, aDest);
 }
 
-int runLodScan(const QString& aAnie, int aFrame) {
+int runLodScan(const QString& aAnie, int aFrame, float aZoom) {
     gl::DeviceInfo dev;
     dev.vender = "harness";
     dev.renderer = "harness";
@@ -2261,7 +2315,7 @@ int runLodScan(const QString& aAnie, int aFrame) {
     // render at a minifying zoom so the mip levels are actually in play
     core::CameraInfo camera;
     camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
-    camera.setScale(0.25f);
+    camera.setScale(aZoom);
     fixtures[key]->render(project.objectTree(), camera, aFrame, backdrop);
 
     std::vector<const core::LayerNode*> nodes;
@@ -2408,7 +2462,8 @@ int main(int argc, char** argv) {
     // --lodscan <anie> <frame>
     if (argc > 3 && QString(argv[1]) == "--lodscan") {
         const int rc = runLodScan(
-            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toInt()
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toInt(),
+            argc > 4 ? QString::fromLocal8Bit(argv[4]).toFloat() : 0.25f
         );
         clearRenderFixtures();
         return rc;
