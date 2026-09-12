@@ -101,6 +101,8 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
 | `fig7_multiply_halo.png` | Multiply, shipped vs naive - the halo is not Normal-only |
 | `fig8_export_vs_canvas.png` | canvas render vs the exported PNG (maxdiff 1) |
 | `fig9_paths_sheet.png` | render paths: plain, mesh overlay, folder Multiply/Screen, blur, HSV, clipping |
+| `fig10_ground_truth.png` | ground truth vs mipmapped vs `|diff| x8`, for three real projects |
+| `fig11_f001_worst.png` | the worst window of the one project whose mesh has a 2.0 LOD spread |
 
 
 `figures/` holds renders of real artwork (`~/Downloads/ANIE/pagedoll.anie`, 1200x1500, 19 layers)
@@ -182,17 +184,79 @@ differ by 128 in the color channels at level 1. Keep both patterns.
 discriminating channel is **alpha** alone (both levels premultiply to `rgb = 0` while coverage
 halves), so a color-only comparison reports "level 1 is identical to level 0".
 
-## Known limitation: deformed meshes
+## Independent ground truth: supersampling
 
-M7 pins the UNDEFORMED case, and that is as far as measurement currently reaches. On a deformed
-mesh the LOD is constant per triangle and can differ between adjacent triangles, which would show
-as a blurriness seam, and before mipmapping every layer sampled level 0 where such seams cannot
-exist. Measuring it needs the deformed vertex positions per triangle, and `LayerNode::mCurrentMesh`
-is private with no accessor, so a test cannot reach them without changing production code. The
-risk is bounded rather than eliminated: a layer drawn at or above 1:1 samples no mip level at all,
-and a visible seam needs adjacent triangles to differ by roughly 2x in local compression. If it
-proves visible, the standard fix for a 2D tool is one LOD per draw rather than per-fragment
-derivatives.
+Everything above compares the render against something derived from the same machinery - an
+analytic value for a synthetic pattern, or the naive implementation. Neither answers "is the
+minified render CORRECT on real artwork": the analytic cases are constant-colour patterns, and a
+fixed-vs-naive differential cannot see an error both implementations share.
+
+`--supersample <dir> <tag> <anie> <ss>` renders the scene at ss x the target resolution, so the
+sampler is magnifying and uses no mip level at all, then box-averages ss x ss blocks down. That
+converges on the true integral of the scene over each destination pixel, which is what a minified
+render is supposed to approximate. Agreement, over real artwork:
+
+| artwork | canvas | zoom | mean | p99 | max | px > 16 |
+|---|---|---|---|---|---|---|
+| pagedoll.anie | 1200x1500 | 1:1 | 0.259 | 8 | 70 | 6330 |
+| pagedoll.anie | | 2x | 0.169 | 5 | 89 | 5178 |
+| pagedoll.anie | | 4x | 0.086 | 0 | 101 | 3010 |
+| tart.anie | 1000x1000 | 1:1 | 0.710 | 16 | 55 | 8942 |
+| tart.anie | | 2x | 0.246 | 9 | 58 | 4520 |
+| tart.anie | | 4x | 0.175 | 1 | 97 | 4020 |
+| test.anie | 1100x790 | 1:1 | 2.147 | 32 | 60 | 36579 |
+| test.anie | | 2x | 0.511 | 17 | 73 | 8806 |
+| test.anie | | 4x | 0.214 | 5 | 73 | 3704 |
+
+`fig10_ground_truth.png` shows ground truth, the mipmapped render and the amplified difference for
+all three. The two renders are visually indistinguishable; the residual is edge-localised and
+shrinks as minification increases. The residual is not zero and should not be: at finite ss the
+supersample is itself an approximation (the level-0 lookup is bilinear, not an exact area
+integral), and a mip chain is a box filter of the TEXTURE rather than of the rendered scene, so
+one-pixel-wide strokes are where the two legitimately disagree most. `test.anie` at 1:1 is the
+worst case precisely because it is a line drawing.
+
+A first attempt at this measured a mean difference of 29.7 at 1:1 and looked like a serious defect.
+It was the camera: `CameraInfo` maps world units to screen pixels by `mScale` alone and anchors
+content on `centerOffset() = imageSize/2`, so passing the supersampled size as `imageSize` shrank
+the artwork into a corner at 1/ss scale. The fix is to keep `imageSize` at the canvas, offset
+`leftTopPos` to the centre of the larger frame, and scale by `zoom * ss`. The tell was that the two
+bounding boxes disagreed; after the fix they match exactly.
+
+## Deformed meshes: measured, not assumed
+
+This was the one place the change could plausibly make things worse. UVs interpolate linearly
+within a triangle, so the derivative the sampler sees is constant per triangle and trilinear
+filtering picks one blend per triangle - if adjacent triangles land on different levels, the
+boundary between them is a blurriness step, and before mipmapping every layer sampled level 0
+where such steps cannot exist.
+
+`--lodscan <anie> <frame>` computes the same rho GL derives, per triangle, from the real deformed
+mesh the render just used (`LayerNode::currentMesh()`, a read-only accessor added for this), and
+reports the spread across each mesh and the largest delta across edge-adjacent triangle pairs.
+
+The computation is validated against theory: a 1:1 layer rendered at camera scale 0.25 reports
+exactly **2.000** for every triangle, which is `log2(4)`. A constant reported by a broken
+computation would look identical to a constant that is correct, which is why the absolute values
+are printed rather than only the spread.
+
+Across **36 real projects** (about 2500 meshes) at frame 12:
+
+- Nearly all meshes: spread 0.00, adjacent delta 0.00.
+- `ballerina.anie` 0.02, `ek61ul.anie` 0.01, `qitqmd.anie` 0.01.
+- `F001.anie` `Copy of Paint Layer 964`: 714 triangles, LOD **0.000..2.001**, mean 1.980 - a
+  handful of triangles at level 0 inside a level-2 region, i.e. the seam scenario really occurs.
+
+Rendering that layer at 4x minification and comparing against the supersampled reference shows
+agreement in line with every other project (mean 0.089, p99 0) and, in the worst 220-pixel window
+(`fig11_f001_worst.png`), **no triangle-shaped discontinuity**: the residual follows the artwork's
+thin strokes, not the mesh topology. The affected triangles are a ~1% minority and contribute
+nothing visible.
+
+Honest limits of this measurement: adjacency is detected by shared vertex index, so a seam across a
+duplicated-vertex block boundary would not be counted - "adjacent delta 0.00" is weaker evidence
+than the rendered comparison. One project, one frame, one window was examined visually. So the
+conclusion is that no seam was found in the cases that exist here, not that seams are impossible.
 
 ## Still to cover
 

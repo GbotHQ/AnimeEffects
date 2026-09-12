@@ -1356,7 +1356,8 @@ void suiteExportLike() {
 // pixels, so the composition is done here rather than comparing raw bytes.
 class MipAnimator: public core::Animator {
 public:
-    core::Frame currentFrame() const override { return core::Frame(0); }
+    int fixedFrame = 0;
+    core::Frame currentFrame() const override { return core::Frame(fixedFrame); }
     void stop() override {}
     void suspend() override {}
     void resume() override {}
@@ -1774,6 +1775,310 @@ int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
     return 0;
 }
 
+
+//-------------------------------------------------------------------------------------------------
+// Supersampled ground truth.
+//
+// Everything in M1-M9 compares the render against something DERIVED from the same machinery: an
+// analytic value for a synthetic pattern, or the naive implementation. Neither answers "is the
+// minified render CORRECT on real artwork" - the analytic cases are constant-colour patterns, and
+// a fixed-vs-naive differential cannot see an error both implementations share.
+//
+// The independent reference is a supersample: render the scene at ss x the target resolution, so
+// the sampler is at or above 1:1 and uses no mip level at all, then box-average ss x ss blocks down
+// to the target. That converges on the true integral of the scene over each destination pixel - what
+// a minified render is supposed to approximate. Disagreement is then a real defect, not a change.
+//
+// The residual is honest and worth stating: at finite ss the supersample is itself an approximation
+// (the level-0 lookup is bilinear, not an exact area integral), so it converges on the reference
+// rather than equalling it. ss is chosen well above the minification factor so the ss render is
+// magnifying, not minifying.
+QImage boxDownsample(const QImage& aSrc, int aSS) {
+    const QImage src = aSrc.convertToFormat(QImage::Format_RGBA8888);
+    const int w = src.width() / aSS, h = src.height() / aSS;
+    QImage dst(w, h, QImage::Format_RGBA8888);
+    const int n = aSS * aSS;
+    for (int y = 0; y < h; ++y) {
+        uchar* o = dst.scanLine(y);
+        for (int x = 0; x < w; ++x) {
+            int acc[4] = {0, 0, 0, 0};
+            for (int dy = 0; dy < aSS; ++dy) {
+                const uchar* r = src.constScanLine(y * aSS + dy) + (size_t)x * aSS * 4;
+                for (int dx = 0; dx < aSS; ++dx)
+                    for (int c = 0; c < 4; ++c)
+                        acc[c] += r[dx * 4 + c];
+            }
+            for (int c = 0; c < 4; ++c)
+                o[x * 4 + c] = (uchar)((acc[c] + n / 2) / n);
+        }
+    }
+    return dst;
+}
+
+// renders the project at ss x the canvas with the same field of view as the 1x figure, and returns
+// the box-downsampled result at canvas size
+QImage supersampledReference(core::Project& aProject, const QSize& aCanvas, float aZoom, int aSS,
+                             const uint8_t aBackdrop[3]) {
+    const QSize big(aCanvas.width() * aSS, aCanvas.height() * aSS);
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(big.width()).arg(big.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(big);
+        fixtures.emplace(key, std::move(fx));
+    }
+    RenderFixture& fx = *fixtures[key];
+
+    // The camera maps world units to screen pixels by mScale ALONE (CameraInfo::toScreenVector),
+    // and anchors content on centerOffset() = imageSize/2. So to render the same field of view at
+    // ss x: keep imageSize at the CANVAS (that is what the artwork is centred on), place the canvas
+    // centre at the centre of the larger frame via leftTopPos, and multiply the scale by ss. Passing
+    // the big size as imageSize instead - which is what this did first - halves the artwork into a
+    // corner at 1/ss scale and makes the "reference" meaningless.
+    core::CameraInfo camera;
+    camera.reset(
+        big, 1.0, aCanvas,
+        QPoint((big.width() - aCanvas.width()) / 2, (big.height() - aCanvas.height()) / 2)
+    );
+    camera.setScale(aZoom * (float)aSS);
+    const std::vector<uint8_t> px = fx.render(aProject.objectTree(), camera, 0, aBackdrop);
+    return boxDownsample(figures::readbackToImage(px, big), aSS);
+}
+
+int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
+    QDir().mkpath(aDir);
+    gl::DeviceInfo dev;
+    dev.vender = "harness";
+    dev.renderer = "harness";
+    dev.version = "5";
+    dev.maxTextureSize = 16384;
+    dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static MipAnimator animator;
+    static MipReporter reporter;
+    core::Project project(aAnie, animator, nullptr);
+    ctrl::ProjectLoader loader;
+    if (!loader.load(aAnie, project, dev, reporter)) {
+        std::fprintf(stderr, "FATAL: cannot load %s\n", qPrintable(aAnie));
+        return 3;
+    }
+    const QSize canvas = project.attribute().imageSize();
+    const uint8_t backdrop[3] = {128, 128, 128};
+    std::printf("supersample: %s  %dx%d  ss=%d\n", qPrintable(aAnie), canvas.width(), canvas.height(), aSS);
+
+    const float zooms[] = {1.0f, 0.5f, 0.25f};
+    for (float zoom : zooms) {
+        // the 1x mipmapped render, exactly as the figures produce it
+        auto& fixtures = renderFixtures();
+        const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+        if (fixtures.find(key) == fixtures.end()) {
+            std::unique_ptr<RenderFixture> fx(new RenderFixture());
+            fx->init(canvas);
+            fixtures.emplace(key, std::move(fx));
+        }
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        if (zoom != 1.0f)
+            camera.setScale(zoom);
+        const QImage mip = figures::readbackToImage(
+            fixtures[key]->render(project.objectTree(), camera, 0, backdrop), canvas
+        );
+        const QImage ref = supersampledReference(project, canvas, zoom, aSS, backdrop);
+
+        const QString z = QString::number((int)(zoom * 1000));
+        mip.save(QDir(aDir).filePath(QString("%1_mip_zoom%2.png").arg(aTag).arg(z)));
+        ref.save(QDir(aDir).filePath(QString("%1_ref_zoom%2.png").arg(aTag).arg(z)));
+        std::printf("  wrote %s mip/ref at zoom %s\n", qPrintable(aTag), qPrintable(z));
+    }
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// Per-triangle LOD scan.
+//
+// The one measurement the rest of the harness cannot make. UVs interpolate linearly within a
+// triangle, so the derivative the sampler sees is CONSTANT per triangle and trilinear filtering
+// picks one blend per triangle: if adjacent triangles land on different levels, the boundary
+// between them is a blurriness step. Before mipmapping every layer sampled level 0, where such
+// steps cannot exist - so this is the one way the change could plausibly make things worse.
+//
+// This computes, per triangle, the same rho GL derives, from the real deformed mesh the render
+// just used, and reports the spread across the mesh and across EDGE-ADJACENT triangle pairs. A
+// large spread, or a large adjacent-pair delta, is what a visible seam looks like numerically.
+struct LodStats {
+    int triangles = 0;
+    double minLod = 0, maxLod = 0, meanLod = 0;
+    double maxNeighbourDelta = 0;   // max |dLOD| across an edge-adjacent pair
+    double meanNeighbourDelta = 0;
+    int neighbours = 0;
+    bool valid = false;
+};
+
+LodStats scanLayerLod(const core::LayerNode& aLayer, const core::CameraInfo& aCamera, const QSize& aViewport) {
+    LodStats st;
+    const core::LayerMesh* mesh = aLayer.currentMesh();
+    if (!mesh || mesh->vertexCount() <= 0 || mesh->indexCount() < 3)
+        return st;
+
+    // No texture-size lookup is needed: LayerMesh::texCoords() are in TEXEL units (the vertex shader
+    // divides by uImageSize to normalise), so the Jacobian below is already texels per screen pixel
+    // and log2(rho) is the level directly. This is why the validation reports exactly 2.000 for a
+    // 1:1 layer at camera scale 0.25 - rho is 4 texels per pixel.
+    const QMatrix4x4 vm = aCamera.viewMatrix();
+    const gl::Vector3* pos = mesh->positions();
+    const gl::Vector2* uv = mesh->texCoords();
+    const GLuint* idx = mesh->indices();
+    const int icount = mesh->indexCount();
+
+    // world -> screen pixels, mirroring LayerDrawingVert
+    auto toScreen = [&](const gl::Vector3& p) {
+        const QVector4D v = vm * QVector4D(p.x, p.y, p.z, 1.0f);
+        const float w = (v.w() != 0.0f) ? v.w() : 1.0f;
+        const float nx = v.x() / w, ny = v.y() / w;
+        return QVector2D(0.5f * aViewport.width() * (nx + 1.0f), 0.5f * aViewport.height() * (ny + 1.0f));
+    };
+
+    std::vector<double> lods;
+    std::map<std::pair<int, int>, std::vector<int>> edgeToTris;   // undirected edge -> triangles
+    std::vector<std::array<int, 3>> triVerts;
+
+    for (int t = 0; t + 2 < icount; t += 3) {
+        const int i0 = (int)idx[t], i1 = (int)idx[t + 1], i2 = (int)idx[t + 2];
+        if (i0 >= mesh->vertexCount() || i1 >= mesh->vertexCount() || i2 >= mesh->vertexCount())
+            continue;
+
+        const QVector2D s0 = toScreen(pos[i0]), s1 = toScreen(pos[i1]), s2 = toScreen(pos[i2]);
+        const QVector2D e1 = s1 - s0, e2 = s2 - s0;
+        const double det = (double)e1.x() * e2.y() - (double)e1.y() * e2.x();
+        if (std::fabs(det) < 1e-9) {   // degenerate on screen: contributes no derivative
+            lods.push_back(0.0);
+            triVerts.push_back({i0, i1, i2});
+            continue;
+        }
+        // UV in texels
+        const QVector2D T0(uv[i0].x, uv[i0].y), T1(uv[i1].x, uv[i1].y), T2(uv[i2].x, uv[i2].y);
+        const QVector2D f1 = T1 - T0, f2 = T2 - T0;
+        // J = [f1 f2] * inv([e1 e2])  -> du/dscreen, in texels per screen pixel
+        const double inv = 1.0 / det;
+        const double j00 = (f1.x() * e2.y() - f2.x() * e1.y()) * inv;
+        const double j01 = (f2.x() * e1.x() - f1.x() * e2.x()) * inv;
+        const double j10 = (f1.y() * e2.y() - f2.y() * e1.y()) * inv;
+        const double j11 = (f2.y() * e1.x() - f1.y() * e2.x()) * inv;
+        const double gx = std::sqrt(j00 * j00 + j10 * j10);
+        const double gy = std::sqrt(j01 * j01 + j11 * j11);
+        const double rho = std::max(gx, gy);
+        lods.push_back(rho > 0.0 ? std::log2(rho) : -20.0);
+        triVerts.push_back({i0, i1, i2});
+
+        const int tri = (int)triVerts.size() - 1;
+        const int vs[3] = {i0, i1, i2};
+        for (int e = 0; e < 3; ++e) {
+            int a = vs[e], b = vs[(e + 1) % 3];
+            if (a > b) std::swap(a, b);
+            edgeToTris[{a, b}].push_back(tri);
+        }
+    }
+
+    if (lods.empty())
+        return st;
+    st.valid = true;
+    st.triangles = (int)lods.size();
+    st.minLod = *std::min_element(lods.begin(), lods.end());
+    st.maxLod = *std::max_element(lods.begin(), lods.end());
+    double sum = 0;
+    for (double v : lods)
+        sum += v;
+    st.meanLod = sum / lods.size();
+
+    double nsum = 0;
+    for (const auto& kv : edgeToTris) {
+        if (kv.second.size() != 2)
+            continue;
+        const double d = std::fabs(lods[kv.second[0]] - lods[kv.second[1]]);
+        st.maxNeighbourDelta = std::max(st.maxNeighbourDelta, d);
+        nsum += d;
+        ++st.neighbours;
+    }
+    st.meanNeighbourDelta = st.neighbours ? nsum / st.neighbours : 0.0;
+    return st;
+}
+
+void collectLayerNodes(core::ObjectNode* aNode, std::vector<const core::LayerNode*>& aDest) {
+    if (!aNode)
+        return;
+    if (auto* l = dynamic_cast<const core::LayerNode*>(aNode))
+        aDest.push_back(l);
+    for (auto* c : aNode->children())
+        collectLayerNodes(c, aDest);
+}
+
+int runLodScan(const QString& aAnie, int aFrame) {
+    gl::DeviceInfo dev;
+    dev.vender = "harness";
+    dev.renderer = "harness";
+    dev.version = "5";
+    dev.maxTextureSize = 16384;
+    dev.maxRenderBufferSize = 16384;
+    gl::DeviceInfo::setInstance(&dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    animators.back()->fixedFrame = aFrame;
+    core::Project project(aAnie, *animators.back(), nullptr);
+    ctrl::ProjectLoader loader;
+    static MipReporter reporter;
+    if (!loader.load(aAnie, project, dev, reporter)) {
+        std::fprintf(stderr, "FATAL: cannot load %s\n", qPrintable(aAnie));
+        return 3;
+    }
+    const QSize canvas = project.attribute().imageSize();
+    const uint8_t backdrop[3] = {128, 128, 128};
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    // render at a minifying zoom so the mip levels are actually in play
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(0.25f);
+    fixtures[key]->render(project.objectTree(), camera, aFrame, backdrop);
+
+    std::vector<const core::LayerNode*> nodes;
+    collectLayerNodes(project.objectTree().topNode(), nodes);
+
+    std::printf("lodscan %s frame %d  canvas %dx%d  layers %d\n", qPrintable(aAnie), aFrame,
+                canvas.width(), canvas.height(), (int)nodes.size());
+    double worstNeighbour = 0, worstSpread = 0;
+    QString worstName;
+    int scanned = 0;
+    for (const auto* layer : nodes) {
+        const LodStats st = scanLayerLod(*layer, camera, canvas);
+        if (!st.valid)
+            continue;
+        ++scanned;
+        const double spread = st.maxLod - st.minLod;
+        worstNeighbour = std::max(worstNeighbour, st.maxNeighbourDelta);
+        if (spread > worstSpread) {
+            worstSpread = spread;
+            worstName = layer->name();
+        }
+        // printed unconditionally: a scan that reports a constant needs its absolute values
+        // visible, or "spread 0.00" is indistinguishable from a computation returning garbage
+        std::printf("  %-28s tris=%4d lod %6.3f..%6.3f (mean %6.3f)  adjDelta max=%.3f mean=%.3f\n",
+                    qPrintable(layer->name()), st.triangles, st.minLod, st.maxLod, st.meanLod,
+                    st.maxNeighbourDelta, st.meanNeighbourDelta);
+    }
+    std::printf("  scanned %d meshes | worst spread %.2f ('%s') | worst adjacent delta %.2f\n",
+                scanned, worstSpread, qPrintable(worstName), worstNeighbour);
+    return 0;
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -1874,6 +2179,25 @@ int main(int argc, char** argv) {
         return 2;
     }
     glWidget->makeCurrent();
+
+    // --lodscan <anie> <frame>
+    if (argc > 3 && QString(argv[1]) == "--lodscan") {
+        const int rc = runLodScan(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]).toInt()
+        );
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --supersample <dir> <tag> <anie> <ss>
+    if (argc > 5 && QString(argv[1]) == "--supersample") {
+        const int rc = runSupersample(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]), QString::fromLocal8Bit(argv[4]),
+            QString::fromLocal8Bit(argv[5]).toInt()
+        );
+        clearRenderFixtures();
+        return rc;
+    }
 
     // --figures <dir> <tag> <anie>
     if (argc > 4 && QString(argv[1]) == "--figures") {

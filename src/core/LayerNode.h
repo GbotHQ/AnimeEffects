@@ -45,6 +45,12 @@ public:
     virtual TimeLine* timeLine() { return &mTimeLine; }
     virtual const TimeLine* timeLine() const { return &mTimeLine; }
     virtual bool hasAnyMesh() const { return true; }
+
+    // The mesh actually used by the last prerender - i.e. with the layer's deformation applied
+    // (FFD / bone influence / SRT), not the undeformed grid mesh in the ImageKey. Read-only and
+    // valid only between prerender() and the next render pass. A test needs this to reason about
+    // the texture-coordinate derivatives the sampler sees, which is what selects a mip level.
+    const LayerMesh* currentMesh() const { return mCurrentMesh; }
     virtual bool hasAnyImage() const { return true; }
 
     virtual cmnd::Vector createResourceUpdater(const ResourceEvent& aEvent);
