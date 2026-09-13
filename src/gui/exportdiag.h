@@ -150,6 +150,17 @@ public:
     bool mUserSizeKnown = false;
     int mPlayhead = 0; // see setupUi(); the frame a Still destination writes
     QString mDestinationId; // see destinationId()
+    // WHAT THIS FORM IS ABOUT, as opposed to what the hidden manual combos happen to
+    // hold. With a destination chosen, the format and the codec are the destination's
+    // (the facts state them and the combos are hidden), so every rule that asks "is
+    // this a sequence", "does this codec carry alpha here", "which knob does it trade
+    // quality with" has to read THESE. Reading the combos in both modes is how
+    // Instagram photo - a still image, written by QImage::save(), whose JPEG quality
+    // is the only quality control it has - hid its own Image quality row: the hidden
+    // combo held nothing, so "is this image/..." answered no.
+    QString mArtifactFormatId; // "image/jpg", "gif", "mp4"; empty = manual mode
+    QString mArtifactCodecId;  // the encoder the destination resolved
+    bool mArtifactIsStill = false; // one image: no range, no frame rate
     // Whether the boxes currently report a size the destination forced rather
     // than one the user set. This is what makes the hand-back above decidable.
     bool mLastSizeDictated = false;
@@ -740,7 +751,15 @@ public:
     // The chosen destination id (empty = "my platform isn't listed", i.e. manual
     // mode). The button is only the display; this is the state.
     QString destinationId() const { return mDestinationId; }
-    void setDestinationId(const QString& aId) { mDestinationId = aId; }
+    void setDestinationId(const QString& aId) {
+        mDestinationId = aId;
+        // Manual mode is the escape hatch: from here the combo IS the answer.
+        if (aId.isEmpty()) {
+            mArtifactFormatId.clear();
+            mArtifactCodecId.clear();
+            mArtifactIsStill = false;
+        }
+    }
 
     void setFacts(const QString& aText) {
         destinationFacts->setText(aText);
@@ -802,7 +821,7 @@ public:
     //     not, so a ticked "Export with transparency" beside H.264 is a promise
     //     the encoder cannot keep.
     void applyArtifactConstraints() {
-        const QString id = formatCombo->currentData().toString();
+        const QString id = currentFormatId();
         const bool isGif = id == QLatin1String("gif");
         const bool isSequence = id.startsWith(QLatin1String("image/"));
 
@@ -852,11 +871,18 @@ public:
         const bool isVideo = !isGif && !isSequence;
         const QString knob = encoderQualityKnob();
 
-        // Which frames and what size belong to the project; these never go away.
+        // Which frames and what size belong to the project, so these never go away -
+        // except for a destination that writes ONE image, where the frame range and
+        // the frame rate cannot affect the file at all (the frame written is the one
+        // on the timeline, and the facts say which). Asking a user for a frame range
+        // and a frame rate before writing a single JPEG is asking two questions that
+        // have no effect on the answer, which is the same disease as hiding a control
+        // that does.
         setVisible({renderedFramesLabel, firstFrameLabel, lastFrameLabel,
                     insertFrameRangeButton, removeFrameRangeButton, firstFrameSpinBox,
                     lastFrameSpinBox},
-                   true);
+                   !mArtifactIsStill);
+        setVisible({fpsLabel, fpsSpinBox, setFPSNative}, !mArtifactIsStill);
 
         // Codec: a real decision only when the container can carry more than one,
         // and none at all for a directory of stills, which Qt writes.
@@ -929,11 +955,19 @@ public:
     // choice, or the container's probed default when the user left Codec alone.
     // Empty for the artifacts no video encoder touches (GIF, a still sequence),
     // whose "quality knob" is not a thing this dialog can set.
+    // The format the form is about: the destination's when one is chosen, otherwise
+    // the one the user picked in the manual Format row.
+    QString currentFormatId() const {
+        return mArtifactFormatId.isEmpty() ? formatCombo->currentData().toString()
+                                           : mArtifactFormatId;
+    }
+
     QString selectedCodecKey() const {
-        const QString id = formatCombo->currentData().toString();
+        const QString id = currentFormatId();
         if (id.startsWith(QLatin1String("image/")) || id == QLatin1String("gif"))
             return QString();
-        const QString chosen = codecCombo->currentData().toString();
+        const QString chosen = mArtifactCodecId.isEmpty() ? codecCombo->currentData().toString()
+                                                          : mArtifactCodecId;
         return chosen.isEmpty() ? media::ffmpeg::defaultCodecForContainer(id) : chosen;
     }
 
@@ -946,14 +980,15 @@ public:
     // Whether the codec currently selected can carry alpha HERE. Asked of the
     // probe, not of a table: libx265 lists yuva420p and refuses to open with it.
     bool selectedCodecCarriesAlpha() const {
-        const QString id = formatCombo->currentData().toString();
+        const QString id = currentFormatId();
         if (id == QLatin1String("image/png"))
             return true;
         if (id == QLatin1String("image/jpg"))
             return false; // JPEG has no alpha channel at all
         if (id == QLatin1String("gif"))
             return true;
-        const QString codec = codecCombo->currentData().toString();
+        const QString codec = mArtifactCodecId.isEmpty() ? codecCombo->currentData().toString()
+                                                         : mArtifactCodecId;
         for (const media::ffmpeg::CodecOption& c : media::ffmpeg::usableCodecsForContainer(id)) {
             if (c.encoder == codec)
                 return c.alphaCapable;
@@ -962,14 +997,16 @@ public:
     }
 
     bool selectedFormatIsSequence() const {
-        return formatCombo->currentData().toString().startsWith(QLatin1String("image/"));
+        return currentFormatId().startsWith(QLatin1String("image/"));
     }
 
     bool selectedFormatIsGif() const {
-        return formatCombo->currentData().toString() == QLatin1String("gif");
+        return currentFormatId() == QLatin1String("gif");
     }
 
     QString selectedFormatLabel() const {
+        const QString id = currentFormatId();
+        if (!mArtifactFormatId.isEmpty()) return labelForFormat(id);
         return formatCombo->currentText();
     }
 
@@ -1028,6 +1065,22 @@ public:
     // keeps a live control carrying the bound; only a genuine Choice stays free.
     void applyPlan(const ctrl::ExportPlan& aPlan, const ctrl::ExportTarget& aTarget) {
         const bool planOk = aPlan.ok();
+        // What this export will actually be, so every rule below answers about the
+        // destination rather than about the hidden manual combos.
+        if (aTarget.artifact == ctrl::ArtifactKind::Video) {
+            mArtifactFormatId = aPlan.config.container.isEmpty() ? aTarget.container
+                                                                 : aPlan.config.container;
+            mArtifactCodecId = aPlan.config.codec.isEmpty() ? aTarget.codec : aPlan.config.codec;
+        } else {
+            mArtifactFormatId = QStringLiteral("image/") + aPlan.imageSuffix;
+            mArtifactCodecId.clear();
+        }
+        // A STILL is one image: the exporter writes the frame the timeline is showing
+        // (ExportRequest::playhead), not a range, so the range editor and the frame
+        // rate cannot affect the file and are not shown. A SEQUENCE does take a range,
+        // so it keeps them. The two share the "image/" format prefix, which is why the
+        // distinction is the destination's artifact rather than the format id.
+        mArtifactIsStill = aTarget.artifact == ctrl::ArtifactKind::Still;
 
         // --- size: dictated, or the project's own ---------------------------
         // An exact-size destination (Discord 320x320, WhatsApp 512x512,
@@ -1092,9 +1145,14 @@ public:
         // decision that translateVideoExport() overwrites. "Auto" is the honest
         // display for "the destination decides".
         bitrateLineEdit->setText(QStringLiteral("Auto"));
+        setEnabled({bitrateLabel, bitrateLineEdit, setBitrateAuto}, false);
+        // Image quality is NOT a frozen fact when the artifact goes through
+        // QImage::save(): it is the only quality control that file has, so it is left
+        // enabled and its visibility is the artifact's business (applyArtifactConstraints
+        // shows it for a still and for a sequence). It starts at Auto, which is the
+        // writer's own default rather than a number nobody chose.
         imageQualitySpinbox->setValue(-1);
-        setEnabled({bitrateLabel, bitrateLineEdit, setBitrateAuto, imageQualityLabel,
-                    imageQualitySpinbox, setImageQualityToAuto}, false);
+        setEnabled({imageQualityLabel, imageQualitySpinbox, setImageQualityToAuto}, true);
         // ...and HIDDEN, because a frozen control that repeats a fact stated two
         // lines above it is not information, it is furniture: the codec and the
         // bitrate are named in the facts, and every one of these rows costs the
@@ -1116,8 +1174,7 @@ public:
         // a Format combo beside a stated "MP4" is two answers to one question.
         applyArtifactConstraints();
         setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
-                    bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
-                    setImageQualityToAuto},
+                    bitrateLineEdit, setBitrateAuto},
                    false);
         advancedToggle->setChecked(false);
 

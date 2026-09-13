@@ -2053,10 +2053,20 @@ void MainWindow::openExportDialog(const QString& aDestinationId) {
                 // owns it — so config.codec/container are empty for a GIF row.
                 // Naming the format from the path we already know is honest;
                 // printing " —  in " is not.
-                lines << tr("%1 x %2, %3 fps")
-                             .arg(plan.size.width())
-                             .arg(plan.size.height())
-                             .arg(plan.fps);
+                if (plan.artifact == ctrl::ArtifactKind::Still) {
+                    // One image: a frame RATE here would describe a timeline this file
+                    // does not have. What it does have is one frame, and which one it
+                    // is - the frame the timeline is showing - so that is what is said.
+                    lines << tr("%1 x %2, frame %3 (the one on the timeline)")
+                                 .arg(plan.size.width())
+                                 .arg(plan.size.height())
+                                 .arg(request.playhead);
+                } else {
+                    lines << tr("%1 x %2, %3 fps")
+                                 .arg(plan.size.width())
+                                 .arg(plan.size.height())
+                                 .arg(plan.fps);
+                }
                 if (plan.artifact == ctrl::ArtifactKind::Still) {
                     lines << tr("Artifact: one %1 image").arg(plan.imageSuffix.toUpper());
                 } else if (plan.artifact == ctrl::ArtifactKind::Sequence) {
