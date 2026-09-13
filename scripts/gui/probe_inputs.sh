@@ -8,15 +8,15 @@
 # you close and reopen constantly while iterating.
 #
 # What is asserted here is the FORM, read back by name. The version this replaces
-# asserted the export's OUTPUT (a 0..3 range writing four files at 160px, then a
-# second export writing the same), which cost two real encodes and could not say
-# WHICH input had been forgotten when it failed. The write path is covered by
-# probe_export and probe_still; the question here is what the reopened form holds.
+# asserted the export's OUTPUT (a 0..3 range writing four files at 160px wide, then a
+# second export writing the same), which cost two real encodes and could not say WHICH
+# input had been forgotten when it failed. The write path is covered by probe_export
+# and probe_still; the question here is what the reopened form holds.
 #
-# The save happens when Export is pressed - the inputs are written to QSettings
-# before the platform file dialog opens - so the first pass ends by CANCELLING that
-# dialog: no encode, and the same settings written. Cancel on the form itself would
-# prove nothing, because that path never writes them.
+# The save happens when Export is pressed - the inputs are written to QSettings before
+# the platform file dialog opens - so the first pass ends by CANCELLING that dialog:
+# no encode, and the same settings written. Cancel on the form itself would prove
+# nothing, because that path never writes them.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/_lib.sh" "$@"
 # The revision of the export flow this probe's navigation was recorded against. See
@@ -35,15 +35,21 @@ printf '[General]\nexport_destination=chat.discord.file\nexport_quality_bucket=1
     > "$CFG/AnimeEffectsProject/AnimeEffects.conf"
 export OUT
 
-rm -f /tmp/inputs_before_values.txt /tmp/inputs_after_values.txt
+rm -f /tmp/inputs_before_values.txt /tmp/inputs_after_values.txt /tmp/inputs_set.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
-  # The value a spin box HOLDS, by name. ae_ui.py reports what is showing and can read
-  # a line edit, but this Qt build answers its EditableText interface with an empty
-  # string for a QSpinBox, so the number comes from the same Value interface the
-  # application itself reads (widthSpinBox->value()). A label that merely contains the
-  # words ("- First frame -") is skipped: only a node that HAS a number answers.
-  values() { # values <output file> <name>...
+  # THE NUMBER BOXES, by name, through the Value interface.
+  #
+  # ae_ui.py can click what it finds and can read a line edit, but this Qt build
+  # answers EditableText with an EMPTY string for a QSpinBox - so `ae value` prints
+  # nothing for every box on this form and `ae set` writes text no value is taken
+  # from. Worse, the name is ambiguous by substring: the label beside the box reads
+  # "- First frame -", which CONTAINS "First frame". What is asked for here is the
+  # first node that answers to the name AND holds a number, which is exactly the box
+  # and never the label beside it. The number read is the one the application itself
+  # uses (widthSpinBox->value() is what it writes to the settings), and setting uses
+  # the Value interface, which Qt wires to QSpinBox::setValue.
+  spin() { # spin read <file> <name>...   |   spin set <name> <value>...
     python3 - "$@" <<PY
 import os, sys, warnings
 warnings.filterwarnings("ignore")
@@ -52,8 +58,7 @@ gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi as A
 
 want = os.environ.get("AE_UI_PID", "").strip()
-out = open(sys.argv[1], "w")
-names = sys.argv[2:]
+mode = sys.argv[1]
 
 def walk(node, depth=0):
     if depth > 16:
@@ -86,23 +91,19 @@ def application():
             continue
     return best
 
-def number(node):
+def held(node):
     iface = node.get_value_iface()
     if iface is None:
         return None
     try:
-        value = iface.get_current_value()
+        return iface.get_current_value()
     except Exception:
         return None
-    return str(int(value)) if value == int(value) else str(value)
 
-app = application()
-if app is None:
-    out.write("NO APPLICATION NODE\n")
-    out.close()
-    sys.exit(0)
-for name in names:
-    answer = "absent"
+def box(name):
+    app = application()
+    if app is None:
+        return None
     for node in walk(app):
         try:
             shown = node.get_name() or ""
@@ -111,13 +112,37 @@ for name in names:
             continue
         if name != shown and name != described and name not in shown:
             continue
-        value = number(node)
-        if value is None:
+        if held(node) is None:
             continue
-        answer = value
-        break
-    out.write(name + "=" + answer + "\n")
-out.close()
+        return node
+    return None
+
+def text(value):
+    return str(int(value)) if value == int(value) else str(value)
+
+if mode == "read":
+    out = open(sys.argv[2], "w")
+    for name in sys.argv[3:]:
+        node = box(name)
+        out.write(name + "=" + ("absent" if node is None else text(held(node))) + "\n")
+    out.close()
+else:
+    pairs = sys.argv[2:]
+    failed = 0
+    for i in range(0, len(pairs) - 1, 2):
+        name = pairs[i]
+        node = box(name)
+        if node is None:
+            print("MISSING " + name)
+            failed += 1
+            continue
+        try:
+            node.get_value_iface().set_current_value(float(pairs[i + 1]))
+            print("set " + name + "=" + text(held(node)))
+        except Exception as exc:
+            print("FAILED " + name + " " + str(exc))
+            failed += 1
+    sys.exit(1 if failed else 0)
 PY
   }
 
@@ -144,12 +169,19 @@ PY
 
   # 1. Set values that are not the project own: the frames 2..7, 160x256, 17 fps.
   open_form
-  ae set "First frame" 2 >/dev/null; sleep 0.6
-  ae set "Last frame" 7 >/dev/null; sleep 0.6
-  ae set "Width" 160 >/dev/null; sleep 0.6
-  ae set "Height" 256 >/dev/null; sleep 0.6
-  ae set "Frame rate" 17 >/dev/null; sleep 1.2
-  values /tmp/inputs_before_values.txt "First frame" "Last frame" "Width" "Height" "Frame rate"
+  # The aspect lock off first. With it on, the two size boxes drive each other, so the
+  # width this probe set would be overwritten by the height it set next, and what came
+  # back below would be the aspect ratio rather than the inputs.
+  ae_press "Keep aspect ratio" "the size boxes are unlocked from each other"
+  sleep 0.8
+  if ! spin set "First frame" 2 "Last frame" 7 "Width" 160 "Height" 256 "Frame rate" 17 \
+       > /tmp/inputs_set.txt; then
+    check 1 "every per-run input answers by name and takes a value (see /tmp/inputs_set.txt)"
+  else
+    check 0 "the per-run inputs are set by name"
+  fi
+  sleep 1.2
+  spin read /tmp/inputs_before_values.txt "First frame" "Last frame" "Width" "Height" "Frame rate"
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/inputs_01_set.png
 
@@ -166,7 +198,7 @@ PY
   # 3. Reopen the form and touch NOTHING. Whatever the form holds now is what was
   #    remembered.
   open_form
-  values /tmp/inputs_after_values.txt "First frame" "Last frame" "Width" "Height" "Frame rate"
+  spin read /tmp/inputs_after_values.txt "First frame" "Last frame" "Width" "Height" "Frame rate"
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/inputs_03_reopened.png
   ae_press "Cancel" "the form closes on Cancel"
@@ -189,7 +221,7 @@ expect_value /tmp/inputs_before_values.txt "Height" 256 "and the height"
 expect_value /tmp/inputs_before_values.txt "Frame rate" 17 "and the frame rate"
 
 # THE POINT: the reopened form holds the same numbers, one by one. Comparing the two
-# files rather than hardcoding the answers is deliberate - a spin box clamps to what
+# reads rather than hardcoding the answers is deliberate - a spin box clamps to what
 # the project and the destination allow, and what has to be remembered is what the
 # form actually held, not what this probe typed.
 for name in "First frame" "Last frame" "Width" "Height" "Frame rate"; do

@@ -272,6 +272,22 @@
           Status is limited to 90 seconds and is also not this row.</note>
   </destination>
 
+  <destination id="chat.whatsapp.gif" group="whatsapp" label="WhatsApp (animated GIF)" icon="brand-whatsapp" family="chat"
+               class="direct" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://faq.whatsapp.com/674208810641277/ (GIFs are a supported chat surface)" verified="false">
+    <size mode="free"/>
+    <note>UNVERIFIED (WhatsApp publishes no organic cap for an animated image): GIFs are a
+          documented chat surface, but WhatsApp publishes no byte cap, format list,
+          dimension rule, frame count or duration for an image sent in a chat, and no
+          statement about whether it transcodes one. The numbers that could be borrowed are
+          all for other surfaces and are NOT applied here: 2 GB for a DOCUMENT, 100 MB or
+          64 MB for a VIDEO (fast and slow connections), 90 seconds for a status video, and
+          the Cloud API's 5 MB image with a 500 KB animated sticker. No cap is applied, and
+          the fit loop therefore has nothing to enforce.</note>
+  </destination>
+
   <destination id="chat.telegram.video" group="telegram" label="Telegram" icon="brand-telegram" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
@@ -284,6 +300,24 @@
           this is the USER limit: the Bot API's 50 MB is for bots uploading, not for
           you sending a file. Telegram also converts a real GIF to MP4 on its servers,
           so transparency never survives here.</note>
+  </destination>
+
+  <destination id="chat.telegram.gif" group="telegram" label="Telegram (animated GIF)" icon="brand-telegram" family="chat"
+               class="reencode" codecSelect="fixed"
+               container="mp4" codec="libx264" pixfmt="yuv420p"
+               alpha="forbidden" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://core.telegram.org/api/gifs (GIFs are converted server-side to MPEG-4 H.264 without sound)" verified="true">
+    <size mode="max" w="1280" h="720"/>
+    <caps maxBytes="20971520"/>
+    <note>Telegram CONVERTS an uploaded GIF itself: "GIFs are actually MPEG4 (h264) videos
+          without sound; if the user tries to upload an actual GIF file, it will be
+          automatically converted to an MPEG4 file by the server". So this destination writes
+          the file Telegram would have made anyway, without the round trip through a GIF
+          palette: silent H.264 in MP4, and transparency CANNOT survive (the conversion is
+          lossy and H.264 4:2:0 carries no alpha). Animated WebP is not accepted as a
+          sticker ("Animated .WEBP is NOT currently supported"); a chat file may be up to
+          2 GB (4 GB with Premium), which is the cloud-file limit rather than a GIF limit.
+          No frame count, duration or frame rate is published for a chat animation.</note>
   </destination>
 
   <destination id="chat.discord.file" group="discord" label="Discord" icon="brand-discord" family="chat"
@@ -331,6 +365,25 @@
           is the number to stay under. Sending as a File skips the transcode.</note>
   </destination>
 
+  <destination id="chat.signal.gif" group="signal" label="Signal (animated GIF)" icon="brand-signal" family="chat"
+               class="direct" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://support.signal.org/hc/en-us/articles/360007317471 (GIFs are a first-class attachment) and https://github.com/signalapp/Signal-Android/issues/13098 (maintainer: 100 MB)" verified="false">
+    <size mode="free"/>
+    <caps maxBytes="26214400"/>
+    <note>UNVERIFIED (Signal publishes nothing usable here): a GIF is a first-class
+          attachment ("image, gif, video, voice message, or audio file"), but Signal has no
+          help page stating an attachment byte cap, a format list, a dimension rule, a frame
+          count or a transcode rule for one. The only numbers that exist are in source code
+          and issue threads rather than documentation: a GIF threshold of min(25 MB, the
+          attachment limit) and a maintainer note that sending is still capped at 100 MB.
+          25 MB is used here as the code-level threshold, and every other fact is left
+          unstated rather than invented. Note that Signal's STICKER page says "Please do not
+          upload GIFs" - that is the sticker surface (APNG, 300 KB), a different thing from
+          an attachment, and reading it as "Signal rejects GIFs" is a documented trap.</note>
+  </destination>
+
   <destination id="chat.messenger.video" group="messenger" label="Messenger"
                icon="brand-messenger" family="chat"
                class="direct" codecSelect="fixed"
@@ -344,6 +397,22 @@
           the consumer chat limit anywhere, so this is the closest sourced number, not
           the app's own. 75 seconds appears in the docs as a fetch timeout, NOT a
           duration limit.</note>
+  </destination>
+
+  <destination id="chat.messenger.gif" group="messenger" label="Messenger (animated GIF)" icon="brand-messenger" family="chat"
+               class="direct" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://www.facebook.com/help/messenger-app/141024792690630 (send GIF) and https://developers.facebook.com/docs/messenger-platform/send-messages/template/media/ (API: GIFs play in the conversation)" verified="false">
+    <size mode="free"/>
+    <note>UNVERIFIED (the consumer chat publishes no cap): Messenger offers a "Send GIF"
+          action with no published formats, and Meta's API documentation says animated GIFs
+          "are playable in the conversation", but the consumer chat states no byte cap,
+          dimension rule, frame count or transcode behaviour. The API numbers that exist
+          (25 MB per asset, 8 MB for an image uploaded by URL) are labelled as API values and
+          are not applied here, because Meta does not say they bind the in-app picker. The
+          API template also lists only image and video as media types with no GIF value,
+          which is a contradiction Meta leaves unresolved.</note>
   </destination>
 
   <destination id="chat.kakaotalk.video" group="kakaotalk" label="KakaoTalk (카카오톡)"
@@ -412,6 +481,23 @@
           yuv420p, closed GOP.</note>
   </destination>
 
+  <destination id="post.x.gif" group="x" label="X (animated GIF)" icon="brand-x" family="post"
+               class="reencode" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://docs.x.com/x-api/media/quickstart/best-practices (API surface; X publishes NO organic byte cap)" verified="true">
+    <size mode="max" w="1280" h="1080"/>
+    <caps maxBytes="15728640" maxFrames="350"/>
+    <note>X accepts JPG, PNG, GIF and WEBP, and an animated GIF is its own media category
+          (tweet_gif). The caps here come from X's API documentation, NOT from its help
+          pages: 15 MB per animated GIF, resolution at most 1280x1080, at most 350 frames
+          and at most 300 million pixels in total (width x height x frames). X's own API
+          page adds that a GIF "may fail during Post creation even if it is within the file
+          size limit", so treat 15 MB as soft. The figure repeated across the web (5 MB
+          mobile, 15 MB web) appears on no X-owned page, and X publishes nothing about
+          transparency, looping, frame rate or duration for GIFs.</note>
+  </destination>
+
   <destination id="post.instagram.reels" group="instagram" label="Instagram Reels"
                icon="brand-instagram" family="post"
                class="reencode" codecSelect="fixed"
@@ -467,6 +553,25 @@
           2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</note>
   </destination>
 
+  <destination id="post.weibo.gif" group="weibo" label="Weibo (animated GIF)" icon="brand-sinaweibo" family="post"
+               class="direct" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://kefu.weibo.com/faqdetail?id=21352 (updated 2024-08-21: at most 1080 px wide, and 原图 must be ticked, or the GIF posts as a still) and id=12483 (updated 2026-04-01: 20 MB per image)" verified="true">
+    <size mode="max" w="1080" h="1080"/>
+    <caps maxBytes="20971520"/>
+    <note>Weibo LOSES the animation rather than converting it: "原始图片需不超过1080宽，超宽会导致动图不动"
+          (the original must be at most 1080 wide, wider makes the animation stop) and the
+          original-quality box (原图) must be ticked or the GIF posts as a static image. So
+          the width ceiling is a real constraint here, and this row caps the long side at
+          1080 px, which is stricter than the published rule but can never lose the
+          animation. 20 MB is the published per-image cap from Weibo's own help centre (the
+          API's 10 MB belongs to the API surface). No frame count, duration, frame rate or
+          transparency statement is published for a GIF, and Weibo's two help pages
+          contradict each other about ticking 原图: one requires it for animation, the other
+          recommends leaving it off to avoid a colour cast.</note>
+  </destination>
+
   <destination id="post.bluesky.video" group="bluesky" label="Bluesky" icon="brand-bluesky" family="post"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
@@ -478,6 +583,26 @@
     <note>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10
           minutes (both raised recently, so most guides are out of date). No pixel cap;
           the aspect ratio travels as metadata.</note>
+  </destination>
+
+  <destination id="post.bluesky.animation" group="bluesky" label="Bluesky (animation)" icon="brand-bluesky" family="post"
+               class="direct" codecSelect="fixed"
+               container="mp4" codec="libx264" pixfmt="yuv420p"
+               alpha="forbidden" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://github.com/bluesky-social/social-app/pull/6433 (animated GIFs are processed as video) and https://github.com/bluesky-social/atproto (app.bsky.embed.video accepts only video/mp4)" verified="true">
+    <size mode="max" w="1920" h="1080"/>
+    <caps maxBytes="314572800" maxDurationSec="600"/>
+    <note>Bluesky keeps the animation by routing it down the VIDEO path: an animated GIF is
+          "processed as video", and the video embed lexicon accepts only video/mp4, so a GIF
+          that arrives at Bluesky becomes an MP4. This row writes the MP4 directly, silent
+          and H.264, which is what the platform serves anyway, and transparency cannot
+          survive it. THE 2 MB IMAGE CAP DOES NOT APPLY HERE: 2,000,000 bytes is the
+          app.bsky.embed.images lexicon limit for a STILL; the video embed allows 300 MB and
+          10 minutes, which is what is used. Note that Bluesky's own documentation
+          contradicts itself about the still-image number (the code on that page enforces
+          2,000,000 while the prose beside it still says 1,000,000). No dimension, frame or
+          frame-rate rule is published, and the 720p/30 fps/5000 kbps figures in circulation
+          come from a user comment, not from documentation.</note>
   </destination>
 
   <destination id="post.mastodon.video" group="mastodon" label="Mastodon" icon="brand-mastodon" family="post"
@@ -506,6 +631,23 @@
     <note>UNVERIFIED: Reddit does not publish a size limit for native video posts. No
           byte cap is applied rather than inventing one. The 15-minute figure comes from
           their 2017 launch post, and comment videos are capped much shorter.</note>
+  </destination>
+
+  <destination id="post.reddit.gif" group="reddit" label="Reddit (animated GIF)" icon="brand-reddit" family="post"
+               class="reencode" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="forbidden" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://cdn.jsdelivr.net/npm/@devvit/reddit@0.13.9/models/Post.d.ts (isGif / videogif) and https://support.reddithelp.com/hc/en-us/articles/10516331142932 (comment images)" verified="false">
+    <size mode="free"/>
+    <note>UNVERIFIED (no organic numbers published): Reddit documents no byte cap for an
+          image or GIF post. What IS visible is that a GIF post is stored and served as a
+          Reddit VIDEO (Reddit's own Devvit model carries a media kind "videogif" and a
+          RedditVideo.isGif flag), so animation survives but transparency does not, which is
+          why alpha is forbidden here. The widely quoted "20 MB image / 100 MB GIF" figures
+          come from third parties, and the Reddit numbers that are published belong to other
+          surfaces (comment images at most 240 px, comment video under 1 GB and 3 minutes,
+          and advertising specs that reject animated GIF outright). No frame, duration or
+          frame-rate rule is published for an animated image.</note>
   </destination>
 
   <destination id="wechat.sticker" group="wechat" label="WeChat sticker (微信表情)"
@@ -608,6 +750,23 @@
           with AAC.</note>
   </destination>
 
+  <destination id="post.facebook.gif" group="facebook" label="Facebook (animated GIF)" icon="brand-facebook" family="post"
+               class="reencode" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://www.facebook.com/help/167931376599294 (photo formats) and https://www.facebook.com/business/help/1006874066021923 (ads: a GIF plays as video)" verified="false">
+    <size mode="free"/>
+    <caps maxBytes="15728640"/>
+    <note>UNVERIFIED (advisory, not a published hard cap): Facebook lists GIF among the
+          photo formats it recommends uploading ("JPEG, BMP, PNG, GIF or TIFF") and
+          recommends keeping photos under 15 MB, which is the number used here. No organic
+          byte cap, dimension rule, frame count, duration or frame rate is published for an
+          animated image; the only transcode statement Facebook makes is in the ADS
+          documentation (a GIF there "plays in the same way as all video files"), and the
+          numbers that circulate for GIF (4 GB, "as video") belong to that advertising
+          surface rather than to a photo post.</note>
+  </destination>
+
   <destination id="post.facebook.reels" group="facebook" label="Facebook Reels"
                icon="brand-facebook" family="post"
                class="reencode" codecSelect="fixed"
@@ -635,6 +794,24 @@
           720p H.264. Photos are a separate destination: a static image gets 20 MB, but an
           animated GIF is served only up to about 5 MB and above that is reduced to its
           first frame.</note>
+  </destination>
+
+  <destination id="post.tumblr.gif" group="tumblr" label="Tumblr (animated GIF)" icon="brand-tumblr" family="post"
+               class="reencode" codecSelect="fixed"
+               container="gif" codec="gif" pixfmt="pal8"
+               alpha="choice" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://help.tumblr.com/knowledge-base/adding-creating-gifs/ and https://engineering.tumblr.com/post/690135035533230080/making-gifs-load-faster (2022-07-18)" verified="true">
+    <size mode="max" w="540" h="540"/>
+    <caps maxBytes="5242880" minScalePct="25"/>
+    <note>Tumblr transcodes EVERY uploaded GIF ("we do convert all uploaded GIFs to the GIFV
+          format", typically animated WebP, and on the web sometimes MP4), so the file it
+          serves is not the file you send. It publishes three size numbers in one section
+          (keep GIFs to 10 MB, a compressed GIF no larger than 5 MB, and "we will do our
+          best to compress" between them) plus the consequence that matters: above 5 MB
+          Tumblr may serve ONLY THE FIRST FRAME, so 5 MB is the cap used here and the file
+          is fitted to it. 540 px wide is Tumblr's own recommendation. Frames are not
+          counted ("we only count bytes and seconds"), no duration cap exists for a GIF, and
+          transparency is documented only as a conversion criterion, not as a promise.</note>
   </destination>
 
   <destination id="post.pinterest.video" group="pinterest" label="Pinterest (video Pin)"

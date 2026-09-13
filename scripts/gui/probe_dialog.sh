@@ -95,17 +95,26 @@ assert_showing /tmp/dlg_form.txt "Export" "the form can be answered"
 assert_showing /tmp/dlg_form.txt "Cancel" "and abandoned"
 # The stated facts, which are the destination's data arriving through the plan and not
 # this probe's idea of a default.
-for pair in "512 x 512:the destination own size rule (maxExactSide 512)" \
-            "256 KB:its upload cap" \
-            "Limits:the limits line, where a cap is stated as a cap"; do
+for pair in "256 KB:its upload cap" \
+            "Limits:the limits line, where a cap is stated as a cap" \
+            "libvpx-vp9:the codec it resolved" \
+            "webm:and the container it resolved"; do
     needle=${pair%%:*}
     what=${pair#*:}
     if grep -qF "$needle" /tmp/dlg_text.txt; then
         check 0 "the facts state $what"
     else
-        check 1 "the facts state $what (no '$needle' in: $(tr '\n' '|' < /tmp/dlg_text.txt | head -c 200))"
+        check 1 "the facts state $what (no '$needle' in: $(grep -E 'x [0-9]+,|Limits|Codec' /tmp/dlg_text.txt | tr '\n' '|' | head -c 200))"
     fi
 done
+# The destination own size rule is maxExactSide 512, so 512 is the LONG side of the
+# stated size - which side that is depends on the project's aspect, so what is asserted
+# is the number the destination declares rather than a pair this probe worked out.
+if grep -qE "(512 x [0-9]+|[0-9]+ x 512)" /tmp/dlg_text.txt; then
+    check 0 "the facts state the size rule the destination declares (512 on the long side: $(grep -E '(512 x [0-9]+|[0-9]+ x 512)' /tmp/dlg_text.txt | head -1))"
+else
+    check 1 "the facts state the size rule the destination declares (got: $(grep -E 'x [0-9]+,' /tmp/dlg_text.txt | head -1))"
+fi
 # NOT A TAB WIDGET, in two independent ways:
 #   * the old tab title is absent, and
 #   * both section headings are on screen at the same time - a tab widget shows one

@@ -24,7 +24,8 @@ source "$SCRIPT_DIR/_lib.sh" "$@"
 # AE_FLOW_REVISION in _lib.sh: the guard refuses to run a probe that predates it.
 export RECORDED_AGAINST=2
 
-rm -f /tmp/ax_sticker.txt /tmp/ax_sticker_facts.txt /tmp/ax_manual.txt /tmp/ax_manual_facts.txt
+rm -f /tmp/ax_sticker.txt /tmp/ax_sticker_facts.txt /tmp/ax_manual.txt \
+      /tmp/ax_manual_facts.txt /tmp/ax_manual_format.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   '"$APP"' "'"$PROJ"'" >/tmp/probe_app.log 2>&1 &
@@ -65,6 +66,10 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   ae wait "Format" >/dev/null 2>&1 || true
   sleep 2
   ae text > /tmp/ax_manual_facts.txt 2>/dev/null
+  # What the Format row says the artifact is, so the facts can be read against
+  # the control rather than against a container this probe recorded: the form
+  # hands back the container it was carrying when the destination went away.
+  ae value "Format" > /tmp/ax_manual_format.txt 2>/dev/null
   ae_report /tmp/ax_manual.txt "Destination" "Format" "Codec" "Quality" "Width" "Height"
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/ax_02_manual.png
@@ -91,15 +96,20 @@ fi
 # beside a stated "VP9 in webm" is two answers to one question.
 assert_hidden /tmp/ax_sticker.txt "Format" "the destination dictates the format, so there is no Format control"
 assert_hidden /tmp/ax_sticker.txt "Codec" "and no Codec control either"
+# Dictating the artifact is not a reason to lose the disclosure: what the
+# destination merely DEFAULTS (its own audio pre-set, the codec s quality value)
+# has to stay reachable, or the export cannot be finished.
+assert_showing /tmp/ax_sticker.txt "Advanced" "and what it only defaults stays reachable under Advanced"
 assert_rendered "$SHOTS/ax_01_sticker.png" "the form for a destination with every axis dictated"
 
 # ---- and the escape hatch hands the artifact back to the user ----------------
 assert_showing /tmp/ax_manual.txt "Format" "the escape hatch offers the Format row"
 assert_showing /tmp/ax_manual.txt "Codec" "and the Codec row beside it"
-if grep -q "Codec: H.264 in MP4" /tmp/ax_manual_facts.txt; then
-    check 0 "and the facts name the codec the user has chosen there"
+manualFormat=$(tr -d '\n' < /tmp/ax_manual_format.txt 2>/dev/null)
+if [ -n "$manualFormat" ] && grep -qF "in $manualFormat" /tmp/ax_manual_facts.txt; then
+    check 0 "and the facts name the container the Format row states ($manualFormat)"
 else
-    check 1 "and the facts name the codec the user has chosen there (got: $(grep -i codec /tmp/ax_manual_facts.txt | tr '\n' ' ' | head -c 200))"
+    check 1 "and the facts name the container the Format row states (row said '$manualFormat', facts said: $(grep -i codec /tmp/ax_manual_facts.txt 2>/dev/null | tr '\n' ' ' | head -c 200))"
 fi
 assert_rendered "$SHOTS/ax_02_manual.png" "the same form in manual mode"
 

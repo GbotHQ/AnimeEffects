@@ -634,396 +634,496 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="72"/>
-        <source>2 GB per file, 4 GB with Premium; Telegram re-encodes into renditions. Note this is the USER limit: the Bot API&apos;s 50 MB is for bots uploading, not for you sending a file. Telegram also converts a real GIF to MP4 on its servers, so transparency never survives here.</source>
+        <source>WhatsApp (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="73"/>
-        <source>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord&apos;s older help pages still say 10 MB. On mobile the size is now measured BEFORE compression, so a video that used to fit may not.</source>
+        <source>UNVERIFIED (WhatsApp publishes no organic cap for an animated image): GIFs are a documented chat surface, but WhatsApp publishes no byte cap, format list, dimension rule, frame count or duration for an image sent in a chat, and no statement about whether it transcodes one. The numbers that could be borrowed are all for other surfaces and are NOT applied here: 2 GB for a DOCUMENT, 100 MB or 64 MB for a VIDEO (fast and slow connections), 90 seconds for a status video, and the Cloud API&apos;s 5 MB image with a 500 KB animated sticker. No cap is applied, and the fit loop therefore has nothing to enforce.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="74"/>
-        <source>Discord (animated image)</source>
+        <source>2 GB per file, 4 GB with Premium; Telegram re-encodes into renditions. Note this is the USER limit: the Bot API&apos;s 50 MB is for bots uploading, not for you sending a file. Telegram also converts a real GIF to MP4 on its servers, so transparency never survives here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="75"/>
-        <source>An animated image, not a video: WebP is the format Discord&apos;s own pipeline produces for animation (they have served and accepted animated WebP since the 2024 mobile release 252), and a GIF upload is transcoded to WebP for display, so this goes out animated either way. Alpha survives here, which GIF&apos;s palette cannot carry. The English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is used, and it is also the size above which Discord stops animating inline and offers the file as a download instead. One frame in the export gives a still WebP, so this row carries a still illustration as well as an animation. Transparency is on by default (WebP keeps it, GIF&apos;s palette cannot) and can be turned off.</source>
+        <source>Telegram (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="76"/>
-        <source>Signal re-encodes client-side to 720p at roughly 2 Mbps and targets about 50 MB of output. The server flag is 100 MiB and remote-configurable, so 50 MB is the number to stay under. Sending as a File skips the transcode.</source>
+        <source>Telegram CONVERTS an uploaded GIF itself: &quot;GIFs are actually MPEG4 (h264) videos without sound; if the user tries to upload an actual GIF file, it will be automatically converted to an MPEG4 file by the server&quot;. So this destination writes the file Telegram would have made anyway, without the round trip through a GIF palette: silent H.264 in MP4, and transparency CANNOT survive (the conversion is lossy and H.264 4:2:0 carries no alpha). Animated WebP is not accepted as a sticker (&quot;Animated .WEBP is NOT currently supported&quot;); a chat file may be up to 2 GB (4 GB with Premium), which is the cloud-file limit rather than a GIF limit. No frame count, duration or frame rate is published for a chat animation.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="77"/>
-        <source>UNVERIFIED: 25 MB is the published DEVELOPER API limit. Meta does not publish the consumer chat limit anywhere, so this is the closest sourced number, not the app&apos;s own. 75 seconds appears in the docs as a fetch timeout, NOT a duration limit.</source>
+        <source>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord&apos;s older help pages still say 10 MB. On mobile the size is now measured BEFORE compression, so a video that used to fit may not.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="78"/>
-        <source>KakaoTalk (카카오톡)</source>
+        <source>Discord (animated image)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="79"/>
-        <source>UNVERIFIED for mobile: 300 MB is the PC desktop file-send limit. Kakao does not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</source>
+        <source>An animated image, not a video: WebP is the format Discord&apos;s own pipeline produces for animation (they have served and accepted animated WebP since the 2024 mobile release 252), and a GIF upload is transcoded to WebP for display, so this goes out animated either way. Alpha survives here, which GIF&apos;s palette cannot carry. The English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is used, and it is also the size above which Discord stops animating inline and offers the file as a download instead. One frame in the export gives a still WebP, so this row carries a still illustration as well as an animation. Transparency is on by default (WebP keeps it, GIF&apos;s palette cannot) and can be turned off.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="80"/>
-        <source>WeChat (微信)</source>
+        <source>Signal re-encodes client-side to 720p at roughly 2 Mbps and targets about 50 MB of output. The server flag is 100 MiB and remote-configurable, so 50 MB is the number to stay under. Sending as a File skips the transcode.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="81"/>
-        <source>UNVERIFIED: Tencent publishes no size or duration limit for video sent in a personal chat, and no codec list. MP4/H.264 at 720p is the safe choice. The official-account route IS documented (10 MB per upload, 2 GB chunked) and is a different thing entirely.</source>
+        <source>Signal (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="82"/>
-        <source>UNVERIFIED for the consumer app: 30 MB soft (silently becomes a FILE instead of an inline video) and 200 MB hard are BOT API numbers. Consumer chat limits are not published.</source>
+        <source>UNVERIFIED (Signal publishes nothing usable here): a GIF is a first-class attachment (&quot;image, gif, video, voice message, or audio file&quot;), but Signal has no help page stating an attachment byte cap, a format list, a dimension rule, a frame count or a transcode rule for one. The only numbers that exist are in source code and issue threads rather than documentation: a GIF threshold of min(25 MB, the attachment limit) and a maintainer note that sending is still capped at 100 MB. 25 MB is used here as the code-level threshold, and every other fact is left unstated rather than invented. Note that Signal&apos;s STICKER page says &quot;Please do not upload GIFs&quot; - that is the sticker surface (APNG, 300 KB), a different thing from an attachment, and reading it as &quot;Signal rejects GIFs&quot; is a documented trap.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="83"/>
-        <source>VK (ВКонтакте)</source>
+        <source>UNVERIFIED: 25 MB is the published DEVELOPER API limit. Meta does not publish the consumer chat limit anywhere, so this is the closest sourced number, not the app&apos;s own. 75 seconds appears in the docs as a fetch timeout, NOT a duration limit.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="84"/>
-        <source>No cap worth encoding: 256 GB, up to 4K, and VK re-encodes. MP4/H.264 at 1280x720 or above, and they recommend 16:9.</source>
+        <source>Messenger (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="85"/>
-        <source>X (Twitter)</source>
+        <source>UNVERIFIED (the consumer chat publishes no cap): Messenger offers a &quot;Send GIF&quot; action with no published formats, and Meta&apos;s API documentation says animated GIFs &quot;are playable in the conversation&quot;, but the consumer chat states no byte cap, dimension rule, frame count or transcode behaviour. The API numbers that exist (25 MB per asset, 8 MB for an image uploaded by URL) are labelled as API values and are not applied here, because Meta does not say they bind the in-app picker. The API template also lists only image and video as media types with no GIF value, which is a contradiction Meta leaves unresolved.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="86"/>
-        <source>A post accepts up to 8 GB and 20 minutes (16 GB / 125 minutes with Premium). The &quot;140 seconds / 512 MB&quot; figure repeated all over the web is X&apos;s DIRECT MESSAGE limit, not a post, and is 50x too small here. H.264 High, AAC-LC, yuv420p, closed GOP.</source>
+        <source>KakaoTalk (카카오톡)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="87"/>
-        <source>Instagram Reels</source>
+        <source>UNVERIFIED for mobile: 300 MB is the PC desktop file-send limit. Kakao does not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="88"/>
-        <source>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a closed GOP. The moov atom must be at the FRONT of the file with no edit lists, which is what the faststart muxer option below does: without it the upload is rejected.</source>
+        <source>WeChat (微信)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="89"/>
-        <source>4 GB, up to 10 minutes on some routes and 3 on others. 1080x1920 (9:16). GIF files are NOT accepted. WebM/MOV are accepted alongside MP4.</source>
+        <source>UNVERIFIED: Tencent publishes no size or duration limit for video sent in a personal chat, and no codec list. MP4/H.264 at 720p is the safe choice. The official-account route IS documented (10 MB per upload, 2 GB chunked) and is a different thing entirely.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="90"/>
-        <source>Bilibili (哔哩哔哩)</source>
+        <source>UNVERIFIED for the consumer app: 30 MB soft (silently becomes a FILE instead of an inline video) and 200 MB hard are BOT API numbers. Consumer chat limits are not published.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="91"/>
-        <source>UNVERIFIED (conflicting sources): Bilibili&apos;s help centre says 16 GB (64 GB at higher web levels), their own open-platform API documentation says 4 GB, and the page could not be re-fetched to settle it. 4 GB is used here as the floor that both agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</source>
+        <source>VK (ВКонтакте)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="92"/>
-        <source>Weibo (微博)</source>
+        <source>No cap worth encoding: 256 GB, up to 4K, and VK re-encodes. MP4/H.264 at 1280x720 or above, and they recommend 16:9.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="93"/>
-        <source>15 GB from the desktop web, 4 GB from mobile. There is a MINIMUM of 3 seconds and no published maximum duration. 720p or better for the video section; 2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</source>
+        <source>X (Twitter)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="94"/>
-        <source>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10 minutes (both raised recently, so most guides are out of date). No pixel cap; the aspect ratio travels as metadata.</source>
+        <source>A post accepts up to 8 GB and 20 minutes (16 GB / 125 minutes with Premium). The &quot;140 seconds / 512 MB&quot; figure repeated all over the web is X&apos;s DIRECT MESSAGE limit, not a post, and is 50x too small here. H.264 High, AAC-LC, yuv420p, closed GOP.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="95"/>
-        <source>99 MB for video and 16 MB for images are UPSTREAM DEFAULTS; every instance sets its own, and instances drift from upstream (mastodon.social reports double the upstream pixel limit). The authoritative answer is the server&apos;s own /api/v2/instance configuration. GIFs are converted to silent MP4, so transparency does not survive.</source>
+        <source>X (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="96"/>
-        <source>UNVERIFIED: Reddit does not publish a size limit for native video posts. No byte cap is applied rather than inventing one. The 15-minute figure comes from their 2017 launch post, and comment videos are capped much shorter.</source>
+        <source>X accepts JPG, PNG, GIF and WEBP, and an animated GIF is its own media category (tweet_gif). The caps here come from X&apos;s API documentation, NOT from its help pages: 15 MB per animated GIF, resolution at most 1280x1080, at most 350 frames and at most 300 million pixels in total (width x height x frames). X&apos;s own API page adds that a GIF &quot;may fail during Post creation even if it is within the file size limit&quot;, so treat 15 MB as soft. The figure repeated across the web (5 MB mobile, 15 MB web) appears on no X-owned page, and X publishes nothing about transparency, looping, frame rate or duration for GIFs.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="97"/>
-        <source>WeChat sticker (微信表情)</source>
+        <source>Instagram Reels</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="98"/>
-        <source>Animated stickers are GIF only, exactly 240x240, 500 KB, and must loop. Art that exceeds the spec is compressed AND CROPPED by WeChat rather than rejected, so an oversized export comes back with its edges cut off. Sticker sets are 8 to 24 images.</source>
+        <source>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a closed GOP. The moov atom must be at the FRONT of the file with no edit lists, which is what the faststart muxer option below does: without it the upload is rejected.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="99"/>
-        <source>KakaoTalk sticker (카카오톡 스티커)</source>
+        <source>4 GB, up to 10 minutes on some routes and 3 on others. 1080x1920 (9:16). GIF files are NOT accepted. WebM/MOV are accepted alongside MP4.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="100"/>
-        <source>Animated WebP, 360x360 (180x180 for mini, 540x540 for big), 650 KB, 24 frames maximum and four loops. Kakao publishes its own WebP animator, which is a useful sign of exactly which encoder behaviour they expect.</source>
+        <source>Bilibili (哔哩哔哩)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="101"/>
-        <source>QQ sticker</source>
+        <source>UNVERIFIED (conflicting sources): Bilibili&apos;s help centre says 16 GB (64 GB at higher web levels), their own open-platform API documentation says 4 GB, and the page could not be re-fetched to settle it. 4 GB is used here as the floor that both agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="102"/>
-        <source>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned specification that exists anywhere. yuanchuang.qq.com no longer resolves and archive.org holds no capture after October 2018, so the values below are what Tencent said eight years ago and nothing current confirms them. 16 GIFs at exactly 300x300, each 300 KB or less (&quot;表情大小：≤300kb/个&quot;, raised from 90 KB in 2016), on a transparent background (&quot;文件均为无色透明底&quot;). A white stroke is required but 3 px is only PREFERRED (&quot;以3像素的白色描边为佳&quot;), not an exact value. The same page contradicts itself about the 300x300 PNG thumbnail: its table says 200 KB and its body text says 20 KB, so no thumbnail cap is applied. Nothing is published about frame count, duration, frame rate, or re-encoding.</source>
+        <source>Weibo (微博)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="103"/>
-        <source>Nico Nico Douga (ニコニコ動画)</source>
+        <source>15 GB from the desktop web, 4 GB from mobile. There is a MINIMUM of 3 seconds and no published maximum duration. 720p or better for the video section; 2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="104"/>
-        <source>6 GB or 6 hours, whichever comes first; raised from 3 GB on 2024-10-29, so older guides are a revision behind. Up to 4096x2160 (or 2160x4096 vertical) and 60 fps. Their own page caps the vertical Short surface at 180 seconds, which is a different destination with the same name.</source>
+        <source>Weibo (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="105"/>
-        <source>Douyin (抖音)</source>
+        <source>Weibo LOSES the animation rather than converting it: &quot;原始图片需不超过1080宽，超宽会导致动图不动&quot; (the original must be at most 1080 wide, wider makes the animation stop) and the original-quality box (原图) must be ticked or the GIF posts as a static image. So the width ceiling is a real constraint here, and this row caps the long side at 1080 px, which is stricter than the published rule but can never lose the animation. 20 MB is the published per-image cap from Weibo&apos;s own help centre (the API&apos;s 10 MB belongs to the API surface). No frame count, duration, frame rate or transparency statement is published for a GIF, and Weibo&apos;s two help pages contradict each other about ticking 原图: one requires it for animation, the other recommends leaving it off to avoid a colour cast.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="106"/>
-        <source>UNVERIFIED (conflicting): ByteDance contradicts itself. The current upload endpoint says 4 GB total with chunked upload mandatory above 300 MB, while a 2024-04-09 chunked-upload page says 128 MB and 15 minutes, and the Android share SDK says 60 minutes. The widely quoted 500 MB could not be found on any ByteDance page. Short side under 2160, long side under 4096, 720p or above.</source>
+        <source>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10 minutes (both raised recently, so most guides are out of date). No pixel cap; the aspect ratio travels as metadata.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="107"/>
-        <source>Facebook (video)</source>
+        <source>Bluesky (animation)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="108"/>
-        <source>UNVERIFIED (partial): Meta publishes NO byte or duration cap for organic video. The 4 GB and 240-minute figures that circulate are the ADVERTISING spec. Since September 2025 every video posted to Facebook is shared as a reel, so this and the reels destination differ only in the length the API enforces. Recommended: maximum width 4000 px with dimensions divisible by 16, 30 fps or lower, H.264 with AAC.</source>
+        <source>Bluesky keeps the animation by routing it down the VIDEO path: an animated GIF is &quot;processed as video&quot;, and the video embed lexicon accepts only video/mp4, so a GIF that arrives at Bluesky becomes an MP4. This row writes the MP4 directly, silent and H.264, which is what the platform serves anyway, and transparency cannot survive it. THE 2 MB IMAGE CAP DOES NOT APPLY HERE: 2,000,000 bytes is the app.bsky.embed.images lexicon limit for a STILL; the video embed allows 300 MB and 10 minutes, which is what is used. Note that Bluesky&apos;s own documentation contradicts itself about the still-image number (the code on that page enforces 2,000,000 while the prose beside it still says 1,000,000). No dimension, frame or frame-rate rule is published, and the 720p/30 fps/5000 kbps figures in circulation come from a user comment, not from documentation.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="109"/>
-        <source>Facebook Reels</source>
+        <source>99 MB for video and 16 MB for images are UPSTREAM DEFAULTS; every instance sets its own, and instances drift from upstream (mastodon.social reports double the upstream pixel limit). The authoritative answer is the server&apos;s own /api/v2/instance configuration. GIFs are converted to silent MP4, so transparency does not survive.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="110"/>
-        <source>UNVERIFIED (conflicting): Meta Business Help says reels can be any length; the Reels Publishing API enforces 3 to 90 seconds and rejects anything else. 90 s is used here because it is the number that is enforced. 1080x1920 recommended, 540x960 minimum, 24 to 60 fps, no published byte cap.</source>
+        <source>UNVERIFIED: Reddit does not publish a size limit for native video posts. No byte cap is applied rather than inventing one. The 15-minute figure comes from their 2017 launch post, and comment videos are capped much shorter.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="111"/>
-        <source>500 MB and 10 minutes, and 20 posts a day. MOV or MP4; Tumblr transcodes toward 720p H.264. Photos are a separate destination: a static image gets 20 MB, but an animated GIF is served only up to about 5 MB and above that is reduced to its first frame.</source>
+        <source>Reddit (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="112"/>
-        <source>Pinterest (video Pin)</source>
+        <source>UNVERIFIED (no organic numbers published): Reddit documents no byte cap for an image or GIF post. What IS visible is that a GIF post is stored and served as a Reddit VIDEO (Reddit&apos;s own Devvit model carries a media kind &quot;videogif&quot; and a RedditVideo.isGif flag), so animation survives but transparency does not, which is why alpha is forbidden here. The widely quoted &quot;20 MB image / 100 MB GIF&quot; figures come from third parties, and the Reddit numbers that are published belong to other surfaces (comment images at most 240 px, comment video under 1 GB and 3 minutes, and advertising specs that reject animated GIF outright). No frame, duration or frame-rate rule is published for an animated image.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="113"/>
-        <source>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the &quot;2 GB / 15 minutes&quot; figure belongs to the ADVERTISING spec, which is a different surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or H.265, 9:16 recommended.</source>
+        <source>WeChat sticker (微信表情)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="114"/>
-        <source>Snapchat Spotlight</source>
+        <source>Animated stickers are GIF only, exactly 240x240, 500 KB, and must loop. Art that exceeds the spec is compressed AND CROPPED by WeChat rather than rejected, so an oversized export comes back with its edges cut off. Sticker sets are 8 to 24 images.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="115"/>
-        <source>UNVERIFIED (partial): Snapchat publishes a minimum of 5 seconds and a vertical requirement, and nothing else: no byte cap, no maximum duration, no accepted format list and no pixel specification. Still images are excluded. The &quot;1 GB / 3 to 30 minutes&quot; figure is the ADS spec. Vertical with sound; a landscape export will not be shown in Spotlight, and no size rule here can force that, so the file is exported as composed.</source>
+        <source>KakaoTalk sticker (카카오톡 스티커)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="116"/>
-        <source>4 GB (64 GB on the top tier) and 2 hours. Up to 3840x2160 or 2160x3840, 24 to 60 fps. MOV, MP4, AVI, WMV, MKV and FLV are all accepted; MP4/H.264 is the practical target.</source>
+        <source>Animated WebP, 360x360 (180x180 for mini, 540x540 for big), 650 KB, 24 frames maximum and four loops. Kakao publishes its own WebP animator, which is a useful sign of exactly which encoder behaviour they expect.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="117"/>
-        <source>UNVERIFIED (conflicting): Vimeo&apos;s advice to keep files under 200 GB, a plan note about 250 GB per video for legacy subscribers and an uploader page claiming no size limit cannot all be true; 200 GB is used as a soft ceiling. 24 hours is a hard refusal at upload. Vimeo states plainly that it has no alpha channel support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</source>
+        <source>QQ sticker</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="118"/>
-        <source>DeviantArt (video, Core members)</source>
+        <source>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned specification that exists anywhere. yuanchuang.qq.com no longer resolves and archive.org holds no capture after October 2018, so the values below are what Tencent said eight years ago and nothing current confirms them. 16 GIFs at exactly 300x300, each 300 KB or less (&quot;表情大小：≤300kb/个&quot;, raised from 90 KB in 2016), on a transparent background (&quot;文件均为无色透明底&quot;). A white stroke is required but 3 px is only PREFERRED (&quot;以3像素的白色描边为佳&quot;), not an exact value. The same page contradicts itself about the 300x300 PNG thumbnail: its table says 200 KB and its body text says 20 KB, so no thumbnail cap is applied. Nothing is published about frame count, duration, frame rate, or re-encoding.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="119"/>
-        <source>1 GB and 10 to 12 minutes, and video submission is a Core membership feature. 1920x1080 recommended; the first frame becomes the preview, so it should not be a blank or transitional frame. An animated GIF is NOT a video here: DeviantArt counts it as an image and gives it the much larger image cap.</source>
+        <source>Nico Nico Douga (ニコニコ動画)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="120"/>
-        <source>Newgrounds (animation)</source>
+        <source>6 GB or 6 hours, whichever comes first; raised from 3 GB on 2024-10-29, so older guides are a revision behind. Up to 4096x2160 (or 2160x4096 vertical) and 60 fps. Their own page caps the vertical Short surface at 180 seconds, which is a different destination with the same name.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="121"/>
-        <source>UNVERIFIED (partial): Newgrounds publishes NO byte or duration cap. Their own wiki says the limit is shown on the signed-in upload form and can be raised on request, so it is per-account; the 100 MB and 6.3 GB figures in circulation come from a member forum post, not from Newgrounds. MP4/MOV/WMV and SWF are accepted, at 3840x2160, 1920x1080, 1280x720 or 640x380, around 10 to 20 Mbps at 1080p. Loop is an upload option for MP4 here, unlike everywhere else.</source>
+        <source>Douyin (抖音)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="122"/>
-        <source>pixiv (illustration)</source>
+        <source>UNVERIFIED (conflicting): ByteDance contradicts itself. The current upload endpoint says 4 GB total with chunked upload mandatory above 300 MB, while a 2024-04-09 chunked-upload page says 128 MB and 15 minutes, and the Android share SDK says 60 minutes. The widely quoted 500 MB could not be found on any ByteDance page. Short side under 2160, long side under 4096, 720p or above.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="123"/>
-        <source>32 MB per image, 200 MB per post, JPG or PNG. No pixel cap is published. The 8 MB and 10 MB figures still quoted in guides are obsolete: pixiv raised the per-image limit to 32 MB. A post mixing formats is converted to JPG, so pick one format per post; PNG is the one that keeps transparency.</source>
+        <source>Facebook (video)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="124"/>
-        <source>pixiv (ugoira animation)</source>
+        <source>UNVERIFIED (partial): Meta publishes NO byte or duration cap for organic video. The 4 GB and 240-minute figures that circulate are the ADVERTISING spec. Since September 2025 every video posted to Facebook is shared as a reel, so this and the reels destination differ only in the length the API enforces. Recommended: maximum width 4000 px with dimensions divisible by 16, 30 fps or lower, H.264 with AAC.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="125"/>
-        <source>ugoira is a folder of numbered stills, not a video: up to 150 frames, 30 MB in total, 8 MB per frame, and every frame must share one format AND one canvas size. PNG or JPEG only, and pixiv rejects APNG and WebP outright. Frame TIMING is authored on the upload page, so no fps applies here. The alternative route is one animated GIF (16 MB, 500 frames), which costs you the palette. Desktop site only.</source>
+        <source>Facebook (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="126"/>
-        <source>Nico Nico Seiga (ニコニコ静画)</source>
+        <source>UNVERIFIED (advisory, not a published hard cap): Facebook lists GIF among the photo formats it recommends uploading (&quot;JPEG, BMP, PNG, GIF or TIFF&quot;) and recommends keeping photos under 15 MB, which is the number used here. No organic byte cap, dimension rule, frame count, duration or frame rate is published for an animated image; the only transcode statement Facebook makes is in the ADS documentation (a GIF there &quot;plays in the same way as all video files&quot;), and the numbers that circulate for GIF (4 GB, &quot;as video&quot;) belong to that advertising surface rather than to a photo post.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="127"/>
-        <source>UNVERIFIED (partial): 10 MB per image, PNG or JPEG or GIF, no pixel cap published. Whether a posted illustration is re-encoded, whether PNG alpha survives, and whether an animated GIF animates on Seiga are all undocumented, so transparency is exported but not promised. Seiga is the still-image half of Nico Nico; videos go to Nico Nico Douga.</source>
+        <source>Facebook Reels</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="128"/>
-        <source>Instagram (photo)</source>
+        <source>UNVERIFIED (conflicting): Meta Business Help says reels can be any length; the Reels Publishing API enforces 3 to 90 seconds and rejects anything else. 90 s is used here because it is the number that is enforced. 1080x1920 recommended, 540x960 minimum, 24 to 60 fps, no published byte cap.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="129"/>
-        <source>8 MB, JPEG ONLY, width between 320 and 1440 px, and an aspect ratio from 4:5 to 1.91:1. Transparency cannot survive a JPEG: a transparent background is written as solid black, so flatten the art first. Reels are a separate destination and do take video.</source>
+        <source>500 MB and 10 minutes, and 20 posts a day. MOV or MP4; Tumblr transcodes toward 720p H.264. Photos are a separate destination: a static image gets 20 MB, but an animated GIF is served only up to about 5 MB and above that is reduced to its first frame.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="130"/>
-        <source>Facebook (photo)</source>
+        <source>Tumblr (animated GIF)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="131"/>
-        <source>UNVERIFIED (conflicting): Meta&apos;s Graph API says a photo must be under 10 MB and that animated photos are not supported, while their help centre recommends below 15 MB and lists GIF as a photo format. The stricter API figure is used. PNG is accepted but Meta warns that a PNG above 1 MB may be shown pixelated, because it is re-compressed.</source>
+        <source>Tumblr transcodes EVERY uploaded GIF (&quot;we do convert all uploaded GIFs to the GIFV format&quot;, typically animated WebP, and on the web sometimes MP4), so the file it serves is not the file you send. It publishes three size numbers in one section (keep GIFs to 10 MB, a compressed GIF no larger than 5 MB, and &quot;we will do our best to compress&quot; between them) plus the consequence that matters: above 5 MB Tumblr may serve ONLY THE FIRST FRAME, so 5 MB is the cap used here and the file is fitted to it. 540 px wide is Tumblr&apos;s own recommendation. Frames are not counted (&quot;we only count bytes and seconds&quot;), no duration cap exists for a GIF, and transparency is documented only as a conversion criterion, not as a promise.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="132"/>
-        <source>Tumblr (photo)</source>
+        <source>Pinterest (video Pin)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="133"/>
-        <source>20 MB for a static image. 540x810 is the recommended size and 2048x3072 is the largest view served. ANIMATION IS A DIFFERENT LIMIT: a GIF is only served up to about 5 MB, and above that Tumblr shows its first frame instead of animating, so a long animation should go out as a video.</source>
+        <source>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the &quot;2 GB / 15 minutes&quot; figure belongs to the ADVERTISING spec, which is a different surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or H.265, 9:16 recommended.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="134"/>
-        <source>Pinterest (image Pin)</source>
+        <source>Snapchat Spotlight</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="135"/>
-        <source>20 MB on the web. PNG, JPEG, BMP, TIFF or WEBP; GIF is not accepted as an organic Pin, so animation belongs on a video Pin. 2:3 is the recommended shape (1000x1500) and 9:16 also works; keep the art out of the bottom safe zone, where the interface covers it.</source>
+        <source>UNVERIFIED (partial): Snapchat publishes a minimum of 5 seconds and a vertical requirement, and nothing else: no byte cap, no maximum duration, no accepted format list and no pixel specification. Still images are excluded. The &quot;1 GB / 3 to 30 minutes&quot; figure is the ADS spec. Vertical with sound; a landscape export will not be shown in Spotlight, and no size rule here can force that, so the file is exported as composed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="136"/>
-        <source>DeviantArt (image)</source>
+        <source>4 GB (64 GB on the top tier) and 2 hours. Up to 3840x2160 or 2160x3840, 24 to 60 fps. MOV, MP4, AVI, WMV, MKV and FLV are all accepted; MP4/H.264 is the practical target.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="137"/>
-        <source>UNVERIFIED (conflicting): one DeviantArt help page says images are capped at 80 MB and another says 95 MB; 80 MB is used so a file that passes here passes both. JPEG, PNG or GIF, no pixel cap. An animated GIF counts as an IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</source>
+        <source>UNVERIFIED (conflicting): Vimeo&apos;s advice to keep files under 200 GB, a plan note about 250 GB per video for legacy subscribers and an uploader page claiming no size limit cannot all be true; 200 GB is used as a soft ceiling. 24 hours is a hard refusal at upload. Vimeo states plainly that it has no alpha channel support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="138"/>
-        <source>DeviantArt (animation)</source>
+        <source>DeviantArt (video, Core members)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="139"/>
-        <source>UNVERIFIED (conflicting): see the image row: 80 MB versus 95 MB on two official pages, and an animated GIF is submitted as an image rather than a video, so it gets that cap instead of the 1 GB video one. GIF means a 256-colour palette, which is a real cost for gradients but nothing else here animates on a free account.</source>
+        <source>1 GB and 10 to 12 minutes, and video submission is a Core membership feature. 1920x1080 recommended; the first frame becomes the preview, so it should not be a blank or transitional frame. An animated GIF is NOT a video here: DeviantArt counts it as an image and gives it the much larger image cap.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="140"/>
-        <source>Stream overlay (OBS)</source>
+        <source>Newgrounds (animation)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="141"/>
-        <source>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</source>
+        <source>UNVERIFIED (partial): Newgrounds publishes NO byte or duration cap. Their own wiki says the limit is shown on the signed-in upload form and can be raised on request, so it is per-account; the 100 MB and 6.3 GB figures in circulation come from a member forum post, not from Newgrounds. MP4/MOV/WMV and SWF are accepted, at 3840x2160, 1920x1080, 1280x720 or 640x380, around 10 to 20 Mbps at 1080p. Loop is an upload option for MP4 here, unlike everywhere else.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="142"/>
-        <source>Transparent video (Safari / iOS)</source>
+        <source>pixiv (illustration)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="143"/>
-        <source>HEVC+alpha needs Apple&apos;s VideoToolbox encoder; libx265 ADVERTISES yuva420p and then refuses it at open. hvc1 is mandatory: Safari rejects untagged hev1. Where VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</source>
+        <source>32 MB per image, 200 MB per post, JPG or PNG. No pixel cap is published. The 8 MB and 10 MB figures still quoted in guides are obsolete: pixiv raised the per-image limit to 32 MB. A post mixing formats is converted to JPG, so pick one format per post; PNG is the one that keeps transparency.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="144"/>
-        <source>YouTube re-encodes every upload. Official docs still recommend H.264/AAC; AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</source>
+        <source>pixiv (ugoira animation)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="145"/>
-        <source>Website</source>
+        <source>ugoira is a folder of numbered stills, not a video: up to 150 frames, 30 MB in total, 8 MB per frame, and every frame must share one format AND one canvas size. PNG or JPEG only, and pixiv rejects APNG and WebP outright. Frame TIMING is authored on the upload page, so no fps applies here. The alternative route is one animated GIF (16 MB, 500 frames), which costs you the palette. Desktop site only.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="146"/>
-        <source>Direct playback: decode compatibility dominates, so H.264 at every bucket. For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</source>
+        <source>Nico Nico Seiga (ニコニコ静画)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="147"/>
-        <source>Just a file (not sure yet)</source>
+        <source>UNVERIFIED (partial): 10 MB per image, PNG or JPEG or GIF, no pixel cap published. Whether a posted illustration is re-encoded, whether PNG alpha survives, and whether an animated GIF animates on Seiga are all undocumented, so transparency is exported but not promised. Seiga is the still-image half of Nico Nico; videos go to Nico Nico Douga.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="148"/>
-        <source>The fallback when the destination is unknown: maximum compatibility.</source>
+        <source>Instagram (photo)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="149"/>
-        <source>Keep a master copy</source>
+        <source>8 MB, JPEG ONLY, width between 320 and 1440 px, and an aspect ratio from 4:5 to 1.91:1. Transparency cannot survive a JPEG: a transparent background is written as solid black, so flatten the art first. Reels are a separate destination and do take video.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="150"/>
+        <source>Facebook (photo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="151"/>
+        <source>UNVERIFIED (conflicting): Meta&apos;s Graph API says a photo must be under 10 MB and that animated photos are not supported, while their help centre recommends below 15 MB and lists GIF as a photo format. The stricter API figure is used. PNG is accepted but Meta warns that a PNG above 1 MB may be shown pixelated, because it is re-compressed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="152"/>
+        <source>Tumblr (photo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="153"/>
+        <source>20 MB for a static image. 540x810 is the recommended size and 2048x3072 is the largest view served. ANIMATION IS A DIFFERENT LIMIT: a GIF is only served up to about 5 MB, and above that Tumblr shows its first frame instead of animating, so a long animation should go out as a video.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="154"/>
+        <source>Pinterest (image Pin)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="155"/>
+        <source>20 MB on the web. PNG, JPEG, BMP, TIFF or WEBP; GIF is not accepted as an organic Pin, so animation belongs on a video Pin. 2:3 is the recommended shape (1000x1500) and 9:16 also works; keep the art out of the bottom safe zone, where the interface covers it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="156"/>
+        <source>DeviantArt (image)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="157"/>
+        <source>UNVERIFIED (conflicting): one DeviantArt help page says images are capped at 80 MB and another says 95 MB; 80 MB is used so a file that passes here passes both. JPEG, PNG or GIF, no pixel cap. An animated GIF counts as an IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="158"/>
+        <source>DeviantArt (animation)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="159"/>
+        <source>UNVERIFIED (conflicting): see the image row: 80 MB versus 95 MB on two official pages, and an animated GIF is submitted as an image rather than a video, so it gets that cap instead of the 1 GB video one. GIF means a 256-colour palette, which is a real cost for gradients but nothing else here animates on a free account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="160"/>
+        <source>Stream overlay (OBS)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="161"/>
+        <source>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="162"/>
+        <source>Transparent video (Safari / iOS)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="163"/>
+        <source>HEVC+alpha needs Apple&apos;s VideoToolbox encoder; libx265 ADVERTISES yuva420p and then refuses it at open. hvc1 is mandatory: Safari rejects untagged hev1. Where VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="164"/>
+        <source>YouTube re-encodes every upload. Official docs still recommend H.264/AAC; AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="165"/>
+        <source>Website</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="166"/>
+        <source>Direct playback: decode compatibility dominates, so H.264 at every bucket. For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="167"/>
+        <source>Just a file (not sure yet)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="168"/>
+        <source>The fallback when the destination is unknown: maximum compatibility.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
+        <source>Keep a master copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
         <translation type="unfinished"></translation>
     </message>
