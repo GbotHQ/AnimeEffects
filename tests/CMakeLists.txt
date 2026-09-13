@@ -185,6 +185,7 @@ target_compile_definitions(export_form PRIVATE
     USE_GL_CORE_PROFILE
     AE_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/assets"
     AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+    AE_EXPORT_STRINGS_PATH="${CMAKE_SOURCE_DIR}/src/ctrl/ExportTargetStrings.h"
 )
 target_link_libraries(export_form PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
@@ -409,6 +410,7 @@ target_compile_definitions(media_export_target PRIVATE
     AE_MICRO_VERSION=1
     USE_GL_CORE_PROFILE
     AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+    AE_EXPORT_STRINGS_PATH="${CMAKE_SOURCE_DIR}/src/ctrl/ExportTargetStrings.h"
 )
 target_link_libraries(media_export_target PRIVATE
     Qt6::Core

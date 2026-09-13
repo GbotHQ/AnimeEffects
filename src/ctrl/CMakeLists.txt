@@ -14,6 +14,9 @@ add_library(${PROJECT_NAME}
     DriverResources.cpp DriverResources.h
     Exporter.cpp Exporter.h
     ExportTarget.cpp ExportTarget.h
+    # GENERATED (scripts/i18n/gen_export_targets_i18n.py): the table's user-visible
+    # strings as QT_TRANSLATE_NOOP, because lupdate cannot read a data file.
+    ExportTargetStrings.h
     FFDEditor.cpp FFDEditor.h
     FFDParam.h
     GraphicStyle.h

@@ -66,6 +66,10 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ToolWidget.cpp ToolWidget.h
     ViaPoint.cpp ViaPoint.h
     exportdiag.cpp exportdiag.h
+    # Extracted into the catalogs from here (see the i18n block below): the file is
+    # GENERATED from assets/export/ExportTargets.txt by
+    # scripts/i18n/gen_export_targets_i18n.py, and lupdate cannot read a data file.
+    ../ctrl/ExportTargetStrings.h
     ExportFacts.cpp ExportFacts.h
     menu/menu_ProgressReporter.cpp menu/menu_ProgressReporter.h
     obj/obj_InsertItem.cpp obj/obj_InsertItem.h

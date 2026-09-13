@@ -22,6 +22,7 @@
 #include <QTextStream>
 
 #include "ctrl/ExportTarget.h"
+#include "ctrl/ExportTargetStrings.h"
 #include "decode_util.h"
 #include "temp_util.h"
 #include "media/FFmpegHelpers.h"
@@ -548,6 +549,52 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
 
 
 TEST_SECTION("size rules", run_size_rules) {
+    // THE TABLE IS DATA AND THE EXTRACTOR CANNOT READ IT. Every user-visible string in
+    // it is repeated as a QT_TRANSLATE_NOOP entry in src/ctrl/ExportTargetStrings.h
+    // (generated), which is what makes the labels and the notes translatable at all.
+    // A generated list drifts silently, so this asserts it against the data file in
+    // BOTH directions: every label, title and note has an entry, and no entry is left
+    // over from a row that no longer exists.
+    {
+        const QList<ctrl::ExportTarget> stringRows =
+            ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+        const QList<ctrl::ExportGroup> stringGroups =
+            ctrl::ExportTargets::loadGroups(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+        const QStringList entries = ctrl::exportTargetStringList();
+        check(entries.size() > 100,
+              QStringLiteral("the generated string list carries the table (%1 entries)").arg(entries.size()));
+
+        QStringList wanted;
+        for (const ctrl::ExportGroup& g : stringGroups) wanted << g.title;
+        for (const ctrl::ExportTarget& t : stringRows) {
+            wanted << t.label << t.note; // notes are one line by the time they get here
+        }
+        wanted.removeAll(QString());
+        wanted.removeDuplicates();
+
+        QStringList missing, stale;
+        for (const QString& w : wanted) {
+            if (!entries.contains(w)) missing << w;
+        }
+        for (const QString& e : entries) {
+            if (!wanted.contains(e)) stale << e;
+        }
+        // Name the first offender of each kind: a bare count sends the reader back to
+        // the generator to find out what changed.
+        if (!missing.isEmpty()) {
+            check(false, QStringLiteral("the string list is missing a table string: %1")
+                             .arg(missing.first().left(70)));
+        }
+        if (!stale.isEmpty()) {
+            check(false, QStringLiteral("the string list has a stale entry: %1")
+                             .arg(stale.first().left(70)));
+        }
+        check(missing.isEmpty() && stale.isEmpty(),
+              QStringLiteral("the extracted strings and the table agree (%1 strings, %2 missing, "
+                             "%3 stale)")
+                  .arg(entries.size()).arg(missing.size()).arg(stale.size()));
+    }
+
     // AN EXACT SIZE NEVER STRETCHES THE ART. The remainder is padded (or cropped, for
     // a row whose platform forbids margins), and which of the two is a per-row data
     // fact - so this walks every exact row in the table and asserts the plan carries

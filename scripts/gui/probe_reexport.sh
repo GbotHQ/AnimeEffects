@@ -1,92 +1,131 @@
-# The iteration loop: export, then export AGAIN — without re-walking the menu and
-# the destination, but WITH a chance to name the file.
+#!/bin/bash
+# See _lib.sh: these drive the real app under Xvfb because the wiring they check
+# is not reachable from a unit test.
 #
-# Export is not a one-shot in an animation tool: the same sticker gets exported a
-# dozen times while the art is adjusted. The first version of "Export again"
-# repeated the output path as well, and defended that with the exporter's
-# overwrite confirmer — a yes/no on the SAME name, so it could never produce a
-# second file, and answering yes destroyed the previous export with no way back.
-# For a tool whose output is the deliverable, that is the wrong default.
+# THE REPEAT, which is the whole iteration loop of an animation tool: the same sticker
+# is exported a dozen times while the art is adjusted. "Export again" repeats the last
+# export - destination, quality, range, size, fps, artifact - WITHOUT re-walking the
+# menu and the destination, and asks for a NAME instead.
 #
-# This probe asserts the behaviour that matters:
-#   * the first export asks for a folder and writes a file;
-#   * "Export again" asks for a NAME, pre-filled;
-#   * naming a different file produces that file, and LEAVES THE FIRST ONE ALONE
-#     with its content intact (same byte count as when it was written).
+# What this probe establishes is the SHAPE of the second run, because that is what the
+# old one could not see: the destination picker must NOT be required again (it is
+# asserted absent while the repeat is asking for its name), while the run must still
+# reach the export path and say what it wrote. The version this replaces clicked
+# recorded pixels for the menu row and asserted the screenshot was not black, so a
+# repeat that had silently started asking for a destination again would have passed.
+#
+# The destination is preselected through the sandboxed settings rather than by
+# clicking a menu row: a row is chosen by typing it in the picker now, and this probe
+# is not about that choice (probe_menu and probe_dest are). One real export is needed
+# to enable "Export again" at all - it is disabled until an export succeeds - and it is
+# kept as short as the form allows: four frames at 160x120.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/_lib.sh" "$@"
+# The revision of the export flow this probe's navigation was recorded against. See
+# AE_FLOW_REVISION in _lib.sh: the guard refuses to run a probe that predates it.
+export RECORDED_AGAINST=2
 
-OUTDIR=$(mktemp -d)
-export XDG_CONFIG_HOME=$(mktemp -d)   # a clean profile: no remembered folder yet
-NAME="test.apng"                      # Discord sticker -> apng
-FMT_OUT="$OUTDIR/$NAME"
-rm -f "$FMT_OUT"
-
-# The destination is preselected through the sandboxed settings rather than by
-# clicking a menu row. The quick menu lost that race once already: the chat family
-# was added in FRONT of the sticker family, so the row this probe clicked as
-# "Discord sticker" became a chat export, and it asserted an .apng while the app
-# wrote an .mp4. Qt's INI format keeps root keys in [General].
-mkdir -p "$XDG_CONFIG_HOME/AnimeEffectsProject"
-printf '[General]\nexport_destination=discord.sticker\nexport_quality_bucket=1\n' \
-    > "$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf"
+CFG=$(mktemp -d)
+OUT=$(mktemp -d)
+export XDG_CONFIG_HOME="$CFG"
+mkdir -p "$CFG/AnimeEffectsProject"
+printf '[General]\nexport_destination=chat.discord.file\nexport_quality_bucket=1\n' \
+    > "$CFG/AnimeEffectsProject/AnimeEffects.conf"
+export OUT
+rm -f "$OUT/repeat1.mp4" "$OUT/repeat2.mp4" /tmp/re_status1.txt /tmp/re_status2.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
-  cd "'"$OUTDIR"'" && '"$APP"' "'"$PROJ"'" >/tmp/probe_reexport.log 2>&1 &
+  # The application is launched FROM the output directory and the file dialogs are
+  # given a bare name: the platform file dialog is a different toolkit in the same
+  # process, so its widgets are not in the application tree and it cannot be addressed
+  # by name - a relative name resolves against the working directory instead.
+  cd "$OUT"
+  '"$APP"' "'"$PROJ"'" >/tmp/probe_reexport.log 2>&1 &
   app=$!
   AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
-  sleep 14
+  sleep 13
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
 
-  # 1. File -> Export project as, with the Discord sticker already selected.
-  xdotool mousemove 16 10 click 1; sleep 1.2
-  xdotool mousemove 81 162 click 1; sleep 5
+  # The completion signal is what the APP says. A file on disk is not a finished
+  # export: the muxer writes its header the moment the export opens.
+  wait_for() { # wait_for <name the status bar should name> <output file>
+    local status=""
+    local i
+    for i in $(seq 1 12); do
+      status=$(ae label "Exported $1" 2>/dev/null)
+      [ -n "$status" ] && break
+    done
+    printf "%s\n" "$status" > "$2"
+  }
+
+  # 1. The first export, through the flow as it is now: WHERE first, then the form.
+  ae_press "File" "the File menu opens"
+  ae_press "Export project as" "the export entry is there"
   require_export_flow
-  import -window root "$SHOTS"/re_01_dialog.png
-  # Export. The button row is narrower in destination mode than in manual mode.
-  xdotool key alt+e; sleep 4
-  import -window root "$SHOTS"/re_02_first.png
-  xdotool mousemove 400 25 click 1; sleep 0.4
-xdotool key ctrl+a; sleep 0.3
-  xdotool type --delay 25 "'"$NAME"'"; sleep 0.5
+  ae_press "Use this destination" "the remembered destination is accepted"
+  ae wait "Advanced" >/dev/null 2>&1 || true
+  sleep 1.5
+  # Short, so that the first export is seconds and not minutes: this probe is about the
+  # repeat, not about the encode.
+  ae set "First frame" 1 >/dev/null; sleep 0.6
+  ae set "Last frame" 4 >/dev/null; sleep 0.6
+  ae set "Width" 160 >/dev/null; sleep 0.6
+  ae set "Height" 120 >/dev/null; sleep 1.2
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/re_01_form.png
+  ae_press "Export" "the first export is asked for"
+  sleep 4
+  xdotool key --clearmodifiers ctrl+a; sleep 0.4
+  xdotool type --delay 25 "repeat1.mp4"; sleep 0.6
   xdotool key Return
-  sleep 60
-  import -window root "$SHOTS"/re_03_first_done.png
+  wait_for "repeat1.mp4" /tmp/re_status1.txt
+  sleep 1
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/re_02_first_done.png
 
-  stat -c %s "'"$FMT_OUT"'" > "'"$OUTDIR"'/first_size" 2>/dev/null
-
-  # 2. File -> Export again (y=205 measured from the File menu). It must ASK for a
-  #    name, so a save dialog appears with the previous name filled in.
-  xdotool mousemove 16 10 click 1; sleep 1.2
-  xdotool mousemove 60 205 click 1; sleep 3
-  import -window root "$SHOTS"/re_04_name_prompt.png
-  xdotool mousemove 400 25 click 1; sleep 0.4
-xdotool key ctrl+a; sleep 0.3
-  xdotool type --delay 25 "again.apng"; sleep 0.5
-  xdotool key Return; sleep 3
-  sleep 45
-  import -window root "$SHOTS"/re_05_again_done.png
+  # 2. Export again. It must ask for a NAME and not for a destination: no picker, and
+  #    the run still reaches the export path. "File" is asked about as well, because a
+  #    report answers as soon as ANY name it was asked about is up - naming something
+  #    that is on screen either way keeps the two absences from costing the full
+  #    report timeout each.
+  ae_press "File" "the File menu opens for the repeat"
+  ae_press "Export again" "Export again is enabled by the first export"
+  sleep 4
+  ae_report /tmp/re_repeat.txt "Search destinations" "Use this destination" "File"
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/re_03_name_prompt.png
+  xdotool key --clearmodifiers ctrl+a; sleep 0.4
+  xdotool type --delay 25 "repeat2.mp4"; sleep 0.6
+  xdotool key Return
+  wait_for "repeat2.mp4" /tmp/re_status2.txt
+  sleep 1
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/re_04_again_done.png
   kill $app 2>/dev/null; wait $app 2>/dev/null
-' 2>&1 | tail -3
+' 2>&1 | tail -4
 
-assert_rendered "$SHOTS/re_01_dialog.png" "the export dialog on the first export"
-assert_exists "$FMT_OUT" "the first export wrote a file"
-assert_rendered "$SHOTS/re_04_name_prompt.png" "Export again asked for a name"
-
-# The requirement: "Export again" must NOT decide by itself that the previous
-# export is expendable. Giving it a different name has to leave the first file
-# exactly as it was, and produce the second.
-assert_exists "$OUTDIR/again.apng" "Export again wrote the file it was asked for"
-first=$(stat -c %s "$FMT_OUT" 2>/dev/null || echo 0)
-again=$(stat -c %s "$OUTDIR/again.apng" 2>/dev/null || echo 0)
-[ "$first" -gt 0 ]
-check $? "the FIRST export is still there, at $first bytes, untouched"
-[ "$first" = "$again" ] && [ "$again" -gt 0 ]
-check $? "the repeat used the same settings ($first = $again bytes)"
-
-assert_rendered "$SHOTS/re_05_again_done.png" "the app after Export again"
-[ -f /tmp/probe_reexport.log ] && ! grep -q "Export Error" /tmp/probe_reexport.log
-check $? "no export error was reported"
-rm -rf "$OUTDIR"
+# The first export has to have SUCCEEDED - that is what enables Export again, and the
+# app names the file it wrote when the export returns.
+if grep -q "Exported repeat1.mp4" /tmp/re_status1.txt; then
+    check 0 "the first export reported the file it wrote ($(head -c 80 /tmp/re_status1.txt))"
+else
+    check 1 "the first export reported the file it wrote (status bar said: $(tr -d '\n' < /tmp/re_status1.txt))"
+fi
+# THE POINT OF THE PROBE: the repeat did not re-walk the destination flow.
+assert_absent /tmp/re_repeat.txt "Search destinations" "Export again asks for no destination: the picker is not up"
+assert_absent /tmp/re_repeat.txt "Use this destination" "not even its answer button, so the picker was not required"
+# ...and it still reached the export path, which is what it says afterwards. A run that
+# quietly did nothing would leave the status bar empty and no file on disk.
+if grep -q "Exported repeat2.mp4" /tmp/re_status2.txt; then
+    check 0 "and the repeat reported the file it wrote ($(head -c 80 /tmp/re_status2.txt))"
+else
+    check 1 "and the repeat reported the file it wrote (status bar said: $(tr -d '\n' < /tmp/re_status2.txt))"
+fi
+assert_exists "$OUT/repeat2.mp4" "the repeat wrote the file it was asked for"
+assert_exists "$OUT/repeat1.mp4" "and the first export is still there beside it"
+assert_rendered "$SHOTS/re_01_form.png" "the form on the first export"
+assert_rendered "$SHOTS/re_03_name_prompt.png" "the name prompt Export again opened instead of a destination picker"
+assert_rendered "$SHOTS/re_04_again_done.png" "the application after the repeat"
+rm -rf "$CFG" "$OUT"
 summary probe_reexport

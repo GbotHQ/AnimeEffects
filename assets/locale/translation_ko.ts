@@ -363,194 +363,852 @@
     </message>
 </context>
 <context>
+    <name>ExportTargets</name>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="20"/>
+        <source>General</source>
+        <translation type="unfinished">일반</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="21"/>
+        <source>Bilibili</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="22"/>
+        <source>Bluesky</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="23"/>
+        <source>Dailymotion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="24"/>
+        <source>DeviantArt</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="25"/>
+        <source>Discord</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="26"/>
+        <source>Douyin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="27"/>
+        <source>Facebook</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="28"/>
+        <source>Instagram</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="29"/>
+        <source>KakaoTalk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="30"/>
+        <source>LINE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="31"/>
+        <source>Mastodon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="32"/>
+        <source>Messenger</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="33"/>
+        <source>Newgrounds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="34"/>
+        <source>Nico Nico</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="35"/>
+        <source>OBS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="36"/>
+        <source>Pinterest</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="37"/>
+        <source>pixiv</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="38"/>
+        <source>QQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="39"/>
+        <source>Reddit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="40"/>
+        <source>Safari</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="41"/>
+        <source>Signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="42"/>
+        <source>Snapchat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="43"/>
+        <source>Telegram</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="44"/>
+        <source>TikTok</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="45"/>
+        <source>Tumblr</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="46"/>
+        <source>Twitch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="47"/>
+        <source>Vimeo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="48"/>
+        <source>VK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="49"/>
+        <source>WeChat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="50"/>
+        <source>Weibo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="51"/>
+        <source>WhatsApp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="52"/>
+        <source>X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="53"/>
+        <source>YouTube</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="54"/>
+        <source>Telegram sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="55"/>
+        <source>Video must have no audio stream. Should loop.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="56"/>
+        <source>Telegram custom emoji</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="57"/>
+        <source>Discord sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="58"/>
+        <source>Discord animated stickers are APNG (GIF and Lottie also accepted). 320x320 EXACT.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="59"/>
+        <source>Discord emoji</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="60"/>
+        <source>Animated emoji are served as animated WebP; upload accepts JPEG/PNG/GIF/WebP/AVIF.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="61"/>
+        <source>WhatsApp sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="62"/>
+        <source>Animated stickers are WebP ONLY. Minimum frame duration 8ms.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="63"/>
+        <source>Signal sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="64"/>
+        <source>Animated stickers must be APNG (&quot;Please do not upload GIFs&quot;).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="65"/>
+        <source>LINE sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="66"/>
+        <source>RGB colour space; transparent background required; 1-4 loops.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="67"/>
+        <source>Twitch emote</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="68"/>
+        <source>GIF only (&quot;The image must be in .gif format&quot;), and SQUARE: &quot;GIF images must be square shape&quot;. 112x112 is the upload for auto-resize, which is the mode a single file belongs to, and 1 MB is that mode&apos;s cap; uploading the three manual sizes instead caps each at 512 KB. 28/56/112 are the sizes Twitch SERVES, not what you upload. At most 60 frames, and &quot;must not flash or flicker more than 3 times within a 1 second period&quot;. Twitch resizes and re-serves its own variants. NOT PUBLISHED: any duration limit, any frame rate limit, and any transparency rule for ANIMATED emotes (transparency is stated for static ones), so transparency is offered but not promised.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="69"/>
+        <source>A video for a chat app</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="70"/>
+        <source>The one to pick when the app is not in this list. MP4/H.264 with AAC at 720p and under 20 MB is accepted by every chat app here, and is what the restrictive ones accept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="71"/>
+        <source>A video sent in a chat: 64 MB over a slow connection, 100 MB over a fast one, and WhatsApp DOWNSCALES rather than rejecting. Sending it as a Document instead allows 2 GB untouched, which is a different intent and not this row. Status is limited to 90 seconds and is also not this row.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="72"/>
+        <source>2 GB per file, 4 GB with Premium; Telegram re-encodes into renditions. Note this is the USER limit: the Bot API&apos;s 50 MB is for bots uploading, not for you sending a file. Telegram also converts a real GIF to MP4 on its servers, so transparency never survives here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="73"/>
+        <source>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord&apos;s older help pages still say 10 MB. On mobile the size is now measured BEFORE compression, so a video that used to fit may not.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="74"/>
+        <source>Discord (animated image)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="75"/>
+        <source>An animated image, not a video: WebP is the format Discord&apos;s own pipeline produces for animation (they have served and accepted animated WebP since the 2024 mobile release 252), and a GIF upload is transcoded to WebP for display, so this goes out animated either way. Alpha survives here, which GIF&apos;s palette cannot carry. The English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is used, and it is also the size above which Discord stops animating inline and offers the file as a download instead. One frame in the export gives a still WebP, so this row carries a still illustration as well as an animation. Transparency is on by default (WebP keeps it, GIF&apos;s palette cannot) and can be turned off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="76"/>
+        <source>Signal re-encodes client-side to 720p at roughly 2 Mbps and targets about 50 MB of output. The server flag is 100 MiB and remote-configurable, so 50 MB is the number to stay under. Sending as a File skips the transcode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="77"/>
+        <source>UNVERIFIED: 25 MB is the published DEVELOPER API limit. Meta does not publish the consumer chat limit anywhere, so this is the closest sourced number, not the app&apos;s own. 75 seconds appears in the docs as a fetch timeout, NOT a duration limit.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="78"/>
+        <source>KakaoTalk (카카오톡)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="79"/>
+        <source>UNVERIFIED for mobile: 300 MB is the PC desktop file-send limit. Kakao does not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="80"/>
+        <source>WeChat (微信)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="81"/>
+        <source>UNVERIFIED: Tencent publishes no size or duration limit for video sent in a personal chat, and no codec list. MP4/H.264 at 720p is the safe choice. The official-account route IS documented (10 MB per upload, 2 GB chunked) and is a different thing entirely.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="82"/>
+        <source>UNVERIFIED for the consumer app: 30 MB soft (silently becomes a FILE instead of an inline video) and 200 MB hard are BOT API numbers. Consumer chat limits are not published.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="83"/>
+        <source>VK (ВКонтакте)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="84"/>
+        <source>No cap worth encoding: 256 GB, up to 4K, and VK re-encodes. MP4/H.264 at 1280x720 or above, and they recommend 16:9.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="85"/>
+        <source>X (Twitter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="86"/>
+        <source>A post accepts up to 8 GB and 20 minutes (16 GB / 125 minutes with Premium). The &quot;140 seconds / 512 MB&quot; figure repeated all over the web is X&apos;s DIRECT MESSAGE limit, not a post, and is 50x too small here. H.264 High, AAC-LC, yuv420p, closed GOP.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="87"/>
+        <source>Instagram Reels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="88"/>
+        <source>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a closed GOP. The moov atom must be at the FRONT of the file with no edit lists, which is what the faststart muxer option below does: without it the upload is rejected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="89"/>
+        <source>4 GB, up to 10 minutes on some routes and 3 on others. 1080x1920 (9:16). GIF files are NOT accepted. WebM/MOV are accepted alongside MP4.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="90"/>
+        <source>Bilibili (哔哩哔哩)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="91"/>
+        <source>UNVERIFIED (conflicting sources): Bilibili&apos;s help centre says 16 GB (64 GB at higher web levels), their own open-platform API documentation says 4 GB, and the page could not be re-fetched to settle it. 4 GB is used here as the floor that both agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="92"/>
+        <source>Weibo (微博)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="93"/>
+        <source>15 GB from the desktop web, 4 GB from mobile. There is a MINIMUM of 3 seconds and no published maximum duration. 720p or better for the video section; 2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="94"/>
+        <source>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10 minutes (both raised recently, so most guides are out of date). No pixel cap; the aspect ratio travels as metadata.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="95"/>
+        <source>99 MB for video and 16 MB for images are UPSTREAM DEFAULTS; every instance sets its own, and instances drift from upstream (mastodon.social reports double the upstream pixel limit). The authoritative answer is the server&apos;s own /api/v2/instance configuration. GIFs are converted to silent MP4, so transparency does not survive.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="96"/>
+        <source>UNVERIFIED: Reddit does not publish a size limit for native video posts. No byte cap is applied rather than inventing one. The 15-minute figure comes from their 2017 launch post, and comment videos are capped much shorter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="97"/>
+        <source>WeChat sticker (微信表情)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="98"/>
+        <source>Animated stickers are GIF only, exactly 240x240, 500 KB, and must loop. Art that exceeds the spec is compressed AND CROPPED by WeChat rather than rejected, so an oversized export comes back with its edges cut off. Sticker sets are 8 to 24 images.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="99"/>
+        <source>KakaoTalk sticker (카카오톡 스티커)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="100"/>
+        <source>Animated WebP, 360x360 (180x180 for mini, 540x540 for big), 650 KB, 24 frames maximum and four loops. Kakao publishes its own WebP animator, which is a useful sign of exactly which encoder behaviour they expect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="101"/>
+        <source>QQ sticker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="102"/>
+        <source>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned specification that exists anywhere. yuanchuang.qq.com no longer resolves and archive.org holds no capture after October 2018, so the values below are what Tencent said eight years ago and nothing current confirms them. 16 GIFs at exactly 300x300, each 300 KB or less (&quot;表情大小：≤300kb/个&quot;, raised from 90 KB in 2016), on a transparent background (&quot;文件均为无色透明底&quot;). A white stroke is required but 3 px is only PREFERRED (&quot;以3像素的白色描边为佳&quot;), not an exact value. The same page contradicts itself about the 300x300 PNG thumbnail: its table says 200 KB and its body text says 20 KB, so no thumbnail cap is applied. Nothing is published about frame count, duration, frame rate, or re-encoding.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="103"/>
+        <source>Nico Nico Douga (ニコニコ動画)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="104"/>
+        <source>6 GB or 6 hours, whichever comes first; raised from 3 GB on 2024-10-29, so older guides are a revision behind. Up to 4096x2160 (or 2160x4096 vertical) and 60 fps. Their own page caps the vertical Short surface at 180 seconds, which is a different destination with the same name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="105"/>
+        <source>Douyin (抖音)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="106"/>
+        <source>UNVERIFIED (conflicting): ByteDance contradicts itself. The current upload endpoint says 4 GB total with chunked upload mandatory above 300 MB, while a 2024-04-09 chunked-upload page says 128 MB and 15 minutes, and the Android share SDK says 60 minutes. The widely quoted 500 MB could not be found on any ByteDance page. Short side under 2160, long side under 4096, 720p or above.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="107"/>
+        <source>Facebook (video)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="108"/>
+        <source>UNVERIFIED (partial): Meta publishes NO byte or duration cap for organic video. The 4 GB and 240-minute figures that circulate are the ADVERTISING spec. Since September 2025 every video posted to Facebook is shared as a reel, so this and the reels destination differ only in the length the API enforces. Recommended: maximum width 4000 px with dimensions divisible by 16, 30 fps or lower, H.264 with AAC.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="109"/>
+        <source>Facebook Reels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="110"/>
+        <source>UNVERIFIED (conflicting): Meta Business Help says reels can be any length; the Reels Publishing API enforces 3 to 90 seconds and rejects anything else. 90 s is used here because it is the number that is enforced. 1080x1920 recommended, 540x960 minimum, 24 to 60 fps, no published byte cap.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="111"/>
+        <source>500 MB and 10 minutes, and 20 posts a day. MOV or MP4; Tumblr transcodes toward 720p H.264. Photos are a separate destination: a static image gets 20 MB, but an animated GIF is served only up to about 5 MB and above that is reduced to its first frame.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="112"/>
+        <source>Pinterest (video Pin)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="113"/>
+        <source>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the &quot;2 GB / 15 minutes&quot; figure belongs to the ADVERTISING spec, which is a different surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or H.265, 9:16 recommended.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="114"/>
+        <source>Snapchat Spotlight</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="115"/>
+        <source>UNVERIFIED (partial): Snapchat publishes a minimum of 5 seconds and a vertical requirement, and nothing else: no byte cap, no maximum duration, no accepted format list and no pixel specification. Still images are excluded. The &quot;1 GB / 3 to 30 minutes&quot; figure is the ADS spec. Vertical with sound; a landscape export will not be shown in Spotlight, and no size rule here can force that, so the file is exported as composed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="116"/>
+        <source>4 GB (64 GB on the top tier) and 2 hours. Up to 3840x2160 or 2160x3840, 24 to 60 fps. MOV, MP4, AVI, WMV, MKV and FLV are all accepted; MP4/H.264 is the practical target.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="117"/>
+        <source>UNVERIFIED (conflicting): Vimeo&apos;s advice to keep files under 200 GB, a plan note about 250 GB per video for legacy subscribers and an uploader page claiming no size limit cannot all be true; 200 GB is used as a soft ceiling. 24 hours is a hard refusal at upload. Vimeo states plainly that it has no alpha channel support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="118"/>
+        <source>DeviantArt (video, Core members)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="119"/>
+        <source>1 GB and 10 to 12 minutes, and video submission is a Core membership feature. 1920x1080 recommended; the first frame becomes the preview, so it should not be a blank or transitional frame. An animated GIF is NOT a video here: DeviantArt counts it as an image and gives it the much larger image cap.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="120"/>
+        <source>Newgrounds (animation)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="121"/>
+        <source>UNVERIFIED (partial): Newgrounds publishes NO byte or duration cap. Their own wiki says the limit is shown on the signed-in upload form and can be raised on request, so it is per-account; the 100 MB and 6.3 GB figures in circulation come from a member forum post, not from Newgrounds. MP4/MOV/WMV and SWF are accepted, at 3840x2160, 1920x1080, 1280x720 or 640x380, around 10 to 20 Mbps at 1080p. Loop is an upload option for MP4 here, unlike everywhere else.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="122"/>
+        <source>pixiv (illustration)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="123"/>
+        <source>32 MB per image, 200 MB per post, JPG or PNG. No pixel cap is published. The 8 MB and 10 MB figures still quoted in guides are obsolete: pixiv raised the per-image limit to 32 MB. A post mixing formats is converted to JPG, so pick one format per post; PNG is the one that keeps transparency.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="124"/>
+        <source>pixiv (ugoira animation)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="125"/>
+        <source>ugoira is a folder of numbered stills, not a video: up to 150 frames, 30 MB in total, 8 MB per frame, and every frame must share one format AND one canvas size. PNG or JPEG only, and pixiv rejects APNG and WebP outright. Frame TIMING is authored on the upload page, so no fps applies here. The alternative route is one animated GIF (16 MB, 500 frames), which costs you the palette. Desktop site only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="126"/>
+        <source>Nico Nico Seiga (ニコニコ静画)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="127"/>
+        <source>UNVERIFIED (partial): 10 MB per image, PNG or JPEG or GIF, no pixel cap published. Whether a posted illustration is re-encoded, whether PNG alpha survives, and whether an animated GIF animates on Seiga are all undocumented, so transparency is exported but not promised. Seiga is the still-image half of Nico Nico; videos go to Nico Nico Douga.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="128"/>
+        <source>Instagram (photo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="129"/>
+        <source>8 MB, JPEG ONLY, width between 320 and 1440 px, and an aspect ratio from 4:5 to 1.91:1. Transparency cannot survive a JPEG: a transparent background is written as solid black, so flatten the art first. Reels are a separate destination and do take video.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="130"/>
+        <source>Facebook (photo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="131"/>
+        <source>UNVERIFIED (conflicting): Meta&apos;s Graph API says a photo must be under 10 MB and that animated photos are not supported, while their help centre recommends below 15 MB and lists GIF as a photo format. The stricter API figure is used. PNG is accepted but Meta warns that a PNG above 1 MB may be shown pixelated, because it is re-compressed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="132"/>
+        <source>Tumblr (photo)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="133"/>
+        <source>20 MB for a static image. 540x810 is the recommended size and 2048x3072 is the largest view served. ANIMATION IS A DIFFERENT LIMIT: a GIF is only served up to about 5 MB, and above that Tumblr shows its first frame instead of animating, so a long animation should go out as a video.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="134"/>
+        <source>Pinterest (image Pin)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="135"/>
+        <source>20 MB on the web. PNG, JPEG, BMP, TIFF or WEBP; GIF is not accepted as an organic Pin, so animation belongs on a video Pin. 2:3 is the recommended shape (1000x1500) and 9:16 also works; keep the art out of the bottom safe zone, where the interface covers it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="136"/>
+        <source>DeviantArt (image)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="137"/>
+        <source>UNVERIFIED (conflicting): one DeviantArt help page says images are capped at 80 MB and another says 95 MB; 80 MB is used so a file that passes here passes both. JPEG, PNG or GIF, no pixel cap. An animated GIF counts as an IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="138"/>
+        <source>DeviantArt (animation)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="139"/>
+        <source>UNVERIFIED (conflicting): see the image row: 80 MB versus 95 MB on two official pages, and an animated GIF is submitted as an image rather than a video, so it gets that cap instead of the 1 GB video one. GIF means a 256-colour palette, which is a real cost for gradients but nothing else here animates on a free account.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="140"/>
+        <source>Stream overlay (OBS)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="141"/>
+        <source>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="142"/>
+        <source>Transparent video (Safari / iOS)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="143"/>
+        <source>HEVC+alpha needs Apple&apos;s VideoToolbox encoder; libx265 ADVERTISES yuva420p and then refuses it at open. hvc1 is mandatory: Safari rejects untagged hev1. Where VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="144"/>
+        <source>YouTube re-encodes every upload. Official docs still recommend H.264/AAC; AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="145"/>
+        <source>Website</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="146"/>
+        <source>Direct playback: decode compatibility dominates, so H.264 at every bucket. For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="147"/>
+        <source>Just a file (not sure yet)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="148"/>
+        <source>The fallback when the destination is unknown: maximum compatibility.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="149"/>
+        <source>Keep a master copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTargetStrings.h" line="150"/>
+        <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="296"/>
+        <location filename="../../src/gui/exportdiag.h" line="297"/>
         <source>Choose where this is going</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="616"/>
+        <location filename="../../src/gui/exportdiag.h" line="617"/>
         <source>Open Palette</source>
         <translation>팔레트 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="617"/>
+        <location filename="../../src/gui/exportdiag.h" line="618"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>FFmpeg 팔레트 파일 (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="631"/>
+        <location filename="../../src/gui/exportdiag.h" line="632"/>
         <source>Auto</source>
         <translation type="unfinished">자동</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="783"/>
+        <location filename="../../src/gui/exportdiag.h" line="785"/>
         <source>PNG sequence</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="784"/>
+        <location filename="../../src/gui/exportdiag.h" line="786"/>
         <source>JPEG sequence</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="905"/>
+        <location filename="../../src/gui/exportdiag.h" line="912"/>
         <source>CRF:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="906"/>
+        <location filename="../../src/gui/exportdiag.h" line="913"/>
         <source>Quality:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1376"/>
+        <location filename="../../src/gui/exportdiag.h" line="1384"/>
         <source>First frame %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1377"/>
+        <location filename="../../src/gui/exportdiag.h" line="1385"/>
         <source>Last frame %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1481"/>
+        <location filename="../../src/gui/exportdiag.h" line="1489"/>
         <source>Width</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1482"/>
+        <location filename="../../src/gui/exportdiag.h" line="1490"/>
         <source>Height</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1483"/>
+        <location filename="../../src/gui/exportdiag.h" line="1491"/>
         <source>Frame rate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1484"/>
+        <location filename="../../src/gui/exportdiag.h" line="1492"/>
         <source>First frame</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1485"/>
+        <location filename="../../src/gui/exportdiag.h" line="1493"/>
         <source>Last frame</source>
         <translation type="unfinished">끝 프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1486"/>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1487"/>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Codec</source>
         <translation type="unfinished">코덱</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1488"/>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Quality</source>
         <translation type="unfinished">품질</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>Quality override</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Image quality</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Bitrate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Destination</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Advanced</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Export</source>
         <translation type="unfinished">내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Cancel</source>
         <translation type="unfinished">취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Export with transparency</source>
         <translation type="unfinished">투명도 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Loop animation</source>
         <translation type="unfinished">애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Export with audio</source>
         <translation type="unfinished">오디오 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Custom palette</source>
         <translation type="unfinished">사용자 지정 팔레트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Keep aspect ratio</source>
         <translation type="unfinished">가로세로 비율 유지</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Insert range</source>
         <translation type="unfinished">범위 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Remove range</source>
         <translation type="unfinished">범위 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Set width to native</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Set height to native</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Set frame rate to native</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Image quality to auto</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Quality override to auto</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Bitrate to auto</source>
         <translation type="unfinished"></translation>
     </message>
@@ -837,64 +1495,64 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1292"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1294"/>
         <source>needs %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1360"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1404"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1470"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1508"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1555"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1578"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1609"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1362"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1406"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1472"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1510"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1557"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1580"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1611"/>
         <source>Export Error</source>
         <translation type="unfinished">내보내기 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1363"/>
         <source>Unknown export destination: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1423"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1425"/>
         <source>File exists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1424"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1426"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1471"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1473"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1486"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1499"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
         <source>Export Canceled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1500"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1502"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1509"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1511"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1517"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1519"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1085,7 +1743,7 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1410"/>
+        <location filename="../../src/gui/exportdiag.h" line="1418"/>
         <source>Export parameters</source>
         <translation>내보내기 파라미터</translation>
     </message>
@@ -1094,12 +1752,12 @@
         <translation type="vanished">중간 패스 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1411"/>
+        <location filename="../../src/gui/exportdiag.h" line="1419"/>
         <source>Keep aspect ratio</source>
         <translation>가로세로 비율 유지</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1412"/>
+        <location filename="../../src/gui/exportdiag.h" line="1420"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 마지막 프레임 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1116,17 +1774,17 @@
         <translation type="vanished">사용자 지정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1422"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Insert range</source>
         <translation>범위 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Remove range</source>
         <translation>범위 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Custom palette</source>
         <translation>사용자 지정 팔레트</translation>
     </message>
@@ -1155,7 +1813,7 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Width: </source>
         <translation>너비: </translation>
     </message>
@@ -1164,9 +1822,9 @@
         <translation type="vanished">1:1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Set to native</source>
         <translation>원본으로 설정</translation>
     </message>
@@ -1179,7 +1837,7 @@
         <translation type="vanished">활성 파라미터:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Height:</source>
         <translation>높이:</translation>
     </message>
@@ -1188,7 +1846,7 @@
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;내보내는 중&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
+        <location filename="../../src/gui/exportdiag.h" line="1439"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
@@ -1205,100 +1863,100 @@
         <translation type="vanished">이미지 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1413"/>
+        <location filename="../../src/gui/exportdiag.h" line="1421"/>
         <source>Format:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1414"/>
+        <location filename="../../src/gui/exportdiag.h" line="1422"/>
         <source>Codec:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1415"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Destination:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1416"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Quality:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1417"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>Smaller file</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Balanced</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Best quality</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Lossless</source>
         <translation type="unfinished">무손실</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1429"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>How to encode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <location filename="../../src/gui/exportdiag.h" line="1440"/>
         <source>What to export</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1434"/>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>Export with transparency</source>
         <translation>투명도 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
         <source>Loop animation</source>
         <translation>애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>Export with audio</source>
         <translation>오디오 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
+        <location filename="../../src/gui/exportdiag.h" line="1459"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
-        <location filename="../../src/gui/exportdiag.h" line="1452"/>
-        <location filename="../../src/gui/exportdiag.h" line="1453"/>
+        <location filename="../../src/gui/exportdiag.h" line="1446"/>
+        <location filename="../../src/gui/exportdiag.h" line="1460"/>
+        <location filename="../../src/gui/exportdiag.h" line="1461"/>
         <source>Set to auto</source>
         <translation>자동으로 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Frame range:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
+        <location filename="../../src/gui/exportdiag.h" line="1453"/>
         <source>Advanced</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Quality override:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1526"/>
+        <location filename="../../src/gui/exportdiag.h" line="1534"/>
         <source>&amp;Export</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1307,17 +1965,17 @@
         <translation type="vanished">렌더링된 프레임: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 첫 프레임 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
         <source>Bitrate (kB/s):</source>
         <translation>비트 전송률(kB/s):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
+        <location filename="../../src/gui/exportdiag.h" line="1452"/>
         <source>Image quality:</source>
         <translation>이미지 품질:</translation>
     </message>
@@ -1326,7 +1984,7 @@
         <translation type="vanished">사용자 지정 파라미터로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1454"/>
+        <location filename="../../src/gui/exportdiag.h" line="1462"/>
         <source>Select palette path</source>
         <translation>팔레트 경로 선택</translation>
     </message>
@@ -1411,7 +2069,7 @@
         <translation type="vanished">내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1528"/>
+        <location filename="../../src/gui/exportdiag.h" line="1536"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
@@ -2378,85 +3036,85 @@ If we forgot to include you please let us know or open a PR!</source>
 <context>
     <name>gui::MainWindow</name>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="154"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="156"/>
         <source>Animation</source>
         <translation>애니메이션</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="167"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="169"/>
         <source>Properties</source>
         <translation>속성</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="213"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="215"/>
         <source>Tools</source>
         <translation>도구</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="566"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="568"/>
         <source>Theme changed</source>
         <translation>테마 변경됨</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="568"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="570"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>테마를 변경한 후 시각적 아티팩트가 나타날 수 있습니다. 애플리케이션을 다시 시작하는 것이 좋습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="789"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="791"/>
         <source> has been modified. Save changes?</source>
         <translation> 이(가) 수정되었습니다. 변경 내용을 저장하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="791"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="793"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>일부 프로젝트가 수정되었습니다. 변경 내용을 저장하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="799"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="801"/>
         <source>Save Changes</source>
         <translation>변경 내용 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="800"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="802"/>
         <source>Discard Changes</source>
         <translation>변경 내용 무시</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="801"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="803"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="822"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="824"/>
         <source>Undone : </source>
         <translation>실행 취소됨: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="885"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="887"/>
         <source>Redone : </source>
         <translation>다시 실행됨: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="928"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="988"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1017"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1086"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="930"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="990"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1019"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1088"/>
         <source>Loading Error</source>
         <translation>불러오기 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="965"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="967"/>
         <source>Open File</source>
         <translation>파일 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1037"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1039"/>
         <source>Recover unsaved project?</source>
         <translation>저장되지 않은 프로젝트를 복구하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1038"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1040"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -2467,157 +3125,68 @@ Open it?</source>
 여시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1100"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1102"/>
         <source>Save File</source>
         <translation>파일 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1713"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1715"/>
         <source>Exported %1 (%2 KB)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1719"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1721"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1724"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1726"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
         <source>All files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1764"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1766"/>
         <source>%1 files (*.%2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1940"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1982"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1984"/>
         <source>%1 of %2 frames at %3 x %4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1988"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1990"/>
         <source>Frame rate: %1 fps</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1994"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2065"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1996"/>
         <source>%1 x %2, %3 fps</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1999"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2079"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2001"/>
         <source>Codec: %1 in %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2008"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2010"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2016"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2050"/>
-        <source>This destination cannot be exported: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2060"/>
-        <source>%1 x %2, frame %3 (the one on the timeline)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2071"/>
-        <source>Artifact: one %1 image</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2073"/>
-        <source>Artifact: %1 numbered %2 files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2078"/>
-        <source>Codec: animated GIF</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2082"/>
-        <source>Transparency: %1   Audio: %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
-        <source>yes</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
-        <source>no</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2094"/>
-        <source>%1 GB</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2096"/>
-        <source>%1 MB</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2097"/>
-        <source>%1 KB</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2101"/>
-        <source>max %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2103"/>
-        <source>max %1 s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2105"/>
-        <source>min %1 s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2107"/>
-        <source>max %1 frames</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2109"/>
-        <source>max %1 fps</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2111"/>
-        <source>Limits: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2701,8 +3270,8 @@ Open it?</source>
         <translation type="vanished">Tagged Image</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1832"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1759"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1834"/>
         <source>Export Folder</source>
         <translation>내보내기 폴더</translation>
     </message>
@@ -2719,7 +3288,7 @@ Open it?</source>
         <translation type="vanished">내보내기 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1767"/>
         <source>Export File</source>
         <translation>파일 내보내기</translation>
     </message>

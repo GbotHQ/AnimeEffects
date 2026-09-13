@@ -1,38 +1,106 @@
 #!/bin/bash
 # See _lib.sh: these drive the real app under Xvfb because the wiring they check
 # is not reachable from a unit test.
+#
+# This probe is about the CAPABILITY AXES. A destination is not a format hint, it
+# is a set of facts about the artifact (does it carry alpha, may it carry audio,
+# who decides the container), and the form has to state those facts and withdraw
+# the controls they settle. The previous version of this probe clicked recorded
+# pixels in the old parameter-first flow and asserted that its screenshot was not
+# black, so it kept passing while driving widgets that no longer existed and
+# testing nothing at all. Everything below addresses widgets BY NAME.
+#
+# Telegram sticker is the destination whose axes are ALL dictated by the table:
+# alpha="required" audio="forbidden" class="fixed" codecSelect="fixed". The two
+# halves of the probe are therefore the two answers the axes can give - stated as
+# a fact with no control (the sticker), and handed to the user (manual mode).
+#
+# The BODY only navigates and leaves evidence (reports, the facts text, the
+# screenshots). Every assertion runs out here, where the helpers and the failure
+# count live.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/_lib.sh" "$@"
+# The revision of the export flow this probe's navigation was recorded against. See
+# AE_FLOW_REVISION in _lib.sh: the guard refuses to run a probe that predates it.
+export RECORDED_AGAINST=2
+
+rm -f /tmp/ax_sticker.txt /tmp/ax_sticker_facts.txt /tmp/ax_manual.txt /tmp/ax_manual_facts.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
-  cd "$AE_PROBE_DIR" && '"$APP"' "'"$PROJ"'" >/tmp/probe_app.log 2>&1 &
+  '"$APP"' "'"$PROJ"'" >/tmp/probe_app.log 2>&1 &
   app=$!
   AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
   sleep 12
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
-  xdotool mousemove 16 10 click 1; sleep 1.2
-  xdotool mousemove 81 162 click 1; sleep 3
+
+  # 1. Export asks WHERE first, and the answer is a Telegram sticker: the
+  #    destination whose every axis is in the table.
+  ae_press "File" "the File menu opens"
+  ae_press "Export project as" "the export entry is there"
   require_export_flow
-  # $1 = what to type in the picker search field, $2 = shot name. Typing a name is
-  # how a person chooses a destination now, so it is how the probe does it: no index
-  # into a list that reorders whenever the table gains a row. (No apostrophes here:
-  # this whole block is inside a single-quoted bash -c argument.)
-  pick() {
-    xdotool mousemove 462 82 click 1; sleep 3
-    xdotool key ctrl+a; sleep 0.2
-    xdotool type --delay 60 "$1"; sleep 1.2
-    xdotool key Return; sleep 2
-    import -window root '"$SHOTS"'/ax_"$2".png
-  }
-  pick "twitch"  gif_twitch
-  pick "website" website_alpha_choice
-  pick "master"  master
-  pick 0  back_to_manual
+  ae set "Search destinations" "telegram sticker" >/dev/null
+  sleep 1.2
+  ae_press "Use this destination" "the Telegram sticker destination is chosen"
+  # The form builds itself per destination; wait for it rather than for a fixed
+  # number of seconds, so the report cannot describe a half-applied plan.
+  ae wait "Advanced" >/dev/null 2>&1 || true
+  sleep 1.5
+  # The facts are a LABEL, so the words themselves are evidence: ae text prints
+  # every label, and the outer script greps what it must say.
+  ae text > /tmp/ax_sticker_facts.txt 2>/dev/null
+  ae_report /tmp/ax_sticker.txt "Destination" "Format" "Codec" "Export with transparency" \
+      "Export with audio" "Quality" "Width" "Height" "Advanced"
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/ax_01_sticker.png
+
+  # 2. The escape hatch, through the form own destination row. A search that
+  #    matches nothing is answered as "no destination known", which is manual
+  #    mode: the same dialog with the format handed back to the user.
+  ae_press "Destination" "the destination row reopens the picker"
+  sleep 1.5
+  ae set "Search destinations" "zzz no such platform" >/dev/null
+  sleep 1.2
+  ae_press "Use this destination" "an unmatched search answers with the manual form"
+  ae wait "Format" >/dev/null 2>&1 || true
+  sleep 2
+  ae text > /tmp/ax_manual_facts.txt 2>/dev/null
+  ae_report /tmp/ax_manual.txt "Destination" "Format" "Codec" "Quality" "Width" "Height"
+  xdotool mousemove 700 600; sleep 0.5
+  import -window root '"$SHOTS"'/ax_02_manual.png
+  ae_press "Cancel" "the form closes on Cancel"
+  sleep 1
   kill $app 2>/dev/null; wait $app 2>/dev/null
-' 2>&1 | tail -3
-ls -1 "$SHOTS" | grep ax_
-assert_rendered "$SHOTS/ax_back_to_manual.png" "the dialog after the capability axes"
-summary probe_axes
-assert_rendered "$SHOTS/ax_back_to_manual.png" "the dialog after the capability axes"
+' 2>&1 | tail -4
+
+# ---- the axes it dictates, as facts and as withdrawn controls ----------------
+assert_showing /tmp/ax_sticker.txt "Destination" "the form states the destination it is working under"
+# The words, not the widgets: alpha is REQUIRED, and the destination says so
+# itself rather than leaving the user to infer it from a frozen check box.
+if grep -q "Transparency is required by this destination" /tmp/ax_sticker_facts.txt; then
+    check 0 "the facts state that transparency is required"
+else
+    check 1 "the facts state that transparency is required (got: $(grep -i transparency /tmp/ax_sticker_facts.txt | tr '\n' ' ' | head -c 200))"
+fi
+if grep -q "Audio: not accepted by this destination" /tmp/ax_sticker_facts.txt; then
+    check 0 "the facts state that audio is not accepted"
+else
+    check 1 "the facts state that audio is not accepted (got: $(grep -i audio /tmp/ax_sticker_facts.txt | tr '\n' ' ' | head -c 200))"
+fi
+# The axis the destination DECIDES is not offered as a control: a Format combo
+# beside a stated "VP9 in webm" is two answers to one question.
+assert_hidden /tmp/ax_sticker.txt "Format" "the destination dictates the format, so there is no Format control"
+assert_hidden /tmp/ax_sticker.txt "Codec" "and no Codec control either"
+assert_rendered "$SHOTS/ax_01_sticker.png" "the form for a destination with every axis dictated"
+
+# ---- and the escape hatch hands the artifact back to the user ----------------
+assert_showing /tmp/ax_manual.txt "Format" "the escape hatch offers the Format row"
+assert_showing /tmp/ax_manual.txt "Codec" "and the Codec row beside it"
+if grep -q "Codec: H.264 in MP4" /tmp/ax_manual_facts.txt; then
+    check 0 "and the facts name the codec the user has chosen there"
+else
+    check 1 "and the facts name the codec the user has chosen there (got: $(grep -i codec /tmp/ax_manual_facts.txt | tr '\n' ' ' | head -c 200))"
+fi
+assert_rendered "$SHOTS/ax_02_manual.png" "the same form in manual mode"
+
 summary probe_axes

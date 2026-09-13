@@ -3,6 +3,7 @@
 #include "media/FFmpegHelpers.h"
 #include "media/GifEncoder.h"
 
+#include <QCoreApplication>
 #include <QDomDocument>
 #include <QFileInfo>
 #include <QFile>
@@ -245,6 +246,22 @@ QString qualityKnobFor(const QString& aCodec) {
 
 // ---------------------------------------------------------------------------
 
+// A string from the data table, translated. The table is data, so its user-visible
+// strings are extracted from src/ctrl/ExportTargetStrings.h (a data file is invisible
+// to lupdate) and translated through the same context here.
+static QString tableText(const QString& aText) {
+    if (aText.isEmpty()) return aText;
+    return QCoreApplication::translate("ExportTargets", aText.toUtf8().constData());
+}
+
+// A note may be wrapped over several lines in the data file for readability. The
+// extractor sees it wrapped, so the key looked up at runtime has to be the same one:
+// collapse every whitespace run to a single space, and both sides agree. The facts box
+// wraps the text itself, so nothing about the display changes.
+static QString oneLine(const QString& aText) {
+    return aText.simplified();
+}
+
 QString ExportTargets::defaultPath() {
     return QStringLiteral(":/export/ExportTargets.txt");
 }
@@ -267,7 +284,7 @@ QList<ExportGroup> ExportTargets::loadGroups(const QString& aPath) {
         if (group.id.isEmpty()) continue;
         // A section whose title is missing still gets drawn: the KEY is worse than a
         // name but far better than a heading with no text, which reads as a bug.
-        group.title = g.attribute(QStringLiteral("title"));
+        group.title = tableText(g.attribute(QStringLiteral("title")));
         if (group.title.isEmpty()) group.title = group.id;
         // Absent means "these rows are variants of one platform", which is what most
         // sections are; a section has to say so to be listed flat.
@@ -310,7 +327,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         ExportTarget t;
         t.id = d.attribute(QStringLiteral("id"));
         if (t.id.isEmpty()) continue;
-        t.label = d.attribute(QStringLiteral("label"));
+        t.label = tableText(d.attribute(QStringLiteral("label")));
 
         t.icon = d.attribute(QStringLiteral("icon"));
         t.group = d.attribute(QStringLiteral("group"));
@@ -329,7 +346,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         t.alpha = parseCapability(d.attribute(QStringLiteral("alpha")));
         t.audio = parseCapability(d.attribute(QStringLiteral("audio")));
         t.loop = parseCapability(d.attribute(QStringLiteral("loop")));
-        t.note = d.attribute(QStringLiteral("note"));
+        t.note = tableText(oneLine(d.attribute(QStringLiteral("note"))));
         t.checked = d.attribute(QStringLiteral("checked"));
         t.source = d.attribute(QStringLiteral("source"));
         t.verified = d.attribute(QStringLiteral("verified")) == QLatin1String("true");
@@ -388,7 +405,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         if (!tagElem.isNull()) t.codecTag = tagElem.attribute(QStringLiteral("value"));
 
         const QDomElement noteElem = d.firstChildElement(QStringLiteral("note"));
-        if (!noteElem.isNull() && t.note.isEmpty()) t.note = noteElem.text().trimmed();
+        if (!noteElem.isNull() && t.note.isEmpty()) t.note = tableText(oneLine(noteElem.text()));
 
         out.push_back(t);
     }
