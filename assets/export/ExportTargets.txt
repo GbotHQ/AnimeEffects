@@ -37,6 +37,10 @@
                 sequence a directory of numbered stills (pixiv ugoira). The plan
                          applies maxFrames, so a 601-frame range becomes the 150
                          stills the platform accepts.
+    fps         absent (default) | ignored. `ignored` means the export's frame rate
+                does not reach the file at all, so the form does not ask for one:
+                pixiv ugoira is a folder of numbered stills whose TIMING is authored
+                on the upload page. The frame COUNT still applies (maxFrames).
     class       fixed    - the destination dictates the codec (most rows)
                 reencode - platform re-encodes our upload (YouTube, X, TikTok)
                 direct   - platform serves our file as-is (website, messaging)
@@ -745,7 +749,7 @@
 
   <destination id="post.pixiv.ugoira" group="pixiv" label="pixiv (ugoira animation)"
                icon="brand-pixiv" family="post"
-               class="reencode" artifact="sequence"
+               class="reencode" artifact="sequence" fps="ignored"
                container="png" minScalePct="25"
                alpha="default-on" audio="forbidden" loop="forbidden"
                checked="2026-09-11" source="https://www.pixiv.help/hc/en-us/articles/235584628-What-are-Ugoira" verified="true">

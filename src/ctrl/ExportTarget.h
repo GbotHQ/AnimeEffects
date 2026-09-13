@@ -129,6 +129,12 @@ struct ExportTarget {
     QString pixFmt;
     ArtifactKind artifact = ArtifactKind::Video;
 
+    // True when the export's frame rate does not reach the destination at all: pixiv
+    // ugoira is a folder of numbered stills whose timing is authored on the upload
+    // page, so the frame rate is not a question the form should ask. The frame COUNT
+    // still applies (caps.maxFrames).
+    bool fpsIgnored = false;
+
     Capability alpha = Capability::Forbidden;
     Capability audio = Capability::Choice;
     Capability loop = Capability::Choice;

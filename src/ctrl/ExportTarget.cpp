@@ -326,6 +326,7 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         }
         t.codec = d.attribute(QStringLiteral("codec"));
         t.pixFmt = d.attribute(QStringLiteral("pixfmt"));
+        t.fpsIgnored = d.attribute(QStringLiteral("fps")) == QLatin1String("ignored");
         t.alpha = parseCapability(d.attribute(QStringLiteral("alpha")));
         t.audio = parseCapability(d.attribute(QStringLiteral("audio")));
         t.loop = parseCapability(d.attribute(QStringLiteral("loop")));

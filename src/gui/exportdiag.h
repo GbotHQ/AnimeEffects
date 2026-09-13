@@ -161,6 +161,7 @@ public:
     QString mArtifactFormatId; // "image/jpg", "gif", "mp4"; empty = manual mode
     QString mArtifactCodecId;  // the encoder the destination resolved
     bool mArtifactIsStill = false; // one image: no range, no frame rate
+    bool mArtifactFpsIgnored = false; // the frame rate never reaches the file
     // Whether the boxes currently report a size the destination forced rather
     // than one the user set. This is what makes the hand-back above decidable.
     bool mLastSizeDictated = false;
@@ -751,6 +752,7 @@ public:
             mArtifactFormatId.clear();
             mArtifactCodecId.clear();
             mArtifactIsStill = false;
+            mArtifactFpsIgnored = false;
         }
     }
 
@@ -875,7 +877,12 @@ public:
                     insertFrameRangeButton, removeFrameRangeButton, firstFrameSpinBox,
                     lastFrameSpinBox},
                    !mArtifactIsStill);
-        setVisible({fpsLabel, fpsSpinBox, setFPSNative}, !mArtifactIsStill);
+        // The frame rate is asked for only when it reaches the file. It does not for
+        // one image (no timeline), and it does not for a destination that declares
+        // fps="ignored" (pixiv ugoira: numbered stills whose timing is authored on the
+        // upload page), nor for a folder of stills, which has no timing at all.
+        const bool asksForFps = !mArtifactIsStill && !mArtifactFpsIgnored && !isSequence;
+        setVisible({fpsLabel, fpsSpinBox, setFPSNative}, asksForFps);
 
         // Codec: a real decision only when the container can carry more than one,
         // and none at all for a directory of stills, which Qt writes.
@@ -1074,6 +1081,7 @@ public:
         // so it keeps them. The two share the "image/" format prefix, which is why the
         // distinction is the destination's artifact rather than the format id.
         mArtifactIsStill = aTarget.artifact == ctrl::ArtifactKind::Still;
+        mArtifactFpsIgnored = aTarget.fpsIgnored;
 
         // --- size: dictated, or the project's own ---------------------------
         // An exact-size destination (Discord 320x320, WhatsApp 512x512,

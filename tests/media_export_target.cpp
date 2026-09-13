@@ -546,7 +546,30 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
               .arg(fromResource.size()));
 }
 
+
 TEST_SECTION("size rules", run_size_rules) {
+    // A destination can declare that the frame rate never reaches it, and the form
+    // then does not ask for one. pixiv ugoira is the case: numbered stills whose
+    // timing is authored on the upload page.
+    {
+        const QList<ctrl::ExportTarget> rows =
+            ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+        const ctrl::ExportTarget ugoira =
+            ctrl::ExportTargets::find(rows, QStringLiteral("post.pixiv.ugoira"));
+        check(ugoira.id == QLatin1String("post.pixiv.ugoira"), "found post.pixiv.ugoira");
+        check(ugoira.fpsIgnored, "ugoira declares that the frame rate is not its business");
+        check(ugoira.caps.maxFrames == 150,
+              QStringLiteral("and its frame COUNT still applies (%1)").arg(ugoira.caps.maxFrames));
+        // The flag is about the frame rate, not about the artifact: the row is still a
+        // sequence, which is what makes it take a frame RANGE.
+        check(ugoira.artifact == ctrl::ArtifactKind::Sequence, "and it is still a sequence");
+        for (const ctrl::ExportTarget& t : rows) {
+            if (t.fpsIgnored && t.artifact == ctrl::ArtifactKind::Video) {
+                check(false, QStringLiteral("%1: a video row claims to ignore the frame rate").arg(t.id));
+            }
+        }
+    }
+
     // A Free rule means the destination imposes no size. That is NOT the same as
     // deciding one: the export dialog's own Width/Height stay in force, and the
     // plan must echo them. Without this a 1920x1080 upload from a 1100x790

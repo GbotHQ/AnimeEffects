@@ -2061,6 +2061,14 @@ void MainWindow::openExportDialog(const QString& aDestinationId) {
                                  .arg(plan.size.width())
                                  .arg(plan.size.height())
                                  .arg(request.playhead);
+                } else if (target.fpsIgnored) {
+                    // A frame RATE would describe timing this artifact does not carry:
+                    // pixiv ugoira is numbered stills whose timing is authored on the
+                    // upload page, so what matters is how many frames there are.
+                    lines << tr("%1 x %2, %3 frames (timing is set on the upload page)")
+                                 .arg(plan.size.width())
+                                 .arg(plan.size.height())
+                                 .arg(plan.frames());
                 } else {
                     lines << tr("%1 x %2, %3 fps")
                                  .arg(plan.size.width())
