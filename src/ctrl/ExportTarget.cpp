@@ -120,77 +120,76 @@ QString firstAvailable(const QStringList& aGroup) {
 // decoding trap: read back with fromLatin1() (as both of these were) it renders
 // the dash as "â€”". QStringLiteral is compiled to UTF-16 from the source
 // encoding, so there is no decode step left to get wrong.
-QString describeGroup(int aGroupIndex) {
-    switch (aGroupIndex) {
-    case 0: return QStringLiteral("AV1 (software, highest quality per bit)");
-    case 1: return QStringLiteral("AV1 (hardware, real-time, near-software quality)");
-    case 2: return QStringLiteral("H.265 (software)");
-    case 3: return QStringLiteral("H.265 (hardware)");
-    case 4: return QStringLiteral("H.264 (software)");
-    case 5: return QStringLiteral("H.264 (hardware)");
-    case 6: return QStringLiteral("FFV1 (lossless master)");
-    default: return QString();
-    }
+// A codec FAMILY: one compression format, whose encoders differ only in how they
+// produce it (software with the full rate-control toolbox, hardware with the speed).
+// The ORDER of these lists is the ladder's policy, and it is a fact rather than a
+// taste: per bit, AV1 beats H.265 beats H.264 at the same quality target, and within a
+// family the software encoder exposes the better rate control while the hardware one is
+// faster. Nothing else about the ladder is hand-ordered.
+QStringList familyEncoders(const QString& aFamily) {
+    if (aFamily == QLatin1String("av1")) return {"libsvtav1", "libaom-av1", "av1_nvenc", "av1_qsv", "av1_vaapi", "av1_amf"};
+    if (aFamily == QLatin1String("hevc")) return {"libx265", "hevc_nvenc", "hevc_qsv", "hevc_vaapi", "hevc_amf"};
+    if (aFamily == QLatin1String("h264")) return {"libx264", "h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf"};
+    if (aFamily == QLatin1String("lossless")) return {"ffv1"};
+    return {};
 }
 
-// Group indices into describeGroup above.
-enum {
-    G_AV1_SW = 0,
-    G_AV1_HW = 1,
-    G_HEVC_SW = 2,
-    G_HEVC_HW = 3,
-    G_H264_SW = 4,
-    G_H264_HW = 5,
-    G_LOSSLESS = 6
+QString familyLabel(const QString& aFamily) {
+    if (aFamily == QLatin1String("av1")) return QStringLiteral("AV1");
+    if (aFamily == QLatin1String("hevc")) return QStringLiteral("H.265");
+    if (aFamily == QLatin1String("h264")) return QStringLiteral("H.264");
+    if (aFamily == QLatin1String("lossless")) return QStringLiteral("FFV1 (lossless master)");
+    return aFamily;
+}
+
+bool isHardwareEncoder(const QString& aName) {
+    return aName.contains(QLatin1String("nvenc")) || aName.contains(QLatin1String("qsv"))
+           || aName.contains(QLatin1String("vaapi")) || aName.contains(QLatin1String("amf"))
+           || aName.contains(QLatin1String("videotoolbox"));
+}
+
+// How to choose between two encoders THAT PRODUCE THE SAME FORMAT, which is the one
+// question a list order cannot answer honestly: what if both a hardware and a software
+// encoder exist, or two hardware ones?
+enum class EncoderChoice {
+    // Take the declared order: software first, because its rate control has the most
+    // knobs and the budget leaves room (Best, Lossless).
+    Declared,
+    // Take whichever measures FASTEST here. The format is already decided by the
+    // family, so the remaining difference IS time; picking the first name in a list
+    // instead is an arbitrary tie-break in exactly the case the user asked about
+    // ("what if both have hardware compatibility?").
+    Fastest
 };
 
 struct Ladder {
-    QList<int> groups;
+    QStringList families; // codec families, most efficient first
+    EncoderChoice choice = EncoderChoice::Fastest;
 };
 
 Ladder ladderFor(DestClass aClass, QualityBucket aBucket) {
     Ladder out;
-    switch (aClass) {
-    case DestClass::Direct:
-        // The platform serves our file as-is: decode compatibility dominates.
-        // AV1 is ~80% of devices and HEVC is patchy in browsers, so H.264 wins
-        // at every bucket. AV1/HEVC stay available in Advanced.
-        out.groups = {G_H264_SW, G_H264_HW};
-        return out;
-
-    case DestClass::Archive:
-        if (aBucket == QualityBucket::Lossless) out.groups = {G_LOSSLESS, G_HEVC_SW, G_H264_SW};
-        else if (aBucket == QualityBucket::Best) out.groups = {G_HEVC_SW, G_AV1_SW, G_H264_SW};
-        else if (aBucket == QualityBucket::Balanced) out.groups = {G_HEVC_SW, G_H264_SW};
-        else out.groups = {G_AV1_SW, G_HEVC_SW, G_H264_SW};
-        return out;
-
-    case DestClass::Reencode:
-        // The platform re-encodes whatever we upload, so their transcode — not
-        // our file — is what viewers see. Optimize for quality per bit.
-        if (aBucket == QualityBucket::Lossless) out.groups = {G_LOSSLESS, G_HEVC_SW, G_AV1_SW, G_H264_SW};
-        else if (aBucket == QualityBucket::Best) out.groups = {G_AV1_SW, G_AV1_HW, G_HEVC_SW, G_HEVC_HW, G_H264_SW, G_H264_HW};
-        else if (aBucket == QualityBucket::Balanced) out.groups = {G_AV1_HW, G_AV1_SW, G_HEVC_HW, G_HEVC_SW, G_H264_SW, G_H264_HW};
-        else out.groups = {G_AV1_SW, G_AV1_HW, G_HEVC_SW, G_HEVC_HW, G_H264_SW, G_H264_HW};
-        return out;
-
-    default:
-        out.groups = {G_H264_SW, G_H264_HW};
+    if (aClass == DestClass::Direct) {
+        // The platform serves our file as-is, so DECODE COMPATIBILITY is the
+        // requirement and quality per bit is not: H.264 is the one format every
+        // browser, phone and TV plays. AV1 and H.265 remain reachable by naming a codec
+        // in Advanced; they are not chosen for the user at any bucket.
+        out.families = {QStringLiteral("h264")};
+        out.choice = EncoderChoice::Fastest; // hardware H.264 when it runs here
         return out;
     }
-}
-
-QStringList groupEncoders(int aGroup) {
-    switch (aGroup) {
-    case G_AV1_SW: return {"libsvtav1", "libaom-av1"};
-    case G_AV1_HW: return {"av1_nvenc", "av1_qsv", "av1_vaapi", "av1_amf"};
-    case G_HEVC_SW: return {"libx265"};
-    case G_HEVC_HW: return {"hevc_nvenc", "hevc_qsv", "hevc_vaapi", "hevc_amf"};
-    case G_H264_SW: return {"libx264"};
-    case G_H264_HW: return {"h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf"};
-    case G_LOSSLESS: return {"ffv1"};
-    default: return {};
-    }
+    const bool lossless = aBucket == QualityBucket::Lossless;
+    out.families = lossless
+                       ? QStringList{QStringLiteral("lossless"), QStringLiteral("hevc"),
+                                     QStringLiteral("av1"), QStringLiteral("h264")}
+                       : QStringList{QStringLiteral("av1"), QStringLiteral("hevc"),
+                                     QStringLiteral("h264")};
+    // One rule for every non-lossless bucket, and the only thing a bucket changes:
+    // whether quality per bit or time wins when both encoders of a family run here.
+    // "Best" has room to be slow; "Balanced" and "Smaller" do not.
+    out.choice = (aBucket == QualityBucket::Best) ? EncoderChoice::Declared
+                                                  : EncoderChoice::Fastest;
+    return out;
 }
 
 QString classClause(DestClass aClass) {
@@ -660,49 +659,88 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
 QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
                            const LadderHints& aHints, QString* aWhy) {
     const Ladder ladder = ladderFor(aClass, aBucket);
+    const bool canMeasure = aHints.maxSeconds > 0.0 && aHints.frameCount > 0
+                            && aHints.width > 0 && aHints.height > 0;
     QStringList rejected;
-    // Fastest rung seen, used when NOTHING meets the budget. Returning nothing
-    // would strand the user; the right answer is the fastest available plus an
-    // honest explanation (the real ETA comes from actual progress anyway).
+    // Fastest rung seen, used when NOTHING meets the budget. Returning nothing would
+    // strand the user; the right answer is the fastest available plus an honest
+    // explanation (the real ETA comes from actual progress anyway).
     QString fallback;
     QString fallbackWhy;
 
-    for (int group : ladder.groups) {
-        const QString name = firstAvailable(groupEncoders(group));
-        if (name.isEmpty()) continue;
-        fallback = name;
-        fallbackWhy = describeGroup(group) + classClause(aClass);
+    for (const QString& family : ladder.families) {
+        // Which of this family's encoders exist in this build, in the declared order
+        // (software first, which is the quality-first default).
+        QStringList running;
+        for (const QString& name : familyEncoders(family)) {
+            if (media::ffmpeg::encoderUsable(name.toUtf8().constData())) running << name;
+        }
+        if (running.isEmpty()) continue;
 
-        // Second gate: is it fast enough HERE? Only meaningful with a size, a
-        // frame count and a budget — otherwise we have nothing to project.
-        if (aHints.maxSeconds > 0.0 && aHints.frameCount > 0 && aHints.width > 0 &&
-            aHints.height > 0) {
-            const double fps =
-                media::ffmpeg::encoderThroughput(name, aHints.width, aHints.height, aHints.pixFmt);
-            if (fps > 0.0) {
-                const double projected = (double)aHints.frameCount / fps;
-                if (projected > aHints.maxSeconds) {
-                    rejected << QStringLiteral("%1 (~%2s)")
-                                    .arg(name)
-                                    .arg((int)std::llround(projected));
-                    continue; // try the next rung down
+        // WHICH ONE, when a family has more than one. Measured, when the bucket allows
+        // it: the format is already decided, so the only difference left is speed. This
+        // is the same cached sample the budget gate uses.
+        // A sample needs a size, not a budget: choosing between two encoders of the
+        // same format is a question about this machine, and it is worth answering even
+        // when nobody asked how long the export may take.
+        const bool canSample = aHints.width > 0 && aHints.height > 0;
+        QString chosen = running.first();
+        bool choseByMeasurement = false;
+        if (ladder.choice == EncoderChoice::Fastest && canSample && running.size() > 1) {
+            double chosenFps = 0.0;
+            for (const QString& name : running) {
+                const double fps = media::ffmpeg::encoderThroughput(name, aHints.width,
+                                                                    aHints.height, aHints.pixFmt);
+                if (fps > chosenFps) {
+                    chosenFps = fps;
+                    chosen = name;
+                    choseByMeasurement = true;
                 }
-                if (aWhy) {
-                    *aWhy = QStringLiteral("%1, about %2s here%3")
-                                .arg(describeGroup(group))
-                                .arg((int)std::llround(projected))
-                                .arg(classClause(aClass));
-                }
+            }
+        }
+
+        const QString label = QStringLiteral("%1 (%2)")
+                                  .arg(familyLabel(family),
+                                       isHardwareEncoder(chosen) ? QStringLiteral("hardware")
+                                                                 : QStringLiteral("software"));
+
+        // The remaining gate: does it fit the time budget HERE? Try the rest of this
+        // family before giving up on the format (a software encoder may fit where the
+        // hardware one does not, and the other way round), then the next family.
+        QStringList order = running;
+        order.removeAll(chosen);
+        order.prepend(chosen);
+        for (const QString& name : order) {
+            fallback = name;
+            fallbackWhy = label + classClause(aClass);
+            const QString how = (choseByMeasurement && name == chosen)
+                                    ? QStringLiteral("%1 via %2, the fastest of %3 that runs here")
+                                          .arg(label, name).arg(running.size())
+                                    : QStringLiteral("%1 via %2").arg(label, name);
+            if (!canMeasure) {
+                if (aWhy) *aWhy = how + classClause(aClass);
                 return name;
             }
-            // Unmeasurable: don't reject on a failed measurement, just fall
-            // through to using it (the real ETA comes from actual progress).
+            const double fps = media::ffmpeg::encoderThroughput(name, aHints.width,
+                                                                aHints.height, aHints.pixFmt);
+            if (fps <= 0.0) {
+                // Unmeasurable: do not reject on a failed measurement.
+                if (aWhy) *aWhy = how + classClause(aClass);
+                return name;
+            }
+            const double projected = (double)aHints.frameCount / fps;
+            if (projected > aHints.maxSeconds) {
+                rejected << QStringLiteral("%1/%2 (~%3s)").arg(label, name)
+                                .arg((int)std::llround(projected));
+                continue;
+            }
+            if (aWhy) {
+                *aWhy = QStringLiteral("%1, about %2s here%3").arg(how)
+                            .arg((int)std::llround(projected))
+                            .arg(classClause(aClass));
+            }
+            return name;
         }
-
-        if (aWhy) {
-            *aWhy = describeGroup(group) + classClause(aClass);
-        }
-        return name;
     }
 
     if (!fallback.isEmpty()) {

@@ -1059,6 +1059,99 @@ TEST_SECTION("codec ladder (class x bucket)", run_ladder) {
         if (!codec.contains(QLatin1String("264"))) allH264 = false;
     }
     check(allH264, "direct playback picks H.264 at every bucket (compatibility first)");
+
+    // ---- the ladder's remaining policy, and where measurement decides --------
+    //
+    // Two things a list order used to decide silently, and both are now either a
+    // stated policy or a measurement:
+    //
+    //   * the FAMILY order (quality per bit: AV1, then H.265, then H.264) is the
+    //     same at every bucket, and "lossless" goes first only where losslessness is
+    //     the requirement;
+    //   * within one family, the encoder is chosen by MEASURED THROUGHPUT unless the
+    //     bucket says quality per bit matters more than time (Best).
+    {
+        auto familyOf = [](const QString& aEncoder) -> QString {
+            if (aEncoder.contains(QLatin1String("av1")) || aEncoder == QLatin1String("libaom-av1"))
+                return QStringLiteral("av1");
+            if (aEncoder.contains(QLatin1String("265")) || aEncoder.contains(QLatin1String("hevc")))
+                return QStringLiteral("hevc");
+            if (aEncoder.contains(QLatin1String("264"))) return QStringLiteral("h264");
+            if (aEncoder == QLatin1String("ffv1")) return QStringLiteral("lossless");
+            return QString();
+        };
+
+        ctrl::LadderHints hints;
+        hints.width = 640;
+        hints.height = 360;
+        hints.pixFmt = QStringLiteral("yuv420p");
+        hints.frameCount = 300;
+
+        // Losslessness is a requirement, not a preference: at that bucket the master
+        // format leads, whatever the efficiency order says otherwise.
+        QString whyLossless;
+        const QString losslessPick = ctrl::resolveLadderCodec(
+            ctrl::DestClass::Reencode, ctrl::QualityBucket::Lossless, hints, &whyLossless);
+        check(losslessPick == QLatin1String("ffv1") || familyOf(losslessPick) == QLatin1String("lossless"),
+              QStringLiteral("the lossless bucket leads with the lossless family (%1)").arg(losslessPick));
+
+        // Quality per bit leads at every other bucket, at least when AV1 runs here.
+        const bool av1Runs = media::ffmpeg::encoderUsable("libsvtav1")
+                             || media::ffmpeg::encoderUsable("libaom-av1");
+        QString whyBest;
+        const QString bestPick = ctrl::resolveLadderCodec(
+            ctrl::DestClass::Reencode, ctrl::QualityBucket::Best, hints, &whyBest);
+        if (av1Runs) {
+            check(familyOf(bestPick) == QLatin1String("av1"),
+                  QStringLiteral("the Best bucket leads with the most efficient family (%1)").arg(bestPick));
+        } else {
+            QTextStream(stdout) << "      (no AV1 encoder in this build; family order untested here)\n";
+        }
+
+        // MEASUREMENT DECIDES INSIDE A FAMILY. For the family the resolver picked, the
+        // chosen encoder must be the fastest of that family's encoders that actually
+        // run here - the case the user asked about ("what if both have hardware
+        // compatibility?"). Best is excluded on purpose: it prefers the declared order
+        // (software's rate control) over speed.
+        QString whyBalanced;
+        const QString balancedPick = ctrl::resolveLadderCodec(
+            ctrl::DestClass::Reencode, ctrl::QualityBucket::Balanced, hints, &whyBalanced);
+        const QString family = familyOf(balancedPick);
+        const QStringList candidates =
+            family == QLatin1String("av1") ? QStringList{"libsvtav1", "libaom-av1", "av1_nvenc", "av1_qsv", "av1_vaapi", "av1_amf"}
+            : family == QLatin1String("hevc") ? QStringList{"libx265", "hevc_nvenc", "hevc_qsv", "hevc_vaapi", "hevc_amf"}
+            : family == QLatin1String("h264") ? QStringList{"libx264", "h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf"}
+                                              : QStringList{};
+        QStringList running;
+        for (const QString& c : candidates) {
+            if (media::ffmpeg::encoderUsable(c.toUtf8().constData())) running << c;
+        }
+        const double pickedFps = media::ffmpeg::encoderThroughput(balancedPick, hints.width,
+                                                                  hints.height, hints.pixFmt);
+        bool nobodyFaster = true;
+        for (const QString& c : running) {
+            const double fps = media::ffmpeg::encoderThroughput(c, hints.width, hints.height,
+                                                                hints.pixFmt);
+            if (fps > pickedFps * 1.05) nobodyFaster = false;
+        }
+        check(running.size() >= 1, QStringLiteral("the chosen family reports its encoders (%1)")
+                                       .arg(running.join(QStringLiteral(", "))));
+        check(nobodyFaster,
+              QStringLiteral("the chosen encoder is the fastest that runs here (%1 of %2: %3 vs %4)")
+                  .arg(balancedPick).arg(running.size()).arg(pickedFps)
+                  .arg(whyBalanced.left(40)));
+        // No silent skip: whenever more than one encoder of the family RUNS, the
+        // choice was made by measurement and the reason must say so. (A conditional
+        // here would be an assertion that quietly does not run on the machines where
+        // it matters.)
+        if (running.size() > 1) {
+            check(whyBalanced.contains(QLatin1String("fastest of")),
+                  QStringLiteral("and the reason says it was chosen by measurement, not by list "
+                                 "order (%1)").arg(whyBalanced.left(60)));
+        }
+        QTextStream(stdout) << "      balanced pick: " << balancedPick << " (" << whyBalanced << ")\n";
+        QTextStream(stdout) << "      running in that family: " << running.join(QStringLiteral(", ")) << "\n";
+    }
 }
 
 static uint32_t fourcc(const QString& s) {
