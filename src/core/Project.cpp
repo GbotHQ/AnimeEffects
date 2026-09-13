@@ -94,6 +94,17 @@ Project::~Project() {
         }
         mediaPlayer->playing = false;
     }
+
+    // The two audio members are heap objects - the audio widget's API takes pointers, and it reaches
+    // them through the project - and NOTHING else owns them, so a Project that does not delete them
+    // leaks 80 bytes plus the containers' storage. Found by the ASan leak gate of verify_mipmap once
+    // the harness stopped leaking its own image buffers on top of it (267 MB of them, which is what
+    // this used to hide behind). The QMediaPlayer/QAudioOutput objects inside mediaState are NOT ours
+    // to delete: the widget releases those with deleteLater().
+    delete mediaPlayer;
+    mediaPlayer = nullptr;
+    delete pConf;
+    pConf = nullptr;
 }
 
 void Project::setFileName(const QString& aFileName) {

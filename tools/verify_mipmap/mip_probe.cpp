@@ -137,6 +137,10 @@ struct Img {
     QSize size() const { return QSize(w, h); }
 };
 
+// Defined with the other resource helpers further down; declared here because the earliest suites
+// build their fixtures through it too.
+img::ResourceNode* makeResource(const QString& aId, const Img& aSrc);
+
 // An input whose transparent region carries a chosen RGB: that value is what a straight
 // chain averages into the silhouette, and what a premultiplied chain multiplies away.
 struct Pattern {
@@ -477,10 +481,7 @@ void suiteImageKey() {
 
         // build a real image resource the way the loaders do (straight RGBA8), then let the
         // production ImageKey build its texture from it
-        auto* node = new img::ResourceNode(QString("mip_probe_%1").arg(pat.inside[0]));
-        uint8_t* data = new uint8_t[src.d.size()];
-        std::memcpy(data, src.d.data(), src.d.size());
-        node->data().grabImage(XCMemBlock(data, src.d.size()), src.size(), img::Format_RGBA8);
+        img::ResourceNode* node = makeResource(QString("mip_probe_%1").arg(pat.inside[0]), src);
 
         core::ImageKey key;
         key.setImage(node->handle());
@@ -611,12 +612,29 @@ Img makeUniform(int aSize, const uint8_t aRgb[3], uint8_t aAlpha) {
     return img;
 }
 
+// The harness's resources, owned HERE. A node handed to a layer is only borrowed - the layer takes an
+// img::ResourceHandle (a shared_ptr) from it - so the node itself has an owner only if this registry is
+// it. Before this existed, every image the harness ever built stayed allocated for the life of the
+// process: 267,730,480 of the 267,855,450 bytes of the ASan leak report, all of them from the two lines
+// below, which is exactly the sort of number that hides a real regression inside it. Nothing in the
+// product leaks here - the nodes are the harness's own convenience and its own responsibility.
+std::vector<std::unique_ptr<img::ResourceNode>>& harnessResources() {
+    static std::vector<std::unique_ptr<img::ResourceNode>> resources;
+    return resources;
+}
+
+// Called from clearRenderFixtures(), i.e. at the end of every mode and once at exit: by then the trees
+// that borrowed these handles are gone, and a handle a live ImageKey still holds keeps the pixels alive
+// on its own.
+void releaseHarnessResources() { harnessResources().clear(); }
+
 img::ResourceNode* makeResource(const QString& aId, const Img& aSrc) {
-    auto* node = new img::ResourceNode(aId);
+    std::unique_ptr<img::ResourceNode> node(new img::ResourceNode(aId));
     uint8_t* data = new uint8_t[aSrc.d.size()];
     std::memcpy(data, aSrc.d.data(), aSrc.d.size());
     node->data().grabImage(XCMemBlock(data, aSrc.d.size()), aSrc.size(), img::Format_RGBA8);
-    return node;
+    harnessResources().emplace_back(std::move(node));
+    return harnessResources().back().get();
 }
 
 // Mirrors MainDisplayWidget::paintGL's per-frame state so the render goes through the same
@@ -755,7 +773,10 @@ std::map<QString, std::unique_ptr<RenderFixture>>& renderFixtures() {
 // fixtures own GL objects, and a static destructor would run at process exit, after the
 // context is gone (glDeleteFramebuffers through a dangling function pointer - the crash this
 // harness originally had at exit).
-void clearRenderFixtures() { renderFixtures().clear(); }
+void clearRenderFixtures() {
+    renderFixtures().clear();
+    releaseHarnessResources();
+}
 
 std::vector<uint8_t> renderLayer(
     const QSize& aCanvas, const Img& aImage, float aScale, img::BlendMode aMode,
@@ -5736,10 +5757,10 @@ void suiteAnisotropy() {
     // is supposed to take the samples the footprint's ratio needs, not the maximum, so this measures
     // whether a large requested value costs anything where the footprint is not elongated.
     if (supported) {
-        // Deliberately small: the harness's resources are never freed (documented in the README's ASan
-        // section), so a big cost fixture would add its whole copy to the leak total that gate
-        // reports. 131k fragments per render, 20 renders, is enough to see a sampling cost that
-        // mattered - and the answer is that there is not one.
+        // Deliberately small: 131k fragments per render with 20 repeats is enough to see a sampling
+        // cost that mattered - and the answer is that there is none this harness can resolve - while
+        // keeping the whole probe inside the suite runner's 180 s per-test budget. It is also the
+        // texture the app really has to sample: a 1024-texel layer drawn at a 4:1 squash.
         const QSize canvas(256, 256);
         Img artwork;
         artwork.w = artwork.h = 1024;

@@ -698,19 +698,32 @@ ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 QT_QPA_PLATFORM=offscreen \
 That covers the new CPU code that indexes heap buffers: the premultiply-and-pad loop in
 `img::Util::makeTextureUpload`.
 
-With M18 and M19 in place the total is 267,855,410 bytes in 1,863 allocations, against 213,061,430 in
-1,743 before they existed: the +52 MB is those two suites' fixtures - the artwork copies the harness
-deliberately never frees (its resources are handed to trees that go out of scope, and `XCMemBlock` has
-no destructor) plus the textures Mesa allocated for their scenes. Nothing in the anisotropy path itself
-allocates anything that outlives the call.
+Leak detection is worth running too, and it has now caught three real ones:
 
-Leak detection is worth running too, and it caught a real one here. `XCMemBlock` is a plain struct
-with a raw `uint8*` and no destructor, so a helper that allocates and returns one has no owner; the
-first version of the padding helper did exactly that and leaked one texture-sized buffer per layer
-upload. Measured, same probe, `detect_leaks=1`: 464,095,874 bytes in 1,976 allocations before,
-210,897,574 in 1,730 after - the difference is the per-upload buffers, and what is left is the
-harness's own (projects, resources and GL objects it deliberately never frees). The helper returns a
-`std::vector<uint8>` now.
+```sh
+ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 QT_QPA_PLATFORM=offscreen \
+    ./build-asan/tests/Debug/verify_mipmap     # 301 checks, 0 failures, exit 0, no leaks
+```
+
+1. `XCMemBlock` is a plain struct with a raw `uint8*` and no destructor, so a helper that allocates and
+   returns one has no owner; the first version of the padding helper did exactly that and leaked one
+   texture-sized buffer per layer upload (464,095,874 bytes in 1,976 allocations before, 210,897,574 in
+   1,730 after). The helper returns a `std::vector<uint8>` now.
+2. The harness's own `makeResource` allocated an `img::ResourceNode` and its image copy and handed the
+   node to nobody. That was **267,730,480 of the 267,855,450 bytes** the report held - 99.95% of it, and
+   the earlier note here called it "the harness's own, deliberately never freed", which was wrong: a node
+   handed to a layer is only BORROWED (the layer takes an `img::ResourceHandle`, a shared_ptr), so the
+   harness can and now does own what it allocates, releasing it in `clearRenderFixtures()` - which marks
+   exactly the point where the trees that borrowed those handles are gone.
+3. Fixing that was worth doing for its own sake, because it is what the gate was hiding: the report then
+   read 80 bytes, two allocations, both from `core::Project`'s constructor. `pConf` (a
+   `std::vector<audioConfig>`) and `mediaPlayer` (a `mediaState`) are raw `new` members and nothing ever
+   deleted them, so every `Project` leaked them - one per document and per export in the app, not just in
+   the harness. `~Project` deletes both now.
+
+The probe leaks nothing at all as of this writing: with the two above fixed the run exits 0 with no leak
+summary, which is what makes the number meaningful - a regression of a few KB would now be visible
+instead of hiding inside hundreds of megabytes of the harness's own.
 
 ## Deformed meshes: measured, not assumed
 
