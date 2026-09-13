@@ -4,22 +4,22 @@
 <context>
     <name>AnimeEffects.Dialogs</name>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="57"/>
         <source>Animation settings</source>
         <translation>애니메이션 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="107"/>
         <source>Loop animation</source>
         <translation>애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="138"/>
         <source>Frame range</source>
         <translation>프레임 범위</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="174"/>
         <source>Frames per second</source>
         <translation>초당 프레임</translation>
     </message>
@@ -263,7 +263,7 @@
         <translation type="vanished">스케일 키 업데이트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="786"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
         <source>Change the canvas size</source>
         <translation>캔버스 크기 변경</translation>
     </message>
@@ -272,52 +272,52 @@
         <translation type="vanished">최대 프레임 변경</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="807"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="691"/>
         <source>Change the frame range</source>
         <translation>프레임 범위 변경</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="828"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="712"/>
         <source>Change loop settings</source>
         <translation>반복 설정 변경</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="850"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="734"/>
         <source>Change the FPS</source>
         <translation>초당 프레임 변경</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="400"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="399"/>
         <source>Rename object</source>
         <translation>오브젝트 이름 바꾸기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1057"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1056"/>
         <source>Create a layer</source>
         <translation>레이어 만들기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1181"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1180"/>
         <source>Duplicate base folder</source>
         <translation>기본 폴더 복제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1316"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1315"/>
         <source>Duplicate layer</source>
         <translation>레이어 복제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1495"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1494"/>
         <source>create a folder object</source>
         <translation>폴더 오브젝트 만들기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1545"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1544"/>
         <source>Delete object</source>
         <translation>오브젝트 삭제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1679"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1678"/>
         <source>Move object</source>
         <translation>오브젝트 이동</translation>
     </message>
@@ -332,7 +332,7 @@
         <translation>에셋 이름 바꾸기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TargetWidget.cpp" line="177"/>
+        <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>애니메이션 설정 변경</translation>
     </message>
@@ -365,14 +365,194 @@
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="529"/>
+        <location filename="../../src/gui/exportdiag.h" line="296"/>
+        <source>Choose where this is going</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="616"/>
         <source>Open Palette</source>
         <translation>팔레트 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="530"/>
+        <location filename="../../src/gui/exportdiag.h" line="617"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>FFmpeg 팔레트 파일 (*.png)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="631"/>
+        <source>Auto</source>
+        <translation type="unfinished">자동</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="783"/>
+        <source>PNG sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="784"/>
+        <source>JPEG sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="905"/>
+        <source>CRF:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="906"/>
+        <source>Quality:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1376"/>
+        <source>First frame %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1377"/>
+        <source>Last frame %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1481"/>
+        <source>Width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1482"/>
+        <source>Height</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1483"/>
+        <source>Frame rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1484"/>
+        <source>First frame</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1485"/>
+        <source>Last frame</source>
+        <translation type="unfinished">끝 프레임</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1486"/>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1487"/>
+        <source>Codec</source>
+        <translation type="unfinished">코덱</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1488"/>
+        <source>Quality</source>
+        <translation type="unfinished">품질</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <source>Quality override</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <source>Image quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <source>Bitrate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <source>Destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <source>Export</source>
+        <translation type="unfinished">내보내기</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <source>Cancel</source>
+        <translation type="unfinished">취소</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <source>Export with transparency</source>
+        <translation type="unfinished">투명도 포함 내보내기</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <source>Loop animation</source>
+        <translation type="unfinished">애니메이션 반복</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <source>Export with audio</source>
+        <translation type="unfinished">오디오 포함 내보내기</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <source>Custom palette</source>
+        <translation type="unfinished">사용자 지정 팔레트</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <source>Keep aspect ratio</source>
+        <translation type="unfinished">가로세로 비율 유지</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <source>Insert range</source>
+        <translation type="unfinished">범위 추가</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <source>Remove range</source>
+        <translation type="unfinished">범위 제거</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <source>Set width to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <source>Set height to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <source>Set frame rate to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <source>Image quality to auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <source>Quality override to auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <source>Bitrate to auto</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -566,12 +746,12 @@
 <context>
     <name>LoadMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="168"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="177"/>
         <source>Load audio configuration</source>
         <translation>오디오 설정 불러오기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="170"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="179"/>
         <source>Anie audio configuration file (*.aemus)</source>
         <translation>애니 오디오 구성 파일 (*.aemus)</translation>
     </message>
@@ -579,7 +759,7 @@
 <context>
     <name>LoadMusOverwrite</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="192"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="201"/>
         <source>Loading this file will overwrite your current audio configuration, continue?</source>
         <translation>이 파일을 불러오면 현재 오디오 구성이 덮어써집니다. 계속하시겠습니까?</translation>
     </message>
@@ -649,20 +829,85 @@
         <translation type="vanished">베지어 편집기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="247"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="246"/>
         <source>Easing</source>
         <translation>이징</translation>
     </message>
 </context>
 <context>
+    <name>QObject</name>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1292"/>
+        <source>needs %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1360"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1404"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1470"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1508"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1555"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1578"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1609"/>
+        <source>Export Error</source>
+        <translation type="unfinished">내보내기 오류</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
+        <source>Unknown export destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1423"/>
+        <source>File exists</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1424"/>
+        <source>The file &quot;%1&quot; already exists. Overwrite?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1471"/>
+        <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1486"/>
+        <source>Fitting under %1&apos;s %2 KB limit...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1499"/>
+        <source>Export Canceled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1500"/>
+        <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1509"/>
+        <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
+%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1517"/>
+        <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SaveMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="156"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="165"/>
         <source>Save audio configuration</source>
         <translation>오디오 설정 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="158"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="167"/>
         <source>Anie audio configuration file (*.aemus)</source>
         <translation>애니 오디오 구성 파일 (*.aemus)</translation>
     </message>
@@ -670,12 +915,12 @@
 <context>
     <name>SelectMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="390"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="428"/>
         <source>Open audio file</source>
         <translation>오디오 파일 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="392"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>오디오 파일 (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
     </message>
@@ -683,70 +928,79 @@
 <context>
     <name>audioWidget</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="335"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="350"/>
         <source>Enable playback</source>
         <translation>재생 활성화</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="336"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="354"/>
+        <source>Export</source>
+        <translation type="unfinished">내보내기</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="355"/>
+        <source>Mix this track into exported files. Untick it for a track you only need as timing reference (a voice pass, a temp music bed): it still plays while you animate, and it stays out of the file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="361"/>
         <source>Add new audio track</source>
         <translation>새 오디오 트랙 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="337"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="362"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Playback start frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;재생 시작 프레임&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="338"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="363"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Playback end frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;재생 종료 프레임&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="339"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="437"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="442"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="364"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="475"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="480"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Duration (in frames): &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;길이 (프레임): &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="357"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="383"/>
         <source>Select audio file...</source>
         <translation>오디오 파일 선택...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="375"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="415"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="418"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="453"/>
         <source>Remove next audio track</source>
         <translation>다음 오디오 트랙 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="379"/>
         <source>Remove current audio track</source>
-        <translation>현재 오디오 트랙 제거</translation>
+        <translation type="vanished">현재 오디오 트랙 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="157"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="166"/>
         <source>Audio Player</source>
         <translation>오디오 플레이어</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="158"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="167"/>
         <source>Audio player</source>
         <translation>오디오 플레이어</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="159"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="168"/>
         <source>Save current audio configuration</source>
         <translation>현재 오디오 구성 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="160"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="169"/>
         <source>Load audio configuration from file</source>
         <translation>파일에서 오디오 구성 불러오기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="161"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="170"/>
         <source>Save/Load audio config</source>
         <translation>오디오 구성 저장/불러오기</translation>
     </message>
@@ -824,311 +1078,375 @@
 <context>
     <name>data_load</name>
     <message>
-        <location filename="../../src/gui/Main.cpp" line="165"/>
         <source>Unable to locate data folder, please select it</source>
-        <translation>데이터 폴더를 찾을 수 없습니다. 폴더를 선택해 주세요.</translation>
+        <translation type="vanished">데이터 폴더를 찾을 수 없습니다. 폴더를 선택해 주세요.</translation>
     </message>
 </context>
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="873"/>
+        <location filename="../../src/gui/exportdiag.h" line="1410"/>
         <source>Export parameters</source>
         <translation>내보내기 파라미터</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="874"/>
         <source>Intermediate </source>
-        <translation>중간 패스 </translation>
+        <translation type="vanished">중간 패스 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="875"/>
+        <location filename="../../src/gui/exportdiag.h" line="1411"/>
         <source>Keep aspect ratio</source>
         <translation>가로세로 비율 유지</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="876"/>
+        <location filename="../../src/gui/exportdiag.h" line="1412"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 마지막 프레임 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="877"/>
         <source>Export type:</source>
-        <translation>내보내기 유형:</translation>
+        <translation type="vanished">내보내기 유형:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="878"/>
         <source>Intermediate type:</source>
-        <translation>중간 파일 형식:</translation>
+        <translation type="vanished">중간 파일 형식:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="879"/>
         <source>Custom</source>
-        <translation>사용자 지정</translation>
+        <translation type="vanished">사용자 지정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="880"/>
+        <location filename="../../src/gui/exportdiag.h" line="1422"/>
         <source>Insert range</source>
         <translation>범위 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="881"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Remove range</source>
         <translation>범위 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="882"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Custom palette</source>
         <translation>사용자 지정 팔레트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="883"/>
         <source>Force piped export </source>
-        <translation>파이프 내보내기 강제 </translation>
+        <translation type="vanished">파이프 내보내기 강제 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="884"/>
         <source>PNG</source>
-        <translation>PNG</translation>
+        <translation type="vanished">PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="885"/>
         <source>BMP</source>
-        <translation>BMP</translation>
+        <translation type="vanished">BMP</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="886"/>
         <source>JPG</source>
-        <translation>JPG</translation>
+        <translation type="vanished">JPG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="887"/>
         <source>JPEG</source>
-        <translation>JPEG</translation>
+        <translation type="vanished">JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="888"/>
         <source>PPM</source>
-        <translation>PPM</translation>
+        <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="889"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>Width: </source>
         <translation>너비: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="890"/>
         <source>One-to-one</source>
-        <translation>1:1</translation>
+        <translation type="vanished">1:1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="891"/>
-        <location filename="../../src/gui/exportdiag.h" line="896"/>
-        <location filename="../../src/gui/exportdiag.h" line="901"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Set to native</source>
         <translation>원본으로 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="892"/>
         <source>Post</source>
-        <translation>후처리</translation>
+        <translation type="vanished">후처리</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="893"/>
         <source>Active parameters:</source>
-        <translation>활성 파라미터:</translation>
+        <translation type="vanished">활성 파라미터:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="894"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Height:</source>
         <translation>높이:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="895"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exporting&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;내보내는 중&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;내보내는 중&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="897"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="898"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Rendering&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;렌더링 중&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;렌더링 중&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="899"/>
         <source>Animation</source>
-        <translation>애니메이션</translation>
+        <translation type="vanished">애니메이션</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="900"/>
         <source>Image sequence</source>
-        <translation>이미지 시퀀스</translation>
+        <translation type="vanished">이미지 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="902"/>
+        <location filename="../../src/gui/exportdiag.h" line="1413"/>
+        <source>Format:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1414"/>
+        <source>Codec:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1415"/>
+        <source>Destination:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1416"/>
+        <source>Quality:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1417"/>
+        <source>Smaller file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <source>Balanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <source>Best quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <source>Lossless</source>
+        <translation type="unfinished">무손실</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
+        <source>How to encode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <source>What to export</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1434"/>
         <source>Export with transparency</source>
         <translation>투명도 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="903"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Loop animation</source>
         <translation>애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="904"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Export with audio</source>
         <translation>오디오 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="905"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="906"/>
-        <location filename="../../src/gui/exportdiag.h" line="911"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
+        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1453"/>
         <source>Set to auto</source>
         <translation>자동으로 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="907"/>
-        <source>Frames rendered: </source>
-        <translation>렌더링된 프레임: </translation>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <source>Frame range:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="908"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <source>Quality override:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1526"/>
+        <source>&amp;Export</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frames rendered: </source>
+        <translation type="vanished">렌더링된 프레임: </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 첫 프레임 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="909"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
         <source>Bitrate (kB/s):</source>
         <translation>비트 전송률(kB/s):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="910"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>Image quality:</source>
         <translation>이미지 품질:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
         <source>Export with custom parameters</source>
-        <translation>사용자 지정 파라미터로 내보내기</translation>
+        <translation type="vanished">사용자 지정 파라미터로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Select palette path</source>
         <translation>팔레트 경로 선택</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="914"/>
         <source>General Parameters</source>
-        <translation>일반 파라미터</translation>
+        <translation type="vanished">일반 파라미터</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="915"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Pixel format:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;픽셀 포맷:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;픽셀 포맷:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="916"/>
         <source>MOV</source>
-        <translation>MOV</translation>
+        <translation type="vanished">MOV</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="921"/>
         <source>MKV</source>
-        <translation>MKV</translation>
+        <translation type="vanished">MKV</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="933"/>
         <source>Pixel Format availability depends on the selected format, we recommend you stick to yuv420p</source>
-        <translation>픽셀 포맷 사용 가능 여부는 선택한 형식에 따라 달라집니다. yuv420p를 유지하는 것을 권장합니다.</translation>
+        <translation type="vanished">픽셀 포맷 사용 가능 여부는 선택한 형식에 따라 달라집니다. yuv420p를 유지하는 것을 권장합니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="941"/>
         <source>MP4</source>
-        <translation>MP4</translation>
+        <translation type="vanished">MP4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="942"/>
         <source>AVI</source>
-        <translation>AVI</translation>
+        <translation type="vanished">AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="951"/>
         <source>WEBM</source>
-        <translation>WEBM</translation>
+        <translation type="vanished">WEBM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="963"/>
         <source>Format Parameters</source>
-        <translation>형식 파라미터</translation>
+        <translation type="vanished">형식 파라미터</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="964"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Intermediate:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;중간 패스:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;중간 패스:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="965"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Post:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;후처리:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;후처리:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="966"/>
         <source>Add to Intermediate pass</source>
-        <translation>중간 패스에 추가</translation>
+        <translation type="vanished">중간 패스에 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="967"/>
         <source>Add to Post</source>
-        <translation>후처리에 추가</translation>
+        <translation type="vanished">후처리에 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="968"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Presets:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;프리셋:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;프리셋:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="970"/>
         <source>Remove preset</source>
-        <translation>프리셋 제거</translation>
+        <translation type="vanished">프리셋 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="971"/>
-        <location filename="../../src/gui/exportdiag.h" line="972"/>
         <source>Save as preset...</source>
-        <translation>프리셋으로 저장...</translation>
+        <translation type="vanished">프리셋으로 저장...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="974"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;You may use these special attributes in your custom command:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;사용자 지정 명령에서 다음 특수 속성을 사용할 수 있습니다:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;사용자 지정 명령에서 다음 특수 속성을 사용할 수 있습니다:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="976"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Commands&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;명령&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;명령&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="977"/>
         <source>Custom Parameters</source>
-        <translation>사용자 지정 파라미터</translation>
+        <translation type="vanished">사용자 지정 파라미터</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="978"/>
         <source>Export</source>
-        <translation>내보내기</translation>
+        <translation type="vanished">내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="979"/>
+        <location filename="../../src/gui/exportdiag.h" line="1528"/>
         <source>Cancel</source>
         <translation>취소</translation>
+    </message>
+</context>
+<context>
+    <name>gui</name>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="71"/>
+        <source>Send in a chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="72"/>
+        <source>Post to a platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="73"/>
+        <source>Stickers and emoji</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="74"/>
+        <source>Overlays and transparency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="75"/>
+        <source>A file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="76"/>
+        <source>Archive</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1163,63 +1481,88 @@
     </message>
 </context>
 <context>
+    <name>gui::DestinationPicker</name>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <source>Where are you posting this?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <source>Search: telegram, sticker, reels, illustration, 微信...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <source>Search destinations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <source>%1 destinations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <source>Use this destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>gui::ExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="36"/>
         <source>Export Animation</source>
-        <translation>애니메이션 내보내기</translation>
+        <translation type="vanished">애니메이션 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="71"/>
-        <location filename="../../src/gui/ExportDialog.cpp" line="90"/>
-        <location filename="../../src/gui/ExportDialog.cpp" line="114"/>
         <source>Value is Odd</source>
-        <translation>값이 홀수입니다</translation>
+        <translation type="vanished">값이 홀수입니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="72"/>
         <source>The width or height of the image ends with an odd number. Please change these parameters to an even number as they may cause the export to fail.</source>
-        <translation>이미지의 너비 또는 높이가 홀수로 끝납니다. 내보내기 실패의 원인이 될 수 있으므로 이 파라미터를 짝수로 변경해 주세요.</translation>
+        <translation type="vanished">이미지의 너비 또는 높이가 홀수로 끝납니다. 내보내기 실패의 원인이 될 수 있으므로 이 파라미터를 짝수로 변경해 주세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="91"/>
         <source>A width or height ending in an odd number may make the exporting process fail, please try another value.</source>
-        <translation>너비 또는 높이가 홀수로 끝나면 내보내기 과정이 실패할 수 있습니다. 다른 값을 사용해 주세요.</translation>
+        <translation type="vanished">너비 또는 높이가 홀수로 끝나면 내보내기 과정이 실패할 수 있습니다. 다른 값을 사용해 주세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="115"/>
         <source>A height or width ending in an odd number may make the exporting process fail, please try another value.</source>
-        <translation>높이 또는 너비가 홀수로 끝나면 내보내기 과정이 실패할 수 있습니다. 다른 값을 사용해 주세요.</translation>
+        <translation type="vanished">높이 또는 너비가 홀수로 끝나면 내보내기 과정이 실패할 수 있습니다. 다른 값을 사용해 주세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="135"/>
         <source>Image width</source>
-        <translation>이미지 너비</translation>
+        <translation type="vanished">이미지 너비</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="136"/>
         <source>Image height</source>
-        <translation>이미지 높이</translation>
+        <translation type="vanished">이미지 높이</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="137"/>
         <source>Fix aspect ratio</source>
-        <translation>가로세로 비율 고정</translation>
+        <translation type="vanished">가로세로 비율 고정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="172"/>
         <source>Initial frame</source>
-        <translation>시작 프레임</translation>
+        <translation type="vanished">시작 프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="173"/>
         <source>Last frame</source>
-        <translation>끝 프레임</translation>
+        <translation type="vanished">끝 프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="184"/>
         <source>FPS</source>
-        <translation>FPS</translation>
+        <translation type="vanished">FPS</translation>
     </message>
 </context>
 <context>
@@ -1229,120 +1572,116 @@
         <translation type="vanished">일반 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="283"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="281"/>
         <source>Language (needs restart)</source>
         <translation>언어 (재시작 필요)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="290"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="288"/>
         <source>Default keyframe easing</source>
         <translation>기본 키프레임 이징</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="297"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="295"/>
         <source>Default keyframe range</source>
         <translation>기본 키프레임 범위</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="304"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="302"/>
         <source>Timeline format</source>
         <translation>타임라인 형식</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>System</source>
         <translation>시스템</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>Light</source>
         <translation>라이트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>Dark</source>
         <translation>다크</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="335"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="333"/>
         <source>Theme</source>
         <translation>테마</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="369"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="367"/>
         <source>Accent color</source>
         <translation>강조 색</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="377"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="375"/>
         <source>Automatically save your project</source>
         <translation>프로젝트 자동 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="382"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="380"/>
         <source>Time (in minutes) between autosaves</source>
         <translation>자동 저장 간격(분)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="390"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="388"/>
         <source>Show mesh when selecting FFD</source>
         <translation>FFD 선택 시 메시 표시</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="394"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="392"/>
         <source>On copy send keys to the clipboard</source>
         <translation>복사 시 키를 클립보드로 전송</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="398"/>
         <source>Always check for FFmpeg on export</source>
-        <translation>내보내기 시 항상 FFmpeg 확인</translation>
+        <translation type="vanished">내보내기 시 항상 FFmpeg 확인</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="402"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="397"/>
         <source>Enforce ID check on asset download</source>
         <translation>에셋 다운로드 시 ID 확인 강제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="406"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="401"/>
         <source>Ignore export warnings</source>
         <translation>내보내기 경고 무시</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="410"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="405"/>
         <source>Allow donation menu</source>
         <translation>기부 메뉴 허용</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="414"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="409"/>
         <source>Force project to load</source>
         <translation>프로젝트 강제 로드</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="411"/>
         <source>Reset recent files list</source>
         <translation>최근 파일 목록 초기화</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="417"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="412"/>
         <source>Deletes all project entries from your recents</source>
         <translation>최근 항목에서 모든 프로젝트 항목을 삭제합니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="421"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="483"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="585"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="610"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
         <source>Success</source>
         <translation>성공</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="421"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
         <source>All entries have been successfully removed</source>
         <translation>모든 항목이 성공적으로 제거되었습니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="431"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="426"/>
         <source>Global keybind delay (ms)</source>
         <translation>전역 키 바인딩 지연(ms)</translation>
     </message>
@@ -1367,162 +1706,137 @@
         <translation type="vanished">재시작해도 키 바인딩이 초기화되지 않습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="436"/>
         <source>Troubleshoot FFmpeg</source>
-        <translation>FFmpeg 문제 해결</translation>
+        <translation type="vanished">FFmpeg 문제 해결</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="446"/>
         <source>FFmpeg test success</source>
-        <translation>FFmpeg 테스트 성공</translation>
+        <translation type="vanished">FFmpeg 테스트 성공</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="447"/>
         <source>All tests have passed, FFmpeg is working correctly.</source>
-        <translation>모든 테스트를 통과했습니다. FFmpeg가 올바르게 작동하고 있습니다.</translation>
+        <translation type="vanished">모든 테스트를 통과했습니다. FFmpeg가 올바르게 작동하고 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="449"/>
         <source>FFmpeg at: </source>
-        <translation>FFmpeg 위치 : </translation>
+        <translation type="vanished">FFmpeg 위치 : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="450"/>
         <source>Check FFmpeg response ✓
 Check FFmpeg exporting ✓
 Check FFmpeg palette generation ✓</source>
-        <translation>FFmpeg 응답 확인 ✓
+        <translation type="vanished">FFmpeg 응답 확인 ✓
 FFmpeg 내보내기 확인 ✓
 FFmpeg 팔레트 생성 확인 ✓</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="458"/>
         <source>Select executable and automatically set up</source>
-        <translation>실행 파일 선택 및 자동 설정</translation>
+        <translation type="vanished">실행 파일 선택 및 자동 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="460"/>
         <source>This will remove previous instances of FFmpeg from your tools directory and replace them with your custom executable, please make sure this is a valid FFmpeg executable.</source>
-        <translation>도구 디렉터리에서 기존 FFmpeg 인스턴스를 제거하고 사용자 지정 실행 파일로 교체합니다. 유효한 FFmpeg 실행 파일인지 확인하세요.</translation>
+        <translation type="vanished">도구 디렉터리에서 기존 FFmpeg 인스턴스를 제거하고 사용자 지정 실행 파일로 교체합니다. 유효한 FFmpeg 실행 파일인지 확인하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="482"/>
         <source>Operation successful</source>
-        <translation>작업 성공</translation>
+        <translation type="vanished">작업 성공</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="489"/>
         <source>Download and automatically set up</source>
-        <translation>다운로드 및 자동 설정</translation>
+        <translation type="vanished">다운로드 및 자동 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="503"/>
         <source>Unable to create directory</source>
-        <translation>디렉터리를 만들 수 없음</translation>
+        <translation type="vanished">디렉터리를 만들 수 없음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="505"/>
         <source>An error has occurred while creating the tools directory in </source>
-        <translation>도구 디렉터리를 만드는 동안 오류가 발생했습니다. </translation>
+        <translation type="vanished">도구 디렉터리를 만드는 동안 오류가 발생했습니다. </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="506"/>
         <source> the application will use a fallback but if this doesn&apos;t work please run the app as administrator or use a folder that isn&apos;t write protected.</source>
-        <translation> 애플리케이션이 대체 위치를 사용하지만, 이 방법이 작동하지 않으면 관리자 권한으로 실행하거나 쓰기 보호되지 않은 폴더를 사용하세요.</translation>
+        <translation type="vanished"> 애플리케이션이 대체 위치를 사용하지만, 이 방법이 작동하지 않으면 관리자 권한으로 실행하거나 쓰기 보호되지 않은 폴더를 사용하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="586"/>
         <source>FFmpeg was successfully set up. Please restart AnimeEffects</source>
-        <translation>FFmpeg가 성공적으로 설정되었습니다. AnimeEffects를 다시 시작하세요.</translation>
+        <translation type="vanished">FFmpeg가 성공적으로 설정되었습니다. AnimeEffects를 다시 시작하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="602"/>
         <source>FFmpeg installed</source>
-        <translation>FFmpeg 설치됨</translation>
+        <translation type="vanished">FFmpeg 설치됨</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="603"/>
         <source>FFmpeg was installed but it requires to be set as executable, please right click &quot;ffmpeg&quot; go to properties and allow it to be executable as a program.</source>
-        <translation>FFmpeg가 설치되었지만 실행 파일로 설정해야 합니다. &quot;ffmpeg&quot;를 마우스 오른쪽 버튼으로 클릭하고 속성에서 프로그램으로 실행할 수 있도록 허용하세요.</translation>
+        <translation type="vanished">FFmpeg가 설치되었지만 실행 파일로 설정해야 합니다. &quot;ffmpeg&quot;를 마우스 오른쪽 버튼으로 클릭하고 속성에서 프로그램으로 실행할 수 있도록 허용하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="611"/>
         <source>FFmpeg was successfully set up.</source>
-        <translation>FFmpeg가 성공적으로 설정되었습니다.</translation>
+        <translation type="vanished">FFmpeg가 성공적으로 설정되었습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="617"/>
         <source>Error</source>
-        <translation>오류</translation>
+        <translation type="vanished">오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="618"/>
         <source>While setting up FFmpeg an unexpected error has occurred, please send the below information to our devs.</source>
-        <translation>FFmpeg를 설정하는 동안 예기치 않은 오류가 발생했습니다. 아래 정보를 개발자에게 보내주세요.</translation>
+        <translation type="vanished">FFmpeg를 설정하는 동안 예기치 않은 오류가 발생했습니다. 아래 정보를 개발자에게 보내주세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="655"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="444"/>
         <source>General</source>
         <translation>일반</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="656"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="445"/>
         <source>QoL</source>
         <translation>QoL</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="657"/>
         <source>FFmpeg</source>
-        <translation>FFmpeg</translation>
+        <translation type="vanished">FFmpeg</translation>
     </message>
     <message>
         <source>Keybindings</source>
         <translation type="vanished">키 바인딩</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="772"/>
         <source>FFmpeg was not found.</source>
-        <translation>FFmpeg를 찾을 수 없습니다.</translation>
+        <translation type="vanished">FFmpeg를 찾을 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="774"/>
         <source>Exporting video requires FFmpeg to be installed on your computer, FFmpeg is a free tool that AnimeEffects uses to create video files.
 In the following screen you can instruct AnimeEffects to download and install it automatically for you, or you can download it by yourself and tell AnimeEffects where it is.</source>
-        <translation>비디오를 내보내려면 컴퓨터에 FFmpeg가 설치되어 있어야 합니다. FFmpeg는 AnimeEffects가 비디오 파일을 만드는 데 사용하는 무료 도구입니다.
+        <translation type="vanished">비디오를 내보내려면 컴퓨터에 FFmpeg가 설치되어 있어야 합니다. FFmpeg는 AnimeEffects가 비디오 파일을 만드는 데 사용하는 무료 도구입니다.
 다음 화면에서 AnimeEffects가 자동으로 다운로드하여 설치하도록 하거나, 직접 다운로드한 후 AnimeEffects에 위치를 알려줄 수 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="823"/>
         <source>FFmpeg doesn&apos;t export</source>
-        <translation>FFmpeg가 내보내지 않음</translation>
+        <translation type="vanished">FFmpeg가 내보내지 않음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="824"/>
         <source>FFmpeg was unable to export, please troubleshoot.</source>
-        <translation>FFmpeg가 내보내기에 실패했습니다. 문제를 해결하세요.</translation>
+        <translation type="vanished">FFmpeg가 내보내기에 실패했습니다. 문제를 해결하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="853"/>
         <source>FFmpeg doesn&apos;t generate palettes</source>
-        <translation>FFmpeg가 팔레트를 생성하지 않음</translation>
+        <translation type="vanished">FFmpeg가 팔레트를 생성하지 않음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="854"/>
         <source>FFmpeg was unable to generate palettes, please troubleshoot.</source>
-        <translation>FFmpeg가 팔레트를 생성하지 못했습니다. 문제를 해결하세요.</translation>
+        <translation type="vanished">FFmpeg가 팔레트를 생성하지 못했습니다. 문제를 해결하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="644"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="433"/>
         <source>Inverse canvas scrolling</source>
         <translation>캔버스 스크롤 반전</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="648"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="437"/>
         <source>Inverse timeline scrolling</source>
         <translation>타임라인 스크롤 반전</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="652"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="441"/>
         <source>Middle mouse moves canvas</source>
         <translation>가운데 마우스 버튼으로 캔버스 이동</translation>
     </message>
@@ -1532,12 +1846,12 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation>설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="658"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="446"/>
         <source>Keyboard</source>
         <translation>키보드</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="659"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="447"/>
         <source>Mouse</source>
         <translation>마우스</translation>
     </message>
@@ -1545,27 +1859,23 @@ In the following screen you can instruct AnimeEffects to download and install it
 <context>
     <name>gui::GifExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="293"/>
         <source>Optimize palette</source>
-        <translation>팔레트 최적화</translation>
+        <translation type="vanished">팔레트 최적화</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="294"/>
         <source>Relay bit rate (Kbps)</source>
-        <translation>중계 비트 전송률(Kbps)</translation>
+        <translation type="vanished">중계 비트 전송률(Kbps)</translation>
     </message>
 </context>
 <context>
     <name>gui::ImageExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="222"/>
         <source>Prefix name</source>
-        <translation>접두사 이름</translation>
+        <translation type="vanished">접두사 이름</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="235"/>
         <source>Quality</source>
-        <translation>품질</translation>
+        <translation type="vanished">품질</translation>
     </message>
 </context>
 <context>
@@ -1748,133 +2058,120 @@ In the following screen you can instruct AnimeEffects to download and install it
 <context>
     <name>gui::MainMenuBar</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="121"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="91"/>
         <source>File</source>
         <translation>파일</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="123"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="93"/>
         <source>New project</source>
         <translation>새 프로젝트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="124"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
         <source>Open project</source>
         <translation>프로젝트 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="125"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
         <source>Open recent</source>
         <translation>최근 항목 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="151"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="121"/>
         <source>No other projects</source>
         <translation>다른 프로젝트가 없습니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="208"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="178"/>
         <source>Save project</source>
         <translation>프로젝트 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="209"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
         <source>Save project as</source>
         <translation>프로젝트 다른 이름으로 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="210"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
         <source>Close project</source>
         <translation>프로젝트 닫기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
         <source>Export project as</source>
         <translation>프로젝트 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="212"/>
         <source>Legacy exporter (deprecated)</source>
-        <translation>레거시 내보내기 (사용 중단)</translation>
+        <translation type="vanished">레거시 내보내기 (사용 중단)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="219"/>
         <source>JPEG Sequence</source>
-        <translation>JPEG 시퀀스</translation>
+        <translation type="vanished">JPEG 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="220"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="237"/>
         <source>PNG Sequence</source>
-        <translation>PNG 시퀀스</translation>
+        <translation type="vanished">PNG 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="221"/>
         <source>GIF Animation</source>
-        <translation>GIF 애니메이션</translation>
+        <translation type="vanished">GIF 애니메이션</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="230"/>
         <source>Video</source>
-        <translation>비디오</translation>
+        <translation type="vanished">비디오</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="235"/>
         <source>Quickly export as</source>
-        <translation>빠르게 내보내기</translation>
+        <translation type="vanished">빠르게 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="238"/>
         <source>GIF Animation (Transparent)</source>
-        <translation>GIF 애니메이션 (투명)</translation>
+        <translation type="vanished">GIF 애니메이션 (투명)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>GIF Animation (Opaque)</source>
-        <translation>GIF 애니메이션 (불투명)</translation>
+        <translation type="vanished">GIF 애니메이션 (불투명)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
         <source>WebM Animation (Transparent)</source>
-        <translation>WebM 애니메이션 (투명)</translation>
+        <translation type="vanished">WebM 애니메이션 (투명)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
         <source>WebM Animation (Opaque)</source>
-        <translation>WebM 애니메이션 (불투명)</translation>
+        <translation type="vanished">WebM 애니메이션 (불투명)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="242"/>
         <source>MP4 Video</source>
-        <translation>MP4 비디오</translation>
+        <translation type="vanished">MP4 비디오</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="243"/>
         <source>AVI Video</source>
-        <translation>AVI 비디오</translation>
+        <translation type="vanished">AVI 비디오</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="284"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="236"/>
         <source>Edit</source>
         <translation>편집</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="286"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="238"/>
         <source>Undo</source>
         <translation>실행 취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="287"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>Redo</source>
         <translation>다시 실행</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="289"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
         <source>Assets</source>
         <translation>에셋</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="264"/>
         <source>Preferences</source>
         <translation>환경 설정</translation>
     </message>
@@ -1887,165 +2184,189 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">마우스 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="314"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="195"/>
+        <source>Quickly export as...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
+        <source>Export again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="266"/>
         <source>Settings</source>
         <translation>설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
         <source>Keybindings</source>
         <translation>키 바인딩</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="343"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="295"/>
         <source>Help</source>
         <translation>도움말</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="345"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="297"/>
         <source>About AnimeEffects</source>
         <translation>AnimeEffects 정보</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="354"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="354"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
         <source> version </source>
         <translation>용 버전 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>사용하기 쉬운 2D 애니메이션 소프트웨어로, [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs)에서 유지 관리합니다.&lt;br /&gt;GPL v3.0 라이선스 하에 배포되며 다양한 오픈소스 라이브러리로 구동됩니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="358"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="310"/>
+        <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;기여자:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 혹시 기여자 명단에서 누락된 분이 계시다면 알려 주시거나 PR을 열어 주세요!</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="387"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="344"/>
         <source>About us</source>
         <translation>소개</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="393"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="350"/>
         <source>Check for updates</source>
         <translation>업데이트 확인</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="399"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="552"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
         <source>System telemetry</source>
         <translation>시스템 정보</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="439"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="395"/>
         <source>Version: </source>
         <translation>버전: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="440"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
         <source>Format version: </source>
         <translation>포맷 버전: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="441"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
         <source>Platform: </source>
         <translation>플랫폼: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="442"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
         <source>Build ABI: </source>
         <translation>빌드 ABI: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="423"/>
         <source>CPU vendor: </source>
         <translation>CPU 제조사: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
         <source>CPU architecture: </source>
         <translation>CPU 아키텍처: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
         <source>CPU threads: </source>
         <translation>CPU 스레드: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
         <source>System RAM:</source>
         <translation>시스템 RAM:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="431"/>
         <source>System </source>
         <translation>시스템 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="477"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="433"/>
         <source>Current GPU: </source>
         <translation>현재 GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="510"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="466"/>
         <source>GPU Vendor: </source>
         <translation>GPU 제조사: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="511"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
         <source>Max VRAM: </source>
         <translation>최대 VRAM: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="512"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
         <source>OpenGL version: </source>
         <translation>OpenGL 버전: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="513"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
         <source>Qt Version: </source>
         <translation>Qt 버전: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="514"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
         <source>System locale: </source>
         <translation>시스템 로케일: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="519"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
         <source>Location Has Unicode: </source>
         <translation>위치에 유니코드 포함: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="529"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="488"/>
         <source>Location Is Writable: </source>
         <translation>위치 쓰기 가능: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="546"/>
-        <source>FFmpeg Reach Type: </source>
-        <translation>FFmpeg 접근 유형: </translation>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="494"/>
+        <source>libav licence: </source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="548"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
+        <source>libav configuration: </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FFmpeg Reach Type: </source>
+        <translation type="vanished">FFmpeg 접근 유형: </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>시스템 사양이 클립보드에 복사되었습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="563"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="511"/>
         <source>Donate</source>
         <translation>후원</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="288"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
         <source>Project settings</source>
         <translation>프로젝트 설정</translation>
     </message>
@@ -2057,85 +2378,85 @@ If we forgot to include you please let us know or open a PR!</source>
 <context>
     <name>gui::MainWindow</name>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="153"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="154"/>
         <source>Animation</source>
         <translation>애니메이션</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="166"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="167"/>
         <source>Properties</source>
         <translation>속성</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="212"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="213"/>
         <source>Tools</source>
         <translation>도구</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="565"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="566"/>
         <source>Theme changed</source>
         <translation>테마 변경됨</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="567"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="568"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>테마를 변경한 후 시각적 아티팩트가 나타날 수 있습니다. 애플리케이션을 다시 시작하는 것이 좋습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="784"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="789"/>
         <source> has been modified. Save changes?</source>
         <translation> 이(가) 수정되었습니다. 변경 내용을 저장하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="786"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="791"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>일부 프로젝트가 수정되었습니다. 변경 내용을 저장하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="794"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="799"/>
         <source>Save Changes</source>
         <translation>변경 내용 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="795"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="800"/>
         <source>Discard Changes</source>
         <translation>변경 내용 무시</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="796"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="801"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="817"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="822"/>
         <source>Undone : </source>
         <translation>실행 취소됨: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="880"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="885"/>
         <source>Redone : </source>
         <translation>다시 실행됨: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="923"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="983"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1012"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1081"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="928"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="988"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1017"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1086"/>
         <source>Loading Error</source>
         <translation>불러오기 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="960"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="965"/>
         <source>Open File</source>
         <translation>파일 열기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1032"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1037"/>
         <source>Recover unsaved project?</source>
         <translation>저장되지 않은 프로젝트를 복구하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1033"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1038"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -2146,165 +2467,281 @@ Open it?</source>
 여시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1095"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1100"/>
         <source>Save File</source>
         <translation>파일 저장</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1427"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1439"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1713"/>
+        <source>Exported %1 (%2 KB)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1719"/>
+        <source> (%1 of %2 KB allowed for %3)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1724"/>
+        <source>; OVER THE LIMIT, it will be rejected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
+        <source>All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1764"/>
+        <source>%1 files (*.%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1940"/>
+        <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1982"/>
+        <source>%1 of %2 frames at %3 x %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1988"/>
+        <source>Frame rate: %1 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1994"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2065"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1999"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2079"/>
+        <source>Codec: %1 in %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2008"/>
+        <source>%1 cannot carry transparency, so this export will be opaque.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2050"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2060"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2071"/>
+        <source>Artifact: one %1 image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2073"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2078"/>
+        <source>Codec: animated GIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2082"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
+        <source>yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
+        <source>no</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2094"/>
+        <source>%1 GB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2096"/>
+        <source>%1 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2097"/>
+        <source>%1 KB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2101"/>
+        <source>max %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2103"/>
+        <source>max %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2105"/>
+        <source>min %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2107"/>
+        <source>max %1 frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2109"/>
+        <source>max %1 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2111"/>
+        <source>Limits: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Select your preset name</source>
-        <translation>프리셋 이름 선택</translation>
+        <translation type="vanished">프리셋 이름 선택</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>Animated PNG</source>
-        <translation>애니메이션 PNG</translation>
+        <translation type="vanished">애니메이션 PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>AVI</source>
-        <translation>AVI</translation>
+        <translation type="vanished">AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>Flash Video</source>
-        <translation>Flash 비디오</translation>
+        <translation type="vanished">Flash 비디오</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>GIF</source>
-        <translation>GIF</translation>
+        <translation type="vanished">GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>Matroska</source>
-        <translation>Matroska</translation>
+        <translation type="vanished">Matroska</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>QuickTime Movie</source>
-        <translation>QuickTime 동영상</translation>
+        <translation type="vanished">QuickTime 동영상</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>MPEG-2</source>
-        <translation>MPEG-2</translation>
+        <translation type="vanished">MPEG-2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>MPEG-4</source>
-        <translation>MPEG-4</translation>
+        <translation type="vanished">MPEG-4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>Ogg Video</source>
-        <translation>Ogg 비디오</translation>
+        <translation type="vanished">Ogg 비디오</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>Shockwave Flash</source>
-        <translation>Shockwave Flash</translation>
+        <translation type="vanished">Shockwave Flash</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>WEBM</source>
-        <translation>WEBM</translation>
+        <translation type="vanished">WEBM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>WEBP</source>
-        <translation>WEBP</translation>
+        <translation type="vanished">WEBP</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>BitMap</source>
-        <translation>BitMap</translation>
+        <translation type="vanished">BitMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>JPEG</source>
-        <translation>JPEG</translation>
+        <translation type="vanished">JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>PNG</source>
-        <translation>PNG</translation>
+        <translation type="vanished">PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>Portable PixelMap</source>
-        <translation>Portable PixelMap</translation>
+        <translation type="vanished">Portable PixelMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>X11 BitMap</source>
-        <translation>X11 BitMap</translation>
+        <translation type="vanished">X11 BitMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>X11 PixelMap</source>
-        <translation>X11 PixelMap</translation>
+        <translation type="vanished">X11 PixelMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>Tagged Image</source>
-        <translation>Tagged Image</translation>
+        <translation type="vanished">Tagged Image</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1662"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1717"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1832"/>
         <source>Export Folder</source>
         <translation>내보내기 폴더</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1687"/>
         <source>File already exists.</source>
-        <translation>파일이 이미 있습니다.</translation>
+        <translation type="vanished">파일이 이미 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1688"/>
         <source>Do you want to overwrite the existing file?</source>
-        <translation>기존 파일을 덮어쓰시겠습니까?</translation>
+        <translation type="vanished">기존 파일을 덮어쓰시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1704"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1872"/>
         <source>Export Error</source>
-        <translation>내보내기 오류</translation>
+        <translation type="vanished">내보내기 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1805"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
         <source>Export File</source>
         <translation>파일 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1820"/>
         <source>Operation Error</source>
-        <translation>작업 오류</translation>
+        <translation type="vanished">작업 오류</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1820"/>
         <source>Invalid extension specified.</source>
-        <translation>잘못된 확장자가 지정되었습니다.</translation>
+        <translation type="vanished">잘못된 확장자가 지정되었습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1863"/>
         <source>FFmpeg was not found.</source>
-        <translation>FFmpeg를 찾을 수 없습니다.</translation>
+        <translation type="vanished">FFmpeg를 찾을 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1864"/>
         <source>Video export requires FFmpeg.</source>
-        <translation>비디오 내보내기에는 FFmpeg가 필요합니다.</translation>
+        <translation type="vanished">비디오 내보내기에는 FFmpeg가 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1865"/>
         <source>Install FFmpeg on the system, or place a FFmpeg executable under &quot;/tools&quot; in the folder where you installed AnimeEffects.</source>
-        <translation>시스템에 FFmpeg를 설치하거나, AnimeEffects를 설치한 폴더의 &quot;/tools&quot; 아래에 FFmpeg 실행 파일을 넣으세요.</translation>
+        <translation type="vanished">시스템에 FFmpeg를 설치하거나, AnimeEffects를 설치한 폴더의 &quot;/tools&quot; 아래에 FFmpeg 실행 파일을 넣으세요.</translation>
     </message>
 </context>
 <context>
@@ -2357,149 +2794,149 @@ Open it?</source>
 <context>
     <name>gui::ObjectTreeWidget</name>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="146"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="609"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="145"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
         <source>Contract</source>
         <translation>접기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="149"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="148"/>
         <source>Add missing assets</source>
         <translation>누락된 에셋 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="152"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="151"/>
         <source>Add new assets</source>
         <translation>새 에셋 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="155"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="154"/>
         <source>Rename</source>
         <translation>이름 바꾸기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="158"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="157"/>
         <source>Paste from clipboard</source>
         <translation>클립보드에서 붙여넣기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="161"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="160"/>
         <source>Create layer</source>
         <translation>레이어 만들기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="164"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="163"/>
         <source>Duplicate node</source>
         <translation>노드 복제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="167"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="166"/>
         <source>Add default keys</source>
         <translation>기본 키 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="170"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="169"/>
         <source>Create folder</source>
         <translation>폴더 만들기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="173"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="172"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="609"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
         <source>Enlarge</source>
         <translation>펼치기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="731"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="730"/>
         <source>File tree not found</source>
         <translation>파일 트리를 찾을 수 없습니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="773"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="772"/>
         <source>Add</source>
         <translation>추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="779"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="778"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="816"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="815"/>
         <source>No trees selected</source>
         <translation>선택된 트리가 없습니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="817"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="816"/>
         <source>Please select at least one tree.</source>
         <translation>트리를 하나 이상 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="822"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
         <source>Done</source>
         <translation>완료</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="822"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
         <source>Tree addition was attempted, layers with duplicate names have been suppressed.</source>
         <translation>트리 추가를 시도했으며, 이름이 중복된 레이어는 제외되었습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="917"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="916"/>
         <source>The requested FFD key mesh (at frame %1) has %2 vertices, but the parent mesh of the targeted node has %3 vertices, artifacts may be present.</source>
         <translation>요청한 FFD 키 메시(프레임 %1)에는 정점이 %2개 있지만, 대상 노드의 상위 메시에는 정점이 %3개 있습니다. 아티팩트가 나타날 수 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="943"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
         <source>Successfully pasted </source>
         <translation>키 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="943"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
         <source> keys.</source>
         <translation>개를 성공적으로 붙여넣었습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="945"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
         <source> keys. The log is available below.</source>
         <translation>개의 키. 로그는 아래에 표시됩니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="945"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
         <source>Warnings present for </source>
         <translation>경고: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
         <source> keys.
 </source>
         <translation>개를 성공적으로 붙여넣었습니다.
 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="951"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
         <source> error(s) have been detected.
 The log is available below.</source>
         <translation>개의 오류가 감지되었습니다.
 로그는 아래에 표시됩니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="956"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="976"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="955"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="975"/>
         <source>Failed to paste key(s)</source>
         <translation>키 붙여넣기에 실패했습니다</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="959"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="958"/>
         <source>Clipboard does not contain valid JSON information or the timeline already has a key in the same frame.</source>
         <translation>클립보드에 유효한 JSON 정보가 없거나 타임라인의 같은 프레임에 이미 키가 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="979"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="978"/>
         <source>Timeline has a key in the same frame.</source>
         <translation>타임라인의 같은 프레임에 이미 키가 있습니다.</translation>
     </message>
@@ -2598,17 +3035,17 @@ The log is available below.</source>
 <context>
     <name>gui::ProjectSettingDialog</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="669"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="553"/>
         <source>Project settings</source>
         <translation>프로젝트 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="706"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="590"/>
         <source>Canvas size</source>
         <translation>캔버스 크기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="730"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="614"/>
         <source>Frame range</source>
         <translation>프레임 범위</translation>
     </message>
@@ -2617,12 +3054,12 @@ The log is available below.</source>
         <translation type="vanished">최대 프레임 수</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="736"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="620"/>
         <source>Loop animation</source>
         <translation>애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="742"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="626"/>
         <source>Frames per second</source>
         <translation>초당 프레임</translation>
     </message>
@@ -2984,39 +3421,32 @@ The log is available below.</source>
 <context>
     <name>gui::VideoExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="354"/>
         <source>This codec requires a dedicated GPU.</source>
-        <translation>이 코덱은 전용 GPU가 필요합니다.</translation>
+        <translation type="vanished">이 코덱은 전용 GPU가 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="415"/>
         <source>Lossless</source>
-        <translation>무손실</translation>
+        <translation type="vanished">무손실</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="420"/>
         <source>Transparent</source>
-        <translation>투명</translation>
+        <translation type="vanished">투명</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="435"/>
         <source>Codec</source>
-        <translation>코덱</translation>
+        <translation type="vanished">코덱</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="439"/>
         <source>Color standard</source>
-        <translation>색상 표준</translation>
+        <translation type="vanished">색상 표준</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="441"/>
         <source>Pixel format</source>
-        <translation>픽셀 포맷</translation>
+        <translation type="vanished">픽셀 포맷</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="456"/>
         <source>Bit rate (Kbps)</source>
-        <translation>비트 전송률(Kbps)</translation>
+        <translation type="vanished">비트 전송률(Kbps)</translation>
     </message>
 </context>
 <context>
@@ -3183,22 +3613,22 @@ The log is available below.</source>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="537"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="536"/>
         <source>Easing</source>
         <translation>이징</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="546"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="545"/>
         <source>Close</source>
         <translation>닫기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="800"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="799"/>
         <source>Copy</source>
         <translation>복사</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="803"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="802"/>
         <source>Paste</source>
         <translation>붙여넣기</translation>
     </message>
@@ -3879,29 +4309,24 @@ Save anyway?</source>
 <context>
     <name>splineWidget</name>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="293"/>
         <source>Bezier editor</source>
-        <translation>베지어 편집기</translation>
+        <translation type="vanished">베지어 편집기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="294"/>
         <source>Paste</source>
-        <translation>붙여넣기</translation>
+        <translation type="vanished">붙여넣기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="295"/>
         <source>Copy</source>
-        <translation>복사</translation>
+        <translation type="vanished">복사</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="296"/>
         <source>Cancel</source>
-        <translation>취소</translation>
+        <translation type="vanished">취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="297"/>
         <source>Apply</source>
-        <translation>적용</translation>
+        <translation type="vanished">적용</translation>
     </message>
 </context>
 <context>

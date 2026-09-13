@@ -21,7 +21,7 @@ include(GNUInstallDirs)
 find_package(Qt6 REQUIRED COMPONENTS Core5Compat Core Gui OpenGL OpenGLWidgets Svg Xml Concurrent Widgets Multimedia Quick Qml QuickWidgets LinguistTools)
 # Qt's i18n CMake support: declares the translated languages lupdate/lrelease
 # operate on, and enables the qt_add_translations/update_translations targets.
-# The translation sources live in data/locale/translation_<locale>.ts.
+# The translation sources live in assets/locale/translation_<locale>.ts.
 qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES es ja ko ru zh)
 
 # ---------------------------------------------------------------------------

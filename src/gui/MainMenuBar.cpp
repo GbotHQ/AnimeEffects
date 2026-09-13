@@ -486,24 +486,13 @@ MainMenuBar::MainMenuBar(MainWindow& aMainWindow, ViaPoint& aViaPoint, GUIResour
             }
             const QString isFolderWritable = isWritable ? "True" : "False";
             detail += tr("Location Is Writable: ") + isFolderWritable + "\n";
-            // FFmpeg Check
-            QFileInfo ffmpeg_file;
-            QString ffmpeg;
-            if (util::NetworkUtil::os() == "win") {
-                ffmpeg_file = QFileInfo("./tools/ffmpeg.exe");
-            } else {
-                ffmpeg_file = QFileInfo("./tools/ffmpeg");
-            }
-            if (!ffmpeg_file.exists() || !ffmpeg_file.isExecutable()) {
-                ffmpeg = "ffmpeg";
-            } else {
-                ffmpeg = ffmpeg_file.absoluteFilePath();
-            }
-            bool fExists = util::NetworkUtil::libExists(ffmpeg, "-version");
-            QString ffmpegType = ffmpeg == "ffmpeg" ? "Process" : "File";
-            QString ffmpegReach = fExists ? "True" : "False";
-            detail += tr("FFmpeg Reach Type: ") + ffmpegType + "\n";
-            detail += tr(QString("FFmpeg Reachable: " + ffmpegReach).toStdString().c_str());
+            // THE MEDIA BACKEND, AS LINKED. There is no ffmpeg process to check for:
+            // media/ links libav* directly, so what a bug report needs is the build
+            // of those libraries, not the reachability of a binary nothing invokes.
+            // licence() and configuration() are libav's own answers, and the
+            // configuration line is what names the encoders this build carries.
+            detail += tr("libav licence: ") + media::ffmpeg::license() + "\n";
+            detail += tr("libav configuration: ") + media::ffmpeg::configuration() + "\n";
             msgBox.setText(tr("System specs successfully copied to the clipboard"));
             QClipboard *clipboard = QGuiApplication::clipboard();
             clipboard->setText(detail);

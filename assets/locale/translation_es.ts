@@ -4,22 +4,22 @@
 <context>
     <name>AnimeEffects.Dialogs</name>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="56"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="57"/>
         <source>Animation settings</source>
         <translation>Configuración de animación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="106"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="107"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="137"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="138"/>
         <source>Frame range</source>
         <translation>Rango de fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="173"/>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="174"/>
         <source>Frames per second</source>
         <translation>Fotogramas por segundo</translation>
     </message>
@@ -267,7 +267,7 @@
         <translation type="vanished">Añadir nueva clave de imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="786"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
         <source>Change the canvas size</source>
         <translation>Cambiar el tamaño del lienzo</translation>
     </message>
@@ -276,52 +276,52 @@
         <translation type="vanished">Cambiar el fotograma máximo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="807"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="691"/>
         <source>Change the frame range</source>
         <translation>Cambiar el rango de fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="828"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="712"/>
         <source>Change loop settings</source>
         <translation>Cambiar ajustes de bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="850"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="734"/>
         <source>Change the FPS</source>
         <translation>Cambiar el FPS</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="400"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="399"/>
         <source>Rename object</source>
         <translation>Renombrar objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1057"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1056"/>
         <source>Create a layer</source>
         <translation>Crear una capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1181"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1180"/>
         <source>Duplicate base folder</source>
         <translation>Duplicar carpeta base</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1316"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1315"/>
         <source>Duplicate layer</source>
         <translation>Duplicar capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1495"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1494"/>
         <source>create a folder object</source>
         <translation>crear una carpeta de objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1545"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1544"/>
         <source>Delete object</source>
         <translation>Eliminar objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1679"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1678"/>
         <source>Move object</source>
         <translation>Mover objeto</translation>
     </message>
@@ -365,7 +365,7 @@
         <translation>Renombrar activo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TargetWidget.cpp" line="177"/>
+        <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>Cambiar configuración de animación</translation>
     </message>
@@ -373,14 +373,194 @@
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="529"/>
+        <location filename="../../src/gui/exportdiag.h" line="296"/>
+        <source>Choose where this is going</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="616"/>
         <source>Open Palette</source>
         <translation>Abrir Paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="530"/>
+        <location filename="../../src/gui/exportdiag.h" line="617"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>Archivo de paleta FFmpeg (*.png)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="631"/>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="783"/>
+        <source>PNG sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="784"/>
+        <source>JPEG sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="905"/>
+        <source>CRF:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="906"/>
+        <source>Quality:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1376"/>
+        <source>First frame %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1377"/>
+        <source>Last frame %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1481"/>
+        <source>Width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1482"/>
+        <source>Height</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1483"/>
+        <source>Frame rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1484"/>
+        <source>First frame</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1485"/>
+        <source>Last frame</source>
+        <translation type="unfinished">Last frame</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1486"/>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1487"/>
+        <source>Codec</source>
+        <translation type="unfinished">Códec</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1488"/>
+        <source>Quality</source>
+        <translation type="unfinished">Calidad</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <source>Quality override</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <source>Image quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <source>Bitrate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <source>Destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <source>Export</source>
+        <translation type="unfinished">Exportar</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <source>Cancel</source>
+        <translation type="unfinished">Cancelar</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <source>Export with transparency</source>
+        <translation type="unfinished">Exportar con transparencia</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <source>Loop animation</source>
+        <translation type="unfinished">Reproducir en bucle</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <source>Export with audio</source>
+        <translation type="unfinished">Exportar con audio</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <source>Custom palette</source>
+        <translation type="unfinished">Paleta personalizada</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <source>Keep aspect ratio</source>
+        <translation type="unfinished">Mantener la relación de aspecto</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <source>Insert range</source>
+        <translation type="unfinished">Inserte el rango</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <source>Remove range</source>
+        <translation type="unfinished">Eliminar el rango</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <source>Set width to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <source>Set height to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <source>Set frame rate to native</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <source>Image quality to auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <source>Quality override to auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <source>Bitrate to auto</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -578,12 +758,12 @@
 <context>
     <name>LoadMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="168"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="177"/>
         <source>Load audio configuration</source>
         <translation>Cargar configuración de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="170"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="179"/>
         <source>Anie audio configuration file (*.aemus)</source>
         <translation>Archivo de configuración de audio AniE (*.aemus)</translation>
     </message>
@@ -591,7 +771,7 @@
 <context>
     <name>LoadMusOverwrite</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="192"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="201"/>
         <source>Loading this file will overwrite your current audio configuration, continue?</source>
         <translation>Cargando este archivo sobrescribirá su configuración de audio actual, ¿continuar?</translation>
     </message>
@@ -665,20 +845,85 @@
         <translation type="vanished">Editor de Bézier</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="247"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="246"/>
         <source>Easing</source>
         <translation>Interpolación</translation>
     </message>
 </context>
 <context>
+    <name>QObject</name>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1292"/>
+        <source>needs %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1360"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1404"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1470"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1508"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1555"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1578"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1609"/>
+        <source>Export Error</source>
+        <translation type="unfinished">Error al exportar</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1361"/>
+        <source>Unknown export destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1423"/>
+        <source>File exists</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1424"/>
+        <source>The file &quot;%1&quot; already exists. Overwrite?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1471"/>
+        <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1486"/>
+        <source>Fitting under %1&apos;s %2 KB limit...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1499"/>
+        <source>Export Canceled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1500"/>
+        <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1509"/>
+        <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
+%4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1517"/>
+        <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SaveMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="156"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="165"/>
         <source>Save audio configuration</source>
         <translation>Guardar configuración de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="158"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="167"/>
         <source>Anie audio configuration file (*.aemus)</source>
         <translation>Archivo de configuración de audio AniE (*.aemus)</translation>
     </message>
@@ -686,12 +931,12 @@
 <context>
     <name>SelectMus</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="390"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="428"/>
         <source>Open audio file</source>
         <translation>Abrir archivo de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="392"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>Archivos de audio (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
     </message>
@@ -699,29 +944,39 @@
 <context>
     <name>audioWidget</name>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="335"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="350"/>
         <source>Enable playback</source>
         <translation>Activar reproducción</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="336"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="354"/>
+        <source>Export</source>
+        <translation type="unfinished">Exportar</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="355"/>
+        <source>Mix this track into exported files. Untick it for a track you only need as timing reference (a voice pass, a temp music bed): it still plays while you animate, and it stays out of the file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="361"/>
         <source>Add new audio track</source>
         <translation>Añadir nueva pista de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="337"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="362"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Playback start frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Fotograma de inicio de la reproducción&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="338"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="363"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Playback end frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Marco final de reproducción&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="339"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="437"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="442"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="364"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="475"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="480"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Duration (in frames): &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Duración (en fotogramas): &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -730,43 +985,42 @@
         <translation type="vanished">Volumen multimedia</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="357"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="383"/>
         <source>Select audio file...</source>
         <translation>Seleccionar archivo de audio...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="375"/>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="415"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="418"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="453"/>
         <source>Remove next audio track</source>
         <translation>Eliminar la siguiente pista de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="379"/>
         <source>Remove current audio track</source>
-        <translation>Eliminar la pista de audio actual</translation>
+        <translation type="vanished">Eliminar la pista de audio actual</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="157"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="166"/>
         <source>Audio Player</source>
         <translation>Reproductor de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="158"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="167"/>
         <source>Audio player</source>
         <translation>Reproductor de audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="159"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="168"/>
         <source>Save current audio configuration</source>
         <translation>Guardar configuración de audio actual</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="160"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="169"/>
         <source>Load audio configuration from file</source>
         <translation>Cargar configuración de audio desde archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/AudioPlaybackWidget.h" line="161"/>
+        <location filename="../../src/gui/AudioPlaybackWidget.h" line="170"/>
         <source>Save/Load audio config</source>
         <translation>Guardar/Cargar configuración de audio</translation>
     </message>
@@ -856,152 +1110,134 @@
 <context>
     <name>data_load</name>
     <message>
-        <location filename="../../src/gui/Main.cpp" line="165"/>
         <source>Unable to locate data folder, please select it</source>
-        <translation>No se puede localizar la carpeta de datos, por favor selecciónala</translation>
+        <translation type="vanished">No se puede localizar la carpeta de datos, por favor selecciónala</translation>
     </message>
 </context>
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="873"/>
+        <location filename="../../src/gui/exportdiag.h" line="1410"/>
         <source>Export parameters</source>
         <translation>Exportar parámetros</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="874"/>
         <source>Intermediate </source>
-        <translation>Intermedio </translation>
+        <translation type="vanished">Intermedio </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="875"/>
+        <location filename="../../src/gui/exportdiag.h" line="1411"/>
         <source>Keep aspect ratio</source>
         <translation>Mantener la relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="876"/>
+        <location filename="../../src/gui/exportdiag.h" line="1412"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Último fotograma -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="877"/>
         <source>Export type:</source>
-        <translation>Tipo de exportación:</translation>
+        <translation type="vanished">Tipo de exportación:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="878"/>
         <source>Intermediate type:</source>
-        <translation>Tipo intermedio:</translation>
+        <translation type="vanished">Tipo intermedio:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="879"/>
         <source>Custom</source>
-        <translation>Personalizado</translation>
+        <translation type="vanished">Personalizado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="880"/>
+        <location filename="../../src/gui/exportdiag.h" line="1422"/>
         <source>Insert range</source>
         <translation>Inserte el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="881"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Remove range</source>
         <translation>Eliminar el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="882"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Custom palette</source>
         <translation>Paleta personalizada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="883"/>
         <source>Force piped export </source>
-        <translation>Forzar exportación del tubo </translation>
+        <translation type="vanished">Forzar exportación del tubo </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="884"/>
         <source>PNG</source>
-        <translation>PNG</translation>
+        <translation type="vanished">PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="885"/>
         <source>BMP</source>
-        <translation>BMP</translation>
+        <translation type="vanished">BMP</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="886"/>
         <source>JPG</source>
-        <translation>JPG</translation>
+        <translation type="vanished">JPG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="887"/>
         <source>JPEG</source>
-        <translation>JPEG</translation>
+        <translation type="vanished">JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="888"/>
         <source>PPM</source>
-        <translation>PPM</translation>
+        <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="889"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>Width: </source>
         <translation>Ancho: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="890"/>
         <source>One-to-one</source>
-        <translation>De uno a uno</translation>
+        <translation type="vanished">De uno a uno</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="891"/>
-        <location filename="../../src/gui/exportdiag.h" line="896"/>
-        <location filename="../../src/gui/exportdiag.h" line="901"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Set to native</source>
         <translation>Establecer como nativo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="892"/>
         <source>Post</source>
-        <translation>Publicar</translation>
+        <translation type="vanished">Publicar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="893"/>
         <source>Active parameters:</source>
-        <translation>Parámetros activos:</translation>
+        <translation type="vanished">Parámetros activos:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="894"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Height:</source>
         <translation>Altura:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="895"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exporting&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exportando&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exportando&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="897"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="898"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Rendering&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Renderizar&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Renderizar&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="899"/>
         <source>Animation</source>
-        <translation>Animación</translation>
+        <translation type="vanished">Animación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="900"/>
         <source>Image sequence</source>
-        <translation>Secuencia de imagen</translation>
+        <translation type="vanished">Secuencia de imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="902"/>
+        <location filename="../../src/gui/exportdiag.h" line="1434"/>
         <source>Export with transparency</source>
         <translation>Exportar con transparencia</translation>
     </message>
@@ -1010,161 +1246,243 @@
         <translation type="vanished">Animación de bucle (solo GIF)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="903"/>
+        <location filename="../../src/gui/exportdiag.h" line="1413"/>
+        <source>Format:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1414"/>
+        <source>Codec:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1415"/>
+        <source>Destination:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1416"/>
+        <source>Quality:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1417"/>
+        <source>Smaller file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <source>Balanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <source>Best quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <source>Lossless</source>
+        <translation type="unfinished">Sin pérdida</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
+        <source>How to encode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <source>What to export</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="904"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Export with audio</source>
         <translation>Exportar con audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="905"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="906"/>
-        <location filename="../../src/gui/exportdiag.h" line="911"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
+        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1453"/>
         <source>Set to auto</source>
         <translation>Establecer a automático</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="907"/>
-        <source>Frames rendered: </source>
-        <translation>Fotogramas procesados: </translation>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <source>Frame range:</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="908"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <source>Quality override:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1526"/>
+        <source>&amp;Export</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frames rendered: </source>
+        <translation type="vanished">Fotogramas procesados: </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Primer fotograma -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="909"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
         <source>Bitrate (kB/s):</source>
         <translation>Tasa de bits (kB/s):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="910"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>Image quality:</source>
         <translation>Calidad de la imagen:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
         <source>Export with custom parameters</source>
-        <translation>Exportar con parámetros personalizados</translation>
+        <translation type="vanished">Exportar con parámetros personalizados</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Select palette path</source>
         <translation>Seleccionar ruta de paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="914"/>
         <source>General Parameters</source>
-        <translation>Parámetros generales</translation>
+        <translation type="vanished">Parámetros generales</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="915"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Pixel format:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Formato de píxeles:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Formato de píxeles:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="916"/>
         <source>MOV</source>
-        <translation>MUV</translation>
+        <translation type="vanished">MUV</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="921"/>
         <source>MKV</source>
-        <translation>MKV</translation>
+        <translation type="vanished">MKV</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="933"/>
         <source>Pixel Format availability depends on the selected format, we recommend you stick to yuv420p</source>
-        <translation>La disponibilidad del Formato Pixel depende del formato seleccionado, le recomendamos que se mantenga en yuv420p</translation>
+        <translation type="vanished">La disponibilidad del Formato Pixel depende del formato seleccionado, le recomendamos que se mantenga en yuv420p</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="941"/>
         <source>MP4</source>
-        <translation>MP4</translation>
+        <translation type="vanished">MP4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="942"/>
         <source>AVI</source>
-        <translation>AVI</translation>
+        <translation type="vanished">AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="951"/>
         <source>WEBM</source>
-        <translation>WEBM</translation>
+        <translation type="vanished">WEBM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="963"/>
         <source>Format Parameters</source>
-        <translation>Parámetros de formato</translation>
+        <translation type="vanished">Parámetros de formato</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="964"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Intermediate:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Intermedio:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Intermedio:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="965"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Post:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Publicación:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Publicación:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="966"/>
         <source>Add to Intermediate pass</source>
-        <translation>Añadir al pase Intermedio</translation>
+        <translation type="vanished">Añadir al pase Intermedio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="967"/>
         <source>Add to Post</source>
-        <translation>Añadir al Postprocesado</translation>
+        <translation type="vanished">Añadir al Postprocesado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="968"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Presets:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Predeterminados:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Predeterminados:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="970"/>
         <source>Remove preset</source>
-        <translation>Eliminar preajuste</translation>
+        <translation type="vanished">Eliminar preajuste</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="971"/>
-        <location filename="../../src/gui/exportdiag.h" line="972"/>
         <source>Save as preset...</source>
-        <translation>Guardar como predefinido...</translation>
+        <translation type="vanished">Guardar como predefinido...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="974"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;You may use these special attributes in your custom command:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Puede utilizar estos atributos especiales en su comando personalizado:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Puede utilizar estos atributos especiales en su comando personalizado:&lt;/p&gt;&lt;ul&gt;&lt;p&gt;&lt;li&gt; %exportfilename%&lt;/li&gt;&lt;/p&gt;&lt;p&gt;&lt;li&gt; %intermediatefilename%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %fps%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %palettepath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %exportpath%&lt;/p&gt;&lt;/li&gt;&lt;p&gt;&lt;li&gt; %intermediatepath%&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="976"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Commands&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Comandos&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Comandos&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="977"/>
         <source>Custom Parameters</source>
-        <translation>Parámetros personalizados</translation>
+        <translation type="vanished">Parámetros personalizados</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="978"/>
         <source>Export</source>
-        <translation>Exportar</translation>
+        <translation type="vanished">Exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="979"/>
+        <location filename="../../src/gui/exportdiag.h" line="1528"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
+    </message>
+</context>
+<context>
+    <name>gui</name>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="71"/>
+        <source>Send in a chat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="72"/>
+        <source>Post to a platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="73"/>
+        <source>Stickers and emoji</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="74"/>
+        <source>Overlays and transparency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="75"/>
+        <source>A file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="76"/>
+        <source>Archive</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1199,63 +1517,88 @@
     </message>
 </context>
 <context>
+    <name>gui::DestinationPicker</name>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <source>Where are you posting this?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <source>Search: telegram, sticker, reels, illustration, 微信...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <source>Search destinations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <source>%1 destinations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <source>Use this destination</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>gui::ExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="36"/>
         <source>Export Animation</source>
-        <translation>Exportar Animación</translation>
+        <translation type="vanished">Exportar Animación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="71"/>
-        <location filename="../../src/gui/ExportDialog.cpp" line="90"/>
-        <location filename="../../src/gui/ExportDialog.cpp" line="114"/>
         <source>Value is Odd</source>
-        <translation>Valor es impar</translation>
+        <translation type="vanished">Valor es impar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="72"/>
         <source>The width or height of the image ends with an odd number. Please change these parameters to an even number as they may cause the export to fail.</source>
-        <translation>La anchura o la altura de la imagen terminan con un número impar. Cambie estos parámetros a un número par, ya que pueden hacer que falle la exportación.</translation>
+        <translation type="vanished">La anchura o la altura de la imagen terminan con un número impar. Cambie estos parámetros a un número par, ya que pueden hacer que falle la exportación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="91"/>
         <source>A width or height ending in an odd number may make the exporting process fail, please try another value.</source>
-        <translation>Una anchura o altura que termine en un número impar puede hacer que el proceso de exportación falle, por favor pruebe con otro valor.</translation>
+        <translation type="vanished">Una anchura o altura que termine en un número impar puede hacer que el proceso de exportación falle, por favor pruebe con otro valor.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="115"/>
         <source>A height or width ending in an odd number may make the exporting process fail, please try another value.</source>
-        <translation>Una altura o anchura que termine en un número impar puede hacer que el proceso de exportación falle, por favor pruebe con otro valor.</translation>
+        <translation type="vanished">Una altura o anchura que termine en un número impar puede hacer que el proceso de exportación falle, por favor pruebe con otro valor.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="135"/>
         <source>Image width</source>
-        <translation>Anchura de la imagen</translation>
+        <translation type="vanished">Anchura de la imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="136"/>
         <source>Image height</source>
-        <translation>Image height</translation>
+        <translation type="vanished">Image height</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="137"/>
         <source>Fix aspect ratio</source>
-        <translation>Fijar la relación de aspecto</translation>
+        <translation type="vanished">Fijar la relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="172"/>
         <source>Initial frame</source>
-        <translation>Initial frame</translation>
+        <translation type="vanished">Initial frame</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="173"/>
         <source>Last frame</source>
-        <translation>Last frame</translation>
+        <translation type="vanished">Last frame</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="184"/>
         <source>FPS</source>
-        <translation>FPS</translation>
+        <translation type="vanished">FPS</translation>
     </message>
 </context>
 <context>
@@ -1269,12 +1612,12 @@
         <translation type="vanished">Idioma (necesita reiniciar) :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="290"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="288"/>
         <source>Default keyframe easing</source>
         <translation>Aceleración de fotogramas clave por defecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="297"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="295"/>
         <source>Default keyframe range</source>
         <translation>Rango de fotogramas clave por defecto</translation>
     </message>
@@ -1283,110 +1626,106 @@
         <translation type="vanished">Formato de cronología:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="283"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="281"/>
         <source>Language (needs restart)</source>
         <translation>Idioma (necesita reiniciar)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="304"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="302"/>
         <source>Timeline format</source>
         <translation>Formato de línea de tiempo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>System</source>
         <translation>Sistema</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>Light</source>
         <translation>Claro</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="320"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="318"/>
         <source>Dark</source>
         <translation>Oscuro</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="335"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="333"/>
         <source>Theme</source>
         <translation>Tema</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="369"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="367"/>
         <source>Accent color</source>
         <translation>Color de acento</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="377"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="375"/>
         <source>Automatically save your project</source>
         <translation>Guarda automáticamente tu proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="382"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="380"/>
         <source>Time (in minutes) between autosaves</source>
         <translation>Tiempo (en minutos) entre autoguardados</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="390"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="388"/>
         <source>Show mesh when selecting FFD</source>
         <translation>Mostrar malla al seleccionar FFD</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="394"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="392"/>
         <source>On copy send keys to the clipboard</source>
         <translation>Al copiar envía las claves al portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="398"/>
         <source>Always check for FFmpeg on export</source>
-        <translation>Comprobar siempre FFmpeg al exportar</translation>
+        <translation type="vanished">Comprobar siempre FFmpeg al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="402"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="397"/>
         <source>Enforce ID check on asset download</source>
         <translation>Comprobar ID en descarga de activos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="406"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="401"/>
         <source>Ignore export warnings</source>
         <translation>Ignorar advertencias de exportación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="410"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="405"/>
         <source>Allow donation menu</source>
         <translation>Permitir menú de donaciones</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="414"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="409"/>
         <source>Force project to load</source>
         <translation>Forzar la carga del proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="411"/>
         <source>Reset recent files list</source>
         <translation>Restablecer lista de archivos recientes</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="417"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="412"/>
         <source>Deletes all project entries from your recents</source>
         <translation>Elimina todas las entradas de proyecto de tus Recientes</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="421"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="483"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="585"/>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="610"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
         <source>Success</source>
         <translation>Éxito</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="421"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="416"/>
         <source>All entries have been successfully removed</source>
         <translation>Todas las entradas se han eliminado correctamente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="431"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="426"/>
         <source>Global keybind delay (ms)</source>
         <translation>Retraso global de combinación de teclas (ms)</translation>
     </message>
@@ -1411,60 +1750,50 @@
         <translation type="vanished">Las combinaciones de teclas no se restablecerán al reiniciar.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="436"/>
         <source>Troubleshoot FFmpeg</source>
-        <translation>Solución de problemas FFmpeg</translation>
+        <translation type="vanished">Solución de problemas FFmpeg</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="450"/>
         <source>Check FFmpeg response ✓
 Check FFmpeg exporting ✓
 Check FFmpeg palette generation ✓</source>
-        <translation>Revisar respuesta de FFmpeg ✓
+        <translation type="vanished">Revisar respuesta de FFmpeg ✓
 Revisar exportación de FFmpeg ✓
 Revisar generación de paleta de FFmpeg ✓</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="458"/>
         <source>Select executable and automatically set up</source>
-        <translation>Seleccionar desde el ejecutable y configurar automáticamente</translation>
+        <translation type="vanished">Seleccionar desde el ejecutable y configurar automáticamente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="489"/>
         <source>Download and automatically set up</source>
-        <translation>Descargar y configurar automáticamente</translation>
+        <translation type="vanished">Descargar y configurar automáticamente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="586"/>
         <source>FFmpeg was successfully set up. Please restart AnimeEffects</source>
-        <translation>FFmpeg se ha configurado correctamente. Por favor, reinicie AnimeEffects</translation>
+        <translation type="vanished">FFmpeg se ha configurado correctamente. Por favor, reinicie AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="611"/>
         <source>FFmpeg was successfully set up.</source>
-        <translation>FFmpeg se ha configurado correctamente.</translation>
+        <translation type="vanished">FFmpeg se ha configurado correctamente.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="772"/>
         <source>FFmpeg was not found.</source>
-        <translation>No se encontró FFmpeg.</translation>
+        <translation type="vanished">No se encontró FFmpeg.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="774"/>
         <source>Exporting video requires FFmpeg to be installed on your computer, FFmpeg is a free tool that AnimeEffects uses to create video files.
 In the following screen you can instruct AnimeEffects to download and install it automatically for you, or you can download it by yourself and tell AnimeEffects where it is.</source>
-        <translation>Para exportar vídeo, FFmpeg debe estar instalado en tu ordenador. FFmpeg es una herramienta gratuita que AnimeEffects utiliza para crear archivos de vídeo.
+        <translation type="vanished">Para exportar vídeo, FFmpeg debe estar instalado en tu ordenador. FFmpeg es una herramienta gratuita que AnimeEffects utiliza para crear archivos de vídeo.
 En la siguiente pantalla puedes indicar a AnimeEffects que lo descargue e instale automáticamente, o descargarlo por tu cuenta e indicarle dónde se encuentra.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="824"/>
         <source>FFmpeg was unable to export, please troubleshoot.</source>
-        <translation>FFmpeg no pudo exportar; consulta la solución de problemas.</translation>
+        <translation type="vanished">FFmpeg no pudo exportar; consulta la solución de problemas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="854"/>
         <source>FFmpeg was unable to generate palettes, please troubleshoot.</source>
-        <translation>FFmpeg no pudo generar las paletas; consulta la solución de problemas.</translation>
+        <translation type="vanished">FFmpeg no pudo generar las paletas; consulta la solución de problemas.</translation>
     </message>
     <message>
         <source>Warning</source>
@@ -1479,37 +1808,32 @@ En la siguiente pantalla puedes indicar a AnimeEffects que lo descargue e instal
         <translation type="vanished">FFmpeg no se encuentra, está corrupto o no funciona&apos;t.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="823"/>
         <source>FFmpeg doesn&apos;t export</source>
-        <translation>FFmpeg no exporta&apos;t</translation>
+        <translation type="vanished">FFmpeg no exporta&apos;t</translation>
     </message>
     <message>
         <source>FFmpeg was unable to export, please check if it&apos;s a valid FFmpeg executable.</source>
         <translation type="vanished">FFmpeg no pudo exportar, por favor verifique si&apos;s un ejecutable de FFmpeg válido.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="853"/>
         <source>FFmpeg doesn&apos;t generate palettes</source>
-        <translation>FFmpeg no genera paletas&apos;t</translation>
+        <translation type="vanished">FFmpeg no genera paletas&apos;t</translation>
     </message>
     <message>
         <source>FFmpeg was unable to generate palettes, please check if it&apos;s a valid FFmpeg executable.</source>
         <translation type="vanished">FFmpeg no pudo generar paletas, por favor verifique si&apos;s un ejecutable FFmpeg válido.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="446"/>
         <source>FFmpeg test success</source>
-        <translation>Prueba FFmpeg exitosa</translation>
+        <translation type="vanished">Prueba FFmpeg exitosa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="447"/>
         <source>All tests have passed, FFmpeg is working correctly.</source>
-        <translation>Todas las pruebas han pasado, FFmpeg funciona correctamente.</translation>
+        <translation type="vanished">Todas las pruebas han pasado, FFmpeg funciona correctamente.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="449"/>
         <source>FFmpeg at: </source>
-        <translation>FFmpeg en: </translation>
+        <translation type="vanished">FFmpeg en: </translation>
     </message>
     <message>
         <source>Check FFmpeg response 🗸
@@ -1534,93 +1858,83 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation type="vanished">Seleccionar desde el ejecutable y configurar automáticamente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="460"/>
         <source>This will remove previous instances of FFmpeg from your tools directory and replace them with your custom executable, please make sure this is a valid FFmpeg executable.</source>
-        <translation>Esto eliminará las instancias anteriores de FFmpeg de su directorio de herramientas y las sustituirá por su ejecutable personalizado, por favor asegúrese de que se trata de un ejecutable FFmpeg válido.</translation>
+        <translation type="vanished">Esto eliminará las instancias anteriores de FFmpeg de su directorio de herramientas y las sustituirá por su ejecutable personalizado, por favor asegúrese de que se trata de un ejecutable FFmpeg válido.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="482"/>
         <source>Operation successful</source>
-        <translation>Operación exitosa</translation>
+        <translation type="vanished">Operación exitosa</translation>
     </message>
     <message>
         <source>Download and automatically setup</source>
         <translation type="vanished">Descargar y configurar automáticamente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="503"/>
         <source>Unable to create directory</source>
-        <translation>No se puede crear la carpeta</translation>
+        <translation type="vanished">No se puede crear la carpeta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="505"/>
         <source>An error has occurred while creating the tools directory in </source>
-        <translation>Un error ha ocurrido al crear la carpeta &quot;tools&quot; en </translation>
+        <translation type="vanished">Un error ha ocurrido al crear la carpeta &quot;tools&quot; en </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="506"/>
         <source> the application will use a fallback but if this doesn&apos;t work please run the app as administrator or use a folder that isn&apos;t write protected.</source>
-        <translation> la aplicación usará un respaldo, pero si esto no sirve porfavor corra la aplicación como administrador o use una carpeta que no esté protegida de escritura.</translation>
+        <translation type="vanished"> la aplicación usará un respaldo, pero si esto no sirve porfavor corra la aplicación como administrador o use una carpeta que no esté protegida de escritura.</translation>
     </message>
     <message>
         <source>FFmpeg was successfully setup. Please restart AnimeEffects</source>
         <translation type="vanished">FFmpeg se ha configurado correctamente. Por favor, reinicie AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="602"/>
         <source>FFmpeg installed</source>
-        <translation>FFmpeg instalado</translation>
+        <translation type="vanished">FFmpeg instalado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="603"/>
         <source>FFmpeg was installed but it requires to be set as executable, please right click &quot;ffmpeg&quot; go to properties and allow it to be executable as a program.</source>
-        <translation>FFmpeg se ha instalado, pero debe marcarse como ejecutable. Haga clic derecho en «ffmpeg», vaya a Propiedades y permita que se ejecute como programa.</translation>
+        <translation type="vanished">FFmpeg se ha instalado, pero debe marcarse como ejecutable. Haga clic derecho en «ffmpeg», vaya a Propiedades y permita que se ejecute como programa.</translation>
     </message>
     <message>
         <source>FFmpeg was successfully setup.</source>
         <translation type="vanished">FFmpeg se ha configurado correctamente.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="617"/>
         <source>Error</source>
-        <translation>Error</translation>
+        <translation type="vanished">Error</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="618"/>
         <source>While setting up FFmpeg an unexpected error has occurred, please send the below information to our devs.</source>
-        <translation>Al configurar FFmpeg se ha producido un error inesperado, por favor envíe la siguiente información a nuestros desarrolladores.</translation>
+        <translation type="vanished">Al configurar FFmpeg se ha producido un error inesperado, por favor envíe la siguiente información a nuestros desarrolladores.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="655"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="444"/>
         <source>General</source>
         <translation>General</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="656"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="445"/>
         <source>QoL</source>
         <translation>QoL</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="657"/>
         <source>FFmpeg</source>
-        <translation>FFmpeg</translation>
+        <translation type="vanished">FFmpeg</translation>
     </message>
     <message>
         <source>Keybindings</source>
         <translation type="vanished">Combinaciones de teclas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="644"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="433"/>
         <source>Inverse canvas scrolling</source>
         <translation>Desplazamiento del lienzo inverso</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="648"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="437"/>
         <source>Inverse timeline scrolling</source>
         <translation>Desplazamiento de la línea de tiempo inversa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="652"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="441"/>
         <source>Middle mouse moves canvas</source>
         <translation>El botón central del ratón mueve el lienzo</translation>
     </message>
@@ -1630,12 +1944,12 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation>Ajustes</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="658"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="446"/>
         <source>Keyboard</source>
         <translation>Teclado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="659"/>
+        <location filename="../../src/gui/GeneralSettingDialog.cpp" line="447"/>
         <source>Mouse</source>
         <translation>Ratón</translation>
     </message>
@@ -1643,27 +1957,23 @@ Comprobar generación de paletas FFmpeg ...</translation>
 <context>
     <name>gui::GifExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="293"/>
         <source>Optimize palette</source>
-        <translation>Optimizar paleta</translation>
+        <translation type="vanished">Optimizar paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="294"/>
         <source>Relay bit rate (Kbps)</source>
-        <translation>Tasa de bits de relé (Kbps)</translation>
+        <translation type="vanished">Tasa de bits de relé (Kbps)</translation>
     </message>
 </context>
 <context>
     <name>gui::ImageExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="222"/>
         <source>Prefix name</source>
-        <translation>Nombre del prefijo</translation>
+        <translation type="vanished">Nombre del prefijo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="235"/>
         <source>Quality</source>
-        <translation>Calidad</translation>
+        <translation type="vanished">Calidad</translation>
     </message>
 </context>
 <context>
@@ -1846,27 +2156,27 @@ Comprobar generación de paletas FFmpeg ...</translation>
 <context>
     <name>gui::MainMenuBar</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="121"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="91"/>
         <source>File</source>
         <translation>Fichero</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="123"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="93"/>
         <source>New project</source>
         <translation>Nuevo proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="124"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
         <source>Open project</source>
         <translation>Abrir proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="125"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
         <source>Open recent</source>
         <translation>Abrir reciente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="151"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="121"/>
         <source>No other projects</source>
         <translation>No hay otros proyectos</translation>
     </message>
@@ -1891,113 +2201,100 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation type="vanished">(Legado) Exportar proyecto como...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="208"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="178"/>
         <source>Save project</source>
         <translation>Guardar proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="209"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
         <source>Save project as</source>
         <translation>Guardar proyecto como</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="210"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
         <source>Close project</source>
         <translation>Cerrar proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
         <source>Export project as</source>
         <translation>Exportar proyecto como</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="212"/>
         <source>Legacy exporter (deprecated)</source>
-        <translation>Exportador heredado (obsoleto)</translation>
+        <translation type="vanished">Exportador heredado (obsoleto)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="219"/>
         <source>JPEG Sequence</source>
-        <translation>Secuencia JPEG</translation>
+        <translation type="vanished">Secuencia JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="220"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="237"/>
         <source>PNG Sequence</source>
-        <translation>Secuencia PNG</translation>
+        <translation type="vanished">Secuencia PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="221"/>
         <source>GIF Animation</source>
-        <translation>Animación de GIF</translation>
+        <translation type="vanished">Animación de GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="230"/>
         <source>Video</source>
-        <translation>Vídeo</translation>
+        <translation type="vanished">Vídeo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="235"/>
         <source>Quickly export as</source>
-        <translation>Exportar rápidamente como</translation>
+        <translation type="vanished">Exportar rápidamente como</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="238"/>
         <source>GIF Animation (Transparent)</source>
-        <translation>Animación GIF (Transparente)</translation>
+        <translation type="vanished">Animación GIF (Transparente)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>GIF Animation (Opaque)</source>
-        <translation>Animación GIF (Opaca)</translation>
+        <translation type="vanished">Animación GIF (Opaca)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
         <source>WebM Animation (Transparent)</source>
-        <translation>Animación WebM (Transparente)</translation>
+        <translation type="vanished">Animación WebM (Transparente)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
         <source>WebM Animation (Opaque)</source>
-        <translation>Animación WebM (Opaca)</translation>
+        <translation type="vanished">Animación WebM (Opaca)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="242"/>
         <source>MP4 Video</source>
-        <translation>Video MP4</translation>
+        <translation type="vanished">Video MP4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="243"/>
         <source>AVI Video</source>
-        <translation>Video AVI</translation>
+        <translation type="vanished">Video AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="284"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="236"/>
         <source>Edit</source>
         <translation>Editar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="286"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="238"/>
         <source>Undo</source>
         <translation>Deshacer</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="287"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>Redo</source>
         <translation>Rehacer</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="289"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
         <source>Assets</source>
         <translation>Activos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="312"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="264"/>
         <source>Preferences</source>
         <translation>Preferencias</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="314"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="266"/>
         <source>Settings</source>
         <translation>Ajustes</translation>
     </message>
@@ -2010,37 +2307,37 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation type="vanished">Ajustes del ratón</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
         <source>Keybindings</source>
         <translation>Combinaciones de teclas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="343"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="295"/>
         <source>Help</source>
         <translation>Ayuda</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="345"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="297"/>
         <source>About AnimeEffects</source>
         <translation>Acerca de AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="354"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects para </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="354"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
         <source> version </source>
         <translation> versión </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>Un software de animación 2D fácil de usar mantenido por [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licenciado bajo la GPL v3.0 y potenciado por varias librerías de código abierto.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="358"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;Colaboradores:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
@@ -2051,82 +2348,107 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">&lt;br /&gt;&lt;br /&gt;Colaboradores:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [aki017](https://github.com/aki017), [picoHz](https://github.com/picoHz).</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="387"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="195"/>
+        <source>Quickly export as...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
+        <source>Export again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="310"/>
+        <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="344"/>
         <source>About us</source>
         <translation>Sobre nosotros</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="393"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="350"/>
         <source>Check for updates</source>
         <translation>Buscar actualizaciones</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="399"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="552"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
         <source>System telemetry</source>
         <translation>Telemetría del sistema</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="439"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="395"/>
         <source>Version: </source>
         <translation>Versión: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="440"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
         <source>Format version: </source>
         <translation>Versión de formato: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="441"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
         <source>Platform: </source>
         <translation>Plataforma: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="442"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
         <source>Build ABI: </source>
         <translation>Construir ABI: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="423"/>
         <source>CPU vendor: </source>
         <translation>Vendedor de CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
         <source>CPU architecture: </source>
         <translation>Arquitectura de CPU: </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="494"/>
+        <source>libav licence: </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
+        <source>libav configuration: </source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>CPU cores: </source>
         <translation type="vanished">Núcleos de CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
         <source>CPU threads: </source>
         <translation>Hilos de CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="473"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
         <source>System RAM:</source>
         <translation>RAM del Sistema:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="431"/>
         <source>System </source>
         <translation>Sistema </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="477"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="433"/>
         <source>Current GPU: </source>
         <translation>GPU actual: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="510"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="466"/>
         <source>GPU Vendor: </source>
         <translation>Vendedor GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="511"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
         <source>Max VRAM: </source>
         <translation>Máxima VRAM: </translation>
     </message>
@@ -2135,47 +2457,46 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">VRAM disponible: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="512"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
         <source>OpenGL version: </source>
         <translation>Versión OpenGL: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="513"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
         <source>Qt Version: </source>
         <translation>Versión Qt: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="514"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
         <source>System locale: </source>
         <translation>Local del sistema: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="519"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
         <source>Location Has Unicode: </source>
         <translation>Ubicación tiene Unicode: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="529"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="488"/>
         <source>Location Is Writable: </source>
         <translation>Ubicación Escribible: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="546"/>
         <source>FFmpeg Reach Type: </source>
-        <translation>Tipo de Alcance FFmpeg: </translation>
+        <translation type="vanished">Tipo de Alcance FFmpeg: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="548"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>Especificaciones del sistema copiadas correctamente al portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="563"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="511"/>
         <source>Donate</source>
         <translation>Donar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="288"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
         <source>Project settings</source>
         <translation>Configuración del proyecto</translation>
     </message>
@@ -2199,72 +2520,220 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">Dock de herramienta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="565"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="566"/>
         <source>Theme changed</source>
         <translation>Tema cambiado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="567"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="568"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>Puede haber artefactos visuales después de cambiar de tema, le recomendamos reiniciar la aplicación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="784"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="789"/>
         <source> has been modified. Save changes?</source>
         <translation> ha sido modificado. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="786"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="791"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>Algunos proyectos han sido modificados. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="794"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="799"/>
         <source>Save Changes</source>
         <translation>Guardar Cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="795"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="800"/>
         <source>Discard Changes</source>
         <translation>Descartar cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="796"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="801"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="817"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="822"/>
         <source>Undone : </source>
         <translation>Deshacer: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="880"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="885"/>
         <source>Redone : </source>
         <translation>Redone : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="923"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="983"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1012"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1081"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="928"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="988"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1017"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1086"/>
         <source>Loading Error</source>
         <translation>Error al cargar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="960"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="965"/>
         <source>Open File</source>
         <translation>Abrir archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1095"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1100"/>
         <source>Save File</source>
         <translation>Guardar archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1863"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1713"/>
+        <source>Exported %1 (%2 KB)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1719"/>
+        <source> (%1 of %2 KB allowed for %3)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1724"/>
+        <source>; OVER THE LIMIT, it will be rejected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
+        <source>All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1764"/>
+        <source>%1 files (*.%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1940"/>
+        <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1982"/>
+        <source>%1 of %2 frames at %3 x %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1988"/>
+        <source>Frame rate: %1 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1994"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2065"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="1999"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2079"/>
+        <source>Codec: %1 in %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2008"/>
+        <source>%1 cannot carry transparency, so this export will be opaque.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2014"/>
+        <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2050"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2060"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2071"/>
+        <source>Artifact: one %1 image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2073"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2078"/>
+        <source>Codec: animated GIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2082"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
+        <source>yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2083"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="2084"/>
+        <source>no</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2094"/>
+        <source>%1 GB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2096"/>
+        <source>%1 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2097"/>
+        <source>%1 KB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2101"/>
+        <source>max %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2103"/>
+        <source>max %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2105"/>
+        <source>min %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2107"/>
+        <source>max %1 frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2109"/>
+        <source>max %1 fps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainWindow.cpp" line="2111"/>
+        <source>Limits: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>FFmpeg was not found.</source>
-        <translation>FFmpeg no encontrado.</translation>
+        <translation type="vanished">FFmpeg no encontrado.</translation>
     </message>
     <message>
         <source>Exporting video requires FFmpeg to be installed on your computer, FFmpeg is a free tool that AnimeEffects uses to create video files.
@@ -2289,27 +2758,27 @@ En la siguiente pantalla puedes indicarle a AnimeEffects que lo descargue e inst
         <translation type="vanished">FFmpeg no ha podido generar paletas. Por favor, solucione problemas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="153"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="154"/>
         <source>Animation</source>
         <translation>Animación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="166"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="167"/>
         <source>Properties</source>
         <translation>Propiedades</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="212"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="213"/>
         <source>Tools</source>
         <translation>Herramientas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1032"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1037"/>
         <source>Recover unsaved project?</source>
         <translation>¿Recuperar proyecto sin guardar?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1033"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1038"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -2320,155 +2789,123 @@ Open it?</source>
 ¿Abrirlo?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1427"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1439"/>
         <source>Select your preset name</source>
-        <translation>Seleccione su nombre predefinido</translation>
+        <translation type="vanished">Seleccione su nombre predefinido</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>Animated PNG</source>
-        <translation>PNG animado</translation>
+        <translation type="vanished">PNG animado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>AVI</source>
-        <translation>AVI</translation>
+        <translation type="vanished">AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>Flash Video</source>
-        <translation>Vídeo Flash</translation>
+        <translation type="vanished">Vídeo Flash</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>GIF</source>
-        <translation>GIF</translation>
+        <translation type="vanished">GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>Matroska</source>
-        <translation>Matroska</translation>
+        <translation type="vanished">Matroska</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>QuickTime Movie</source>
-        <translation>Película Rápida</translation>
+        <translation type="vanished">Película Rápida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1524"/>
         <source>MPEG-2</source>
-        <translation>MPEG-2</translation>
+        <translation type="vanished">MPEG-2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>MPEG-4</source>
-        <translation>MPEG-4</translation>
+        <translation type="vanished">MPEG-4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>Ogg Video</source>
-        <translation>Vídeo Ogg</translation>
+        <translation type="vanished">Vídeo Ogg</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>Shockwave Flash</source>
-        <translation>Parpadeo de onda Shockwave</translation>
+        <translation type="vanished">Parpadeo de onda Shockwave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
         <source>WEBM</source>
-        <translation>WEBM</translation>
+        <translation type="vanished">WEBM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1525"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>WEBP</source>
-        <translation>WEBP</translation>
+        <translation type="vanished">WEBP</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>BitMap</source>
-        <translation>BitMap</translation>
+        <translation type="vanished">BitMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>JPEG</source>
-        <translation>JPEG</translation>
+        <translation type="vanished">JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>PNG</source>
-        <translation>PNG</translation>
+        <translation type="vanished">PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1529"/>
         <source>Portable PixelMap</source>
-        <translation>Portable PixelMap</translation>
+        <translation type="vanished">Portable PixelMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>X11 BitMap</source>
-        <translation>X11 BitMap</translation>
+        <translation type="vanished">X11 BitMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>X11 PixelMap</source>
-        <translation>X11 PixelMap</translation>
+        <translation type="vanished">X11 PixelMap</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1530"/>
         <source>Tagged Image</source>
-        <translation>Imagen etiquetada</translation>
+        <translation type="vanished">Imagen etiquetada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1662"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1717"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1757"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1832"/>
         <source>Export Folder</source>
         <translation>Exportar carpeta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1687"/>
         <source>File already exists.</source>
-        <translation>El archivo ya existe.</translation>
+        <translation type="vanished">El archivo ya existe.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1688"/>
         <source>Do you want to overwrite the existing file?</source>
-        <translation>¿Desea sobrescribir el archivo existente?</translation>
+        <translation type="vanished">¿Desea sobrescribir el archivo existente?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1704"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1872"/>
         <source>Export Error</source>
-        <translation>Error al exportar</translation>
+        <translation type="vanished">Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1805"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
         <source>Export File</source>
         <translation>Exportar archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1820"/>
         <source>Operation Error</source>
-        <translation>Error de operación</translation>
+        <translation type="vanished">Error de operación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1820"/>
         <source>Invalid extension specified.</source>
-        <translation>Extensión especificada inválida.</translation>
+        <translation type="vanished">Extensión especificada inválida.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1864"/>
         <source>Video export requires FFmpeg.</source>
-        <translation>La exportación de vídeo requiere FFmpeg.</translation>
+        <translation type="vanished">La exportación de vídeo requiere FFmpeg.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1865"/>
         <source>Install FFmpeg on the system, or place a FFmpeg executable under &quot;/tools&quot; in the folder where you installed AnimeEffects.</source>
-        <translation>Instala FFmpeg en el sistema, o coloca un ejecutable de FFmpeg bajo &quot;/tools&quot; en la carpeta donde instalaste AnimeEffects.</translation>
+        <translation type="vanished">Instala FFmpeg en el sistema, o coloca un ejecutable de FFmpeg bajo &quot;/tools&quot; en la carpeta donde instalaste AnimeEffects.</translation>
     </message>
 </context>
 <context>
@@ -2521,13 +2958,13 @@ Open it?</source>
 <context>
     <name>gui::ObjectTreeWidget</name>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="146"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="609"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="145"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
         <source>Contract</source>
         <translation>Contrato</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="149"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="148"/>
         <source>Add missing assets</source>
         <translation>Añadir activos faltantes</translation>
     </message>
@@ -2536,47 +2973,47 @@ Open it?</source>
         <translation type="vanished">Añadir nuevo PSD</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="152"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="151"/>
         <source>Add new assets</source>
         <translation>Añadir nuevos activos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="155"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="154"/>
         <source>Rename</source>
         <translation>Renombrar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="158"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="157"/>
         <source>Paste from clipboard</source>
         <translation>Pegar desde portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="161"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="160"/>
         <source>Create layer</source>
         <translation>Crear capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="164"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="163"/>
         <source>Duplicate node</source>
         <translation>Duplicar nodo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="167"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="166"/>
         <source>Add default keys</source>
         <translation>Añadir claves por defecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="170"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="169"/>
         <source>Create folder</source>
         <translation>Crear carpeta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="173"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="172"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="609"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
         <source>Enlarge</source>
         <translation>Ampliar</translation>
     </message>
@@ -2585,88 +3022,88 @@ Open it?</source>
         <translation type="vanished">Árbol de archivos no encontrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="731"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="730"/>
         <source>File tree not found</source>
         <translation>Árbol de archivos no encontrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="773"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="772"/>
         <source>Add</source>
         <translation>Añadir</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="779"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="778"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="816"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="815"/>
         <source>No trees selected</source>
         <translation>Ningún árbol ha sido seleccionado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="817"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="816"/>
         <source>Please select at least one tree.</source>
         <translation>Porfavor seleccione al menos un árbol</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="822"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
         <source>Done</source>
         <translation>Hecho</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="822"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
         <source>Tree addition was attempted, layers with duplicate names have been suppressed.</source>
         <translation>Adición de árbol fué intentada, capas con nombres duplicados han sido suprimidas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="917"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="916"/>
         <source>The requested FFD key mesh (at frame %1) has %2 vertices, but the parent mesh of the targeted node has %3 vertices, artifacts may be present.</source>
         <translation>La malla de la clave FFD solicitada (en el fotograma %1) tiene %2 vértices, pero la malla principal del nodo de destino tiene %3 vértices; pueden aparecer artefactos.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="943"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
         <source>Successfully pasted </source>
         <translation>Pegado con éxito </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="943"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
         <source> keys.</source>
         <translation> claves.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="945"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
         <source> keys. The log is available below.</source>
         <translation> claves. El registro está disponible a continuación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="945"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
         <source>Warnings present for </source>
         <translation>Advertencias en </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
         <source> keys.
 </source>
         <translation> claves.
 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="951"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
         <source> error(s) have been detected.
 The log is available below.</source>
         <translation> error(es) han sido detectados.
 El registro está disponible a continuación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="956"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="976"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="955"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="975"/>
         <source>Failed to paste key(s)</source>
         <translation>Error al pegar clave(s)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="959"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="958"/>
         <source>Clipboard does not contain valid JSON information or the timeline already has a key in the same frame.</source>
         <translation>El portapapeles no contiene información JSON válida o la línea de tiempo ya tiene una clave en el mismo fotograma.</translation>
     </message>
@@ -2675,7 +3112,7 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">El portapapeles no contiene información JSON válida o la línea de tiempo ya tiene una clave en el mismo fotograma.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="979"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="978"/>
         <source>Timeline has a key in the same frame.</source>
         <translation>La línea de tiempo tiene una clave en el mismo fotograma.</translation>
     </message>
@@ -2778,17 +3215,17 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::ProjectSettingDialog</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="669"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="553"/>
         <source>Project settings</source>
         <translation>Configuración del proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="706"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="590"/>
         <source>Canvas size</source>
         <translation>Tamaño del lienzo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="730"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="614"/>
         <source>Frame range</source>
         <translation>Rango de fotogramas</translation>
     </message>
@@ -2797,12 +3234,12 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Número máximo de fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="736"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="620"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="742"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="626"/>
         <source>Frames per second</source>
         <translation>Fotogramas por segundo</translation>
     </message>
@@ -3168,39 +3605,32 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::VideoExportDialog</name>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="354"/>
         <source>This codec requires a dedicated GPU.</source>
-        <translation>Este código requiere un GPU dedicado.</translation>
+        <translation type="vanished">Este código requiere un GPU dedicado.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="415"/>
         <source>Lossless</source>
-        <translation>Sin pérdida</translation>
+        <translation type="vanished">Sin pérdida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="420"/>
         <source>Transparent</source>
-        <translation>Transparente</translation>
+        <translation type="vanished">Transparente</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="435"/>
         <source>Codec</source>
-        <translation>Códec</translation>
+        <translation type="vanished">Códec</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="439"/>
         <source>Color standard</source>
-        <translation>Color estándar</translation>
+        <translation type="vanished">Color estándar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="441"/>
         <source>Pixel format</source>
-        <translation>Pixel format</translation>
+        <translation type="vanished">Pixel format</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="456"/>
         <source>Bit rate (Kbps)</source>
-        <translation>Tasa de bits (Kbps)</translation>
+        <translation type="vanished">Tasa de bits (Kbps)</translation>
     </message>
 </context>
 <context>
@@ -3367,22 +3797,22 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="537"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="536"/>
         <source>Easing</source>
         <translation>Interpolación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="546"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="545"/>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="800"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="799"/>
         <source>Copy</source>
         <translation>Copiar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="803"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="802"/>
         <source>Paste</source>
         <translation>Pegar</translation>
     </message>
@@ -4079,29 +4509,24 @@ Save anyway?</source>
 <context>
     <name>splineWidget</name>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="293"/>
         <source>Bezier editor</source>
-        <translation>Editor de Bézier</translation>
+        <translation type="vanished">Editor de Bézier</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="294"/>
         <source>Paste</source>
-        <translation>Pegar</translation>
+        <translation type="vanished">Pegar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="295"/>
         <source>Copy</source>
-        <translation>Copiar</translation>
+        <translation type="vanished">Copiar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="296"/>
         <source>Cancel</source>
-        <translation>Cancelar</translation>
+        <translation type="vanished">Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/splineWidget.h" line="297"/>
         <source>Apply</source>
-        <translation>Aplicar</translation>
+        <translation type="vanished">Aplicar</translation>
     </message>
 </context>
 <context>
