@@ -334,6 +334,12 @@ against 156), and the separability of the row weights from the texture's width. 
 turns 11 of those checks red with exactly the numbers above, which is how the assertions were shown to
 have power.
 
+The rebuild's cost is bounded by the size of that deepest exact level, which the alignment makes
+small: a side that is a multiple of 128 has at least seven trailing zero bits, so the readback is at
+most 128 texels across for any texture 128 texels or more, and the rebuilt levels are smaller still.
+A power-of-two side has nothing to rebuild at all. An unaligned size handed to the same code would
+read back the whole texture instead - which is one more reason the layer upload pads.
+
 What is left past the cap is the level grid's own arithmetic: with `floor(size / 2^l)` texels over the
 whole side, the deepest level's texel can cover up to twice the 2^*l* base texels its own number
 suggests. At 256x on a 384-texel side it covers 384 where the footprint is 256, i.e. 1.5x softer than

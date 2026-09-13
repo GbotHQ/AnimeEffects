@@ -135,9 +135,13 @@ void Texture::create(
         //
         // So: read the deepest level that DOES divide, and build the levels past it here, with the
         // area weights the level grid implies. That makes every level of every chain the exact
-        // average it claims to be, for any size, and it costs one small readback - the deepest exact
-        // level is at most 128ish texels across for any texture larger than that - plus a few
-        // thousand 8-bit averages. A power-of-two size has no such levels and pays nothing.
+        // average it claims to be, for any size. A power-of-two size has no such levels and pays
+        // nothing; otherwise the cost is that readback (side / 2^exactLevels texels across) plus a
+        // pass over it per rebuilt level. Layer uploads align their size to a multiple of 128
+        // (img::Util::mipAlignedTextureSize), so exactLevels >= 7 for any texture of 128 texels or
+        // more and the readback is at most 128^2: kilobytes and microseconds. A caller that hands
+        // this an UNALIGNED size - an odd one, say, where exactLevels is 0 - pays a full-texture
+        // readback and a couple of passes over it instead, so align the size if you can.
         const int exactLevels =
             std::min(trailingZeroBits(mSize.width()), trailingZeroBits(mSize.height()));
         if (exactLevels + 1 < mMipmapLevels) {

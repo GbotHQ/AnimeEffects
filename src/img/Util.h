@@ -91,8 +91,9 @@ public:
     /// with the area weights the grid implies, so every level of every chain is the average it claims
     /// to be whatever the size - measured size by size in M18 of tools/verify_mipmap, and pinned
     /// there by a mutation test. So what the cap buys is memory, not correctness: it keeps the
-    /// padding under 128 texels an axis, while the levels past it cost one small readback and a few
-    /// thousand 8-bit averages.
+    /// padding under 128 texels an axis, while the levels past it cost one readback of the deepest
+    /// exact level - at most 128 texels across, because this padding makes the size a multiple of
+    /// 128, and a multiple of 128 has seven trailing zero bits - plus a pass over it per level.
     static QSize mipAlignedTextureSize(const QSize& aImageSize);
 
     /// The bytes to hand to glTexImage2D for a layer: aData (aSize texels) copied into the top-left
