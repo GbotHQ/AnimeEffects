@@ -313,16 +313,12 @@ void DestinationPicker::applyFilter(const QString& aQuery) {
         if (anyChild && !q.isEmpty()) top->setExpanded(true);
     }
 
-    // Move the highlight only when the current row can no longer be chosen.
-    //
-    // The constructor selects the REMEMBERED destination (MainWindow passes
-    // "export_destination" in as aCurrentId, and this class's header calls it
-    // "preselects a destination"), and this function is called at the end of that
-    // constructor - where it used to be handed the first row instead. So the picker
-    // always opened on row 0, "A video for a chat app", and Enter or the default
-    // button exported THERE rather than where the user last exported: a remembered
-    // setting the screen contradicts. See tests/destination_picker.cpp, which is
-    // display-free and asks exactly this question.
+    // Move the highlight only when the current row can no longer be chosen: the
+    // constructor preselects the REMEMBERED destination (MainWindow passes QSettings
+    // "export_destination" in as aCurrentId) and calls this at the end of that
+    // constructor, so selecting the first visible row here would contradict the
+    // remembered setting on screen. tests/destination_picker.cpp asks that question
+    // without a display.
     QTreeWidgetItem* current = mTree->currentItem();
     const bool currentIsAnswer = current && !isSection(current) && !current->isHidden();
     QTreeWidgetItem* target = currentIsAnswer ? current : firstDestination;

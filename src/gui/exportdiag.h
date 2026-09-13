@@ -225,16 +225,9 @@ public:
         //   [ Export ]  [ Cancel ]
         //
         // Each section is a QFormLayout and every row is added as (label, field), so
-        // Qt associates the two: each control has words on screen that belong to it,
-        // and no row is addressed by a number. The old form was ONE hand-built
-        // seventeen-row QGridLayout in which a row WAS its index - the frame range
-        // was appended at rows 22-24 when it was added, long after the encoder rows,
-        // and a label was associated with its field only by happening to sit in the
-        // same row. That is why the order on screen was the order things were added
-        // and why nothing could be found by name.
-        //
-        // Adding a control is now: create it, addRow(label, it). Nothing renumbers,
-        // nothing computes a position, and a row that is hidden leaves no gap.
+        // Qt associates the two: every control has words on screen that belong to it,
+        // and no row is addressed by a number. Adding a control is: create it,
+        // addRow(label, it). Nothing renumbers and nothing computes a position.
         verticalLayout_2 = new QVBoxLayout(exportWidget);
         verticalLayout_2->setObjectName(QString::fromUtf8("verticalLayout_2"));
         globalParam = new QWidget();
@@ -1110,10 +1103,9 @@ public:
         //   MaxExactSide,  Telegram), so the boxes report it and stop accepting edits
         //   MaxMinSide     (a floor plus a ceiling leaves nothing to choose)
         //
-        // This used to freeze the boxes for every rule except Free, which made Discord
-        // - whose rule is a ceiling - a destination where the resolution could not be
-        // changed at all: "export this at 640x360" was not expressible, and the frozen
-        // numbers read as the destination's decision rather than its limit.
+        // A ceiling leaves the boxes live and carries that ceiling as their maximum,
+        // so "export this at 640x360" is expressible on a destination whose rule is
+        // "no bigger than 1280x720".
         const bool boundsOnly = aTarget.size.mode == ctrl::SizeMode::Max;
         const bool sizeIsUsers = aTarget.size.mode == ctrl::SizeMode::Free || boundsOnly;
         if (sizeIsUsers) {
@@ -1162,16 +1154,13 @@ public:
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
                     setImageQualityToAuto},
                    false);
-        // THE DISCLOSURE STAYS AVAILABLE, holding what this destination leaves to the
-        // user: a capability it merely DEFAULTS (Discord's audio is on by default, and
-        // turning it off is an ordinary thing to want) and the codec's own quality
-        // value (the destination fixes the codec, not the trade inside it). It used to
-        // be hidden outright with a destination chosen, which made both of those
-        // unreachable - there was no way to export a silent Discord video, and no way
-        // to say CRF 18 - on the one screen whose job is to finish the export.
+        // THE DISCLOSURE HOLDS WHAT THIS DESTINATION LEAVES TO THE USER: a capability
+        // it merely DEFAULTS (Discord's audio is on by default, and turning it off is
+        // an ordinary thing to want) and the codec's own quality value (a destination
+        // fixes the codec, not the trade inside it).
         //
-        // What the destination DICTATES is still hidden, and the facts above state it:
-        // a Format combo beside a stated "MP4" is two answers to one question.
+        // What the destination DICTATES is hidden instead, and the facts above state
+        // it: a Format combo beside a stated "MP4" is two answers to one question.
         applyArtifactConstraints();
         setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto},

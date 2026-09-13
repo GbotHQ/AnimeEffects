@@ -34,4 +34,12 @@ for probe in "$DIR"/probe_*.sh; do
     fi
 done
 echo "=== probes: pass=$pass fail=$fail stale=$stale${failed:+ failed:$failed}${stalled:+ stale:$stalled} ==="
-exit $((fail > 0 ? 1 : 0))
+# STALE IS NOT A PASS. A probe that cannot reach the screen it asserts on tests
+# nothing, so a runner that exits 0 while nine of twelve are stale reports a green
+# suite that verified nothing - which is exactly what happened while every probe
+# carried an always-set stale flag (see _lib.sh). A caller that is deliberately
+# mid-re-record sets AE_ALLOW_STALE=1 and gets the old behaviour.
+if [ "${AE_ALLOW_STALE:-0}" = "1" ]; then
+    exit $((fail > 0 ? 1 : 0))
+fi
+exit $(((fail > 0 || stale > 0) ? 1 : 0))

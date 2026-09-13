@@ -62,3 +62,9 @@ for n in $targets; do
   else fail=$((fail+1)); failed="$failed $n"; echo "FAIL($rc) $n"; echo "$out" | tail -10; fi
 done
 echo "=== $CFG: pass=$pass fail=$fail skipped:$skipped failed:$failed ==="
+# THE EXIT CODE IS THE GATE. Without this line the script ended on an echo, so it
+# always exited 0: a run with every suite failing looked identical to a clean one to
+# any caller that checks the status (CI, a hook, or a person reading "rc=0"), and
+# "all suites pass" rested on the reader noticing the word FAIL in the output. An
+# unfailable check is how a suite that tests nothing stays green.
+exit $((fail > 0 ? 1 : 0))
