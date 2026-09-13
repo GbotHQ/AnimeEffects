@@ -216,17 +216,65 @@ int main(int argc, char** argv) {
               QStringLiteral("%1: Advanced never opens onto nothing").arg(t.id));
         if (offered(ui->qualityCombo)) ++adjacentRows;
 
-        // The quality INTENT may not claim authority while an explicit value is set.
-        ui->qualityOverrideSpin->setValue(18);
-        if (offered(ui->qualityOverrideSpin)) {
-            check(!ui->qualityCombo->isEnabled(),
-                  QStringLiteral("%1: the Quality combo yields to an explicit CRF").arg(t.id));
-        }
-        ui->qualityOverrideSpin->setValue(-1);
-        if (offered(ui->qualityOverrideSpin)) {
-            check(ui->qualityCombo->isEnabled(),
-                  QStringLiteral("%1: and takes it back on Auto").arg(t.id));
-        }
+    }
+
+    // ---- the codec's own value, and the sentinel that means "let the Quality setting
+    // decide" ---------------------------------------------------------------
+    //
+    // Asked OUTSIDE the loop on purpose. A destination's plan carries the codec only
+    // after MainWindow has resolved it from the container, so inside the loop this
+    // control was never offered at all: x.video's plan has no codec, knobUsable is
+    // false, the spin stays hidden, and the two assertions that used to sit there were
+    // skipped for every one of the 56 rows (measured: 0 rows offered it). The plan here
+    // states the container and codec MainWindow resolves for an mp4 destination, which
+    // is the input this question needs.
+    {
+        const ctrl::ExportTarget xv = ctrl::ExportTargets::find(targets, QStringLiteral("x.video"));
+        ctrl::ExportRequest request = requestFor(xv);
+        ctrl::ExportPlan forced = ctrl::planExport(xv, request, ctrl::QualityBucket::Balanced);
+        forced.config.container = QStringLiteral("mp4");
+        forced.config.codec = QStringLiteral("libx264");
+        ui->setDestinationId(xv.id);
+        ui->applyDestinationDefaults(xv);
+        ui->applyPlan(forced, xv);
+        ui->advancedToggle->setChecked(true);
+
+        const ctrl::QualityControl control =
+            ctrl::ExportTargets::loadQualityControl().value(QStringLiteral("libx264"));
+        check(!control.option.isEmpty(),
+              QStringLiteral("x.video's codec declares a quality knob (%1)").arg(control.option));
+        check(offered(ui->qualityOverrideSpin),
+              QStringLiteral("a codec with a knob offers its own value control"));
+
+        // The sentinel has to be INSIDE the range. QSpinBox::setRange CLAMPS the current
+        // value, so a sentinel of -1 against a span starting at 19 was erased the moment
+        // the constraints were applied: the box always held a number, the Quality combo
+        // was disabled as "not in charge", and MainWindow wrote that number into every
+        // export, so the intent never decided anything - in the shipping build, with the
+        // whole suite green.
+        check(ui->qualityOverrideSpin->minimum() == control.autoValue()
+                  && ui->qualityOverrideSpin->value() == control.autoValue(),
+              QStringLiteral("and it starts on Auto, the bottom of its own range "
+                             "(value %1, range %2..%3, codec span %4..%5)")
+                  .arg(ui->qualityOverrideSpin->value())
+                  .arg(ui->qualityOverrideSpin->minimum())
+                  .arg(ui->qualityOverrideSpin->maximum())
+                  .arg(control.best)
+                  .arg(control.worst));
+        check(ui->qualityOverrideSpin->specialValueText() == QStringLiteral("Auto"),
+              QStringLiteral("the bottom of the range reads as Auto, not as a number"));
+        check(ui->qualityCombo->isEnabled(),
+              QStringLiteral("so the Quality setting is in charge until the user says otherwise"));
+
+        ui->qualityOverrideSpin->setValue(control.autoValue() + 1);
+        check(!ui->qualityCombo->isEnabled(),
+              QStringLiteral("naming a value takes the Quality setting out of charge (%1)")
+                  .arg(ui->qualityOverrideSpin->value()));
+        ui->setQualityOverrideAuto->click();
+        check(ui->qualityOverrideSpin->value() == control.autoValue()
+                  && ui->qualityCombo->isEnabled(),
+              QStringLiteral("and its own Auto button hands it back (%1)")
+                  .arg(ui->qualityOverrideSpin->value()));
     }
 
     check(rows == targets.size(),

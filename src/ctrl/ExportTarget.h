@@ -6,6 +6,8 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
+
+#include <algorithm>
 #include <functional>
 
 #include "media/VideoEncoder.h"
@@ -347,6 +349,16 @@ struct QualityControl {
     QString option; // private encoder option name, e.g. "crf"
     int best = 0;   // start here: highest quality
     int worst = 0;  // lowest quality we accept before shrinking instead
+
+    // The value that means "no override, let the Quality setting decide". It is ONE
+    // BELOW the span the codec accepts, not a fixed -1: the control that shows it is
+    // ranged to the codec's own span (a CRF box offering 0 for a codec whose span
+    // starts at 24 is a lie), and QSpinBox::setRange CLAMPS the current value into the
+    // new range. With the sentinel at -1 the range therefore erased it the moment it
+    // was applied, the box always held a real number, the Quality setting's combo was
+    // disabled as "not in charge", and the override was written into every export: the
+    // intent never ran. Outside the span, the sentinel survives the range.
+    int autoValue() const { return std::min(best, worst) - 1; }
 };
 
 struct FitResult {

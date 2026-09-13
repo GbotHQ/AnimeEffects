@@ -1268,7 +1268,14 @@ static void translateVideoExport(exportParam& exParam, const std::vector<audioCo
                               : aVideo.codec;
     const QString knob = ctrl::qualityKnobFor(codec);
     if (!knob.isEmpty()) {
-        if (g.qualityOverride >= 0) {
+        // The dialog states "no override" as the codec's own sentinel (one below the
+        // span it accepts), because that is the only value a box ranged to that span
+        // can still hold. Reading it as "any negative number" was fine while the
+        // sentinel was -1; what was NOT fine is that the range clamped -1 away, so this
+        // branch always took the override and the Quality setting never decided.
+        const ctrl::QualityControl control =
+            ctrl::ExportTargets::loadQualityControl().value(codec);
+        if (g.qualityOverride > control.autoValue()) {
             aVideo.encOptions.insert(knob, QString::number(g.qualityOverride));
         } else {
             ctrl::applyQualityIntent(codec, exParam.qualityBucket, aVideo.encOptions);

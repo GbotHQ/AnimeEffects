@@ -642,9 +642,12 @@ public:
         advancedForm->addRow(qualityOverrideLabel, withTrailing(advancedBox, qualityOverrideSpin,
                                                                 {setQualityOverrideAuto}));
         QWidget::connect(setQualityOverrideAuto, &QPushButton::clicked,
-                         [=]{ qualityOverrideSpin->setValue(-1); });
+                         [=]{ qualityOverrideSpin->setValue(qualityAutoValue()); });
+        // "In charge" is decided against the codec's own sentinel (qualityAutoValue),
+        // not against zero: the sentinel sits one below the span the codec accepts, so
+        // "the user named a number" is "the value is above the sentinel".
         QWidget::connect(qualityOverrideSpin, util::SelectArgs<int>::from(&QSpinBox::valueChanged),
-                         [=](int aValue) { qualityCombo->setEnabled(aValue < 0); });
+                         [=](int aValue) { qualityCombo->setEnabled(aValue <= qualityAutoValue()); });
 
         // Bitrate is here for the codecs that have NO quality knob at all, and hidden
         // for the ones that do (see applyArtifactConstraints): offering both is
@@ -903,20 +906,34 @@ public:
         // the palette is the FIT loop's lever, not a thing a plain export sets.
         const bool knobUsable = isVideo && !knob.isEmpty();
         setVisible({qualityOverrideLabel, qualityOverrideSpin, setQualityOverrideAuto}, knobUsable);
-        // Two controls for one number: the intent and the codec's own value. While the
-        // user has named the value, the intent is not in charge, and a combo still
-        // reading "Balanced" beside "CRF 18" is the form contradicting itself.
-        qualityCombo->setEnabled(!knobUsable || qualityOverrideSpin->value() < 0);
         if (knobUsable) {
-            // Ranged to the codec's own span, and named after its own knob: "CRF"
-            // counts down from 0 and WebP's "quality" counts up from 100, so a
-            // control labelled with the wrong one is worse than no control.
+            // Ranged to the codec's own span PLUS the sentinel, and named after the
+            // codec's own knob: "CRF" counts down from 0 and WebP's "quality" counts up
+            // from 100, so a control labelled with the wrong one is worse than no
+            // control.
             const ctrl::QualityControl control = qualityControl();
-            qualityOverrideSpin->setRange(std::min(control.best, control.worst),
+            // Was this box on Auto? Its Auto is the BOTTOM of its own range, and that
+            // bottom moves when the codec does. A value left over from another codec's
+            // range (WebP's 29) is an ordinary number inside libx264's (18..34), so
+            // setRange does not clamp it and the control silently stopped being Auto the
+            // moment the destination changed: the Quality setting went out of charge
+            // without anybody touching it.
+            const bool wasAuto = qualityOverrideSpin->value() == qualityOverrideSpin->minimum();
+            qualityOverrideSpin->setRange(control.autoValue(),
                                           std::max(control.best, control.worst));
+            if (wasAuto) qualityOverrideSpin->setValue(control.autoValue());
             qualityOverrideLabel->setText(knob == QLatin1String("crf") ? tr("CRF:")
                                                                        : tr("Quality:"));
         }
+        // Two controls for one number: the intent and the codec's own value. While the
+        // user has named the value, the intent is not in charge, and a combo still
+        // reading "Balanced" beside "CRF 18" is the form contradicting itself.
+        //
+        // This is asked AFTER the range above, on purpose: the question is what the box
+        // holds under THIS row's span, and asking it first read the previous row's value
+        // (and, before the sentinel moved into the range, a value the range was about to
+        // erase).
+        qualityCombo->setEnabled(!knobUsable || qualityOverrideSpin->value() <= qualityAutoValue());
 
         // The quality INTENT is the codec's knob seen from further away, so it goes
         // with it: for a sequence of stills, QImage::save()'s own number is the
@@ -981,6 +998,13 @@ public:
     }
 
     QString encoderQualityKnob() const { return qualityControl().option; }
+
+    // The codec's "no override" value, or -1 when there is no knob at all (the spin box
+    // is hidden then, and -1 is outside any span this table declares).
+    int qualityAutoValue() const {
+        const ctrl::QualityControl control = qualityControl();
+        return control.option.isEmpty() ? -1 : control.autoValue();
+    }
 
     // Whether the codec currently selected can carry alpha HERE. Asked of the
     // probe, not of a table: libx265 lists yuva420p and refuses to open with it.

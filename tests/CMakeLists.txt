@@ -181,7 +181,18 @@ add_executable(export_form
     ../src/gui/theme/Icons.cpp
     ../src/gui/theme/Theme.cpp
     ../src/ctrl/ExportTarget.cpp
-    ../src/gui/exportdiag.h)
+    ../src/gui/exportdiag.h
+    # The destination TABLE, embedded the way the application embeds it.
+    #
+    # The table is loaded two ways: this test passes a path (AE_EXPORT_TARGETS_PATH) for
+    # the plan and the facts, while the DIALOG's own lookups - the codec's quality span,
+    # the quality buckets, the time budgets - call the static loaders, whose default path
+    # is the embedded ":/export/ExportTargets.txt". Without this resource the test's
+    # dialog sees an EMPTY table: every codec looks like it has no quality knob, the
+    # override control is never offered (measured: 0 of 56 rows), and the assertions that
+    # ask about it were skipped for every row while the suite stayed green. A dialog test
+    # that reads a different table than the application is not testing the application.
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
 target_include_directories(export_form PRIVATE .. ../src/gui)
 target_compile_definitions(export_form PRIVATE
     AE_MAJOR_VERSION=1
