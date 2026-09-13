@@ -186,11 +186,18 @@ target_compile_definitions(export_form PRIVATE
     AE_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/assets"
     AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
     AE_EXPORT_STRINGS_PATH="${CMAKE_SOURCE_DIR}/src/ctrl/ExportTargetStrings.h"
+    # .qm are build artifacts (release_translations); the runtime translation
+    # assertion loads one from the build output, never from source.
+    AE_I18N_QM_DIR="${PROJECT_BINARY_DIR}/src/gui"
 )
 target_link_libraries(export_form PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
     media
 )
+# The runtime translation assertion reads a BUILT catalog, so the test has to depend on
+# the catalog being rebuilt: without this it can run against a stale .qm and report that
+# the table arrives untranslated, which is exactly what happened the first time.
+add_dependencies(export_form release_translations)
 
 add_executable(picker_probe
     picker_probe.cpp

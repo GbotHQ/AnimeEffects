@@ -29,6 +29,7 @@
 #include <QSpinBox>
 #include <QTextStream>
 #include <QToolButton>
+#include <QTranslator>
 #include <QWidget>
 
 #include <algorithm>
@@ -302,6 +303,47 @@ int main(int argc, char** argv) {
               "a 2 GB cap is stated in GB, not as a number of bytes");
         check(text.contains(QStringLiteral("none in this project")),
               "and its audio line blames the silent project, not Telegram");
+    }
+
+    // ---- the table's strings actually arrive translated ---------------------
+    //
+    // The mechanism (a generated QT_TRANSLATE_NOOP list plus a lookup through the same
+    // context) could rot silently in either half: drop the lookup and every string is
+    // English again with nothing failing. So install a real built catalog and assert the
+    // TABLE comes back in another language, brands intact.
+    {
+        QTranslator translator;
+        const bool loaded = translator.load(QStringLiteral("translation_es"),
+                                            QStringLiteral(AE_I18N_QM_DIR));
+        check(loaded, "a built catalog loads (the .qm are build artifacts)");
+        if (loaded) {
+            QCoreApplication::installTranslator(&translator);
+            const QList<ctrl::ExportTarget> translated =
+                ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+            const ctrl::ExportTarget esGeneric =
+                ctrl::ExportTargets::find(translated, QStringLiteral("chat.generic.video"));
+            const ctrl::ExportTarget enGeneric =
+                ctrl::ExportTargets::find(targets, QStringLiteral("chat.generic.video"));
+            check(!esGeneric.label.isEmpty() && esGeneric.label != enGeneric.label,
+                  QStringLiteral("a destination name arrives translated (%1 -> %2)")
+                      .arg(enGeneric.label, esGeneric.label));
+            const ctrl::ExportTarget esAnimation =
+                ctrl::ExportTargets::find(translated, QStringLiteral("discord.animation"));
+            const ctrl::ExportTarget enAnimation =
+                ctrl::ExportTargets::find(targets, QStringLiteral("discord.animation"));
+            check(esAnimation.note != enAnimation.note && esAnimation.note.contains(QLatin1String("WebP")),
+                  QStringLiteral("and so does its note, with the format names intact (%1 chars)")
+                      .arg(esAnimation.note.size()));
+            int translatedLabels = 0;
+            for (const ctrl::ExportTarget& t : translated) {
+                const ctrl::ExportTarget english = ctrl::ExportTargets::find(targets, t.id);
+                if (t.label != english.label) ++translatedLabels;
+            }
+            check(translatedLabels > 20,
+                  QStringLiteral("most names are translated, brands are not (%1 of %2 differ)")
+                      .arg(translatedLabels).arg(translated.size()));
+            QCoreApplication::removeTranslator(&translator);
+        }
     }
 
     QTextStream(stdout) << (failures == 0

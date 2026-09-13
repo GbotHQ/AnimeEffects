@@ -98,7 +98,7 @@ assert_showing /tmp/dlg_form.txt "Cancel" "and abandoned"
 for pair in "256 KB:its upload cap" \
             "Limits:the limits line, where a cap is stated as a cap" \
             "libvpx-vp9:the codec it resolved" \
-            "webm:and the container it resolved"; do
+            "webm:the container it resolved"; do
     needle=${pair%%:*}
     what=${pair#*:}
     if grep -qF "$needle" /tmp/dlg_text.txt; then
