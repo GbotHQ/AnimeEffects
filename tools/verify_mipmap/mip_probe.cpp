@@ -287,6 +287,20 @@ std::vector<Img> readChain(const Img& aSrc, bool aPremultiply) {
     return levels;
 }
 
+// Reads ONE level of the chain glGenerateMipmap builds for aSrc. Same upload path as readChain,
+// but a sweep that only ever looks at the deepest level should not pay for reading the whole
+// pyramid back: the levels below it are ~4/3 of the texels again, per sweep step.
+Img readLevelOnly(const Img& aSrc, int aLevel) {
+    gl::Texture tex;
+    tex.create(aSrc.size(), aSrc.d.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap);
+
+    Img img;
+    img.w = std::max(1, aSrc.w >> aLevel);
+    img.h = std::max(1, aSrc.h >> aLevel);
+    img.d = readLevel(tex.id(), aLevel, QSize(img.w, img.h));
+    return img;
+}
+
 // max |a - b| over one channel, in 8-bit units
 int maxChannelDelta(const std::vector<uint8_t>& aA, const std::vector<uint8_t>& aB, int aChannel) {
     int worst = 0;
@@ -2394,6 +2408,334 @@ void suiteDeepCoverage() {
     }
 }
 
+//-------------------------------------------------------------------------------------------------
+// M18: the levels PAST the alignment cap, i.e. 256x minification and beyond.
+//
+// mipAlignedTextureSize pads each side up to a multiple of the largest power of two that fits in
+// it, capped at 128, so levels 0..7 (minification up to 128x) divide the uploaded texture exactly
+// and every level-l texel is a clean box of 2^l base texels anchored at the artwork's origin. Past
+// that the arithmetic is not available: 384 is a multiple of 128 but not of 256, and normalized
+// texture coordinates map [0,1] onto floor(384/256) = 1 level-8 texel, so that single texel has to
+// answer for all 384 rows of the side.
+//
+// The note on kMipTextureAlignmentMax claimed that residual "stays under one screen pixel". That is
+// a claim about the level's DISPLACEMENT, and it is true as far as it goes - the profile's midpoint
+// lands within 0.12 px of the middle of the level's footprint on every size measured below. It is
+// also the wrong thing to measure, because the real residual is the SUPPORT. The GL spec defines
+// the level SIZES, not how glGenerateMipmap fills a level whose source does not halve, so what
+// happens there is implementation-defined; what this one does is weight only a band of its source
+// and drop the rest. Measured on a 384-texel side, level 8 is the average of rows [128, 256) - the
+// middle third - and rows [0, 128) and [256, 384) carry no weight at all.
+//
+// A slightly displaced support blurs. A truncated one makes the level the wrong COLOUR, which is
+// the failure the mip chain exists to avoid, so it is measured rather than assumed:
+//
+//   * the instrument is a step: rows [0, r) white, [r, side) black, everywhere opaque. Texel (0,0)
+//     of the level is then 255 * (total weight above the step), so sweeping r reads the reduction's
+//     cumulative weight profile out of the driver one row at a time, with no model of the driver
+//     anywhere in the loop. The level grid assigns that texel the base rows [0, side / texels), a
+//     box of nominalRows, so the ideal profile is 255 * clamp(r / nominalRows, 0, 1): for a level
+//     that divides its side exactly that is a box of 2^l, and for one that does not it is the
+//     slightly wider box the stretched grid implies. Deviation from it is what a pixel at that zoom
+//     is wrong by, per unit of content contrast - the number to compare against the corpus.
+//   * "side" is the whole texture and the sweep is run at width 8 where the side is large: a 2D box
+//     or tent is separable, so the row weights do not depend on the width. The pair of runs that
+//     make that an observation rather than an assumption are the 384 and 768 squares against the
+//     same sides at width 8 (they must agree), and the width-8 runs are what makes the realistic
+//     canvas-sized textures - 1920 and 3840 - affordable to sweep at all.
+//
+// Then the checks, in rising order of how much a user would notice:
+//
+//   1. the sweep reads the level it thinks it does (an all-white source must reduce to white);
+//   2. for a level that divides its side, the profile IS the box: deviation <= 1/255 (this is the
+//      control, and it is the case that covers every size up to 128x minification and every
+//      power-of-two side deeper than that);
+//   3. the profile is monotone, and its deviation never exceeds the mass the level fails to weight
+//      (a level that weights a narrow band but is off by more than that band's worth would mean the
+//      failure is a nonlinearity, not a support);
+//   4. uniform content reduces to exactly itself: a flat layer gains no halo, dark or bright, from
+//      the deepest level's shape;
+//   5. the level IS the weighted average the sweep measured: a rectangle covering the measured band
+//      reduces to the band's average, not to the texture's. Stated as an identity so it survives a
+//      driver that weights everything (the band becomes the whole side and it still holds);
+//   6. and the cost, where it is largest and where it ships: an artwork of 300 texels uploaded as
+//      384, which is what a 300-texel layer really is. There the band lies entirely inside the
+//      artwork, so at 256x minification the layer reports full coverage where the mass-weighted
+//      truth is 300/384 of it - over a black backdrop, 200 where it should be 156.
+struct CapProfile {
+    int width = 0;
+    int side = 0;
+    int lev = 0;
+    double nominalRows = 0;   // base rows the level grid assigns this texel: side / max(1, side >> lev)
+    double worstDev = 0;      // worst deviation from the ideal profile, in 8-bit units
+    int worstAt = -1;
+    double midR = -1;         // midpoint of the weight profile, in base rows
+    int bandLo = -1;          // where the profile leaves 0 and reaches saturation, on the sweep grid
+    int bandHi = -1;
+    double white = -1;
+    bool monotone = true;
+    int step = 1;
+    std::vector<std::pair<int, double>> samples;
+
+    double at(int aRow) const {
+        double best = samples.empty() ? 0.0 : samples.front().second;
+        for (const auto& s : samples)
+            if (s.first <= aRow)
+                best = s.second;
+        return best;
+    }
+    // screen pixels the layer spans at the zoom that selects this level
+    double layerPixels() const { return side / (double)(1 << lev); }
+};
+
+CapProfile scanCapProfile(int aWidth, int aSide, int aLev) {
+    CapProfile p;
+    p.width = aWidth;
+    p.side = aSide;
+    p.lev = aLev;
+    p.nominalRows = aSide / (double)std::max(1, aSide >> aLev);
+    p.step = std::max(1, aSide / 128);
+
+    for (int r = 0; r <= aSide; r += p.step) {
+        Img src;
+        src.w = aWidth;
+        src.h = aSide;
+        src.d.assign((size_t)aWidth * aSide * 4, 0);
+        for (int y = 0; y < aSide; ++y) {
+            const uint8_t v = (y < r) ? 255 : 0;
+            for (int x = 0; x < aWidth; ++x) {
+                uint8_t* q = src.at(x, y);
+                q[0] = q[1] = q[2] = v;
+                q[3] = 255;
+            }
+        }
+        const double v = readLevelOnly(src, aLev).at(0, 0)[0];
+        if (!p.samples.empty() && v < p.samples.back().second - 1.0)
+            p.monotone = false;
+        p.samples.emplace_back(r, v);
+
+        const double ideal = 255.0 * std::min(1.0, r / p.nominalRows);
+        if (std::fabs(v - ideal) > std::fabs(p.worstDev)) {
+            p.worstDev = v - ideal;
+            p.worstAt = r;
+        }
+    }
+    if (!p.samples.empty())
+        p.white = p.samples.back().second;
+
+    for (size_t i = 0; i < p.samples.size(); ++i) {
+        const double v = p.samples[i].second;
+        if (p.bandLo < 0 && v > 2.0)
+            p.bandLo = p.samples[i].first;
+        if (p.bandHi < 0 && v >= 253.0)
+            p.bandHi = p.samples[i].first;
+        if (p.midR < 0 && i > 0) {
+            const double a = p.samples[i - 1].second;
+            if ((a < 127.5 && v >= 127.5) || (a > 127.5 && v <= 127.5)) {
+                const double t = (a == v) ? 0.5 : (127.5 - a) / (v - a);
+                p.midR = p.samples[i - 1].first + t * (p.samples[i].first - p.samples[i - 1].first);
+            }
+        }
+    }
+    return p;
+}
+
+void suiteLevelsPastCap() {
+    suiteHeader("M18 levels past the alignment cap (256x and beyond): the exact grid, every size");
+
+    // Every case below measured a BROKEN level before gl::Texture rebuilt them: the sweep is a
+    // step through the rows of the texture, read back from texel (0,0) of one level, so a level
+    // that weights only part of its footprint shows up as a flat stretch of the profile. With the
+    // driver's own levels the same sweep reported a worst deviation of -83.7 of 255 on the 384 and
+    // 768 squares (weights rows [128, 256), the middle third, of 384), -25.4 on 640, +16.9 at level
+    // 8 of 1920 and -117.5 at level 10 of 1920 (weights rows [896, 1024) of 1920 - 7% of the side).
+    // Those numbers are the record of what the fix replaced; the assertions here fail if a level
+    // ever goes back to weighting a band instead of its footprint.
+
+    // ---- square textures the app would really upload, at the deepest level the chain has
+    const int kSquares[5] = {256, 384, 512, 640, 768};
+    std::map<int, CapProfile> squareProfiles;
+    for (int si = 0; si < 5; ++si) {
+        const int side = kSquares[si];
+        const int levels = 1 + (int)std::floor(std::log2((double)side));
+        const int deep = levels - 1;
+        const bool divides = (side % (1 << deep) == 0);
+
+        expect(img::Util::mipAlignedTextureSize(QSize(side, side)).width() == side,
+            QString("M18 side %1: mipAlignedTextureSize must leave a multiple of 128 alone")
+                .arg(side));
+        expect((side >> deep) == 1,
+            QString("M18 side %1: level %2 must be a single texel for this measurement (it is %3 "
+                    "texels)").arg(side).arg(deep).arg(side >> deep));
+
+        const CapProfile p = scanCapProfile(side, side, deep);
+        squareProfiles[side] = p;
+
+        const QString label = QString("M18 square %1, level %2 (%3x minification)%4")
+                                  .arg(side).arg(deep).arg(1 << deep)
+                                  .arg(divides ? "" : ", the level does not divide the side");
+        const double midPixels = (p.midR >= 0) ? (p.midR - p.nominalRows * 0.5) / (1 << deep) : 0.0;
+        const double bandRows = (p.bandLo >= 0 && p.bandHi > p.bandLo) ? (p.bandHi - p.bandLo) : 0.0;
+
+        // 1. the sweep reads the level it thinks it does
+        expect(p.white >= 254.0,
+            QString("%1: an all-white source must reduce to white (got %2 of 255) - otherwise this "
+                    "sweep is not reading the level it thinks it is").arg(label).arg(p.white));
+
+        // 2. THE assertion: the level is the box its own grid promises, whatever the size, whether
+        // the level divides the side or had to be rebuilt
+        expect(std::fabs(p.worstDev) <= 1.0,
+            QString("%1: the level must be the box of its own footprint (%2 base rows), uniformly "
+                    "(worst deviation %3 at r=%4)")
+                .arg(label).arg(p.nominalRows, 0, 'f', 0)
+                .arg(p.worstDev, 0, 'f', 1).arg(p.worstAt));
+        expect(p.monotone, QString("%1: the weight profile must rise monotonically").arg(label));
+
+        // 3. flat content stays flat: no halo from the level's shape, at any size
+        {
+            Img flat;
+            flat.w = flat.h = side;
+            flat.d.assign((size_t)side * side * 4, 0);
+            for (int y = 0; y < side; ++y)
+                for (int x = 0; x < side; ++x) {
+                    uint8_t* q = flat.at(x, y);
+                    q[0] = q[1] = q[2] = 200;
+                    q[3] = 255;
+                }
+            const Img flatImg = readLevelOnly(flat, deep);
+            const uint8_t* flatDeep = flatImg.at(0, 0);
+            expect(std::abs((int)flatDeep[0] - 200) <= 1 && flatDeep[3] >= 254,
+                QString("%1: uniform content must reduce to itself, not to a haloed version "
+                        "(rgb %2, alpha %3)").arg(label).arg((int)flatDeep[0]).arg((int)flatDeep[3]));
+        }
+
+        // 4. the level weights its whole footprint: no truncated support. Before the rebuild this
+        // is exactly where the defect showed - on the 384 square the profile saturated at r=255 of
+        // a 384-row footprint (the level saw the middle third of what its grid promised and nothing
+        // of the rest), and on 1920's deepest level it saturated at r=1035 of 1920.
+        if (p.bandLo >= 0 && p.bandHi > p.bandLo) {
+            expect(p.bandLo <= 2 * p.step && p.bandHi >= p.nominalRows - 2 * p.step,
+                QString("%1: the support must span the whole footprint (it starts at r=%2 of a "
+                        "%3-row footprint and saturates at r=%4)")
+                    .arg(label).arg(p.bandLo).arg(p.nominalRows, 0, 'f', 0).arg(p.bandHi));
+        }
+
+        caseReport(label, true,
+            QString("footprint %1 rows | weights [%2, %3) = %4 of it | deviation from the box at "
+                    "most %5 at r=%6 | midpoint %7 (box %8) = %9 px at %10x | layer %11 px")
+                .arg(p.nominalRows, 0, 'f', 0)
+                .arg(p.bandLo).arg(p.bandHi)
+                .arg(bandRows / p.nominalRows, 0, 'f', 2)
+                .arg(p.worstDev, 0, 'f', 1).arg(p.worstAt)
+                .arg(p.midR, 0, 'f', 1).arg(p.nominalRows * 0.5, 0, 'f', 1)
+                .arg(midPixels, 0, 'f', 3).arg(1 << deep)
+                .arg(p.layerPixels(), 0, 'f', 1));
+    }
+
+    // ---- separability, so the narrow sweeps below measure the same thing the squares did
+    for (int si = 1; si < 5; si += 3) {
+        const int side = kSquares[si];
+        const int deep = (int)std::floor(std::log2((double)side));
+        const CapProfile narrow = scanCapProfile(8, side, deep);
+        double worst = 0;
+        for (const auto& s : narrow.samples)
+            worst = std::max(worst, std::fabs(s.second - squareProfiles[side].at(s.first)));
+        expect(worst <= 1.0,
+            QString("M18 side %1: the row weights must not depend on the texture's width (a width-8 "
+                    "sweep differs from the square by %2) - the narrow sweeps below rely on it")
+                .arg(side).arg(worst, 0, 'f', 1));
+        caseReport(QString("M18 separability, side %1 square vs width 8").arg(side), worst <= 1.0,
+            QString("worst difference over the whole profile %1").arg(worst, 0, 'f', 1));
+    }
+
+    // ---- the realistic sides: 1920 and 3840 are what this corpus' canvases are made of, and their
+    // first non-dividing level is NOT the deepest one, so both are measured. A 1920-texel side
+    // divides by 128 but not by 256, so level 8 is the first level that has to be rebuilt.
+    const int kLarge[2] = {1920, 3840};
+    for (int li = 0; li < 2; ++li) {
+        const int side = kLarge[li];
+        const int levels = 1 + (int)std::floor(std::log2((double)side));
+        const int deep = levels - 1;
+        int firstBad = -1;
+        for (int l = 1; l <= deep; ++l)
+            if (side % (1 << l) != 0) {
+                firstBad = l;
+                break;
+            }
+        expect(firstBad > 7,
+            QString("M18 side %1: the first level that does not divide must be past the cap (it is "
+                    "%2)").arg(side).arg(firstBad));
+
+        for (int pass = 0; pass < 2; ++pass) {
+            const int lev = (pass == 0) ? firstBad : deep;
+            const CapProfile p = scanCapProfile(8, side, lev);
+            const double bandRows = (p.bandLo >= 0 && p.bandHi > p.bandLo) ? (p.bandHi - p.bandLo) : 0.0;
+            const QString label = QString("M18 side %1, level %2 (%3x, %4) - layer %5 px")
+                                      .arg(side).arg(lev).arg(1 << lev)
+                                      .arg(pass == 0 ? "the first level that does not divide" : "the deepest")
+                                      .arg(p.layerPixels(), 0, 'f', 1);
+
+            expect(p.white >= 254.0 && p.monotone,
+                QString("%1: the profile must still be a monotone filter rising to white (%2, "
+                        "monotone %3)").arg(label).arg(p.white).arg(p.monotone ? 1 : 0));
+            expect(std::fabs(p.worstDev) <= 1.0,
+                QString("%1: the rebuilt level must be the box of its own footprint (%2 base rows), "
+                        "uniformly (worst deviation %3 at r=%4)")
+                    .arg(label).arg(p.nominalRows, 0, 'f', 0)
+                    .arg(p.worstDev, 0, 'f', 1).arg(p.worstAt));
+
+            caseReport(label, true,
+                QString("footprint %1 rows | weights [%2, %3) = %4 of it | deviation from the box at "
+                        "most %5 at r=%6")
+                    .arg(p.nominalRows, 0, 'f', 0)
+                    .arg(p.bandLo).arg(p.bandHi)
+                    .arg(bandRows / p.nominalRows, 0, 'f', 2)
+                    .arg(p.worstDev, 0, 'f', 1).arg(p.worstAt));
+        }
+    }
+
+    // ---- the padded upload that actually ships, and what it looks like at the zoom that reads the
+    // level: an artwork of 300 texels in a 384x384 texture is, at 256x minification, the average of
+    // all 384 rows of that texture - so 300 rows of colour and 84 of nothing, i.e. the mass-weighted
+    // truth. Over a black backdrop that is 156 of 255 where the artwork is 200; the driver's own
+    // level 8 gave 200 (the band lies inside the artwork, so it saw no transparency at all).
+    {
+        const int side = 384, artwork = 300, deep = 8;
+        Img pad;
+        pad.w = pad.h = side;
+        pad.d.assign((size_t)side * side * 4, 0);
+        for (int y = 0; y < artwork; ++y)
+            for (int x = 0; x < artwork; ++x) {
+                uint8_t* q = pad.at(x, y);
+                q[0] = q[1] = q[2] = 200;
+                q[3] = 255;
+            }
+        const Img padImg = readLevelOnly(pad, deep);
+        const uint8_t* padDeep = padImg.at(0, 0);
+        // the deepest level's texel stands for the whole 2D texture, so the coverage it must report
+        // is the AREA the artwork covers (300^2 of 384^2), and the colour it must carry is that area
+        // times the artwork's own value, premultiplied - which is also what the pixel shows over a
+        // black backdrop, since the level's rgb is premultiplied before it is composited
+        const double coverage = (double)(artwork * artwork) / (side * (double)side);
+        const double truthAlpha = 255.0 * coverage;
+        const double truth = 200.0 * coverage;
+
+        expect(std::fabs(padDeep[3] - truthAlpha) <= 4.0 && std::fabs(padDeep[0] - truth) <= 4.0,
+            QString("M18 a %1-texel artwork in a %2x%2 texture: the level must be the average of the "
+                    "whole texture, padding included (alpha %3 and rgb %4 of 255; the artwork covers "
+                    "%5%% of the area, so the truth is %6 and %7)")
+                .arg(artwork).arg(side).arg((int)padDeep[3]).arg((int)padDeep[0])
+                .arg(coverage * 100.0, 0, 'f', 1).arg(truthAlpha, 0, 'f', 0).arg(truth, 0, 'f', 0));
+        caseReport(QString("M18 %1 texels of artwork uploaded as %2 (%3x)").arg(artwork).arg(side)
+                       .arg(1 << deep),
+            true,
+            QString("alpha %1 (truth %2), over black %3 (truth %4) | the driver's own level said "
+                    "alpha 255 / 200 - the band it weights lies inside the artwork, so it saw no "
+                    "transparency at all, 78% of 255 too bright")
+                .arg((int)padDeep[3]).arg(truthAlpha, 0, 'f', 0)
+                .arg((int)padDeep[0]).arg(truth, 0, 'f', 0));
+    }
+}
 //-------------------------------------------------------------------------------------------------
 // M12: the SHAPE of glGenerateMipmap's filter, measured rather than assumed.
 //
@@ -4550,12 +4892,32 @@ int runSupersample(const QString& aDir, const QString& aTag, const QString& aAni
 // This computes, per triangle, the same rho GL derives, from the real deformed mesh the render
 // just used, and reports the spread across the mesh and across EDGE-ADJACENT triangle pairs. A
 // large spread, or a large adjacent-pair delta, is what a visible seam looks like numerically.
+//
+// A seam is only visible where BOTH sides of an internal edge cover pixels: a blurriness step
+// between two sub-pixel triangles is a step between things that are not resolved in the first
+// place. kResolvablePx2 is where a triangle becomes big enough for a step across its edge to be
+// something on screen that 1 pixel of difference could show, and the statistics below are reported
+// both over the whole mesh and over the triangles and pairs that clear it. On a layer minified 64x
+// the whole mesh can be a handful of pixels, so at that zoom the second set is legitimately empty.
+const double kResolvablePx2 = 2.0;
+
 struct LodStats {
     int triangles = 0;
     double minLod = 0, maxLod = 0, meanLod = 0;
     double maxNeighbourDelta = 0;   // max |dLOD| across an edge-adjacent pair
     double meanNeighbourDelta = 0;
     int neighbours = 0;
+    // ...and the same two numbers over the triangles that can actually light a pixel. A mesh from
+    // the editor carries slivers - the mesh creator's edge-vertex reduction leaves triangles with
+    // duplicated or nearly collinear vertices, whose screen area is a fraction of a pixel - and
+    // those are exactly where a huge LOD sits next to a small one without any visible consequence:
+    // they have no derivative worth speaking of, they are often not even edge-adjacent to the
+    // triangles they sit inside, and the rasterizer covers no pixels with them. Reporting only the
+    // whole-mesh spread makes that look like a seam, so both are reported.
+    int slivers = 0;                // triangles under kResolvablePx2 of screen area, or off-screen
+    double minLodVisible = 0, maxLodVisible = 0;
+    double maxNeighbourDeltaVisible = 0;
+    int neighboursVisible = 0;
     bool valid = false;
 };
 
@@ -4584,6 +4946,7 @@ LodStats scanLayerLod(const core::LayerNode& aLayer, const core::CameraInfo& aCa
     };
 
     std::vector<double> lods;
+    std::vector<bool> visible;
     std::map<std::pair<int, int>, std::vector<int>> edgeToTris;   // undirected edge -> triangles
     std::vector<std::array<int, 3>> triVerts;
 
@@ -4595,6 +4958,18 @@ LodStats scanLayerLod(const core::LayerNode& aLayer, const core::CameraInfo& aCa
         const QVector2D s0 = toScreen(pos[i0]), s1 = toScreen(pos[i1]), s2 = toScreen(pos[i2]);
         const QVector2D e1 = s1 - s0, e2 = s2 - s0;
         const double det = (double)e1.x() * e2.y() - (double)e1.y() * e2.x();
+
+        // Can this triangle light a pixel at all? Area, and the screen bounds overlapping the
+        // viewport - a triangle entirely off-screen is rasterized to nothing whatever its Jacobian.
+        const double areaPx = std::fabs(det) * 0.5;
+        const double boxMinX = std::min(s0.x(), std::min(s1.x(), s2.x()));
+        const double boxMaxX = std::max(s0.x(), std::max(s1.x(), s2.x()));
+        const double boxMinY = std::min(s0.y(), std::min(s1.y(), s2.y()));
+        const double boxMaxY = std::max(s0.y(), std::max(s1.y(), s2.y()));
+        const bool onScreen = boxMaxX >= 0.0 && boxMinX <= aViewport.width() && boxMaxY >= 0.0
+                              && boxMinY <= aViewport.height();
+        visible.push_back(areaPx >= kResolvablePx2 && onScreen);
+
         if (std::fabs(det) < 1e-9) {   // degenerate on screen: contributes no derivative
             lods.push_back(0.0);
             triVerts.push_back({i0, i1, i2});
@@ -4635,14 +5010,36 @@ LodStats scanLayerLod(const core::LayerNode& aLayer, const core::CameraInfo& aCa
         sum += v;
     st.meanLod = sum / lods.size();
 
+    st.minLodVisible = 1e9;
+    st.maxLodVisible = -1e9;
+    for (size_t i = 0; i < lods.size(); ++i) {
+        if (!visible[i]) {
+            ++st.slivers;
+            continue;
+        }
+        st.minLodVisible = std::min(st.minLodVisible, lods[i]);
+        st.maxLodVisible = std::max(st.maxLodVisible, lods[i]);
+    }
+    if (st.slivers == (int)lods.size()) {
+        st.minLodVisible = 0;
+        st.maxLodVisible = 0;
+    }
+
     double nsum = 0;
     for (const auto& kv : edgeToTris) {
         if (kv.second.size() != 2)
             continue;
-        const double d = std::fabs(lods[kv.second[0]] - lods[kv.second[1]]);
+        const int a = kv.second[0], b = kv.second[1];
+        const double d = std::fabs(lods[a] - lods[b]);
         st.maxNeighbourDelta = std::max(st.maxNeighbourDelta, d);
         nsum += d;
         ++st.neighbours;
+
+        // the seam that could be seen is one between two triangles that both cover pixels
+        if (visible[a] && visible[b]) {
+            st.maxNeighbourDeltaVisible = std::max(st.maxNeighbourDeltaVisible, d);
+            ++st.neighboursVisible;
+        }
     }
     st.meanNeighbourDelta = st.neighbours ? nsum / st.neighbours : 0.0;
     return st;
@@ -4696,6 +5093,8 @@ int runLodScan(const QString& aAnie, int aFrame, float aZoom) {
     std::printf("lodscan %s frame %d  canvas %dx%d  layers %d\n", qPrintable(aAnie), aFrame,
                 canvas.width(), canvas.height(), (int)nodes.size());
     double worstNeighbour = 0, worstSpread = 0;
+    double worstNeighbourVisible = 0, worstSpreadVisible = 0, worstSliverShare = 0;
+    int slivers = 0, triangles = 0, visible = 0, pairsVisible = 0;
     QString worstName;
     int scanned = 0;
     for (const auto* layer : nodes) {
@@ -4704,19 +5103,34 @@ int runLodScan(const QString& aAnie, int aFrame, float aZoom) {
             continue;
         ++scanned;
         const double spread = st.maxLod - st.minLod;
+        const double spreadVisible = st.maxLodVisible - st.minLodVisible;
+        const double sliverShare = st.triangles ? st.slivers / (double)st.triangles : 0.0;
         worstNeighbour = std::max(worstNeighbour, st.maxNeighbourDelta);
+        worstNeighbourVisible = std::max(worstNeighbourVisible, st.maxNeighbourDeltaVisible);
+        worstSpreadVisible = std::max(worstSpreadVisible, spreadVisible);
+        worstSliverShare = std::max(worstSliverShare, sliverShare);
+        pairsVisible += st.neighboursVisible;
+        slivers += st.slivers;
+        triangles += st.triangles;
+        visible += st.triangles - st.slivers;
         if (spread > worstSpread) {
             worstSpread = spread;
             worstName = layer->name();
         }
         // printed unconditionally: a scan that reports a constant needs its absolute values
         // visible, or "spread 0.00" is indistinguishable from a computation returning garbage
-        std::printf("  %-28s tris=%4d lod %6.3f..%6.3f (mean %6.3f)  adjDelta max=%.3f mean=%.3f\n",
-                    qPrintable(layer->name()), st.triangles, st.minLod, st.maxLod, st.meanLod,
-                    st.maxNeighbourDelta, st.meanNeighbourDelta);
+        std::printf("  %-28s tris=%4d (%3d resolvable) lod %6.3f..%6.3f (mean %6.3f)  adjDelta max=%.3f "
+                    "mean=%.3f | resolvable: lod %6.3f..%6.3f  adjDelta max=%.3f (%d pairs)\n",
+                    qPrintable(layer->name()), st.triangles, st.triangles - st.slivers, st.minLod, st.maxLod,
+                    st.meanLod, st.maxNeighbourDelta, st.meanNeighbourDelta, st.minLodVisible,
+                    st.maxLodVisible, st.maxNeighbourDeltaVisible, st.neighboursVisible);
     }
-    std::printf("  scanned %d meshes | worst spread %.2f ('%s') | worst adjacent delta %.2f\n",
-                scanned, worstSpread, qPrintable(worstName), worstNeighbour);
+    std::printf("  scanned %d meshes | whole mesh: spread %.2f ('%s') adjDelta %.3f | resolvable "
+                "(both sides >= %.0f px2): %d of %d triangles, %d adjacent pairs, spread %.2f "
+                "adjDelta %.3f | %d of %d triangles are smaller than that (worst mesh %.1f%%)\n",
+                scanned, worstSpread, qPrintable(worstName), worstNeighbour, kResolvablePx2,
+                visible, triangles, pairsVisible, worstSpreadVisible, worstNeighbourVisible,
+                slivers, triangles, worstSliverShare * 100.0);
     return 0;
 }
 
@@ -4923,6 +5337,7 @@ int main(int argc, char** argv) {
     suiteMarginParity();
     suiteMarginDepth();
     suiteDeepCoverage();
+    suiteLevelsPastCap();
     suiteLodSweep();
     suiteShippedLodBias();
 

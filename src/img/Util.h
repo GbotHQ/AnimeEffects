@@ -53,7 +53,9 @@ public:
     /// to bleed into under a clamping wrap mode.
     static XCMemBlock prepareForSampling(XCMemBlock& aGrabbedImage, const QSize& aSize);
 
-    /// The largest power of two a texture side is padded up to (see mipAlignedTextureSize).
+    /// The largest power of two a texture side is padded up to (see mipAlignedTextureSize). This
+    /// bounds how much padding the alignment costs - up to 127 wasted texels per axis - and nothing
+    /// else: correctness past it is gl::Texture's job (see the rebuild in Texture::create).
     static const int kMipTextureAlignmentMax = 128;
 
     /// The size the layer image must be UPLOADED at, for the mip chain to be a box pyramid that
@@ -76,8 +78,21 @@ public:
     /// the sampler's border colour covers the other two sides. Each axis is aligned to the largest
     /// power of two that fits in it, capped, so a 1-pixel-wide image is not padded out to a
     /// cap-sized texture, a 1000-pixel side goes to 1024, and a 2049-pixel side goes to 2112.
-    /// Levels up to the cap (128x minification) are then exact; beyond it the stretch returns but
-    /// stays under one screen pixel, which is what the cap buys.
+    /// Levels up to the cap (128x minification) are then exact.
+    ///
+    /// Past the cap a level does not divide the size, and glGenerateMipmap does NOT fill it with the
+    /// average its grid promises: the GL spec fixes the level sizes, not the filter, and what this
+    /// driver does with a source that does not halve is weight only a band of it. Measured, level 8
+    /// of a 384-texel side came out as the average of rows [128, 256) - the outer two thirds carrying
+    /// no weight at all - and the deepest level of a 1920-texel side weighted 7% of the side, for a
+    /// worst deviation from the grid's own box of 118 of 255 (on a layer under two screen pixels),
+    /// and 17 of 255 at the first level past the cap, where the layer can still be 7 pixels across.
+    /// Those levels are now REBUILT by gl::Texture::create from the deepest level that does divide,
+    /// with the area weights the grid implies, so every level of every chain is the average it claims
+    /// to be whatever the size - measured size by size in M18 of tools/verify_mipmap, and pinned
+    /// there by a mutation test. So what the cap buys is memory, not correctness: it keeps the
+    /// padding under 128 texels an axis, while the levels past it cost one small readback and a few
+    /// thousand 8-bit averages.
     static QSize mipAlignedTextureSize(const QSize& aImageSize);
 
     /// The bytes to hand to glTexImage2D for a layer: aData (aSize texels) copied into the top-left

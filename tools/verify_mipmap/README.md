@@ -145,6 +145,13 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   the floor rule) and comparing level l against the exact box of the artwork plus its padding: levels
   1..3 match to 2 of 255. Every level 1..7 now covers the artwork whole; before the size was aligned,
   a 500-texel artwork would have lost its last 116 rows and columns at level 7.
+- **M18 - the levels past the alignment cap (256x and beyond).** The levels whose grid does not divide
+  the side are the ones `glGenerateMipmap` does not fill with the average they promise; M18 measures
+  what each one actually weights, by sweeping a step through the side and reading the level's own texel
+  out of the driver, one row at a time. It asserts the box for nine size/level combinations including
+  the realistic 1920 and 3840 sides, the support spanning the whole footprint, flat content staying
+  flat, the padded upload landing on the mass-weighted truth, and that the row weights do not depend on
+  the texture's width. See "the grid must not be stretched either" below.
 
 ## Figures
 
@@ -303,10 +310,38 @@ centre. Sizes 512, 504, 500 and 513, levels 2 to 5, with and without a ring: wor
 255, mean at most 1.24 - 8-bit rounding - and the same at every size, which is the part that used to
 fail.
 
-The cap is a real limit. Beyond level 7 (128x minification) the stretch returns, bounded by one
-level-*l* texel - under one screen pixel at that zoom - and the level's coverage of the artwork is
-again short by up to 2^*l* texels, also under one screen pixel. Lifting it entirely would mean padding
-each side up to a power of two, which for a 2049-pixel side costs 4x the texture memory.
+Past level 7 the padding can no longer help, and the level past it is NOT an average of its own
+footprint: the GL spec fixes the level sizes, not the filter, and what this driver does with a source
+that does not halve is weight only a band of it. Measured with a step swept across the side (M18),
+level 8 of a 384-texel side is the average of rows [128, 256) - the middle third, the outer two thirds
+carrying no weight at all - and the deepest level of a 1920-texel side weights 7% of it. The deviation
+from the grid's own box reaches **118 of 255** at those deepest levels, on a layer under two screen
+pixels, and **17 of 255** at the first level past the cap, where the layer can still be 7 px across. It
+is not a displacement: a kernel in the wrong place blurs, a truncated one makes the layer the wrong
+COLOUR - minified past the cap a 300-texel artwork collapsed to alpha 255 and rgb 200 of 255 where the
+mass-weighted truth is 156 and 122, 78 of 255 too bright. (The midpoint of the profile, which is the
+quantity "under one screen pixel" is a claim about, was within 0.12 px on every size measured - which
+is why measuring displacement alone was not enough.)
+
+Those levels are now rebuilt by `gl::Texture::create` from the deepest level that DOES divide, with the
+area weights the level grid implies (texel *j* of level *l* covers normalized [j/T, (j+1)/T] of the
+axis), each rebuilt level taken from the exact one rather than chained through the level above it.
+Every level of every chain is then the box its grid promises, for any size: M18 asserts it with the
+same sweep on nine size/level combinations - 256, 384, 512, 640 and 768 squares, and 1920 and 3840 at
+both their first non-dividing level and their deepest - plus flat content staying flat (no halo), the
+support spanning the whole footprint, the padded 300-in-384 upload landing on the truth (alpha 155
+against 156), and the separability of the row weights from the texture's width. Reverting the rebuild
+turns 11 of those checks red with exactly the numbers above, which is how the assertions were shown to
+have power.
+
+What is left past the cap is the level grid's own arithmetic: with `floor(size / 2^l)` texels over the
+whole side, the deepest level's texel can cover up to twice the 2^*l* base texels its own number
+suggests. At 256x on a 384-texel side it covers 384 where the footprint is 256, i.e. 1.5x softer than
+the ideal box - on a layer 1.5 px across, and the shipped -0.5 bias blends level 7 (exactly the 256-texel
+footprint) into half of it. Bounded, and sub-pixel; it is not the same class of error as dropping two
+thirds of the source. The cap itself stays because it bounds the padding's memory - up to 127 wasted
+texels an axis - where padding each side up to a power of two would cost up to 4x the texture memory
+for a 2049-pixel side.
 
 ## What the remaining error IS: the decomposition
 
@@ -569,7 +604,7 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (236 checks) runs under AddressSanitizer against an ASan build of the libraries
+The whole probe (289 checks) runs under AddressSanitizer against an ASan build of the libraries
 (`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
 overflow or a double free:
 
@@ -606,71 +641,47 @@ exactly **2.000** for every triangle, which is `log2(4)`. A constant reported by
 computation would look identical to a constant that is correct, which is why the absolute values
 are printed rather than only the spread.
 
-Across **36 real projects** (about 2500 meshes) at frame 12:
+Across the corpus - 35 of the 36 `.anie` files (1885 meshes; `gif COPY2 proj.anie` does not load, in
+every run here), frame 12, at three zooms - the numbers are:
 
-- Nearly all meshes: spread 0.00, adjacent delta 0.00.
-- `ballerina.anie` 0.02, `ek61ul.anie` 0.01, `qitqmd.anie` 0.01.
-- `F001.anie` `Copy of Paint Layer 964`: 714 triangles, LOD **0.000..2.001**, mean 1.980 - a
-  handful of triangles at level 0 inside a level-2 region, i.e. the seam scenario really occurs.
+| | whole mesh | triangles that can light >= 2 px^2 |
+| --- | --- | --- |
+| worst spread inside one mesh | 2.00 (4x), 4.01 (16x), 6.00 (64x) | **0.00** at every zoom |
+| worst adjacent-pair delta | 0.015 (4x), 0.077 (16x), 0.283 (64x) | **0.000** at every zoom |
 
-Rendering that layer at 4x minification and comparing against the supersampled reference shows
-agreement in line with every other project (mean 0.089, p99 0) and, in the worst 220-pixel window
-**no triangle-shaped discontinuity**: the residual follows the artwork's
-thin strokes, not the mesh topology. The affected triangles are a ~1% minority and contribute
-nothing visible.
+The two columns are the point, and the second is the one a user could see. The spread of up to 6 levels
+belongs to ONE mesh (`F001.anie`, `Copy of Paint Layer 964`, 714 triangles, LOD 0.000..6.003 at 64x,
+mean 5.941) and it is not a seam: its own adjacent-pair delta is 0.004, i.e. its level-0 triangles are
+isolated - they are the sub-pixel slivers the mesh creator's edge-vertex reduction leaves behind, and at
+16x and 64x *all* of its 714 triangles are under 2 px^2, as is the whole mesh. A blurriness step needs
+two triangles that both cover pixels on either side of their shared edge, so the statistic that matters
+is the restricted one: at 4x, where 6.27M of the corpus' 6.84M triangles clear that threshold and there
+are 9.25M adjacent pairs among them, the spread and the adjacent delta are exactly 0.00 and 0.000. At
+16x and 64x only 122 and 106 triangles in the whole corpus are big enough for a step across an internal
+edge to be resolvable at all - and theirs are 0.00 too.
+
+Rendering the F001 layer at 4x minification and comparing against the supersampled reference shows
+agreement in line with every other project (mean 0.089, p99 0) and, in the worst 220-pixel window, no
+triangle-shaped discontinuity: the residual follows the artwork's thin strokes, not the mesh topology.
 
 Honest limits of this measurement: adjacency is detected by shared vertex index, so a seam across a
-duplicated-vertex block boundary would not be counted - "adjacent delta 0.00" is weaker evidence
-than the rendered comparison. One project, one frame, one window was examined visually. So the
-conclusion is that no seam was found in the cases that exist here, not that seams are impossible.
+duplicated-vertex block boundary would not be counted; the "can light a pixel" test is a screen-area
+threshold (2 px^2) plus an on-screen bounds test, not a count of rasterized pixels; and the visual
+comparison was one project, one frame, one window. So the conclusion is that no seam was found in the
+cases that exist here, not that seams are impossible.
 
-## Still to cover
+The mechanism is real and still there: `LayerMesh` keeps static `texCoords` while `positions` are
+deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle, and
+adjacent triangles can in principle select different mip levels. Before mipmapping every layer sampled
+level 0, where such steps cannot exist, so this was the one place the change could plausibly make the
+product worse.
 
-Verified so far: mip chain generation, the production `ImageKey` texture and its parameters, the
-rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder
-composite path, and the grid/mesh overlay.
-
-Not yet verified: the export path END TO END. M6 and M8 cover what the exporter changes about the
-render that matters for mipmapping - its output-resolution camera (hence a different mip level)
-and its `aUseWorkingCache=true` render mode - but the exporter itself is not driven, so its own
-framebuffer readback and PNG write are untested here. Driving it is tractable: `core::Project`
-takes a filename and its attribute setters (`setImageSize`/`setFps`/`setFrameRange`) allow a
-project to be populated programmatically, and `tests/media_exporter_e2e.cpp` shows the
-`CommonParam`/`ImageParam`/`execute` shape. It was left undone for budget, not because anything
-blocked it.
-
-Also outstanding: an ASan run over the new CPU premultiply pass, the glyph-cache decision, and
-measuring the load-time/memory cost of building the chain.
-
-Also outstanding, and measured rather than fixed: the level-grid *stretch* described under "The
-corpus verdict". It needs the texture padded to a multiple of 2^*l* with the content at the origin,
-which interacts with the layer's rect and the mesh's texture mapping.
-
-Also outstanding, closed by construction rather than by measurement: the editor overlay path
-(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear`, so Qt builds a
-chain for whatever the paint engine hands it. It now converts to
-`QImage::Format_ARGB32_Premultiplied` before the upload, the representation a chain is correct for,
-but there is no pixel-level measurement of that path here - it only runs inside a widget with a
-QPainter, which this harness does not drive.
-
-A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale
-changes. At 4x minification the quad is smaller than the crop, so the backdrop averaged in and
-the "correct" value read 141.6 instead of 164.0 - a test bug that looks exactly like a product
-bug. The crop now follows the quad.
-
-Known open risk, partly measured. `LayerMesh` keeps static `texCoords` while `positions` are
-deformed (bones/FFD/SRT), so UV derivatives - and therefore LOD - vary from triangle to triangle,
-and adjacent triangles can select different mip levels. Before mipmapping every layer sampled
-level 0, where such steps cannot exist, so this is the one place the change could plausibly make
-the product worse.
-
-M7 pins the UNDEFORMED case: on a uniformly scaled layer the level is constant across the whole
-mesh (zero spatial spread at LOD 1, 2 and 3), so neither the grid topology nor the mesh creator's
-edge-vertex reduction ("burr reduction") introduces LOD variation. It does NOT measure a deformed
-mesh. Constructing one needs the FFD machinery - `GridMesh` exposes no mutable positions, and
-`HeightMap::writeHeightMap` is dead in this branch, while the live FFD path runs through the
-editor's target/workspace (`ctrl/ffd/ffd_BrushMode`, `FFDKeyUpdater`) - so a probe cannot yet
-deform a mesh cheaply.
+It is measured now, on real deformed meshes: `--lodscan` derives the same rho the sampler does, per
+triangle, from the mesh a real render just used, and the corpus table above is the verdict - the LOD is
+uniform to the last decimal across every triangle that can show a step, at three zooms. M7 independently
+pins the UNDEFORMED case: on a uniformly scaled layer the level is constant across the whole mesh (zero
+spatial spread at LOD 1, 2 and 3), so neither the grid topology nor the mesh creator's edge-vertex
+reduction ("burr reduction") introduces LOD variation where there is no deformation to begin with.
 
 Worth noting the risk window is narrower than it first looks: a layer drawn at or above 1:1 never
 samples a mip level at all, so only MINIFIED layers with a deformed mesh are exposed, and a visible
@@ -681,6 +692,37 @@ derivatives.
 Also unmeasured: anisotropic minification (a non-uniform layer scale compresses the texture on
 one axis, and trilinear LOD follows the largest derivative, so the other axis is over-blurred).
 No anisotropic filtering is enabled anywhere in the pipeline.
+
+## Still to cover
+
+Verified so far: mip chain generation, the production `ImageKey` texture and its parameters, the
+rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder composite
+path, the grid/mesh overlay, and every mip level of every texture size (M18).
+
+Not yet verified: the export path END TO END. M6 and M8 cover what the exporter changes about the render
+that matters for mipmapping - its output-resolution camera (hence a different mip level) and its
+`aUseWorkingCache=true` render mode - but the exporter itself is not driven, so its own framebuffer
+readback and PNG write are untested here. Driving it is tractable: `core::Project` takes a filename and
+its attribute setters (`setImageSize`/`setFps`/`setFrameRange`) allow a project to be populated
+programmatically, and `tests/media_exporter_e2e.cpp` shows the `CommonParam`/`ImageParam`/`execute`
+shape. It was left undone for budget, not because anything blocked it. (`media_exporter_e2e` itself
+fails in this environment for reasons that predate this branch.)
+
+Also outstanding, closed by construction rather than by measurement: the editor overlay path
+(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear`, so Qt builds a chain
+for whatever the paint engine hands it. It now converts to `QImage::Format_ARGB32_Premultiplied` before
+the upload, the representation a chain is correct for, but there is no pixel-level measurement of that
+path here - it only runs inside a widget with a QPainter, which this harness does not drive.
+
+Also outstanding: the glyph-cache decision, and the load-time/memory cost of building the chain (the
+rebuild in `gl::Texture::create` adds one readback plus a few thousand averages per non-power-of-two
+texture; the ASan run shows it allocates nothing that outlives the call, but the wall-clock cost on the
+load path has not been measured).
+
+A reminder from writing M6: a fixed interior crop silently becomes wrong when the layer's scale changes.
+At 4x minification the quad is smaller than the crop, so the backdrop averaged in and the "correct"
+value read 141.6 instead of 164.0 - a test bug that looks exactly like a product bug. The crop now
+follows the quad.
 
 M4's and M5's equivalence reference cannot catch a *global* shader error, because both sides of
 the comparison run through the same shader. Only M3's analytic assertion has power against that
