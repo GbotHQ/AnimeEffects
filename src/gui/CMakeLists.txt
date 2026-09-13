@@ -66,6 +66,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     ToolWidget.cpp ToolWidget.h
     ViaPoint.cpp ViaPoint.h
     exportdiag.cpp exportdiag.h
+    ExportFacts.cpp ExportFacts.h
     menu/menu_ProgressReporter.cpp menu/menu_ProgressReporter.h
     obj/obj_InsertItem.cpp obj/obj_InsertItem.h
     obj/obj_Item.cpp obj/obj_Item.h

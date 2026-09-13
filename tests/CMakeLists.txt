@@ -162,6 +162,35 @@ target_link_libraries(destination_picker PRIVATE
     media
 )
 
+# The export dialog, headless: what it STATES and what it OFFERS per destination.
+# This is the coverage hole the session named twice: every export-form bug was either
+# a fact contradicting a control or a control the destination did not decide, and both
+# are questions about text and widget state rather than about pixels. Compiles
+# ExportTarget.cpp + ExportFacts.cpp + the dialog header (GL-free), so it needs no
+# project, no GL context and no display. See tests/export_form.cpp.
+add_executable(export_form
+    export_form.cpp
+    ../src/gui/ExportFacts.cpp
+    ../src/gui/GUIResources.cpp
+    ../src/gui/AppStyle.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/theme/Theme.cpp
+    ../src/ctrl/ExportTarget.cpp
+    ../src/gui/exportdiag.h)
+target_include_directories(export_form PRIVATE .. ../src/gui)
+target_compile_definitions(export_form PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/assets"
+    AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+)
+target_link_libraries(export_form PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
+    media
+)
+
 add_executable(picker_probe
     picker_probe.cpp
     ../src/gui/prop/EasingPickWidget.cpp
