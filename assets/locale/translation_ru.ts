@@ -25,242 +25,451 @@
     </message>
 </context>
 <context>
+    <name>BlendModeName</name>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="142"/>
+        <location filename="../../src/img/BlendMode.cpp" line="198"/>
+        <source>Normal</source>
+        <translation>Обычный</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="144"/>
+        <source>Darken</source>
+        <translation>Затемнение</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="146"/>
+        <source>Multiply</source>
+        <translation>Умножение</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="148"/>
+        <source>Color Burn</source>
+        <translation>Затемнение основы</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="150"/>
+        <source>Linear Burn</source>
+        <translation>Линейный затемнитель</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="152"/>
+        <source>Lighten</source>
+        <translation>Замена светлым</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="154"/>
+        <source>Screen</source>
+        <translation>Экран</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="156"/>
+        <source>Color Dodge</source>
+        <translation>Осветление основы</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="158"/>
+        <source>Linear Dodge</source>
+        <translation>Линейный осветлитель</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="160"/>
+        <source>Overlay</source>
+        <translation>Перекрытие</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="162"/>
+        <source>Soft Light</source>
+        <translation>Мягкий свет</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="164"/>
+        <source>Hard Light</source>
+        <translation>Жёсткий свет</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="166"/>
+        <source>Vivid Light</source>
+        <translation>Яркий свет</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="168"/>
+        <source>Linear Light</source>
+        <translation>Линейный свет</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="170"/>
+        <source>Pin Light</source>
+        <translation>Точечный свет</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="172"/>
+        <source>Hard Mix</source>
+        <translation>Жесткое смешение</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="174"/>
+        <source>Difference</source>
+        <translation>Разница</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="176"/>
+        <source>Exclusion</source>
+        <translation>Исключение</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="178"/>
+        <source>Subtract</source>
+        <translation>Вычитание</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="180"/>
+        <source>Divide</source>
+        <translation>Разделение</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="182"/>
+        <source>Add (Glow)</source>
+        <translation>Сложение (свечение)</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="184"/>
+        <source>Glow Dodge</source>
+        <translation>Осветление основы (свечение)</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="186"/>
+        <source>Hue</source>
+        <translation>Цветовой тон</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="188"/>
+        <source>Saturation</source>
+        <translation>Насыщенность</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="190"/>
+        <source>Color</source>
+        <translation>Цветность</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="192"/>
+        <source>Luminosity</source>
+        <translation>Яркость</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="194"/>
+        <source>Darker Color</source>
+        <translation>Темнее</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="196"/>
+        <source>Lighter Color</source>
+        <translation>Светлее</translation>
+    </message>
+</context>
+<context>
     <name>CmndName</name>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="78"/>
         <source>Bind node to bone</source>
-        <translation type="vanished">Привязать узел к кости</translation>
+        <translation>Привязать узел к кости</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="101"/>
         <source>Unbind node from bones</source>
-        <translation type="vanished">Отвязать узел от костей</translation>
+        <translation>Отвязать узел от костей</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="109"/>
         <source>Add new bone</source>
-        <translation type="vanished">Добавить новую кость</translation>
+        <translation>Добавить новую кость</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="125"/>
         <source>Add new parent bone</source>
-        <translation type="vanished">Добавить новую родительскую кость</translation>
+        <translation>Добавить новую родительскую кость</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_DeleteMode.cpp" line="64"/>
         <source>Delete bone</source>
-        <translation type="vanished">Удалить кость</translation>
+        <translation>Удалить кость</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_EraseInflMode.cpp" line="159"/>
+        <location filename="../../src/ctrl/bone/bone_InfluenceMode.cpp" line="118"/>
+        <location filename="../../src/ctrl/bone/bone_PaintInflMode.cpp" line="135"/>
         <source>Update bone influence</source>
-        <translation type="vanished">Обновить влияние кости</translation>
+        <translation>Обновить влияние кости</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_MoveJointMode.cpp" line="81"/>
         <source>Move bone</source>
-        <translation type="vanished">Переместить кость</translation>
+        <translation>Переместить кость</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_BrushMode.cpp" line="124"/>
         <source>Update FFD</source>
-        <translation type="vanished">Обновить FFD</translation>
+        <translation>Обновить FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_DragMode.cpp" line="185"/>
         <source>Move FFD key vertex</source>
-        <translation type="vanished">Переместить вершину ключа FFD</translation>
+        <translation>Переместить вершину ключа FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="88"/>
         <source>Add mesh key triangle</source>
-        <translation type="vanished">Добавить треугольник ключа сетки</translation>
+        <translation>Добавить треугольник ключа сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="120"/>
         <source>Move mesh key vertex</source>
-        <translation type="vanished">Переместить вершину ключа сетки</translation>
+        <translation>Переместить вершину ключа сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="64"/>
         <source>Remove mesh key vertex</source>
-        <translation type="vanished">Убрать вершину ключа сетки</translation>
+        <translation>Убрать вершину ключа сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="77"/>
         <source>Remove mesh key face</source>
-        <translation type="vanished">Убрать грань ключа сетки</translation>
+        <translation>Убрать грань ключа сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_SplitMode.cpp" line="144"/>
         <source>Split mesh key triangle</source>
-        <translation type="vanished">Разделить треугольник ключа сетки</translation>
+        <translation>Разделить треугольник ключа сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_DrawBoneMode.cpp" line="136"/>
         <source>Pull bones of a pose key</source>
-        <translation type="vanished">Потянуть кости ключа позы</translation>
+        <translation>Потянуть кости ключа позы</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_ErasePoseMode.cpp" line="84"/>
         <source>erase a pose</source>
-        <translation type="vanished">Стереть позу</translation>
+        <translation>Стереть позу</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_TransBoneMode.cpp" line="101"/>
         <source>rotate a bone of a posing key</source>
-        <translation type="vanished">Повернуть кость ключа позы</translation>
+        <translation>Повернуть кость ключа позы</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="112"/>
         <source>update centroid of a moving key</source>
-        <translation type="vanished">Обновить центроид ключа перемещения</translation>
+        <translation>Обновить центроид ключа перемещения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="175"/>
         <source>update a moving key</source>
-        <translation type="vanished">Обновить ключ перемещения</translation>
+        <translation>Обновить ключ перемещения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="206"/>
         <source>update a rotation key</source>
-        <translation type="vanished">Обновить ключ поворота</translation>
+        <translation>Обновить ключ поворота</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="237"/>
         <source>update a scaling key</source>
-        <translation type="vanished">Обновить ключ масштаба</translation>
+        <translation>Обновить ключ масштаба</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="354"/>
         <source>Move keys</source>
-        <translation type="vanished">Переместить ключи</translation>
+        <translation>Переместить ключи</translation>
     </message>
     <message>
         <source>Paste clipboard key</source>
         <translation type="vanished">Вставить ключ из буфера обмена</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="669"/>
+        <source>Paste clipboard keys</source>
+        <translation>Вставить ключи из буфера обмена</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="843"/>
         <source>Paste keys</source>
-        <translation type="vanished">Вставить ключи</translation>
+        <translation>Вставить ключи</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="908"/>
         <source>Delete keys</source>
-        <translation type="vanished">Удалить ключи</translation>
+        <translation>Удалить ключи</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="258"/>
         <source>Update default movement key</source>
-        <translation type="vanished">Обновить ключ перемещения по умолчанию</translation>
+        <translation>Обновить ключ перемещения по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="259"/>
         <source>Update movement key</source>
-        <translation type="vanished">Обновить ключ перемещения</translation>
+        <translation>Обновить ключ перемещения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="269"/>
         <source>Update default rotation key</source>
-        <translation type="vanished">Обновить ключ поворота по умолчанию</translation>
+        <translation>Обновить ключ поворота по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="270"/>
         <source>Update rotation key</source>
-        <translation type="vanished">Обновить ключ поворота</translation>
+        <translation>Обновить ключ поворота</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="280"/>
         <source>Update default scaling key</source>
-        <translation type="vanished">Обновить ключ масштаба по умолчанию</translation>
+        <translation>Обновить ключ масштаба по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="281"/>
         <source>Update scaling key</source>
-        <translation type="vanished">Обновить ключ масштаба</translation>
+        <translation>Обновить ключ масштаба</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
         <source>Update default depth key</source>
-        <translation type="vanished">Обновить ключ глубины по умолчанию</translation>
+        <translation>Обновить ключ глубины по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="292"/>
         <source>Update depth key</source>
-        <translation type="vanished">Обновить ключ глубины</translation>
+        <translation>Обновить ключ глубины</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
         <source>Update default opacity key</source>
-        <translation type="vanished">Обновить ключ непрозрачности по умолчанию</translation>
+        <translation>Обновить ключ непрозрачности по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="303"/>
         <source>Update opacity key</source>
-        <translation type="vanished">Обновить ключ непрозрачности</translation>
+        <translation>Обновить ключ непрозрачности</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
         <source>Update default HSV key</source>
-        <translation type="vanished">Обновить ключ HSV по умолчанию</translation>
+        <translation>Обновить ключ HSV по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="314"/>
         <source>Update HSV key</source>
-        <translation type="vanished">Обновить ключ HSV</translation>
+        <translation>Обновить ключ HSV</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
         <source>Update default blur key</source>
-        <translation type="vanished">Обновить ключ размытия по умолчанию</translation>
+        <translation>Обновить ключ размытия по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="325"/>
         <source>Update blur key</source>
-        <translation type="vanished">Обновить ключ размытия</translation>
+        <translation>Обновить ключ размытия</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
         <source>Update default pose key</source>
-        <translation type="vanished">Обновить ключ позы по умолчанию</translation>
+        <translation>Обновить ключ позы по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="336"/>
         <source>Update pose key</source>
-        <translation type="vanished">Обновить ключ позы</translation>
+        <translation>Обновить ключ позы</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
         <source>Update default FFD key</source>
-        <translation type="vanished">Обновить ключ FFD по умолчанию</translation>
+        <translation>Обновить ключ FFD по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="347"/>
         <source>Update FFD key</source>
-        <translation type="vanished">Обновить ключ FFD</translation>
+        <translation>Обновить ключ FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="359"/>
         <source>Update default image resource key</source>
-        <translation type="vanished">Обновить ключ ресурса изображения по умолчанию</translation>
+        <translation>Обновить ключ ресурса изображения по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="360"/>
         <source>update image resource key</source>
-        <translation type="vanished">Обновить ключ ресурса изображения</translation>
+        <translation>Обновить ключ ресурса изображения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="380"/>
         <source>Update the image&apos;s default offset key</source>
-        <translation type="vanished">Обновить ключ смещения изображения по умолчанию</translation>
+        <translation>Обновить ключ смещения изображения по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="381"/>
         <source>Update the image&apos;s offset key</source>
-        <translation type="vanished">Обновить ключ смещения изображения</translation>
+        <translation>Обновить ключ смещения изображения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="400"/>
         <source>Update the default mesh size key</source>
-        <translation type="vanished">Обновить ключ размера сетки по умолчанию</translation>
+        <translation>Обновить ключ размера сетки по умолчанию</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="401"/>
         <source>Update mesh size key</source>
-        <translation type="vanished">Обновить ключ размера сетки</translation>
+        <translation>Обновить ключ размера сетки</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="450"/>
         <source>Add new movement key</source>
-        <translation type="vanished">Добавить новый ключ перемещения</translation>
+        <translation>Добавить новый ключ перемещения</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="454"/>
         <source>Add new rotation key</source>
-        <translation type="vanished">Добавить новый ключ поворота</translation>
+        <translation>Добавить новый ключ поворота</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="459"/>
         <source>Add new scaling key</source>
-        <translation type="vanished">Добавить новый ключ масштаба</translation>
+        <translation>Добавить новый ключ масштаба</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="463"/>
         <source>Add new depth key</source>
-        <translation type="vanished">Добавить новый ключ глубины</translation>
+        <translation>Добавить новый ключ глубины</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="467"/>
         <source>Add new opacity key</source>
-        <translation type="vanished">Добавить новый ключ непрозрачности</translation>
+        <translation>Добавить новый ключ непрозрачности</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="471"/>
         <source>Add new HSV key</source>
-        <translation type="vanished">Добавить новый ключ HSV</translation>
+        <translation>Добавить новый ключ HSV</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="475"/>
         <source>Add new blur key</source>
-        <translation type="vanished">Добавить новый ключ размытия</translation>
+        <translation>Добавить новый ключ размытия</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="481"/>
         <source>Add new pose key</source>
-        <translation type="vanished">Добавить новый ключ позы</translation>
+        <translation>Добавить новый ключ позы</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="488"/>
         <source>Add new FFD key</source>
-        <translation type="vanished">Добавить новый ключ FFD</translation>
+        <translation>Добавить новый ключ FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="493"/>
         <source>Add new image key</source>
-        <translation type="vanished">Добавить новый ключ изображения</translation>
+        <translation>Добавить новый ключ изображения</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
@@ -364,6 +573,79 @@
         <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>Изменить настройки анимации</translation>
+    </message>
+</context>
+<context>
+    <name>EasingName</name>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="59"/>
+        <source>Floor</source>
+        <translation>Округление вниз</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="61"/>
+        <source>Linear</source>
+        <translation>Линейная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="63"/>
+        <source>Sine</source>
+        <translation>Синусоидальная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="65"/>
+        <source>Quad</source>
+        <translation>Квадратичная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <source>Cubic</source>
+        <translation>Кубическая</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <source>Quart</source>
+        <translation>Четвёртой степени</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <source>Quint</source>
+        <translation>Пятой степени</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <source>Expo</source>
+        <translation>Экспоненциальная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <source>Circ</source>
+        <translation>Круговая</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <source>Back</source>
+        <translation>Обратная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <source>Elastic</source>
+        <translation>Эластичная</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <source>Bounce</source>
+        <translation>С отскоком</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <source>Custom</source>
+        <translation>Пользовательская</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <source>Round</source>
+        <translation>Округление</translation>
     </message>
 </context>
 <context>
@@ -1123,196 +1405,461 @@
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
         <translation>При качестве «Без потерь» это FFV1, который несёт альфа-канал (yuva420p); остальные категории выбирают H.265, который здесь вообще не умеет кодировать альфа-канал.</translation>
     </message>
+    <message>
+        <source>FFV1 (lossless master)</source>
+        <translation type="vanished">FFV1 (мастер без потерь)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="183"/>
+        <source>%1 (%2)</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="185"/>
+        <source>hardware</source>
+        <translation>аппаратный</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="186"/>
+        <source>software</source>
+        <translation>программный</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="196"/>
+        <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
+        <translation>%1. Платформа перекодирует загрузки, поэтому качество исходника важнее совместимости</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="202"/>
+        <source>%1. This plays your file directly, so decode compatibility matters most</source>
+        <translation>%1. Файл воспроизводится напрямую, поэтому важнее всего совместимость декодирования</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="207"/>
+        <source>%1. A master copy, so fidelity matters most</source>
+        <translation>%1. Мастер-копия, поэтому важнее всего точность</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="218"/>
+        <source>%1, about %2s here</source>
+        <translation>%1, здесь около %2 с</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="235"/>
+        <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
+        <translation>Выбранное качество не применено: в таблице назначений нет &lt;bucket_positions&gt;, поэтому для «%1» использовано его собственное значение по умолчанию.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="250"/>
+        <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
+        <translation>«%1» это кодек с потерями, поэтому «Без потерь» здесь означает его наивысшее качество, а не файл без потерь.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="320"/>
+        <source>cannot open %1</source>
+        <translation>не удалось открыть %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="341"/>
+        <source>%1: missing &lt;export_targets&gt; root</source>
+        <translation>%1: отсутствует корневой элемент &lt;export_targets&gt;</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="572"/>
+        <source>no frames selected</source>
+        <translation>кадры не выбраны</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="583"/>
+        <source>%1 frames from %2 separate ranges</source>
+        <translation>Выбрано кадров: %1 из %2 отдельных диапазонов</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="613"/>
+        <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
+        <translation>Размер принудительно задан как %1x%2 (требуется этим назначением); %3.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="619"/>
+        <source>cropped to fill it</source>
+        <translation>изображение обрезано по размеру</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="620"/>
+        <source>padded to fit it</source>
+        <translation>изображение дополнено по размеру</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="660"/>
+        <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
+        <translation>Частота кадров снижена с %1 до %2 fps (ограничение назначения).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="672"/>
+        <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
+        <translation>Сокращено с %1 до %2 кадров (ограничение %3 с).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="684"/>
+        <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
+        <translation>Сокращено с %1 до %2 кадров (ограничение назначения).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="693"/>
+        <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
+        <translation>ВНИМАНИЕ: назначению нужно не менее %1 кадров, а доступно только %2, поэтому загрузку, скорее всего, отклонят.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="711"/>
+        <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
+        <translation>ВНИМАНИЕ: назначению нужно не менее %1 с, а в этом экспорте %2 с, поэтому загрузку, скорее всего, отклонят. Выберите более длинный диапазон кадров.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="783"/>
+        <source>%1 via %2, the fastest of %3 that runs here</source>
+        <translation>%1 через %2, самый быстрый из %3 доступных здесь</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="788"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="821"/>
+        <source>%1 via %2</source>
+        <translation>%1 через %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="803"/>
+        <source>%1/%2 (~%3s)</source>
+        <translation>%1/%2 (~%3 с)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="817"/>
+        <source>%1: nothing here is fast enough for this budget (%2), so this is the fastest available</source>
+        <translation>%1: ничего из доступного здесь не укладывается в отведённое время (%2), поэтому выбран самый быстрый вариант</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="829"/>
+        <source>no suitable encoder found in this build</source>
+        <translation>в этой сборке нет подходящего кодировщика</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="842"/>
+        <source>no destination selected</source>
+        <translation>назначение не выбрано</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="846"/>
+        <source>invalid source size</source>
+        <translation>недопустимый размер источника</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="858"/>
+        <source>%1 is required by this destination.</source>
+        <translation>%1 требуется этим назначением.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="871"/>
+        <source>Transparency</source>
+        <translation>Прозрачность</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="873"/>
+        <source>Audio</source>
+        <translation>Аудио</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="883"/>
+        <source>no frames selected for export</source>
+        <translation>кадры для экспорта не выбраны</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="923"/>
+        <source>%1; the ranges play back to back and the frames between them are not exported.</source>
+        <translation>%1; диапазоны идут подряд, а кадры между ними не экспортируются.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="945"/>
+        <source>no encoder available for this destination in this build</source>
+        <translation>в этой сборке нет кодировщика для этого назначения</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="979"/>
+        <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
+        <translation>ВНИМАНИЕ: ограничения этого назначения НЕ ПРОВЕРЕНЫ, проверьте их, прежде чем на них полагаться.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1006"/>
+        <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
+        <translation>Одно статичное изображение (кадр %1), записано как %2. Диапазон кадров выше не применяется.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1013"/>
+        <source>%1 frames written as numbered .%2 files.</source>
+        <translation>Записано кадров: %1 (нумерованные файлы .%2).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1069"/>
+        <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
+        <translation>%1 требует прозрачности, но «%2» не может кодировать альфа-канал в этой сборке (он заявляет поддержку %3, а затем отказывается от неё). Выберите назначение, кодек которого несёт альфа-канал: WebM/VP9, APNG или FFV1.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1078"/>
+        <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
+        <translation>%1: %2 не смог закодировать %3, и запасной вариант не сработал (%4)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1085"/>
+        <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
+        <translation>Прозрачность отброшена: «%1» заявляет поддержку %2, но не может кодировать её здесь, поэтому вместо этого используется %3.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1091"/>
+        <source>the encoder default</source>
+        <translation>значение кодека по умолчанию</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1152"/>
+        <source>No sound: %1 does not accept an audio track.</source>
+        <translation>Без звука: %1 не принимает аудиодорожку.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1157"/>
+        <source>WARNING: %1 expects sound but this project has no audio track.</source>
+        <translation>ВНИМАНИЕ: %1 ожидает звук, но в этом проекте нет аудиодорожки.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1184"/>
+        <source>no frames left</source>
+        <translation>кадров не осталось</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1222"/>
+        <source>could not write %1</source>
+        <translation>не удалось записать %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1230"/>
+        <source>no files produced</source>
+        <translation>файлы не созданы</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1272"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1296"/>
+        <source>no file produced</source>
+        <translation>файл не создан</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1330"/>
+        <source>frames: the plan selected %1, but %2 were supplied</source>
+        <translation>Кадров: план выбрал %1, а передано %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="580"/>
+        <source>%1 frame</source>
+        <translation>%1 кадр</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="581"/>
+        <source>%1 frames</source>
+        <translation>%1 кадров</translation>
+    </message>
+    <message>
+        <source>frame mismatch: the plan selects %1 but %2 were supplied (render plan.selection.indices())</source>
+        <translation type="vanished">несовпадение кадров: план выбирает %1, а передано %2 (см. plan.selection.indices())</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1399"/>
+        <source>canceled</source>
+        <translation>отменено</translation>
+    </message>
 </context>
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="297"/>
+        <location filename="../../src/gui/exportdiag.h" line="302"/>
         <source>Choose where this is going</source>
         <translation>Укажите, куда это пойдёт</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="617"/>
+        <location filename="../../src/gui/exportdiag.h" line="622"/>
         <source>Open Palette</source>
         <translation>Открыть палитру</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="618"/>
+        <location filename="../../src/gui/exportdiag.h" line="623"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>Файл палитры FFmpeg (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="632"/>
+        <location filename="../../src/gui/exportdiag.h" line="637"/>
         <source>Auto</source>
         <translation>Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="785"/>
+        <location filename="../../src/gui/exportdiag.h" line="790"/>
         <source>PNG sequence</source>
         <translation>Последовательность PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="786"/>
+        <location filename="../../src/gui/exportdiag.h" line="791"/>
         <source>JPEG sequence</source>
         <translation>Последовательность JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
+        <location filename="../../src/gui/exportdiag.h" line="917"/>
         <source>CRF:</source>
         <translation>CRF:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="918"/>
         <source>Quality:</source>
         <translation>Качество:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1384"/>
+        <location filename="../../src/gui/exportdiag.h" line="1389"/>
         <source>First frame %1</source>
         <translation>Первый кадр %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1385"/>
+        <location filename="../../src/gui/exportdiag.h" line="1390"/>
         <source>Last frame %1</source>
         <translation>Последний кадр %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Width</source>
         <translation>Ширина</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Height</source>
         <translation>Высота</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Frame rate</source>
         <translation>Частота кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>First frame</source>
         <translation>Первый кадр</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Last frame</source>
         <translation>Последний кадр</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Format</source>
         <translation>Формат</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Codec</source>
         <translation>Кодек</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Quality</source>
         <translation>Качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Quality override</source>
         <translation>Переопределение качества</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Image quality</source>
         <translation>Качество изображения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Bitrate</source>
         <translation>Битрейт</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Destination</source>
         <translation>Назначение</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Advanced</source>
         <translation>Дополнительно</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Export</source>
         <translation>Экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Export with transparency</source>
         <translation>Экспортировать с прозрачностью</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Loop animation</source>
         <translation>Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Export with audio</source>
         <translation>Экспортировать со звуком</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Custom palette</source>
         <translation>Пользовательская палитра</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Keep aspect ratio</source>
         <translation>Сохранять пропорции</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1509"/>
+        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Insert range</source>
         <translation>Добавить диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1510"/>
+        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Remove range</source>
         <translation>Убрать диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1511"/>
+        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Set width to native</source>
         <translation>Задать исходную ширину</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1512"/>
+        <location filename="../../src/gui/exportdiag.h" line="1517"/>
         <source>Set height to native</source>
         <translation>Задать исходную высоту</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1513"/>
+        <location filename="../../src/gui/exportdiag.h" line="1518"/>
         <source>Set frame rate to native</source>
         <translation>Задать исходную частоту кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1514"/>
+        <location filename="../../src/gui/exportdiag.h" line="1519"/>
         <source>Image quality to auto</source>
         <translation>Качество изображения: авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1515"/>
+        <location filename="../../src/gui/exportdiag.h" line="1520"/>
         <source>Quality override to auto</source>
         <translation>Переопределение качества: авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1516"/>
+        <location filename="../../src/gui/exportdiag.h" line="1521"/>
         <source>Bitrate to auto</source>
         <translation>Битрейт: авто</translation>
     </message>
@@ -1320,12 +1867,85 @@
 <context>
     <name>Exporter</name>
     <message>
-        <source>Finishing up</source>
-        <translation type="vanished">Завершение</translation>
+        <location filename="../../src/ctrl/Exporter.cpp" line="99"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="124"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="157"/>
+        <source>Invalid common parameters.</source>
+        <translation>Недопустимые общие параметры.</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="106"/>
+        <source>Invalid directory path.</source>
+        <translation>Недопустимый путь к каталогу.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="132"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="165"/>
+        <source>Exporting was canceled.</source>
+        <translation>Экспортирование было отменено.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="193"/>
+        <source>No available video encoder can carry the &apos;%1&apos; container.</source>
+        <translation>Ни один доступный видеокодировщик не подходит для контейнера «%1».</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="206"/>
+        <source>Encoder not available in this build: %1</source>
+        <translation>Кодировщик недоступен в этой сборке: %1</translation>
+    </message>
+    <message>
+        <source>The &apos;%1&apos; container cannot carry the %2 video codec.</source>
+        <translation type="vanished">Контейнер «%1» не поддерживает видеокодек %2.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="212"/>
+        <source>The &apos;%1&apos; container cannot carry the %2 video encoder.</source>
+        <translation>Контейнер «%1» не поддерживает видеокодировщик %2.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="225"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="265"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="537"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="641"/>
+        <source>Video encoder error.
+%1</source>
+        <translation>Ошибка видеокодировщика.
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="295"/>
+        <source>Finishing up</source>
+        <translation>Завершение</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="297"/>
         <source>Rendering</source>
-        <translation type="vanished">Рендеринг</translation>
+        <translation>Рендеринг</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="312"/>
+        <source>Export was canceled.</source>
+        <translation>Экспорт был отменён.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="347"/>
+        <source>Failed to initialize TextureDrawer</source>
+        <translation>Не удалось инициализировать TextureDrawer</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="579"/>
+        <source>GIF encoder error.
+%1</source>
+        <translation>Ошибка кодировщика GIF.
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="619"/>
+        <source>Audio mixing error.
+%1</source>
+        <translation>Ошибка микширования звука.
+%1</translation>
     </message>
 </context>
 <context>
@@ -1501,12 +2121,43 @@
         <translation type="vanished">Построение дерева объектов...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="269"/>
         <source>Building an Object Tree...</source>
-        <translation type="vanished">Построение дерева объектов...</translation>
+        <translation>Построение дерева объектов...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="597"/>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="725"/>
         <source>Building object trees...</source>
-        <translation type="vanished">Построение деревьев объектов...</translation>
+        <translation>Построение деревьев объектов...</translation>
+    </message>
+</context>
+<context>
+    <name>ImageFileLoader</name>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="522"/>
+        <source>Select ORA file type</source>
+        <translation>Выберите тип файла ORA</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="523"/>
+        <source>How do you wish to load this ORA file?</source>
+        <translation>Как вы хотите загрузить этот файл ORA?</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="524"/>
+        <source>Load layered</source>
+        <translation>Загрузить слоями</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="525"/>
+        <source>Load merged</source>
+        <translation>Загрузить объединённым</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="528"/>
+        <source>Cancel file load</source>
+        <translation>Отменить загрузку файла</translation>
     </message>
 </context>
 <context>
@@ -1531,57 +2182,192 @@
     </message>
 </context>
 <context>
+    <name>MainWindow</name>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="26"/>
+        <source>%1 GB</source>
+        <translation>%1 ГБ</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="29"/>
+        <source>%1 MB</source>
+        <translation>%1 МБ</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
+        <source>%1 KB</source>
+        <translation>%1 КБ</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="38"/>
+        <source>yes</source>
+        <translation>да</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="39"/>
+        <source>no</source>
+        <translation>нет</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="47"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation>Это назначение нельзя экспортировать: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation>%1 x %2, кадр %3 (тот, что на шкале времени)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="68"/>
+        <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
+        <translation>%1 x %2, кадров: %3 (тайминг задаётся на странице загрузки)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="74"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation>%1 x %2, %3 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="81"/>
+        <source>Artifact: one %1 image</source>
+        <translation>Артефакт: одно изображение %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="84"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation>Артефакт: %2, нумерованных файлов: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="89"/>
+        <source>Codec: animated GIF</source>
+        <translation>Кодек: анимированный GIF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="90"/>
+        <source>Codec: %1 in %2</source>
+        <translation>Кодек: %1 в %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="102"/>
+        <source>not accepted by this destination</source>
+        <translation>не принимается этим назначением</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <source>none in this project</source>
+        <translation>в проекте его нет</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="106"/>
+        <source>off in this dialog</source>
+        <translation>выключено в этом диалоге</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="110"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation>Прозрачность: %1; аудио: %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="119"/>
+        <source>max %1</source>
+        <translation>не более %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
+        <source>max %1 s</source>
+        <translation>не более %1 с</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="123"/>
+        <source>min %1 s</source>
+        <translation>не менее %1 с</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <source>max %1 frames</source>
+        <translation>не более %1 кадров</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
+        <source>max %1 fps</source>
+        <translation>не более %1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="132"/>
+        <source>Limits: %1</source>
+        <translation>Ограничения: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="133"/>
+        <source>, </source>
+        <translation>, </translation>
+    </message>
+</context>
+<context>
     <name>NetworkCheckForUpdate</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="241"/>
         <source>Failed</source>
-        <translation type="vanished">Не удалось</translation>
+        <translation>Не удалось</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="242"/>
         <source>&lt;center&gt;Unable to get latest version. &lt;br&gt;Please check your internet connection and if you have curl or wget installed.&lt;/center&gt;</source>
-        <translation type="vanished">&lt;center&gt;Не удалось получить последнюю версию. &lt;br&gt;Проверьте подключение к интернету и наличие curl или wget.&lt;/center&gt;</translation>
+        <translation>&lt;center&gt;Не удалось получить последнюю версию. &lt;br&gt;Проверьте подключение к интернету и наличие curl или wget.&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="252"/>
         <source>On latest</source>
-        <translation type="vanished">Установлена последняя версия</translation>
+        <translation>Установлена последняя версия</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="254"/>
         <source>&lt;center&gt;You already have the latest stable release available. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;У вас уже установлена последняя доступная стабильная версия. &lt;br&gt;Версия: </translation>
+        <translation>&lt;center&gt;У вас уже установлена последняя доступная стабильная версия. &lt;br&gt;Версия: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="266"/>
         <source>On preview</source>
-        <translation type="vanished">Установлена предварительная версия</translation>
+        <translation>Установлена предварительная версия</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="268"/>
         <source>&lt;center&gt;Your current version is higher than the latest stable release. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;Ваша текущая версия выше последней стабильной версии. &lt;br&gt;Версия: </translation>
+        <translation>&lt;center&gt;Ваша текущая версия выше последней стабильной версии. &lt;br&gt;Версия: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="280"/>
         <source>New release available</source>
-        <translation type="vanished">Доступна новая версия</translation>
+        <translation>Доступна новая версия</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="282"/>
         <source>&lt;center&gt;A new stable release is available, version: </source>
-        <translation type="vanished">&lt;center&gt;Доступна новая стабильная версия: </translation>
+        <translation>&lt;center&gt;Доступна новая стабильная версия: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="286"/>
         <source>.&lt;br&gt;Do you wish to download it or to go to the GitHub page?&lt;/center&gt;</source>
-        <translation type="vanished">.&lt;br&gt;Хотите загрузить её или перейти на страницу GitHub?&lt;/center&gt;</translation>
+        <translation>.&lt;br&gt;Хотите загрузить её или перейти на страницу GitHub?&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="297"/>
         <source>Download</source>
-        <translation type="vanished">Загрузить</translation>
+        <translation>Загрузить</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="299"/>
         <source>Go to page</source>
-        <translation type="vanished">Перейти на страницу</translation>
+        <translation>Перейти на страницу</translation>
     </message>
 </context>
 <context>
     <name>NetworkUtil</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="193"/>
         <source>Currently downloading:</source>
-        <translation type="vanished">Сейчас загружается:</translation>
+        <translation>Сейчас загружается:</translation>
     </message>
 </context>
 <context>
@@ -1690,6 +2476,67 @@
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>Аудиофайлы (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
+    </message>
+</context>
+<context>
+    <name>UILog</name>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="32"/>
+        <source>Bone Editor : </source>
+        <translation>Редактор костей: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="118"/>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="96"/>
+        <source>An object with invalid pose was given.</source>
+        <translation>Передан объект с недопустимой позой.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="187"/>
+        <source>FFD Editor : </source>
+        <translation>Редактор FFD: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="265"/>
+        <source>There are no objects with meshes.</source>
+        <translation>Нет объектов с сетками.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="25"/>
+        <source>Mesh Editor : </source>
+        <translation>Редактор сетки: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="29"/>
+        <source>The object can&apos;t own a mesh key.</source>
+        <translation>Объект не может иметь ключ сетки.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="29"/>
+        <source>Pose Editor : </source>
+        <translation>Редактор позы: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <source>An object with invalid posture was given.</source>
+        <translation>Передан объект с недопустимой позой.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="118"/>
+        <source>There are no bones in the selected layer that can be posed.</source>
+        <translation>В выбранном слое нет костей, которые можно привести в позу.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="30"/>
+        <source>The transformed object has one or more bones bound to it, SRT keys may not work as expected.</source>
+        <translation>К трансформируемому объекту привязаны одна или несколько костей, ключи SRT могут работать некорректно.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <source>SRT Editor : </source>
+        <translation>Редактор SRT: </translation>
     </message>
 </context>
 <context>
@@ -1864,7 +2711,7 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Export parameters</source>
         <translation>Параметры экспорта</translation>
     </message>
@@ -1873,12 +2720,12 @@
         <translation type="vanished">Промежуточный </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Keep aspect ratio</source>
         <translation>Сохранять пропорции</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Последний кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1895,17 +2742,17 @@
         <translation type="vanished">Пользовательский</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Insert range</source>
         <translation>Добавить диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Remove range</source>
         <translation>Убрать диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>Custom palette</source>
         <translation>Пользовательская палитра</translation>
     </message>
@@ -1934,7 +2781,7 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
         <source>Width: </source>
         <translation>Ширина: </translation>
     </message>
@@ -1943,9 +2790,9 @@
         <translation type="vanished">Один к одному</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1446"/>
         <source>Set to native</source>
         <translation>Задать исходное</translation>
     </message>
@@ -1958,7 +2805,7 @@
         <translation type="vanished">Активные параметры:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Height:</source>
         <translation>Высота:</translation>
     </message>
@@ -1967,7 +2814,7 @@
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Экспорт&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1439"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
@@ -1984,100 +2831,100 @@
         <translation type="vanished">Последовательность изображений</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1421"/>
+        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Format:</source>
         <translation>Формат:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1422"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Codec:</source>
         <translation>Кодек:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Destination:</source>
         <translation>Назначение:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
         <source>Quality:</source>
         <translation>Качество:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Smaller file</source>
         <translation>Меньший размер</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1426"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Balanced</source>
         <translation>Сбалансированное</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Best quality</source>
         <translation>Лучшее качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Lossless</source>
         <translation>Без потерь</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>How to encode</source>
         <translation>Как кодировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
         <source>What to export</source>
         <translation>Что экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
+        <location filename="../../src/gui/exportdiag.h" line="1447"/>
         <source>Export with transparency</source>
         <translation>Экспортировать с прозрачностью</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1448"/>
         <source>Loop animation</source>
         <translation>Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
+        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Export with audio</source>
         <translation>Экспортировать со звуком</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
-        <location filename="../../src/gui/exportdiag.h" line="1459"/>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1464"/>
         <source>Auto</source>
         <translation>Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1446"/>
-        <location filename="../../src/gui/exportdiag.h" line="1460"/>
-        <location filename="../../src/gui/exportdiag.h" line="1461"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1465"/>
+        <location filename="../../src/gui/exportdiag.h" line="1466"/>
         <source>Set to auto</source>
         <translation>Задать автоматически</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1449"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Frame range:</source>
         <translation>Диапазон кадров:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1453"/>
+        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Advanced</source>
         <translation>Дополнительно</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1458"/>
+        <location filename="../../src/gui/exportdiag.h" line="1463"/>
         <source>Quality override:</source>
         <translation>Переопределение качества:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1534"/>
+        <location filename="../../src/gui/exportdiag.h" line="1539"/>
         <source>&amp;Export</source>
         <translation>&amp;Экспортировать</translation>
     </message>
@@ -2086,17 +2933,17 @@
         <translation type="vanished">Отрисовано кадров: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1455"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Первый кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1456"/>
         <source>Bitrate (kB/s):</source>
         <translation>Битрейт (Кбайт/с):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1457"/>
         <source>Image quality:</source>
         <translation>Качество изображения:</translation>
     </message>
@@ -2105,7 +2952,7 @@
         <translation type="vanished">Экспортировать с пользовательскими параметрами</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1462"/>
+        <location filename="../../src/gui/exportdiag.h" line="1467"/>
         <source>Select palette path</source>
         <translation>Выбрать путь к палитре</translation>
     </message>
@@ -2190,7 +3037,7 @@
         <translation type="vanished">Экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1536"/>
+        <location filename="../../src/gui/exportdiag.h" line="1541"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
@@ -2262,37 +3109,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="131"/>
         <source>Where are you posting this?</source>
         <translation>Куда вы это публикуете?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="143"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>Поиск: telegram, стикер, reels, иллюстрация, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="148"/>
         <source>Search destinations</source>
         <translation>Поиск назначений</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="245"/>
         <source>%1 destinations</source>
         <translation>Назначений: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="250"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="252"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>Всё перечисленное выше это назначения, правила которых мы знаем. А здесь вы сами задаёте формат и кодек.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="257"/>
         <source>Use this destination</source>
         <translation>Использовать это назначение</translation>
     </message>
@@ -5022,14 +5869,16 @@ The log is available below.</source>
 <context>
     <name>projectSave</name>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="225"/>
         <source>Non ascii characters detected, this may cause issues.
 Save anyway?</source>
-        <translation type="vanished">Обнаружены не-ASCII символы, это может вызвать проблемы.
+        <translation>Обнаружены не-ASCII символы, это может вызвать проблемы.
 Сохранить в любом случае?</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="231"/>
         <source>Unicode on filename detected</source>
-        <translation type="vanished">Обнаружен Юникод в имени файла</translation>
+        <translation>Обнаружен Юникод в имени файла</translation>
     </message>
 </context>
 <context>

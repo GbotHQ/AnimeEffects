@@ -161,9 +161,56 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # The .qm are embedded into the binary under :/i18n below, so the translator
 # resolves them regardless of where the executable lives; translators only
 # ever edit the committed .ts.
+# WHICH SOURCES lupdate READS. qt_add_translations scans the sources of the target it
+# is given, and that target is the executable in this directory: everything in
+# src/util, src/ctrl, src/core, src/img and src/media was invisible to it. The effect
+# is not a warning or a failure, it is silence: strings written there never reach a
+# catalog, so they cannot be translated, and a translator has no way to notice a
+# sentence that was never offered. 48 of the strings in src/ctrl/ExportTarget.cpp
+# (every note and every error the export dialog states) were in that state, and the
+# measured cost is that the user reads "This destination cannot be exported: no frames
+# left" half in English.
+#
+# The library targets are declared before this one, so their source lists are known
+# here; collecting them explicitly keeps ONE translation scan for the whole
+# application instead of one per library (each of which would need its own .ts).
+# The paths have to be ABSOLUTE. A target's SOURCES property holds them as they were
+# written in that target's own CMakeLists (src/ctrl says "CmndName.cpp"), and a
+# relative path handed to a project generated in src/gui is read there: lupdate was
+# told to scan "src/gui/CmndName.cpp", found nothing, and reported no error, because a
+# missing file in a file list is not a failure. That is how this fix first did nothing.
+set(AE_I18N_LIBRARIES util thr cmnd gl img core media ctrl)
+set(AE_I18N_SOURCES "")
+foreach(lib ${AE_I18N_LIBRARIES})
+    if(TARGET ${lib})
+        get_target_property(lib_sources ${lib} SOURCES)
+        foreach(src ${lib_sources})
+            # Generator expressions (the QML/autogen entries) cannot be resolved at
+            # configure time and carry no translatable strings anyway.
+            if(src MATCHES "^\\$<")
+                continue()
+            endif()
+            if(NOT IS_ABSOLUTE "${src}")
+                get_filename_component(src "${src}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}/src/${lib}")
+            endif()
+            list(APPEND AE_I18N_SOURCES "${src}")
+        endforeach()
+    endif()
+endforeach()
+# lupdate follows #include, so the headers carry their inline tr() calls with them,
+# but a header no .cpp includes is only found if it is listed: the generated table
+# strings are exactly that case (nothing includes them; the generator's output is
+# compiled into ctrl by name).
+list(APPEND AE_I18N_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ctrl/ExportTargetStrings.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/exportdiag.h
+)
+list(REMOVE_DUPLICATES AE_I18N_SOURCES)
+
 qt_add_translations(${PROJECT_NAME}
     TS_FILE_BASE translation
     TS_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/assets/locale
+    SOURCES ${AE_I18N_SOURCES}
     QM_FILES_OUTPUT_VARIABLE qm_files
 )
 # Embed the build-produced .qm (they are build artifacts, not source) under

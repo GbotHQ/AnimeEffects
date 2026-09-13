@@ -19,6 +19,22 @@ declare -A SKIP=(
   [media_link_probe]=1
 )
 targets=$(grep -oP '^add_executable\(\K[A-Za-z0-9_]+' tests/CMakeLists.txt | sort -u)
+
+# Source level checks that are not C++ programs. They run first because they cost about
+# a second, and they answer a question no test binary can: is every catalog context
+# still one that code somewhere can ASK for? A class that calls tr() without Q_OBJECT
+# looks perfectly translated in the .ts files and ships English in all six languages,
+# with nothing failing anywhere. That is how the whole export dialog and the
+# destination picker were unreachable, so the check has to be a gate.
+script_fail=0; script_failed=""
+for check in scripts/i18n/check_tr_contexts.py scripts/i18n/gen_export_targets_i18n.py; do
+  [ -f "$check" ] || continue
+  args=""; [ "$check" = "scripts/i18n/gen_export_targets_i18n.py" ] && args="--check"
+  if out=$(python3 "$check" $args 2>&1); then echo "PASS $check"
+  else script_fail=$((script_fail+1)); script_failed="$script_failed $(basename "$check")"
+       echo "FAIL $check"; echo "$out" | tail -12; fi
+done
+
 pass=0; fail=0; skipped=""; failed=""
 for n in $targets; do
   [ -n "${SKIP[$n]:-}" ] && continue
@@ -61,7 +77,8 @@ for n in $targets; do
   if [ $rc -eq 0 ]; then pass=$((pass+1)); echo "PASS $n";
   else fail=$((fail+1)); failed="$failed $n"; echo "FAIL($rc) $n"; echo "$out" | tail -10; fi
 done
-echo "=== $CFG: pass=$pass fail=$fail skipped:$skipped failed:$failed ==="
+echo "=== $CFG: pass=$pass fail=$((fail+script_fail)) skipped:$skipped failed:$failed$script_failed ==="
+fail=$((fail+script_fail))
 # THE EXIT CODE IS THE GATE. Without this line the script ended on an echo, so it
 # always exited 0: a run with every suite failing looked identical to a clean one to
 # any caller that checks the status (CI, a hook, or a person reading "rc=0"), and

@@ -62,3 +62,7 @@ AnimeEffects-windows-*.zip
 # local working notes (not part of any PR)
 SCRATCHPAD_ARCHIVED.md
 SCRATCHPAD.md
+
+# Python bytecode from the probe/i18n helpers: generated, never reviewed.
+__pycache__/
+*.pyc

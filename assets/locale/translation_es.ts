@@ -25,246 +25,455 @@
     </message>
 </context>
 <context>
+    <name>BlendModeName</name>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="142"/>
+        <location filename="../../src/img/BlendMode.cpp" line="198"/>
+        <source>Normal</source>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="144"/>
+        <source>Darken</source>
+        <translation>Oscuro</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="146"/>
+        <source>Multiply</source>
+        <translation>Multiplicar</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="148"/>
+        <source>Color Burn</source>
+        <translation>Quemar color</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="150"/>
+        <source>Linear Burn</source>
+        <translation>Quebrada lineal</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="152"/>
+        <source>Lighten</source>
+        <translation>Iluminar</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="154"/>
+        <source>Screen</source>
+        <translation>Pantalla</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="156"/>
+        <source>Color Dodge</source>
+        <translation>Esquivar color</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="158"/>
+        <source>Linear Dodge</source>
+        <translation>Esquivar lineal</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="160"/>
+        <source>Overlay</source>
+        <translation>Overlay</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="162"/>
+        <source>Soft Light</source>
+        <translation>Luz suave</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="164"/>
+        <source>Hard Light</source>
+        <translation>Luz dura</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="166"/>
+        <source>Vivid Light</source>
+        <translation>Luz viva</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="168"/>
+        <source>Linear Light</source>
+        <translation>Luz lineal</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="170"/>
+        <source>Pin Light</source>
+        <translation>Fijar luz</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="172"/>
+        <source>Hard Mix</source>
+        <translation>Mezcla dura</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="174"/>
+        <source>Difference</source>
+        <translation>Diferencia</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="176"/>
+        <source>Exclusion</source>
+        <translation>Exclusión</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="178"/>
+        <source>Subtract</source>
+        <translation>Restar</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="180"/>
+        <source>Divide</source>
+        <translation>Dividir</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="182"/>
+        <source>Add (Glow)</source>
+        <translation>Añadir (brillo)</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="184"/>
+        <source>Glow Dodge</source>
+        <translation>Esquivar (brillo)</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="186"/>
+        <source>Hue</source>
+        <translation>Tono</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="188"/>
+        <source>Saturation</source>
+        <translation>Saturación</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="190"/>
+        <source>Color</source>
+        <translation>Color</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="192"/>
+        <source>Luminosity</source>
+        <translation>Luminosidad</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="194"/>
+        <source>Darker Color</source>
+        <translation>Color más oscuro</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="196"/>
+        <source>Lighter Color</source>
+        <translation>Color más claro</translation>
+    </message>
+</context>
+<context>
     <name>CmndName</name>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="78"/>
         <source>Bind node to bone</source>
-        <translation type="vanished">Enlazar nodo al hueso</translation>
+        <translation>Enlazar nodo al hueso</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="101"/>
         <source>Unbind node from bones</source>
-        <translation type="vanished">Desenlazar nodo de los huesos</translation>
+        <translation>Desenlazar nodo de los huesos</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="109"/>
         <source>Add new bone</source>
-        <translation type="vanished">Añadir nuevo hueso</translation>
+        <translation>Añadir nuevo hueso</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="125"/>
         <source>Add new parent bone</source>
-        <translation type="vanished">Añadir nuevo hueso padre</translation>
+        <translation>Añadir nuevo hueso padre</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_DeleteMode.cpp" line="64"/>
         <source>Delete bone</source>
-        <translation type="vanished">Eliminar hueso</translation>
+        <translation>Eliminar hueso</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_EraseInflMode.cpp" line="159"/>
+        <location filename="../../src/ctrl/bone/bone_InfluenceMode.cpp" line="118"/>
+        <location filename="../../src/ctrl/bone/bone_PaintInflMode.cpp" line="135"/>
         <source>Update bone influence</source>
-        <translation type="vanished">Actualizar influencia ósea</translation>
+        <translation>Actualizar influencia ósea</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_MoveJointMode.cpp" line="81"/>
         <source>Move bone</source>
-        <translation type="vanished">Mover hueso</translation>
+        <translation>Mover hueso</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_BrushMode.cpp" line="124"/>
         <source>Update FFD</source>
-        <translation type="vanished">Actualizar FFD</translation>
+        <translation>Actualizar FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_DragMode.cpp" line="185"/>
         <source>Move FFD key vertex</source>
-        <translation type="vanished">Mover vértice de la clave FFD</translation>
+        <translation>Mover vértice de la clave FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="88"/>
         <source>Add mesh key triangle</source>
-        <translation type="vanished">Añadir triángulo a la clave de malla</translation>
+        <translation>Añadir triángulo a la clave de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="120"/>
         <source>Move mesh key vertex</source>
-        <translation type="vanished">Mover vértice de la clave de malla</translation>
+        <translation>Mover vértice de la clave de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="64"/>
         <source>Remove mesh key vertex</source>
-        <translation type="vanished">Eliminar vértice de la clave de malla</translation>
+        <translation>Eliminar vértice de la clave de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="77"/>
         <source>Remove mesh key face</source>
-        <translation type="vanished">Eliminar cara de la clave de malla</translation>
+        <translation>Eliminar cara de la clave de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_SplitMode.cpp" line="144"/>
         <source>Split mesh key triangle</source>
-        <translation type="vanished">Dividir triángulo de la clave de malla</translation>
+        <translation>Dividir triángulo de la clave de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_DrawBoneMode.cpp" line="136"/>
         <source>Pull bones of a pose key</source>
-        <translation type="vanished">Halar huesos de una clave de pose</translation>
+        <translation>Halar huesos de una clave de pose</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_ErasePoseMode.cpp" line="84"/>
         <source>erase a pose</source>
-        <translation type="vanished">borrar una pose</translation>
+        <translation>borrar una pose</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_TransBoneMode.cpp" line="101"/>
         <source>rotate a bone of a posing key</source>
-        <translation type="vanished">girar un hueso de una clave de posado</translation>
+        <translation>girar un hueso de una clave de posado</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="112"/>
         <source>update centroid of a moving key</source>
-        <translation type="vanished">actualizar centroide de una clave en movimiento</translation>
+        <translation>actualizar centroide de una clave en movimiento</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="175"/>
         <source>update a moving key</source>
-        <translation type="vanished">actualizar una clave en movimiento</translation>
+        <translation>actualizar una clave en movimiento</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="206"/>
         <source>update a rotation key</source>
-        <translation type="vanished">actualizar una clave de rotación</translation>
+        <translation>actualizar una clave de rotación</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="237"/>
         <source>update a scaling key</source>
-        <translation type="vanished">actualizar una clave de escalado</translation>
+        <translation>actualizar una clave de escalado</translation>
     </message>
     <message>
         <source>Move key</source>
         <translation type="vanished">Mover clave</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="354"/>
         <source>Move keys</source>
-        <translation type="vanished">Mover claves</translation>
+        <translation>Mover claves</translation>
     </message>
     <message>
         <source>Paste clipboard key</source>
         <translation type="vanished">Pegar clave del portapapeles</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="669"/>
+        <source>Paste clipboard keys</source>
+        <translation>Pegar claves del portapapeles</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="843"/>
         <source>Paste keys</source>
-        <translation type="vanished">Pegar claves</translation>
+        <translation>Pegar claves</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="908"/>
         <source>Delete keys</source>
-        <translation type="vanished">Eliminar claves</translation>
+        <translation>Eliminar claves</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="258"/>
         <source>Update default movement key</source>
-        <translation type="vanished">Actualizar clave de movimiento por defecto</translation>
+        <translation>Actualizar clave de movimiento por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="259"/>
         <source>Update movement key</source>
-        <translation type="vanished">Actualizar clave de movimiento</translation>
+        <translation>Actualizar clave de movimiento</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="269"/>
         <source>Update default rotation key</source>
-        <translation type="vanished">Actualizar clave de rotación por defecto</translation>
+        <translation>Actualizar clave de rotación por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="270"/>
         <source>Update rotation key</source>
-        <translation type="vanished">Actualizar clave de rotación</translation>
+        <translation>Actualizar clave de rotación</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="280"/>
         <source>Update default scaling key</source>
-        <translation type="vanished">Actualizar clave de escalado por defecto</translation>
+        <translation>Actualizar clave de escalado por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="281"/>
         <source>Update scaling key</source>
-        <translation type="vanished">Actualizar clave de escalado</translation>
+        <translation>Actualizar clave de escalado</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
         <source>Update default depth key</source>
-        <translation type="vanished">Actualizar clave de profundidad por defecto</translation>
+        <translation>Actualizar clave de profundidad por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="292"/>
         <source>Update depth key</source>
-        <translation type="vanished">Actualizar clave de profundidad</translation>
+        <translation>Actualizar clave de profundidad</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
         <source>Update default opacity key</source>
-        <translation type="vanished">Actualizar clave de opacidad por defecto</translation>
+        <translation>Actualizar clave de opacidad por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="303"/>
         <source>Update opacity key</source>
-        <translation type="vanished">Actualizar clave de opacidad</translation>
+        <translation>Actualizar clave de opacidad</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
         <source>Update default HSV key</source>
-        <translation type="vanished">Actualizar clave de HSV por defecto</translation>
+        <translation>Actualizar clave de HSV por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="314"/>
         <source>Update HSV key</source>
-        <translation type="vanished">Actualizar clave de HSV</translation>
+        <translation>Actualizar clave de HSV</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
         <source>Update default blur key</source>
-        <translation type="vanished">Actualizar clave de desenfoque por defecto</translation>
+        <translation>Actualizar clave de desenfoque por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="325"/>
         <source>Update blur key</source>
-        <translation type="vanished">Actualizar clave de desenfoque</translation>
+        <translation>Actualizar clave de desenfoque</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
         <source>Update default pose key</source>
-        <translation type="vanished">Actualizar clave de pose por defecto</translation>
+        <translation>Actualizar clave de pose por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="336"/>
         <source>Update pose key</source>
-        <translation type="vanished">Actualizar clave de pose</translation>
+        <translation>Actualizar clave de pose</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
         <source>Update default FFD key</source>
-        <translation type="vanished">Actualizar clave FFD por defecto</translation>
+        <translation>Actualizar clave FFD por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="347"/>
         <source>Update FFD key</source>
-        <translation type="vanished">Actualizar clave FFD</translation>
+        <translation>Actualizar clave FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="359"/>
         <source>Update default image resource key</source>
-        <translation type="vanished">Actualizar clave de recurso de imagen por defecto</translation>
+        <translation>Actualizar clave de recurso de imagen por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="360"/>
         <source>update image resource key</source>
-        <translation type="vanished">actualizar la clave de recurso de imagen</translation>
+        <translation>actualizar la clave de recurso de imagen</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="380"/>
         <source>Update the image&apos;s default offset key</source>
-        <translation type="vanished">Actualizar la clave de desfase por defecto de la imagen</translation>
+        <translation>Actualizar la clave de desfase por defecto de la imagen</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="381"/>
         <source>Update the image&apos;s offset key</source>
-        <translation type="vanished">Actualizar la clave de desfase de la imagen</translation>
+        <translation>Actualizar la clave de desfase de la imagen</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="400"/>
         <source>Update the default mesh size key</source>
-        <translation type="vanished">Actualizar la clave del tamaño de malla por defecto</translation>
+        <translation>Actualizar la clave del tamaño de malla por defecto</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="401"/>
         <source>Update mesh size key</source>
-        <translation type="vanished">Actualizar la clave del tamaño de malla</translation>
+        <translation>Actualizar la clave del tamaño de malla</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="450"/>
         <source>Add new movement key</source>
-        <translation type="vanished">Añadir nueva clave de movimiento</translation>
+        <translation>Añadir nueva clave de movimiento</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="454"/>
         <source>Add new rotation key</source>
-        <translation type="vanished">Añadir nueva clave de rotación</translation>
+        <translation>Añadir nueva clave de rotación</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="459"/>
         <source>Add new scaling key</source>
-        <translation type="vanished">Añadir nueva clave de escalado</translation>
+        <translation>Añadir nueva clave de escalado</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="463"/>
         <source>Add new depth key</source>
-        <translation type="vanished">Añadir nueva clave de profundidad</translation>
+        <translation>Añadir nueva clave de profundidad</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="467"/>
         <source>Add new opacity key</source>
-        <translation type="vanished">Añadir nueva clave de opacidad</translation>
+        <translation>Añadir nueva clave de opacidad</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="471"/>
         <source>Add new HSV key</source>
-        <translation type="vanished">Añadir nueva clave de HSV</translation>
+        <translation>Añadir nueva clave de HSV</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="475"/>
         <source>Add new blur key</source>
-        <translation type="vanished">Añadir nueva clave de desenfoque</translation>
+        <translation>Añadir nueva clave de desenfoque</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="481"/>
         <source>Add new pose key</source>
-        <translation type="vanished">Añadir nueva clave de pose</translation>
+        <translation>Añadir nueva clave de pose</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="488"/>
         <source>Add new FFD key</source>
-        <translation type="vanished">Añadir nueva clave FFD</translation>
+        <translation>Añadir nueva clave FFD</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="493"/>
         <source>Add new image key</source>
-        <translation type="vanished">Añadir nueva clave de imagen</translation>
+        <translation>Añadir nueva clave de imagen</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
@@ -368,6 +577,79 @@
         <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>Cambiar configuración de animación</translation>
+    </message>
+</context>
+<context>
+    <name>EasingName</name>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="59"/>
+        <source>Floor</source>
+        <translation>Piso</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="61"/>
+        <source>Linear</source>
+        <translation>Lineal</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="63"/>
+        <source>Sine</source>
+        <translation>Seno</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="65"/>
+        <source>Quad</source>
+        <translation>Cuádruple</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <source>Cubic</source>
+        <translation>Cúbica</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <source>Quart</source>
+        <translation>Cuártica</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <source>Quint</source>
+        <translation>Quíntica</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <source>Expo</source>
+        <translation>Exponencial</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <source>Circ</source>
+        <translation>Circular</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <source>Back</source>
+        <translation>Atrás</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <source>Elastic</source>
+        <translation>Elástico</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <source>Bounce</source>
+        <translation>Rebotar</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <source>Custom</source>
+        <translation>Personalizado</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <source>Round</source>
+        <translation>Redondeo</translation>
     </message>
 </context>
 <context>
@@ -1127,196 +1409,461 @@
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
         <translation>Con calidad Sin pérdida esto es FFV1, que transporta alfa (yuva420p); los demás niveles eligen H.265, que aquí no puede codificar alfa en absoluto.</translation>
     </message>
+    <message>
+        <source>FFV1 (lossless master)</source>
+        <translation type="vanished">FFV1 (maestro sin pérdida)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="183"/>
+        <source>%1 (%2)</source>
+        <translation>%1 (%2)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="185"/>
+        <source>hardware</source>
+        <translation>por hardware</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="186"/>
+        <source>software</source>
+        <translation>por software</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="196"/>
+        <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
+        <translation>%1. Este sitio vuelve a codificar las subidas, así que la calidad del original importa más que la compatibilidad</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="202"/>
+        <source>%1. This plays your file directly, so decode compatibility matters most</source>
+        <translation>%1. Aquí el archivo se reproduce directamente, así que la compatibilidad de decodificación importa por encima de todo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="207"/>
+        <source>%1. A master copy, so fidelity matters most</source>
+        <translation>%1. Una copia maestra, así que la fidelidad importa por encima de todo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="218"/>
+        <source>%1, about %2s here</source>
+        <translation>%1, unos %2 s aquí</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="235"/>
+        <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
+        <translation>Intención de calidad no aplicada: la tabla de destinos no declara &lt;bucket_positions&gt;, así que &apos;%1&apos; se quedó en su valor por defecto.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="250"/>
+        <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
+        <translation>&apos;%1&apos; es un códec con pérdida, así que Sin pérdida aquí significa su máxima calidad, no un archivo sin pérdida.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="320"/>
+        <source>cannot open %1</source>
+        <translation>no se puede abrir %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="341"/>
+        <source>%1: missing &lt;export_targets&gt; root</source>
+        <translation>%1: falta el elemento raíz &lt;export_targets&gt;</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="572"/>
+        <source>no frames selected</source>
+        <translation>no hay fotogramas seleccionados</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="583"/>
+        <source>%1 frames from %2 separate ranges</source>
+        <translation>%1 fotogramas de %2 rangos distintos</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="613"/>
+        <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
+        <translation>Tamaño forzado a %1x%2 (lo exige este destino); la ilustración queda %3.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="619"/>
+        <source>cropped to fill it</source>
+        <translation>recortada para rellenarlo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="620"/>
+        <source>padded to fit it</source>
+        <translation>ampliada con márgenes para encajarla</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="660"/>
+        <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
+        <translation>Velocidad de fotogramas reducida de %1 a %2 fps (límite del destino).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="672"/>
+        <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
+        <translation>Recortado de %1 a %2 fotogramas (límite de %3 s).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="684"/>
+        <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
+        <translation>Recortado de %1 a %2 fotogramas (límite del destino).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="693"/>
+        <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
+        <translation>AVISO: el destino necesita al menos %1 fotogramas pero solo hay %2, así que probablemente se rechace la subida.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="711"/>
+        <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
+        <translation>AVISO: el destino necesita al menos %1 s pero esta exportación dura %2 s, así que probablemente se rechace la subida. Seleccione un rango de fotogramas más largo.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="783"/>
+        <source>%1 via %2, the fastest of %3 that runs here</source>
+        <translation>%1 vía %2, el más rápido de los %3 que funcionan aquí</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="788"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="821"/>
+        <source>%1 via %2</source>
+        <translation>%1 vía %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="803"/>
+        <source>%1/%2 (~%3s)</source>
+        <translation>%1/%2 (~%3 s)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="817"/>
+        <source>%1: nothing here is fast enough for this budget (%2), so this is the fastest available</source>
+        <translation>%1: nada de aquí es lo bastante rápido para este presupuesto (%2), así que esto es lo más rápido disponible</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="829"/>
+        <source>no suitable encoder found in this build</source>
+        <translation>no se encontró ningún codificador adecuado en esta compilación</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="842"/>
+        <source>no destination selected</source>
+        <translation>no hay destino seleccionado</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="846"/>
+        <source>invalid source size</source>
+        <translation>tamaño de origen no válido</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="858"/>
+        <source>%1 is required by this destination.</source>
+        <translation>Este destino requiere %1.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="871"/>
+        <source>Transparency</source>
+        <translation>transparencia</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="873"/>
+        <source>Audio</source>
+        <translation>audio</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="883"/>
+        <source>no frames selected for export</source>
+        <translation>no hay fotogramas seleccionados para exportar</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="923"/>
+        <source>%1; the ranges play back to back and the frames between them are not exported.</source>
+        <translation>%1; los rangos se reproducen seguidos y los fotogramas intermedios no se exportan.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="945"/>
+        <source>no encoder available for this destination in this build</source>
+        <translation>no hay ningún codificador disponible para este destino en esta compilación</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="979"/>
+        <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
+        <translation>AVISO: los límites de este destino NO ESTÁN VERIFICADOS; compruébelos antes de confiar en ellos.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1006"/>
+        <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
+        <translation>Una imagen fija (fotograma %1), escrita como %2. El rango de fotogramas de arriba no se aplica.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1013"/>
+        <source>%1 frames written as numbered .%2 files.</source>
+        <translation>%1 fotogramas escritos como archivos .%2 numerados.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1069"/>
+        <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
+        <translation>%1 requiere transparencia, pero &apos;%2&apos; no puede codificar un canal alfa en esta compilación (anuncia %3 y luego lo rechaza). Use un destino cuyo códec admita alfa: WebM/VP9, APNG o FFV1.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1078"/>
+        <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
+        <translation>%1: %2 no pudo codificar %3 y ningún respaldo funcionó (%4)</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1085"/>
+        <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
+        <translation>Transparencia descartada: &apos;%1&apos; anuncia %2 pero aquí no puede codificarlo, así que se usa %3 en su lugar.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1091"/>
+        <source>the encoder default</source>
+        <translation>el valor por defecto del codificador</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1152"/>
+        <source>No sound: %1 does not accept an audio track.</source>
+        <translation>Sin sonido: %1 no acepta pista de audio.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1157"/>
+        <source>WARNING: %1 expects sound but this project has no audio track.</source>
+        <translation>AVISO: %1 espera audio pero este proyecto no tiene pista de audio.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1184"/>
+        <source>no frames left</source>
+        <translation>no quedan fotogramas</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1222"/>
+        <source>could not write %1</source>
+        <translation>no se pudo escribir %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1230"/>
+        <source>no files produced</source>
+        <translation>no se produjo ningún archivo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1272"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1296"/>
+        <source>no file produced</source>
+        <translation>no se produjo ningún archivo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1330"/>
+        <source>frames: the plan selected %1, but %2 were supplied</source>
+        <translation>fotogramas: el plan seleccionó %1, pero se proporcionaron %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="580"/>
+        <source>%1 frame</source>
+        <translation>%1 fotograma</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="581"/>
+        <source>%1 frames</source>
+        <translation>%1 fotogramas</translation>
+    </message>
+    <message>
+        <source>frame mismatch: the plan selects %1 but %2 were supplied (render plan.selection.indices())</source>
+        <translation type="vanished">los fotogramas no coinciden: el plan selecciona %1 pero se proporcionaron %2 (véase plan.selection.indices())</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1399"/>
+        <source>canceled</source>
+        <translation>cancelado</translation>
+    </message>
 </context>
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="297"/>
+        <location filename="../../src/gui/exportdiag.h" line="302"/>
         <source>Choose where this is going</source>
         <translation>Elija dónde va esto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="617"/>
+        <location filename="../../src/gui/exportdiag.h" line="622"/>
         <source>Open Palette</source>
         <translation>Abrir Paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="618"/>
+        <location filename="../../src/gui/exportdiag.h" line="623"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>Archivo de paleta FFmpeg (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="632"/>
+        <location filename="../../src/gui/exportdiag.h" line="637"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="785"/>
+        <location filename="../../src/gui/exportdiag.h" line="790"/>
         <source>PNG sequence</source>
         <translation>Secuencia PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="786"/>
+        <location filename="../../src/gui/exportdiag.h" line="791"/>
         <source>JPEG sequence</source>
         <translation>Secuencia JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
+        <location filename="../../src/gui/exportdiag.h" line="917"/>
         <source>CRF:</source>
         <translation>CRF:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="918"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1384"/>
+        <location filename="../../src/gui/exportdiag.h" line="1389"/>
         <source>First frame %1</source>
         <translation>Primer fotograma %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1385"/>
+        <location filename="../../src/gui/exportdiag.h" line="1390"/>
         <source>Last frame %1</source>
         <translation>Último fotograma %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Width</source>
         <translation>Anchura</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Height</source>
         <translation>Altura</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Frame rate</source>
         <translation>Velocidad de fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>First frame</source>
         <translation>Primer fotograma</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Last frame</source>
         <translation>Último fotograma</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Format</source>
         <translation>Formato</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Codec</source>
         <translation>Códec</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Quality</source>
         <translation>Calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Quality override</source>
         <translation>Anulación de calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Image quality</source>
         <translation>Calidad de la imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Bitrate</source>
         <translation>Tasa de bits</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Destination</source>
         <translation>Destino</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Advanced</source>
         <translation>Avanzado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Export</source>
         <translation>Exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Export with transparency</source>
         <translation>Exportar con transparencia</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Export with audio</source>
         <translation>Exportar con audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Custom palette</source>
         <translation>Paleta personalizada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Keep aspect ratio</source>
         <translation>Mantener la relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1509"/>
+        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Insert range</source>
         <translation>Inserte el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1510"/>
+        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Remove range</source>
         <translation>Eliminar el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1511"/>
+        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Set width to native</source>
         <translation>Establecer anchura como nativa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1512"/>
+        <location filename="../../src/gui/exportdiag.h" line="1517"/>
         <source>Set height to native</source>
         <translation>Establecer altura como nativa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1513"/>
+        <location filename="../../src/gui/exportdiag.h" line="1518"/>
         <source>Set frame rate to native</source>
         <translation>Establecer velocidad de fotogramas como nativa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1514"/>
+        <location filename="../../src/gui/exportdiag.h" line="1519"/>
         <source>Image quality to auto</source>
         <translation>Calidad de la imagen a automático</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1515"/>
+        <location filename="../../src/gui/exportdiag.h" line="1520"/>
         <source>Quality override to auto</source>
         <translation>Anulación de calidad a automático</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1516"/>
+        <location filename="../../src/gui/exportdiag.h" line="1521"/>
         <source>Bitrate to auto</source>
         <translation>Tasa de bits a automático</translation>
     </message>
@@ -1324,12 +1871,85 @@
 <context>
     <name>Exporter</name>
     <message>
-        <source>Finishing up</source>
-        <translation type="vanished">Finalizando</translation>
+        <location filename="../../src/ctrl/Exporter.cpp" line="99"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="124"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="157"/>
+        <source>Invalid common parameters.</source>
+        <translation>Parámetros comunes no válidos.</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="106"/>
+        <source>Invalid directory path.</source>
+        <translation>Ruta de directorio no válida.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="132"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="165"/>
+        <source>Exporting was canceled.</source>
+        <translation>Se canceló la exportación en curso.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="193"/>
+        <source>No available video encoder can carry the &apos;%1&apos; container.</source>
+        <translation>Ningún codificador de vídeo disponible admite el contenedor &apos;%1&apos;.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="206"/>
+        <source>Encoder not available in this build: %1</source>
+        <translation>Codificador no disponible en esta compilación: %1</translation>
+    </message>
+    <message>
+        <source>The &apos;%1&apos; container cannot carry the %2 video codec.</source>
+        <translation type="vanished">El contenedor &apos;%1&apos; no admite el códec de vídeo %2.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="212"/>
+        <source>The &apos;%1&apos; container cannot carry the %2 video encoder.</source>
+        <translation>El contenedor &apos;%1&apos; no admite el codificador de vídeo %2.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="225"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="265"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="537"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="641"/>
+        <source>Video encoder error.
+%1</source>
+        <translation>Error del codificador de vídeo.
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="295"/>
+        <source>Finishing up</source>
+        <translation>Finalizando</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="297"/>
         <source>Rendering</source>
-        <translation type="vanished">Renderizando</translation>
+        <translation>Renderizando</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="312"/>
+        <source>Export was canceled.</source>
+        <translation>La exportación se canceló.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="347"/>
+        <source>Failed to initialize TextureDrawer</source>
+        <translation>No se pudo inicializar TextureDrawer</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="579"/>
+        <source>GIF encoder error.
+%1</source>
+        <translation>Error del codificador de GIF.
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="619"/>
+        <source>Audio mixing error.
+%1</source>
+        <translation>Error de mezcla de audio.
+%1</translation>
     </message>
 </context>
 <context>
@@ -1505,12 +2125,43 @@
         <translation type="vanished">Construyendo un árbol de objetos...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="269"/>
         <source>Building an Object Tree...</source>
-        <translation type="vanished">Construyendo un árbol de objetos...</translation>
+        <translation>Construyendo un árbol de objetos...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="597"/>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="725"/>
         <source>Building object trees...</source>
-        <translation type="vanished">Creando árboles de objetos...</translation>
+        <translation>Creando árboles de objetos...</translation>
+    </message>
+</context>
+<context>
+    <name>ImageFileLoader</name>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="522"/>
+        <source>Select ORA file type</source>
+        <translation>Seleccionar tipo de archivo</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="523"/>
+        <source>How do you wish to load this ORA file?</source>
+        <translation>¿Cómo quieres cargar este archivo ORA?</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="524"/>
+        <source>Load layered</source>
+        <translation>Cargar capas</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="525"/>
+        <source>Load merged</source>
+        <translation>Carga fusionada</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="528"/>
+        <source>Cancel file load</source>
+        <translation>Cancelar carga de archivo</translation>
     </message>
 </context>
 <context>
@@ -1535,57 +2186,192 @@
     </message>
 </context>
 <context>
+    <name>MainWindow</name>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="26"/>
+        <source>%1 GB</source>
+        <translation>%1 GB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="29"/>
+        <source>%1 MB</source>
+        <translation>%1 MB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
+        <source>%1 KB</source>
+        <translation>%1 KB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="38"/>
+        <source>yes</source>
+        <translation>sí</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="39"/>
+        <source>no</source>
+        <translation>no</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="47"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation>Este destino no se puede exportar: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation>%1 x %2, fotograma %3 (el de la línea de tiempo)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="68"/>
+        <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
+        <translation>%1 x %2, %3 fotogramas (el tiempo se define en la página de subida)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="74"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation>%1 x %2, %3 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="81"/>
+        <source>Artifact: one %1 image</source>
+        <translation>Artefacto: una imagen %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="84"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation>Artefacto: %1 archivos %2 numerados</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="89"/>
+        <source>Codec: animated GIF</source>
+        <translation>Códec: GIF animado</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="90"/>
+        <source>Codec: %1 in %2</source>
+        <translation>Códec: %1 en %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="102"/>
+        <source>not accepted by this destination</source>
+        <translation>este destino no lo admite</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <source>none in this project</source>
+        <translation>no hay ninguno en este proyecto</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="106"/>
+        <source>off in this dialog</source>
+        <translation>está desactivado en este diálogo</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="110"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation>Transparencia: %1, audio: %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="119"/>
+        <source>max %1</source>
+        <translation>máx. %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
+        <source>max %1 s</source>
+        <translation>máx. %1 s</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="123"/>
+        <source>min %1 s</source>
+        <translation>mín. %1 s</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <source>max %1 frames</source>
+        <translation>máx. %1 fotogramas</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
+        <source>max %1 fps</source>
+        <translation>máx. %1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="132"/>
+        <source>Limits: %1</source>
+        <translation>Límites: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="133"/>
+        <source>, </source>
+        <translation>, </translation>
+    </message>
+</context>
+<context>
     <name>NetworkCheckForUpdate</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="241"/>
         <source>Failed</source>
-        <translation type="vanished">Fallo</translation>
+        <translation>Fallo</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="242"/>
         <source>&lt;center&gt;Unable to get latest version. &lt;br&gt;Please check your internet connection and if you have curl or wget installed.&lt;/center&gt;</source>
-        <translation type="vanished">&lt;center&gt;No se puede obtener la última versión. &lt;br&gt;Verifique su conexión a Internet y si tiene curl o wget instalado.&lt;/center&gt;</translation>
+        <translation>&lt;center&gt;No se puede obtener la última versión. &lt;br&gt;Verifique su conexión a Internet y si tiene curl o wget instalado.&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="252"/>
         <source>On latest</source>
-        <translation type="vanished">En la última</translation>
+        <translation>En la última</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="254"/>
         <source>&lt;center&gt;You already have the latest stable release available. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;Ya tienes disponible la última versión estable. &lt;br&gt;Versión: </translation>
+        <translation>&lt;center&gt;Ya tienes disponible la última versión estable. &lt;br&gt;Versión: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="266"/>
         <source>On preview</source>
-        <translation type="vanished">En vista previa</translation>
+        <translation>En vista previa</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="268"/>
         <source>&lt;center&gt;Your current version is higher than the latest stable release. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;Su versión actual es superior a la última versión estable. &lt;br&gt;Versión: </translation>
+        <translation>&lt;center&gt;Su versión actual es superior a la última versión estable. &lt;br&gt;Versión: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="280"/>
         <source>New release available</source>
-        <translation type="vanished">Nueva versión disponible</translation>
+        <translation>Nueva versión disponible</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="282"/>
         <source>&lt;center&gt;A new stable release is available, version: </source>
-        <translation type="vanished">&lt;center&gt;Una nueva versión estable está disponible, versión: </translation>
+        <translation>&lt;center&gt;Una nueva versión estable está disponible, versión: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="286"/>
         <source>.&lt;br&gt;Do you wish to download it or to go to the GitHub page?&lt;/center&gt;</source>
-        <translation type="vanished">.&lt;br&gt;¿Desea descargarlo o ir a la página de GitHub?&lt;/center&gt;</translation>
+        <translation>.&lt;br&gt;¿Desea descargarlo o ir a la página de GitHub?&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="297"/>
         <source>Download</source>
-        <translation type="vanished">Descargar</translation>
+        <translation>Descargar</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="299"/>
         <source>Go to page</source>
-        <translation type="vanished">Ir a la página</translation>
+        <translation>Ir a la página</translation>
     </message>
 </context>
 <context>
     <name>NetworkUtil</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="193"/>
         <source>Currently downloading:</source>
-        <translation type="vanished">Descargando:</translation>
+        <translation>Descargando:</translation>
     </message>
 </context>
 <context>
@@ -1698,6 +2484,67 @@
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>Archivos de audio (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
+    </message>
+</context>
+<context>
+    <name>UILog</name>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="32"/>
+        <source>Bone Editor : </source>
+        <translation>Editor de huesos : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="118"/>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="96"/>
+        <source>An object with invalid pose was given.</source>
+        <translation>Se ha dado un objeto con pose inválida.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="187"/>
+        <source>FFD Editor : </source>
+        <translation>Editor de FFD: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="265"/>
+        <source>There are no objects with meshes.</source>
+        <translation>No hay objetos con mallas.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="25"/>
+        <source>Mesh Editor : </source>
+        <translation>Editor de malla: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="29"/>
+        <source>The object can&apos;t own a mesh key.</source>
+        <translation>El objeto no puede tener una clave de malla.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="29"/>
+        <source>Pose Editor : </source>
+        <translation>Editor de postura: </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <source>An object with invalid posture was given.</source>
+        <translation>Se ha dado un objeto con una postura no válida.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="118"/>
+        <source>There are no bones in the selected layer that can be posed.</source>
+        <translation>No hay huesos en la capa seleccionada que puedan ser presentados.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="30"/>
+        <source>The transformed object has one or more bones bound to it, SRT keys may not work as expected.</source>
+        <translation>El objeto transformado tiene uno o más huesos vinculados a él, es posible que las claves SRT no funcionen como se espera.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <source>SRT Editor : </source>
+        <translation>Editor de SRT: </translation>
     </message>
 </context>
 <context>
@@ -1876,7 +2723,7 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Export parameters</source>
         <translation>Exportar parámetros</translation>
     </message>
@@ -1885,12 +2732,12 @@
         <translation type="vanished">Intermedio </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Keep aspect ratio</source>
         <translation>Mantener la relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Último fotograma -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1907,17 +2754,17 @@
         <translation type="vanished">Personalizado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Insert range</source>
         <translation>Inserte el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Remove range</source>
         <translation>Eliminar el rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>Custom palette</source>
         <translation>Paleta personalizada</translation>
     </message>
@@ -1946,7 +2793,7 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
         <source>Width: </source>
         <translation>Ancho: </translation>
     </message>
@@ -1955,9 +2802,9 @@
         <translation type="vanished">De uno a uno</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1446"/>
         <source>Set to native</source>
         <translation>Establecer como nativo</translation>
     </message>
@@ -1970,7 +2817,7 @@
         <translation type="vanished">Parámetros activos:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Height:</source>
         <translation>Altura:</translation>
     </message>
@@ -1979,7 +2826,7 @@
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exportando&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1439"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
@@ -1996,7 +2843,7 @@
         <translation type="vanished">Secuencia de imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
+        <location filename="../../src/gui/exportdiag.h" line="1447"/>
         <source>Export with transparency</source>
         <translation>Exportar con transparencia</translation>
     </message>
@@ -2005,95 +2852,95 @@
         <translation type="vanished">Animación de bucle (solo GIF)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1421"/>
+        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Format:</source>
         <translation>Formato:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1422"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Codec:</source>
         <translation>Códec:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Destination:</source>
         <translation>Destino:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Smaller file</source>
         <translation>Archivo más pequeño</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1426"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Balanced</source>
         <translation>Equilibrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Best quality</source>
         <translation>Mejor calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Lossless</source>
         <translation>Sin pérdida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>How to encode</source>
         <translation>Cómo codificar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
         <source>What to export</source>
         <translation>Qué exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1448"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
+        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Export with audio</source>
         <translation>Exportar con audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
-        <location filename="../../src/gui/exportdiag.h" line="1459"/>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1464"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1446"/>
-        <location filename="../../src/gui/exportdiag.h" line="1460"/>
-        <location filename="../../src/gui/exportdiag.h" line="1461"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1465"/>
+        <location filename="../../src/gui/exportdiag.h" line="1466"/>
         <source>Set to auto</source>
         <translation>Establecer a automático</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1449"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Frame range:</source>
         <translation>Rango de fotogramas:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1453"/>
+        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Advanced</source>
         <translation>Avanzado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1458"/>
+        <location filename="../../src/gui/exportdiag.h" line="1463"/>
         <source>Quality override:</source>
         <translation>Anulación de calidad:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1534"/>
+        <location filename="../../src/gui/exportdiag.h" line="1539"/>
         <source>&amp;Export</source>
         <translation>&amp;Exportar</translation>
     </message>
@@ -2102,17 +2949,17 @@
         <translation type="vanished">Fotogramas procesados: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1455"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Primer fotograma -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1456"/>
         <source>Bitrate (kB/s):</source>
         <translation>Tasa de bits (kB/s):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1457"/>
         <source>Image quality:</source>
         <translation>Calidad de la imagen:</translation>
     </message>
@@ -2121,7 +2968,7 @@
         <translation type="vanished">Exportar con parámetros personalizados</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1462"/>
+        <location filename="../../src/gui/exportdiag.h" line="1467"/>
         <source>Select palette path</source>
         <translation>Seleccionar ruta de paleta</translation>
     </message>
@@ -2206,7 +3053,7 @@
         <translation type="vanished">Exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1536"/>
+        <location filename="../../src/gui/exportdiag.h" line="1541"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -2278,37 +3125,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="131"/>
         <source>Where are you posting this?</source>
         <translation>¿Dónde va a publicar esto?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="143"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>Buscar: telegram, sticker, reels, ilustración, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="148"/>
         <source>Search destinations</source>
         <translation>Buscar destinos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="245"/>
         <source>%1 destinations</source>
         <translation>%1 destinos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="250"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>Mi plataforma no está en la lista (elijo el formato yo mismo)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="252"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>Todo lo anterior son destinos cuyas reglas conocemos. Este le permite indicar el formato y el códec usted mismo.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="257"/>
         <source>Use this destination</source>
         <translation>Usar este destino</translation>
     </message>
@@ -5166,14 +6013,16 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>projectSave</name>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="225"/>
         <source>Non ascii characters detected, this may cause issues.
 Save anyway?</source>
-        <translation type="vanished">Caracteres no ascii detectados, esto puede causar problemas.
+        <translation>Caracteres no ascii detectados, esto puede causar problemas.
 ¿Guardar de todos modos?</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="231"/>
         <source>Unicode on filename detected</source>
-        <translation type="vanished">Unicode en nombre de archivo detectado</translation>
+        <translation>Unicode en nombre de archivo detectado</translation>
     </message>
 </context>
 <context>

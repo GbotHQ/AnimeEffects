@@ -25,246 +25,455 @@
     </message>
 </context>
 <context>
+    <name>BlendModeName</name>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="142"/>
+        <location filename="../../src/img/BlendMode.cpp" line="198"/>
+        <source>Normal</source>
+        <translation>通常</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="144"/>
+        <source>Darken</source>
+        <translation>比較（暗）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="146"/>
+        <source>Multiply</source>
+        <translation>乗算</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="148"/>
+        <source>Color Burn</source>
+        <translation>焼き込みカラー</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="150"/>
+        <source>Linear Burn</source>
+        <translation>焼き込みリニア</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="152"/>
+        <source>Lighten</source>
+        <translation>比較（明）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="154"/>
+        <source>Screen</source>
+        <translation>スクリーン</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="156"/>
+        <source>Color Dodge</source>
+        <translation>覆い焼きカラー</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="158"/>
+        <source>Linear Dodge</source>
+        <translation>覆い焼きリニア</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="160"/>
+        <source>Overlay</source>
+        <translation>オーバーレイ</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="162"/>
+        <source>Soft Light</source>
+        <translation>ソフトライト</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="164"/>
+        <source>Hard Light</source>
+        <translation>ハードライト</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="166"/>
+        <source>Vivid Light</source>
+        <translation>ビビッドライト</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="168"/>
+        <source>Linear Light</source>
+        <translation>リニアライト</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="170"/>
+        <source>Pin Light</source>
+        <translation>ピンライト</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="172"/>
+        <source>Hard Mix</source>
+        <translation>ハードミックス</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="174"/>
+        <source>Difference</source>
+        <translation>差の絶対値</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="176"/>
+        <source>Exclusion</source>
+        <translation>除外</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="178"/>
+        <source>Subtract</source>
+        <translation>減算</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="180"/>
+        <source>Divide</source>
+        <translation>除算</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="182"/>
+        <source>Add (Glow)</source>
+        <translation>加算（発光）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="184"/>
+        <source>Glow Dodge</source>
+        <translation>覆い焼き（発光）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="186"/>
+        <source>Hue</source>
+        <translation>色相</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="188"/>
+        <source>Saturation</source>
+        <translation>彩度</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="190"/>
+        <source>Color</source>
+        <translation>カラー</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="192"/>
+        <source>Luminosity</source>
+        <translation>輝度</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="194"/>
+        <source>Darker Color</source>
+        <translation>色の比較（暗）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="196"/>
+        <source>Lighter Color</source>
+        <translation>色の比較（明）</translation>
+    </message>
+</context>
+<context>
     <name>CmndName</name>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="78"/>
         <source>Bind node to bone</source>
-        <translation type="vanished">ボーンをノードに結合する</translation>
+        <translation>ボーンをノードに結合する</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="101"/>
         <source>Unbind node from bones</source>
-        <translation type="vanished">オブジェクトをボーンから解く</translation>
+        <translation>オブジェクトをボーンから解く</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="109"/>
         <source>Add new bone</source>
-        <translation type="vanished">ボーンを追加する</translation>
+        <translation>ボーンを追加する</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="125"/>
         <source>Add new parent bone</source>
-        <translation type="vanished">新しいトップボーンを追加</translation>
+        <translation>新しいトップボーンを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_DeleteMode.cpp" line="64"/>
         <source>Delete bone</source>
-        <translation type="vanished">ボーンを削除</translation>
+        <translation>ボーンを削除</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_EraseInflMode.cpp" line="159"/>
+        <location filename="../../src/ctrl/bone/bone_InfluenceMode.cpp" line="118"/>
+        <location filename="../../src/ctrl/bone/bone_PaintInflMode.cpp" line="135"/>
         <source>Update bone influence</source>
-        <translation type="vanished">ボーンの影響度を更新</translation>
+        <translation>ボーンの影響度を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_MoveJointMode.cpp" line="81"/>
         <source>Move bone</source>
-        <translation type="vanished">ボーンを移動する</translation>
+        <translation>ボーンを移動する</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_BrushMode.cpp" line="124"/>
         <source>Update FFD</source>
-        <translation type="vanished">自由変形を更新</translation>
+        <translation>自由変形を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_DragMode.cpp" line="185"/>
         <source>Move FFD key vertex</source>
-        <translation type="vanished">自由変形キーの頂点を移動</translation>
+        <translation>自由変形キーの頂点を移動</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="88"/>
         <source>Add mesh key triangle</source>
-        <translation type="vanished">メッシュキーの三角形を追加</translation>
+        <translation>メッシュキーの三角形を追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="120"/>
         <source>Move mesh key vertex</source>
-        <translation type="vanished">メッシュキーの頂点を移動</translation>
+        <translation>メッシュキーの頂点を移動</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="64"/>
         <source>Remove mesh key vertex</source>
-        <translation type="vanished">メッシュキーの頂点を削除</translation>
+        <translation>メッシュキーの頂点を削除</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="77"/>
         <source>Remove mesh key face</source>
-        <translation type="vanished">メッシュキーの面を削除</translation>
+        <translation>メッシュキーの面を削除</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_SplitMode.cpp" line="144"/>
         <source>Split mesh key triangle</source>
-        <translation type="vanished">メッシュキーの三角形を切る</translation>
+        <translation>メッシュキーの三角形を切る</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_DrawBoneMode.cpp" line="136"/>
         <source>Pull bones of a pose key</source>
-        <translation type="vanished">ポーズキーのボーンを引っ張る</translation>
+        <translation>ポーズキーのボーンを引っ張る</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_ErasePoseMode.cpp" line="84"/>
         <source>erase a pose</source>
-        <translation type="vanished">ポーズを消す</translation>
+        <translation>ポーズを消す</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_TransBoneMode.cpp" line="101"/>
         <source>rotate a bone of a posing key</source>
-        <translation type="vanished">ポーズキーのボーンを回転する</translation>
+        <translation>ポーズキーのボーンを回転する</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="112"/>
         <source>update centroid of a moving key</source>
-        <translation type="vanished">移動キーの重心を更新</translation>
+        <translation>移動キーの重心を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="175"/>
         <source>update a moving key</source>
-        <translation type="vanished">移動キーを更新</translation>
+        <translation>移動キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="206"/>
         <source>update a rotation key</source>
-        <translation type="vanished">回転キーを更新</translation>
+        <translation>回転キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="237"/>
         <source>update a scaling key</source>
-        <translation type="vanished">拡縮キーを更新</translation>
+        <translation>拡縮キーを更新</translation>
     </message>
     <message>
         <source>Move key</source>
         <translation type="vanished">キーを移動</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="354"/>
         <source>Move keys</source>
-        <translation type="vanished">キーを移動</translation>
+        <translation>キーを移動</translation>
     </message>
     <message>
         <source>Paste clipboard key</source>
         <translation type="vanished">キーをクリップボードに貼り付ける</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="669"/>
+        <source>Paste clipboard keys</source>
+        <translation>キーをクリップボードに貼り付ける</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="843"/>
         <source>Paste keys</source>
-        <translation type="vanished">キーを貼り付け</translation>
+        <translation>キーを貼り付け</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="908"/>
         <source>Delete keys</source>
-        <translation type="vanished">キーを削除</translation>
+        <translation>キーを削除</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="258"/>
         <source>Update default movement key</source>
-        <translation type="vanished">初期移動値を更新</translation>
+        <translation>初期移動値を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="259"/>
         <source>Update movement key</source>
-        <translation type="vanished">移動キーを更新</translation>
+        <translation>移動キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="269"/>
         <source>Update default rotation key</source>
-        <translation type="vanished">初期回転値を更新</translation>
+        <translation>初期回転値を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="270"/>
         <source>Update rotation key</source>
-        <translation type="vanished">回転キーを更新</translation>
+        <translation>回転キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="280"/>
         <source>Update default scaling key</source>
-        <translation type="vanished">初期拡縮値を更新</translation>
+        <translation>初期拡縮値を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="281"/>
         <source>Update scaling key</source>
-        <translation type="vanished">拡縮キーを更新</translation>
+        <translation>拡縮キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
         <source>Update default depth key</source>
-        <translation type="vanished">初期深度を更新</translation>
+        <translation>初期深度を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="292"/>
         <source>Update depth key</source>
-        <translation type="vanished">深度キーを更新</translation>
+        <translation>深度キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
         <source>Update default opacity key</source>
-        <translation type="vanished">初期不透明度を更新</translation>
+        <translation>初期不透明度を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="303"/>
         <source>Update opacity key</source>
-        <translation type="vanished">不透明度キーを更新</translation>
+        <translation>不透明度キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
         <source>Update default HSV key</source>
-        <translation type="vanished">デフォルトのHSVキーを更新</translation>
+        <translation>デフォルトのHSVキーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="314"/>
         <source>Update HSV key</source>
-        <translation type="vanished">HSVキーを更新</translation>
+        <translation>HSVキーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
         <source>Update default blur key</source>
-        <translation type="vanished">初期ぼかしを更新</translation>
+        <translation>初期ぼかしを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="325"/>
         <source>Update blur key</source>
-        <translation type="vanished">ぼかしキーを更新</translation>
+        <translation>ぼかしキーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
         <source>Update default pose key</source>
-        <translation type="vanished">初期ポーズを更新</translation>
+        <translation>初期ポーズを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="336"/>
         <source>Update pose key</source>
-        <translation type="vanished">ポーズキーを更新</translation>
+        <translation>ポーズキーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
         <source>Update default FFD key</source>
-        <translation type="vanished">初期自由変形を更新</translation>
+        <translation>初期自由変形を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="347"/>
         <source>Update FFD key</source>
-        <translation type="vanished">自由変形キーを更新</translation>
+        <translation>自由変形キーを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="359"/>
         <source>Update default image resource key</source>
-        <translation type="vanished">初期画像のリソースを更新</translation>
+        <translation>初期画像のリソースを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="360"/>
         <source>update image resource key</source>
-        <translation type="vanished">画像キーのリソースを更新</translation>
+        <translation>画像キーのリソースを更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="380"/>
         <source>Update the image&apos;s default offset key</source>
-        <translation type="vanished">初期画像の中心を更新</translation>
+        <translation>初期画像の中心を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="381"/>
         <source>Update the image&apos;s offset key</source>
-        <translation type="vanished">画像キーの中心を更新</translation>
+        <translation>画像キーの中心を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="400"/>
         <source>Update the default mesh size key</source>
-        <translation type="vanished">初期画像のメッシュ単位を更新</translation>
+        <translation>初期画像のメッシュ単位を更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="401"/>
         <source>Update mesh size key</source>
-        <translation type="vanished">メッシュサイズキー更新</translation>
+        <translation>メッシュサイズキー更新</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="450"/>
         <source>Add new movement key</source>
-        <translation type="vanished">新しい移動キーを追加</translation>
+        <translation>新しい移動キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="454"/>
         <source>Add new rotation key</source>
-        <translation type="vanished">新しい回転キーを追加</translation>
+        <translation>新しい回転キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="459"/>
         <source>Add new scaling key</source>
-        <translation type="vanished">新しい拡縮キーを追加</translation>
+        <translation>新しい拡縮キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="463"/>
         <source>Add new depth key</source>
-        <translation type="vanished">新しい深度キーを追加</translation>
+        <translation>新しい深度キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="467"/>
         <source>Add new opacity key</source>
-        <translation type="vanished">新しい不透明度キーを追加</translation>
+        <translation>新しい不透明度キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="471"/>
         <source>Add new HSV key</source>
-        <translation type="vanished">新しいHSVキーの追加</translation>
+        <translation>新しいHSVキーの追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="475"/>
         <source>Add new blur key</source>
-        <translation type="vanished">新しいぼかしキーを追加</translation>
+        <translation>新しいぼかしキーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="481"/>
         <source>Add new pose key</source>
-        <translation type="vanished">新しいポーズキーを追加</translation>
+        <translation>新しいポーズキーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="488"/>
         <source>Add new FFD key</source>
-        <translation type="vanished">新しい自由変形キーを追加</translation>
+        <translation>新しい自由変形キーを追加</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="493"/>
         <source>Add new image key</source>
-        <translation type="vanished">新しい画像キーの追加</translation>
+        <translation>新しい画像キーの追加</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
@@ -368,6 +577,79 @@
         <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>アニメーション設定の変更</translation>
+    </message>
+</context>
+<context>
+    <name>EasingName</name>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="59"/>
+        <source>Floor</source>
+        <translation>切り捨て</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="61"/>
+        <source>Linear</source>
+        <translation>リニア</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="63"/>
+        <source>Sine</source>
+        <translation>正弦曲線</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="65"/>
+        <source>Quad</source>
+        <translation>二次式</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <source>Cubic</source>
+        <translation>三次式</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <source>Quart</source>
+        <translation>四次式</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <source>Quint</source>
+        <translation>五次式</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <source>Expo</source>
+        <translation>指数</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <source>Circ</source>
+        <translation>円形</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <source>Back</source>
+        <translation>バック</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <source>Elastic</source>
+        <translation>ゴム状</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <source>Bounce</source>
+        <translation>バウンス</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <source>Custom</source>
+        <translation>カスタム</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <source>Round</source>
+        <translation>四捨五入</translation>
     </message>
 </context>
 <context>
@@ -1127,196 +1409,461 @@
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
         <translation>ロスレス品質では FFV1 になり、これはアルファ（yuva420p）を保持します。ほかの品質段階では H.265 が選ばれますが、ここではアルファをまったくエンコードできません。</translation>
     </message>
+    <message>
+        <source>FFV1 (lossless master)</source>
+        <translation type="vanished">FFV1（ロスレスマスター）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="183"/>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="185"/>
+        <source>hardware</source>
+        <translation>ハードウェア</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="186"/>
+        <source>software</source>
+        <translation>ソフトウェア</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="196"/>
+        <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
+        <translation>%1。このサイトはアップロードを再エンコードするため、互換性よりも元の画質が優先されます</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="202"/>
+        <source>%1. This plays your file directly, so decode compatibility matters most</source>
+        <translation>%1。このファイルは直接再生されるため、デコードの互換性が最も重要です</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="207"/>
+        <source>%1. A master copy, so fidelity matters most</source>
+        <translation>%1。マスター保存用のため、忠実さが最も重要です</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="218"/>
+        <source>%1, about %2s here</source>
+        <translation>%1、ここでは約 %2 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="235"/>
+        <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
+        <translation>品質の指定を適用できません: 出力先テーブルに &lt;bucket_positions&gt; の宣言がないため、&apos;%1&apos; は既定のままです。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="250"/>
+        <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
+        <translation>&apos;%1&apos; は非可逆コーデックのため、ここでの「ロスレス」は最高品質を意味し、可逆ファイルになるわけではありません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="320"/>
+        <source>cannot open %1</source>
+        <translation>%1 を開けません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="341"/>
+        <source>%1: missing &lt;export_targets&gt; root</source>
+        <translation>%1: &lt;export_targets&gt; ルート要素がありません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="572"/>
+        <source>no frames selected</source>
+        <translation>フレームが選択されていません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="583"/>
+        <source>%1 frames from %2 separate ranges</source>
+        <translation>%2 個の離れた範囲から %1 フレーム</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="613"/>
+        <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
+        <translation>サイズは %1x%2 に固定されます（この出力先の要件）。元の絵は %3。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="619"/>
+        <source>cropped to fill it</source>
+        <translation>切り取って合わせます</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="620"/>
+        <source>padded to fit it</source>
+        <translation>余白を加えて合わせます</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="660"/>
+        <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
+        <translation>フレームレートを %1 から %2 fps に下げました（出力先の上限）。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="672"/>
+        <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
+        <translation>%1 フレームから %2 フレームに切り詰めました（%3 秒の上限）。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="684"/>
+        <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
+        <translation>%1 フレームから %2 フレームに切り詰めました（出力先の上限）。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="693"/>
+        <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
+        <translation>警告: この出力先は %1 フレーム以上が必要ですが %2 しかないため、アップロードは拒否される可能性が高いです。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="711"/>
+        <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
+        <translation>警告: この出力先は %1 秒以上が必要ですが、このエクスポートは %2 秒のため、アップロードは拒否される可能性が高いです。フレーム範囲を長くしてください。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="783"/>
+        <source>%1 via %2, the fastest of %3 that runs here</source>
+        <translation>%1 を %2 で使用（ここで動作する %3 個のうち最速）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="788"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="821"/>
+        <source>%1 via %2</source>
+        <translation>%1 を %2 で使用</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="803"/>
+        <source>%1/%2 (~%3s)</source>
+        <translation>%1/%2（約 %3 秒）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="817"/>
+        <source>%1: nothing here is fast enough for this budget (%2), so this is the fastest available</source>
+        <translation>%1: この時間の上限（%2）に間に合うものがないため、利用できる中で最速です</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="829"/>
+        <source>no suitable encoder found in this build</source>
+        <translation>このビルドに適したエンコーダーがありません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="842"/>
+        <source>no destination selected</source>
+        <translation>出力先が選択されていません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="846"/>
+        <source>invalid source size</source>
+        <translation>元のサイズが不正です</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="858"/>
+        <source>%1 is required by this destination.</source>
+        <translation>この出力先では %1 が必須です。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="871"/>
+        <source>Transparency</source>
+        <translation>透明度</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="873"/>
+        <source>Audio</source>
+        <translation>音声</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="883"/>
+        <source>no frames selected for export</source>
+        <translation>エクスポートするフレームが選択されていません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="923"/>
+        <source>%1; the ranges play back to back and the frames between them are not exported.</source>
+        <translation>%1。範囲は連続して再生され、範囲の間のフレームはエクスポートされません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="945"/>
+        <source>no encoder available for this destination in this build</source>
+        <translation>この出力先で使えるエンコーダーがこのビルドにありません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="979"/>
+        <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
+        <translation>警告: この出力先の上限は未確認です。当てにする前に再確認してください。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1006"/>
+        <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
+        <translation>静止画 1 枚（フレーム %1）を %2 として書き出します。上記のフレーム範囲は適用されません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1013"/>
+        <source>%1 frames written as numbered .%2 files.</source>
+        <translation>%1 フレームを連番の .%2 ファイルとして書き出します。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1069"/>
+        <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
+        <translation>%1 は透明度を必要としますが、&apos;%2&apos; はこのビルドでアルファチャンネルをエンコードできません（%3 に対応すると表明しながら拒否します）。アルファを保持できるコーデックの出力先を使用してください: WebM/VP9、APNG、FFV1。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1078"/>
+        <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
+        <translation>%1: %2 は %3 をエンコードできず、代替も機能しませんでした（%4）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1085"/>
+        <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
+        <translation>透明度を破棄しました: &apos;%1&apos; は %2 に対応すると表明していますが、ここではエンコードできないため、代わりに %3 を使用します。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1091"/>
+        <source>the encoder default</source>
+        <translation>エンコーダーの既定値</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1152"/>
+        <source>No sound: %1 does not accept an audio track.</source>
+        <translation>音声なし: %1 は音声トラックを受け付けません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1157"/>
+        <source>WARNING: %1 expects sound but this project has no audio track.</source>
+        <translation>警告: %1 は音声を必要としますが、このプロジェクトに音声トラックがありません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1184"/>
+        <source>no frames left</source>
+        <translation>フレームが残っていません</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1222"/>
+        <source>could not write %1</source>
+        <translation>%1 を書き出せませんでした</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1230"/>
+        <source>no files produced</source>
+        <translation>ファイルが 1 つも生成されませんでした</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1272"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1296"/>
+        <source>no file produced</source>
+        <translation>ファイルが生成されませんでした</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1330"/>
+        <source>frames: the plan selected %1, but %2 were supplied</source>
+        <translation>フレーム: プランは %1 を選択していますが、%2 が渡されました</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="580"/>
+        <source>%1 frame</source>
+        <translation>%1 フレーム</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="581"/>
+        <source>%1 frames</source>
+        <translation>%1 フレーム</translation>
+    </message>
+    <message>
+        <source>frame mismatch: the plan selects %1 but %2 were supplied (render plan.selection.indices())</source>
+        <translation type="vanished">フレームの不一致: プランは %1 を選択していますが %2 が渡されました（render plan.selection.indices()）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1399"/>
+        <source>canceled</source>
+        <translation>中止されました</translation>
+    </message>
 </context>
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="297"/>
+        <location filename="../../src/gui/exportdiag.h" line="302"/>
         <source>Choose where this is going</source>
         <translation>出力先を選択</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="617"/>
+        <location filename="../../src/gui/exportdiag.h" line="622"/>
         <source>Open Palette</source>
         <translation>オープンパレット</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="618"/>
+        <location filename="../../src/gui/exportdiag.h" line="623"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>FFmpegパレットファイル (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="632"/>
+        <location filename="../../src/gui/exportdiag.h" line="637"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="785"/>
+        <location filename="../../src/gui/exportdiag.h" line="790"/>
         <source>PNG sequence</source>
         <translation>PNG 連番</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="786"/>
+        <location filename="../../src/gui/exportdiag.h" line="791"/>
         <source>JPEG sequence</source>
         <translation>JPEG 連番</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
+        <location filename="../../src/gui/exportdiag.h" line="917"/>
         <source>CRF:</source>
         <translation>CRF:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="918"/>
         <source>Quality:</source>
         <translation>品質:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1384"/>
+        <location filename="../../src/gui/exportdiag.h" line="1389"/>
         <source>First frame %1</source>
         <translation>最初のフレーム %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1385"/>
+        <location filename="../../src/gui/exportdiag.h" line="1390"/>
         <source>Last frame %1</source>
         <translation>最後のフレーム %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Width</source>
         <translation>幅</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Height</source>
         <translation>高さ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Frame rate</source>
         <translation>フレームレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>First frame</source>
         <translation>最初のフレーム</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Last frame</source>
         <translation>最後のフレーム</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Format</source>
         <translation>形式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Codec</source>
         <translation>コーデック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Quality</source>
         <translation>品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Quality override</source>
         <translation>品質の上書き</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Image quality</source>
         <translation>画質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Bitrate</source>
         <translation>ビットレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Destination</source>
         <translation>出力先</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Advanced</source>
         <translation>詳細設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Export</source>
         <translation>エクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Export with transparency</source>
         <translation>透明度付きエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Loop animation</source>
         <translation>ループ再生</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Export with audio</source>
         <translation>音声付きでエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Custom palette</source>
         <translation>カスタムパレット</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Keep aspect ratio</source>
         <translation>アスペクト比を維持する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1509"/>
+        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Insert range</source>
         <translation>範囲を追加する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1510"/>
+        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Remove range</source>
         <translation>範囲を削除する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1511"/>
+        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Set width to native</source>
         <translation>幅を元の値に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1512"/>
+        <location filename="../../src/gui/exportdiag.h" line="1517"/>
         <source>Set height to native</source>
         <translation>高さを元の値に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1513"/>
+        <location filename="../../src/gui/exportdiag.h" line="1518"/>
         <source>Set frame rate to native</source>
         <translation>フレームレートを元の値に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1514"/>
+        <location filename="../../src/gui/exportdiag.h" line="1519"/>
         <source>Image quality to auto</source>
         <translation>画質を自動に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1515"/>
+        <location filename="../../src/gui/exportdiag.h" line="1520"/>
         <source>Quality override to auto</source>
         <translation>品質の上書きを自動に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1516"/>
+        <location filename="../../src/gui/exportdiag.h" line="1521"/>
         <source>Bitrate to auto</source>
         <translation>ビットレートを自動に設定</translation>
     </message>
@@ -1324,12 +1871,85 @@
 <context>
     <name>Exporter</name>
     <message>
-        <source>Finishing up</source>
-        <translation type="vanished">仕上げに</translation>
+        <location filename="../../src/ctrl/Exporter.cpp" line="99"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="124"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="157"/>
+        <source>Invalid common parameters.</source>
+        <translation>共通パラメーターが不正です。</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="106"/>
+        <source>Invalid directory path.</source>
+        <translation>ディレクトリパスが不正です。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="132"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="165"/>
+        <source>Exporting was canceled.</source>
+        <translation>エクスポートを中止しました。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="193"/>
+        <source>No available video encoder can carry the &apos;%1&apos; container.</source>
+        <translation>&apos;%1&apos; コンテナを扱える利用可能な動画エンコーダーがありません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="206"/>
+        <source>Encoder not available in this build: %1</source>
+        <translation>このビルドで利用できないエンコーダー: %1</translation>
+    </message>
+    <message>
+        <source>The &apos;%1&apos; container cannot carry the %2 video codec.</source>
+        <translation type="vanished">&apos;%1&apos; コンテナは %2 動画コーデックを扱えません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="212"/>
+        <source>The &apos;%1&apos; container cannot carry the %2 video encoder.</source>
+        <translation>&apos;%1&apos; コンテナは %2 動画エンコーダーを扱えません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="225"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="265"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="537"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="641"/>
+        <source>Video encoder error.
+%1</source>
+        <translation>動画エンコーダーエラー。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="295"/>
+        <source>Finishing up</source>
+        <translation>仕上げに</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="297"/>
         <source>Rendering</source>
-        <translation type="vanished">描画</translation>
+        <translation>描画</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="312"/>
+        <source>Export was canceled.</source>
+        <translation>エクスポートは中止されました。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="347"/>
+        <source>Failed to initialize TextureDrawer</source>
+        <translation>TextureDrawer の初期化に失敗しました</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="579"/>
+        <source>GIF encoder error.
+%1</source>
+        <translation>GIF エンコーダーエラー。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="619"/>
+        <source>Audio mixing error.
+%1</source>
+        <translation>音声ミックスエラー。
+%1</translation>
     </message>
 </context>
 <context>
@@ -1505,12 +2125,43 @@
         <translation type="vanished">オブジェクトツリーの構築...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="269"/>
         <source>Building an Object Tree...</source>
-        <translation type="vanished">オブジェクトツリーの構築...</translation>
+        <translation>オブジェクトツリーの構築...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="597"/>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="725"/>
         <source>Building object trees...</source>
-        <translation type="vanished">オブジェクトツリーの構築...</translation>
+        <translation>オブジェクトツリーの構築...</translation>
+    </message>
+</context>
+<context>
+    <name>ImageFileLoader</name>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="522"/>
+        <source>Select ORA file type</source>
+        <translation>「oraFile」タイプを選択</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="523"/>
+        <source>How do you wish to load this ORA file?</source>
+        <translation>この「oraFile」ファイルをどのようにロードしますか？</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="524"/>
+        <source>Load layered</source>
+        <translation>レイヤーをロードする</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="525"/>
+        <source>Load merged</source>
+        <translation>イメージをロードする</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="528"/>
+        <source>Cancel file load</source>
+        <translation>ファイルの読み込みをキャンセル</translation>
     </message>
 </context>
 <context>
@@ -1535,57 +2186,192 @@
     </message>
 </context>
 <context>
+    <name>MainWindow</name>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="26"/>
+        <source>%1 GB</source>
+        <translation>%1 GB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="29"/>
+        <source>%1 MB</source>
+        <translation>%1 MB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
+        <source>%1 KB</source>
+        <translation>%1 KB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="38"/>
+        <source>yes</source>
+        <translation>あり</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="39"/>
+        <source>no</source>
+        <translation>なし</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="47"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation>この出力先にはエクスポートできません: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation>%1 x %2、フレーム %3（タイムラインの現在フレーム）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="68"/>
+        <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
+        <translation>%1 x %2、%3 フレーム（タイミングはアップロードページで設定）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="74"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation>%1 x %2, %3 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="81"/>
+        <source>Artifact: one %1 image</source>
+        <translation>出力: %1 画像 1 枚</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="84"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation>出力: %1 枚の %2 連番ファイル</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="89"/>
+        <source>Codec: animated GIF</source>
+        <translation>コーデック: アニメーションGIF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="90"/>
+        <source>Codec: %1 in %2</source>
+        <translation>コーデック: %2 の %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="102"/>
+        <source>not accepted by this destination</source>
+        <translation>この出力先では受け付けられません</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <source>none in this project</source>
+        <translation>このプロジェクトに音声がありません</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="106"/>
+        <source>off in this dialog</source>
+        <translation>このダイアログでオフにしています</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="110"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation>透明度: %1&#x3000;音声: %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="119"/>
+        <source>max %1</source>
+        <translation>最大 %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
+        <source>max %1 s</source>
+        <translation>最大 %1 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="123"/>
+        <source>min %1 s</source>
+        <translation>最小 %1 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <source>max %1 frames</source>
+        <translation>最大 %1 フレーム</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
+        <source>max %1 fps</source>
+        <translation>最大 %1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="132"/>
+        <source>Limits: %1</source>
+        <translation>上限: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="133"/>
+        <source>, </source>
+        <translation>、</translation>
+    </message>
+</context>
+<context>
     <name>NetworkCheckForUpdate</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="241"/>
         <source>Failed</source>
-        <translation type="vanished">失敗した</translation>
+        <translation>失敗した</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="242"/>
         <source>&lt;center&gt;Unable to get latest version. &lt;br&gt;Please check your internet connection and if you have curl or wget installed.&lt;/center&gt;</source>
-        <translation type="vanished">&lt;center&gt;最新版の取得ができない。. インターネットに接続されているか、curlやwgetがインストールされているか確認してください。&lt;br&gt;</translation>
+        <translation>&lt;center&gt;最新版の取得ができない。. インターネットに接続されているか、curlやwgetがインストールされているか確認してください。&lt;br&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="252"/>
         <source>On latest</source>
-        <translation type="vanished">最新バージョンで</translation>
+        <translation>最新バージョンで</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="254"/>
         <source>&lt;center&gt;You already have the latest stable release available. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;あなたはすでに利用可能な最新の安定版リリースを使用しています。 &lt;br&gt;バージョン: </translation>
+        <translation>&lt;center&gt;あなたはすでに利用可能な最新の安定版リリースを使用しています。 &lt;br&gt;バージョン: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="266"/>
         <source>On preview</source>
-        <translation type="vanished">オンプレビュー</translation>
+        <translation>オンプレビュー</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="268"/>
         <source>&lt;center&gt;Your current version is higher than the latest stable release. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;現在のバージョンが、最新の安定版よりも高い。&lt;br&gt;バージョン: </translation>
+        <translation>&lt;center&gt;現在のバージョンが、最新の安定版よりも高い。&lt;br&gt;バージョン: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="280"/>
         <source>New release available</source>
-        <translation type="vanished">新しいリリースを公開</translation>
+        <translation>新しいリリースを公開</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="282"/>
         <source>&lt;center&gt;A new stable release is available, version: </source>
-        <translation type="vanished">&lt;center&gt;新しい安定版リリースを公開しました。バージョン： </translation>
+        <translation>&lt;center&gt;新しい安定版リリースを公開しました。バージョン： </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="286"/>
         <source>.&lt;br&gt;Do you wish to download it or to go to the GitHub page?&lt;/center&gt;</source>
-        <translation type="vanished">.&lt;br&gt;ダウンロードするか、GitHubのページに移動するか？&lt;/center&gt;</translation>
+        <translation>.&lt;br&gt;ダウンロードするか、GitHubのページに移動するか？&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="297"/>
         <source>Download</source>
-        <translation type="vanished">ダウンロード</translation>
+        <translation>ダウンロード</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="299"/>
         <source>Go to page</source>
-        <translation type="vanished">ウェブサイトへ移動する</translation>
+        <translation>ウェブサイトへ移動する</translation>
     </message>
 </context>
 <context>
     <name>NetworkUtil</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="193"/>
         <source>Currently downloading:</source>
-        <translation type="vanished">現在ダウンロード中のもの:</translation>
+        <translation>現在ダウンロード中のもの:</translation>
     </message>
 </context>
 <context>
@@ -1698,6 +2484,67 @@
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>オーディオファイル (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
+    </message>
+</context>
+<context>
+    <name>UILog</name>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="32"/>
+        <source>Bone Editor : </source>
+        <translation>ボーンエディター : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="118"/>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="96"/>
+        <source>An object with invalid pose was given.</source>
+        <translation>無効なポーズを持つオブジェクトが指定されました。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="187"/>
+        <source>FFD Editor : </source>
+        <translation>FFDエディタ : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="265"/>
+        <source>There are no objects with meshes.</source>
+        <translation>メッシュを持つオブジェクトは存在しない。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="25"/>
+        <source>Mesh Editor : </source>
+        <translation>メッシュエディター : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="29"/>
+        <source>The object can&apos;t own a mesh key.</source>
+        <translation>オブジェクトはメッシュキーを所有することができません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="29"/>
+        <source>Pose Editor : </source>
+        <translation>ポーズエディター : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <source>An object with invalid posture was given.</source>
+        <translation>無効な姿勢のオブジェクトが指定された。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="118"/>
+        <source>There are no bones in the selected layer that can be posed.</source>
+        <translation>選択したレイヤーにはポーズできるボーンがありません。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="30"/>
+        <source>The transformed object has one or more bones bound to it, SRT keys may not work as expected.</source>
+        <translation>変換されたオブジェクトには 1 つ以上のボーンがバインドされているため、「SRT」キーが期待どおりに機能しない可能性があります。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <source>SRT Editor : </source>
+        <translation>SRTエディター : </translation>
     </message>
 </context>
 <context>
@@ -1876,7 +2723,7 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Export parameters</source>
         <translation>エクスポートパラメーター</translation>
     </message>
@@ -1885,12 +2732,12 @@
         <translation type="vanished">中級 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Keep aspect ratio</source>
         <translation>アスペクト比を修正する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 最後のフレーム -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1907,17 +2754,17 @@
         <translation type="vanished">カスタム</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Insert range</source>
         <translation>範囲を追加する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Remove range</source>
         <translation>範囲を削除する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>Custom palette</source>
         <translation>カスタムパレット</translation>
     </message>
@@ -1946,7 +2793,7 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
         <source>Width: </source>
         <translation>幅: </translation>
     </message>
@@ -1955,9 +2802,9 @@
         <translation type="vanished">一対一</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1446"/>
         <source>Set to native</source>
         <translation>オリジナル設定</translation>
     </message>
@@ -1970,7 +2817,7 @@
         <translation type="vanished">アクティブパラメーター:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Height:</source>
         <translation>高さ:</translation>
     </message>
@@ -1979,7 +2826,7 @@
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;エクスポート&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1439"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>FPS:</source>
         <translation>FPS:</translation>
     </message>
@@ -1996,7 +2843,7 @@
         <translation type="vanished">画像シーケンス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
+        <location filename="../../src/gui/exportdiag.h" line="1447"/>
         <source>Export with transparency</source>
         <translation>透明度付きエクスポート</translation>
     </message>
@@ -2005,95 +2852,95 @@
         <translation type="vanished">ループ再生 (「GIF」のみ)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1421"/>
+        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Format:</source>
         <translation>形式:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1422"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Codec:</source>
         <translation>コーデック:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Destination:</source>
         <translation>出力先:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
         <source>Quality:</source>
         <translation>品質:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Smaller file</source>
         <translation>小さいファイル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1426"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Balanced</source>
         <translation>バランス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Best quality</source>
         <translation>最高品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Lossless</source>
         <translation>ロスレス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>How to encode</source>
         <translation>エンコード方法</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
         <source>What to export</source>
         <translation>エクスポートする内容</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1448"/>
         <source>Loop animation</source>
         <translation>ループ再生</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
+        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Export with audio</source>
         <translation>音声付きでエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
-        <location filename="../../src/gui/exportdiag.h" line="1459"/>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1464"/>
         <source>Auto</source>
         <translation>オートマチック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1446"/>
-        <location filename="../../src/gui/exportdiag.h" line="1460"/>
-        <location filename="../../src/gui/exportdiag.h" line="1461"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1465"/>
+        <location filename="../../src/gui/exportdiag.h" line="1466"/>
         <source>Set to auto</source>
         <translation>自動に設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1449"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Frame range:</source>
         <translation>フレーム範囲:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1453"/>
+        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Advanced</source>
         <translation>詳細設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1458"/>
+        <location filename="../../src/gui/exportdiag.h" line="1463"/>
         <source>Quality override:</source>
         <translation>品質の上書き:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1534"/>
+        <location filename="../../src/gui/exportdiag.h" line="1539"/>
         <source>&amp;Export</source>
         <translation>&amp;エクスポート</translation>
     </message>
@@ -2102,17 +2949,17 @@
         <translation type="vanished">レンダリングされたフレーム: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1455"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 最初のフレーム -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1456"/>
         <source>Bitrate (kB/s):</source>
         <translation>ビットレート(kB/s):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1457"/>
         <source>Image quality:</source>
         <translation>イメージクオリティ:</translation>
     </message>
@@ -2121,7 +2968,7 @@
         <translation type="vanished">カスタムパラメータでエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1462"/>
+        <location filename="../../src/gui/exportdiag.h" line="1467"/>
         <source>Select palette path</source>
         <translation>パレットパスを選択する</translation>
     </message>
@@ -2206,7 +3053,7 @@
         <translation type="vanished">エクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1536"/>
+        <location filename="../../src/gui/exportdiag.h" line="1541"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -2278,37 +3125,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="131"/>
         <source>Where are you posting this?</source>
         <translation>どこに投稿しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="143"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>検索: telegram, sticker, reels, illustration, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="148"/>
         <source>Search destinations</source>
         <translation>出力先を検索</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="245"/>
         <source>%1 destinations</source>
         <translation>%1 件の出力先</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="250"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="252"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>上に挙げたものはすべて、ルールが判明している出力先です。これは形式とコーデックを自分で指定できる選択肢です。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="257"/>
         <source>Use this destination</source>
         <translation>この出力先を使う</translation>
     </message>
@@ -5164,14 +6011,16 @@ The log is available below.</source>
 <context>
     <name>projectSave</name>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="225"/>
         <source>Non ascii characters detected, this may cause issues.
 Save anyway?</source>
-        <translation type="vanished">非 ASCII 文字が検出されました。問題が発生する可能性があります。
+        <translation>非 ASCII 文字が検出されました。問題が発生する可能性があります。
 それでも保存しますか?</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="231"/>
         <source>Unicode on filename detected</source>
-        <translation type="vanished">ファイル名に Unicode が検出されました</translation>
+        <translation>ファイル名に Unicode が検出されました</translation>
     </message>
 </context>
 <context>

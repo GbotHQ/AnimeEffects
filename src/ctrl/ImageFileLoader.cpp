@@ -420,9 +420,12 @@ bool ImageFileLoader::loadPsd(core::Project& aProject, util::IProgressReporter& 
     mLog = "success";
     return true;
 }
-QString tr(const QString& str){
-    return QCoreApplication::translate("image_file_loader", str.toStdString().c_str());
-}
+// The free tr() that used to stand here asked for the context "image_file_loader",
+// which no catalog has, while lupdate files these five strings under "ImageFileLoader"
+// (the class) and all six catalogs translate them THERE. So the ORA import prompt was
+// English in every language with its translations sitting one context away. The class
+// declares tr() for itself now (see ImageFileLoader.h), which is the same mechanism
+// the Qt Ui classes use and the context the catalogs already carry.
 void ImageFileLoader::parseOraLayer(layer &lyr, FolderNode* current, img::ResourceNode* resCurrent,  const float* globalDepth, const float* parentDepth, core::Project* aProject){
     auto resNode = createLayerResource(lyr);
     resCurrent->children().pushBack(resNode);

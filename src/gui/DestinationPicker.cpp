@@ -102,7 +102,26 @@ QString idOf(const QTreeWidgetItem* aItem) {
 DestinationPicker::DestinationPicker(GUIResources& aResources, const QString& aCurrentId,
                                      QWidget* aParent)
     : DestinationPicker(ctrl::ExportTargets::load(), ctrl::ExportTargets::loadGroups(),
-                        aResources, aCurrentId, aParent) {}
+                        aResources, aCurrentId, aParent) {
+    // A destination table that cannot be read leaves an EMPTY picker, and an empty
+    // picker says "this build knows no platforms" rather than "the table is broken".
+    // The reasons are already written and translated (ExportTargets::load takes the
+    // error out-parameter), so ask for one and state it in the tree. The second read
+    // costs a file parse, and only on this path: the normal path never gets here
+    // because the table it loaded has rows.
+    if (mTree && mTree->topLevelItemCount() == 0) {
+        QString error;
+        ctrl::ExportTargets::load(ctrl::ExportTargets::defaultPath(), &error);
+        if (!error.isEmpty()) {
+            auto* row = new QTreeWidgetItem(mTree);
+            row->setText(0, error);
+            // A statement, not a choice: it cannot be selected, searched for or
+            // exported to, and the escape hatch below still lets the user state the
+            // format by hand.
+            row->setFlags(Qt::NoItemFlags);
+        }
+    }
+}
 
 DestinationPicker::DestinationPicker(const QList<ctrl::ExportTarget>& aTargets,
                                      const QList<ctrl::ExportGroup>& aGroups,

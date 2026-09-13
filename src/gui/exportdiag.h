@@ -41,6 +41,15 @@
 QT_BEGIN_NAMESPACE
 
 class ExportWidgetUI {
+    // The class is not a QObject, so it has no metaobject to resolve tr() through and
+    // Qt's own tr() would not exist here. Q_DECLARE_TR_FUNCTIONS gives it a tr() in ITS
+    // OWN context, which is what lupdate files these strings under: the hand rolled
+    // helper it replaces forwarded to "ExportDiag", a context no catalog has, so the
+    // whole export dialog was English in all six languages while every .ts said
+    // otherwise. This is the mechanism Qt's own Ui classes use. It has to stay at the
+    // TOP of the class: the macro ends with `private:`, so anything declared under it
+    // would silently stop being public.
+    Q_DECLARE_TR_FUNCTIONS(ExportWidgetUI)
 public:
     QVBoxLayout *verticalLayout_2;
     QWidget *globalParam;
@@ -189,10 +198,6 @@ public:
     int latestWidth = 0;
     int nativeW;
     int nativeH;
-
-    static QString tr(const QString& input){
-        return QCoreApplication::translate("ExportDiag", input.toStdString().c_str());
-    }
 
     // aPlayhead is the frame the timeline is showing. A destination that produces a
     // single image exports THAT frame, so the dialog has to know it: the facts it

@@ -5,6 +5,8 @@
 #include "gl/Global.h"
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
+
+#include <QCoreApplication>
 #include "media/FFmpegHelpers.h"
 #include "media/GifEncoder.h"
 
@@ -94,14 +96,14 @@ void Exporter::setAudioTracks(const QVector<media::AudioMixer::Track>& aTracks,
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const ImageParam& aImage) {
     // check param
     if (!aCommon.isValid()) {
-        mLog = "Invalid common parameters.";
+        mLog = QCoreApplication::translate("Exporter", "Invalid common parameters.");
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
     // check directory
     QFileInfo path(aCommon.path);
     if (!path.exists() || !path.isDir()) {
-        mLog = "Invalid directory path.";
+        mLog = QCoreApplication::translate("Exporter", "Invalid directory path.");
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
@@ -119,7 +121,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const ImageParam&
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const GifParam& aGif) {
     // check param
     if (!aCommon.isValid()) {
-        mLog = "Invalid common parameters.";
+        mLog = QCoreApplication::translate("Exporter", "Invalid common parameters.");
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
@@ -127,7 +129,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const GifParam& a
     mOverwriteConfirmation = false;
     QFileInfo filePath(aCommon.path);
     if (!checkOverwriting(filePath)) {
-        mLog = "Exporting was canceled.";
+        mLog = QCoreApplication::translate("Exporter", "Exporting was canceled.");
         mIsCanceled = true;
         return Result(ResultCode_Canceled, mLog);
     }
@@ -152,7 +154,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const GifParam& a
 Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam& aVideo) {
     // check param
     if (!aCommon.isValid()) {
-        mLog = "Invalid common parameters.";
+        mLog = QCoreApplication::translate("Exporter", "Invalid common parameters.");
         return Result(ResultCode_InvalidOperation, mLog);
     }
 
@@ -160,7 +162,7 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
     mOverwriteConfirmation = false;
     QFileInfo filePath(aCommon.path);
     if (!checkOverwriting(filePath)) {
-        mLog = "Exporting was canceled.";
+        mLog = QCoreApplication::translate("Exporter", "Exporting was canceled.");
         mIsCanceled = true;
         return Result(ResultCode_Canceled, mLog);
     }
@@ -188,7 +190,9 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         if (codecName.isEmpty()) {
             codecName = media::ffmpeg::defaultCodecForContainer(container);
             if (codecName.isEmpty()) {
-                mLog = "No available video encoder can carry the '" + container + "' container.";
+                mLog = QCoreApplication::translate(
+                           "Exporter", "No available video encoder can carry the '%1' container.")
+                           .arg(container);
                 return Result(ResultCode_EncoderOpenFailed, mLog);
             }
         }
@@ -199,11 +203,15 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         // muxer failure at write time.
         codecName = media::ffmpeg::resolveEncoderName(codecName);
         if (codecName.isEmpty()) {
-            mLog = "Encoder not available in this build: " + aVideo.codec;
+            mLog = QCoreApplication::translate("Exporter",
+                                               "Encoder not available in this build: %1")
+                       .arg(aVideo.codec);
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
         if (!media::ffmpeg::muxerSupportsCodec(container, codecName)) {
-            mLog = "The '" + container + "' container cannot carry the " + codecName + " video codec.";
+            mLog = QCoreApplication::translate(
+                       "Exporter", "The '%1' container cannot carry the %2 video encoder.")
+                       .arg(container, codecName);
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
 
@@ -214,7 +222,8 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
             aVideo.bps, &encoderError);
 
         if (cfg.codec.isEmpty()) {
-            mLog = "Video encoder error.\n" + encoderError;
+            mLog = QCoreApplication::translate("Exporter", "Video encoder error.\n%1")
+                       .arg(encoderError);
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
         cfg.outputPath = outPath;
@@ -253,7 +262,8 @@ Exporter::Result Exporter::execute(const CommonParam& aCommon, const VideoParam&
         // itself. Opening the encoder here would create an empty file that the
         // caller's own encode then has to overwrite.
         if (!mFrameSink && !mVideoEncoder.open(cfg)) {
-            mLog = "Video encoder error.\n" + mVideoEncoder.error();
+            mLog = QCoreApplication::translate("Exporter", "Video encoder error.\n%1")
+                       .arg(mVideoEncoder.error());
             return Result(ResultCode_EncoderOpenFailed, mLog);
         }
     }
@@ -299,7 +309,7 @@ Exporter::Result Exporter::execute() {
 
             if (mProgressReporter->wasCanceled()) {
                 finish();
-                mLog = "Export was canceled.";
+                mLog = QCoreApplication::translate("Exporter", "Export was canceled.");
                 mIsCanceled = true;
                 return Result(ResultCode_Canceled, mLog);
             }
@@ -334,8 +344,10 @@ Exporter::Result Exporter::start() {
 
         // texture drawer
         if (!mTextureDrawer.init()) {
-            mLog = "Failed to initialize TextureDrawer";
-            Result(ResultCode_UnclassfiedError, mLog);
+            mLog = QCoreApplication::translate("Exporter", "Failed to initialize TextureDrawer");
+            // This Result used to be built and discarded, so the export carried on with
+            // an uninitialised drawer and the failure was never reported to anyone.
+            return Result(ResultCode_UnclassfiedError, mLog);
         }
 
         // framebuffers scale from the native size to what we RENDER at, which is
@@ -522,7 +534,8 @@ bool Exporter::exportImage(const QImage& aFboImage, int aIndex) {
         // Feed the frame to the in-process encoder (no intermediate raster,
         // no CLI subprocess).
         if (!mVideoEncoder.write(aFboImage)) {
-            mLog = "Video encoder error.\n" + mVideoEncoder.error();
+            mLog = QCoreApplication::translate("Exporter", "Video encoder error.\n%1")
+                       .arg(mVideoEncoder.error());
             return false;
         }
     } else {
@@ -563,7 +576,7 @@ Exporter::Result Exporter::finish() {
             gcfg.palettePath = mGifPalettePath; // empty => adaptive palette
             QString gerr;
             if (!gif.encode(mGifFrames, gcfg, &gerr)) {
-                mLog = "GIF encoder error.\n" + gerr;
+                mLog = QCoreApplication::translate("Exporter", "GIF encoder error.\n%1").arg(gerr);
                 result = Result(ResultCode_EncodeError, mLog);
             }
             mCollectFrames = false;
@@ -603,7 +616,8 @@ Exporter::Result Exporter::finish() {
                     }
                     media::AudioMixer chunk;
                     if (!chunk.mix(tracks, cfg)) {
-                        mLog = "Audio mixing error.\n" + chunk.error();
+                        mLog = QCoreApplication::translate("Exporter", "Audio mixing error.\n%1")
+                                   .arg(chunk.error());
                         result = Result(ResultCode_EncodeError, mLog);
                         mixFailed = true;
                         break;
@@ -624,7 +638,8 @@ Exporter::Result Exporter::finish() {
             }
 
             if (!mVideoEncoder.close()) {
-                mLog = "Video encoder error.\n" + mVideoEncoder.error();
+                mLog = QCoreApplication::translate("Exporter", "Video encoder error.\n%1")
+                       .arg(mVideoEncoder.error());
                 result = Result(ResultCode_EncodeError, mLog);
             }
         }

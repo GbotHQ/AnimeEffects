@@ -48,6 +48,11 @@ class GUIResources;
 // The escape hatch for a platform the tree does not know is a button, not a
 // destination, so it cannot be filtered away.
 class DestinationPicker : public QDialog {
+    // Without this the dialog has no metaobject of its own, tr() resolves through
+    // QDialog, and every string here is looked up in the "QDialog" context: the
+    // catalog's gui::DestinationPicker entries are read by nobody (measured: the
+    // whole dialog stayed English with six catalogs loaded).
+    Q_OBJECT
 public:
     // aCurrentId preselects a destination (empty = none). The section holding it is
     // opened, so the preselection is on screen and not merely current.

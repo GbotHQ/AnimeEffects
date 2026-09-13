@@ -25,246 +25,455 @@
     </message>
 </context>
 <context>
+    <name>BlendModeName</name>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="142"/>
+        <location filename="../../src/img/BlendMode.cpp" line="198"/>
+        <source>Normal</source>
+        <translation>正常</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="144"/>
+        <source>Darken</source>
+        <translation>暗化</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="146"/>
+        <source>Multiply</source>
+        <translation>正片叠底</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="148"/>
+        <source>Color Burn</source>
+        <translation>颜色加深</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="150"/>
+        <source>Linear Burn</source>
+        <translation>线性加深</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="152"/>
+        <source>Lighten</source>
+        <translation>淡化</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="154"/>
+        <source>Screen</source>
+        <translation>滤色</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="156"/>
+        <source>Color Dodge</source>
+        <translation>颜色淡化</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="158"/>
+        <source>Linear Dodge</source>
+        <translation>线性减淡</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="160"/>
+        <source>Overlay</source>
+        <translation>覆盖</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="162"/>
+        <source>Soft Light</source>
+        <translation>柔光</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="164"/>
+        <source>Hard Light</source>
+        <translation>硬光</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="166"/>
+        <source>Vivid Light</source>
+        <translation>艳光</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="168"/>
+        <source>Linear Light</source>
+        <translation>线性光</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="170"/>
+        <source>Pin Light</source>
+        <translation>点光</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="172"/>
+        <source>Hard Mix</source>
+        <translation>实色混合</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="174"/>
+        <source>Difference</source>
+        <translation>差异</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="176"/>
+        <source>Exclusion</source>
+        <translation>排除</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="178"/>
+        <source>Subtract</source>
+        <translation>扣减</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="180"/>
+        <source>Divide</source>
+        <translation>分割</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="182"/>
+        <source>Add (Glow)</source>
+        <translation>添加（发光）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="184"/>
+        <source>Glow Dodge</source>
+        <translation>颜色减淡（发光）</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="186"/>
+        <source>Hue</source>
+        <translation>色相</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="188"/>
+        <source>Saturation</source>
+        <translation>饱和度</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="190"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="192"/>
+        <source>Luminosity</source>
+        <translation>明度</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="194"/>
+        <source>Darker Color</source>
+        <translation>深色</translation>
+    </message>
+    <message>
+        <location filename="../../src/img/BlendMode.cpp" line="196"/>
+        <source>Lighter Color</source>
+        <translation>浅色</translation>
+    </message>
+</context>
+<context>
     <name>CmndName</name>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="78"/>
         <source>Bind node to bone</source>
-        <translation type="vanished">将节点绑定到骨骼</translation>
+        <translation>将节点绑定到骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_BindNodesMode.cpp" line="101"/>
         <source>Unbind node from bones</source>
-        <translation type="vanished">从骨骼解绑节点</translation>
+        <translation>从骨骼解绑节点</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="109"/>
         <source>Add new bone</source>
-        <translation type="vanished">添加新骨骼</translation>
+        <translation>添加新骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_CreateMode.cpp" line="125"/>
         <source>Add new parent bone</source>
-        <translation type="vanished">添加父骨骼</translation>
+        <translation>添加父骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_DeleteMode.cpp" line="64"/>
         <source>Delete bone</source>
-        <translation type="vanished">删除骨骼</translation>
+        <translation>删除骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_EraseInflMode.cpp" line="159"/>
+        <location filename="../../src/ctrl/bone/bone_InfluenceMode.cpp" line="118"/>
+        <location filename="../../src/ctrl/bone/bone_PaintInflMode.cpp" line="135"/>
         <source>Update bone influence</source>
-        <translation type="vanished">更新骨骼权重</translation>
+        <translation>更新骨骼权重</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/bone/bone_MoveJointMode.cpp" line="81"/>
         <source>Move bone</source>
-        <translation type="vanished">移动骨骼</translation>
+        <translation>移动骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_BrushMode.cpp" line="124"/>
         <source>Update FFD</source>
-        <translation type="vanished">更新自由变形（FFD）</translation>
+        <translation>更新自由变形（FFD）</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ffd/ffd_DragMode.cpp" line="185"/>
         <source>Move FFD key vertex</source>
-        <translation type="vanished">移动自由变形（FFD）关键帧</translation>
+        <translation>移动自由变形（FFD）关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="88"/>
         <source>Add mesh key triangle</source>
-        <translation type="vanished">添加网格三角形关键帧</translation>
+        <translation>添加网格三角形关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_CreateMode.cpp" line="120"/>
         <source>Move mesh key vertex</source>
-        <translation type="vanished">移动网格顶点关键帧</translation>
+        <translation>移动网格顶点关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="64"/>
         <source>Remove mesh key vertex</source>
-        <translation type="vanished">删除网格顶点关键帧</translation>
+        <translation>删除网格顶点关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_DeleteMode.cpp" line="77"/>
         <source>Remove mesh key face</source>
-        <translation type="vanished">删除网格面关键帧</translation>
+        <translation>删除网格面关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/mesh/mesh_SplitMode.cpp" line="144"/>
         <source>Split mesh key triangle</source>
-        <translation type="vanished">分割网格三角形关键帧</translation>
+        <translation>分割网格三角形关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_DrawBoneMode.cpp" line="136"/>
         <source>Pull bones of a pose key</source>
-        <translation type="vanished">拉动姿势关键帧的骨骼</translation>
+        <translation>拉动姿势关键帧的骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_ErasePoseMode.cpp" line="84"/>
         <source>erase a pose</source>
-        <translation type="vanished">擦除姿势关键帧</translation>
+        <translation>擦除姿势关键帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/pose/pose_TransBoneMode.cpp" line="101"/>
         <source>rotate a bone of a posing key</source>
-        <translation type="vanished">旋转姿势关键帧的骨骼</translation>
+        <translation>旋转姿势关键帧的骨骼</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_CentroidMode.cpp" line="112"/>
         <source>update centroid of a moving key</source>
-        <translation type="vanished">更新移动中心帧</translation>
+        <translation>更新移动中心帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="175"/>
         <source>update a moving key</source>
-        <translation type="vanished">更新移动帧</translation>
+        <translation>更新移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="206"/>
         <source>update a rotation key</source>
-        <translation type="vanished">更新旋转帧</translation>
+        <translation>更新旋转帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/srt/srt_MoveMode.cpp" line="237"/>
         <source>update a scaling key</source>
-        <translation type="vanished">更新缩放帧</translation>
+        <translation>更新缩放帧</translation>
     </message>
     <message>
         <source>Move key</source>
         <translation type="vanished">移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="354"/>
         <source>Move keys</source>
-        <translation type="vanished">移动帧</translation>
+        <translation>移动帧</translation>
     </message>
     <message>
         <source>Paste clipboard key</source>
         <translation type="vanished">粘贴剪贴板键</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="669"/>
+        <source>Paste clipboard keys</source>
+        <translation>粘贴剪贴板帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="843"/>
         <source>Paste keys</source>
-        <translation type="vanished">粘贴帧</translation>
+        <translation>粘贴帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="908"/>
         <source>Delete keys</source>
-        <translation type="vanished">删除帧</translation>
+        <translation>删除帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="258"/>
         <source>Update default movement key</source>
-        <translation type="vanished">更新默认移动帧</translation>
+        <translation>更新默认移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="259"/>
         <source>Update movement key</source>
-        <translation type="vanished">更新移动帧</translation>
+        <translation>更新移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="269"/>
         <source>Update default rotation key</source>
-        <translation type="vanished">更新默认旋转帧</translation>
+        <translation>更新默认旋转帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="270"/>
         <source>Update rotation key</source>
-        <translation type="vanished">更新旋转帧</translation>
+        <translation>更新旋转帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="280"/>
         <source>Update default scaling key</source>
-        <translation type="vanished">更新默认缩放帧</translation>
+        <translation>更新默认缩放帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="281"/>
         <source>Update scaling key</source>
-        <translation type="vanished">更新缩放帧</translation>
+        <translation>更新缩放帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
         <source>Update default depth key</source>
-        <translation type="vanished">更新默认深度帧</translation>
+        <translation>更新默认深度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="292"/>
         <source>Update depth key</source>
-        <translation type="vanished">更新深度帧</translation>
+        <translation>更新深度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
         <source>Update default opacity key</source>
-        <translation type="vanished">更新默认不透明度帧</translation>
+        <translation>更新默认不透明度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="303"/>
         <source>Update opacity key</source>
-        <translation type="vanished">更新不透明度帧</translation>
+        <translation>更新不透明度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
         <source>Update default HSV key</source>
-        <translation type="vanished">更新默认HSV帧</translation>
+        <translation>更新默认HSV帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="314"/>
         <source>Update HSV key</source>
-        <translation type="vanished">更新HSV帧</translation>
+        <translation>更新HSV帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
         <source>Update default blur key</source>
-        <translation type="vanished">更新默认模糊帧</translation>
+        <translation>更新默认模糊帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="325"/>
         <source>Update blur key</source>
-        <translation type="vanished">更新模糊帧</translation>
+        <translation>更新模糊帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
         <source>Update default pose key</source>
-        <translation type="vanished">更新默认姿势帧</translation>
+        <translation>更新默认姿势帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="336"/>
         <source>Update pose key</source>
-        <translation type="vanished">更新姿势帧</translation>
+        <translation>更新姿势帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
         <source>Update default FFD key</source>
-        <translation type="vanished">更新默认自由变形帧</translation>
+        <translation>更新默认自由变形帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="347"/>
         <source>Update FFD key</source>
-        <translation type="vanished">更更新自由变形帧</translation>
+        <translation>更更新自由变形帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="359"/>
         <source>Update default image resource key</source>
-        <translation type="vanished">更新默认图形资料帧</translation>
+        <translation>更新默认图形资料帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="360"/>
         <source>update image resource key</source>
-        <translation type="vanished">更新图形资料帧</translation>
+        <translation>更新图形资料帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="380"/>
         <source>Update the image&apos;s default offset key</source>
-        <translation type="vanished">更新图像默认移动帧</translation>
+        <translation>更新图像默认移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="381"/>
         <source>Update the image&apos;s offset key</source>
-        <translation type="vanished">更新图片偏移帧</translation>
+        <translation>更新图片偏移帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="400"/>
         <source>Update the default mesh size key</source>
-        <translation type="vanished">更新默认网格尺寸帧</translation>
+        <translation>更新默认网格尺寸帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="401"/>
         <source>Update mesh size key</source>
-        <translation type="vanished">更新网格尺寸帧</translation>
+        <translation>更新网格尺寸帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="450"/>
         <source>Add new movement key</source>
-        <translation type="vanished">新增移动帧</translation>
+        <translation>新增移动帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="454"/>
         <source>Add new rotation key</source>
-        <translation type="vanished">新增旋转帧</translation>
+        <translation>新增旋转帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="459"/>
         <source>Add new scaling key</source>
-        <translation type="vanished">新增缩放帧</translation>
+        <translation>新增缩放帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="463"/>
         <source>Add new depth key</source>
-        <translation type="vanished">新增深度帧</translation>
+        <translation>新增深度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="467"/>
         <source>Add new opacity key</source>
-        <translation type="vanished">新增不透明度帧</translation>
+        <translation>新增不透明度帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="471"/>
         <source>Add new HSV key</source>
-        <translation type="vanished">新增HSV帧</translation>
+        <translation>新增HSV帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="475"/>
         <source>Add new blur key</source>
-        <translation type="vanished">新增模糊帧</translation>
+        <translation>新增模糊帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="481"/>
         <source>Add new pose key</source>
-        <translation type="vanished">新增姿势帧</translation>
+        <translation>新增姿势帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="488"/>
         <source>Add new FFD key</source>
-        <translation type="vanished">新增自由变形帧</translation>
+        <translation>新增自由变形帧</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="493"/>
         <source>Add new image key</source>
-        <translation type="vanished">新增图形帧</translation>
+        <translation>新增图形帧</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
@@ -368,6 +577,79 @@
         <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>更改动画设置</translation>
+    </message>
+</context>
+<context>
+    <name>EasingName</name>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="59"/>
+        <source>Floor</source>
+        <translation>向下取整</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="61"/>
+        <source>Linear</source>
+        <translation>线性</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="63"/>
+        <source>Sine</source>
+        <translation>正弦曲线</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="65"/>
+        <source>Quad</source>
+        <translation>二次方</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <source>Cubic</source>
+        <translation>三次方</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <source>Quart</source>
+        <translation>四次方</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <source>Quint</source>
+        <translation>五次方</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <source>Expo</source>
+        <translation>指数</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <source>Circ</source>
+        <translation>圆形</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <source>Back</source>
+        <translation>回弹</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <source>Elastic</source>
+        <translation>伸缩</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <source>Bounce</source>
+        <translation>弹跳</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <source>Custom</source>
+        <translation>自定义</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <source>Round</source>
+        <translation>四舍五入</translation>
     </message>
 </context>
 <context>
@@ -1127,196 +1409,461 @@
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
         <translation>在无损质量下使用 FFV1，它携带 alpha（yuva420p）；其他档位选择 H.265，而 H.265 在这里根本无法编码 alpha。</translation>
     </message>
+    <message>
+        <source>FFV1 (lossless master)</source>
+        <translation type="vanished">FFV1（无损母版）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="183"/>
+        <source>%1 (%2)</source>
+        <translation>%1（%2）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="185"/>
+        <source>hardware</source>
+        <translation>硬件</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="186"/>
+        <source>software</source>
+        <translation>软件</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="196"/>
+        <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
+        <translation>%1。此网站会重新编码上传的内容，所以源画质比兼容性更重要</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="202"/>
+        <source>%1. This plays your file directly, so decode compatibility matters most</source>
+        <translation>%1。这里直接播放你的文件，所以解码兼容性最重要</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="207"/>
+        <source>%1. A master copy, so fidelity matters most</source>
+        <translation>%1。这是母版副本，所以保真度最重要</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="218"/>
+        <source>%1, about %2s here</source>
+        <translation>%1，本机约需 %2 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="235"/>
+        <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
+        <translation>未应用质量意图：目的地表没有声明 &lt;bucket_positions&gt;，因此“%1”保持自身默认值。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="250"/>
+        <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
+        <translation>“%1”是有损编码器，所以这里的“无损”指它的最高画质，而不是无损文件。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="320"/>
+        <source>cannot open %1</source>
+        <translation>无法打开 %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="341"/>
+        <source>%1: missing &lt;export_targets&gt; root</source>
+        <translation>%1：缺少 &lt;export_targets&gt; 根元素</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="572"/>
+        <source>no frames selected</source>
+        <translation>未选择任何帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="583"/>
+        <source>%1 frames from %2 separate ranges</source>
+        <translation>来自 %2 个独立区间的 %1 帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="613"/>
+        <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
+        <translation>尺寸强制为 %1x%2（此目的地要求），画面已%3。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="619"/>
+        <source>cropped to fill it</source>
+        <translation>裁剪填满</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="620"/>
+        <source>padded to fit it</source>
+        <translation>补边适配</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="660"/>
+        <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
+        <translation>帧率已因目的地限制从 %1 fps 降至 %2 fps。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="672"/>
+        <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
+        <translation>已从 %1 帧裁剪到 %2 帧（%3 秒上限）。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="684"/>
+        <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
+        <translation>已从 %1 帧裁剪到 %2 帧（目的地限制）。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="693"/>
+        <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
+        <translation>警告：此目的地至少需要 %1 帧，但目前只有 %2 帧，上传很可能被拒收。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="711"/>
+        <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
+        <translation>警告：此目的地至少需要 %1 秒，而本次导出为 %2 秒，上传很可能被拒收。请选择更长的帧范围。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="783"/>
+        <source>%1 via %2, the fastest of %3 that runs here</source>
+        <translation>%1，使用 %2（本机可运行的 %3 个中最快）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="788"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="821"/>
+        <source>%1 via %2</source>
+        <translation>%1，使用 %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="803"/>
+        <source>%1/%2 (~%3s)</source>
+        <translation>%1/%2（约 %3 秒）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="817"/>
+        <source>%1: nothing here is fast enough for this budget (%2), so this is the fastest available</source>
+        <translation>%1：本机没有任何编码器能满足这个时间预算（%2），所以这是可用的最快方案</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="829"/>
+        <source>no suitable encoder found in this build</source>
+        <translation>此构建中没有找到合适的编码器</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="842"/>
+        <source>no destination selected</source>
+        <translation>未选择目的地</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="846"/>
+        <source>invalid source size</source>
+        <translation>源尺寸无效</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="858"/>
+        <source>%1 is required by this destination.</source>
+        <translation>此目的地要求%1。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="871"/>
+        <source>Transparency</source>
+        <translation>透明度</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="873"/>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="883"/>
+        <source>no frames selected for export</source>
+        <translation>未选择要导出的帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="923"/>
+        <source>%1; the ranges play back to back and the frames between them are not exported.</source>
+        <translation>%1；这些区间会首尾相接播放，区间之间的帧不会被导出。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="945"/>
+        <source>no encoder available for this destination in this build</source>
+        <translation>此构建中没有可用于该目的地的编码器</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="979"/>
+        <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
+        <translation>警告：此目的地的限制未经核实，依赖前请再次确认。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1006"/>
+        <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
+        <translation>单张静图（第%1帧），以 %2 格式写出。上方的帧范围不适用。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1013"/>
+        <source>%1 frames written as numbered .%2 files.</source>
+        <translation>写出 %1 个编号的 .%2 文件。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1069"/>
+        <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
+        <translation>%1 需要透明通道，但在此构建中“%2”无法编码 alpha 通道（它声明支持 %3，随后又拒绝）。请改用编码器支持 alpha 的目的地：WebM/VP9、APNG 或 FFV1。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1078"/>
+        <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
+        <translation>%1：%2 无法编码 %3，也没有可用的备选方案（%4）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1085"/>
+        <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
+        <translation>已放弃透明通道：“%1”声明支持 %2，但在这里无法编码它，因此改用%3。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1091"/>
+        <source>the encoder default</source>
+        <translation>编码器的默认值</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1152"/>
+        <source>No sound: %1 does not accept an audio track.</source>
+        <translation>无声音：%1 不接受音轨。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1157"/>
+        <source>WARNING: %1 expects sound but this project has no audio track.</source>
+        <translation>警告：%1 需要声音，但本项目没有音轨。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1184"/>
+        <source>no frames left</source>
+        <translation>没有剩余帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1222"/>
+        <source>could not write %1</source>
+        <translation>无法写入 %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1230"/>
+        <source>no files produced</source>
+        <translation>没有生成任何文件</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1272"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1296"/>
+        <source>no file produced</source>
+        <translation>没有生成文件</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1330"/>
+        <source>frames: the plan selected %1, but %2 were supplied</source>
+        <translation>帧数：计划为 %1 帧，但实际提供了 %2 帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="580"/>
+        <source>%1 frame</source>
+        <translation>%1 帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="581"/>
+        <source>%1 frames</source>
+        <translation>%1 帧</translation>
+    </message>
+    <message>
+        <source>frame mismatch: the plan selects %1 but %2 were supplied (render plan.selection.indices())</source>
+        <translation type="vanished">帧数不匹配：计划为%1，实际提供了 %2 帧（render plan.selection.indices()）</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1399"/>
+        <source>canceled</source>
+        <translation>已取消</translation>
+    </message>
 </context>
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="297"/>
+        <location filename="../../src/gui/exportdiag.h" line="302"/>
         <source>Choose where this is going</source>
         <translation>选择发布到哪里</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="617"/>
+        <location filename="../../src/gui/exportdiag.h" line="622"/>
         <source>Open Palette</source>
         <translation>开启调色板</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="618"/>
+        <location filename="../../src/gui/exportdiag.h" line="623"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>FFmpeg 调色板文件 (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="632"/>
+        <location filename="../../src/gui/exportdiag.h" line="637"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="785"/>
+        <location filename="../../src/gui/exportdiag.h" line="790"/>
         <source>PNG sequence</source>
         <translation>PNG 序列</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="786"/>
+        <location filename="../../src/gui/exportdiag.h" line="791"/>
         <source>JPEG sequence</source>
         <translation>JPEG 序列</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="912"/>
+        <location filename="../../src/gui/exportdiag.h" line="917"/>
         <source>CRF:</source>
         <translation>CRF：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="913"/>
+        <location filename="../../src/gui/exportdiag.h" line="918"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1384"/>
+        <location filename="../../src/gui/exportdiag.h" line="1389"/>
         <source>First frame %1</source>
         <translation>起始帧%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1385"/>
+        <location filename="../../src/gui/exportdiag.h" line="1390"/>
         <source>Last frame %1</source>
         <translation>结束帧%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1489"/>
+        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Width</source>
         <translation>宽度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1490"/>
+        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Height</source>
         <translation>高度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1491"/>
+        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Frame rate</source>
         <translation>帧率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1492"/>
+        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>First frame</source>
         <translation>起始帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1493"/>
+        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Last frame</source>
         <translation>结束帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
+        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Format</source>
         <translation>格式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
+        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Codec</source>
         <translation>编码器</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
+        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Quality</source>
         <translation>质量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
+        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Quality override</source>
         <translation>质量覆盖值</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
+        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Image quality</source>
         <translation>图像质量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
+        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Bitrate</source>
         <translation>比特率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
+        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Destination</source>
         <translation>目的地</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
+        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Advanced</source>
         <translation>高级</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
+        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Export</source>
         <translation>导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
+        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
+        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Export with transparency</source>
         <translation>透明导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
+        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Loop animation</source>
         <translation>循环动画</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
+        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Export with audio</source>
         <translation>带音频导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
+        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Custom palette</source>
         <translation>自定义色板</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
+        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Keep aspect ratio</source>
         <translation>保持长宽比</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1509"/>
+        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Insert range</source>
         <translation>插入区间</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1510"/>
+        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Remove range</source>
         <translation>移除范围</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1511"/>
+        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Set width to native</source>
         <translation>恢复原始宽度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1512"/>
+        <location filename="../../src/gui/exportdiag.h" line="1517"/>
         <source>Set height to native</source>
         <translation>恢复原始高度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1513"/>
+        <location filename="../../src/gui/exportdiag.h" line="1518"/>
         <source>Set frame rate to native</source>
         <translation>恢复原始帧率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1514"/>
+        <location filename="../../src/gui/exportdiag.h" line="1519"/>
         <source>Image quality to auto</source>
         <translation>图像质量设为自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1515"/>
+        <location filename="../../src/gui/exportdiag.h" line="1520"/>
         <source>Quality override to auto</source>
         <translation>质量覆盖值设为自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1516"/>
+        <location filename="../../src/gui/exportdiag.h" line="1521"/>
         <source>Bitrate to auto</source>
         <translation>比特率设为自动</translation>
     </message>
@@ -1324,12 +1871,85 @@
 <context>
     <name>Exporter</name>
     <message>
-        <source>Finishing up</source>
-        <translation type="vanished">完工</translation>
+        <location filename="../../src/ctrl/Exporter.cpp" line="99"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="124"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="157"/>
+        <source>Invalid common parameters.</source>
+        <translation>通用参数无效。</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="106"/>
+        <source>Invalid directory path.</source>
+        <translation>目录路径无效。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="132"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="165"/>
+        <source>Exporting was canceled.</source>
+        <translation>导出过程已被取消。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="193"/>
+        <source>No available video encoder can carry the &apos;%1&apos; container.</source>
+        <translation>没有可用的视频编码器能支持“%1”容器。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="206"/>
+        <source>Encoder not available in this build: %1</source>
+        <translation>此构建中没有可用的编码器：%1</translation>
+    </message>
+    <message>
+        <source>The &apos;%1&apos; container cannot carry the %2 video codec.</source>
+        <translation type="vanished">“%1”容器无法承载 %2 视频编码。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="212"/>
+        <source>The &apos;%1&apos; container cannot carry the %2 video encoder.</source>
+        <translation>“%1”容器无法承载 %2 视频编码器。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="225"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="265"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="537"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="641"/>
+        <source>Video encoder error.
+%1</source>
+        <translation>视频编码错误。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="295"/>
+        <source>Finishing up</source>
+        <translation>完工</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="297"/>
         <source>Rendering</source>
-        <translation type="vanished">图层效果</translation>
+        <translation>图层效果</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="312"/>
+        <source>Export was canceled.</source>
+        <translation>导出已取消。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="347"/>
+        <source>Failed to initialize TextureDrawer</source>
+        <translation>初始化 TextureDrawer 失败</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="579"/>
+        <source>GIF encoder error.
+%1</source>
+        <translation>GIF 编码错误。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/Exporter.cpp" line="619"/>
+        <source>Audio mixing error.
+%1</source>
+        <translation>音频混音错误。
+%1</translation>
     </message>
 </context>
 <context>
@@ -1374,7 +1994,7 @@
     </message>
     <message>
         <source>Linear</source>
-        <translation type="vanished">线型</translation>
+        <translation type="vanished">线性</translation>
     </message>
     <message>
         <source>Sine</source>
@@ -1505,12 +2125,43 @@
         <translation type="vanished">构建对象树...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="269"/>
         <source>Building an Object Tree...</source>
-        <translation type="vanished">构建对象树...</translation>
+        <translation>构建对象树...</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="597"/>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="725"/>
         <source>Building object trees...</source>
-        <translation type="vanished">构建对象树...</translation>
+        <translation>构建对象树...</translation>
+    </message>
+</context>
+<context>
+    <name>ImageFileLoader</name>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="522"/>
+        <source>Select ORA file type</source>
+        <translation>选择ora文件类型</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="523"/>
+        <source>How do you wish to load this ORA file?</source>
+        <translation>您希望如何加载这个ora文件？</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="524"/>
+        <source>Load layered</source>
+        <translation>分层加载</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="525"/>
+        <source>Load merged</source>
+        <translation>合并加载</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/ImageFileLoader.cpp" line="528"/>
+        <source>Cancel file load</source>
+        <translation>取消加载</translation>
     </message>
 </context>
 <context>
@@ -1535,57 +2186,192 @@
     </message>
 </context>
 <context>
+    <name>MainWindow</name>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="26"/>
+        <source>%1 GB</source>
+        <translation>%1 GB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="29"/>
+        <source>%1 MB</source>
+        <translation>%1 MB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
+        <source>%1 KB</source>
+        <translation>%1 KB</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="38"/>
+        <source>yes</source>
+        <translation>是</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="39"/>
+        <source>no</source>
+        <translation>否</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="47"/>
+        <source>This destination cannot be exported: %1</source>
+        <translation>无法按此目的地导出：%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
+        <source>%1 x %2, frame %3 (the one on the timeline)</source>
+        <translation>%1 x %2，第%3帧（时间轴当前帧）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="68"/>
+        <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
+        <translation>%1 x %2，共%3帧（时序在上传页面设置）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="74"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation>%1 x %2，%3 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="81"/>
+        <source>Artifact: one %1 image</source>
+        <translation>输出：一张 %1 图片</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="84"/>
+        <source>Artifact: %1 numbered %2 files</source>
+        <translation>输出：%1个编号的 %2 文件</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="89"/>
+        <source>Codec: animated GIF</source>
+        <translation>编码器：动态 GIF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="90"/>
+        <source>Codec: %1 in %2</source>
+        <translation>编码器：%2 中的 %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="102"/>
+        <source>not accepted by this destination</source>
+        <translation>此目的地不支持</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <source>none in this project</source>
+        <translation>本项目中没有</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="106"/>
+        <source>off in this dialog</source>
+        <translation>在此对话框中关闭</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="110"/>
+        <source>Transparency: %1   Audio: %2</source>
+        <translation>透明度：%1&#x3000;音频：%2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="119"/>
+        <source>max %1</source>
+        <translation>最大 %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
+        <source>max %1 s</source>
+        <translation>最长 %1 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="123"/>
+        <source>min %1 s</source>
+        <translation>最短 %1 秒</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <source>max %1 frames</source>
+        <translation>最多 %1 帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
+        <source>max %1 fps</source>
+        <translation>最高 %1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="132"/>
+        <source>Limits: %1</source>
+        <translation>上限：%1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="133"/>
+        <source>, </source>
+        <translation>、</translation>
+    </message>
+</context>
+<context>
     <name>NetworkCheckForUpdate</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="241"/>
         <source>Failed</source>
-        <translation type="vanished">失效</translation>
+        <translation>失效</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="242"/>
         <source>&lt;center&gt;Unable to get latest version. &lt;br&gt;Please check your internet connection and if you have curl or wget installed.&lt;/center&gt;</source>
-        <translation type="vanished">&lt;center&gt;无法获得最新版本。&lt;br&gt;请检查你的网络连接，以及你是否安装了curl或wget。&lt;/center&gt;</translation>
+        <translation>&lt;center&gt;无法获得最新版本。&lt;br&gt;请检查你的网络连接，以及你是否安装了curl或wget。&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="252"/>
         <source>On latest</source>
-        <translation type="vanished">最新</translation>
+        <translation>最新</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="254"/>
         <source>&lt;center&gt;You already have the latest stable release available. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;当前为最新稳定版。&lt;br&gt;Version: </translation>
+        <translation>&lt;center&gt;当前为最新稳定版。&lt;br&gt;Version: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="266"/>
         <source>On preview</source>
-        <translation type="vanished">预览</translation>
+        <translation>预览</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="268"/>
         <source>&lt;center&gt;Your current version is higher than the latest stable release. &lt;br&gt;Version: </source>
-        <translation type="vanished">&lt;center&gt;当前版本高于最新稳定版本&lt;br&gt;版本: </translation>
+        <translation>&lt;center&gt;当前版本高于最新稳定版本&lt;br&gt;版本: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="280"/>
         <source>New release available</source>
-        <translation type="vanished">新版本可用</translation>
+        <translation>新版本可用</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="282"/>
         <source>&lt;center&gt;A new stable release is available, version: </source>
-        <translation type="vanished">&lt;center&gt;新稳定版已经推出，版本: </translation>
+        <translation>&lt;center&gt;新稳定版已经推出，版本: </translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="286"/>
         <source>.&lt;br&gt;Do you wish to download it or to go to the GitHub page?&lt;/center&gt;</source>
-        <translation type="vanished">&lt;br&gt;直接下载还是去GitHub页面？&lt;/center&gt;</translation>
+        <translation>&lt;br&gt;直接下载还是去GitHub页面？&lt;/center&gt;</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="297"/>
         <source>Download</source>
-        <translation type="vanished">下载</translation>
+        <translation>下载</translation>
     </message>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="299"/>
         <source>Go to page</source>
-        <translation type="vanished">前往页面</translation>
+        <translation>前往页面</translation>
     </message>
 </context>
 <context>
     <name>NetworkUtil</name>
     <message>
+        <location filename="../../src/util/NetworkUtil.cpp" line="193"/>
         <source>Currently downloading:</source>
-        <translation type="vanished">当前正在加载：</translation>
+        <translation>当前正在加载：</translation>
     </message>
 </context>
 <context>
@@ -1698,6 +2484,67 @@
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="430"/>
         <source>Audio Files (*.mp3 *.mp4 *.wav *.ogg *.flac)</source>
         <translation>音频文件 (*.mp3 *.mp4 *.wav *.ogg *.flac)</translation>
+    </message>
+</context>
+<context>
+    <name>UILog</name>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="32"/>
+        <source>Bone Editor : </source>
+        <translation>骨骼编辑 ：</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/BoneEditor.cpp" line="118"/>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="96"/>
+        <source>An object with invalid pose was given.</source>
+        <translation>一个姿态无效的对象。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="187"/>
+        <source>FFD Editor : </source>
+        <translation>FFD 编辑</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/FFDEditor.cpp" line="265"/>
+        <source>There are no objects with meshes.</source>
+        <translation>无带网格对象。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="25"/>
+        <source>Mesh Editor : </source>
+        <translation>网格编辑 ：</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/MeshEditor.cpp" line="29"/>
+        <source>The object can&apos;t own a mesh key.</source>
+        <translation>该对象不能创建网格帧.</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="29"/>
+        <source>Pose Editor : </source>
+        <translation>姿势编辑 ：</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <source>An object with invalid posture was given.</source>
+        <translation>一个姿态无效的对象。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/PoseEditor.cpp" line="118"/>
+        <source>There are no bones in the selected layer that can be posed.</source>
+        <translation>所选图层中无可用于摆姿势的骨骼。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="30"/>
+        <source>The transformed object has one or more bones bound to it, SRT keys may not work as expected.</source>
+        <translation>已变形对象已绑定一根或多根骨骼，SRT（缩放、旋转、平移）关键帧可能无法按预期工作。</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <source>SRT Editor : </source>
+        <translation>SRT编辑 ：</translation>
     </message>
 </context>
 <context>
@@ -1876,7 +2723,7 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1418"/>
+        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Export parameters</source>
         <translation>导出参数</translation>
     </message>
@@ -1885,12 +2732,12 @@
         <translation type="vanished">过渡 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1419"/>
+        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Keep aspect ratio</source>
         <translation>保持长宽比</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1420"/>
+        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;-尾帧 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
@@ -1907,17 +2754,17 @@
         <translation type="vanished">自定义</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
+        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Insert range</source>
         <translation>插入区间</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
+        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Remove range</source>
         <translation>移除范围</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
+        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>Custom palette</source>
         <translation>自定义色板</translation>
     </message>
@@ -1946,7 +2793,7 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
+        <location filename="../../src/gui/exportdiag.h" line="1438"/>
         <source>Width: </source>
         <translation>宽度： </translation>
     </message>
@@ -1955,9 +2802,9 @@
         <translation type="vanished">一对一</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
+        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1446"/>
         <source>Set to native</source>
         <translation>设为预置</translation>
     </message>
@@ -1970,7 +2817,7 @@
         <translation type="vanished">有效参数：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
+        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Height:</source>
         <translation>高度：</translation>
     </message>
@@ -1979,7 +2826,7 @@
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;导出&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1439"/>
+        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>FPS:</source>
         <translation>FPS：</translation>
     </message>
@@ -1996,7 +2843,7 @@
         <translation type="vanished">图像序列</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
+        <location filename="../../src/gui/exportdiag.h" line="1447"/>
         <source>Export with transparency</source>
         <translation>透明导出</translation>
     </message>
@@ -2005,95 +2852,95 @@
         <translation type="vanished">循环动画（仅限GIF）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1421"/>
+        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Format:</source>
         <translation>格式：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1422"/>
+        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Codec:</source>
         <translation>编码器：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
+        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Destination:</source>
         <translation>目的地：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
+        <location filename="../../src/gui/exportdiag.h" line="1429"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
+        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Smaller file</source>
         <translation>体积更小</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1426"/>
+        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Balanced</source>
         <translation>均衡</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
+        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Best quality</source>
         <translation>最佳质量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
+        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Lossless</source>
         <translation>无损</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
+        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>How to encode</source>
         <translation>编码方式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1440"/>
+        <location filename="../../src/gui/exportdiag.h" line="1445"/>
         <source>What to export</source>
         <translation>导出内容</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
+        <location filename="../../src/gui/exportdiag.h" line="1448"/>
         <source>Loop animation</source>
         <translation>循环动画</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
+        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Export with audio</source>
         <translation>带音频导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
-        <location filename="../../src/gui/exportdiag.h" line="1459"/>
+        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1464"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1446"/>
-        <location filename="../../src/gui/exportdiag.h" line="1460"/>
-        <location filename="../../src/gui/exportdiag.h" line="1461"/>
+        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1465"/>
+        <location filename="../../src/gui/exportdiag.h" line="1466"/>
         <source>Set to auto</source>
         <translation>设为自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1449"/>
+        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Frame range:</source>
         <translation>帧范围：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1453"/>
+        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Advanced</source>
         <translation>高级</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1458"/>
+        <location filename="../../src/gui/exportdiag.h" line="1463"/>
         <source>Quality override:</source>
         <translation>质量覆盖值：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1534"/>
+        <location filename="../../src/gui/exportdiag.h" line="1539"/>
         <source>&amp;Export</source>
         <translation>&amp;导出</translation>
     </message>
@@ -2102,17 +2949,17 @@
         <translation type="vanished">Frames 渲染: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
+        <location filename="../../src/gui/exportdiag.h" line="1455"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- 首帧 -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
+        <location filename="../../src/gui/exportdiag.h" line="1456"/>
         <source>Bitrate (kB/s):</source>
         <translation>比特率（kB/s）：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1452"/>
+        <location filename="../../src/gui/exportdiag.h" line="1457"/>
         <source>Image quality:</source>
         <translation>图像质量：</translation>
     </message>
@@ -2121,7 +2968,7 @@
         <translation type="vanished">用自定义参数导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1462"/>
+        <location filename="../../src/gui/exportdiag.h" line="1467"/>
         <source>Select palette path</source>
         <translation>选择调色板路径</translation>
     </message>
@@ -2206,7 +3053,7 @@
         <translation type="vanished">导出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1536"/>
+        <location filename="../../src/gui/exportdiag.h" line="1541"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -2278,37 +3125,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="131"/>
         <source>Where are you posting this?</source>
         <translation>你要发布到哪里？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="143"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>搜索：telegram、sticker、reels、illustration、微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="148"/>
         <source>Search destinations</source>
         <translation>搜索目的地</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="245"/>
         <source>%1 destinations</source>
         <translation>%1个目的地</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="250"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>我的平台不在列表中（我自己选择格式）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="252"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>上面每一项都是我们了解其规则的目的地。这一项让你自行指定格式和编码器。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
+        <location filename="../../src/gui/DestinationPicker.cpp" line="257"/>
         <source>Use this destination</source>
         <translation>使用此目的地</translation>
     </message>
@@ -4052,7 +4899,7 @@ The log is available below.</source>
     </message>
     <message>
         <source>Linear</source>
-        <translation type="vanished">线型</translation>
+        <translation type="vanished">线性</translation>
     </message>
     <message>
         <source>Sine</source>
@@ -5131,13 +5978,15 @@ The log is available below.</source>
 <context>
     <name>projectSave</name>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="225"/>
         <source>Non ascii characters detected, this may cause issues.
 Save anyway?</source>
-        <translation type="vanished">检测到非ASCII字符，这可能会导致问题。仍然保存吗？</translation>
+        <translation>检测到非ASCII字符，这可能会导致问题。仍然保存吗？</translation>
     </message>
     <message>
+        <location filename="../../src/ctrl/System.cpp" line="231"/>
         <source>Unicode on filename detected</source>
-        <translation type="vanished">检测到文件名中包含Unicode字符</translation>
+        <translation>检测到文件名中包含Unicode字符</translation>
     </message>
 </context>
 <context>
@@ -5179,7 +6028,7 @@ Save anyway?</source>
     </message>
     <message>
         <source>Linear</source>
-        <translation type="vanished">线型</translation>
+        <translation type="vanished">线性</translation>
     </message>
     <message>
         <source>Sine</source>

@@ -97,30 +97,13 @@ QString audioCodecForContainer(const QString& aContainer) {
 
 // ---------- the (class, bucket) codec ladder --------------------------------
 //
-// Ordered best -> fallback. A candidate is used only if its encoder actually
-// exists in the linked build (availability probe). `ffmpeg -encoders` is NOT a
-// reliable answer here: it reports what the binary was compiled with, so
-// e.g. av1_nvenc is listed on an RTX 3080 and fails at runtime.
-
-bool encoderExists(const QString& aName) {
-    // encoderUsable, NOT encoderAvailable: a hardware encoder is routinely
-    // present in the binary while having no capable device on this machine.
-    const QByteArray bytes = aName.toUtf8();
-    return media::ffmpeg::encoderUsable(bytes.constData());
-}
-
-QString firstAvailable(const QStringList& aGroup) {
-    for (const QString& name : aGroup) {
-        if (encoderExists(name)) return name;
-    }
-    return QString();
-}
-
-// Returns QString, not const char*, on purpose. This text is user-visible and
-// contains an em dash, and a `const char*` holding UTF-8 source bytes is a
-// decoding trap: read back with fromLatin1() (as both of these were) it renders
-// the dash as "â€”". QStringLiteral is compiled to UTF-16 from the source
-// encoding, so there is no decode step left to get wrong.
+// Ordered best -> fallback. A candidate is used only if its encoder actually runs
+// here, which is a question for the linked build and this machine together:
+// `ffmpeg -encoders` is not a reliable answer, because it reports what the binary was
+// compiled with, so e.g. av1_nvenc is listed on an RTX 3080 and fails at runtime. The
+// probe is media::ffmpeg::encoderUsable, not encoderAvailable: a hardware encoder is
+// routinely present in the binary while having no capable device on this machine.
+//
 // A codec FAMILY: one compression format, whose encoders differ only in how they
 // produce it (software with the full rate-control toolbox, hardware with the speed).
 // The ORDER of these lists is the ladder's policy, and it is a fact rather than a
@@ -139,7 +122,7 @@ QString familyLabel(const QString& aFamily) {
     if (aFamily == QLatin1String("av1")) return QStringLiteral("AV1");
     if (aFamily == QLatin1String("hevc")) return QStringLiteral("H.265");
     if (aFamily == QLatin1String("h264")) return QStringLiteral("H.264");
-    if (aFamily == QLatin1String("lossless")) return QStringLiteral("FFV1 (lossless master)");
+    if (aFamily == QLatin1String("lossless")) return QStringLiteral("FFV1");
     return aFamily;
 }
 
@@ -193,19 +176,49 @@ Ladder ladderFor(DestClass aClass, QualityBucket aBucket) {
     return out;
 }
 
-QString classClause(DestClass aClass) {
+// The encoder as a person reads it: the format family, whether the encoder is hardware
+// or software, and which encoder it is. "hardware"/"software" are part of a sentence,
+// so they translate with it rather than as bare words.
+QString encoderLabel(const QString& aFamily, const QString& aName) {
+    return QCoreApplication::translate("ExportTargets", "%1 (%2)")
+        .arg(familyLabel(aFamily),
+             isHardwareEncoder(aName) ? QCoreApplication::translate("ExportTargets", "hardware")
+                                      : QCoreApplication::translate("ExportTargets", "software"));
+}
+
+// WHY this encoder, as one whole sentence per destination class, with the encoder as
+// %1. These were three English literals glued onto a label with a leading ": ", which
+// is untranslatable in practice: word order, the colon and the sentence break all move
+// between languages, and a translator had no string to work with at all.
+QString classReason(DestClass aClass, const QString& aEncoder) {
     switch (aClass) {
     case DestClass::Reencode:
-        return QStringLiteral(": this site re-encodes uploads, so source quality matters more than compatibility");
+        return QCoreApplication::translate(
+                   "ExportTargets",
+                   "%1. This site re-encodes uploads, so source quality matters more than "
+                   "compatibility")
+            .arg(aEncoder);
     case DestClass::Direct:
-        return QStringLiteral(": this plays your file directly, so decode compatibility matters most");
+        return QCoreApplication::translate(
+                   "ExportTargets",
+                   "%1. This plays your file directly, so decode compatibility matters most")
+            .arg(aEncoder);
     case DestClass::Archive:
-        return QStringLiteral(": a master copy, so fidelity matters most");
+        return QCoreApplication::translate(
+                   "ExportTargets", "%1. A master copy, so fidelity matters most")
+            .arg(aEncoder);
     default:
-        return QString();
+        return aEncoder;
     }
 }
 
+// The measurement, in the sentence it belongs to. "%2s" as a whole pattern rather than
+// a number with an "s" appended: seconds are not written the same way everywhere.
+QString timedReason(const QString& aEncoder, int aSeconds) {
+    return QCoreApplication::translate("ExportTargets", "%1, about %2s here")
+        .arg(aEncoder)
+        .arg(aSeconds);
+}
 
 } // namespace
 
@@ -219,9 +232,11 @@ bool applyQualityIntent(const QString& aCodec, QualityBucket aBucket,
         // A table without the policy cannot apply the intent, and saying nothing
         // would leave a control that looks like a decision and is not one.
         if (aNotes) {
-            *aNotes << QStringLiteral(
-                "Quality intent not applied: the destination table declares no "
-                "<bucket_positions>, so '%1' was left at its own default.").arg(aCodec);
+            *aNotes << QCoreApplication::translate(
+                           "ExportTargets",
+                           "Quality intent not applied: the destination table declares no "
+                           "<bucket_positions>, so '%1' was left at its own default.")
+                           .arg(aCodec);
         }
         return false;
     }
@@ -232,9 +247,11 @@ bool applyQualityIntent(const QString& aCodec, QualityBucket aBucket,
         // The knob exists precisely because the codec is lossy (the table's own
         // rule: no knob means nothing to trade). Asking for lossless cannot be
         // honoured, so say so instead of quietly delivering the best lossy setting.
-        *aNotes << QStringLiteral(
-            "'%1' is a lossy codec, so Lossless here means its highest quality, "
-            "not a lossless file.").arg(aCodec);
+        *aNotes << QCoreApplication::translate(
+                       "ExportTargets",
+                       "'%1' is a lossy codec, so Lossless here means its highest quality, "
+                       "not a lossless file.")
+                       .arg(aCodec);
     }
     return true;
 }
@@ -299,7 +316,9 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
 
     QFile file(aPath);
     if (!file.open(QIODevice::ReadOnly)) {
-        if (aError) *aError = QStringLiteral("cannot open %1").arg(aPath);
+        if (aError)
+            *aError = QCoreApplication::translate("ExportTargets", "cannot open %1")
+                          .arg(aPath);
         return out;
     }
 
@@ -318,7 +337,10 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
 
     const QDomElement root = doc.firstChildElement(QStringLiteral("export_targets"));
     if (root.isNull()) {
-        if (aError) *aError = QStringLiteral("%1: missing <export_targets> root").arg(aPath);
+        if (aError)
+            *aError = QCoreApplication::translate("ExportTargets",
+                                                          "%1: missing <export_targets> root")
+                          .arg(aPath);
         return out;
     }
 
@@ -546,12 +568,22 @@ int FrameSelection::rangeCount() const {
 
 QString FrameSelection::describe() const {
     const int n = total();
-    if (n == 0) return QStringLiteral("no frames selected");
+    if (n == 0)
+        return QCoreApplication::translate("ExportTargets", "no frames selected");
     // A backwards range contributes nothing, but is not pretended away: it just
     // does not add to the range count either.
     const int valid = rangeCount();
-    if (valid <= 1) return QStringLiteral("%1 frame%2").arg(n).arg(n == 1 ? QString() : QStringLiteral("s"));
-    return QStringLiteral("%1 frames from %2 separate ranges").arg(n).arg(valid);
+    if (valid <= 1) {
+        // One number, two whole phrases: "frame%2" appended an English "s" to a count,
+        // which no translator can move and which is wrong in any language that does not
+        // pluralise like English.
+        return n == 1 ? QCoreApplication::translate("ExportTargets", "%1 frame").arg(n)
+                      : QCoreApplication::translate("ExportTargets", "%1 frames").arg(n);
+    }
+    return QCoreApplication::translate("ExportTargets",
+                                       "%1 frames from %2 separate ranges")
+        .arg(n)
+        .arg(valid);
 }
 
 // ---------------------------------------------------------------------------
@@ -578,12 +610,14 @@ QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aN
         if (aNotes) {
             // Crop-or-pad is resolved (FitMode), so the note states which one
             // applies rather than calling it an open question.
-            *aNotes << QStringLiteral("Size forced to %1x%2 (required by this destination); "
-                                      "the art is %3.")
+            *aNotes << QCoreApplication::translate(
+                           "ExportTargets",
+                           "Size forced to %1x%2 (required by this destination); the art is %3.")
                            .arg(aRule.w)
                            .arg(aRule.h)
-                           .arg(aRule.fit == FitMode::Crop ? QStringLiteral("cropped to fill it")
-                                                           : QStringLiteral("padded to fit it"));
+                           .arg(aRule.fit == FitMode::Crop
+                                    ? QCoreApplication::translate("ExportTargets", "cropped to fill it")
+                                    : QCoreApplication::translate("ExportTargets", "padded to fit it"));
         }
         return QSize(evenFloor(aRule.w), evenFloor(aRule.h));
 
@@ -622,7 +656,11 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
     if (!aFps || !aFrames) return;
 
     if (aCaps.maxFps > 0 && *aFps > aCaps.maxFps) {
-        if (aNotes) *aNotes << QStringLiteral("Frame rate reduced %1 -> %2 fps (destination limit).").arg(*aFps).arg(aCaps.maxFps);
+        if (aNotes)
+            *aNotes << QCoreApplication::translate(
+                           "ExportTargets", "Frame rate reduced %1 -> %2 fps (destination limit).")
+                           .arg(*aFps)
+                           .arg(aCaps.maxFps);
         *aFps = aCaps.maxFps;
     }
 
@@ -631,7 +669,8 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
         if (duration > aCaps.maxDurationSec) {
             const int allowed = (int)std::floor(aCaps.maxDurationSec * *aFps);
             if (aNotes) {
-                *aNotes << QStringLiteral("Trimmed %1 -> %2 frames (%3s limit).")
+                *aNotes << QCoreApplication::translate(
+                               "ExportTargets", "Trimmed %1 -> %2 frames (%3s limit).")
                                .arg(*aFrames)
                                .arg(allowed)
                                .arg(aCaps.maxDurationSec);
@@ -641,14 +680,20 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
     }
 
     if (aCaps.maxFrames > 0 && *aFrames > aCaps.maxFrames) {
-        if (aNotes) *aNotes << QStringLiteral("Trimmed %1 -> %2 frames (destination limit).").arg(*aFrames).arg(aCaps.maxFrames);
+        if (aNotes)
+            *aNotes << QCoreApplication::translate(
+                           "ExportTargets", "Trimmed %1 -> %2 frames (destination limit).")
+                           .arg(*aFrames)
+                           .arg(aCaps.maxFrames);
         *aFrames = aCaps.maxFrames;
     }
 
     if (aCaps.minFrames > 0 && *aFrames < aCaps.minFrames) {
         if (aNotes) {
-            *aNotes << QStringLiteral("WARNING: destination needs at least %1 frames but only %2 "
-                                      "are available, so the upload will likely be rejected.")
+            *aNotes << QCoreApplication::translate(
+                               "ExportTargets",
+                               "WARNING: destination needs at least %1 frames but only %2 are "
+                               "available, so the upload will likely be rejected.")
                            .arg(aCaps.minFrames)
                            .arg(*aFrames);
         }
@@ -663,9 +708,10 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
         const double duration = (double)*aFrames / (double)*aFps;
         if (duration < aCaps.minDurationSec) {
             if (aNotes) {
-                *aNotes << QStringLiteral("WARNING: destination needs at least %1 s but this export "
-                                          "is %2 s, so the upload will likely be rejected. Select "
-                                          "a longer frame range.")
+                *aNotes << QCoreApplication::translate(
+                               "ExportTargets",
+                               "WARNING: destination needs at least %1 s but this export is %2 s, "
+                               "so the upload will likely be rejected. Select a longer frame range.")
                                .arg(aCaps.minDurationSec)
                                .arg(duration, 0, 'f', 2);
             }
@@ -684,6 +730,11 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
     // explanation (the real ETA comes from actual progress anyway).
     QString fallback;
     QString fallbackWhy;
+    // The label of the encoder that fallback names, kept alongside the reason: the
+    // give-up sentence needs a PHRASE ("AV1 (software) via libsvtav1"), while the
+    // per-attempt reasons that reach aWhy are whole sentences, and %1 has to be the
+    // same kind of thing in both.
+    QString fallbackLabel;
 
     for (const QString& family : ladder.families) {
         // Which of this family's encoders exist in this build, in the declared order
@@ -716,10 +767,8 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
             }
         }
 
-        const QString label = QStringLiteral("%1 (%2)")
-                                  .arg(familyLabel(family),
-                                       isHardwareEncoder(chosen) ? QStringLiteral("hardware")
-                                                                 : QStringLiteral("software"));
+        const QString label = encoderLabel(family, chosen);
+        fallbackLabel = label;
 
         // The remaining gate: does it fit the time budget HERE? Try the rest of this
         // family before giving up on the format (a software encoder may fit where the
@@ -729,32 +778,35 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
         order.prepend(chosen);
         for (const QString& name : order) {
             fallback = name;
-            fallbackWhy = label + classClause(aClass);
+            fallbackWhy = classReason(aClass, label);
             const QString how = (choseByMeasurement && name == chosen)
-                                    ? QStringLiteral("%1 via %2, the fastest of %3 that runs here")
-                                          .arg(label, name).arg(running.size())
-                                    : QStringLiteral("%1 via %2").arg(label, name);
+                                    ? QCoreApplication::translate(
+                                          "ExportTargets",
+                                          "%1 via %2, the fastest of %3 that runs here")
+                                          .arg(label, name)
+                                          .arg(running.size())
+                                    : QCoreApplication::translate("ExportTargets", "%1 via %2")
+                                          .arg(label, name);
             if (!canMeasure) {
-                if (aWhy) *aWhy = how + classClause(aClass);
+                if (aWhy) *aWhy = classReason(aClass, how);
                 return name;
             }
             const double fps = media::ffmpeg::encoderThroughput(name, aHints.width,
                                                                 aHints.height, aHints.pixFmt);
             if (fps <= 0.0) {
                 // Unmeasurable: do not reject on a failed measurement.
-                if (aWhy) *aWhy = how + classClause(aClass);
+                if (aWhy) *aWhy = classReason(aClass, how);
                 return name;
             }
             const double projected = (double)aHints.frameCount / fps;
             if (projected > aHints.maxSeconds) {
-                rejected << QStringLiteral("%1/%2 (~%3s)").arg(label, name)
+                rejected << QCoreApplication::translate("ExportTargets", "%1/%2 (~%3s)")
+                                .arg(label, name)
                                 .arg((int)std::llround(projected));
                 continue;
             }
             if (aWhy) {
-                *aWhy = QStringLiteral("%1, about %2s here%3").arg(how)
-                            .arg((int)std::llround(projected))
-                            .arg(classClause(aClass));
+                *aWhy = classReason(aClass, timedReason(how, (int)std::llround(projected)));
             }
             return name;
         }
@@ -762,14 +814,20 @@ QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
 
     if (!fallback.isEmpty()) {
         if (aWhy) {
-            *aWhy = QStringLiteral("%1: nothing here is fast enough for this budget (%2), "
-                                   "so this is the fastest available")
-                        .arg(fallbackWhy, rejected.join(QLatin1String(", ")));
+            *aWhy = QCoreApplication::translate(
+                        "ExportTargets",
+                        "%1: nothing here is fast enough for this budget (%2), so this is the "
+                        "fastest available")
+                        .arg(QCoreApplication::translate("ExportTargets", "%1 via %2")
+                                 .arg(fallbackLabel, fallback),
+                             rejected.join(QStringLiteral(", ")));
         }
         return fallback;
     }
 
-    if (aWhy) *aWhy = QStringLiteral("no suitable encoder found in this build");
+    if (aWhy)
+        *aWhy = QCoreApplication::translate("ExportTargets",
+                                               "no suitable encoder found in this build");
     return QString();
 }
 
@@ -781,11 +839,11 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     plan.target = aTarget;
 
     if (aTarget.id.isEmpty()) {
-        plan.error = QStringLiteral("no destination selected");
+        plan.error = QCoreApplication::translate("ExportTargets", "no destination selected");
         return plan;
     }
     if (!aRequest.sourceSize.isValid() || aRequest.sourceSize.isEmpty()) {
-        plan.error = QStringLiteral("invalid source size");
+        plan.error = QCoreApplication::translate("ExportTargets", "invalid source size");
         return plan;
     }
 
@@ -797,7 +855,9 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         switch (aCap) {
         case Capability::Required:
             *aOut = true;
-            plan.notes << QStringLiteral("%1 is required by this destination.").arg(aName);
+            plan.notes << QCoreApplication::translate("ExportTargets",
+                                                      "%1 is required by this destination.")
+                              .arg(aName);
             break;
         case Capability::Forbidden:
             *aOut = false;
@@ -808,8 +868,10 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         }
     };
 
-    resolveCapability(aTarget.alpha, QStringLiteral("Transparency"), &plan.alphaEnabled);
-    resolveCapability(aTarget.audio, QStringLiteral("Audio"), &plan.audioEnabled);
+    resolveCapability(aTarget.alpha, QCoreApplication::translate("ExportTargets", "Transparency"),
+                      &plan.alphaEnabled);
+    resolveCapability(aTarget.audio, QCoreApplication::translate("ExportTargets", "Audio"),
+                      &plan.audioEnabled);
 
     // --- size, rate and frames: the deterministic, pre-encode half -----------
     //
@@ -818,7 +880,7 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     // place, rather than also inside each codec branch, is what keeps the cap
     // notes from being emitted twice.
     if (aRequest.selection.isEmpty()) {
-        plan.error = QStringLiteral("no frames selected for export");
+        plan.error = QCoreApplication::translate("ExportTargets", "no frames selected for export");
         return plan;
     }
 
@@ -858,8 +920,10 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     // say which frames survived, and packing the ranges back-to-back is the
     // non-obvious consequence of choosing several ranges.
     if (plan.selection.rangeCount() > 1) {
-        plan.notes << QStringLiteral("%1; the ranges play back to back and the frames "
-                                     "between them are not exported.")
+        plan.notes << QCoreApplication::translate(
+                          "ExportTargets",
+                          "%1; the ranges play back to back and the frames between them are not "
+                          "exported.")
                           .arg(plan.selection.describe());
     }
 
@@ -878,7 +942,8 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         QString why;
         codec = resolveLadderCodec(aTarget.klass, aBucket, hints, &why);
         if (codec.isEmpty()) {
-            plan.error = QStringLiteral("no encoder available for this destination in this build");
+            plan.error = QCoreApplication::translate(
+                "ExportTargets", "no encoder available for this destination in this build");
             return plan;
         }
         plan.notes << why;
@@ -911,7 +976,10 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     if (!aTarget.note.isEmpty()) plan.notes << aTarget.note;
 
     if (!aTarget.verified) {
-        plan.notes << QStringLiteral("WARNING: this destination's limits are UNVERIFIED; re-check before relying on them.");
+        plan.notes << QCoreApplication::translate(
+                          "ExportTargets",
+                          "WARNING: this destination's limits are UNVERIFIED; re-check before "
+                          "relying on them.");
     }
 
     // --- image artifacts ----------------------------------------------------
@@ -935,12 +1003,15 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         if (aTarget.artifact == ArtifactKind::Still) {
             // One file means one frame, and it is the frame on screen.
             plan.selection = FrameSelection::fromRange(aRequest.playhead, aRequest.playhead);
-            plan.notes << QStringLiteral("One still image (frame %1), written as %2. "
-                                         "The frame range above does not apply.")
+            plan.notes << QCoreApplication::translate(
+                              "ExportTargets",
+                              "One still image (frame %1), written as %2. The frame range above "
+                              "does not apply.")
                               .arg(aRequest.playhead)
                               .arg(plan.imageSuffix.toUpper());
         } else {
-            plan.notes << QStringLiteral("%1 frames written as numbered .%2 files.")
+            plan.notes << QCoreApplication::translate(
+                              "ExportTargets", "%1 frames written as numbered .%2 files.")
                               .arg(plan.frames())
                               .arg(plan.imageSuffix);
         }
@@ -972,7 +1043,7 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
                                                   plan.alphaEnabled, plan.size.width(),
                                                   plan.size.height(), plan.fps, 0, &err);
     if (plan.config.codec.isEmpty()) {
-        plan.error = QStringLiteral("%1: %2").arg(aTarget.id, err);
+        plan.error = QStringLiteral("%1: %2").arg(aTarget.label, err);
         return plan;
     }
 
@@ -995,25 +1066,30 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
             // Dropping alpha here would hand the user a file the platform
             // rejects, with no symptom until upload. Refuse and name the
             // alternative instead.
-            plan.error = QStringLiteral(
-                             "%1 requires transparency, but '%2' cannot encode an alpha "
-                             "channel in this build (it advertises %3 and then refuses it). "
-                             "Use a destination whose codec carries alpha: WebM/VP9, APNG, "
-                             "or FFV1.")
+            plan.error = QCoreApplication::translate(
+                             "ExportTargets",
+                             "%1 requires transparency, but '%2' cannot encode an alpha channel "
+                             "in this build (it advertises %3 and then refuses it). Use a "
+                             "destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.")
                              .arg(aTarget.label, plan.config.codec, plan.config.pixFmt);
             return plan;
         }
         if (!fallbackOk) {
-            plan.error = QStringLiteral("%1: %2 could not encode %3 and no fallback worked (%4)")
+            plan.error = QCoreApplication::translate(
+                         "ExportTargets",
+                         "%1: %2 could not encode %3 and no fallback worked (%4)")
                              .arg(aTarget.id, plan.config.codec, plan.config.pixFmt, err2);
             return plan;
         }
         plan.alphaEnabled = false;
-        plan.notes << QStringLiteral(
-                          "Transparency dropped: '%1' advertises %2 but cannot encode it "
-                          "here, so %3 is used instead.")
+        plan.notes << QCoreApplication::translate(
+                          "ExportTargets",
+                          "Transparency dropped: '%1' advertises %2 but cannot encode it here, "
+                          "so %3 is used instead.")
                           .arg(plan.config.codec, plan.config.pixFmt,
-                               fallback.pixFmt.isEmpty() ? QStringLiteral("the encoder default")
+                               fallback.pixFmt.isEmpty()
+                                   ? QCoreApplication::translate("ExportTargets",
+                                                                 "the encoder default")
                                                          : fallback.pixFmt);
         plan.config = fallback;
     }
@@ -1073,12 +1149,14 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         // this is noise on every silent project.
         if (projectHasExportableAudio && !aRequest.mute &&
             aTarget.audio == Capability::Forbidden) {
-            plan.notes << QStringLiteral("No sound: %1 does not accept an audio track.")
+            plan.notes << QCoreApplication::translate(
+                              "ExportTargets", "No sound: %1 does not accept an audio track.")
                               .arg(aTarget.label);
         }
         if (aTarget.audio == Capability::Required && !projectHasExportableAudio) {
-            plan.notes << QStringLiteral("WARNING: %1 expects sound but this project has no "
-                                         "audio track.")
+            plan.notes << QCoreApplication::translate(
+                              "ExportTargets",
+                              "WARNING: %1 expects sound but this project has no audio track.")
                               .arg(aTarget.label);
         }
     }
@@ -1102,7 +1180,10 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
 
     QList<QImage> frames;
     for (int i = 0; i < aFrames.size(); i += aFrameStride) frames.append(aFrames[i]);
-    if (frames.isEmpty()) { out.error = QStringLiteral("no frames left"); return out; }
+    if (frames.isEmpty()) {
+        out.error = QCoreApplication::translate("ExportTargets", "no frames left");
+        return out;
+    }
 
     // An image artifact is written by Qt's image writers, so "encode an attempt"
     // means "write the file(s) this attempt describes and measure them". Without
@@ -1138,13 +1219,17 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
                           + QStringLiteral("%1").arg(i + 1, 4, 10, QChar('0')) + QLatin1Char('.')
                           + aPlan.imageSuffix;
             if (!frame.save(path, nullptr, aQualityValue)) {
-                out.error = QStringLiteral("could not write %1").arg(path);
+                out.error = QCoreApplication::translate("ExportTargets", "could not write %1")
+                                .arg(path);
                 return out;
             }
             if (aWrittenBefore) aWrittenBefore->append(path);
             total += QFileInfo(path).size();
         }
-        if (total <= 0) { out.error = QStringLiteral("no files produced"); return out; }
+        if (total <= 0) {
+        out.error = QCoreApplication::translate("ExportTargets", "no files produced");
+        return out;
+    }
         out.wrote = true;
         out.bytes = total;
         return out;
@@ -1183,7 +1268,10 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
             return out;
         }
         const QFileInfo info(gcfg.outputPath);
-        if (!info.exists()) { out.error = QStringLiteral("no file produced"); return out; }
+        if (!info.exists()) {
+            out.error = QCoreApplication::translate("ExportTargets", "no file produced");
+            return out;
+        }
         out.wrote = true;
         out.bytes = info.size();
         return out;
@@ -1204,7 +1292,10 @@ Attempt encodeAttempt(const ExportPlan& aPlan, const QList<QImage>& aFrames,
     if (!enc.close()) { out.error = enc.error(); return out; }
 
     const QFileInfo info(cfg.outputPath);
-    if (!info.exists()) { out.error = QStringLiteral("no file produced"); return out; }
+    if (!info.exists()) {
+        out.error = QCoreApplication::translate("ExportTargets", "no file produced");
+        return out;
+    }
     out.wrote = true;
     out.bytes = info.size();
     return out;
@@ -1228,10 +1319,18 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
     // function exists to enforce, while the fit loop reported success. Fail
     // loudly instead of encoding something the plan never described.
     if (aFrames.size() != plan.frames()) {
-        result.error = QStringLiteral("frame mismatch: the plan selects %1 frame%2 but %3 "
-                                      "were supplied (render plan.selection.indices())")
+        // "frame%2" glued an "s" onto a number, and "%1 frame"/"%1 frames" replaced it
+        // with two English plural forms: neither is movable, and Russian needs a third
+        // form for 2 to 4. The count is a label here instead of a noun with a number in
+        // front of it, which is a phrase every language can render for any count.
+        //
+        // The parenthetical used to read "(render plan.selection.indices())": that is an
+        // instruction to whoever wires a caller, printed to the person waiting for a
+        // file. The mismatch itself is what they need to know.
+        result.error = QCoreApplication::translate(
+                           "ExportTargets",
+                           "frames: the plan selected %1, but %2 were supplied")
                            .arg(plan.frames())
-                           .arg(plan.frames() == 1 ? QString() : QStringLiteral("s"))
                            .arg(aFrames.size());
         return result;
     }
@@ -1297,7 +1396,7 @@ FitResult exportWithFit(const ExportTarget& aTarget, const ExportRequest& aReque
         // covers the initial encode and both bisections.
         if (aShouldCancel && aShouldCancel()) {
             result.canceled = true;
-            result.error = QStringLiteral("canceled");
+            result.error = QCoreApplication::translate("ExportTargets", "canceled");
             return -1;
         }
         // The stride is applied ONCE, in encodeAttempt, which is the encoder

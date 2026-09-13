@@ -26,6 +26,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
+#include <QTranslator>
 #include <QTextStream>
 #include <QTreeWidget>
 #include <cstdio>
@@ -352,6 +353,47 @@ int main(int argc, char** argv) {
                              "(%1 times)").arg(offscreen));
         check(!currentId(tree).isEmpty(),
               QStringLiteral("and the walk reaches destinations (%1)").arg(currentId(tree)));
+    }
+
+    // 5. The dialog in a language that is not English, which is the one question a
+    //    catalog full of translations cannot answer by itself.
+    //
+    //    tr() resolves through the class's staticMetaObject. Without Q_OBJECT on
+    //    DestinationPicker the call bound to QDialog, the lookup asked for the
+    //    "QDialog" context, and every string in this dialog stayed English in all six
+    //    languages while the .ts files shipped translations under
+    //    "gui::DestinationPicker" that nothing ever read. lrelease reported 708
+    //    finished translations; the window title was "Where are you posting this?".
+    //
+    //    So this asks the WIDGET, not the catalog, and it asks it with the shipping
+    //    .qm installed: a title that comes back Spanish proves the context the class
+    //    actually asks for is the one translators filled.
+    {
+        QTranslator translator;
+        const QString qmDir = QStringLiteral(AE_I18N_QM_DIR);
+        const bool loaded = translator.load(QStringLiteral("translation_es"), qmDir);
+        check(loaded, QStringLiteral("the Spanish catalog loads from the build (%1)").arg(qmDir));
+        if (loaded) {
+            QApplication::installTranslator(&translator);
+            gui::DestinationPicker picker(targets, groups, resources, QString(), nullptr);
+            const QString title = picker.windowTitle();
+            check(title != QStringLiteral("Where are you posting this?"),
+                  QStringLiteral("the picker title is translated, not the English source (%1)")
+                      .arg(title));
+            QDialogButtonBox* box = picker.findChild<QDialogButtonBox*>();
+            const QString ok = box ? box->button(QDialogButtonBox::Ok)->text() : QString();
+            check(ok != QStringLiteral("Use this destination") && !ok.isEmpty(),
+                  QStringLiteral("and so is its confirm button (%1)").arg(ok));
+            // The export dialog answers through its own context, and it was unreachable
+            // for a different reason: a hand rolled tr() that forwarded to "ExportDiag",
+            // a context no catalog has. Both are asked here so the pair cannot regress
+            // together unnoticed.
+            const QString exported = QCoreApplication::translate("ExportWidgetUI", "Export");
+            check(exported != QStringLiteral("Export"),
+                  QStringLiteral("the export dialog's own context answers in Spanish (%1)")
+                      .arg(exported));
+            QApplication::removeTranslator(&translator);
+        }
     }
 
     QTextStream(stdout) << (failures == 0 ? "=== destination_picker: OK ===\n"

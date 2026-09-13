@@ -327,6 +327,23 @@ int main(int argc, char** argv) {
             check(!esGeneric.label.isEmpty() && esGeneric.label != enGeneric.label,
                   QStringLiteral("a destination name arrives translated (%1 -> %2)")
                       .arg(enGeneric.label, esGeneric.label));
+            // The FACTS box is not a table: it is built in code (gui/ExportFacts.cpp)
+            // through QCoreApplication::translate with the "MainWindow" context, and
+            // those strings reach a translator only because the call is written out
+            // with its context spelled literally. A file-local helper here made them
+            // invisible and the box shipped half in English, so the two that a reader
+            // meets first are asserted, not assumed.
+            const QString codecLine =
+                QCoreApplication::translate("MainWindow", "Codec: %1 in %2")
+                    .arg(QStringLiteral("libx264"), QStringLiteral("mp4"));
+            check(codecLine != QStringLiteral("Codec: libx264 in mp4"),
+                  QStringLiteral("the facts box translates with the catalog loaded (%1)")
+                      .arg(codecLine));
+            const QString viaLine =
+                QCoreApplication::translate("ExportTargets", "%1 via %2")
+                    .arg(QStringLiteral("AV1"), QStringLiteral("libsvtav1"));
+            check(viaLine != QStringLiteral("AV1 via libsvtav1"),
+                  QStringLiteral("and so does the reason a codec was chosen (%1)").arg(viaLine));
             const ctrl::ExportTarget esAnimation =
                 ctrl::ExportTargets::find(translated, QStringLiteral("discord.animation"));
             const ctrl::ExportTarget enAnimation =

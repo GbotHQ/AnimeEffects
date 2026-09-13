@@ -156,7 +156,12 @@ target_compile_definitions(destination_picker PRIVATE
     USE_GL_CORE_PROFILE
     AE_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/assets"
     AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+    # The .qm are build artifacts (not sources) and they are what the app actually
+    # loads, so the language assertions need the built catalog and a dependency on
+    # it: without release_translations this test would read a stale file and pass.
+    AE_I18N_QM_DIR="${PROJECT_BINARY_DIR}/src/gui"
 )
+add_dependencies(destination_picker release_translations)
 target_link_libraries(destination_picker PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
     media

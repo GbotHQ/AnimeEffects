@@ -1044,7 +1044,11 @@ TEST_SECTION("frame selection (several non-contiguous ranges)", run_frame_select
     for (int i = 0; i < 5; ++i) wrong.append(makeFrame(320, 240, i));
     const ctrl::FitResult fr =
         ctrl::exportWithFit(generic, req, ctrl::QualityBucket::Balanced, wrong);
-    check(!fr.ok && fr.error.contains(QLatin1String("frame mismatch")),
+    // The source wording, not a translation: this test runs with no translator
+    // installed. It asserts the label form ("frames: ...") that replaced the
+    // "%1 frame"/"%1 frames" pair, because a noun with a number in front of it cannot
+    // be rendered correctly for every count in every language.
+    check(!fr.ok && fr.error.contains(QLatin1String("frames: the plan selected")),
           QStringLiteral("a frame-count mismatch is refused (%1)").arg(fr.error));
 }
 
