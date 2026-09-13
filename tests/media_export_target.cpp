@@ -548,6 +548,44 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
 
 
 TEST_SECTION("size rules", run_size_rules) {
+    // AN EXACT SIZE NEVER STRETCHES THE ART. The remainder is padded (or cropped, for
+    // a row whose platform forbids margins), and which of the two is a per-row data
+    // fact - so this walks every exact row in the table and asserts the plan carries
+    // one of them. A plan with fit == None and an exact canvas is the "distorted to
+    // fit" case a sticker destination must never produce.
+    {
+        const QList<ctrl::ExportTarget> rows =
+            ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+        int exactRows = 0, padded = 0, cropped = 0;
+        for (const ctrl::ExportTarget& t : rows) {
+            if (t.size.mode != ctrl::SizeMode::Exact) continue;
+            ++exactRows;
+            ctrl::ExportRequest req;
+            // Deliberately the wrong shape: an exact rule is where a mismatched art
+            // has to be reconciled rather than stretched.
+            req.sourceSize = QSize(1000, 400);
+            req.selection = ctrl::FrameSelection::fromCount(1);
+            const ctrl::ExportPlan plan = ctrl::planExport(t, req, ctrl::QualityBucket::Balanced);
+            if (!plan.ok()) {
+                check(false, QStringLiteral("%1: exact-size plan builds (%2)").arg(t.id, plan.error));
+                continue;
+            }
+            check(plan.config.fit != media::FitMode::None,
+                  QStringLiteral("%1: an exact canvas pads or crops, never stretches").arg(t.id));
+            if (plan.config.fit == media::FitMode::Crop) ++cropped;
+            else ++padded;
+            if (plan.size != QSize(t.size.w, t.size.h)) {
+                check(false, QStringLiteral("%1: exact rule produced %2x%3, not %4x%5")
+                                 .arg(t.id).arg(plan.size.width()).arg(plan.size.height())
+                                 .arg(t.size.w).arg(t.size.h));
+            }
+        }
+        check(exactRows >= 6, QStringLiteral("every exact row in the table was walked (%1)").arg(exactRows));
+        check(padded + cropped == exactRows,
+              QStringLiteral("and each one resolved to a mode (%1 padded, %2 cropped)")
+                  .arg(padded).arg(cropped));
+    }
+
     // A destination can declare that the frame rate never reaches it, and the form
     // then does not ask for one. pixiv ugoira is the case: numbered stills whose
     // timing is authored on the upload page.

@@ -61,7 +61,15 @@
   Size modes:
     free          the destination imposes no size: the export dialog's own
                   Width/Height apply (they start at the project size)
-    exact         exactly w x h  (NOTE: needs crop-or-pad — an open design item)
+    exact         exactly w x h. The art cannot match every aspect, so the remainder
+                  is PADDED with transparency (`fit="crop"` crops instead, for a row
+                  whose platform forbids margins). Every exact row here pads: Discord
+                  requires a square canvas, WhatsApp recommends a stroke, Signal asks
+                  for a margin, and WeChat's own pipeline crops over-spec art, so a
+                  transparent margin is either required or accepted by all of them.
+                  Crop exists for the row that will need it (LINE-style "no margins"
+                  specs), and the table test asserts that an exact rule NEVER silently
+                  stretches the art.
     max           fit inside w x h, preserve aspect
     maxExactSide  long side == @side, short side <= @side
     maxMinSide    fit inside w x h, then ensure long side >= @side
