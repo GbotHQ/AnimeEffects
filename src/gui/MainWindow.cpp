@@ -2079,9 +2079,25 @@ void MainWindow::openExportDialog(const QString& aDestinationId) {
                                   : tr("Codec: %1 in %2")
                                         .arg(plan.config.codec, plan.config.container));
                 }
+                // The audio half says WHY, not only whether. Three different things
+                // produce a file with no sound, and the form has a control that can
+                // look like it is being contradicted: a ticked "Export with audio"
+                // beside a bare "Audio: no" reads as a bug when the truth is that the
+                // project has nothing to send. The destination refusing sound, the
+                // project having none, and the user turning it off are three
+                // sentences, and only the third is the user's own decision.
+                QString audioText;
+                if (target.audio == ctrl::Capability::Forbidden) {
+                    audioText = tr("not accepted by this destination");
+                } else if (request.exportableAudioTracks == 0) {
+                    audioText = tr("none in this project");
+                } else if (request.mute) {
+                    audioText = tr("off in this dialog");
+                } else {
+                    audioText = plan.audioEnabled ? tr("yes") : tr("no");
+                }
                 lines << tr("Transparency: %1   Audio: %2")
-                             .arg(plan.alphaEnabled ? tr("yes") : tr("no"),
-                                  plan.audioEnabled ? tr("yes") : tr("no"));
+                             .arg(plan.alphaEnabled ? tr("yes") : tr("no"), audioText);
                 // The hard limits, stated as limits. The byte cap is the reason a
                 // capped export re-encodes itself (and can end up smaller, or at a
                 // lower quality than the Quality setting asked for), so a dialog
