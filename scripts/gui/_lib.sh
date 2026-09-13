@@ -181,18 +181,36 @@ require_export_flow() {
 
 
 # One line per name: "showing", "hidden" or "absent". The shell asserts on it.
+#
+# The names asked about are recorded beside the answers, and the assert helpers below
+# check them, because a report and the assertions that read it are two lists that have
+# to agree and nothing made them. A probe that asserted on "Advanced" while its report
+# never asked about it failed forever with the same message as a control that was
+# genuinely hidden (measured; the fix looked like an application bug both times). A
+# name that was never asked about is now its own loud, distinct failure.
 ae_report() { # ae_report <file> <name>...
     local file=$1; shift
     ae report "$@" > "$file"
+    : > "$file.names"
+    for n in "$@"; do printf '%s\n' "$n" >> "$file.names"; done
+}
+
+ae_report_asked() { # ae_report_asked <file> <name> <what>
+    if [ -f "$1.names" ] && grep -qx -- "$2" "$1.names"; then
+        return 0
+    fi
+    echo "FAIL  $3 (this report never asked about '$2')"
+    FAILURES=$((FAILURES + 1))
+    return 1
 }
 
 # The three states are three different assertions, and they mean different things:
 # "showing" is what the user can act on, "hidden" is a control the artifact cannot
 # use (the export form hides those rather than greying them out), and "absent" means
 # the widget is not in this dialog at all.
-assert_showing() { grep -qx "showing $2" "$1"; check $? "$3"; }
-assert_hidden()  { grep -qx "hidden  $2" "$1"; check $? "$3"; }
-assert_absent()  { grep -qx "absent  $2" "$1"; check $? "$3"; }
+assert_showing() { ae_report_asked "$1" "$2" "$3" || return 1; grep -qx "showing $2" "$1"; check $? "$3"; }
+assert_hidden()  { ae_report_asked "$1" "$2" "$3" || return 1; grep -qx "hidden  $2" "$1"; check $? "$3"; }
+assert_absent()  { ae_report_asked "$1" "$2" "$3" || return 1; grep -qx "absent  $2" "$1"; check $? "$3"; }
 
 check() { # check <ok:0|1> <message>
     # A probe that never reached its screen asserts nothing: see require_export_flow.
@@ -273,4 +291,4 @@ summary() { # summary <probe name>
 #     and summary() counts and prints those lines as its own.
 export AE_OUTER_PID=$$
 export AE_FAIL_FLAG="$(mktemp -u)"
-export -f ae ae_center ae_press ae_report check require_export_flow
+export -f ae ae_center ae_press ae_report ae_report_asked check require_export_flow

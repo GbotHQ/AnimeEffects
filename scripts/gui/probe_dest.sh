@@ -37,7 +37,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   # 2. Typing narrows the tree, opens the platform it found and selects a
   #    destination inside it, so Enter is a complete answer.
-  ae set "Search destinations" "insta" >/dev/null
+  ae set "Search destinations" "discord" >/dev/null
   sleep 1.2
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/dst_02_search.png
@@ -45,8 +45,16 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # 3. The default button answers with that destination, and the form that follows
   #    states it: what the picker chose must be what the dialog shows.
   ae_press "Use this destination" "the chosen destination is accepted"
-  sleep 3
-  ae_report /tmp/dst_form.txt "Destination" "Width" "Height" "Format" "Quality"
+  # Wait for the form to have applied the destination before snapshotting it. A
+  # report answers as soon as ANY name it was asked about is on screen, so asking
+  # about "Destination" (visible the moment the form opens) can return a snapshot of
+  # the form BEFORE the plan for that destination has been applied - which is how
+  # this probe once reported "Advanced: hidden" for a dialog whose screenshot showed
+  # it plainly on screen.
+  ae wait "Advanced" >/dev/null 2>&1 || true
+  sleep 1
+  ae_report /tmp/dst_form.txt "Destination" "Width" "Height" "Format" "Quality" \
+                                      "Advanced" "Keep aspect ratio"
   ae text > /tmp/dst_form_text.txt 2>/dev/null
   # Which words on screen belong to which field. This is the OTHER half of
   # addressing a form: a control can answer to a name and still have nothing beside
@@ -67,15 +75,22 @@ assert_rendered "$SHOTS/dst_02_search.png" "the picker after typing insta"
 assert_showing /tmp/dst_form.txt "Destination" "the export form opens once a destination is chosen"
 # The destination DICTATES the format, so the form states it as a fact instead of
 # offering a control: asserting "Format is showing" would be asserting the bug this
-# work removed. What the facts must carry is the consequence - Instagram photo is one
-# JPG, capped at 8 MB - which is the destination's own data arriving through
-# planExport(), so this checks the wiring and not the wording.
+# work removed. What the facts must carry is the consequence - Discord caps an upload
+# at 20 MB - which is the destination's own data arriving through planExport(), so
+# this checks the wiring and not the wording.
 assert_hidden /tmp/dst_form.txt "Format" "the destination dictates the format, so there is no Format control"
-if grep -qi jpg /tmp/dst_form_text.txt && grep -q "8 MB" /tmp/dst_form_text.txt; then
-    check 0 "and the facts state what the chosen destination requires (one JPG, 8 MB)"
+if grep -q "20 MB" /tmp/dst_form_text.txt; then
+    check 0 "and the facts state what the chosen destination requires (20 MB)"
 else
     check 1 "and the facts state what the chosen destination requires (got: $(tr '\n' ' ' < /tmp/dst_form_text.txt 2>/dev/null | head -c 200))"
 fi
+# A CEILING IS NOT A DECISION. Discord's rule is "no bigger than 1280x720", so the
+# resolution stays the user's, and a destination is not a reason to lose the Advanced
+# section: what it merely DEFAULTS (audio, and the codec's own quality value) has to
+# remain reachable, or the export cannot be finished.
+assert_showing /tmp/dst_form.txt "Width" "a size ceiling leaves the resolution editable"
+assert_showing /tmp/dst_form.txt "Height" "both of them"
+assert_showing /tmp/dst_form.txt "Advanced" "and the disclosure stays available with a destination chosen"
 # The expectation is the words ON SCREEN, which are not the accessible name:
 # the fps box answers to "Frame rate" and is labelled "FPS:" on the form.
 for pair in "Width:/tmp/dst_labeled_width.txt" "FPS:/tmp/dst_labeled_fps.txt"; do

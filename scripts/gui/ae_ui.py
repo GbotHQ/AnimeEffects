@@ -195,13 +195,19 @@ def showing(node):
         try:
             role = node.get_role_name()
         except Exception:
-            return True
+            # A node whose interface is gone is not a widget on screen. This used to
+            # return True, so a STALE node (the widgets of a dialog that has since been
+            # destroyed are still reachable through the tree for a while) answered
+            # "showing" for a control that no longer exists - which is how an audit run
+            # reported "Loop animation: showing" for an MP4 export in a collapsed
+            # Advanced section, twice over.
+            return False
         if role == "application":
             return True
         try:
             node = node.get_parent()
         except Exception:
-            return True
+            return False
         seen += 1
     return True
 

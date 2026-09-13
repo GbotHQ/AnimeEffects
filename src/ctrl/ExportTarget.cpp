@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QFile>
 
+#include <algorithm>
 #include <cmath>
 #include <climits>
 #include <functional>
@@ -771,10 +772,24 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     // caller named no size does the art's own size apply. This is handled here
     // rather than inside applySizeRule because it is request policy, not part of
     // what the destination's rule says.
-    if (aTarget.size.mode == SizeMode::Free && aRequest.requestedSize.isValid()
-        && !aRequest.requestedSize.isEmpty()) {
+    //
+    // A MAX rule is a CEILING, not a decision, and the user's own resolution is the
+    // other ceiling: the art fits inside the smaller of the two. Treating the
+    // destination's box as the answer made every max-mode row (Discord, WhatsApp,
+    // Signal, Instagram, TikTok, YouTube) a destination whose size the user could
+    // not touch, so "export this at 640x360 for Discord" was not expressible on a
+    // destination whose entire rule is "no bigger than 1280x720". The rules that
+    // really do pin a size (Exact, MaxExactSide, MaxMinSide) still do.
+    const bool hasRequested = aRequest.requestedSize.isValid()
+                              && !aRequest.requestedSize.isEmpty();
+    if (aTarget.size.mode == SizeMode::Free && hasRequested) {
         plan.size = QSize(evenFloor(aRequest.requestedSize.width()),
                           evenFloor(aRequest.requestedSize.height()));
+    } else if (aTarget.size.mode == SizeMode::Max && hasRequested) {
+        SizeRule bounded = aTarget.size;
+        if (bounded.w > 0) bounded.w = std::min(bounded.w, aRequest.requestedSize.width());
+        if (bounded.h > 0) bounded.h = std::min(bounded.h, aRequest.requestedSize.height());
+        plan.size = applySizeRule(bounded, aRequest.sourceSize, &plan.notes);
     } else {
         plan.size = applySizeRule(aTarget.size, aRequest.sourceSize, &plan.notes);
     }

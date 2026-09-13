@@ -47,7 +47,9 @@ public:
     QVBoxLayout *verticalLayout_3;
     QScrollArea *globalParamScroll;
     QWidget *globalParamScrollContents;
-    QGridLayout *gridLayout_2;
+    // The frame-range rows, and the ONLY layout handle the form keeps. A new range is
+    // appended here (rowCount()), so nothing in this file computes a position.
+    QGridLayout *frameRangeGrid;
     QCheckBox *keepAspectRatio;   // the size link: does Width move Height?
     QLabel *lastFrameLabel;
     QLabel *formatLabel;
@@ -74,7 +76,6 @@ public:
     static constexpr int kFactsMaxLines = 6;
 
     QWidget *destinationBox;
-    QGridLayout *destinationGrid;
     QPushButton *insertFrameRangeButton;
     QPushButton *removeFrameRangeButton;
     QFrame *exportLine1;
@@ -118,7 +119,6 @@ public:
     // and the encoder's own numbers. One disclosure, collapsed by default.
     QToolButton *advancedToggle;
     QWidget *advancedBox;
-    QGridLayout *advancedGrid;
     QPushButton *setImageQualityToAuto;
     QSpinBox * fpsSpinBox;
     QToolButton *selectPalettePathButton;
@@ -202,6 +202,28 @@ public:
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(exportWidget->sizePolicy().hasHeightForWidth());
         exportWidget->setSizePolicy(sizePolicy);
+
+        // ================= THE SHAPE OF THE DIALOG ============================
+        //
+        //   where it is going        the facts that destination imposes
+        //   ---
+        //   WHAT TO EXPORT           the project's own numbers: frames, size, rate
+        //   ---
+        //   HOW TO ENCODE            the choices the encoder actually leaves
+        //   ---
+        //   [ Export ]  [ Cancel ]
+        //
+        // Each section is a QFormLayout and every row is added as (label, field), so
+        // Qt associates the two: each control has words on screen that belong to it,
+        // and no row is addressed by a number. The old form was ONE hand-built
+        // seventeen-row QGridLayout in which a row WAS its index - the frame range
+        // was appended at rows 22-24 when it was added, long after the encoder rows,
+        // and a label was associated with its field only by happening to sit in the
+        // same row. That is why the order on screen was the order things were added
+        // and why nothing could be found by name.
+        //
+        // Adding a control is now: create it, addRow(label, it). Nothing renumbers,
+        // nothing computes a position, and a row that is hidden leaves no gap.
         verticalLayout_2 = new QVBoxLayout(exportWidget);
         verticalLayout_2->setObjectName(QString::fromUtf8("verticalLayout_2"));
         globalParam = new QWidget();
@@ -209,327 +231,381 @@ public:
         verticalLayout_3 = new QVBoxLayout(globalParam);
         verticalLayout_3->setObjectName(QString::fromUtf8("verticalLayout_3"));
 
+        // A section heading: its name between two hairlines. One helper, so the two
+        // headings cannot drift apart in weight or spacing.
+        auto sectionHeader = [](QWidget* aParent, QLabel* aLabel, QFrame* aLeft,
+                                QFrame* aRight) {
+            auto* box = new QWidget(aParent);
+            auto* row = new QHBoxLayout(box);
+            row->setContentsMargins(0, 4, 0, 4);
+            row->setSpacing(8);
+            row->addWidget(aLeft, 1);
+            row->addWidget(aLabel);
+            row->addWidget(aRight, 1);
+            return box;
+        };
+        auto hairline = [](QWidget* aParent, const char* aName) {
+            auto* line = new QFrame(aParent);
+            line->setObjectName(QString::fromUtf8(aName));
+            line->setFrameShape(QFrame::HLine);
+            line->setFrameShadow(QFrame::Sunken);
+            line->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+            return line;
+        };
+        // A field with the buttons that belong to it. "Set to native" is part of the
+        // Width field rather than a row of its own, and a form row holds ONE widget,
+        // so the pair goes in one container.
+        auto withTrailing = [](QWidget* aParent, QWidget* aField,
+                               const QList<QWidget*>& aTrailing) {
+            auto* box = new QWidget(aParent);
+            auto* row = new QHBoxLayout(box);
+            row->setContentsMargins(0, 0, 0, 0);
+            row->setSpacing(6);
+            row->addWidget(aField, 1);
+            for (QWidget* w : aTrailing) row->addWidget(w);
+            return box;
+        };
+        // Generic on purpose: it hands back the same type it was given, so
+        // `widthSpinBox = expanding(new QSpinBox(...))` keeps the member's type.
+        auto expanding = [](auto* aWidget) {
+            aWidget->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+            return aWidget;
+        };
+
+        // ---- WHERE IT IS GOING ------------------------------------------------
+        //
+        // The destination is the first question, not the last: it is the one thing
+        // the user knows that the system cannot derive, and everything below it is
+        // either a consequence of it or a genuine choice. Pinned ABOVE the scrolling
+        // settings rather than living inside them, because a stated fact that can be
+        // contradicted by a control scrolled out of sight is not a stated fact.
         destinationBox = new QWidget(globalParam);
         destinationBox->setObjectName(QString::fromUtf8("destinationBox"));
-        destinationGrid = new QGridLayout(destinationBox);
-        destinationGrid->setObjectName(QString::fromUtf8("destinationGrid"));
-        destinationGrid->setContentsMargins(0, 0, 0, 0);
+        auto* destinationForm = new QFormLayout(destinationBox);
+        destinationForm->setObjectName(QString::fromUtf8("destinationForm"));
+        destinationForm->setContentsMargins(0, 0, 0, 0);
+
+        destinationLabel = new QLabel(destinationBox);
+        destinationLabel->setObjectName(QString::fromUtf8("destinationLabel"));
+        destinationButton = new QPushButton(destinationBox);
+        destinationButton->setObjectName(QString::fromUtf8("destinationButton"));
+        destinationButton->setToolTip(tr("Choose where this is going"));
+        destinationForm->addRow(destinationLabel, destinationButton);
+
+        // What the destination requires, in words. Filled by MainWindow from
+        // planExport(): the codec it resolved and why, the size it forces, and every
+        // capability the row declares.
+        destinationFacts = new QLabel(destinationBox);
+        destinationFacts->setObjectName(QString::fromUtf8("destinationFacts"));
+        destinationFacts->setWordWrap(true);
+        destinationFacts->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        // Reserve the height the longest destination needs (summary, capability
+        // line, and its notes - Telegram's emoji row uses four). Without it the
+        // whole form shifts up and down as the user moves through the destination
+        // list, because a wrapped label's height IS its line count: controls that
+        // move while you are reading them are worse than a little empty space.
+        destinationFacts->setMinimumHeight(kFactsMinLines * destinationFacts->fontMetrics().lineSpacing());
+        // Horizontal Ignored means "give me whatever width the layout has and wrap
+        // into it". A wrapped label must not have a say in how wide its column is:
+        // its sizeHint is one long line, and letting that become the preferred width
+        // stretches the dialog instead of wrapping the sentence.
+        destinationFacts->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+        destinationFacts->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        // A note can be long (pixiv's ugoira row explains three limits in seven
+        // lines). The facts are VARIABLE-length content, so they get the scrolling:
+        // without a ceiling here the label grows and pushes the frame range and the
+        // render size below the edge of the dialog. Better that the explanation
+        // scrolls than the form.
+        destinationFactsScroll = new QScrollArea(destinationBox);
+        destinationFactsScroll->setObjectName(QString::fromUtf8("destinationFactsScroll"));
+        destinationFactsScroll->setWidget(destinationFacts);
+        destinationFactsScroll->setWidgetResizable(true);
+        destinationFactsScroll->setFrameShape(QFrame::NoFrame);
+        destinationFactsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        destinationFactsScroll->setMaximumHeight(kFactsMaxLines
+                                                 * destinationFacts->fontMetrics().lineSpacing());
+        // ...and it must NOT absorb the dialog's leftover height. Maximum: its
+        // sizeHint (floored by the label's minimumHeight above) is a ceiling, not a
+        // target.
+        destinationFactsScroll->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
+        destinationFactsScroll->setFocusPolicy(Qt::NoFocus);
+        // A spanning row: the facts are about the destination above them, not a
+        // field with a label of its own.
+        destinationForm->addRow(destinationFactsScroll);
+        verticalLayout_3->addWidget(destinationBox);
 
         globalParamScroll = new QScrollArea(globalParam);
         globalParamScroll->setObjectName(QString::fromUtf8("globalParamScroll"));
         globalParamScroll->setWidgetResizable(true);
         globalParamScrollContents = new QWidget();
         globalParamScrollContents->setObjectName(QString::fromUtf8("globalParamScrollContents"));
-        globalParamScrollContents->setGeometry(QRect(0, 0, 471, 567));
-        gridLayout_2 = new QGridLayout(globalParamScrollContents);
-        gridLayout_2->setObjectName(QString::fromUtf8("gridLayout_2"));
+        auto* formStack = new QVBoxLayout(globalParamScrollContents);
+        formStack->setObjectName(QString::fromUtf8("formStack"));
+        formStack->setContentsMargins(0, 0, 0, 0);
+        formStack->setSpacing(2);
 
-
-        // A CHECKBOX, not one of three radios. "One-to-one" and "Custom" were the
-        // original dialog's other two size-LINK modes (change both boxes by the same
-        // delta / by nothing at all), and the value they set - GeneralParams::
-        // aspectRatio - is written by MainWindow and read by nothing at all. What is
-        // left after removing dead data is the one question that has an answer in
-        // the export: does editing Width move Height?
-        keepAspectRatio = new QCheckBox(globalParamScrollContents);
-        keepAspectRatio->setObjectName(QString::fromUtf8("keepAspectRatio"));
-        keepAspectRatio->setChecked(true);
-
-        gridLayout_2->addWidget(keepAspectRatio, 6, 1, 1, 2);
-
-        lastFrameLabel = new QLabel(globalParamScrollContents);
-        lastFrameLabel->setObjectName(QString::fromUtf8("lastFrameLabel"));
-        QSizePolicy sizePolicy1(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
-        sizePolicy1.setHorizontalStretch(0);
-        sizePolicy1.setVerticalStretch(0);
-        sizePolicy1.setHeightForWidth(lastFrameLabel->sizePolicy().hasHeightForWidth());
-        lastFrameLabel->setSizePolicy(sizePolicy1);
-
-        gridLayout_2->addWidget(lastFrameLabel, 1, 2, 1, 1);
-
-        formatLabel = new QLabel(globalParamScrollContents);
-        formatLabel->setObjectName(QString::fromUtf8("formatLabel"));
-
-        gridLayout_2->addWidget(formatLabel, 9, 0, 1, 1);
-
-
-        insertFrameRangeButton = new QPushButton(globalParamScrollContents);
-        insertFrameRangeButton->setObjectName(QString::fromUtf8("insertFrameRangeButton"));
-        QSizePolicy sizePolicy2(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        sizePolicy2.setHorizontalStretch(0);
-        sizePolicy2.setVerticalStretch(0);
-        sizePolicy2.setHeightForWidth(insertFrameRangeButton->sizePolicy().hasHeightForWidth());
-        insertFrameRangeButton->setSizePolicy(sizePolicy2);
-        QIcon icon = aResources.icon("plus-bold");
-        insertFrameRangeButton->setIcon(icon);
-
-        gridLayout_2->addWidget(insertFrameRangeButton, 2, 0, 1, 1);
-
-        QWidget::connect(insertFrameRangeButton, &QPushButton::clicked, [=]{addRange(projectLastFrame);});
-
-        removeFrameRangeButton = new QPushButton(globalParamScrollContents);
-        removeFrameRangeButton->setObjectName(QString::fromUtf8("removeFrameRangeButton"));
-        removeFrameRangeButton->setSizePolicy(sizePolicy2);
-        QIcon rfIcon = aResources.icon("minus-bold");
-        removeFrameRangeButton->setIcon(rfIcon);
-
-        gridLayout_2->addWidget(removeFrameRangeButton, 3, 0, 1, 1);
-
-        QWidget::connect(removeFrameRangeButton, &QPushButton::clicked, [=]{removeRange(projectLastFrame);});
-
-        exportLine1 = new QFrame(globalParamScrollContents);
-        exportLine1->setObjectName(QString::fromUtf8("exportLine1"));
-        exportLine1->setFrameShape(QFrame::HLine);
-        exportLine1->setFrameShadow(QFrame::Sunken);
-
-        gridLayout_2->addWidget(exportLine1, 8, 0, 1, 1);
-
-        customPaletteCheckBox = new QCheckBox(globalParamScrollContents);
-        customPaletteCheckBox->setObjectName(QString::fromUtf8("customPaletteCheckBox"));
-        customPaletteCheckBox->setChecked(false);
-
-        gridLayout_2->addWidget(customPaletteCheckBox, 19, 0, 1, 1);
-
-        firstFrameSpinBox = new QSpinBox(globalParamScrollContents);
-        firstFrameSpinBox->setObjectName(QString::fromUtf8("firstFrameSpinBox"));
-        firstFrameSpinBox->setMaximum(INT32_MAX);
-        firstFrameSpinBox->setMinimum(INT32_MIN); // projects may start before frame 0
-        QSizePolicy sizePolicy3(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
-        sizePolicy3.setHorizontalStretch(0);
-        sizePolicy3.setVerticalStretch(0);
-        sizePolicy3.setHeightForWidth(firstFrameSpinBox->sizePolicy().hasHeightForWidth());
-        firstFrameSpinBox->setSizePolicy(sizePolicy3);
-
-        gridLayout_2->addWidget(firstFrameSpinBox, 2, 1, 1, 1);
-
-        initialFrames->append(firstFrameSpinBox);
-
-        heightSpinBox = new QSpinBox(globalParamScrollContents);
-        heightSpinBox->setObjectName(QString::fromUtf8("heightSpinBox"));
-        heightSpinBox->setMaximum(INT32_MAX);
-        heightSpinBox->setMinimum(0);
-
-        gridLayout_2->addWidget(heightSpinBox, 5, 1, 1, 1);
-
-
-
-        widthLabel = new QLabel(globalParamScrollContents);
-        widthLabel->setObjectName(QString::fromUtf8("widthLabel"));
-        QSizePolicy sizePolicy4(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        sizePolicy4.setHorizontalStretch(0);
-        sizePolicy4.setVerticalStretch(0);
-        sizePolicy4.setHeightForWidth(widthLabel->sizePolicy().hasHeightForWidth());
-        widthLabel->setSizePolicy(sizePolicy4);
-
-        gridLayout_2->addWidget(widthLabel, 4, 0, 1, 1);
-
-        setWidthNative = new QPushButton(globalParamScrollContents);
-        setWidthNative->setObjectName(QString::fromUtf8("setWidthNative"));
-        QIcon icon1 = aResources.icon("arrow-clockwise");
-        setWidthNative->setIcon(icon1);
-
-        gridLayout_2->addWidget(setWidthNative, 4, 2, 1, 1);
-
-        renderLine1 = new QFrame(globalParamScrollContents);
-        renderLine1->setObjectName(QString::fromUtf8("renderLine1"));
-        sizePolicy3.setHeightForWidth(renderLine1->sizePolicy().hasHeightForWidth());
-        renderLine1->setSizePolicy(sizePolicy3);
-        renderLine1->setFrameShape(QFrame::HLine);
-        renderLine1->setFrameShadow(QFrame::Sunken);
-
-        gridLayout_2->addWidget(renderLine1, 0, 0, 1, 1);
-
-        exportLine2 = new QFrame(globalParamScrollContents);
-        exportLine2->setObjectName(QString::fromUtf8("exportLine2"));
-        exportLine2->setFrameShape(QFrame::HLine);
-        exportLine2->setFrameShadow(QFrame::Sunken);
-
-        gridLayout_2->addWidget(exportLine2, 8, 2, 1, 1);
-
-
-
-
-        widthSpinBox = new QSpinBox(globalParamScrollContents);
-        widthSpinBox->setObjectName(QString::fromUtf8("widthSpinBox"));
-        QSizePolicy sizePolicy5(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        sizePolicy5.setHorizontalStretch(0);
-        sizePolicy5.setVerticalStretch(0);
-        sizePolicy5.setHeightForWidth(widthSpinBox->sizePolicy().hasHeightForWidth());
-        widthSpinBox->setSizePolicy(sizePolicy5);
-        widthSpinBox->setMaximum(INT32_MAX);
-        widthSpinBox->setMinimum(0);
-
-        gridLayout_2->addWidget(widthSpinBox, 4, 1, 1, 1);
-
-        heightLabel = new QLabel(globalParamScrollContents);
-        heightLabel->setObjectName(QString::fromUtf8("heightLabel"));
-        sizePolicy4.setHeightForWidth(heightLabel->sizePolicy().hasHeightForWidth());
-        heightLabel->setSizePolicy(sizePolicy4);
-
-        gridLayout_2->addWidget(heightLabel, 5, 0, 1, 1);
-
-        exportingLabel = new QLabel(globalParamScrollContents);
-        exportingLabel->setObjectName(QString::fromUtf8("exportingLabel"));
-        QSizePolicy sizePolicy6(QSizePolicy::Minimum, QSizePolicy::Maximum);
-        sizePolicy6.setHorizontalStretch(0);
-        sizePolicy6.setVerticalStretch(0);
-        sizePolicy6.setHeightForWidth(exportingLabel->sizePolicy().hasHeightForWidth());
-        exportingLabel->setSizePolicy(sizePolicy6);
-
-        gridLayout_2->addWidget(exportingLabel, 8, 1, 1, 1);
-
-        setHeightNative = new QPushButton(globalParamScrollContents);
-        setHeightNative->setObjectName(QString::fromUtf8("setHeightNative"));
-        setHeightNative->setIcon(icon1);
-
-        gridLayout_2->addWidget(setHeightNative, 5, 2, 1, 1);
-
-        fpsLabel = new QLabel(globalParamScrollContents);
-        fpsLabel->setObjectName(QString::fromUtf8("fpsLabel"));
-
-        gridLayout_2->addWidget(fpsLabel, 7, 0, 1, 1);
-
+        // ---- WHAT TO EXPORT ---------------------------------------------------
+        //
+        // The project's own numbers, in the order the user thinks about them: which
+        // frames (the timeline selection), how big (the art), how fast (how the
+        // animation was authored). The destination can CAP these - it always could,
+        // through applyCaps and its size rule - but it does not own them, which is
+        // why they are stated before any encoder question.
         renderingLabel = new QLabel(globalParamScrollContents);
         renderingLabel->setObjectName(QString::fromUtf8("renderingLabel"));
-        QSizePolicy sizePolicy7(QSizePolicy::Preferred, QSizePolicy::Maximum);
-        sizePolicy7.setHorizontalStretch(0);
-        sizePolicy7.setVerticalStretch(0);
-        sizePolicy7.setHeightForWidth(renderingLabel->sizePolicy().hasHeightForWidth());
-        renderingLabel->setSizePolicy(sizePolicy7);
+        renderingLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        formStack->addWidget(sectionHeader(globalParamScrollContents, renderingLabel,
+                                           hairline(globalParamScrollContents, "renderLine1"),
+                                           hairline(globalParamScrollContents, "renderLine2")));
+        auto* whatForm = new QFormLayout();
+        whatForm->setObjectName(QString::fromUtf8("whatForm"));
+        whatForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        formStack->addLayout(whatForm);
 
-        gridLayout_2->addWidget(renderingLabel, 0, 1, 1, 1);
-
-        // The escape hatch: the artifact, for a user who has no destination in
-        // mind. This is the ONE place a format is genuinely the user's choice,
-        // and it is why a format name is not a destination — "Telegram sticker"
-        // resolves to one format, while "GIF animation" resolves to no
-        // destination at all. The list is filled from the build's probed
-        // capabilities (media::ffmpeg::writableContainers) plus the two image
-        // sequence kinds Qt writes.
-        formatCombo = new QComboBox(globalParamScrollContents);
-        formatCombo->setObjectName(QString::fromUtf8("formatCombo"));
-        gridLayout_2->addWidget(formatCombo, 9, 1, 1, 2);
-
-        // Only a container that can carry more than one codec offers a choice;
-        // for the rest this is disabled and names the single codec, which is
-        // information rather than a decision.
-        codecLabel = new QLabel(globalParamScrollContents);
-        codecLabel->setObjectName(QString::fromUtf8("codecLabel"));
-        gridLayout_2->addWidget(codecLabel, 10, 0, 1, 1);
-
-        codecCombo = new QComboBox(globalParamScrollContents);
-        codecCombo->setObjectName(QString::fromUtf8("codecCombo"));
-        gridLayout_2->addWidget(codecCombo, 10, 1, 1, 2);
-
-        transparencyCheckBox = new QCheckBox(globalParamScrollContents);
-        transparencyCheckBox->setObjectName(QString::fromUtf8("transparencyCheckBox"));
-        transparencyCheckBox->setChecked(true);
-
-        gridLayout_2->addWidget(transparencyCheckBox, 14, 0, 1, 2);
-
-        loopCheckBox = new QCheckBox(globalParamScrollContents);
-        loopCheckBox->setObjectName(QString::fromUtf8("loopCheckBox"));
-        loopCheckBox->setChecked(true);
-        gridLayout_2->addWidget(loopCheckBox, 14, 1, 1, 2);
-
-        exportWithAudioCheckBox = new QCheckBox(globalParamScrollContents);
-        exportWithAudioCheckBox->setObjectName(QString::fromUtf8("exportWithAudioCheckBox"));
-        exportWithAudioCheckBox->setChecked(true);
-        gridLayout_2->addWidget(exportWithAudioCheckBox, 15, 1, 1, 2);
-
-        lastFrameSpinBox = new QSpinBox(globalParamScrollContents);
-        lastFrameSpinBox->setObjectName(QString::fromUtf8("lastFrameSpinBox"));
-        lastFrameSpinBox->setMaximum(INT32_MAX);
-        lastFrameSpinBox->setMinimum(INT32_MIN); // projects may end before frame 0
-        sizePolicy3.setHeightForWidth(lastFrameSpinBox->sizePolicy().hasHeightForWidth());
-        lastFrameSpinBox->setSizePolicy(sizePolicy3);
-
-        gridLayout_2->addWidget(lastFrameSpinBox, 2, 2, 1, 1);
-
-        lastFrames->append(lastFrameSpinBox);
-
-        bitrateLineEdit = new QLineEdit(globalParamScrollContents);
-        bitrateLineEdit->setObjectName(QString::fromUtf8("bitrateLineEdit"));
-
-        imageQualitySpinbox = new QSpinBox(globalParamScrollContents);
-        imageQualitySpinbox->setObjectName(QString::fromUtf8("imageQualityEdit"));
-        imageQualitySpinbox->setRange(-1, 100);
-        imageQualitySpinbox->setValue(-1);
-
-        gridLayout_2->addWidget(imageQualitySpinbox, 12, 1, 1, 1);
-
-        setBitrateAuto = new QPushButton(globalParamScrollContents);
-        setBitrateAuto->setObjectName(QString::fromUtf8("setBitrateAuto"));
-
-        setImageQualityToAuto = new QPushButton(globalParamScrollContents);
-        setImageQualityToAuto->setObjectName(QString::fromUtf8("setImageQualityToAuto"));
-
-        setImageQualityToAuto->setIcon(icon1);
-        setBitrateAuto->setIcon(icon1);
-        gridLayout_2->addWidget(setImageQualityToAuto, 12, 2, 1, 1);
-
-        QWidget::connect(setBitrateAuto, &QPushButton::clicked,
-                         [=]{bitrateLineEdit->setText("Auto");});
-        QWidget::connect(setImageQualityToAuto, &QPushButton::clicked,
-            [=]{imageQualitySpinbox->setValue(-1);});
+        // The frame selection. Several ranges are allowed and each is a row of its
+        // own inside this box, so a second range is APPENDED (see addRange) instead
+        // of being placed by computing the grid position of the previous spin box -
+        // which is what the old form did, and what made a row number load-bearing.
+        auto* frameRangeBox = new QWidget(globalParamScrollContents);
+        frameRangeBox->setObjectName(QString::fromUtf8("frameRangeBox"));
+        auto* frameRangeStack = new QVBoxLayout(frameRangeBox);
+        frameRangeStack->setContentsMargins(0, 0, 0, 0);
+        frameRangeStack->setSpacing(4);
+        frameRangeGrid = new QGridLayout();
+        frameRangeGrid->setObjectName(QString::fromUtf8("frameRangeGrid"));
+        frameRangeGrid->setContentsMargins(0, 0, 0, 0);
+        frameRangeGrid->setHorizontalSpacing(6);
+        frameRangeStack->addLayout(frameRangeGrid);
 
         renderedFramesLabel = new QLabel(globalParamScrollContents);
         renderedFramesLabel->setObjectName(QString::fromUtf8("renderedFramesLabel"));
-        sizePolicy7.setHeightForWidth(renderedFramesLabel->sizePolicy().hasHeightForWidth());
-        renderedFramesLabel->setSizePolicy(sizePolicy7);
 
-        gridLayout_2->addWidget(renderedFramesLabel, 1, 0, 1, 1);
-
-        renderLine2 = new QFrame(globalParamScrollContents);
-        renderLine2->setObjectName(QString::fromUtf8("renderLine2"));
-        sizePolicy3.setHeightForWidth(renderLine2->sizePolicy().hasHeightForWidth());
-        renderLine2->setSizePolicy(sizePolicy3);
-        renderLine2->setFrameShape(QFrame::HLine);
-        renderLine2->setFrameShadow(QFrame::Sunken);
-
-        gridLayout_2->addWidget(renderLine2, 0, 2, 1, 1);
-
-        firstFrameLabel = new QLabel(globalParamScrollContents);
+        firstFrameLabel = new QLabel(frameRangeBox);
         firstFrameLabel->setObjectName(QString::fromUtf8("firstFrameLabel"));
-        sizePolicy1.setHeightForWidth(firstFrameLabel->sizePolicy().hasHeightForWidth());
-        firstFrameLabel->setSizePolicy(sizePolicy1);
+        firstFrameLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+        lastFrameLabel = new QLabel(frameRangeBox);
+        lastFrameLabel->setObjectName(QString::fromUtf8("lastFrameLabel"));
+        lastFrameLabel->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+        frameRangeGrid->addWidget(firstFrameLabel, 0, 0);
+        frameRangeGrid->addWidget(lastFrameLabel, 0, 1);
 
-        gridLayout_2->addWidget(firstFrameLabel, 1, 1, 1, 1);
+        firstFrameSpinBox = expanding(new QSpinBox(frameRangeBox));
+        firstFrameSpinBox->setObjectName(QString::fromUtf8("firstFrameSpinBox"));
+        firstFrameSpinBox->setMaximum(INT32_MAX);
+        firstFrameSpinBox->setMinimum(INT32_MIN); // projects may start before frame 0
+        lastFrameSpinBox = expanding(new QSpinBox(frameRangeBox));
+        lastFrameSpinBox->setObjectName(QString::fromUtf8("lastFrameSpinBox"));
+        lastFrameSpinBox->setMaximum(INT32_MAX);
+        lastFrameSpinBox->setMinimum(INT32_MIN); // projects may end before frame 0
+        frameRangeGrid->addWidget(firstFrameSpinBox, 1, 0);
+        frameRangeGrid->addWidget(lastFrameSpinBox, 1, 1);
+        initialFrames->append(firstFrameSpinBox);
+        lastFrames->append(lastFrameSpinBox);
 
-        bitrateLabel = new QLabel(globalParamScrollContents);
-        bitrateLabel->setObjectName(QString::fromUtf8("bitrateLabel"));
+        // One pair of buttons for the whole list, under it: the old form stacked
+        // "Insert range" beside the first range and "Remove range" below it, which
+        // said nothing about which range either one acted on.
+        insertFrameRangeButton = new QPushButton(frameRangeBox);
+        insertFrameRangeButton->setObjectName(QString::fromUtf8("insertFrameRangeButton"));
+        insertFrameRangeButton->setIcon(aResources.icon("plus-bold"));
+        removeFrameRangeButton = new QPushButton(frameRangeBox);
+        removeFrameRangeButton->setObjectName(QString::fromUtf8("removeFrameRangeButton"));
+        removeFrameRangeButton->setIcon(aResources.icon("minus-bold"));
+        auto* rangeButtons = new QHBoxLayout();
+        rangeButtons->setContentsMargins(0, 0, 0, 0);
+        rangeButtons->setSpacing(6);
+        rangeButtons->addWidget(insertFrameRangeButton);
+        rangeButtons->addWidget(removeFrameRangeButton);
+        rangeButtons->addStretch(1);
+        frameRangeStack->addLayout(rangeButtons);
 
-        
+        QWidget::connect(insertFrameRangeButton, &QPushButton::clicked, [=]{addRange(projectLastFrame);});
+        QWidget::connect(removeFrameRangeButton, &QPushButton::clicked, [=]{removeRange(projectLastFrame);});
 
-        imageQualityLabel = new QLabel(globalParamScrollContents);
-        imageQualityLabel->setObjectName(QString::fromUtf8("imageQualityLabel"));
+        // The label names the editor; the two spin boxes inside carry their own
+        // accessible names, because a column heading is a layout device and not a
+        // name (and there are several rows of them once a second range exists).
+        whatForm->addRow(renderedFramesLabel, frameRangeBox);
+        firstFrameLabel->setBuddy(firstFrameSpinBox);
+        lastFrameLabel->setBuddy(lastFrameSpinBox);
 
-        gridLayout_2->addWidget(imageQualityLabel, 12, 0, 1, 1);
+        // Size. Disabled rather than hidden while a destination dictates one: the
+        // numbers are the destination's, and seeing them is how the user learns what
+        // it will produce (MainWindow writes them from the plan).
+        widthLabel = new QLabel(globalParamScrollContents);
+        widthLabel->setObjectName(QString::fromUtf8("widthLabel"));
+        widthLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        widthSpinBox = expanding(new QSpinBox(globalParamScrollContents));
+        widthSpinBox->setObjectName(QString::fromUtf8("widthSpinBox"));
+        widthSpinBox->setMaximum(INT32_MAX);
+        widthSpinBox->setMinimum(0);
+        setWidthNative = new QPushButton(globalParamScrollContents);
+        setWidthNative->setObjectName(QString::fromUtf8("setWidthNative"));
+        setWidthNative->setIcon(aResources.icon("arrow-clockwise"));
+        whatForm->addRow(widthLabel, withTrailing(globalParamScrollContents, widthSpinBox,
+                                                  {setWidthNative}));
 
+        heightLabel = new QLabel(globalParamScrollContents);
+        heightLabel->setObjectName(QString::fromUtf8("heightLabel"));
+        heightLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        heightSpinBox = expanding(new QSpinBox(globalParamScrollContents));
+        heightSpinBox->setObjectName(QString::fromUtf8("heightSpinBox"));
+        heightSpinBox->setMaximum(INT32_MAX);
+        heightSpinBox->setMinimum(0);
+        setHeightNative = new QPushButton(globalParamScrollContents);
+        setHeightNative->setObjectName(QString::fromUtf8("setHeightNative"));
+        setHeightNative->setIcon(aResources.icon("arrow-clockwise"));
+        whatForm->addRow(heightLabel, withTrailing(globalParamScrollContents, heightSpinBox,
+                                                   {setHeightNative}));
 
+        // The size LINK, directly under the two boxes it links: does editing Width
+        // move Height? It used to be three radios ("One-to-one", "Custom", "Native")
+        // whose third value, GeneralParams::aspectRatio, was written by MainWindow and
+        // read by nothing at all.
+        keepAspectRatio = new QCheckBox(globalParamScrollContents);
+        keepAspectRatio->setObjectName(QString::fromUtf8("keepAspectRatio"));
+        keepAspectRatio->setChecked(true);
+        whatForm->addRow(keepAspectRatio);
 
-        fpsSpinBox = new QSpinBox(globalParamScrollContents);
+        fpsLabel = new QLabel(globalParamScrollContents);
+        fpsLabel->setObjectName(QString::fromUtf8("fpsLabel"));
+        fpsSpinBox = expanding(new QSpinBox(globalParamScrollContents));
         fpsSpinBox->setObjectName(QString::fromUtf8("fpsSpinBox"));
-        // Go nuts I guess
-        fpsSpinBox->setMinimum(1);
+        fpsSpinBox->setMinimum(1); // go nuts, I guess
         fpsSpinBox->setMaximum(INT32_MAX);
-
-        gridLayout_2->addWidget(fpsSpinBox, 7, 1, 1, 1);
-
         setFPSNative = new QPushButton(globalParamScrollContents);
         setFPSNative->setObjectName(QString::fromUtf8("setFPSNative"));
-        setFPSNative->setIcon(icon1);
+        setFPSNative->setIcon(aResources.icon("arrow-clockwise"));
+        whatForm->addRow(fpsLabel, withTrailing(globalParamScrollContents, fpsSpinBox,
+                                                {setFPSNative}));
 
-        gridLayout_2->addWidget(setFPSNative, 7, 2, 1, 1);
+        // ---- HOW TO ENCODE ----------------------------------------------------
+        //
+        // What is left after the artifact is decided: the format and the codec for a
+        // user who has no destination in mind, the quality intent, and the still
+        // writer's own number. Everything an ordinary user cannot be asked lives one
+        // level down, behind one disclosure.
+        exportingLabel = new QLabel(globalParamScrollContents);
+        exportingLabel->setObjectName(QString::fromUtf8("exportingLabel"));
+        exportingLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Maximum);
+        formStack->addWidget(sectionHeader(globalParamScrollContents, exportingLabel,
+                                           hairline(globalParamScrollContents, "exportLine1"),
+                                           hairline(globalParamScrollContents, "exportLine2")));
+        auto* howForm = new QFormLayout();
+        howForm->setObjectName(QString::fromUtf8("howForm"));
+        howForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        formStack->addLayout(howForm);
 
+        // The escape hatch: the artifact, for a user who has no destination in mind.
+        // This is the ONE place a format is genuinely the user's choice, and it is
+        // why a format name is not a destination - "Telegram sticker" resolves to one
+        // format, while "GIF animation" resolves to no destination at all. The list is
+        // filled from the build's probed capabilities plus the two image sequence
+        // kinds Qt writes.
+        formatLabel = new QLabel(globalParamScrollContents);
+        formatLabel->setObjectName(QString::fromUtf8("formatLabel"));
+        formatCombo = expanding(new QComboBox(globalParamScrollContents));
+        formatCombo->setObjectName(QString::fromUtf8("formatCombo"));
+        howForm->addRow(formatLabel, formatCombo);
 
-        selectPalettePathButton = new QToolButton(globalParamScrollContents);
+        // Only a container that can carry more than one codec offers a choice; for
+        // the rest this is disabled and names the single codec, which is information
+        // rather than a decision.
+        codecLabel = new QLabel(globalParamScrollContents);
+        codecLabel->setObjectName(QString::fromUtf8("codecLabel"));
+        codecCombo = expanding(new QComboBox(globalParamScrollContents));
+        codecCombo->setObjectName(QString::fromUtf8("codecCombo"));
+        howForm->addRow(codecLabel, codecCombo);
+
+        // The quality intent: the codec's own knob seen from further away, and the
+        // one control that means the same thing with and without a destination (both
+        // routes apply it through that knob), so it sits under the codec whose knob
+        // it sets.
+        qualityLabel = new QLabel(globalParamScrollContents);
+        qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
+        qualityCombo = expanding(new QComboBox(globalParamScrollContents));
+        qualityCombo->setObjectName(QString::fromUtf8("qualityCombo"));
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        qualityCombo->addItem(QString());
+        howForm->addRow(qualityLabel, qualityCombo);
+
+        // QImage::save()'s setting: the still writer's, which the video encoder never
+        // sees. Shown only for the formats that actually go through it.
+        imageQualityLabel = new QLabel(globalParamScrollContents);
+        imageQualityLabel->setObjectName(QString::fromUtf8("imageQualityLabel"));
+        imageQualitySpinbox = expanding(new QSpinBox(globalParamScrollContents));
+        imageQualitySpinbox->setObjectName(QString::fromUtf8("imageQualityEdit"));
+        imageQualitySpinbox->setRange(-1, 100);
+        imageQualitySpinbox->setValue(-1);
+        setImageQualityToAuto = new QPushButton(globalParamScrollContents);
+        setImageQualityToAuto->setObjectName(QString::fromUtf8("setImageQualityToAuto"));
+        setImageQualityToAuto->setIcon(aResources.icon("arrow-clockwise"));
+        howForm->addRow(imageQualityLabel, withTrailing(globalParamScrollContents,
+                                                        imageQualitySpinbox,
+                                                        {setImageQualityToAuto}));
+        QWidget::connect(setImageQualityToAuto, &QPushButton::clicked,
+                         [=]{imageQualitySpinbox->setValue(-1);});
+
+        // ---- the disclosure ---------------------------------------------------
+        // Collapsed by default, and the LAST thing in the form: this is the only
+        // place the artifact's capabilities (transparency, looping, audio, palette)
+        // and the encoder's raw values live. The old form showed all of them at once,
+        // whatever artifact was selected, under labels like "Bitrate (kB/s)" and
+        // "Image quality" - so an MP4 export offered Image quality (the still-image
+        // writer's setting; the video encoder never sees it) and a JPEG sequence
+        // offered Bitrate (the stills path never sees that either).
+        advancedToggle = new QToolButton(globalParamScrollContents);
+        advancedToggle->setObjectName(QString::fromUtf8("advancedToggle"));
+        advancedToggle->setCheckable(true);
+        advancedToggle->setChecked(false);
+        advancedToggle->setArrowType(Qt::RightArrow);
+        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        advancedToggle->setAutoRaise(true);
+        howForm->addRow(advancedToggle);
+
+        advancedBox = new QWidget(globalParamScrollContents);
+        advancedBox->setObjectName(QString::fromUtf8("advancedBox"));
+        advancedBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        auto* advancedForm = new QFormLayout(advancedBox);
+        advancedForm->setObjectName(QString::fromUtf8("advancedForm"));
+        advancedForm->setContentsMargins(0, 0, 0, 0);
+        advancedForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        howForm->addRow(advancedBox);
+        advancedBox->setVisible(false); // collapsed until asked
+        QWidget::connect(advancedToggle, &QToolButton::toggled, [=](bool aOn) {
+            advancedBox->setVisible(aOn);
+            advancedToggle->setArrowType(aOn ? Qt::DownArrow : Qt::RightArrow);
+        });
+
+        // A checkbox carries its own words, so it is one widget in a spanning row
+        // rather than a (label, field) pair.
+        transparencyCheckBox = new QCheckBox(advancedBox);
+        transparencyCheckBox->setObjectName(QString::fromUtf8("transparencyCheckBox"));
+        transparencyCheckBox->setChecked(true);
+        advancedForm->addRow(transparencyCheckBox);
+
+        loopCheckBox = new QCheckBox(advancedBox);
+        loopCheckBox->setObjectName(QString::fromUtf8("loopCheckBox"));
+        loopCheckBox->setChecked(true);
+        advancedForm->addRow(loopCheckBox);
+
+        exportWithAudioCheckBox = new QCheckBox(advancedBox);
+        exportWithAudioCheckBox->setObjectName(QString::fromUtf8("exportWithAudioCheckBox"));
+        exportWithAudioCheckBox->setChecked(true);
+        advancedForm->addRow(exportWithAudioCheckBox);
+
+        // The palette is GIF's own, and the file picker beside the box belongs to it:
+        // one row, one subject.
+        customPaletteCheckBox = new QCheckBox(advancedBox);
+        customPaletteCheckBox->setObjectName(QString::fromUtf8("customPaletteCheckBox"));
+        customPaletteCheckBox->setChecked(false);
+        selectPalettePathButton = new QToolButton(advancedBox);
         selectPalettePathButton->setObjectName(QString::fromUtf8("selectPalettePathButton"));
-        sizePolicy2.setHeightForWidth(selectPalettePathButton->sizePolicy().hasHeightForWidth());
-        selectPalettePathButton->setSizePolicy(sizePolicy2);
-
-        gridLayout_2->addWidget(selectPalettePathButton, 19, 1, 1, 2);
-
+        selectPalettePathButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        advancedForm->addRow(withTrailing(advancedBox, customPaletteCheckBox,
+                                          {selectPalettePathButton}));
         QWidget::connect(selectPalettePathButton, &QPushButton::clicked, [=]()mutable
                          {
                              paletteDir = QDir(
@@ -540,159 +616,60 @@ public:
                              selectPalettePathButton->setText(lbl);
                          });
 
-        // ---- one disclosure for the encoder's own numbers -------------------
-        // Collapsed by default: this is the only place the artifact's capabilities
-        // (transparency, looping, audio, palette) and the encoder's raw values live.
-        // The old form showed all of them at once, whatever artifact was selected,
-        // under labels like "Bitrate (kB/s)" and "Image quality" - so an MP4 export
-        // offered Image quality (that is the still-image writer's setting; the video
-        // encoder never sees it) and a JPEG sequence offered Bitrate (the stills
-        // path never sees that either). Neither was ever hidden or disabled by the
-        // format, only by whether a destination had been chosen.
-        advancedToggle = new QToolButton(globalParamScrollContents);
-        advancedToggle->setObjectName(QString::fromUtf8("advancedToggle"));
-        advancedToggle->setCheckable(true);
-        advancedToggle->setChecked(false);
-        advancedToggle->setArrowType(Qt::RightArrow);
-        advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        advancedToggle->setAutoRaise(true);
-        gridLayout_2->addWidget(advancedToggle, 13, 0, 1, 3);
-
-        advancedBox = new QWidget(globalParamScrollContents);
-        advancedBox->setObjectName(QString::fromUtf8("advancedBox"));
-        // The leftover height of the dialog goes BELOW the form, not into every
-        // row of it. Without this the grid has no stretching member, so
-        // setWidgetResizable() hands the slack to all thirteen rows: collapsing
-        // Advanced moved the Format row 100px down the panel and every control
-        // changed position when the section was opened or closed.
-        gridLayout_2->setRowStretch(15, 1);
-        advancedGrid = new QGridLayout(advancedBox);
-        advancedGrid->setObjectName(QString::fromUtf8("advancedGrid"));
-        advancedGrid->setContentsMargins(0, 0, 0, 0);
-        advancedBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-        gridLayout_2->addWidget(advancedBox, 14, 0, 1, 3);
-        advancedBox->setVisible(false); // collapsed until asked
-        QWidget::connect(advancedToggle, &QToolButton::toggled, [=](bool aOn) {
-            advancedBox->setVisible(aOn);
-            advancedToggle->setArrowType(aOn ? Qt::DownArrow : Qt::RightArrow);
-        });
-
-        advancedGrid->addWidget(transparencyCheckBox, 0, 0, 1, 3);
-        advancedGrid->addWidget(loopCheckBox, 1, 0, 1, 1);
-        advancedGrid->addWidget(exportWithAudioCheckBox, 1, 1, 1, 2);
-        advancedGrid->addWidget(customPaletteCheckBox, 2, 0, 1, 1);
-        advancedGrid->addWidget(selectPalettePathButton, 2, 1, 1, 2);
-
-        // The codec's own value, for a user who knows the number they want instead
-        // of the intent. -1 is drawn as the word "Auto" by setSpecialValueText, and
-        // the row is only offered when the selected codec HAS such a knob.
+        // The codec's own value, for a user who knows the number they want instead of
+        // the intent. -1 is drawn as the word "Auto" by setSpecialValueText, and the
+        // row is only offered when the selected codec HAS such a knob.
         qualityOverrideLabel = new QLabel(advancedBox);
         qualityOverrideLabel->setObjectName(QString::fromUtf8("qualityOverrideLabel"));
-        qualityOverrideSpin = new QSpinBox(advancedBox);
+        qualityOverrideSpin = expanding(new QSpinBox(advancedBox));
         qualityOverrideSpin->setObjectName(QString::fromUtf8("qualityOverrideSpin"));
         qualityOverrideSpin->setRange(-1, 100);
         qualityOverrideSpin->setSpecialValueText(tr("Auto"));
         qualityOverrideSpin->setValue(-1);
         setQualityOverrideAuto = new QPushButton(advancedBox);
         setQualityOverrideAuto->setObjectName(QString::fromUtf8("setQualityOverrideAuto"));
-        setQualityOverrideAuto->setIcon(icon1);
-        advancedGrid->addWidget(qualityOverrideLabel, 3, 0, 1, 1);
-        advancedGrid->addWidget(qualityOverrideSpin, 3, 1, 1, 1);
-        advancedGrid->addWidget(setQualityOverrideAuto, 3, 2, 1, 1);
+        setQualityOverrideAuto->setIcon(aResources.icon("arrow-clockwise"));
+        advancedForm->addRow(qualityOverrideLabel, withTrailing(advancedBox, qualityOverrideSpin,
+                                                                {setQualityOverrideAuto}));
         QWidget::connect(setQualityOverrideAuto, &QPushButton::clicked,
                          [=]{ qualityOverrideSpin->setValue(-1); });
+        QWidget::connect(qualityOverrideSpin, util::SelectArgs<int>::from(&QSpinBox::valueChanged),
+                         [=](int aValue) { qualityCombo->setEnabled(aValue < 0); });
 
-        // Bitrate is here for the codecs that have NO quality knob at all, and it is
-        // hidden for the ones that do (see applyArtifactConstraints).
-        advancedGrid->addWidget(bitrateLabel, 4, 0, 1, 1);
-        advancedGrid->addWidget(bitrateLineEdit, 4, 1, 1, 1);
-        advancedGrid->addWidget(setBitrateAuto, 4, 2, 1, 1);
+        // Bitrate is here for the codecs that have NO quality knob at all, and hidden
+        // for the ones that do (see applyArtifactConstraints): offering both is
+        // offering two answers to one question.
+        bitrateLabel = new QLabel(advancedBox);
+        bitrateLabel->setObjectName(QString::fromUtf8("bitrateLabel"));
+        bitrateLineEdit = new QLineEdit(advancedBox);
+        bitrateLineEdit->setObjectName(QString::fromUtf8("bitrateLineEdit"));
+        setBitrateAuto = new QPushButton(advancedBox);
+        setBitrateAuto->setObjectName(QString::fromUtf8("setBitrateAuto"));
+        setBitrateAuto->setIcon(aResources.icon("arrow-clockwise"));
+        advancedForm->addRow(bitrateLabel, withTrailing(advancedBox, bitrateLineEdit,
+                                                        {setBitrateAuto}));
+        QWidget::connect(setBitrateAuto, &QPushButton::clicked,
+                         [=]{bitrateLineEdit->setText("Auto");});
 
+        // A row whose field is a container (the value plus its "Set to native" button)
+        // gets its buddy pointed at the VALUE, not at the container: addRow() can only
+        // associate the widget it is handed, and an anonymous box is not what a screen
+        // reader should read out before the number. The probe asserts this for Width
+        // and FPS, which is how the first version of this rewrite was caught handing
+        // the relation to the container and nothing else.
+        widthLabel->setBuddy(widthSpinBox);
+        heightLabel->setBuddy(heightSpinBox);
+        fpsLabel->setBuddy(fpsSpinBox);
+        imageQualityLabel->setBuddy(imageQualitySpinbox);
+        qualityOverrideLabel->setBuddy(qualityOverrideSpin);
+        bitrateLabel->setBuddy(bitrateLineEdit);
+
+        // The slack goes BELOW the form. A form layout has no stretching member, and
+        // the old grid's answer was setRowStretch() on a row number - which is how
+        // collapsing Advanced used to move the Format row 100px: the leftover height
+        // was spread across the rows instead of being parked somewhere harmless.
+        formStack->addStretch(1);
         globalParamScroll->setWidget(globalParamScrollContents);
-
-        // The destination is the FIRST question, not the last. It is the one
-        // thing the user knows that the system cannot derive, and everything
-        // below it is either a consequence of it or a genuine choice.
-        //
-        // Pinned above the scrolling technical settings rather than living
-        // inside them: it must stay visible while the rest is scrolled, because
-        // a stated fact that can be contradicted by a control scrolled out of
-        // sight is not a stated fact.
-        verticalLayout_3->addWidget(destinationBox);
-
-        destinationLabel = new QLabel(destinationBox);
-        destinationLabel->setObjectName(QString::fromUtf8("destinationLabel"));
-        destinationGrid->addWidget(destinationLabel, 0, 0, 1, 1);
-
-        destinationButton = new QPushButton(destinationBox);
-        destinationButton->setObjectName(QString::fromUtf8("destinationButton"));
-        destinationButton->setToolTip(tr("Choose where this is going"));
-        destinationGrid->addWidget(destinationButton, 0, 1, 1, 1);
-
-        // The quality intent is part of "how to encode", not of "where it is
-        // going": it is the one control that means the same thing with and without
-        // a destination (both routes now apply it through the codec's own knob),
-        // so it sits with the codec whose knob it sets rather than in the
-        // destination row.
-        qualityLabel = new QLabel(globalParamScrollContents);
-        qualityLabel->setObjectName(QString::fromUtf8("qualityLabel"));
-        gridLayout_2->addWidget(qualityLabel, 11, 0, 1, 1);
-
-        qualityCombo = new QComboBox(globalParamScrollContents);
-        qualityCombo->setObjectName(QString::fromUtf8("qualityCombo"));
-        qualityCombo->addItem(QString());
-        qualityCombo->addItem(QString());
-        qualityCombo->addItem(QString());
-        qualityCombo->addItem(QString());
-        gridLayout_2->addWidget(qualityCombo, 11, 1, 1, 2);
-
-        // What the destination requires, in words. Filled by MainWindow from
-        // planExport(): the codec it resolved and why, the size it forces, and
-        // every capability the row declares.
-        destinationFacts = new QLabel(destinationBox);
-        destinationFacts->setObjectName(QString::fromUtf8("destinationFacts"));
-        destinationFacts->setWordWrap(true);
-        destinationFacts->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        // Reserve the height the longest destination needs (summary, capability
-        // line, and its notes — Telegram's emoji row uses four). Without it the
-        // whole form shifts up and down as the user moves through the
-        // destination list, because a wrapped label's height IS its line count:
-        // controls that move while you are reading them are worse than a little
-        // empty space.
-        destinationFacts->setMinimumHeight(kFactsMinLines * destinationFacts->fontMetrics().lineSpacing());
-        // Horizontal Ignored means "give me whatever
-        // width the layout has and wrap into it". A wrapped label must not have a
-        // say in how wide its column is: its sizeHint is one long line, and
-        // letting that become the preferred width stretches the dialog instead of
-        // wrapping the sentence.
-        destinationFacts->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
-        // Top-aligned: a taller-than-needed label centres its text by default,
-        // which floated the facts into the middle of the box.
-        destinationFacts->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        // A note can be long (pixiv's ugoira row explains three limits in seven
-        // lines, and the destination's limits are now stated above them). The
-        // facts are VARIABLE-length content, so they get the scrolling: without a
-        // ceiling here the label grows and pushes the frame range and the render
-        // size below the edge of the dialog, where the controls a user needs next
-        // are out of sight the moment they pick a documented destination. Better
-        // that the explanation scrolls than the form.
-        destinationFactsScroll = new QScrollArea(destinationBox);
-        destinationFactsScroll->setObjectName(QString::fromUtf8("destinationFactsScroll"));
-        destinationFactsScroll->setWidget(destinationFacts);
-        destinationFactsScroll->setWidgetResizable(true);
-        destinationFactsScroll->setFrameShape(QFrame::NoFrame);
-        destinationFactsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        destinationFactsScroll->setMaximumHeight(kFactsMaxLines
-                                                 * destinationFacts->fontMetrics().lineSpacing());
-        // ...and it must NOT absorb the dialog's leftover height. A QScrollArea
-        // expands by default, so with three lines of facts in a 700px dialog the box
-        // grew to whatever was left over and printed them at the top of a hand's
-        // width of empty panel. Maximum: its sizeHint (floored by the label's
-        // minimumHeight above) is a ceiling, not a target.
-        destinationFactsScroll->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Maximum);
-        destinationFactsScroll->setFocusPolicy(Qt::NoFocus);
-        destinationGrid->addWidget(destinationFactsScroll, 2, 0, 1, 2);
-
         verticalLayout_3->addWidget(globalParamScroll);
 
         // No QTabWidget: it had exactly one tab ("General Parameters"), so the tab
@@ -703,17 +680,11 @@ public:
         exportLayout->setObjectName(QString::fromUtf8("exportLayout"));
         exportButton = new QPushButton(exportWidget);
         exportButton->setObjectName(QString::fromUtf8("exportButton"));
-
         exportLayout->addWidget(exportButton);
-
         cancelButton = new QPushButton(exportWidget);
         cancelButton->setObjectName(QString::fromUtf8("cancelButton"));
-
         exportLayout->addWidget(cancelButton);
-
-
         verticalLayout_2->addLayout(exportLayout);
-
 
         retranslateUi(exportWidget);
 
@@ -901,6 +872,10 @@ public:
         // the palette is the FIT loop's lever, not a thing a plain export sets.
         const bool knobUsable = isVideo && !knob.isEmpty();
         setVisible({qualityOverrideLabel, qualityOverrideSpin, setQualityOverrideAuto}, knobUsable);
+        // Two controls for one number: the intent and the codec's own value. While the
+        // user has named the value, the intent is not in charge, and a combo still
+        // reading "Balanced" beside "CRF 18" is the form contradicting itself.
+        qualityCombo->setEnabled(!knobUsable || qualityOverrideSpin->value() < 0);
         if (knobUsable) {
             // Ranged to the codec's own span, and named after its own knob: "CRF"
             // counts down from 0 and WebP's "quality" counts up from 100, so a
@@ -1065,18 +1040,36 @@ public:
         // in these very boxes, which the plan has just read. So the boxes show the
         // plan and are frozen while a destination is selected — a box the export
         // ignores is worse than no box. Manual mode hands them back.
+        // What the user's own resolution is, captured BEFORE this destination's fit
+        // overwrites the boxes: for the rules that leave the size to them, handing
+        // back a fitted number would silently shrink their next export.
+        const QSize beforeFit(widthSpinBox->value(), heightSpinBox->value());
         if (planOk) {
             writeSize(aPlan.size);
         }
-        // A Free rule keeps the size honest AND live: the user's resolution is
-        // what the plan used, so they may keep changing it. Every other rule
-        // decides the size outright, and the boxes only report it.
-        const bool sizeIsUsers = aTarget.size.mode == ctrl::SizeMode::Free;
+        // THE SIZE STAYS THE USER'S WHEREVER THE DESTINATION ONLY BOUNDS IT.
+        //
+        //   Free           the destination imposes nothing: the project's own size
+        //   Max            a CEILING ("no bigger than 1280x720"): the user may export
+        //                  smaller, and the box now says so by carrying that as its
+        //                  maximum, the same way the fps box carries the frame-rate cap
+        //   Exact,         the size is pinned (320x320 for a Discord sticker, 512 for
+        //   MaxExactSide,  Telegram), so the boxes report it and stop accepting edits
+        //   MaxMinSide     (a floor plus a ceiling leaves nothing to choose)
+        //
+        // This used to freeze the boxes for every rule except Free, which made Discord
+        // - whose rule is a ceiling - a destination where the resolution could not be
+        // changed at all: "export this at 640x360" was not expressible, and the frozen
+        // numbers read as the destination's decision rather than its limit.
+        const bool boundsOnly = aTarget.size.mode == ctrl::SizeMode::Max;
+        const bool sizeIsUsers = aTarget.size.mode == ctrl::SizeMode::Free || boundsOnly;
         if (sizeIsUsers) {
-            mUserSize = aPlan.size;
+            mUserSize = beforeFit;
             mUserSizeKnown = true;
         }
         mLastSizeDictated = !sizeIsUsers;
+        widthSpinBox->setMaximum(boundsOnly && aTarget.size.w > 0 ? aTarget.size.w : INT32_MAX);
+        heightSpinBox->setMaximum(boundsOnly && aTarget.size.h > 0 ? aTarget.size.h : INT32_MAX);
         setEnabled({widthLabel, widthSpinBox, setWidthNative, heightLabel, heightSpinBox,
                     setHeightNative, keepAspectRatio},
                    sizeIsUsers);
@@ -1109,14 +1102,24 @@ public:
         // which is where they are the decision (same rule as the axes above).
         setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
                     bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
-                    setImageQualityToAuto, qualityOverrideLabel, qualityOverrideSpin,
-                    setQualityOverrideAuto},
+                    setImageQualityToAuto},
                    false);
-        // The disclosure closes with everything inside it frozen: a destination
-        // states the artifact and its capabilities, so the section would otherwise
-        // open onto four greyed boxes that repeat the facts above them.
+        // THE DISCLOSURE STAYS AVAILABLE, holding what this destination leaves to the
+        // user: a capability it merely DEFAULTS (Discord's audio is on by default, and
+        // turning it off is an ordinary thing to want) and the codec's own quality
+        // value (the destination fixes the codec, not the trade inside it). It used to
+        // be hidden outright with a destination chosen, which made both of those
+        // unreachable - there was no way to export a silent Discord video, and no way
+        // to say CRF 18 - on the one screen whose job is to finish the export.
+        //
+        // What the destination DICTATES is still hidden, and the facts above state it:
+        // a Format combo beside a stated "MP4" is two answers to one question.
+        applyArtifactConstraints();
+        setVisible({formatLabel, formatCombo, codecLabel, codecCombo, bitrateLabel,
+                    bitrateLineEdit, setBitrateAuto, imageQualityLabel, imageQualitySpinbox,
+                    setImageQualityToAuto},
+                   false);
         advancedToggle->setChecked(false);
-        advancedToggle->setVisible(false);
 
         // --- palette: only a GIF has one ------------------------------------
         // media::GifEncoder owns the palette; every other codec ignores it
@@ -1318,26 +1321,25 @@ public:
         newFirstRange->setMinimum(INT32_MIN); // projects may start before frame 0
         newLastRange->setMaximum(INT32_MAX);
         newLastRange->setMinimum(INT32_MIN); // projects may end before frame 0
-        // The first range is named by the labels above its column; a second one has no
-        // label of its own, so without a name here it is a control with no name at all
-        // - unreadable to a screen reader and unaddressable by the probes (ae_ui.py).
+        newFirstRange->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+        newLastRange->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+        // The first range is named by the labels above its columns; a second one has no
+        // label of its own, so without a name here it is a control with no name at all -
+        // unreadable to a screen reader and unaddressable by the probes.
         const int ordinal = initialFrames->size() + 1;
         newFirstRange->setAccessibleName(tr("First frame %1").arg(ordinal));
         newLastRange->setAccessibleName(tr("Last frame %1").arg(ordinal));
-        int FRIndex = gridLayout_2->indexOf(initialFrames->last());
-        int LRIndex = gridLayout_2->indexOf(lastFrames->last());
-        int unused;
-        Pos frPos;
-        Pos lrPos;
-        gridLayout_2->getItemPosition(FRIndex, &frPos.row, &frPos.col, &unused, &unused);
-        gridLayout_2->getItemPosition(LRIndex, &lrPos.row, &lrPos.col, &unused, &unused);
-        frPos.row++;
-        lrPos.row++;
+
+        // APPENDED. The previous version asked the layout where the last first-frame
+        // spin box was, added one to its row, and put the new boxes in that row - which
+        // made a row index load-bearing for everything below it. The rows live in their
+        // own grid now, so the next row is simply the next row.
+        const int row = frameRangeGrid->rowCount();
         newFirstRange->setValue(lastFrames->last()->value());
         newLastRange->setValue(lastFrame);
-        gridLayout_2->addWidget(newFirstRange, frPos.row, frPos.col);
+        frameRangeGrid->addWidget(newFirstRange, row, 0);
+        frameRangeGrid->addWidget(newLastRange, row, 1);
         initialFrames->append(newFirstRange);
-        gridLayout_2->addWidget(newLastRange, lrPos.row, lrPos.col);
         lastFrames->append(newLastRange);
     }
 
@@ -1345,10 +1347,12 @@ public:
         // No crashing the app please
         if(initialFrames->empty()){ addRange(lastFrame); return; }
         if(initialFrames->size() == 1){ return; }
-        gridLayout_2->removeWidget(initialFrames->last());
-        gridLayout_2->removeWidget(lastFrames->last());
-        initialFrames->last()->deleteLater();
-        lastFrames->last()->deleteLater();
+        QSpinBox* first = initialFrames->last();
+        QSpinBox* last = lastFrames->last();
+        frameRangeGrid->removeWidget(first);
+        frameRangeGrid->removeWidget(last);
+        first->deleteLater();
+        last->deleteLater();
         initialFrames->removeLast();
         lastFrames->removeLast();
     }
@@ -1457,31 +1461,10 @@ public:
         setQualityOverrideAuto->setAccessibleName(tr("Quality override to auto"));
         setBitrateAuto->setAccessibleName(tr("Bitrate to auto"));
 
-        // ...and every label is its field's BUDDY.
-        //
-        // Two different things, and the form had only the first: an accessible NAME
-        // is what a control answers to ("Width"), while the buddy relation is what
-        // says which words on screen belong to it. Without it a screen reader
-        // announces the focused control as "spin box" with no idea which one, on a
-        // form whose whole problem was that rows were only associated with their
-        // labels by happening to sit in the same grid row. The relation is also what
-        // the probes read to check the association (ae_ui.py `labeled`), so the
-        // claim is testable rather than asserted.
-        widthLabel->setBuddy(widthSpinBox);
-        heightLabel->setBuddy(heightSpinBox);
-        fpsLabel->setBuddy(fpsSpinBox);
-        formatLabel->setBuddy(formatCombo);
-        codecLabel->setBuddy(codecCombo);
-        qualityLabel->setBuddy(qualityCombo);
-        imageQualityLabel->setBuddy(imageQualitySpinbox);
-        bitrateLabel->setBuddy(bitrateLineEdit);
-        qualityOverrideLabel->setBuddy(qualityOverrideSpin);
-        destinationLabel->setBuddy(destinationButton);
-        // The frame range's first pair. A label cannot be the buddy of four spin
-        // boxes, and the added rows carry their own accessible names ("First frame
-        // 2") because a column heading is a layout device, not a name.
-        firstFrameLabel->setBuddy(firstFrameSpinBox);
-        lastFrameLabel->setBuddy(lastFrameSpinBox);
+        // The label/field ASSOCIATION is not set here: it is what addRow(label, field)
+        // does when the row is built. A list of setBuddy() calls used to live here,
+        // which is one claim made twice - and the reason it belongs in the layout is
+        // that a list can be forgotten when a row is added, while addRow cannot.
         // A QComboBox exposes its CURRENT VALUE as its accessible name ("WebM",
         // "VP9", "Balanced") and ignores accessibleName entirely - Qt's rule, and a
         // sensible one for a screen reader. That leaves a combo box unaddressable by

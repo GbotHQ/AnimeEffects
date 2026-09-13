@@ -579,6 +579,62 @@ TEST_SECTION("size rules", run_size_rules) {
               QStringLiteral("odd requested size floors to even (%1x%2)")
                   .arg(odd.size.width()).arg(odd.size.height()));
 
+        // A MAX rule is a CEILING, not a decision. The user's own resolution is the
+        // other ceiling and the art fits inside the smaller of the two, so "1280x720
+        // maximum, but I want 640x360" is expressible - and the dialog can leave the
+        // Width/Height boxes live instead of freezing them for every max-mode row
+        // (Discord, WhatsApp, Signal, Instagram, TikTok).
+        {
+            const ctrl::ExportTarget capped =
+                ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                          QStringLiteral("chat.discord.file"));
+            check(capped.size.mode == ctrl::SizeMode::Max,
+                  "the Discord chat row bounds the size rather than pinning it");
+
+            ctrl::ExportRequest maxReq;
+            maxReq.sourceSize = QSize(1920, 1080);
+            maxReq.selection = ctrl::FrameSelection::fromCount(1);
+
+            const ctrl::ExportPlan unbounded = ctrl::planExport(capped, maxReq, ctrl::QualityBucket::Balanced);
+            check(unbounded.ok() && unbounded.size == QSize(1280, 720),
+                  QStringLiteral("with no request the art fits the destination's ceiling (%1x%2)")
+                      .arg(unbounded.size.width()).arg(unbounded.size.height()));
+
+            maxReq.requestedSize = QSize(640, 360);
+            const ctrl::ExportPlan smaller = ctrl::planExport(capped, maxReq, ctrl::QualityBucket::Balanced);
+            check(smaller.ok() && smaller.size == QSize(640, 360),
+                  QStringLiteral("a smaller requested size is honoured inside it (%1x%2)")
+                      .arg(smaller.size.width()).arg(smaller.size.height()));
+
+            maxReq.requestedSize = QSize(3840, 2160);
+            const ctrl::ExportPlan tooBig = ctrl::planExport(capped, maxReq, ctrl::QualityBucket::Balanced);
+            check(tooBig.ok() && tooBig.size == QSize(1280, 720),
+                  QStringLiteral("and a larger one is still capped by the destination (%1x%2)")
+                      .arg(tooBig.size.width()).arg(tooBig.size.height()));
+
+            // The ceiling also has to hold for a requested size that is bigger on one
+            // axis and smaller on the other: the fit is inside the SMALLER box, since
+            // that is what both limits say.
+            maxReq.requestedSize = QSize(3840, 360);
+            const ctrl::ExportPlan mixed = ctrl::planExport(capped, maxReq, ctrl::QualityBucket::Balanced);
+            check(mixed.ok() && mixed.size.width() <= 1280 && mixed.size.height() <= 360,
+                  QStringLiteral("both ceilings hold (%1x%2)")
+                      .arg(mixed.size.width()).arg(mixed.size.height()));
+        }
+
+        // The new animated-image row has to be a WebP that this build can actually
+        // produce, which the WebP section below reads back out of the container.
+        {
+            const ctrl::ExportTarget anim =
+                ctrl::ExportTargets::find(ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH)),
+                                          QStringLiteral("discord.animation"));
+            check(anim.id == QLatin1String("discord.animation"), "found discord.animation");
+            check(anim.container == QLatin1String("webp") && anim.codec == QLatin1String("libwebp"),
+                  "Discord's animated image is WebP (the format Discord's own pipeline produces)");
+            check(anim.caps.maxBytes == 10485760,
+                  QStringLiteral("capped at the inline display limit (%1 bytes)").arg(anim.caps.maxBytes));
+        }
+
         // The ASPECT a fit rule preserves must stay the ART's, so a size typed
         // for a free destination cannot leak into an exact one's padding.
         req.requestedSize = QSize(1920, 1080);

@@ -288,6 +288,24 @@
           compression, so a video that used to fit may not.</note>
   </destination>
 
+  <destination id="discord.animation" group="discord" label="Discord (animated image)" icon="brand-discord" family="chat"
+               class="direct" codecSelect="fixed"
+               container="webp" codec="libwebp" pixfmt="yuva420p"
+               alpha="default-on" audio="forbidden" loop="default-on"
+               checked="2026-09-13" source="https://discord.com/blog/modern-image-formats-at-discord-supporting-webp-and-avif (animated WebP in attachments, all platforms since mobile 252) and https://support.discord.com/hc/en-us/articles/25444343291031 (upload sizes)" verified="true">
+    <size mode="free"/>
+    <caps maxBytes="10485760"/>
+    <note>An animated image, not a video: WebP is the format Discord's own pipeline produces
+          for animation (they have served and accepted animated WebP since the 2024 mobile
+          release 252), and a GIF upload is transcoded to WebP for display, so this goes out
+          animated either way. Alpha survives here, which GIF's palette cannot carry. The
+          English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is
+          used, and it is also the size above which Discord stops animating inline and offers
+          the file as a download instead. One frame in the export gives a still WebP, so this
+          row carries a still illustration as well as an animation. Transparency is on by
+          default (WebP keeps it, GIF's palette cannot) and can be turned off.</note>
+  </destination>
+
   <destination id="chat.signal.video" group="signal" label="Signal" icon="brand-signal" family="chat"
                class="direct" codecSelect="fixed"
                container="mp4" codec="libx264" pixfmt="yuv420p"
