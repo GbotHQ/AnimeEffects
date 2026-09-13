@@ -1,8 +1,14 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include "gl/DeviceInfo.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
+
+// see DeviceInfo.cpp: Qt's GL headers do not define the extension enums
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
 
 namespace gl {
 
@@ -217,6 +223,20 @@ void Texture::setWrap(GLint aParam, QColor aBorderColor) {
 
         ggl.glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, colorF);
     }
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Texture::setMaxAnisotropy(GLfloat aValue) {
+    const GLfloat limit =
+        DeviceInfo::validInstanceExists() ? DeviceInfo::instance().maxAnisotropy : 1.0f;
+    if (limit <= 1.0f)   // the device cannot do it: leave the sampler exactly as it was
+        return;
+
+    const GLfloat value = std::max(1.0f, std::min(aValue, limit));
+
+    Global::Functions& ggl = Global::functions();
+    ggl.glBindTexture(GL_TEXTURE_2D, mId);
+    ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value);
     ggl.glBindTexture(GL_TEXTURE_2D, 0);
 }
 

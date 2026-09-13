@@ -44,6 +44,30 @@ public:
 
     void setWrap(GLint aParam, QColor aBorderColor = QColor(0, 0, 0, 0));
 
+    /// Asks the sampler to filter anisotropically: up to aValue samples along the footprint's major
+    /// axis, each at the level the MINOR axis asks for.
+    ///
+    /// Trilinear minification has to pick ONE level, and it picks it from the larger of the two
+    /// screen-space derivatives, so an elongated footprint - a non-uniformly scaled layer, which this
+    /// app makes in one keyframe - is filtered at the level the long axis needs and is therefore
+    /// over-blurred along the short one by the ratio. Anisotropic filtering resolves that by taking
+    /// several samples along the long axis, each at the level the short one asks for.
+    ///
+    /// Measured in M19 of tools/verify_mipmap, against the exact area integral of the footprint, in
+    /// 255ths: a 4:1 footprint goes 4.443 -> 1.117, an 8:1 6.971 -> 0.741, a 16:1 12.683 -> 0.539,
+    /// and a square one is 0.4817 at every value - the control that says this cannot make the
+    /// ordinary case worse. The gain saturates at the footprint's own ratio because that is how many
+    /// samples the driver takes; a large request is an upper bound, not a cost (a 4:1 footprint
+    /// renders in the same 4.1 ms at 16 as at 1). Where the footprint is isotropic the anisotropic
+    /// path still reads a marginally narrower kernel at FRACTIONAL levels - up to 0.155 of a level,
+    /// nothing at an integer one - which the shipped corpus eval absorbs to within 0.0003 of 255.
+    ///
+    /// The value is clamped to the device's limit (gl::DeviceInfo::maxAnisotropy) and is a no-op where
+    /// the device reports 1, i.e. where EXT_texture_filter_anisotropic - or the ARB promotion of it -
+    /// is absent. GL would clamp the value itself, but the app treats a GL error as a hard failure and
+    /// there is no reason to send a value the device cannot honour.
+    void setMaxAnisotropy(GLfloat aValue);
+
     /// Offsets the level the minification filter picks, in log2 units. Only the minimum filter uses
     /// it; magnification ignores it.
     ///

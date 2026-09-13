@@ -152,6 +152,12 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   the realistic 1920 and 3840 sides, the support spanning the whole footprint, flat content staying
   flat, the padded upload landing on the mass-weighted truth, and that the row weights do not depend on
   the texture's width. See "the grid must not be stretched either" below.
+- **M19 - anisotropic minification.** Trilinear picks its level from the larger of the two
+  screen-space derivatives, so a non-uniformly scaled layer is over-blurred along its short axis by
+  the ratio. M19 measures what an elongated footprint resolves against the exact area integral of
+  that footprint (4:1, 8:1 and 16:1, per requested anisotropy), the square-footprint control that
+  says the ordinary case is untouched, the level shift the driver's anisotropic path introduces at
+  fractional levels, and the cost against the fragment count. See "Anisotropic minification" below.
 
 ## Figures
 
@@ -537,6 +543,76 @@ layer once per display scale with an area/Lanczos filter and cache it (exact by 
 above - the CPU area model matches the truth to 0.05 - and affordable precisely because layer content
 is static between edits), or supersample the composite for export.
 
+## Anisotropic minification: the elongated footprint
+
+Trilinear minification has to pick ONE level and picks it from the larger of the two screen-space
+derivatives, so a layer squashed on one axis is filtered at the level its LONG axis requires and is
+over-blurred along the short one by the ratio. That is not a mipmapping defect - the level is right for
+the footprint it was chosen for - but it is the one thing a non-uniformly scaled layer loses, and this
+app has non-uniform scale as a first-class keyframe (ScaleKey takes a QVector2D). Layer textures now
+ask for anisotropy 16 (`core::ImageKey::layerMaxAnisotropy`), clamped to what the device reports, and a
+no-op where `EXT_texture_filter_anisotropic` is absent - the harness gives its stubbed device the REAL
+limit for exactly that reason, since a stubbed limit would hide a device that cannot do it.
+
+Measured on a synthetic broadband image, error against the exact area integral of the footprint
+(`areaIntegralRect`, 1/255, 256 pixels, shipped bias):
+
+| footprint (texels) | anisotropy 1 | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| 4:1 - 64x16 | 4.443 | 2.244 | **1.117** | 1.117 | 1.117 |
+| 8:1 - 128x16 | 6.971 | 4.012 | 1.838 | **0.741** | 0.741 |
+| 16:1 - 256x16 | 12.683 | 6.846 | 3.803 | 1.736 | **0.539** |
+| **1:1 (control)** | **0.4817** | 0.4817 | 0.4817 | 0.4817 | 0.4817 |
+
+The gain saturates at the footprint's OWN ratio, because that is how many samples the driver takes
+(ceil of the ratio, capped by the requested maximum): 4 wastes nothing but gains nothing either, and
+16 is an upper bound rather than a cost. The 1:1 row is the control that matters - an isotropic
+footprint is byte-identical at every value, because the driver takes one sample.
+
+On real layers (`--aniso <csv> <file> [ratio]`, 4:1, shipped bias, mean error against the supersampled
+truth):
+
+| layer | anisotropy 1 | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| `qitqmd.anie` 3656x2786 | 1.239 | 0.444 | 0.191 | 0.191 | 0.191 |
+| `amongusych2.anie` 962x542 | 8.661 | 2.482 | 0.600 | 0.600 | 0.600 |
+| `ballerina.anie` 3286x4811 | 6.121 | 3.775 | 3.697 | 3.697 | 3.697 |
+| `2.anie` Linework17 (flat background) | 0.007 | 0.003 | 0.001 | 0.001 | 0.001 |
+
+`ballerina.anie`'s residual floor is the box-vs-integral difference measured in "What the remaining
+error IS", not an anisotropy one: it stops falling once the footprint is resolved.
+
+What it costs: measured by rendering the same scene 20 times per setting, so the fragment count does not
+move, on a 256x256 canvas where a layer of 131k fragments takes 0.4-0.6 ms - small enough that the
+sampling is a visible share of it rather than hidden behind the per-frame work:
+
+| footprint | anisotropy | run 1 | run 2 | run 3 |
+|---|---|---|---|---|
+| 4:1 (8x2 texels) | 1 | 0.425 ms | 0.550 ms | 0.498 ms |
+| 4:1 | 4 | 0.475 ms | 0.511 ms | 0.579 ms |
+| 4:1 | 16 | 0.496 ms | 0.526 ms | 0.540 ms |
+| 16:1 (32x2 texels) | 1 | 0.402 ms | 0.647 ms | 0.460 ms |
+| 16:1 | 4 | 0.479 ms | 0.417 ms | 0.664 ms |
+| 16:1 | 16 | 0.485 ms | 0.377 ms | 0.457 ms |
+
+Read that honestly: the run-to-run spread (+-0.1 ms) is the same size as any difference between the
+settings and the ORDER is random between runs, so this does not show the anisotropy to be free - it puts
+a floor under what it can be: a cost below ~0.1 ms per render of a 131k-fragment layer is not resolvable
+in this harness, i.e. below ~20% of that render's total and far below it on a real frame, where the
+canvas-sized destination texture and the clipping frame dominate (the same measurement on a 1024x1024
+canvas is 4.1-4.4 ms for 262k fragments, with the differences inside +-0.3 ms).
+
+And what it does NOT do, measured because it is the one way the policy could have changed the shipped
+path: the driver's anisotropic path selects its level differently, which shows up on a hard edge as a
+NARROWER kernel. At bias 0, on an isotropic footprint, the implied level moves by up to **0.155** of a
+level at fractional zooms (0.9, 0.42, 0.2) and by exactly 0.000 at integer ones (0.5, 0.125). M19
+bounds that at a third of a level. The shipped corpus numbers were then re-measured with the policy in
+place: 2x/4x/8x/16x over the same files reproduce the published tables, eleven of twelve rows to four
+decimals and one (000036.psd at 16x) by 0.0003 in the better direction, which is what a fractional
+effective level - the -0.5 bias means the level is never an integer - makes of that 0.155. The LOD bias
+scan itself (`--bias1` at anisotropy 1 versus 16, four files, six biases) is bit-identical, so -0.5
+stays as shipped.
+
 ## Independent ground truth: supersampling
 
 Everything above compares the render against something derived from the same machinery - an
@@ -610,7 +686,7 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (289 checks) runs under AddressSanitizer against an ASan build of the libraries
+The whole probe (301 checks) runs under AddressSanitizer against an ASan build of the libraries
 (`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
 overflow or a double free:
 
@@ -621,6 +697,12 @@ ASAN_OPTIONS=abort_on_error=1:detect_leaks=0 QT_QPA_PLATFORM=offscreen \
 
 That covers the new CPU code that indexes heap buffers: the premultiply-and-pad loop in
 `img::Util::makeTextureUpload`.
+
+With M18 and M19 in place the total is 267,855,410 bytes in 1,863 allocations, against 213,061,430 in
+1,743 before they existed: the +52 MB is those two suites' fixtures - the artwork copies the harness
+deliberately never frees (its resources are handed to trees that go out of scope, and `XCMemBlock` has
+no destructor) plus the textures Mesa allocated for their scenes. Nothing in the anisotropy path itself
+allocates anything that outlives the call.
 
 Leak detection is worth running too, and it caught a real one here. `XCMemBlock` is a plain struct
 with a raw `uint8*` and no destructor, so a helper that allocates and returns one has no owner; the
@@ -695,9 +777,10 @@ seam needs adjacent triangles to differ by roughly a factor of two in local comp
 prove visible, the standard fix for a 2D tool is one LOD for the whole draw rather than per-fragment
 derivatives.
 
-Also unmeasured: anisotropic minification (a non-uniform layer scale compresses the texture on
-one axis, and trilinear LOD follows the largest derivative, so the other axis is over-blurred).
-No anisotropic filtering is enabled anywhere in the pipeline.
+Anisotropic minification is measured and enabled for layer textures now (see the section above);
+nothing else in the pipeline samples a texture anisotropically - the filter frames and the clipping
+frame are not sampled minified in a way that needs it, and the editor overlay's Qt textures are the
+path that is "closed by construction rather than by measurement" below.
 
 ## Still to cover
 

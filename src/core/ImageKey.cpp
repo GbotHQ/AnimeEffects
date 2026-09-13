@@ -113,6 +113,9 @@ void ImageKey::resetTextureCache() {
         // footprint instead of twice it. The reasoning and the measurement are on
         // gl::Texture::setLodBias.
         mCache.texture().setLodBias(layerLodBias());
+        // ...and enough samples along an elongated footprint that its SHORT axis is not filtered at
+        // the level its long axis asked for. See ImageKey::layerMaxAnisotropy.
+        mCache.texture().setMaxAnisotropy(layerMaxAnisotropy());
         mCache.texture().setWrap(GL_CLAMP_TO_BORDER, QColor(0, 0, 0, 0));
     }
 }

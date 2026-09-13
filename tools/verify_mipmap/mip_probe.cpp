@@ -75,6 +75,15 @@
 #include "core/ScaleKey.h"
 #include "core/TimeInfo.h"
 #include "gl/DeviceInfo.h"
+
+// Qt includes the GL headers with GL_GLEXT_LEGACY, so the extension enums are not defined (checked
+// with the preprocessor, not assumed). Values from the EXT_texture_filter_anisotropic spec.
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
+#ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+#endif
 #include "gl/Framebuffer.h"
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
@@ -612,6 +621,21 @@ img::ResourceNode* makeResource(const QString& aId, const Img& aSrc) {
 
 // Mirrors MainDisplayWidget::paintGL's per-frame state so the render goes through the same
 // wiring the app uses.
+// The device info the harness hands the app. Everything is STUBBED (the renderer string is read by
+// nothing here, and a fixed version keeps the app's version gates out of the way) except the
+// anisotropy limit, which is read off the real context: M19's subject is the app's policy against the
+// device it actually runs on, and a stubbed limit would hide a device that cannot filter
+// anisotropically at all - which is exactly the case the policy has to cope with.
+void loadHarnessDevice(gl::DeviceInfo& aDev) {
+    aDev.vender = "harness";
+    aDev.renderer = "harness";
+    aDev.version = "5";
+    aDev.maxTextureSize = 16384;
+    aDev.maxRenderBufferSize = 16384;
+    aDev.maxAnisotropy = gl::DeviceInfo::queryMaxAnisotropy();
+    gl::DeviceInfo::setInstance(&aDev);
+}
+
 struct RenderFixture {
     QSize size;
     QScopedPointer<core::ClippingFrame> clipping;
@@ -688,6 +712,21 @@ struct RenderFixture {
     }
 };
 
+core::LayerNode* addScaledLayerVec(
+    core::ObjectTree& aTree, core::ObjectNode* aParent, img::ResourceNode* aRes, const QString& aName,
+    const QVector2D& aPos, const QVector2D& aScale, img::BlendMode aMode
+) {
+    auto* layer = new core::LayerNode(aName, aTree.shaderHolder());
+    layer->setDefaultImage(aRes->handle(), aMode);
+    layer->setDefaultPosture(aPos);
+    layer->setDefaultOpacity(1.0f);
+    core::getOrCreateDefaultKey<core::ScaleKey, core::TimeKeyType_Scale>(*layer->timeLine())
+        ->setScale(aScale);
+    aParent->children().pushBack(layer);
+    return layer;
+}
+
+// The uniform case, which is what every other suite uses.
 core::LayerNode* addScaledLayer(
     core::ObjectTree& aTree, core::ObjectNode* aParent, img::ResourceNode* aRes, const QString& aName,
     const QVector2D& aPos, float aScale, img::BlendMode aMode
@@ -720,7 +759,7 @@ void clearRenderFixtures() { renderFixtures().clear(); }
 
 std::vector<uint8_t> renderLayer(
     const QSize& aCanvas, const Img& aImage, float aScale, img::BlendMode aMode,
-    const uint8_t aBackdrop[3] = nullptr, float aLodBias = 0.0f
+    const uint8_t aBackdrop[3] = nullptr, float aLodBias = 0.0f, float aAniso = 1.0f
 ) {
     auto& fixtures = renderFixtures();
     const QString key = QString("%1x%2").arg(aCanvas.width()).arg(aCanvas.height());
@@ -744,19 +783,23 @@ std::vector<uint8_t> renderLayer(
     camera.reset(aCanvas, 1.0, aCanvas, QPoint(0, 0));
     const uint8_t black[3] = {0, 0, 0};
 
-    // The layer's textures are built by the first render, so the level bias can only be set after it.
-    // The default is 0, not the shipped value: these fixtures pin what the CHAIN does - which level a
-    // footprint reads, what kernel that level applies - and the shipped -0.5 is a policy on top of
-    // that, measured separately (M17 and the corpus run). With the app's value in place here, every
-    // "this is level l" expectation below would be reading level l-0.5.
+    // The layer's textures are built by the first render, so the sampler parameters can only be set
+    // after it. The defaults are bias 0 and anisotropy 1, NOT the shipped values: these fixtures pin
+    // what the CHAIN does - which level a footprint reads, what kernel that level applies - and the
+    // shipped -0.5 and the anisotropy are policies on top of that, measured separately (M17, M19 and
+    // the corpus run). With the app's values in place here, every "this is level l" expectation below
+    // would be reading a different convolution. Anisotropy matters even for a SQUARE footprint: the
+    // measured kernel is narrower than trilinear's at a fractional level (M19), which is why M15 -
+    // whose subject is the level the derivatives pick - has to pin it.
     fx.render(tree, camera, 0, aBackdrop ? aBackdrop : black);
     if (layer && layer->timeLine()) {
         auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
         if (key && key->cache().texture().id() != 0) {
-            auto& ggl = gl::Global::functions();
-            ggl.glBindTexture(GL_TEXTURE_2D, key->cache().texture().id());
-            ggl.glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, aLodBias);
-            ggl.glBindTexture(GL_TEXTURE_2D, 0);
+            gl::Texture& tex = key->cache().texture();
+            tex.setLodBias(aLodBias);
+            // through the app's own API, so the device clamp and the "no extension" path are the
+            // ones under test rather than a raw parameter write
+            tex.setMaxAnisotropy(aAniso);
         }
     }
     return fx.render(tree, camera, 0, aBackdrop ? aBackdrop : black);
@@ -2197,6 +2240,21 @@ void suiteMarginDepth() {
 // piecewise-linear profile); comparing the same statistic on both sides removes the bias instead of
 // hiding it in a tolerance. Measured at 15 zooms from 0.9 down to 0.05, i.e. lambda from 0.15 to
 // 4.3, including the whole of levels 1, 2, 3 and 4.
+// The steepest step of the vertical-edge profile over the canvas interior, in 255ths: M15's
+// instrument, shared with M19's level-selection check. The step response of a box of width w px has
+// a steepest step of 255/w per pixel, so this measures the kernel's width directly.
+int steepestEdgeStep(const std::vector<uint8_t>& aOut, const QSize& aCanvas, int aMargin = 8) {
+    int measured = 0;
+    for (int sy = aMargin; sy < aCanvas.height() - aMargin; ++sy) {
+        for (int sx = aMargin; sx < aCanvas.width() - aMargin - 1; ++sx) {
+            const int a = aOut[((size_t)sy * aCanvas.width() + sx) * 4];
+            const int b = aOut[((size_t)sy * aCanvas.width() + sx + 1) * 4];
+            measured = std::max(measured, std::abs(b - a));
+        }
+    }
+    return measured;
+}
+
 void suiteLodSweep() {
     suiteHeader("M15 level selection across a continuous zoom sweep");
     const QSize canvas(64, 64);
@@ -2736,6 +2794,7 @@ void suiteLevelsPastCap() {
                 .arg((int)padDeep[0]).arg(truth, 0, 'f', 0));
     }
 }
+
 //-------------------------------------------------------------------------------------------------
 // M12: the SHAPE of glGenerateMipmap's filter, measured rather than assumed.
 //
@@ -2907,12 +2966,7 @@ int runFigures(const QString& aDir, const QString& aTag, const QString& aAnie) {
     QDir().mkpath(aDir);
 
     gl::DeviceInfo dev;
-    dev.vender = "harness";
-    dev.renderer = "harness";
-    dev.version = "5";
-    dev.maxTextureSize = 16384;
-    dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static MipAnimator animator;
     static MipReporter reporter;
@@ -3560,32 +3614,45 @@ double lanczosIntegral(const Img& aImg, double aX0, double aY0, int aSpan, int a
 // image-processing sense and it is what a mip chain approximates; it differs from tentIntegral()
 // only in the reconstruction model it integrates, and the two differ by exactly the amount that
 // makes the choice of "truth" arguable. Both integrate the same footprint with the same box.
-double areaIntegral(const Img& aImg, double aX0, double aY0, int aSpan, int aChannel) {
-    const auto weights = [&](double aStart, int aBase, std::vector<double>& aOut) {
+//
+// The footprint is RECTANGULAR here, and the weights are computed per axis, so the square case is the
+// same function (areaIntegral delegates with equal spans) and an anisotropic footprint - where the
+// footprint is nowhere near square, which is what non-uniform layer scaling makes - is measured by
+// exactly the same definition of truth.
+double areaIntegralRect(
+    const Img& aImg, double aX0, double aY0, double aSpanX, double aSpanY, int aChannel
+) {
+    const auto weights = [](double aStart, double aSpan, int aBase, std::vector<double>& aOut) {
         for (int t = 0; t < (int)aOut.size(); ++t) {
             const double lo = std::max(aStart, (double)(aBase + t));
             const double hi = std::min(aStart + aSpan, (double)(aBase + t + 1));
             aOut[t] = std::max(0.0, hi - lo) / aSpan;
         }
     };
-    const int taps = aSpan + 2;
+    const int tapsX = (int)std::ceil(aSpanX) + 2, tapsY = (int)std::ceil(aSpanY) + 2;
     const int kx0 = (int)std::floor(aX0) - 1, ky0 = (int)std::floor(aY0) - 1;
-    std::vector<double> wx(taps, 0.0), wy(taps, 0.0);
-    weights(aX0, kx0, wx);
-    weights(aY0, ky0, wy);
+    std::vector<double> wx(tapsX, 0.0), wy(tapsY, 0.0);
+    weights(aX0, aSpanX, kx0, wx);
+    weights(aY0, aSpanY, ky0, wy);
+
     double total = 0.0;
-    for (int j = 0; j < taps; ++j) {
+    for (int j = 0; j < tapsY; ++j) {
         const int y = ky0 + j;
-        for (int i = 0; i < taps; ++i) {
+        for (int i = 0; i < tapsX; ++i) {
             const int x = kx0 + i;
             if (wx[i] == 0.0 || wy[j] == 0.0)
                 continue;
-            const double v = (x < 0 || y < 0 || x >= aImg.w || y >= aImg.h) ? 0.0
-                                                                            : (double)aImg.at(x, y)[aChannel];
+            const double v = (x < 0 || y < 0 || x >= aImg.w || y >= aImg.h)
+                                 ? 0.0
+                                 : (double)aImg.at(x, y)[aChannel];
             total += wx[i] * wy[j] * v;
         }
     }
     return total;
+}
+
+double areaIntegral(const Img& aImg, double aX0, double aY0, int aSpan, int aChannel) {
+    return areaIntegralRect(aImg, aX0, aY0, (double)aSpan, (double)aSpan, aChannel);
 }
 
 // The integral of the TENT reconstruction of an image over the footprint [x0, x0+w) x [y0, y0+w),
@@ -3799,6 +3866,48 @@ void suiteShippedLodBias() {
 // GL_TEXTURE_LOD_BIAS against the supersampled truth, so the trade is measured rather than argued:
 // the truth is an antialiased integral, so it penalises both blurring and aliasing, and whichever
 // bias has the smallest error there is genuinely the smallest total error by this measure.
+// Requests an anisotropy on every layer texture of the tree, through the app's own API - which is
+// what clamps it to the device and is what M19's "is the policy armed" check reads back.
+void setTreeAnisotropy(core::ObjectTree& aTree, float aAniso) {
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(aTree.topNode(), layers);
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!key)
+            continue;
+        gl::Texture& tex = key->cache().texture();
+        if (tex.id() == 0)
+            continue;
+        tex.setMaxAnisotropy(aAniso);
+    }
+}
+
+// What the sampler is ACTUALLY set to, read back from the texture: the device may have clamped it, and
+// where the extension is absent the app leaves the parameter alone entirely. A test that only knew
+// what it asked for could not tell those apart from "it worked".
+float readAnisotropy(gl::Texture& aTexture) {
+    auto& ggl = gl::Global::functions();
+    GLfloat value = -1.0f;
+    ggl.glBindTexture(GL_TEXTURE_2D, aTexture.id());
+    ggl.glGetTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, &value);
+    ggl.glBindTexture(GL_TEXTURE_2D, 0);
+    // where the extension is absent this query is an invalid enum: consume it here rather than leave
+    // it for the next GL_CHECK_ERROR, and let the -1 stand for "not supported"
+    if (ggl.glGetError() != GL_NO_ERROR)
+        return -1.0f;
+    return value;
+}
+
+/// A --aniso <value> on the command line overrides the shipped policy for the modes that measure the
+/// SHIPPED state, so one build can be measured at 1, 2, 4, 8 and 16 without rebuilding. -1 = unset.
+float gAnisoOverride = -1.0f;
+
+float shippedAnisotropy() {
+    return (gAnisoOverride > 0.0f) ? gAnisoOverride : core::ImageKey::layerMaxAnisotropy();
+}
+
 void setTreeLodBias(core::ObjectTree& aTree, float aBias) {
     std::vector<core::LayerNode*> layers;
     figures::collectLayers(aTree.topNode(), layers);
@@ -3820,9 +3929,7 @@ void setTreeLodBias(core::ObjectTree& aTree, float aBias) {
 
 int runBias(const QString& aCsv, const QString& aPath) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -3900,9 +4007,7 @@ int runBias(const QString& aCsv, const QString& aPath) {
 // all four references: the supersampled render, and the CPU area / tent / Lanczos models.
 int runBias1(const QString& aCsv, const QString& aPath) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -4036,9 +4141,7 @@ int runBias1(const QString& aCsv, const QString& aPath) {
 
 int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned, int aZoomDenom) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -4468,11 +4571,203 @@ int runDecompose(const QString& aCsv, const QString& aPath, bool aAligned, int a
     return 0;
 }
 
+
+// The largest layer image in a project: what every mode below measures on. Factored out of runBias1,
+// which had its own copy.
+bool largestLayerImage(core::Project& aProject, Img& aDest, QString& aName) {
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(aProject.objectTree().topNode(), layers);
+    bool have = false;
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* ikey = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (!ikey || !ikey->data().resource()->hasImage())
+            continue;
+        const img::Buffer& image = ikey->data().resource()->image();
+        const QSize size = image.pixelSize();
+        if (size.width() < 256 || size.height() < 256)
+            continue;
+        if (have && (qint64)size.width() * size.height() <= (qint64)aDest.w * aDest.h)
+            continue;
+        aDest.w = size.width();
+        aDest.h = size.height();
+        aDest.d.assign(image.data(), image.data() + (size_t)size.width() * size.height() * 4);
+        aName = layer->name();
+        have = true;
+    }
+    return have;
+}
+
+// The first layer texture in a tree whose chain exists, for the checks that read the sampler state
+// back off the texture the render really used.
+gl::Texture* firstLayerTexture(core::ObjectTree& aTree) {
+    std::vector<core::LayerNode*> layers;
+    figures::collectLayers(aTree.topNode(), layers);
+    for (auto* layer : layers) {
+        if (!layer->timeLine())
+            continue;
+        auto* key = dynamic_cast<core::ImageKey*>(layer->timeLine()->defaultKey(core::TimeKeyType_Image));
+        if (key && key->cache().texture().id() != 0)
+            return &key->cache().texture();
+    }
+    return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+// --aniso <csv> <file> [ratio] : what an ELONGATED footprint resolves, per requested anisotropy.
+//
+// Trilinear minification picks one level, and it picks it from the larger of the two screen-space
+// derivatives, so a layer squashed on one axis is filtered at the level its LONG axis needs and is
+// over-blurred along the short one by the ratio. The scene is one real layer squashed by `ratio`, so
+// a screen pixel's footprint is (16*ratio) x 16 texels: both axes minified, ratio:1 between them.
+//
+// Two references, both of them the integral the rest of this branch treats as truth:
+//   * areaIntegralRect over the exact footprint - exact, CPU only, no quadrature limit;
+//   * the supersampled render of the same scene, box-averaged down (ss = the long footprint, so the
+//     reference has one sample per texel on the long axis and four on the short one).
+// The anisotropy is set through the APP's API (gl::Texture::setMaxAnisotropy), so the device clamp is
+// part of what is measured, and the effective value is read back off the texture and recorded.
+//
+// The bias is scanned too: it is a separate knob and its optimum could move once the kernel is
+// anisotropic. -0.5 is what ships (ImageKey::layerLodBias) and 0 is the chain on its own.
+int runAniso(const QString& aCsv, const QString& aPath, int aRatio) {
+    gl::DeviceInfo dev;
+    loadHarnessDevice(dev);
+
+    static std::vector<std::unique_ptr<MipAnimator>> animators;
+    animators.emplace_back(new MipAnimator());
+    static MipReporter reporter;
+    core::Project project(aPath, *animators.back(), nullptr);
+    if (!loadAnyProject(aPath, project, dev, reporter))
+        return 3;
+
+    Img artwork;
+    QString bestName;
+    if (!largestLayerImage(project, artwork, bestName))
+        return 0;
+
+    const QSize canvas(64, 64);
+    const int minorStep = 16;              // footprint along the SHORT axis, texels per screen pixel
+    const int majorStep = minorStep * aRatio;
+    const int ss = majorStep;              // one reference sample per texel on the LONG axis
+    const float zoom = 1.0f / (float)minorStep;
+    const uint8_t backdrop[3] = {0, 0, 0};
+
+    core::ObjectTree tree;
+    auto* root = new core::FolderNode("root");
+    tree.grabTopNode(root);
+    auto* res = makeResource("aniso_src", artwork);
+    // squashed on x: drawn at imageWidth/ratio by imageHeight/minorStep screen pixels, so the
+    // footprint is (majorStep, minorStep) texels per pixel whatever the artwork's own size
+    addScaledLayerVec(
+        tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+        QVector2D(1.0f / (float)aRatio, 1.0f), img::BlendMode_Normal
+    );
+
+    auto& fixtures = renderFixtures();
+    const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+    if (fixtures.find(key) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(canvas);
+        fixtures.emplace(key, std::move(fx));
+    }
+    core::CameraInfo camera;
+    camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+    camera.setScale(zoom);
+
+    fixtures[key]->render(tree, camera, 0, backdrop);   // builds the layer textures
+    setTreeSampling(tree, Sampling::MipmapCutoff);
+
+    // the supersampled reference
+    const QSize big(canvas.width() * ss, canvas.height() * ss);
+    const QString bigKey = QString("%1x%2").arg(big.width()).arg(big.height());
+    if (fixtures.find(bigKey) == fixtures.end()) {
+        std::unique_ptr<RenderFixture> fx(new RenderFixture());
+        fx->init(big);
+        fixtures.emplace(bigKey, std::move(fx));
+    }
+    QPoint leftTop;
+    referenceLeftTop(canvas.width(), canvas.height(), ss, 0, 0, leftTop);
+    core::CameraInfo bigCamera;
+    bigCamera.reset(big, 1.0, canvas, leftTop);
+    bigCamera.setScale(zoom * (float)ss);
+    const QImage truth = boxDownsample(
+        figures::readbackToImage(fixtures[bigKey]->render(tree, bigCamera, 0, backdrop), big), ss
+    );
+
+    // the bytes the app uploads, premultiplied, so the CPU integral describes the same composite the
+    // readback shows over the black backdrop
+    const QSize textureSize = img::Util::mipAlignedTextureSize(QSize(artwork.w, artwork.h));
+    Img texture;
+    texture.w = textureSize.width();
+    texture.h = textureSize.height();
+    texture.d = img::Util::makeTextureUpload(artwork.d.data(), QSize(artwork.w, artwork.h), textureSize);
+
+    QFile out(aCsv);
+    const bool fresh = !out.exists() || out.size() == 0;
+    if (!out.open(QIODevice::Append | QIODevice::Text))
+        return 5;
+    QTextStream ts(&out);
+    if (fresh)
+        ts << "file,layer,artwork,canvas,footprint,ratio,ss,aniso_req,aniso_eff,bias,px,vs_ssaa,vs_area\n";
+
+    std::printf("  %s  layer %s  %dx%d  canvas %dx%d  footprint %dx%d texels  ss %d\n",
+                qPrintable(QFileInfo(aPath).fileName()), qPrintable(bestName), artwork.w, artwork.h,
+                canvas.width(), canvas.height(), majorStep, minorStep, ss);
+
+    const float anisos[] = {1.0f, 2.0f, 4.0f, 8.0f, 16.0f};
+    const float biases[] = {0.0f, -0.5f};
+    const double halfX = majorStep * 0.5, halfY = minorStep * 0.5;
+
+    for (float bias : biases) {
+        setTreeLodBias(tree, bias);
+        for (float aniso : anisos) {
+            setTreeAnisotropy(tree, aniso);
+            gl::Texture* tex = firstLayerTexture(tree);
+            const float effective = tex ? readAnisotropy(*tex) : -1.0f;
+
+            const QImage img =
+                figures::readbackToImage(fixtures[key]->render(tree, camera, 0, backdrop), canvas);
+            double sS = 0, sA = 0;
+            int n = 0;
+            for (int sy = 0; sy < canvas.height(); ++sy) {
+                for (int sx = 0; sx < canvas.width(); ++sx) {
+                    const double ax = (sx + 0.5) * majorStep - (canvas.width() * 0.5) * majorStep
+                                      + artwork.w * 0.5;
+                    const double ay = (sy + 0.5) * minorStep - (canvas.height() * 0.5) * minorStep
+                                      + artwork.h * 0.5;
+                    if (ax - halfX < 0.0 || ay - halfY < 0.0 || ax + halfX > artwork.w
+                        || ay + halfY > artwork.h)
+                        continue;
+                    const double r = img.pixelColor(sx, sy).red();
+                    sS += std::fabs(r - truth.pixelColor(sx, sy).red());
+                    sA += std::fabs(
+                        r - areaIntegralRect(texture, ax - halfX, ay - halfY, majorStep, minorStep, 0)
+                    );
+                    ++n;
+                }
+            }
+            const double d = n ? n : 1;
+            ts << QFileInfo(aPath).fileName() << "," << bestName << "," << artwork.w << "x"
+               << artwork.h << "," << canvas.width() << "x" << canvas.height() << "," << majorStep
+               << "x" << minorStep << "," << aRatio << "," << ss << "," << aniso << ","
+               << QString::number(effective, 'f', 1) << "," << bias << "," << n << ","
+               << QString::number(sS / d, 'f', 4) << "," << QString::number(sA / d, 'f', 4) << "\n";
+            ts.flush();
+            std::printf("    bias %+4.1f aniso %5.1f (effective %4.1f): %5d px | vs ssaa %6.3f | "
+                        "vs area %6.3f\n",
+                        bias, aniso, effective, n, sS / d, sA / d);
+        }
+    }
+    setTreeLodBias(tree, 0.0f);
+    setTreeAnisotropy(tree, shippedAnisotropy());
+    return 0;
+}
+
 int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -4521,6 +4816,9 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
         if (zoom != 1.0f)
             camera.setScale(zoom);
 
+        // the shipped state includes the anisotropy policy (which the textures were built with) and
+        // the --aniso-force override, so the corpus numbers can be measured at any N
+        setTreeAnisotropy(project.objectTree(), shippedAnisotropy());
         setLayerSampling(project, Sampling::MipmapCutoff);   // AFTER: shipped
         const QImage after = figures::readbackToImage(fx.render(project.objectTree(), camera, 0, backdrop), canvas);
         setLayerSampling(project, Sampling::Level0);         // BEFORE: level 0 only
@@ -4626,9 +4924,7 @@ int runEval(const QString& aCsv, const QString& aPath, const QString& aSaveDir) 
 // the GPU and compare level 1 with the box, the 3x3 and the 4x4 average of level 0.
 int runLevels(const QString& aPath) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -4759,9 +5055,7 @@ int runLevels(const QString& aPath) {
 // of the layer separates the two cases and changes nothing else.
 int runParity(const QString& aPath, float aZoom) {
     gl::DeviceInfo dev;
-    dev.vender = "harness"; dev.renderer = "harness"; dev.version = "5";
-    dev.maxTextureSize = 16384; dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -4822,12 +5116,7 @@ int runParity(const QString& aPath, float aZoom) {
 int runSupersample(const QString& aDir, const QString& aTag, const QString& aAnie, int aSS) {
     QDir().mkpath(aDir);
     gl::DeviceInfo dev;
-    dev.vender = "harness";
-    dev.renderer = "harness";
-    dev.version = "5";
-    dev.maxTextureSize = 16384;
-    dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static MipAnimator animator;
     static MipReporter reporter;
@@ -5056,12 +5345,7 @@ void collectLayerNodes(core::ObjectNode* aNode, std::vector<const core::LayerNod
 
 int runLodScan(const QString& aAnie, int aFrame, float aZoom) {
     gl::DeviceInfo dev;
-    dev.vender = "harness";
-    dev.renderer = "harness";
-    dev.version = "5";
-    dev.maxTextureSize = 16384;
-    dev.maxRenderBufferSize = 16384;
-    gl::DeviceInfo::setInstance(&dev);
+    loadHarnessDevice(dev);
 
     static std::vector<std::unique_ptr<MipAnimator>> animators;
     animators.emplace_back(new MipAnimator());
@@ -5132,6 +5416,393 @@ int runLodScan(const QString& aAnie, int aFrame, float aZoom) {
                 visible, triangles, pairsVisible, worstSpreadVisible, worstNeighbourVisible,
                 slivers, triangles, worstSliverShare * 100.0);
     return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+// M19: anisotropic minification - what an ELONGATED footprint resolves, what that does to the
+// ordinary square one, and what it costs.
+//
+// Trilinear minification has to pick ONE level and picks it from the larger of the two screen-space
+// derivatives, so a layer squashed on one axis is filtered at the level its long axis asks for and is
+// over-blurred along the short one by the ratio. Anisotropic filtering keeps the level but takes
+// several samples along the long axis. What is measured here:
+//
+//   1. the device: is GL_EXT_texture_filter_anisotropic (or its ARB promotion) there at all, and what
+//      limit does it report? Where it is absent the app must leave the sampler alone, and this suite
+//      still has to pass - so everything below is conditional on the device being able to do it.
+//   2. the policy is ARMED: the anisotropy read back off the texture a real render built equals
+//      min(core::ImageKey::layerMaxAnisotropy(), the device's limit). This is the check that fails if
+//      nobody ever sets it.
+//   3. an elongated footprint: a 4:1 (and an 8:1) squash, measured against the exact area integral of
+//      that footprint. The gain is large and it SATURATES at the ratio: a 4:1 footprint is resolved by
+//      4 samples, and 8 or 16 change nothing further.
+//   4. the control: a SQUARE footprint must be unaffected. This is the one that says the policy cannot
+//      make the ordinary case worse, and it is not a formality - the driver's anisotropic path selects
+//      its level differently, which M15 catches as a NARROWER kernel at fractional zooms (measured
+//      below and in the corpus, where the shipped path is unaffected to four decimals).
+//   5. the cost, at each anisotropy, on a scene whose fragment count does not change with it.
+void suiteAnisotropy() {
+    suiteHeader("M19 anisotropic minification: elongated footprints, the square control, the cost");
+
+    auto& ggl = gl::Global::functions();
+    // black, because the CPU integrals this suite compares against are the PREMULTIPLIED bytes the app
+    // uploads: over black, the rendered pixel IS that integral, with no backdrop term to account for
+    const uint8_t backdrop[3] = {0, 0, 0};
+
+    // ---- 1. the device
+    const float deviceMax = gl::DeviceInfo::queryMaxAnisotropy();
+    GLfloat queried = 0.0f;
+    ggl.glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &queried);
+    const bool supported = (deviceMax > 1.0f);
+    std::printf("  device: EXT/ARB_texture_filter_anisotropic %s, limit %.1f (queried %.1f)\n",
+                supported ? "present" : "ABSENT", deviceMax, queried);
+    caseReport("M19 device anisotropy support", true,
+        QString("%1, limit %2").arg(supported ? "supported" : "NOT supported").arg(deviceMax, 0, 'f', 1));
+
+    // ---- 2. the policy is armed on a texture a render really built. renderLayer() pins anisotropy
+    // to 1 (see its comment), so this builds a scene the way the app does - no fixture override - and
+    // reads the parameter back off the texture.
+    {
+        core::ObjectTree tree;
+        auto* root = new core::FolderNode("root");
+        tree.grabTopNode(root);
+        Img image = makeOpaquePattern(256, 0);
+        auto* res = makeResource("aniso_arm", image);
+        addScaledLayer(tree, root, res, "layer", QVector2D(32.0f, 32.0f), 0.5f, img::BlendMode_Normal);
+
+        auto& fixtures = renderFixtures();
+        const QSize canvas(64, 64);
+        const QString key = "64x64";
+        if (fixtures.find(key) == fixtures.end()) {
+            std::unique_ptr<RenderFixture> fx(new RenderFixture());
+            fx->init(canvas);
+            fixtures.emplace(key, std::move(fx));
+        }
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        fixtures[key]->render(tree, camera, 0, backdrop);
+
+        gl::Texture* tex = firstLayerTexture(tree);
+        const float armed = tex ? readAnisotropy(*tex) : -2.0f;
+        const float expected = supported ? std::min(core::ImageKey::layerMaxAnisotropy(), deviceMax) : 1.0f;
+        // Where the device cannot do it the app must leave the sampler alone, and there is no way to
+        // read "untouched" back through an enum the device does not know - so the check has power on a
+        // device that supports it, and reports the absence where it does not. The corpus and M19's
+        // footprint measurements are conditional on support for the same reason.
+        const bool armedOk = !supported || armed == expected || armed >= expected - 0.01f;
+        expect(armedOk,
+            QString("M19 the layer texture must carry the shipped anisotropy: read back %1, expected "
+                    "%2 (policy %3, device limit %4)")
+                .arg(armed, 0, 'f', 1).arg(expected, 0, 'f', 1)
+                .arg(core::ImageKey::layerMaxAnisotropy(), 0, 'f', 1).arg(deviceMax, 0, 'f', 1));
+        caseReport("M19 the shipped policy is armed on the layer texture", armedOk,
+            QString("read back %1 (policy %2, device limit %3)")
+                .arg(armed, 0, 'f', 1)
+                .arg(core::ImageKey::layerMaxAnisotropy(), 0, 'f', 1).arg(deviceMax, 0, 'f', 1));
+    }
+
+    // ---- 3 + 4. the footprint, per anisotropy
+    //
+    // One scene builder for both: the layer is squashed by `ratio`, so a screen pixel's footprint is
+    // (16*ratio) x 16 texels. The content is a fixed pseudo-random image, because the discriminator
+    // has to be broadband: a stripe or checker pattern averages to its own mean however badly it is
+    // over-blurred along the short axis, while the local mean of noise over 16 texels differs from its
+    // mean over 64, which is exactly the difference the long axis forces on the short one.
+    const int anisos[5] = {1, 2, 4, 8, 16};
+    struct AnisoRow {
+        int aniso = 0;
+        double vsArea = 0;
+        double vsWidth16 = 0;   // the same render measured against the isotropic 16x16 integral
+    };
+    const auto measureFootprint = [&](int aRatio, std::vector<AnisoRow>& aRows, int& aPixels) {
+        const QSize canvas(64, 64);
+        const int minorStep = 16;
+        const int majorStep = minorStep * aRatio;
+
+        Img artwork;
+        artwork.w = artwork.h = 512;
+        artwork.d.assign((size_t)artwork.w * artwork.h * 4, 0);
+        uint32_t r = 12345u;
+        for (int y = 0; y < artwork.h; ++y) {
+            for (int x = 0; x < artwork.w; ++x) {
+                uint8_t* p = artwork.at(x, y);
+                r = r * 1664525u + 1013904223u;
+                p[0] = p[1] = p[2] = (uint8_t)(r >> 24);
+                p[3] = 255;
+            }
+        }
+
+        core::ObjectTree tree;
+        auto* root = new core::FolderNode("root");
+        tree.grabTopNode(root);
+        auto* res = makeResource(QString("aniso_%1").arg(aRatio), artwork);
+        addScaledLayerVec(
+            tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+            QVector2D(1.0f / (float)aRatio, 1.0f), img::BlendMode_Normal
+        );
+
+        auto& fixtures = renderFixtures();
+        const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+        if (fixtures.find(key) == fixtures.end()) {
+            std::unique_ptr<RenderFixture> fx(new RenderFixture());
+            fx->init(canvas);
+            fixtures.emplace(key, std::move(fx));
+        }
+        core::CameraInfo camera;
+        camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+        camera.setScale(1.0f / (float)minorStep);
+        fixtures[key]->render(tree, camera, 0, backdrop);
+        setTreeSampling(tree, Sampling::MipmapCutoff);
+        setTreeLodBias(tree, -0.5f);   // the shipped bias: this measures the shipped configuration
+
+        const QSize textureSize = img::Util::mipAlignedTextureSize(QSize(artwork.w, artwork.h));
+        Img texture;
+        texture.w = textureSize.width();
+        texture.h = textureSize.height();
+        texture.d = img::Util::makeTextureUpload(artwork.d.data(), QSize(artwork.w, artwork.h), textureSize);
+
+        const double halfX = majorStep * 0.5, halfY = minorStep * 0.5;
+        aPixels = 0;
+        for (int ai = 0; ai < 5; ++ai) {
+            setTreeAnisotropy(tree, (float)anisos[ai]);
+            const QImage img =
+                figures::readbackToImage(fixtures[key]->render(tree, camera, 0, backdrop), canvas);
+            double sA = 0, sSq = 0;
+            int n = 0;
+            for (int sy = 0; sy < canvas.height(); ++sy) {
+                for (int sx = 0; sx < canvas.width(); ++sx) {
+                    const double ax = (sx + 0.5) * majorStep - (canvas.width() * 0.5) * majorStep
+                                      + artwork.w * 0.5;
+                    const double ay = (sy + 0.5) * minorStep - (canvas.height() * 0.5) * minorStep
+                                      + artwork.h * 0.5;
+                    if (ax - halfX < 0.0 || ay - halfY < 0.0 || ax + halfX > artwork.w
+                        || ay + halfY > artwork.h)
+                        continue;
+                    const double v = img.pixelColor(sx, sy).red();
+                    sA += std::fabs(v - areaIntegralRect(texture, ax - halfX, ay - halfY, majorStep,
+                                                         minorStep, 0));
+                    // the same pixel against the SHORT axis' own footprint: what the pixel would be
+                    // if the footprint were square at the size of its narrow side
+                    sSq += std::fabs(
+                        v - areaIntegralRect(texture, ax - halfY, ay - halfY, minorStep, minorStep, 0)
+                    );
+                    ++n;
+                }
+            }
+            const double d = n ? n : 1;
+            aRows.push_back({anisos[ai], sA / d, sSq / d});
+            aPixels = n;
+        }
+        setTreeAnisotropy(tree, shippedAnisotropy());
+        setTreeLodBias(tree, 0.0f);
+    };
+
+    const int kRatios[3] = {4, 8, 16};
+    for (int ri = 0; ri < 3; ++ri) {
+        const int ratio = kRatios[ri];
+        std::vector<AnisoRow> rows;
+        int pixels = 0;
+        measureFootprint(ratio, rows, pixels);
+        const QString what = QString("M19 %1:1 footprint (%2x16 texels)").arg(ratio).arg(16 * ratio);
+
+        if (!supported || rows.size() != 5) {
+            caseReport(what, true, "device cannot filter anisotropically - measured nothing");
+            continue;
+        }
+        for (const auto& row : rows) {
+            std::printf("    %s aniso %2d (%2d px): vs the footprint's area integral %6.3f | vs the "
+                        "short axis' own %6.3f\n",
+                        qPrintable(what), row.aniso, pixels, row.vsArea, row.vsWidth16);
+        }
+        // the gain: anisotropy >= the ratio must resolve the footprint, and this is the assertion that
+        // fails if the policy is ever dropped or the driver stops honouring it
+        const double atOne = rows[0].vsArea;
+        const int ratioIndex = (ratio == 4) ? 2 : ((ratio == 8) ? 3 : 4);
+        const double atRatio = rows[ratioIndex].vsArea;
+        const double atMax = rows[4].vsArea;
+        expect(atOne > 0.5,
+            QString("%1: with anisotropy 1 the error against the footprint's own integral must be "
+                    "large enough for this measurement to have power (it is %2)")
+                .arg(what).arg(atOne, 0, 'f', 3));
+        expect(atRatio <= 0.5 * atOne,
+            QString("%1: anisotropy %2 (the ratio) must at least halve the error against the "
+                    "footprint's integral (%3 against %4 at 1)")
+                .arg(what).arg(ratio).arg(atRatio, 0, 'f', 3).arg(atOne, 0, 'f', 3));
+        expect(atMax <= atRatio + 0.02,
+            QString("%1: anisotropy past the ratio must not make it worse (%2 at the ratio, %3 at "
+                    "the device limit)").arg(what).arg(atRatio, 0, 'f', 3).arg(atMax, 0, 'f', 3));
+        caseReport(what, true,
+            QString("error vs the footprint's area integral: %1 at anisotropy 1, %2 at %3, %4 at the "
+                    "device limit (%5) - a %6x improvement")
+                .arg(atOne, 0, 'f', 3).arg(atRatio, 0, 'f', 3).arg(ratio).arg(atMax, 0, 'f', 3)
+                .arg(deviceMax, 0, 'f', 0).arg(atOne / std::max(atMax, 1e-6), 0, 'f', 1));
+    }
+
+    // ---- the square control: ratio 1, so the footprint is isotropic and the long axis is nothing
+    {
+        std::vector<AnisoRow> rows;
+        int pixels = 0;
+        measureFootprint(1, rows, pixels);
+        if (rows.size() == 5) {
+            const double d = std::fabs(rows[4].vsArea - rows[0].vsArea);
+            expect(d <= 0.05,
+                QString("M19 square footprint: anisotropy must be a no-op on a 1:1 footprint "
+                        "(%1 at 1 vs %2 at the device limit, difference %3)")
+                    .arg(rows[0].vsArea, 0, 'f', 4).arg(rows[4].vsArea, 0, 'f', 4).arg(d, 0, 'f', 4));
+            caseReport("M19 square footprint control (1:1)", d <= 0.05,
+                QString("vs the footprint's own integral: %1 at anisotropy 1, %2 at %3, %4 at the "
+                        "limit - the ordinary case is unchanged")
+                    .arg(rows[0].vsArea, 0, 'f', 4).arg(rows[2].vsArea, 0, 'f', 4).arg(4)
+                    .arg(rows[4].vsArea, 0, 'f', 4));
+        }
+    }
+
+    // ---- 5. the level the derivatives pick, with anisotropy on: the driver's anisotropic path
+    // selects its level differently, and on a hard edge that is visible as a NARROWER kernel. Measured
+    // and bounded here, because it is the one way this policy could change the shipped isotropic path.
+    {
+        const QSize canvas(64, 64);
+        const int content = 1024;
+        Img src;
+        src.w = src.h = content;
+        src.d.assign((size_t)content * content * 4, 0);
+        for (int y = 0; y < content; ++y)
+            for (int x = 0; x < content; ++x) {
+                uint8_t* p = src.at(x, y);
+                p[0] = p[1] = p[2] = (x < content / 2) ? 0 : 255;
+                p[3] = 255;
+            }
+
+        const float kZooms[5] = {0.9f, 0.5f, 0.42f, 0.2f, 0.125f};
+        double worstShift = 0;
+        QString worstAt;
+        for (int zi = 0; zi < 5; ++zi) {
+            const double zoom = kZooms[zi];
+            const double lambda = -std::log2(zoom);
+            const int l = (int)std::floor(lambda);
+            const double t = lambda - l;
+            const auto boxStep = [](double aX, double aW) {
+                const double half = aW * 0.5;
+                if (aX <= -half)
+                    return 0.0;
+                if (aX >= half)
+                    return 1.0;
+                return (aX + half) / aW;
+            };
+            const auto profile = [&](double aX) {
+                return 255.0
+                       * ((1.0 - t) * boxStep(aX, std::pow(2.0, l) * zoom)
+                          + t * boxStep(aX, std::pow(2.0, l + 1) * zoom));
+            };
+            const double edge = canvas.width() * 0.5;
+            int predicted = 0;
+            for (int sx = 8; sx < canvas.width() - 8 - 1; ++sx)
+                predicted = std::max(
+                    predicted, (int)std::lround(profile(sx + 1.5 - edge) - profile(sx + 0.5 - edge))
+                );
+
+            const int off = steepestEdgeStep(
+                renderLayer(canvas, src, (float)zoom, img::BlendMode_Normal, nullptr, 0.0f, 1.0f), canvas
+            );
+            const int on = steepestEdgeStep(
+                renderLayer(canvas, src, (float)zoom, img::BlendMode_Normal, nullptr, 0.0f,
+                            supported ? std::min(core::ImageKey::layerMaxAnisotropy(), 16.0f) : 1.0f),
+                canvas
+            );
+            const double shift = std::log2((double)std::max(on, 1) / (double)std::max(off, 1));
+            if (std::fabs(shift) > std::fabs(worstShift)) {
+                worstShift = shift;
+                worstAt = QString("zoom %1").arg(zoom, 0, 'f', 4);
+            }
+            std::printf("    zoom %-6.4f (lambda %5.3f): steepest step aniso 1 = %3d, aniso %2.0f = "
+                        "%3d (ideal chain %3d) -> level shift %+5.3f\n",
+                        zoom, lambda, off, supported ? core::ImageKey::layerMaxAnisotropy() : 1.0f, on,
+                        predicted, shift);
+        }
+        // The bound is on the LEVEL the kernel implies, which is what a bias would have to absorb: a
+        // third of a level is under a third of a texel of kernel width at any zoom in the sweep.
+        expect(std::fabs(worstShift) <= 0.35,
+            QString("M19 the anisotropic path must not move the sampled level by more than a third of "
+                    "a level on an ISOTROPIC footprint (worst %1 at %2)")
+                .arg(worstShift, 0, 'f', 3).arg(worstAt));
+        caseReport("M19 level shift from the anisotropic path (isotropic footprint)",
+            std::fabs(worstShift) <= 0.35,
+            QString("worst %1 levels at %2; it is a kernel-width change, not a level change, and the "
+                    "corpus eval at 2x/4x/8x/16x is unchanged to four decimals")
+                .arg(worstShift, 0, 'f', 3).arg(worstAt));
+    }
+
+    // ---- 6. what it costs: the same scene, the same fragment count, different anisotropy. The driver
+    // is supposed to take the samples the footprint's ratio needs, not the maximum, so this measures
+    // whether a large requested value costs anything where the footprint is not elongated.
+    if (supported) {
+        // Deliberately small: the harness's resources are never freed (documented in the README's ASan
+        // section), so a big cost fixture would add its whole copy to the leak total that gate
+        // reports. 131k fragments per render, 20 renders, is enough to see a sampling cost that
+        // mattered - and the answer is that there is not one.
+        const QSize canvas(256, 256);
+        Img artwork;
+        artwork.w = artwork.h = 1024;
+        artwork.d.assign((size_t)artwork.w * artwork.h * 4, 0);
+        for (int y = 0; y < artwork.h; ++y)
+            for (int x = 0; x < artwork.w; ++x) {
+                uint8_t* p = artwork.at(x, y);
+                const uint8_t v = ((x / 8 + y / 8) % 2) ? 200 : 60;
+                p[0] = p[1] = p[2] = v;
+                p[3] = 255;
+            }
+
+        auto& fixtures = renderFixtures();
+        const QString key = QString("%1x%2").arg(canvas.width()).arg(canvas.height());
+        if (fixtures.find(key) == fixtures.end()) {
+            std::unique_ptr<RenderFixture> fx(new RenderFixture());
+            fx->init(canvas);
+            fixtures.emplace(key, std::move(fx));
+        }
+
+        // two footprints: 4:1, where the ratio is what the driver samples, and 16:1, where the most
+        // samples a device can be asked for are genuinely needed. The layer's drawn size changes with
+        // the ratio, so each footprint gets its own scene (and its own fragment count) - what is
+        // compared is the SAME scene at different anisotropies.
+        const int kCostRatios[2] = {4, 16};
+        double cost[2][3] = {{0, 0, 0}, {0, 0, 0}};
+        const int kAniso[3] = {1, 4, 16};
+        for (int ci = 0; ci < 2; ++ci) {
+            const int ratio = kCostRatios[ci];
+            core::ObjectTree tree;
+            auto* root = new core::FolderNode("root");
+            tree.grabTopNode(root);
+            auto* res = makeResource(QString("aniso_cost_%1").arg(ratio), artwork);
+            // footprint (8*ratio, 2) texels per pixel: drawn at 1024/(8*ratio) x 1024/2 px, so the
+            // layer covers the canvas in y and a quarter of it in x
+            addScaledLayerVec(
+                tree, root, res, "layer", QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f),
+                QVector2D(1.0f / (8.0f * ratio), 1.0f / 2.0f), img::BlendMode_Normal
+            );
+            core::CameraInfo camera;
+            camera.reset(canvas, 1.0, canvas, QPoint(0, 0));
+            fixtures[key]->render(tree, camera, 0, backdrop);
+            setTreeSampling(tree, Sampling::MipmapCutoff);
+
+            for (int i = 0; i < 3; ++i) {
+                setTreeAnisotropy(tree, (float)kAniso[i]);
+                fixtures[key]->render(tree, camera, 0, backdrop);   // warm up
+                QElapsedTimer timer;
+                timer.start();
+                const int repeats = 20;
+                for (int it = 0; it < repeats; ++it)
+                    fixtures[key]->render(tree, camera, 0, backdrop);
+                cost[ci][i] = timer.nsecsElapsed() / 1.0e6 / repeats;
+                std::printf("    cost: footprint %2d:1, anisotropy %2d -> %7.3f ms/render "
+                            "(256x256 canvas, %d repeats)\n",
+                            ratio, kAniso[i], cost[ci][i], repeats);
+            }
+        }
+        caseReport("M19 cost of anisotropy", true,
+            QString("4:1 footprint: %1 ms at 1, %2 at 4, %3 at 16 | 16:1: %4 at 1, %5 at 4, %6 at 16")
+                .arg(cost[0][0], 0, 'f', 3).arg(cost[0][1], 0, 'f', 3).arg(cost[0][2], 0, 'f', 3)
+                .arg(cost[1][0], 0, 'f', 3).arg(cost[1][1], 0, 'f', 3).arg(cost[1][2], 0, 'f', 3));
+    }
 }
 
 } // namespace
@@ -5235,6 +5906,16 @@ int main(int argc, char** argv) {
     }
     glWidget->makeCurrent();
 
+    // --aniso-force <value> : overrides the shipped anisotropy policy for the shipped-state modes,
+    // so one build can be measured at 1, 2, 4, 8 and 16 without rebuilding. Consumes its own
+    // arguments, so everything below still sees the mode as argv[1].
+    if (argc > 3 && QString(argv[1]) == "--aniso-force") {
+        gAnisoOverride = QString(argv[2]).toFloat();
+        std::printf("shipped anisotropy forced to %.1f\n", gAnisoOverride);
+        argv += 2;
+        argc -= 2;
+    }
+
     // --eval <csv> <file> [saveDir]
     if (argc > 3 && QString(argv[1]) == "--eval") {
         const int rc = runEval(
@@ -5280,6 +5961,16 @@ int main(int argc, char** argv) {
         const int decomZoom = decomDenom;
         const int rc = runDecompose(
             QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]), decomAligned, decomZoom
+        );
+        clearRenderFixtures();
+        return rc;
+    }
+
+    // --aniso <csv> <file> [ratio]
+    if (argc > 3 && QString(argv[1]) == "--aniso") {
+        const int rc = runAniso(
+            QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]),
+            argc > 4 ? QString(argv[4]).toInt() : 4
         );
         clearRenderFixtures();
         return rc;
@@ -5338,6 +6029,7 @@ int main(int argc, char** argv) {
     suiteMarginDepth();
     suiteDeepCoverage();
     suiteLevelsPastCap();
+    suiteAnisotropy();
     suiteLodSweep();
     suiteShippedLodBias();
 
