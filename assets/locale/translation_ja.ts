@@ -375,757 +375,757 @@
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="20"/>
         <source>General</source>
-        <translation type="unfinished">一般</translation>
+        <translation>一般</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="21"/>
         <source>Bilibili</source>
-        <translation type="unfinished"></translation>
+        <translation>Bilibili</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="22"/>
         <source>Bluesky</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="23"/>
         <source>Dailymotion</source>
-        <translation type="unfinished"></translation>
+        <translation>Dailymotion</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="24"/>
         <source>DeviantArt</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="25"/>
         <source>Discord</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="26"/>
         <source>Douyin</source>
-        <translation type="unfinished"></translation>
+        <translation>Douyin</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="27"/>
         <source>Facebook</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="28"/>
         <source>Instagram</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagram</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="29"/>
         <source>KakaoTalk</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalk</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="30"/>
         <source>LINE</source>
-        <translation type="unfinished"></translation>
+        <translation>LINE</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="31"/>
         <source>Mastodon</source>
-        <translation type="unfinished"></translation>
+        <translation>Mastodon</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="32"/>
         <source>Messenger</source>
-        <translation type="unfinished"></translation>
+        <translation>Messenger</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="33"/>
         <source>Newgrounds</source>
-        <translation type="unfinished"></translation>
+        <translation>Newgrounds</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="34"/>
         <source>Nico Nico</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="35"/>
         <source>OBS</source>
-        <translation type="unfinished"></translation>
+        <translation>OBS</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="36"/>
         <source>Pinterest</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="37"/>
         <source>pixiv</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="38"/>
         <source>QQ</source>
-        <translation type="unfinished"></translation>
+        <translation>QQ</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="39"/>
         <source>Reddit</source>
-        <translation type="unfinished"></translation>
+        <translation>Reddit</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="40"/>
         <source>Safari</source>
-        <translation type="unfinished"></translation>
+        <translation>Safari</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="41"/>
         <source>Signal</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="42"/>
         <source>Snapchat</source>
-        <translation type="unfinished"></translation>
+        <translation>Snapchat</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="43"/>
         <source>Telegram</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="44"/>
         <source>TikTok</source>
-        <translation type="unfinished"></translation>
+        <translation>TikTok</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="45"/>
         <source>Tumblr</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="46"/>
         <source>Twitch</source>
-        <translation type="unfinished"></translation>
+        <translation>Twitch</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="47"/>
         <source>Vimeo</source>
-        <translation type="unfinished"></translation>
+        <translation>Vimeo</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="48"/>
         <source>VK</source>
-        <translation type="unfinished"></translation>
+        <translation>VK</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="49"/>
         <source>WeChat</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChat</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="50"/>
         <source>Weibo</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="51"/>
         <source>WhatsApp</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsApp</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="52"/>
         <source>X</source>
-        <translation type="unfinished"></translation>
+        <translation>X</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="53"/>
         <source>YouTube</source>
-        <translation type="unfinished"></translation>
+        <translation>YouTube</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="54"/>
         <source>Telegram sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegramステッカー</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="55"/>
         <source>Video must have no audio stream. Should loop.</source>
-        <translation type="unfinished"></translation>
+        <translation>映像に音声ストリームを含めてはいけません。ループさせる必要があります。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="56"/>
         <source>Telegram custom emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegramカスタム絵文字</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="57"/>
         <source>Discord sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Discordステッカー</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="58"/>
         <source>Discord animated stickers are APNG (GIF and Lottie also accepted). 320x320 EXACT.</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord のアニメーションステッカーは APNG です（GIF と Lottie も受け付けられます）。320x320 でなければなりません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="59"/>
         <source>Discord emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord絵文字</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="60"/>
         <source>Animated emoji are served as animated WebP; upload accepts JPEG/PNG/GIF/WebP/AVIF.</source>
-        <translation type="unfinished"></translation>
+        <translation>アニメーション絵文字はアニメーションWebP として配信されます。アップロードでは JPEG/PNG/GIF/WebP/AVIF を受け付けます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="61"/>
         <source>WhatsApp sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsAppステッカー</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="62"/>
         <source>Animated stickers are WebP ONLY. Minimum frame duration 8ms.</source>
-        <translation type="unfinished"></translation>
+        <translation>アニメーションステッカーは WebP のみです。フレームの最小表示時間は 8ms です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="63"/>
         <source>Signal sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Signalステッカー</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="64"/>
         <source>Animated stickers must be APNG (&quot;Please do not upload GIFs&quot;).</source>
-        <translation type="unfinished"></translation>
+        <translation>アニメーションステッカーは APNG でなければなりません（&quot;Please do not upload GIFs&quot;）。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="65"/>
         <source>LINE sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>LINEスタンプ</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="66"/>
         <source>RGB colour space; transparent background required; 1-4 loops.</source>
-        <translation type="unfinished"></translation>
+        <translation>RGB 色空間です。背景は透明が必須です。ループ回数は 1-4 回です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="67"/>
         <source>Twitch emote</source>
-        <translation type="unfinished"></translation>
+        <translation>Twitchエモート</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="68"/>
         <source>GIF only (&quot;The image must be in .gif format&quot;), and SQUARE: &quot;GIF images must be square shape&quot;. 112x112 is the upload for auto-resize, which is the mode a single file belongs to, and 1 MB is that mode&apos;s cap; uploading the three manual sizes instead caps each at 512 KB. 28/56/112 are the sizes Twitch SERVES, not what you upload. At most 60 frames, and &quot;must not flash or flicker more than 3 times within a 1 second period&quot;. Twitch resizes and re-serves its own variants. NOT PUBLISHED: any duration limit, any frame rate limit, and any transparency rule for ANIMATED emotes (transparency is stated for static ones), so transparency is offered but not promised.</source>
-        <translation type="unfinished"></translation>
+        <translation>GIF のみ（&quot;The image must be in .gif format&quot;）で、しかも正方形です（&quot;GIF images must be square shape&quot;）。112x112 は自動リサイズ用のアップロードサイズで、単一のファイルはこのモードに属し、そのモードの上限は 1 MB です。代わりに手動の 3 つのサイズをアップロードする場合は、それぞれの上限が 512 KB になります。28/56/112 は Twitch が配信するサイズであり、アップロードするサイズではありません。最大 60 フレームで、&quot;must not flash or flicker more than 3 times within a 1 second period&quot;。Twitch は独自のバリアントにリサイズして再配信します。未公開：再生時間の上限、フレームレートの上限、アニメーションエモートに対する透明度のルール（透明度が記載されているのは静止エモートについてです）。そのため透明度は提供されますが、保証はされません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="69"/>
         <source>A video for a chat app</source>
-        <translation type="unfinished"></translation>
+        <translation>チャットアプリ用の動画</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="70"/>
         <source>The one to pick when the app is not in this list. MP4/H.264 with AAC at 720p and under 20 MB is accepted by every chat app here, and is what the restrictive ones accept.</source>
-        <translation type="unfinished"></translation>
+        <translation>このリストにないアプリを使う場合に選ぶものです。720p で 20 MB 未満の AAC 付き MP4/H.264 は、ここにあるすべてのチャットアプリで受け付けられ、制限の厳しいアプリが受け付けるのもこれです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="71"/>
         <source>A video sent in a chat: 64 MB over a slow connection, 100 MB over a fast one, and WhatsApp DOWNSCALES rather than rejecting. Sending it as a Document instead allows 2 GB untouched, which is a different intent and not this row. Status is limited to 90 seconds and is also not this row.</source>
-        <translation type="unfinished"></translation>
+        <translation>チャットで送信する動画：低速回線では 64 MB、高速回線では 100 MB で、WhatsApp は拒否するのではなくダウンスケールします。代わりにドキュメントとして送信すると 2 GB をそのまま扱えますが、これは別の意図であり、この行の対象ではありません。ステータスは 90 秒に制限されており、これもこの行の対象ではありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="72"/>
         <source>WhatsApp (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsApp（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="73"/>
         <source>UNVERIFIED (WhatsApp publishes no organic cap for an animated image): GIFs are a documented chat surface, but WhatsApp publishes no byte cap, format list, dimension rule, frame count or duration for an image sent in a chat, and no statement about whether it transcodes one. The numbers that could be borrowed are all for other surfaces and are NOT applied here: 2 GB for a DOCUMENT, 100 MB or 64 MB for a VIDEO (fast and slow connections), 90 seconds for a status video, and the Cloud API&apos;s 5 MB image with a 500 KB animated sticker. No cap is applied, and the fit loop therefore has nothing to enforce.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（WhatsApp はアニメーション画像について独自の上限を公開していません）：GIF は文書化されたチャットの送信対象ですが、WhatsApp はチャットで送信する画像について、バイト数の上限、形式の一覧、寸法のルール、フレーム数、再生時間を公開しておらず、トランスコードするかどうかについての記述もありません。流用できる数値はすべて別の機能向けのもので、ここでは適用しません：ドキュメントは 2 GB、動画は 100 MB または 64 MB（高速回線と低速回線）、ステータス動画は 90 秒、Cloud API の 5 MB の画像および 500 KB のアニメーションステッカーです。上限は適用されないため、フィットループが守るべきものは何もありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="74"/>
         <source>2 GB per file, 4 GB with Premium; Telegram re-encodes into renditions. Note this is the USER limit: the Bot API&apos;s 50 MB is for bots uploading, not for you sending a file. Telegram also converts a real GIF to MP4 on its servers, so transparency never survives here.</source>
-        <translation type="unfinished"></translation>
+        <translation>1 ファイルあたり 2 GB、Premium では 4 GB です。Telegram は再エンコードして複数のレンディション（解像度違い）を作成します。なお、これはユーザーの上限です：Bot API の 50 MB はボットがアップロードする場合のもので、あなたがファイルを送信する場合のものではありません。また Telegram は実際の GIF をサーバー上で MP4 に変換するため、透明度はここでは決して維持されません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="75"/>
         <source>Telegram (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="76"/>
         <source>Telegram CONVERTS an uploaded GIF itself: &quot;GIFs are actually MPEG4 (h264) videos without sound; if the user tries to upload an actual GIF file, it will be automatically converted to an MPEG4 file by the server&quot;. So this destination writes the file Telegram would have made anyway, without the round trip through a GIF palette: silent H.264 in MP4, and transparency CANNOT survive (the conversion is lossy and H.264 4:2:0 carries no alpha). Animated WebP is not accepted as a sticker (&quot;Animated .WEBP is NOT currently supported&quot;); a chat file may be up to 2 GB (4 GB with Premium), which is the cloud-file limit rather than a GIF limit. No frame count, duration or frame rate is published for a chat animation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram はアップロードされた GIF 自体を変換します：&quot;GIFs are actually MPEG4 (h264) videos without sound; if the user tries to upload an actual GIF file, it will be automatically converted to an MPEG4 file by the server&quot;。そのためこの出力先は、Telegram がいずれにせよ作成するファイルを、GIF パレットを経由する往復なしで書き出します。つまり、MP4 内の無音 H.264 であり、透明度は決して維持できません（変換は非可逆であり、H.264 4:2:0 はアルファを持ちません）。アニメーションWebP はステッカーとして受け付けられません（&quot;Animated .WEBP is NOT currently supported&quot;）。チャットのファイルは最大 2 GB（Premium では 4 GB）で、これは GIF の上限ではなくクラウドファイルの上限です。チャットのアニメーションについて、フレーム数、再生時間、フレームレートは公開されていません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="77"/>
         <source>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord&apos;s older help pages still say 10 MB. On mobile the size is now measured BEFORE compression, so a video that used to fit may not.</source>
-        <translation type="unfinished"></translation>
+        <translation>送信は 20 MB、Nitro Basic では 50 MB、Nitro では 500 MB です。ブーストされたサーバーでは全員が 50 MB（レベル 2）または 100 MB（レベル 3）に引き上げられます。Discord の古いヘルプページには今も 10 MB と書かれています。モバイルではサイズが圧縮前の時点で測定されるようになったため、以前は収まっていた動画が収まらないことがあります。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="78"/>
         <source>Discord (animated image)</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord（アニメーション画像）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="79"/>
         <source>An animated image, not a video: WebP is the format Discord&apos;s own pipeline produces for animation (they have served and accepted animated WebP since the 2024 mobile release 252), and a GIF upload is transcoded to WebP for display, so this goes out animated either way. Alpha survives here, which GIF&apos;s palette cannot carry. The English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is used, and it is also the size above which Discord stops animating inline and offers the file as a download instead. One frame in the export gives a still WebP, so this row carries a still illustration as well as an animation. Transparency is on by default (WebP keeps it, GIF&apos;s palette cannot) and can be turned off.</source>
-        <translation type="unfinished"></translation>
+        <translation>動画ではなくアニメーション画像です。WebP は Discord 自身のパイプラインがアニメーション用に生成する形式であり（2024 年のモバイル版リリース 252 以降、アニメーションWebP を配信し受理しています）、GIF をアップロードしても表示用に WebP へトランスコードされるため、どちらの場合もアニメーションとして出力されます。ここではアルファが保持されますが、GIF のパレットでは保持できません。英語版 FAQ では Nitro 以外のアップロードの上限を 10 MB としています（ヒンディー語版のページには 25 MB とあります）：ここでは 10 MB を使用しており、これは Discord がインラインでのアニメーションをやめて代わりにファイルをダウンロードとして提示するようになるサイズでもあります。エクスポートで 1 フレームにすると静止 WebP になるため、この行はアニメーションだけでなく静止イラストにも対応します。透明度はデフォルトで有効で（WebP は保持でき、GIF のパレットでは保持できません）、オフにすることもできます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="80"/>
         <source>Signal re-encodes client-side to 720p at roughly 2 Mbps and targets about 50 MB of output. The server flag is 100 MiB and remote-configurable, so 50 MB is the number to stay under. Sending as a File skips the transcode.</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal はクライアント側で 720p・約 2 Mbps に再エンコードし、出力は約 50 MB を目標としています。サーバー側のフラグは 100 MiB でリモートから設定可能なため、50 MB が下回っておくべき数値です。ファイルとして送信すればトランスコードは行われません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="81"/>
         <source>Signal (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="82"/>
         <source>UNVERIFIED (Signal publishes nothing usable here): a GIF is a first-class attachment (&quot;image, gif, video, voice message, or audio file&quot;), but Signal has no help page stating an attachment byte cap, a format list, a dimension rule, a frame count or a transcode rule for one. The only numbers that exist are in source code and issue threads rather than documentation: a GIF threshold of min(25 MB, the attachment limit) and a maintainer note that sending is still capped at 100 MB. 25 MB is used here as the code-level threshold, and every other fact is left unstated rather than invented. Note that Signal&apos;s STICKER page says &quot;Please do not upload GIFs&quot; - that is the sticker surface (APNG, 300 KB), a different thing from an attachment, and reading it as &quot;Signal rejects GIFs&quot; is a documented trap.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（Signal はここに関して使える情報を公開していません）：GIF は正式な添付ファイルです（&quot;image, gif, video, voice message, or audio file&quot;）が、Signal には添付ファイルのバイト上限、形式一覧、寸法ルール、フレーム数、トランスコード規則を記載したヘルプページがありません。存在する数値はドキュメントではなくソースコードと issue スレッドの中にのみあります：GIF のしきい値 min(25 MB, the attachment limit) と、送信は依然として 100 MB が上限であるというメンテナーの記述です。ここではコード側のしきい値として 25 MB を使用し、その他の事実は推測せずに未記載のままにしています。Signal の STICKER ページには &quot;Please do not upload GIFs&quot; とある点に注意してください。これはステッカー（APNG、300 KB）の話であり、添付ファイルとは別物で、これを「Signal は GIF を拒否する」と読むのはドキュメント化された罠です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="83"/>
         <source>UNVERIFIED: 25 MB is the published DEVELOPER API limit. Meta does not publish the consumer chat limit anywhere, so this is the closest sourced number, not the app&apos;s own. 75 seconds appears in the docs as a fetch timeout, NOT a duration limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認：25 MB は公開されている DEVELOPER API の上限です。Meta は一般ユーザー向けチャットの上限をどこにも公開していないため、これは出典のある最も近い数値であり、このアプリ自身の上限ではありません。75 秒がドキュメントに登場するのは取得タイムアウトとしてであり、決して長さの制限ではありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="84"/>
         <source>Messenger (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Messenger（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="85"/>
         <source>UNVERIFIED (the consumer chat publishes no cap): Messenger offers a &quot;Send GIF&quot; action with no published formats, and Meta&apos;s API documentation says animated GIFs &quot;are playable in the conversation&quot;, but the consumer chat states no byte cap, dimension rule, frame count or transcode behaviour. The API numbers that exist (25 MB per asset, 8 MB for an image uploaded by URL) are labelled as API values and are not applied here, because Meta does not say they bind the in-app picker. The API template also lists only image and video as media types with no GIF value, which is a contradiction Meta leaves unresolved.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（一般ユーザー向けチャットは上限を公開していません）：Messenger には &quot;Send GIF&quot; アクションがありますが、公開されている形式はなく、Meta の API ドキュメントにはアニメーションGIF は &quot;are playable in the conversation&quot; とありますが、一般ユーザー向けチャットにはバイト上限、寸法ルール、フレーム数、トランスコードの挙動について何も記載されていません。存在する API の数値（アセットあたり 25 MB、URL からアップロードする画像は 8 MB）は API の値として示されており、Meta がアプリ内のピッカーに適用されるとは述べていないため、ここでは適用していません。また API テンプレートがメディア種別として挙げているのは image と video だけで、GIF の値がありません。これは Meta が未解決のままにしている矛盾です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="86"/>
         <source>KakaoTalk (카카오톡)</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalk（카카오톡）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="87"/>
         <source>UNVERIFIED for mobile: 300 MB is the PC desktop file-send limit. Kakao does not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</source>
-        <translation type="unfinished"></translation>
+        <translation>モバイルについては未確認：300 MB は PC デスクトップ版のファイル送信上限です。Kakao はモバイルチャットの上限を公開していません。MP4/MOV/MKV/AVI/TS などが受け付けられます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="88"/>
         <source>WeChat (微信)</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChat（微信）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="89"/>
         <source>UNVERIFIED: Tencent publishes no size or duration limit for video sent in a personal chat, and no codec list. MP4/H.264 at 720p is the safe choice. The official-account route IS documented (10 MB per upload, 2 GB chunked) and is a different thing entirely.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認：Tencent は個人チャットで送信する動画のサイズや長さの制限、コーデック一覧を公開していません。MP4/H.264 の 720p が安全な選択です。公式アカウント経由についてはドキュメントに明記されており（1 回のアップロードあたり 10 MB、分割アップロードなら 2 GB）、まったく別の話です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="90"/>
         <source>UNVERIFIED for the consumer app: 30 MB soft (silently becomes a FILE instead of an inline video) and 200 MB hard are BOT API numbers. Consumer chat limits are not published.</source>
-        <translation type="unfinished"></translation>
+        <translation>一般ユーザー向けアプリについては未確認：30 MB のソフト制限（インライン動画ではなく黙って FILE になる）と 200 MB のハード制限は BOT API の数値です。一般ユーザー向けチャットの上限は公開されていません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="91"/>
         <source>VK (ВКонтакте)</source>
-        <translation type="unfinished"></translation>
+        <translation>VK（ВКонтакте）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="92"/>
         <source>No cap worth encoding: 256 GB, up to 4K, and VK re-encodes. MP4/H.264 at 1280x720 or above, and they recommend 16:9.</source>
-        <translation type="unfinished"></translation>
+        <translation>アプリに組み込む価値のある上限はありません：256 GB、最大 4K、そして VK は再エンコードします。MP4/H.264 で 1280x720 以上、また 16:9 が推奨されています。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="93"/>
         <source>X (Twitter)</source>
-        <translation type="unfinished"></translation>
+        <translation>X（Twitter）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="94"/>
         <source>A post accepts up to 8 GB and 20 minutes (16 GB / 125 minutes with Premium). The &quot;140 seconds / 512 MB&quot; figure repeated all over the web is X&apos;s DIRECT MESSAGE limit, not a post, and is 50x too small here. H.264 High, AAC-LC, yuv420p, closed GOP.</source>
-        <translation type="unfinished"></translation>
+        <translation>投稿は最大 8 GB、20 分です（Premium では 16 GB / 125 分）。ウェブ上で至るところに繰り返されている &quot;140 seconds / 512 MB&quot; という数値は、X のダイレクトメッセージの上限であって投稿の上限ではなく、ここでは 50 倍も小さすぎます。H.264 High、AAC-LC、yuv420p、closed GOP です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="95"/>
         <source>X (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>X（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="96"/>
         <source>X accepts JPG, PNG, GIF and WEBP, and an animated GIF is its own media category (tweet_gif). The caps here come from X&apos;s API documentation, NOT from its help pages: 15 MB per animated GIF, resolution at most 1280x1080, at most 350 frames and at most 300 million pixels in total (width x height x frames). X&apos;s own API page adds that a GIF &quot;may fail during Post creation even if it is within the file size limit&quot;, so treat 15 MB as soft. The figure repeated across the web (5 MB mobile, 15 MB web) appears on no X-owned page, and X publishes nothing about transparency, looping, frame rate or duration for GIFs.</source>
-        <translation type="unfinished"></translation>
+        <translation>X は JPG、PNG、GIF、WEBP に対応しており、アニメーションGIF は独自のメディアカテゴリ（tweet_gif）です。ここでの上限は X の API ドキュメントに由来するものであり、ヘルプページのものではありません：アニメーションGIF 1 件あたり 15 MB、解像度は最大 1280x1080、最大 350 フレーム、合計で最大 3 億ピクセル（幅 x 高さ x フレーム数）です。X 自身の API ページは、GIF は &quot;may fail during Post creation even if it is within the file size limit&quot; と付け加えているため、15 MB はソフトリミットとして扱ってください。ウェブ上で繰り返されている数値（モバイル 5 MB、ウェブ 15 MB）は X が保有するどのページにも記載されておらず、X は GIF の透明度、ループ、フレームレート、再生時間について何も公開していません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="97"/>
         <source>Instagram Reels</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagramリール</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="98"/>
         <source>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a closed GOP. The moov atom must be at the FRONT of the file with no edit lists, which is what the faststart muxer option below does: without it the upload is rejected.</source>
-        <translation type="unfinished"></translation>
+        <translation>300 MB、3 秒から 15 分、9:16 で幅は最大 1920 px、closed GOP の H.264 または HEVC です。moov アトムは編集リストなしでファイルの先頭になければならず、それを実現するのが以下にある faststart muxer（多重化）オプションです：これがないとアップロードは拒否されます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="99"/>
         <source>4 GB, up to 10 minutes on some routes and 3 on others. 1080x1920 (9:16). GIF files are NOT accepted. WebM/MOV are accepted alongside MP4.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 GB、一部の経路では最大 10 分、他の経路では 3 分です。1080x1920（9:16）。GIF ファイルは受け付けられません。MP4 に加えて WebM/MOV も受け付けられます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="100"/>
         <source>Bilibili (哔哩哔哩)</source>
-        <translation type="unfinished"></translation>
+        <translation>Bilibili（哔哩哔哩）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="101"/>
         <source>UNVERIFIED (conflicting sources): Bilibili&apos;s help centre says 16 GB (64 GB at higher web levels), their own open-platform API documentation says 4 GB, and the page could not be re-fetched to settle it. 4 GB is used here as the floor that both agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：Bilibili のヘルプセンターは 16 GB（ウェブレベルが高い場合は 64 GB）と記載しており、同社自身のオープンプラットフォーム API ドキュメントは 4 GB と記載していて、そのページを再取得して決着させることはできませんでした。ここでは両者が一致する下限として 4 GB を使用しています。最大 4096x4096、120 fps、H.264/AAC、yuv420p です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="102"/>
         <source>Weibo (微博)</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo（微博）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="103"/>
         <source>15 GB from the desktop web, 4 GB from mobile. There is a MINIMUM of 3 seconds and no published maximum duration. 720p or better for the video section; 2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</source>
-        <translation type="unfinished"></translation>
+        <translation>デスクトップ版ウェブからは 15 GB、モバイルからは 4 GB です。最小が 3 秒で、公開された最大再生時間はありません。動画セクションでは 720p 以上、2K/4K は再生回数を条件に解放されます。コーデックの一覧は公開されていません：MP4/H.264 です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="104"/>
         <source>Weibo (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="105"/>
         <source>Weibo LOSES the animation rather than converting it: &quot;原始图片需不超过1080宽，超宽会导致动图不动&quot; (the original must be at most 1080 wide, wider makes the animation stop) and the original-quality box (原图) must be ticked or the GIF posts as a static image. So the width ceiling is a real constraint here, and this row caps the long side at 1080 px, which is stricter than the published rule but can never lose the animation. 20 MB is the published per-image cap from Weibo&apos;s own help centre (the API&apos;s 10 MB belongs to the API surface). No frame count, duration, frame rate or transparency statement is published for a GIF, and Weibo&apos;s two help pages contradict each other about ticking 原图: one requires it for animation, the other recommends leaving it off to avoid a colour cast.</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo はアニメーションを変換するのではなく失います：&quot;原始图片需不超过1080宽，超宽会导致动图不动&quot;（元の画像は幅 1080 以下でなければならず、それを超えるとアニメーションが止まります）という記載があり、オリジナル画質のチェックボックス（原图）をオンにしなければ、GIF は静止画として投稿されます。そのため幅の上限はここでは実際の制約となり、この行では長辺を 1080 px に制限しています。これは公開されている規則よりも厳しいものですが、アニメーションが失われることは決してありません。20 MB は Weibo 自身のヘルプセンターに記載された画像 1 枚あたりの上限です（API の 10 MB は API 側の話です）。GIF について、フレーム数、再生時間、フレームレート、透明度に関する記述は公開されておらず、Weibo の 2 つのヘルプページは原图をオンにすることについて互いに矛盾しています：一方はアニメーションのためにそれを必須としており、もう一方は色かぶりを避けるためにオフのままにすることを勧めています。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="106"/>
         <source>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10 minutes (both raised recently, so most guides are out of date). No pixel cap; the aspect ratio travels as metadata.</source>
-        <translation type="unfinished"></translation>
+        <translation>MP4 のみ：lexicon が受け付けるのは video/mp4 だけで、それ以外は受け付けません。300 MB、10 分です（いずれも最近引き上げられたため、ほとんどのガイドは古くなっています）。ピクセル数の上限はなく、アスペクト比はメタデータとして伝わります。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="107"/>
         <source>Bluesky (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky（アニメーション）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="108"/>
         <source>Bluesky keeps the animation by routing it down the VIDEO path: an animated GIF is &quot;processed as video&quot;, and the video embed lexicon accepts only video/mp4, so a GIF that arrives at Bluesky becomes an MP4. This row writes the MP4 directly, silent and H.264, which is what the platform serves anyway, and transparency cannot survive it. THE 2 MB IMAGE CAP DOES NOT APPLY HERE: 2,000,000 bytes is the app.bsky.embed.images lexicon limit for a STILL; the video embed allows 300 MB and 10 minutes, which is what is used. Note that Bluesky&apos;s own documentation contradicts itself about the still-image number (the code on that page enforces 2,000,000 while the prose beside it still says 1,000,000). No dimension, frame or frame-rate rule is published, and the 720p/30 fps/5000 kbps figures in circulation come from a user comment, not from documentation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky はアニメーションを動画の経路に通すことで保持します：アニメーションGIF は &quot;processed as video&quot; として扱われ、動画埋め込み用の lexicon が受け付けるのは video/mp4 のみであるため、Bluesky に届いた GIF は MP4 になります。この行は MP4 を直接書き出します。無音の H.264 であり、これはプラットフォームがいずれにせよ配信する形式でもあり、透明度はこれを経由して残ることはできません。2 MB という画像の上限はここでは適用されません：2,000,000 バイトは静止画に対する app.bsky.embed.images の lexicon の上限であり、動画埋め込みでは 300 MB と 10 分が許可されており、ここではそれが使用されています。Bluesky 自身のドキュメントは静止画の数値について矛盾している点に注意してください（そのページのコードは 2,000,000 を強制していますが、その横にある文章はいまだに 1,000,000 と書いています）。寸法、フレーム、フレームレートに関する規則は公開されておらず、出回っている 720p/30 fps/5000 kbps という数値はドキュメントではなく、あるユーザーのコメントに由来します。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="109"/>
         <source>99 MB for video and 16 MB for images are UPSTREAM DEFAULTS; every instance sets its own, and instances drift from upstream (mastodon.social reports double the upstream pixel limit). The authoritative answer is the server&apos;s own /api/v2/instance configuration. GIFs are converted to silent MP4, so transparency does not survive.</source>
-        <translation type="unfinished"></translation>
+        <translation>動画は 99 MB、画像は 16 MB という値はあくまで上流の既定値です。各インスタンスがそれぞれ独自に設定しており、インスタンスは上流からずれていきます（mastodon.social は上流のピクセル上限の 2 倍を報告しています）。信頼できる答えは、サーバー自身の /api/v2/instance 設定です。GIF は無音の MP4 に変換されるため、透明度は保持されません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="110"/>
         <source>UNVERIFIED: Reddit does not publish a size limit for native video posts. No byte cap is applied rather than inventing one. The 15-minute figure comes from their 2017 launch post, and comment videos are capped much shorter.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認：Reddit はネイティブ動画投稿のサイズ上限を公開していません。推測で数値を作るより、バイト上限は適用しない方針です。15 分という数値は 2017 年のローンチ投稿に由来しており、コメント動画はそれよりずっと短く制限されています。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="111"/>
         <source>Reddit (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Reddit（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="112"/>
         <source>UNVERIFIED (no organic numbers published): Reddit documents no byte cap for an image or GIF post. What IS visible is that a GIF post is stored and served as a Reddit VIDEO (Reddit&apos;s own Devvit model carries a media kind &quot;videogif&quot; and a RedditVideo.isGif flag), so animation survives but transparency does not, which is why alpha is forbidden here. The widely quoted &quot;20 MB image / 100 MB GIF&quot; figures come from third parties, and the Reddit numbers that are published belong to other surfaces (comment images at most 240 px, comment video under 1 GB and 3 minutes, and advertising specs that reject animated GIF outright). No frame, duration or frame-rate rule is published for an animated image.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（通常の投稿に関する数値は未公開）：Reddit は画像または GIF 投稿のバイト上限を文書化していません。実際に確認できるのは、GIF 投稿が Reddit の動画として保存・配信されるという点です（Reddit 自身の Devvit モデルにはメディア種別 &quot;videogif&quot; と RedditVideo.isGif フラグがあります）。そのためアニメーションは保持されますが透明度は保持されず、ここでアルファが禁止されている理由でもあります。広く引用されている &quot;20 MB image / 100 MB GIF&quot; という数値は第三者によるもので、公開されている Reddit の数値は別の機能に属するものです（コメント画像は最大 240 px、コメント動画は 1 GB 未満かつ 3 分、そしてアニメーションGIF を完全に拒否する広告仕様）。アニメーション画像については、フレーム数、再生時間、フレームレートの規則が公開されていません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="113"/>
         <source>WeChat sticker (微信表情)</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChatステッカー（微信表情）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="114"/>
         <source>Animated stickers are GIF only, exactly 240x240, 500 KB, and must loop. Art that exceeds the spec is compressed AND CROPPED by WeChat rather than rejected, so an oversized export comes back with its edges cut off. Sticker sets are 8 to 24 images.</source>
-        <translation type="unfinished"></translation>
+        <translation>アニメーションステッカーは GIF のみで、厳密に 240x240、500 KB、そしてループさせなければなりません。仕様を超えた画像は WeChat によって拒否されるのではなく、圧縮され、しかも切り取られます。そのため大きすぎる書き出しは端が切られた状態で返ってきます。ステッカーセットは 8 から 24 枚です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="115"/>
         <source>KakaoTalk sticker (카카오톡 스티커)</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalkステッカー（카카오톡 스티커）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="116"/>
         <source>Animated WebP, 360x360 (180x180 for mini, 540x540 for big), 650 KB, 24 frames maximum and four loops. Kakao publishes its own WebP animator, which is a useful sign of exactly which encoder behaviour they expect.</source>
-        <translation type="unfinished"></translation>
+        <translation>アニメーションWebP、360x360（ミニは 180x180、ビッグは 540x540）、650 KB、最大 24 フレーム、ループは 4 回です。Kakao は独自の WebP アニメーターを公開しており、これは彼らがどのエンコーダー挙動を期待しているかを正確に示す有用な手がかりです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="117"/>
         <source>QQ sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>QQステッカー</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="118"/>
         <source>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned specification that exists anywhere. yuanchuang.qq.com no longer resolves and archive.org holds no capture after October 2018, so the values below are what Tencent said eight years ago and nothing current confirms them. 16 GIFs at exactly 300x300, each 300 KB or less (&quot;表情大小：≤300kb/个&quot;, raised from 90 KB in 2016), on a transparent background (&quot;文件均为无色透明底&quot;). A white stroke is required but 3 px is only PREFERRED (&quot;以3像素的白色描边为佳&quot;), not an exact value. The same page contradicts itself about the 300x300 PNG thumbnail: its table says 200 KB and its body text says 20 KB, so no thumbnail cap is applied. Nothing is published about frame count, duration, frame rate, or re-encoding.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（日付は 2018-10-07）：これはどこを探しても残っている最後の Tencent 所有の仕様です。yuanchuang.qq.com は現在解決できず、archive.org にも 2018 年 10 月以降のキャプチャはありません。そのため以下の値は 8 年前に Tencent が述べたものであり、現在それを裏付けるものは何もありません。GIF はちょうど 300x300 で 16 枚、それぞれ 300 KB 以下（&quot;表情大小：≤300kb/个&quot;、2016 年に 90 KB から引き上げ）、背景は透明（&quot;文件均为无色透明底&quot;）です。白い縁取りは必須ですが、3 px はあくまで推奨（&quot;以3像素的白色描边为佳&quot;）であり、厳密な値ではありません。同じページは 300x300 の PNG サムネイルについて自己矛盾しており、表には 200 KB、本文には 20 KB と書かれているため、サムネイルの上限は適用していません。フレーム数、再生時間、フレームレート、再エンコードについては何も公開されていません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="119"/>
         <source>Nico Nico Douga (ニコニコ動画)</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico Douga（ニコニコ動画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="120"/>
         <source>6 GB or 6 hours, whichever comes first; raised from 3 GB on 2024-10-29, so older guides are a revision behind. Up to 4096x2160 (or 2160x4096 vertical) and 60 fps. Their own page caps the vertical Short surface at 180 seconds, which is a different destination with the same name.</source>
-        <translation type="unfinished"></translation>
+        <translation>6 GB または 6 時間のいずれか早い方です。2024-10-29 に 3 GB から引き上げられたため、古いガイドは 1 版遅れています。最大 4096x2160（縦向きは 2160x4096）、60 fps。同社のページでは縦型ショート機能は 180 秒に制限されており、これは同じ名前の別の出力先です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="121"/>
         <source>Douyin (抖音)</source>
-        <translation type="unfinished"></translation>
+        <translation>Douyin（抖音）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="122"/>
         <source>UNVERIFIED (conflicting): ByteDance contradicts itself. The current upload endpoint says 4 GB total with chunked upload mandatory above 300 MB, while a 2024-04-09 chunked-upload page says 128 MB and 15 minutes, and the Android share SDK says 60 minutes. The widely quoted 500 MB could not be found on any ByteDance page. Short side under 2160, long side under 4096, 720p or above.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：ByteDance は自ら矛盾しています。現在のアップロードエンドポイントは合計 4 GB で、300 MB を超える場合はチャンクアップロードが必須としていますが、2024-04-09 のチャンクアップロードのページは 128 MB と 15 分としており、Android 共有 SDK は 60 分としています。広く引用されている 500 MB は、どの ByteDance のページにも見つかりませんでした。短辺 2160 未満、長辺 4096 未満、720p 以上です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="123"/>
         <source>Facebook (video)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（動画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="124"/>
         <source>UNVERIFIED (partial): Meta publishes NO byte or duration cap for organic video. The 4 GB and 240-minute figures that circulate are the ADVERTISING spec. Since September 2025 every video posted to Facebook is shared as a reel, so this and the reels destination differ only in the length the API enforces. Recommended: maximum width 4000 px with dimensions divisible by 16, 30 fps or lower, H.264 with AAC.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（一部のみ）：Meta は通常の動画についてバイト数や再生時間の上限を一切公開していません。出回っている 4 GB と 240 分という数値は広告の仕様です。2025 年 9 月以降、Facebook に投稿されたすべての動画はリールとして共有されるため、この出力先とリールの出力先は API が強制する長さだけが異なります。推奨：最大幅 4000 px で寸法が 16 で割り切れること、30 fps 以下、H.264 と AAC。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="125"/>
         <source>Facebook (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="126"/>
         <source>UNVERIFIED (advisory, not a published hard cap): Facebook lists GIF among the photo formats it recommends uploading (&quot;JPEG, BMP, PNG, GIF or TIFF&quot;) and recommends keeping photos under 15 MB, which is the number used here. No organic byte cap, dimension rule, frame count, duration or frame rate is published for an animated image; the only transcode statement Facebook makes is in the ADS documentation (a GIF there &quot;plays in the same way as all video files&quot;), and the numbers that circulate for GIF (4 GB, &quot;as video&quot;) belong to that advertising surface rather than to a photo post.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（参考情報であり、公表された厳密な上限ではありません）：Facebook はアップロードを推奨する写真形式として GIF を挙げており（&quot;JPEG, BMP, PNG, GIF or TIFF&quot;）、写真は 15 MB 未満に保つことを推奨しています。ここではその数値を採用しています。アニメーション画像については、通常投稿のバイト上限、寸法規則、フレーム数、再生時間、フレームレートのいずれも公表されていません。Facebook がトランスコードについて述べている唯一の記述は ADS のドキュメントにあり（そこでは GIF が &quot;plays in the same way as all video files&quot;）、GIF について流布している数値（4 GB、&quot;as video&quot;）は、写真投稿ではなく、その広告向けの機能に属するものです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="127"/>
         <source>Facebook Reels</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebookリール</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="128"/>
         <source>UNVERIFIED (conflicting): Meta Business Help says reels can be any length; the Reels Publishing API enforces 3 to 90 seconds and rejects anything else. 90 s is used here because it is the number that is enforced. 1080x1920 recommended, 540x960 minimum, 24 to 60 fps, no published byte cap.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：Meta Business Help ではリールは長さを問わないとされていますが、Reels Publishing API は 3 秒から 90 秒を強制し、それ以外は拒否します。ここでは強制されている数値であるため 90 秒を採用しています。1080x1920 を推奨、540x960 を最小、24 から 60 fps、公表されたバイト上限はありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="129"/>
         <source>500 MB and 10 minutes, and 20 posts a day. MOV or MP4; Tumblr transcodes toward 720p H.264. Photos are a separate destination: a static image gets 20 MB, but an animated GIF is served only up to about 5 MB and above that is reduced to its first frame.</source>
-        <translation type="unfinished"></translation>
+        <translation>500 MB、10 分、および 1 日 20 投稿です。MOV または MP4。Tumblr は 720p H.264 へトランスコードします。写真は別の出力先です。静止画像には 20 MB が割り当てられますが、アニメーションGIF は約 5 MB までしか配信されず、それを超えるものは最初のフレームに縮小されます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="130"/>
         <source>Tumblr (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr（アニメーションGIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="131"/>
         <source>Tumblr transcodes EVERY uploaded GIF (&quot;we do convert all uploaded GIFs to the GIFV format&quot;, typically animated WebP, and on the web sometimes MP4), so the file it serves is not the file you send. It publishes three size numbers in one section (keep GIFs to 10 MB, a compressed GIF no larger than 5 MB, and &quot;we will do our best to compress&quot; between them) plus the consequence that matters: above 5 MB Tumblr may serve ONLY THE FIRST FRAME, so 5 MB is the cap used here and the file is fitted to it. 540 px wide is Tumblr&apos;s own recommendation. Frames are not counted (&quot;we only count bytes and seconds&quot;), no duration cap exists for a GIF, and transparency is documented only as a conversion criterion, not as a promise.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr はアップロードされたすべての GIF をトランスコードします（&quot;we do convert all uploaded GIFs to the GIFV format&quot;。通常はアニメーションWebP、Web 上ではときに MP4）。そのため、配信されるファイルは送信したファイルではありません。Tumblr は 1 つのセクションで 3 つのサイズ数値を公表しており（GIF は 10 MB までに抑える、圧縮した GIF は 5 MB 以下、その間については &quot;we will do our best to compress&quot;）、さらに重要な帰結として、5 MB を超えると Tumblr は最初のフレームのみを配信する場合があるため、ここでは 5 MB を上限として採用し、ファイルをそれに合わせて調整します。540 px 幅は Tumblr 自身の推奨値です。フレームはカウントされず（&quot;we only count bytes and seconds&quot;）、GIF に再生時間の上限は存在せず、透明度は変換の判断基準としてのみ記載されており、保証されたものではありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="132"/>
         <source>Pinterest (video Pin)</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest（動画ピン）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="133"/>
         <source>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the &quot;2 GB / 15 minutes&quot; figure belongs to the ADVERTISING spec, which is a different surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or H.265, 9:16 recommended.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 秒から 5 分です。通常の動画ピンにはバイト上限が公表されていません。&quot;2 GB / 15 minutes&quot; という数値は広告仕様のものであり、それは別の機能であって、あたかもこの出力先のものであるかのように絶えず引用されています。MP4/M4V、H.264 または H.265、9:16 を推奨。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="134"/>
         <source>Snapchat Spotlight</source>
-        <translation type="unfinished"></translation>
+        <translation>Snapchat Spotlight</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="135"/>
         <source>UNVERIFIED (partial): Snapchat publishes a minimum of 5 seconds and a vertical requirement, and nothing else: no byte cap, no maximum duration, no accepted format list and no pixel specification. Still images are excluded. The &quot;1 GB / 3 to 30 minutes&quot; figure is the ADS spec. Vertical with sound; a landscape export will not be shown in Spotlight, and no size rule here can force that, so the file is exported as composed.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（一部のみ）：Snapchat が公表しているのは、最小 5 秒と縦向きの要件のみで、それ以外は何もありません。バイト上限、最大再生時間、対応形式の一覧、ピクセル仕様のいずれも公表されていません。静止画像は対象外です。&quot;1 GB / 3 to 30 minutes&quot; という数値は ADS の仕様です。音声付きの縦向きである必要があり、横向きのエクスポートは Spotlight に表示されません。ここでのどのサイズ規則でもそれを強制することはできないため、ファイルは構成どおりにエクスポートされます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="136"/>
         <source>4 GB (64 GB on the top tier) and 2 hours. Up to 3840x2160 or 2160x3840, 24 to 60 fps. MOV, MP4, AVI, WMV, MKV and FLV are all accepted; MP4/H.264 is the practical target.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 GB（最上位プランでは 64 GB）、および 2 時間。最大 3840x2160 または 2160x3840、24 から 60 fps。MOV、MP4、AVI、WMV、MKV、FLV のすべてを受け付けます。実用的な目標は MP4/H.264 です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="137"/>
         <source>UNVERIFIED (conflicting): Vimeo&apos;s advice to keep files under 200 GB, a plan note about 250 GB per video for legacy subscribers and an uploader page claiming no size limit cannot all be true; 200 GB is used as a soft ceiling. 24 hours is a hard refusal at upload. Vimeo states plainly that it has no alpha channel support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：ファイルを 200 GB 未満に保つという Vimeo の助言、従来プランの契約者向けに動画 1 本あたり 250 GB とするプランの注記、サイズ制限はないと主張するアップローダーのページは、すべてが同時に正しいとは言えません。ここでは 200 GB を緩やかな上限として採用しています。24 時間はアップロード時に厳しく拒否されます。Vimeo はアルファチャンネルをサポートしていないと明言しているため、透明度がここで残ることは決してありません。MP4/MOV、H.264 または ProRes。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="138"/>
         <source>DeviantArt (video, Core members)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（動画、Core メンバー）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="139"/>
         <source>1 GB and 10 to 12 minutes, and video submission is a Core membership feature. 1920x1080 recommended; the first frame becomes the preview, so it should not be a blank or transitional frame. An animated GIF is NOT a video here: DeviantArt counts it as an image and gives it the much larger image cap.</source>
-        <translation type="unfinished"></translation>
+        <translation>1 GB、10 分から 12 分、また動画の投稿は Core メンバーシップの機能です。1920x1080 を推奨します。最初のフレームがプレビューになるため、空白のフレームや遷移中のフレームであってはなりません。ここではアニメーションGIF は動画ではありません。DeviantArt はそれを画像として扱い、はるかに大きな画像の上限を適用します。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="140"/>
         <source>Newgrounds (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>Newgrounds（アニメーション）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="141"/>
         <source>UNVERIFIED (partial): Newgrounds publishes NO byte or duration cap. Their own wiki says the limit is shown on the signed-in upload form and can be raised on request, so it is per-account; the 100 MB and 6.3 GB figures in circulation come from a member forum post, not from Newgrounds. MP4/MOV/WMV and SWF are accepted, at 3840x2160, 1920x1080, 1280x720 or 640x380, around 10 to 20 Mbps at 1080p. Loop is an upload option for MP4 here, unlike everywhere else.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（一部のみ）：Newgrounds はバイト数および再生時間の上限を一切公表していません。同社の wiki によれば、上限はログイン後のアップロードフォームに表示され、申請により引き上げられることがあるため、アカウントごとに異なります。流布している 100 MB や 6.3 GB という数値は Newgrounds によるものではなく、メンバーのフォーラム投稿に由来します。MP4/MOV/WMV および SWF を受け付け、3840x2160、1920x1080、1280x720、640x380、1080p では 10 から 20 Mbps 程度です。他のどことも異なり、ここではループが MP4 のアップロードオプションです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="142"/>
         <source>pixiv (illustration)</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv（イラスト）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="143"/>
         <source>32 MB per image, 200 MB per post, JPG or PNG. No pixel cap is published. The 8 MB and 10 MB figures still quoted in guides are obsolete: pixiv raised the per-image limit to 32 MB. A post mixing formats is converted to JPG, so pick one format per post; PNG is the one that keeps transparency.</source>
-        <translation type="unfinished"></translation>
+        <translation>画像 1 枚あたり 32 MB、1 投稿あたり 200 MB、JPG または PNG です。画素数の上限は公開されていません。ガイドで今も引用されている 8 MB と 10 MB の数値は古いものです。pixiv は 1 枚あたりの上限を 32 MB に引き上げました。形式を混在させた投稿は JPG に変換されるため、1 つの投稿では 1 つの形式を選んでください。透明度を保つのは PNG です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="144"/>
         <source>pixiv (ugoira animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv（うごイラ）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="145"/>
         <source>ugoira is a folder of numbered stills, not a video: up to 150 frames, 30 MB in total, 8 MB per frame, and every frame must share one format AND one canvas size. PNG or JPEG only, and pixiv rejects APNG and WebP outright. Frame TIMING is authored on the upload page, so no fps applies here. The alternative route is one animated GIF (16 MB, 500 frames), which costs you the palette. Desktop site only.</source>
-        <translation type="unfinished"></translation>
+        <translation>うごイラは動画ではなく、連番の静止画をまとめたフォルダです。最大 150 フレーム、合計 30 MB、1 フレームあたり 8 MB で、すべてのフレームが同一の形式であり、かつ同一のキャンバスサイズでなければなりません。PNG または JPEG のみで、pixiv は APNG と WebP を明確に拒否します。フレームのタイミングはアップロードページで作成するため、ここでは fps は関係しません。別の方法としてアニメーションGIF 1 つ（16 MB、500 フレーム）がありますが、パレットを失うことになります。デスクトップ版サイトのみです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="146"/>
         <source>Nico Nico Seiga (ニコニコ静画)</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico Seiga（ニコニコ静画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="147"/>
         <source>UNVERIFIED (partial): 10 MB per image, PNG or JPEG or GIF, no pixel cap published. Whether a posted illustration is re-encoded, whether PNG alpha survives, and whether an animated GIF animates on Seiga are all undocumented, so transparency is exported but not promised. Seiga is the still-image half of Nico Nico; videos go to Nico Nico Douga.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（一部のみ）：画像 1 枚あたり 10 MB、PNG または JPEG または GIF で、画素数の上限は公開されていません。投稿したイラストが再エンコードされるかどうか、PNG のアルファが保持されるかどうか、アニメーションGIF が Seiga 上で動くかどうかは、いずれも文書化されていないため、透明度はエクスポートされますが保証はされません。Seiga は Nico Nico の静止画側で、動画は Nico Nico Douga に投稿します。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="148"/>
         <source>Instagram (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagram（写真）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="149"/>
         <source>8 MB, JPEG ONLY, width between 320 and 1440 px, and an aspect ratio from 4:5 to 1.91:1. Transparency cannot survive a JPEG: a transparent background is written as solid black, so flatten the art first. Reels are a separate destination and do take video.</source>
-        <translation type="unfinished"></translation>
+        <translation>8 MB、JPEG のみで、幅は 320 から 1440 px、アスペクト比は 4:5 から 1.91:1 です。透明度は JPEG では残せません。透明な背景は黒一色として書き出されるため、先にアートを統合してください。リールは別の出力先で、動画を扱えます。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="150"/>
         <source>Facebook (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（写真）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="151"/>
         <source>UNVERIFIED (conflicting): Meta&apos;s Graph API says a photo must be under 10 MB and that animated photos are not supported, while their help centre recommends below 15 MB and lists GIF as a photo format. The stricter API figure is used. PNG is accepted but Meta warns that a PNG above 1 MB may be shown pixelated, because it is re-compressed.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：Meta の Graph API では、写真は 10 MB 未満でなければならず、アニメーション写真はサポートされないとされていますが、同社のヘルプセンターでは 15 MB 未満を推奨し、写真形式として GIF を挙げています。より厳しい API 側の数値を採用しています。PNG は受け付けられますが、Meta は 1 MB を超える PNG は再圧縮されるためピクセルが粗く表示される可能性があると警告しています。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="152"/>
         <source>Tumblr (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr（写真）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="153"/>
         <source>20 MB for a static image. 540x810 is the recommended size and 2048x3072 is the largest view served. ANIMATION IS A DIFFERENT LIMIT: a GIF is only served up to about 5 MB, and above that Tumblr shows its first frame instead of animating, so a long animation should go out as a video.</source>
-        <translation type="unfinished"></translation>
+        <translation>静止画は 20 MB です。推奨サイズは 540x810 で、配信される最大の表示サイズは 2048x3072 です。アニメーションは別の上限が適用されます。GIF は約 5 MB までしか配信されず、それを超えると Tumblr はアニメーションさせずに最初のフレームを表示するため、長いアニメーションは動画として出すべきです。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="154"/>
         <source>Pinterest (image Pin)</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest（画像ピン）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="155"/>
         <source>20 MB on the web. PNG, JPEG, BMP, TIFF or WEBP; GIF is not accepted as an organic Pin, so animation belongs on a video Pin. 2:3 is the recommended shape (1000x1500) and 9:16 also works; keep the art out of the bottom safe zone, where the interface covers it.</source>
-        <translation type="unfinished"></translation>
+        <translation>ウェブでは 20 MB です。PNG、JPEG、BMP、TIFF または WEBP に対応しており、GIF は通常のピンとしては受け付けられないため、アニメーションは動画ピンに載せることになります。推奨のアスペクト比は 2:3（1000x1500）で、9:16 も使えます。下部のセーフゾーンはインターフェースに覆われるため、アートをそこに置かないでください。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="156"/>
         <source>DeviantArt (image)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（画像）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="157"/>
         <source>UNVERIFIED (conflicting): one DeviantArt help page says images are capped at 80 MB and another says 95 MB; 80 MB is used so a file that passes here passes both. JPEG, PNG or GIF, no pixel cap. An animated GIF counts as an IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：DeviantArt のヘルプページの 1 つは画像の上限を 80 MB とし、別のページは 95 MB としています。ここでは 80 MB を採用しているため、ここを通過したファイルはどちらでも通ります。JPEG、PNG または GIF で、画素数の上限はありません。アニメーションGIF は画像として扱われ、この同じ上限が適用されます。これは Tumblr が GIF に認めている上限の 16 倍です。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="158"/>
         <source>DeviantArt (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（アニメーション）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="159"/>
         <source>UNVERIFIED (conflicting): see the image row: 80 MB versus 95 MB on two official pages, and an animated GIF is submitted as an image rather than a video, so it gets that cap instead of the 1 GB video one. GIF means a 256-colour palette, which is a real cost for gradients but nothing else here animates on a free account.</source>
-        <translation type="unfinished"></translation>
+        <translation>未確認（情報源が矛盾）：画像の行を参照してください。2 つの公式ページで 80 MB と 95 MB が示されており、アニメーションGIF は動画ではなく画像として投稿されるため、1 GB の動画の上限ではなくこの上限が適用されます。GIF は 256 色のパレットを意味し、グラデーションには実際に大きな代償となりますが、無料アカウントではここでほかにアニメーションできるものはありません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="160"/>
         <source>Stream overlay (OBS)</source>
-        <translation type="unfinished"></translation>
+        <translation>配信オーバーレイ（OBS）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="161"/>
         <source>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</source>
-        <translation type="unfinished"></translation>
+        <translation>VP9 WebM は OBS でネイティブに対応しており、クロマキーは不要です。WebKit は WebM のアルファをデコードできません。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="162"/>
         <source>Transparent video (Safari / iOS)</source>
-        <translation type="unfinished"></translation>
+        <translation>透明動画（Safari / iOS）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="163"/>
         <source>HEVC+alpha needs Apple&apos;s VideoToolbox encoder; libx265 ADVERTISES yuva420p and then refuses it at open. hvc1 is mandatory: Safari rejects untagged hev1. Where VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>HEVC+アルファには Apple の VideoToolbox エンコーダーが必要です。libx265 は yuva420p を標榜しておきながら、実際に開く段階で拒否します。hvc1 は必須です。Safari はタグのない hev1 を拒否します。VideoToolbox を利用できない場合は、代わりに WebM/VP9 の配信オーバーレイ出力先を使用してください。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="164"/>
         <source>YouTube re-encodes every upload. Official docs still recommend H.264/AAC; AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</source>
-        <translation type="unfinished"></translation>
+        <translation>YouTube はアップロードのたびに再エンコードします。公式ドキュメントは今も H.264/AAC を推奨していますが、AV1/H.265 のほうがビットあたりの品質が高くなります。コーデックはラダーによって決まります。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="165"/>
         <source>Website</source>
-        <translation type="unfinished"></translation>
+        <translation>ウェブサイト</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="166"/>
         <source>Direct playback: decode compatibility dominates, so H.264 at every bucket. For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</source>
-        <translation type="unfinished"></translation>
+        <translation>直接再生：デコードの互換性が最優先されるため、どの品質段階でも H.264 です。ウェブで透明度を扱うには、.webm（VP9）と .mov（HEVC hvc1）の両方を書き出してください。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="167"/>
         <source>Just a file (not sure yet)</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイルとして保存（未定）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="168"/>
         <source>The fallback when the destination is unknown: maximum compatibility.</source>
-        <translation type="unfinished"></translation>
+        <translation>出力先が不明なときのフォールバックです。最大限の互換性を重視します。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
         <source>Keep a master copy</source>
-        <translation type="unfinished"></translation>
+        <translation>マスターを保存</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
-        <translation type="unfinished"></translation>
+        <translation>ロスレス品質では FFV1 になり、これはアルファ（yuva420p）を保持します。ほかの品質段階では H.265 が選ばれますが、ここではアルファをまったくエンコードできません。</translation>
     </message>
 </context>
 <context>
@@ -1133,7 +1133,7 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="297"/>
         <source>Choose where this is going</source>
-        <translation type="unfinished"></translation>
+        <translation>出力先を選択</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="617"/>
@@ -1148,177 +1148,177 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="632"/>
         <source>Auto</source>
-        <translation type="unfinished">オートマチック</translation>
+        <translation>自動</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="785"/>
         <source>PNG sequence</source>
-        <translation type="unfinished"></translation>
+        <translation>PNG 連番</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="786"/>
         <source>JPEG sequence</source>
-        <translation type="unfinished"></translation>
+        <translation>JPEG 連番</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="912"/>
         <source>CRF:</source>
-        <translation type="unfinished"></translation>
+        <translation>CRF:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="913"/>
         <source>Quality:</source>
-        <translation type="unfinished"></translation>
+        <translation>品質:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1384"/>
         <source>First frame %1</source>
-        <translation type="unfinished"></translation>
+        <translation>最初のフレーム %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1385"/>
         <source>Last frame %1</source>
-        <translation type="unfinished"></translation>
+        <translation>最後のフレーム %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1489"/>
         <source>Width</source>
-        <translation type="unfinished"></translation>
+        <translation>幅</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1490"/>
         <source>Height</source>
-        <translation type="unfinished"></translation>
+        <translation>高さ</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1491"/>
         <source>Frame rate</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームレート</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1492"/>
         <source>First frame</source>
-        <translation type="unfinished"></translation>
+        <translation>最初のフレーム</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1493"/>
         <source>Last frame</source>
-        <translation type="unfinished">最後のフレーム</translation>
+        <translation>最後のフレーム</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Format</source>
-        <translation type="unfinished"></translation>
+        <translation>形式</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Codec</source>
-        <translation type="unfinished">コーデック</translation>
+        <translation>コーデック</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Quality</source>
-        <translation type="unfinished">品質</translation>
+        <translation>品質</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>Quality override</source>
-        <translation type="unfinished"></translation>
+        <translation>品質の上書き</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Image quality</source>
-        <translation type="unfinished"></translation>
+        <translation>画質</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Bitrate</source>
-        <translation type="unfinished"></translation>
+        <translation>ビットレート</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Destination</source>
-        <translation type="unfinished"></translation>
+        <translation>出力先</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Advanced</source>
-        <translation type="unfinished"></translation>
+        <translation>詳細設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Export</source>
-        <translation type="unfinished">エクスポート</translation>
+        <translation>エクスポート</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Cancel</source>
-        <translation type="unfinished">キャンセル</translation>
+        <translation>キャンセル</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Export with transparency</source>
-        <translation type="unfinished">透明度付きエクスポート</translation>
+        <translation>透明度付きエクスポート</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Loop animation</source>
-        <translation type="unfinished">ループ再生</translation>
+        <translation>ループ再生</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Export with audio</source>
-        <translation type="unfinished">音声付きでエクスポート</translation>
+        <translation>音声付きでエクスポート</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Custom palette</source>
-        <translation type="unfinished">カスタムパレット</translation>
+        <translation>カスタムパレット</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Keep aspect ratio</source>
-        <translation type="unfinished">アスペクト比を修正する</translation>
+        <translation>アスペクト比を維持する</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Insert range</source>
-        <translation type="unfinished">範囲を追加する</translation>
+        <translation>範囲を追加する</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Remove range</source>
-        <translation type="unfinished">範囲を削除する</translation>
+        <translation>範囲を削除する</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Set width to native</source>
-        <translation type="unfinished"></translation>
+        <translation>幅を元の値に設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Set height to native</source>
-        <translation type="unfinished"></translation>
+        <translation>高さを元の値に設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Set frame rate to native</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームレートを元の値に設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Image quality to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>画質を自動に設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Quality override to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>品質の上書きを自動に設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Bitrate to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>ビットレートを自動に設定</translation>
     </message>
 </context>
 <context>
@@ -1613,7 +1613,7 @@
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1294"/>
         <source>needs %1</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 が必要</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1362"/>
@@ -1624,53 +1624,54 @@
         <location filename="../../src/gui/MainWindow.cpp" line="1580"/>
         <location filename="../../src/gui/MainWindow.cpp" line="1611"/>
         <source>Export Error</source>
-        <translation type="unfinished">出力エラー</translation>
+        <translation>エクスポートエラー</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1363"/>
         <source>Unknown export destination: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>不明な出力先: %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1425"/>
         <source>File exists</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイルが存在します</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1426"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイル &quot;%1&quot; はすでに存在します。上書きしますか？</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1473"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 はファイルサイズに上限を設けているため、エンコードを複数回行う必要があり、そのためには %2 フレームすべてをメモリに保持する必要があります（約 %3 MB）。フレーム数を減らすか、サイズ制限のない出力先を選んでください。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 の %2 KB の上限に収まるよう調整中...</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
         <source>Export Canceled</source>
-        <translation type="unfinished"></translation>
+        <translation>エクスポート中止</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1502"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 のサイズ上限に収める処理の途中でエクスポートが中止されました。すでに書き出されたファイルは最後の試行の結果であり、上限を超えている可能性があります。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1511"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 はファイルを %2 KB に制限していますが、最小の設定でも収まりませんでした（%3 KB）。
+%4</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1519"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 バイトに収まりました（%2 回の試行、%3x%4）。</translation>
     </message>
 </context>
 <context>
@@ -1709,12 +1710,12 @@
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="354"/>
         <source>Export</source>
-        <translation type="unfinished">エクスポート</translation>
+        <translation>エクスポート</translation>
     </message>
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="355"/>
         <source>Mix this track into exported files. Untick it for a track you only need as timing reference (a voice pass, a temp music bed): it still plays while you animate, and it stays out of the file.</source>
-        <translation type="unfinished"></translation>
+        <translation>このトラックをエクスポートするファイルにミックスします。タイミングの基準としてのみ必要なトラック（音声の確認用トラック、一時的な BGM）ではチェックを外してください。アニメーション中は再生されますが、ファイルには含まれません。</translation>
     </message>
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="361"/>
@@ -2006,52 +2007,52 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1421"/>
         <source>Format:</source>
-        <translation type="unfinished"></translation>
+        <translation>形式:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1422"/>
         <source>Codec:</source>
-        <translation type="unfinished"></translation>
+        <translation>コーデック:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Destination:</source>
-        <translation type="unfinished"></translation>
+        <translation>出力先:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Quality:</source>
-        <translation type="unfinished"></translation>
+        <translation>品質:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>Smaller file</source>
-        <translation type="unfinished"></translation>
+        <translation>小さいファイル</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Balanced</source>
-        <translation type="unfinished"></translation>
+        <translation>バランス</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Best quality</source>
-        <translation type="unfinished"></translation>
+        <translation>最高品質</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Lossless</source>
-        <translation type="unfinished">ロスレス</translation>
+        <translation>ロスレス</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>How to encode</source>
-        <translation type="unfinished"></translation>
+        <translation>エンコード方法</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1440"/>
         <source>What to export</source>
-        <translation type="unfinished"></translation>
+        <translation>エクスポートする内容</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1443"/>
@@ -2079,22 +2080,22 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Frame range:</source>
-        <translation type="unfinished"></translation>
+        <translation>フレーム範囲:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1453"/>
         <source>Advanced</source>
-        <translation type="unfinished"></translation>
+        <translation>詳細設定</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Quality override:</source>
-        <translation type="unfinished"></translation>
+        <translation>品質の上書き:</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1534"/>
         <source>&amp;Export</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;エクスポート</translation>
     </message>
     <message>
         <source>Frames rendered: </source>
@@ -2215,32 +2216,32 @@
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="71"/>
         <source>Send in a chat</source>
-        <translation type="unfinished"></translation>
+        <translation>チャットで送る</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="72"/>
         <source>Post to a platform</source>
-        <translation type="unfinished"></translation>
+        <translation>プラットフォームに投稿</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="73"/>
         <source>Stickers and emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>スタンプと絵文字</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="74"/>
         <source>Overlays and transparency</source>
-        <translation type="unfinished"></translation>
+        <translation>オーバーレイと透明度</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="75"/>
         <source>A file</source>
-        <translation type="unfinished"></translation>
+        <translation>ファイル</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="76"/>
         <source>Archive</source>
-        <translation type="unfinished"></translation>
+        <translation>アーカイブ</translation>
     </message>
 </context>
 <context>
@@ -2279,37 +2280,37 @@
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
         <source>Where are you posting this?</source>
-        <translation type="unfinished"></translation>
+        <translation>どこに投稿しますか？</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="unfinished"></translation>
+        <translation>検索: telegram, sticker, reels, illustration, 微信...</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
         <source>Search destinations</source>
-        <translation type="unfinished"></translation>
+        <translation>出力先を検索</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
         <source>%1 destinations</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 件の出力先</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="unfinished"></translation>
+        <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="unfinished"></translation>
+        <translation>上に挙げたものはすべて、ルールが判明している出力先です。これは形式とコーデックを自分で指定できる選択肢です。</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
         <source>Use this destination</source>
-        <translation type="unfinished"></translation>
+        <translation>この出力先を使う</translation>
     </message>
 </context>
 <context>
@@ -3108,17 +3109,17 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="195"/>
         <source>Quickly export as...</source>
-        <translation type="unfinished"></translation>
+        <translation>すばやくエクスポート...</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
         <source>Export again</source>
-        <translation type="unfinished"></translation>
+        <translation>同じ設定で再エクスポート</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="310"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;br /&gt;&lt;br /&gt;映像と音声のエンコードには FFmpeg ライブラリ（https://ffmpeg.org）を使用しており、これらは GNU Lesser GPL v2.1+（ビルドによっては GPL）の下でライセンスされています。対応するソースコードは、そのライセンスの要求に従って入手できます。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="344"/>
@@ -3169,12 +3170,12 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="494"/>
         <source>libav licence: </source>
-        <translation type="unfinished"></translation>
+        <translation>libav ライセンス: </translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
         <source>libav configuration: </source>
-        <translation type="unfinished"></translation>
+        <translation>libav 設定: </translation>
     </message>
     <message>
         <source>CPU cores: </source>
@@ -3343,62 +3344,62 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1715"/>
         <source>Exported %1 (%2 KB)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 をエクスポートしました（%2 KB）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1721"/>
         <source> (%1 of %2 KB allowed for %3)</source>
-        <translation type="unfinished"></translation>
+        <translation>（%3 に許される %2 KB のうち %1）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1726"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
-        <translation type="unfinished"></translation>
+        <translation>。上限を超えているため拒否されます</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
         <source>All files (*)</source>
-        <translation type="unfinished"></translation>
+        <translation>すべてのファイル (*)</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1766"/>
         <source>%1 files (*.%2)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 ファイル (*.%2)</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="unfinished"></translation>
+        <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1984"/>
         <source>%1 of %2 frames at %3 x %4</source>
-        <translation type="unfinished"></translation>
+        <translation>%3 x %4 で %2 フレーム中 %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1990"/>
         <source>Frame rate: %1 fps</source>
-        <translation type="unfinished"></translation>
+        <translation>フレームレート: %1 fps</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1996"/>
         <source>%1 x %2, %3 fps</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2001"/>
         <source>Codec: %1 in %2</source>
-        <translation type="unfinished"></translation>
+        <translation>コーデック: %2 の %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2010"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 は透明度を保持できないため、このエクスポートは不透明になります。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2016"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
-        <translation type="unfinished"></translation>
+        <translation>GIF は永久にループするため、「ループ再生」は常にオンになります。</translation>
     </message>
     <message>
         <source>FFmpeg was not found.</source>

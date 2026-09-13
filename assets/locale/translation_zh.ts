@@ -375,757 +375,757 @@
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="20"/>
         <source>General</source>
-        <translation type="unfinished">一般</translation>
+        <translation>通用</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="21"/>
         <source>Bilibili</source>
-        <translation type="unfinished"></translation>
+        <translation>Bilibili</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="22"/>
         <source>Bluesky</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="23"/>
         <source>Dailymotion</source>
-        <translation type="unfinished"></translation>
+        <translation>Dailymotion</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="24"/>
         <source>DeviantArt</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="25"/>
         <source>Discord</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="26"/>
         <source>Douyin</source>
-        <translation type="unfinished"></translation>
+        <translation>Douyin</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="27"/>
         <source>Facebook</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="28"/>
         <source>Instagram</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagram</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="29"/>
         <source>KakaoTalk</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalk</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="30"/>
         <source>LINE</source>
-        <translation type="unfinished"></translation>
+        <translation>LINE</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="31"/>
         <source>Mastodon</source>
-        <translation type="unfinished"></translation>
+        <translation>Mastodon</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="32"/>
         <source>Messenger</source>
-        <translation type="unfinished"></translation>
+        <translation>Messenger</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="33"/>
         <source>Newgrounds</source>
-        <translation type="unfinished"></translation>
+        <translation>Newgrounds</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="34"/>
         <source>Nico Nico</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="35"/>
         <source>OBS</source>
-        <translation type="unfinished"></translation>
+        <translation>OBS</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="36"/>
         <source>Pinterest</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="37"/>
         <source>pixiv</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="38"/>
         <source>QQ</source>
-        <translation type="unfinished"></translation>
+        <translation>QQ</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="39"/>
         <source>Reddit</source>
-        <translation type="unfinished"></translation>
+        <translation>Reddit</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="40"/>
         <source>Safari</source>
-        <translation type="unfinished"></translation>
+        <translation>Safari</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="41"/>
         <source>Signal</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="42"/>
         <source>Snapchat</source>
-        <translation type="unfinished"></translation>
+        <translation>Snapchat</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="43"/>
         <source>Telegram</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="44"/>
         <source>TikTok</source>
-        <translation type="unfinished"></translation>
+        <translation>TikTok</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="45"/>
         <source>Tumblr</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="46"/>
         <source>Twitch</source>
-        <translation type="unfinished"></translation>
+        <translation>Twitch</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="47"/>
         <source>Vimeo</source>
-        <translation type="unfinished"></translation>
+        <translation>Vimeo</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="48"/>
         <source>VK</source>
-        <translation type="unfinished"></translation>
+        <translation>VK</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="49"/>
         <source>WeChat</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChat</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="50"/>
         <source>Weibo</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="51"/>
         <source>WhatsApp</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsApp</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="52"/>
         <source>X</source>
-        <translation type="unfinished"></translation>
+        <translation>X</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="53"/>
         <source>YouTube</source>
-        <translation type="unfinished"></translation>
+        <translation>YouTube</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="54"/>
         <source>Telegram sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="55"/>
         <source>Video must have no audio stream. Should loop.</source>
-        <translation type="unfinished"></translation>
+        <translation>视频不得包含音频流。应当循环播放。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="56"/>
         <source>Telegram custom emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram 自定义表情</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="57"/>
         <source>Discord sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="58"/>
         <source>Discord animated stickers are APNG (GIF and Lottie also accepted). 320x320 EXACT.</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord 动态贴纸为 APNG（也接受 GIF 和 Lottie）。尺寸必须恰好为 320x320。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="59"/>
         <source>Discord emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord 表情</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="60"/>
         <source>Animated emoji are served as animated WebP; upload accepts JPEG/PNG/GIF/WebP/AVIF.</source>
-        <translation type="unfinished"></translation>
+        <translation>动态表情以动态 WebP 形式提供；上传时可接受 JPEG/PNG/GIF/WebP/AVIF。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="61"/>
         <source>WhatsApp sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsApp 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="62"/>
         <source>Animated stickers are WebP ONLY. Minimum frame duration 8ms.</source>
-        <translation type="unfinished"></translation>
+        <translation>动态贴纸仅支持 WebP。每帧最短持续时间为 8ms。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="63"/>
         <source>Signal sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="64"/>
         <source>Animated stickers must be APNG (&quot;Please do not upload GIFs&quot;).</source>
-        <translation type="unfinished"></translation>
+        <translation>动态贴纸必须为 APNG（“请不要上传 GIF”）。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="65"/>
         <source>LINE sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>LINE 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="66"/>
         <source>RGB colour space; transparent background required; 1-4 loops.</source>
-        <translation type="unfinished"></translation>
+        <translation>使用 RGB 色彩空间；要求透明背景；循环 1 至 4 次。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="67"/>
         <source>Twitch emote</source>
-        <translation type="unfinished"></translation>
+        <translation>Twitch 表情</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="68"/>
         <source>GIF only (&quot;The image must be in .gif format&quot;), and SQUARE: &quot;GIF images must be square shape&quot;. 112x112 is the upload for auto-resize, which is the mode a single file belongs to, and 1 MB is that mode&apos;s cap; uploading the three manual sizes instead caps each at 512 KB. 28/56/112 are the sizes Twitch SERVES, not what you upload. At most 60 frames, and &quot;must not flash or flicker more than 3 times within a 1 second period&quot;. Twitch resizes and re-serves its own variants. NOT PUBLISHED: any duration limit, any frame rate limit, and any transparency rule for ANIMATED emotes (transparency is stated for static ones), so transparency is offered but not promised.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅支持 GIF（“图片必须为 .gif 格式”），并且必须是正方形：“GIF 图片必须为正方形”。112x112 是自动缩放模式的上传尺寸，单个文件正属于这一模式，该模式的上限为 1 MB；若改用三个手动尺寸上传，则每个尺寸的上限为 512 KB。28/56/112 是 Twitch 对外提供的尺寸，而不是上传尺寸。最多 60 帧，并且“在 1 秒内闪烁或抖动不得超过 3 次”。Twitch 会缩放并重新提供它自己的各种变体。未公布的内容：任何时长限制、任何帧率限制，以及针对动态表情的任何透明度规则（透明度只对静态表情作了说明），因此这里提供透明度选项，但不作保证。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="69"/>
         <source>A video for a chat app</source>
-        <translation type="unfinished"></translation>
+        <translation>聊天应用用的视频</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="70"/>
         <source>The one to pick when the app is not in this list. MP4/H.264 with AAC at 720p and under 20 MB is accepted by every chat app here, and is what the restrictive ones accept.</source>
-        <translation type="unfinished"></translation>
+        <translation>当应用不在此列表中时选这一项。720p 的 MP4/H.264 加 AAC、体积在 20 MB 以内，这里的每个聊天应用都接受，限制最严的应用也接受这样的文件。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="71"/>
         <source>A video sent in a chat: 64 MB over a slow connection, 100 MB over a fast one, and WhatsApp DOWNSCALES rather than rejecting. Sending it as a Document instead allows 2 GB untouched, which is a different intent and not this row. Status is limited to 90 seconds and is also not this row.</source>
-        <translation type="unfinished"></translation>
+        <translation>在聊天中发送的视频：慢速连接下 64 MB，快速连接下 100 MB，并且 WhatsApp 会降低分辨率而不是拒收。改以“文档”方式发送则允许 2 GB 且不做改动，但那是另一种用途，不属于本行。状态功能限时 90 秒，同样不属于本行。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="72"/>
         <source>WhatsApp (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>WhatsApp（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="73"/>
         <source>UNVERIFIED (WhatsApp publishes no organic cap for an animated image): GIFs are a documented chat surface, but WhatsApp publishes no byte cap, format list, dimension rule, frame count or duration for an image sent in a chat, and no statement about whether it transcodes one. The numbers that could be borrowed are all for other surfaces and are NOT applied here: 2 GB for a DOCUMENT, 100 MB or 64 MB for a VIDEO (fast and slow connections), 90 seconds for a status video, and the Cloud API&apos;s 5 MB image with a 500 KB animated sticker. No cap is applied, and the fit loop therefore has nothing to enforce.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（WhatsApp 没有公布动态图片的自然上限）：GIF 是官方文档中提到的聊天内容形式，但对于在聊天中发送的图片，WhatsApp 没有公布字节上限、格式列表、尺寸规则、帧数或时长，也没有说明是否会对其进行转码。可以借用的数字都属于其他场景，因此这里不予采用：文档为 2 GB，视频为 100 MB 或 64 MB（快速与慢速连接），状态视频为 90 秒，Cloud API 的图片为 5 MB、动态贴纸为 500 KB。此处不施加任何上限，因此适配循环也没有需要强制执行的目标。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="74"/>
         <source>2 GB per file, 4 GB with Premium; Telegram re-encodes into renditions. Note this is the USER limit: the Bot API&apos;s 50 MB is for bots uploading, not for you sending a file. Telegram also converts a real GIF to MP4 on its servers, so transparency never survives here.</source>
-        <translation type="unfinished"></translation>
+        <translation>每个文件 2 GB，开通 Premium 后为 4 GB；Telegram 会重新编码生成多种清晰度。注意这是用户上限：Bot API 的 50 MB 是给机器人上传用的，不是给你发送文件用的。Telegram 还会在服务器上把真正的 GIF 转成 MP4，因此透明通道在这里永远无法保留。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="75"/>
         <source>Telegram (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="76"/>
         <source>Telegram CONVERTS an uploaded GIF itself: &quot;GIFs are actually MPEG4 (h264) videos without sound; if the user tries to upload an actual GIF file, it will be automatically converted to an MPEG4 file by the server&quot;. So this destination writes the file Telegram would have made anyway, without the round trip through a GIF palette: silent H.264 in MP4, and transparency CANNOT survive (the conversion is lossy and H.264 4:2:0 carries no alpha). Animated WebP is not accepted as a sticker (&quot;Animated .WEBP is NOT currently supported&quot;); a chat file may be up to 2 GB (4 GB with Premium), which is the cloud-file limit rather than a GIF limit. No frame count, duration or frame rate is published for a chat animation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Telegram 会自行转换上传的 GIF：“GIF 实际上是没有声音的 MPEG4（h264）视频；如果用户尝试上传真正的 GIF 文件，服务器会自动将其转换为 MPEG4 文件”。因此这个目的地直接写出 Telegram 本来就会生成的文件，省去了经由 GIF 调色板的来回转换：MP4 中的无声 H.264，并且透明通道无法保留（转换是有损的，而且 H.264 4:2:0 不携带 alpha）。动态 WebP 不能作为贴纸上传（“当前不支持动态 .WEBP”）；聊天文件最大可达 2 GB（开通 Premium 后 4 GB），这是云文件上限而不是 GIF 上限。对于聊天中的动画，未公布帧数、时长或帧率。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="77"/>
         <source>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord&apos;s older help pages still say 10 MB. On mobile the size is now measured BEFORE compression, so a video that used to fit may not.</source>
-        <translation type="unfinished"></translation>
+        <translation>发送上限 20 MB，开通 Nitro Basic 后 50 MB，开通 Nitro 后 500 MB；服务器获得加成后，所有人的上限提升到 50 MB（2 级）或 100 MB（3 级）。Discord 较早的帮助页面仍写着 10 MB。在移动端，现在是在压缩之前测量体积，所以以前能通过的文件现在可能不再通过。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="78"/>
         <source>Discord (animated image)</source>
-        <translation type="unfinished"></translation>
+        <translation>Discord（动态图片）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="79"/>
         <source>An animated image, not a video: WebP is the format Discord&apos;s own pipeline produces for animation (they have served and accepted animated WebP since the 2024 mobile release 252), and a GIF upload is transcoded to WebP for display, so this goes out animated either way. Alpha survives here, which GIF&apos;s palette cannot carry. The English FAQ caps a non-Nitro upload at 10 MB (its Hindi page says 25 MB): 10 MB is used, and it is also the size above which Discord stops animating inline and offers the file as a download instead. One frame in the export gives a still WebP, so this row carries a still illustration as well as an animation. Transparency is on by default (WebP keeps it, GIF&apos;s palette cannot) and can be turned off.</source>
-        <translation type="unfinished"></translation>
+        <translation>这是动态图片而不是视频：WebP 是 Discord 自己的处理流程为动画生成的格式（自 2024 年移动端 252 版本起，他们一直提供并接受动态 WebP），上传的 GIF 会转码为 WebP 用于显示，所以无论哪种方式发出的都是动态内容。透明通道在这里能保留，而 GIF 的调色板无法承载它。英文版常见问题把非 Nitro 上传上限定为 10 MB（其印地语页面写的是 25 MB）：这里采用 10 MB，这也是 Discord 不再以内嵌动画方式播放、转而把文件作为下载提供的分界体积。导出时只保留一帧会得到静态 WebP，所以本行既可用于静态插画，也可用于动画。透明度默认开启（WebP 能保留，GIF 的调色板不能），也可以关闭。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="80"/>
         <source>Signal re-encodes client-side to 720p at roughly 2 Mbps and targets about 50 MB of output. The server flag is 100 MiB and remote-configurable, so 50 MB is the number to stay under. Sending as a File skips the transcode.</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal 会在客户端重新编码到 720p、约 2 Mbps，目标输出约为 50 MB。服务器端的开关值是 100 MiB 且可远程配置，因此 50 MB 是需要守住的上限。以“文件”方式发送可以跳过转码。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="81"/>
         <source>Signal (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Signal（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="82"/>
         <source>UNVERIFIED (Signal publishes nothing usable here): a GIF is a first-class attachment (&quot;image, gif, video, voice message, or audio file&quot;), but Signal has no help page stating an attachment byte cap, a format list, a dimension rule, a frame count or a transcode rule for one. The only numbers that exist are in source code and issue threads rather than documentation: a GIF threshold of min(25 MB, the attachment limit) and a maintainer note that sending is still capped at 100 MB. 25 MB is used here as the code-level threshold, and every other fact is left unstated rather than invented. Note that Signal&apos;s STICKER page says &quot;Please do not upload GIFs&quot; - that is the sticker surface (APNG, 300 KB), a different thing from an attachment, and reading it as &quot;Signal rejects GIFs&quot; is a documented trap.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（Signal 没有公布任何可用于此处的数据）：GIF 是一等附件（“图像、gif、视频、语音消息或音频文件”），但 Signal 没有任何帮助页面说明附件的字节上限、格式列表、尺寸规则、帧数或转码规则。唯一存在的数字出现在源代码和问题讨论串中，而不是文档里：GIF 的阈值是 min(25 MB, 附件上限)，以及维护者提到发送仍以 100 MB 为上限。此处采用 25 MB 作为代码层面的阈值，其余事实一律留空而不去杜撰。请注意 Signal 的贴纸页面写着“请不要上传 GIF”：那说的是贴纸场景（APNG，300 KB），与附件是两回事，把它读成“Signal 拒收 GIF”是文档中记载的一个陷阱。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="83"/>
         <source>UNVERIFIED: 25 MB is the published DEVELOPER API limit. Meta does not publish the consumer chat limit anywhere, so this is the closest sourced number, not the app&apos;s own. 75 seconds appears in the docs as a fetch timeout, NOT a duration limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实：25 MB 是已公布的开发者 API 上限。Meta 没有在任何地方公布普通用户聊天的上限，所以这是最接近且有出处的数字，而不是该应用自身的上限。文档中出现的 75 秒是获取超时，而不是时长限制。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="84"/>
         <source>Messenger (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Messenger（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="85"/>
         <source>UNVERIFIED (the consumer chat publishes no cap): Messenger offers a &quot;Send GIF&quot; action with no published formats, and Meta&apos;s API documentation says animated GIFs &quot;are playable in the conversation&quot;, but the consumer chat states no byte cap, dimension rule, frame count or transcode behaviour. The API numbers that exist (25 MB per asset, 8 MB for an image uploaded by URL) are labelled as API values and are not applied here, because Meta does not say they bind the in-app picker. The API template also lists only image and video as media types with no GIF value, which is a contradiction Meta leaves unresolved.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（普通用户聊天未公布任何上限）：Messenger 提供“发送 GIF”操作，却没有公布支持的格式，Meta 的 API 文档称动态 GIF“可在对话中播放”，但普通用户聊天既没有字节上限、尺寸规则、帧数，也没有转码行为的说明。已存在的 API 数字（每个素材 25 MB，通过 URL 上传的图片 8 MB）被标注为 API 取值，此处不予采用，因为 Meta 没有说明它们约束应用内的选择器。API 模板还只把 image 和 video 列为媒体类型，没有 GIF 取值，这一矛盾 Meta 并未解决。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="86"/>
         <source>KakaoTalk (카카오톡)</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalk (카카오톡)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="87"/>
         <source>UNVERIFIED for mobile: 300 MB is the PC desktop file-send limit. Kakao does not publish the mobile chat limit. MP4/MOV/MKV/AVI/TS and others are accepted.</source>
-        <translation type="unfinished"></translation>
+        <translation>移动端未核实：300 MB 是 PC 桌面端发送文件的上限。Kakao 没有公布移动端聊天的上限。接受 MP4/MOV/MKV/AVI/TS 等格式。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="88"/>
         <source>WeChat (微信)</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChat (微信)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="89"/>
         <source>UNVERIFIED: Tencent publishes no size or duration limit for video sent in a personal chat, and no codec list. MP4/H.264 at 720p is the safe choice. The official-account route IS documented (10 MB per upload, 2 GB chunked) and is a different thing entirely.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实：腾讯没有公布在个人聊天中发送视频的体积或时长限制，也没有公布编码格式列表。720p 的 MP4/H.264 是稳妥之选。公众号途径确实有文档（每次上传 10 MB，分片上传 2 GB），但那完全是另一回事。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="90"/>
         <source>UNVERIFIED for the consumer app: 30 MB soft (silently becomes a FILE instead of an inline video) and 200 MB hard are BOT API numbers. Consumer chat limits are not published.</source>
-        <translation type="unfinished"></translation>
+        <translation>普通用户应用未核实：30 MB 的软上限（会静默地变成文件而不是内嵌视频）和 200 MB 的硬上限都是机器人 API 的数字。普通用户聊天的上限没有公布。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="91"/>
         <source>VK (ВКонтакте)</source>
-        <translation type="unfinished"></translation>
+        <translation>VK (ВКонтакте)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="92"/>
         <source>No cap worth encoding: 256 GB, up to 4K, and VK re-encodes. MP4/H.264 at 1280x720 or above, and they recommend 16:9.</source>
-        <translation type="unfinished"></translation>
+        <translation>上限高到无需为编码操心：256 GB，最高 4K，并且 VK 会重新编码。建议 1280x720 或更高的 MP4/H.264，他们推荐 16:9。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="93"/>
         <source>X (Twitter)</source>
-        <translation type="unfinished"></translation>
+        <translation>X (Twitter)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="94"/>
         <source>A post accepts up to 8 GB and 20 minutes (16 GB / 125 minutes with Premium). The &quot;140 seconds / 512 MB&quot; figure repeated all over the web is X&apos;s DIRECT MESSAGE limit, not a post, and is 50x too small here. H.264 High, AAC-LC, yuv420p, closed GOP.</source>
-        <translation type="unfinished"></translation>
+        <translation>帖子最多接受 8 GB 和 20 分钟（开通 Premium 后为 16 GB / 125 分钟）。网上到处流传的“140 秒 / 512 MB”是 X 的私信上限，不是帖子上限，用在这里小了 50 倍。H.264 High、AAC-LC、yuv420p、封闭 GOP。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="95"/>
         <source>X (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>X（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="96"/>
         <source>X accepts JPG, PNG, GIF and WEBP, and an animated GIF is its own media category (tweet_gif). The caps here come from X&apos;s API documentation, NOT from its help pages: 15 MB per animated GIF, resolution at most 1280x1080, at most 350 frames and at most 300 million pixels in total (width x height x frames). X&apos;s own API page adds that a GIF &quot;may fail during Post creation even if it is within the file size limit&quot;, so treat 15 MB as soft. The figure repeated across the web (5 MB mobile, 15 MB web) appears on no X-owned page, and X publishes nothing about transparency, looping, frame rate or duration for GIFs.</source>
-        <translation type="unfinished"></translation>
+        <translation>X 接受 JPG、PNG、GIF 和 WEBP，动态 GIF 有独立的媒体类别（tweet_gif）。这里的上限来自 X 的 API 文档，而不是其帮助页面：每个动态 GIF 15 MB，分辨率最高 1280x1080，最多 350 帧，总像素数最多 3 亿（宽 x 高 x 帧数）。X 自己的 API 页面还补充说，GIF“即使在文件大小限制之内，也可能在创建帖子时失败”，所以应把 15 MB 视为软上限。网上流传的数字（移动端 5 MB、网页端 15 MB）在任何 X 自有的页面上都找不到，而 X 没有公布任何关于 GIF 透明度、循环、帧率或时长的说明。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="97"/>
         <source>Instagram Reels</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagram Reels</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="98"/>
         <source>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a closed GOP. The moov atom must be at the FRONT of the file with no edit lists, which is what the faststart muxer option below does: without it the upload is rejected.</source>
-        <translation type="unfinished"></translation>
+        <translation>300 MB，3 秒至 15 分钟，9:16、宽度最高 1920 px，封闭 GOP 的 H.264 或 HEVC。moov atom 必须位于文件的前部且不能有编辑列表，这正是下方 faststart 封装选项的作用：没有它上传会被拒收。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="99"/>
         <source>4 GB, up to 10 minutes on some routes and 3 on others. 1080x1920 (9:16). GIF files are NOT accepted. WebM/MOV are accepted alongside MP4.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 GB，某些途径最长 10 分钟，另一些为 3 分钟。1080x1920（9:16）。不接受 GIF 文件。除 MP4 外还接受 WebM/MOV。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="100"/>
         <source>Bilibili (哔哩哔哩)</source>
-        <translation type="unfinished"></translation>
+        <translation>Bilibili (哔哩哔哩)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="101"/>
         <source>UNVERIFIED (conflicting sources): Bilibili&apos;s help centre says 16 GB (64 GB at higher web levels), their own open-platform API documentation says 4 GB, and the page could not be re-fetched to settle it. 4 GB is used here as the floor that both agree on. Up to 4096x4096 at 120 fps, H.264/AAC, yuv420p.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（来源互相矛盾）：Bilibili 帮助中心说是 16 GB（网页端等级较高时为 64 GB），其自家的开放平台 API 文档说是 4 GB，而该页面无法重新抓取以确认。此处采用 4 GB，即两者一致认同的下限。最高 4096x4096、120 fps，H.264/AAC，yuv420p。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="102"/>
         <source>Weibo (微博)</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo (微博)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="103"/>
         <source>15 GB from the desktop web, 4 GB from mobile. There is a MINIMUM of 3 seconds and no published maximum duration. 720p or better for the video section; 2K/4K are gated behind play counts. Codec list is not published: MP4/H.264.</source>
-        <translation type="unfinished"></translation>
+        <translation>桌面网页端 15 GB，移动端 4 GB。最短时长为 3 秒，没有公布最长时长。视频分区要求 720p 或更高；2K/4K 需要达到一定播放量才能解锁。编码格式列表未公布：MP4/H.264。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="104"/>
         <source>Weibo (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Weibo（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="105"/>
         <source>Weibo LOSES the animation rather than converting it: &quot;原始图片需不超过1080宽，超宽会导致动图不动&quot; (the original must be at most 1080 wide, wider makes the animation stop) and the original-quality box (原图) must be ticked or the GIF posts as a static image. So the width ceiling is a real constraint here, and this row caps the long side at 1080 px, which is stricter than the published rule but can never lose the animation. 20 MB is the published per-image cap from Weibo&apos;s own help centre (the API&apos;s 10 MB belongs to the API surface). No frame count, duration, frame rate or transparency statement is published for a GIF, and Weibo&apos;s two help pages contradict each other about ticking 原图: one requires it for animation, the other recommends leaving it off to avoid a colour cast.</source>
-        <translation type="unfinished"></translation>
+        <translation>微博不会转换动画，而是会直接丢掉动画：“原始图片需不超过1080宽，超宽会导致动图不动”（原图宽度不得超过 1080，过宽会导致动图不动），并且必须勾选原图，否则 GIF 会以静态图片发布。因此宽度上限在这里是实实在在的约束，本行将长边限制在 1080 px，比公布的规则更严格，但绝不会丢失动画。20 MB 是微博自家帮助中心公布的每张图片上限（API 的 10 MB 属于 API 场景）。对于 GIF，微博没有公布帧数、时长、帧率或透明度方面的说明，而且微博的两个帮助页面在是否勾选原图这一点上互相矛盾：一个要求动图必须勾选，另一个则建议不勾选以避免偏色。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="106"/>
         <source>MP4 ONLY: the lexicon accepts video/mp4 and nothing else. 300 MB and 10 minutes (both raised recently, so most guides are out of date). No pixel cap; the aspect ratio travels as metadata.</source>
-        <translation type="unfinished"></translation>
+        <translation>仅支持 MP4：该词表只接受 video/mp4，不接受其他格式。300 MB 和 10 分钟（两者最近都提高了，所以大多数指南已经过时）。没有像素上限；宽高比作为元数据附带。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="107"/>
         <source>Bluesky (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky（动画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="108"/>
         <source>Bluesky keeps the animation by routing it down the VIDEO path: an animated GIF is &quot;processed as video&quot;, and the video embed lexicon accepts only video/mp4, so a GIF that arrives at Bluesky becomes an MP4. This row writes the MP4 directly, silent and H.264, which is what the platform serves anyway, and transparency cannot survive it. THE 2 MB IMAGE CAP DOES NOT APPLY HERE: 2,000,000 bytes is the app.bsky.embed.images lexicon limit for a STILL; the video embed allows 300 MB and 10 minutes, which is what is used. Note that Bluesky&apos;s own documentation contradicts itself about the still-image number (the code on that page enforces 2,000,000 while the prose beside it still says 1,000,000). No dimension, frame or frame-rate rule is published, and the 720p/30 fps/5000 kbps figures in circulation come from a user comment, not from documentation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bluesky 通过视频通道来保留动画：动态 GIF 会被“当作视频处理”，而视频嵌入词表只接受 video/mp4，所以到达 Bluesky 的 GIF 会变成 MP4。本行直接写出 MP4，无声且为 H.264，这正是平台最终提供的内容，透明通道无法保留。2 MB 的图片上限在这里并不适用：2,000,000 字节是 app.bsky.embed.images 词表对静态图片的限制；视频嵌入允许 300 MB 和 10 分钟，这里采用的正是后者。请注意 Bluesky 自己的文档在静态图片这个数字上自相矛盾（该页面上的代码强制 2,000,000，而旁边的说明文字仍写着 1,000,000）。没有公布尺寸、帧数或帧率的规则，流传的 720p/30 fps/5000 kbps 数字来自用户评论，而不是文档。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="109"/>
         <source>99 MB for video and 16 MB for images are UPSTREAM DEFAULTS; every instance sets its own, and instances drift from upstream (mastodon.social reports double the upstream pixel limit). The authoritative answer is the server&apos;s own /api/v2/instance configuration. GIFs are converted to silent MP4, so transparency does not survive.</source>
-        <translation type="unfinished"></translation>
+        <translation>视频 99 MB、图片 16 MB 都是上游默认值；每个实例都会自行设定，并且实例会偏离上游（mastodon.social 报告的像素上限是上游的两倍）。权威答案是该服务器自己的 /api/v2/instance 配置。GIF 会被转换为无声 MP4，因此透明通道无法保留。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="110"/>
         <source>UNVERIFIED: Reddit does not publish a size limit for native video posts. No byte cap is applied rather than inventing one. The 15-minute figure comes from their 2017 launch post, and comment videos are capped much shorter.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实：Reddit 没有公布原生视频帖子的体积上限。这里不施加任何字节上限，而不是凭空编造一个。15 分钟这个数字来自他们 2017 年的发布公告，而评论中的视频上限要短得多。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="111"/>
         <source>Reddit (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Reddit（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="112"/>
         <source>UNVERIFIED (no organic numbers published): Reddit documents no byte cap for an image or GIF post. What IS visible is that a GIF post is stored and served as a Reddit VIDEO (Reddit&apos;s own Devvit model carries a media kind &quot;videogif&quot; and a RedditVideo.isGif flag), so animation survives but transparency does not, which is why alpha is forbidden here. The widely quoted &quot;20 MB image / 100 MB GIF&quot; figures come from third parties, and the Reddit numbers that are published belong to other surfaces (comment images at most 240 px, comment video under 1 GB and 3 minutes, and advertising specs that reject animated GIF outright). No frame, duration or frame-rate rule is published for an animated image.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（未公布自然流量场景的数字）：Reddit 的文档没有给出图片或 GIF 帖子的字节上限。可以看到的是，GIF 帖子会作为 Reddit 视频存储和提供（Reddit 自家的 Devvit 模型带有媒体类型 videogif 和 RedditVideo.isGif 标志），所以动画能保留，但透明通道不能，这就是此处禁止 alpha 的原因。被广泛引用的“图片 20 MB / GIF 100 MB”来自第三方，而 Reddit 已公布的数字都属于其他场景（评论图片最多 240 px，评论视频小于 1 GB 且不超过 3 分钟，以及直接拒收动态 GIF 的广告规范）。对于动态图片，没有公布帧数、时长或帧率的规则。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="113"/>
         <source>WeChat sticker (微信表情)</source>
-        <translation type="unfinished"></translation>
+        <translation>WeChat 贴纸（微信表情）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="114"/>
         <source>Animated stickers are GIF only, exactly 240x240, 500 KB, and must loop. Art that exceeds the spec is compressed AND CROPPED by WeChat rather than rejected, so an oversized export comes back with its edges cut off. Sticker sets are 8 to 24 images.</source>
-        <translation type="unfinished"></translation>
+        <translation>动态贴纸仅支持 GIF，必须恰好为 240x240、500 KB，并且必须循环。超出规格的图片微信会压缩并裁剪，而不是拒收，所以过大的导出文件回来时边缘会被切掉。贴纸套装为 8 至 24 张。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="115"/>
         <source>KakaoTalk sticker (카카오톡 스티커)</source>
-        <translation type="unfinished"></translation>
+        <translation>KakaoTalk 贴纸（카카오톡 스티커）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="116"/>
         <source>Animated WebP, 360x360 (180x180 for mini, 540x540 for big), 650 KB, 24 frames maximum and four loops. Kakao publishes its own WebP animator, which is a useful sign of exactly which encoder behaviour they expect.</source>
-        <translation type="unfinished"></translation>
+        <translation>动态 WebP，360x360（迷你版为 180x180，大版为 540x540），650 KB，最多 24 帧、循环四次。Kakao 发布了自己的 WebP 动画工具，这正好说明他们期望的编码器行为。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="117"/>
         <source>QQ sticker</source>
-        <translation type="unfinished"></translation>
+        <translation>QQ 贴纸</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="118"/>
         <source>UNVERIFIED and DATE-STAMPED 2018-10-07: this is the last Tencent-owned specification that exists anywhere. yuanchuang.qq.com no longer resolves and archive.org holds no capture after October 2018, so the values below are what Tencent said eight years ago and nothing current confirms them. 16 GIFs at exactly 300x300, each 300 KB or less (&quot;表情大小：≤300kb/个&quot;, raised from 90 KB in 2016), on a transparent background (&quot;文件均为无色透明底&quot;). A white stroke is required but 3 px is only PREFERRED (&quot;以3像素的白色描边为佳&quot;), not an exact value. The same page contradicts itself about the 300x300 PNG thumbnail: its table says 200 KB and its body text says 20 KB, so no thumbnail cap is applied. Nothing is published about frame count, duration, frame rate, or re-encoding.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实，且时间戳为 2018-10-07：这是现存最后一份腾讯自有的规格说明。yuanchuang.qq.com 已无法解析，archive.org 在 2018 年 10 月之后也没有留存快照，所以下面的数值是腾讯八年前的说法，没有任何近期的资料可以证实。16 个 GIF，必须恰好 300x300，每个不超过 300 KB（“表情大小：≤300kb/个”，2016 年从 90 KB 提高），背景透明（“文件均为无色透明底”）。要求有白色描边，但 3 px 只是推荐值（“以3像素的白色描边为佳”），并非确切数值。同一页面在 300x300 的 PNG 缩略图上自相矛盾：表格写 200 KB，正文写 20 KB，所以这里不施加缩略图上限。关于帧数、时长、帧率或重新编码都没有公布任何内容。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="119"/>
         <source>Nico Nico Douga (ニコニコ動画)</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico Douga (ニコニコ動画)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="120"/>
         <source>6 GB or 6 hours, whichever comes first; raised from 3 GB on 2024-10-29, so older guides are a revision behind. Up to 4096x2160 (or 2160x4096 vertical) and 60 fps. Their own page caps the vertical Short surface at 180 seconds, which is a different destination with the same name.</source>
-        <translation type="unfinished"></translation>
+        <translation>6 GB 或 6 小时，以先到者为准；2024-10-29 从 3 GB 提高，所以较早的指南落后了一个版本。最高 4096x2160（竖屏为 2160x4096）和 60 fps。他们自家的页面把竖屏短视频场景限制在 180 秒，那是同名但不同的目的地。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="121"/>
         <source>Douyin (抖音)</source>
-        <translation type="unfinished"></translation>
+        <translation>Douyin (抖音)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="122"/>
         <source>UNVERIFIED (conflicting): ByteDance contradicts itself. The current upload endpoint says 4 GB total with chunked upload mandatory above 300 MB, while a 2024-04-09 chunked-upload page says 128 MB and 15 minutes, and the Android share SDK says 60 minutes. The widely quoted 500 MB could not be found on any ByteDance page. Short side under 2160, long side under 4096, 720p or above.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：字节跳动自己的说法也不一致。当前的上传端点说总计 4 GB，超过 300 MB 必须分片上传，而 2024-04-09 的分片上传页面说 128 MB 和 15 分钟，Android 分享 SDK 又说 60 分钟。被广泛引用的 500 MB 在任何字节跳动的页面上都找不到。短边小于 2160，长边小于 4096，720p 或更高。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="123"/>
         <source>Facebook (video)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（视频）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="124"/>
         <source>UNVERIFIED (partial): Meta publishes NO byte or duration cap for organic video. The 4 GB and 240-minute figures that circulate are the ADVERTISING spec. Since September 2025 every video posted to Facebook is shared as a reel, so this and the reels destination differ only in the length the API enforces. Recommended: maximum width 4000 px with dimensions divisible by 16, 30 fps or lower, H.264 with AAC.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（部分）：Meta 没有公布自然流量视频的字节或时长上限。流传的 4 GB 和 240 分钟是广告规格。自 2025 年 9 月起，发布到 Facebook 的每个视频都会以 reel 形式分享，所以本目的地与 reels 目的地的区别只在于 API 强制执行的时长。建议：最大宽度 4000 px，且尺寸可被 16 整除，30 fps 或更低，H.264 配 AAC。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="125"/>
         <source>Facebook (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="126"/>
         <source>UNVERIFIED (advisory, not a published hard cap): Facebook lists GIF among the photo formats it recommends uploading (&quot;JPEG, BMP, PNG, GIF or TIFF&quot;) and recommends keeping photos under 15 MB, which is the number used here. No organic byte cap, dimension rule, frame count, duration or frame rate is published for an animated image; the only transcode statement Facebook makes is in the ADS documentation (a GIF there &quot;plays in the same way as all video files&quot;), and the numbers that circulate for GIF (4 GB, &quot;as video&quot;) belong to that advertising surface rather than to a photo post.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（属于建议而非公布的硬性上限）：Facebook 在推荐上传的照片格式中列出了 GIF（“JPEG、BMP、PNG、GIF 或 TIFF”），并建议照片保持在 15 MB 以内，这里采用的正是这个数字。对于动态图片，没有公布自然流量场景的字节上限、尺寸规则、帧数、时长或帧率；Facebook 唯一关于转码的说明在广告文档中（那里的 GIF“与所有视频文件以相同方式播放”），而流传的 GIF 数字（4 GB、“按视频处理”）属于那个广告场景，而不是照片帖子。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="127"/>
         <source>Facebook Reels</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook Reels</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="128"/>
         <source>UNVERIFIED (conflicting): Meta Business Help says reels can be any length; the Reels Publishing API enforces 3 to 90 seconds and rejects anything else. 90 s is used here because it is the number that is enforced. 1080x1920 recommended, 540x960 minimum, 24 to 60 fps, no published byte cap.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：Meta Business 帮助说 reels 长度不限；Reels Publishing API 则强制 3 至 90 秒，其他长度一律拒收。这里采用 90 秒，因为它是被强制执行的那个数字。推荐 1080x1920，最低 540x960，24 至 60 fps，没有公布字节上限。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="129"/>
         <source>500 MB and 10 minutes, and 20 posts a day. MOV or MP4; Tumblr transcodes toward 720p H.264. Photos are a separate destination: a static image gets 20 MB, but an animated GIF is served only up to about 5 MB and above that is reduced to its first frame.</source>
-        <translation type="unfinished"></translation>
+        <translation>500 MB 和 10 分钟，每天 20 条帖子。MOV 或 MP4；Tumblr 会转码到 720p H.264。照片是另一个目的地：静态图片为 20 MB，而动态 GIF 只在约 5 MB 以内才会以动画提供，超过这个体积就会被缩减为第一帧。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="130"/>
         <source>Tumblr (animated GIF)</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr（动态 GIF）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="131"/>
         <source>Tumblr transcodes EVERY uploaded GIF (&quot;we do convert all uploaded GIFs to the GIFV format&quot;, typically animated WebP, and on the web sometimes MP4), so the file it serves is not the file you send. It publishes three size numbers in one section (keep GIFs to 10 MB, a compressed GIF no larger than 5 MB, and &quot;we will do our best to compress&quot; between them) plus the consequence that matters: above 5 MB Tumblr may serve ONLY THE FIRST FRAME, so 5 MB is the cap used here and the file is fitted to it. 540 px wide is Tumblr&apos;s own recommendation. Frames are not counted (&quot;we only count bytes and seconds&quot;), no duration cap exists for a GIF, and transparency is documented only as a conversion criterion, not as a promise.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr 会转码每一个上传的 GIF（“我们会把所有上传的 GIF 转换为 GIFV 格式”，通常是动态 WebP，在网页端有时是 MP4），所以它提供的文件并不是你发送的文件。它在同一节里公布了三个体积数字（GIF 保持在 10 MB 以内，压缩后的 GIF 不超过 5 MB，介于两者之间“我们会尽力压缩”），以及一个真正重要的后果：超过 5 MB 时 Tumblr 可能只提供第一帧，因此这里采用 5 MB 作为上限，并把文件适配到该上限。540 px 宽是 Tumblr 自己的建议。帧数不计入（“我们只统计字节和秒数”），GIF 没有时长上限，文档中提到的透明度只是一个转换判据，而不是承诺。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="132"/>
         <source>Pinterest (video Pin)</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest（视频 Pin）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="133"/>
         <source>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the &quot;2 GB / 15 minutes&quot; figure belongs to the ADVERTISING spec, which is a different surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or H.265, 9:16 recommended.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 秒至 5 分钟。对于自然流量的视频 Pin 没有公布字节上限；“2 GB / 15 分钟”属于广告规格，那是另一个场景，却经常被当作这一场景的标准引用。MP4/M4V，H.264 或 H.265，推荐 9:16。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="134"/>
         <source>Snapchat Spotlight</source>
-        <translation type="unfinished"></translation>
+        <translation>Snapchat Spotlight</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="135"/>
         <source>UNVERIFIED (partial): Snapchat publishes a minimum of 5 seconds and a vertical requirement, and nothing else: no byte cap, no maximum duration, no accepted format list and no pixel specification. Still images are excluded. The &quot;1 GB / 3 to 30 minutes&quot; figure is the ADS spec. Vertical with sound; a landscape export will not be shown in Spotlight, and no size rule here can force that, so the file is exported as composed.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（部分）：Snapchat 公布了 5 秒的下限和竖屏要求，除此之外什么都没有：没有字节上限，没有最长时长，没有支持的格式列表，也没有像素规格。静态图片不在此列。“1 GB / 3 至 30 分钟”是广告规格。竖屏且带声音；横向导出不会在 Spotlight 中展示，这里的任何体积规则都无法改变这一点，因此文件按合成时的样子导出。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="136"/>
         <source>4 GB (64 GB on the top tier) and 2 hours. Up to 3840x2160 or 2160x3840, 24 to 60 fps. MOV, MP4, AVI, WMV, MKV and FLV are all accepted; MP4/H.264 is the practical target.</source>
-        <translation type="unfinished"></translation>
+        <translation>4 GB（最高档为 64 GB）和 2 小时。最高 3840x2160 或 2160x3840，24 至 60 fps。MOV、MP4、AVI、WMV、MKV 和 FLV 都接受；实际推荐目标是 MP4/H.264。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="137"/>
         <source>UNVERIFIED (conflicting): Vimeo&apos;s advice to keep files under 200 GB, a plan note about 250 GB per video for legacy subscribers and an uploader page claiming no size limit cannot all be true; 200 GB is used as a soft ceiling. 24 hours is a hard refusal at upload. Vimeo states plainly that it has no alpha channel support, so transparency can never survive here. MP4/MOV, H.264 or ProRes.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：Vimeo 建议文件保持在 200 GB 以内、给老订阅用户的方案说明提到每个视频 250 GB，以及某个上传页面声称没有体积限制，这三者不可能同时为真；此处采用 200 GB 作为软上限。24 小时是上传时的硬性拒收线。Vimeo 明确表示不支持 alpha 通道，所以透明通道在这里绝无可能保留。MP4/MOV，H.264 或 ProRes。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="138"/>
         <source>DeviantArt (video, Core members)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（视频，Core 会员）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="139"/>
         <source>1 GB and 10 to 12 minutes, and video submission is a Core membership feature. 1920x1080 recommended; the first frame becomes the preview, so it should not be a blank or transitional frame. An animated GIF is NOT a video here: DeviantArt counts it as an image and gives it the much larger image cap.</source>
-        <translation type="unfinished"></translation>
+        <translation>1 GB 和 10 至 12 分钟，提交视频是 Core 会员功能。推荐 1920x1080；第一帧会成为预览图，所以不应是空白帧或过渡帧。动态 GIF 在这里不算视频：DeviantArt 把它算作图片，并给予大得多的图片上限。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="140"/>
         <source>Newgrounds (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>Newgrounds（动画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="141"/>
         <source>UNVERIFIED (partial): Newgrounds publishes NO byte or duration cap. Their own wiki says the limit is shown on the signed-in upload form and can be raised on request, so it is per-account; the 100 MB and 6.3 GB figures in circulation come from a member forum post, not from Newgrounds. MP4/MOV/WMV and SWF are accepted, at 3840x2160, 1920x1080, 1280x720 or 640x380, around 10 to 20 Mbps at 1080p. Loop is an upload option for MP4 here, unlike everywhere else.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（部分）：Newgrounds 没有公布任何字节或时长上限。他们自己的 wiki 说该上限显示在登录后的上传表单上，并且可以申请提高，所以它是按账号设定的；流传的 100 MB 和 6.3 GB 来自会员论坛的帖子，而不是 Newgrounds 官方。接受 MP4/MOV/WMV 和 SWF，尺寸为 3840x2160、1920x1080、1280x720 或 640x380，1080p 下约 10 至 20 Mbps。与其他所有地方不同，这里的 MP4 上传选项中带有循环。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="142"/>
         <source>pixiv (illustration)</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv（插画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="143"/>
         <source>32 MB per image, 200 MB per post, JPG or PNG. No pixel cap is published. The 8 MB and 10 MB figures still quoted in guides are obsolete: pixiv raised the per-image limit to 32 MB. A post mixing formats is converted to JPG, so pick one format per post; PNG is the one that keeps transparency.</source>
-        <translation type="unfinished"></translation>
+        <translation>每张图片 32 MB，每个投稿 200 MB，JPG 或 PNG。没有公布像素上限。指南中仍在引用的 8 MB 和 10 MB 已经过时：pixiv 已把每张图片的上限提高到 32 MB。混用格式的投稿会被转换为 JPG，所以每个投稿请只选一种格式；能保留透明度的是 PNG。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="144"/>
         <source>pixiv (ugoira animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>pixiv（ugoira 动画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="145"/>
         <source>ugoira is a folder of numbered stills, not a video: up to 150 frames, 30 MB in total, 8 MB per frame, and every frame must share one format AND one canvas size. PNG or JPEG only, and pixiv rejects APNG and WebP outright. Frame TIMING is authored on the upload page, so no fps applies here. The alternative route is one animated GIF (16 MB, 500 frames), which costs you the palette. Desktop site only.</source>
-        <translation type="unfinished"></translation>
+        <translation>ugoira 是装有编号静帧的文件夹，而不是视频：最多 150 帧，总计 30 MB，每帧 8 MB，并且所有帧必须使用同一种格式和同一种画布尺寸。仅支持 PNG 或 JPEG，pixiv 直接拒收 APNG 和 WebP。帧的时序在上传页面设置，所以这里不涉及 fps。另一种途径是单个动态 GIF（16 MB，500 帧），代价是失去调色板。仅限桌面网站。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="146"/>
         <source>Nico Nico Seiga (ニコニコ静画)</source>
-        <translation type="unfinished"></translation>
+        <translation>Nico Nico Seiga (ニコニコ静画)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="147"/>
         <source>UNVERIFIED (partial): 10 MB per image, PNG or JPEG or GIF, no pixel cap published. Whether a posted illustration is re-encoded, whether PNG alpha survives, and whether an animated GIF animates on Seiga are all undocumented, so transparency is exported but not promised. Seiga is the still-image half of Nico Nico; videos go to Nico Nico Douga.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（部分）：每张图片 10 MB，PNG、JPEG 或 GIF，没有公布像素上限。投稿的插画是否会被重新编码、PNG 的 alpha 能否保留，以及动态 GIF 在 Seiga 上是否会动，都没有文档说明，所以透明通道会导出但不作保证。Seiga 是 Nico Nico 的静图部分；视频请发往 Nico Nico Douga。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="148"/>
         <source>Instagram (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Instagram（照片）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="149"/>
         <source>8 MB, JPEG ONLY, width between 320 and 1440 px, and an aspect ratio from 4:5 to 1.91:1. Transparency cannot survive a JPEG: a transparent background is written as solid black, so flatten the art first. Reels are a separate destination and do take video.</source>
-        <translation type="unfinished"></translation>
+        <translation>8 MB，仅支持 JPEG，宽度在 320 至 1440 px 之间，宽高比从 4:5 到 1.91:1。透明通道无法在 JPEG 中保留：透明背景会被写成纯黑，所以请先合并图像。Reels 是另一个目的地，并且确实支持视频。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="150"/>
         <source>Facebook (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Facebook（照片）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="151"/>
         <source>UNVERIFIED (conflicting): Meta&apos;s Graph API says a photo must be under 10 MB and that animated photos are not supported, while their help centre recommends below 15 MB and lists GIF as a photo format. The stricter API figure is used. PNG is accepted but Meta warns that a PNG above 1 MB may be shown pixelated, because it is re-compressed.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：Meta 的 Graph API 说照片必须小于 10 MB，并且不支持动态照片，而他们的帮助中心建议低于 15 MB 并把 GIF 列为照片格式。此处采用更严格的 API 数字。PNG 可以接受，但 Meta 提醒超过 1 MB 的 PNG 可能显示为有像素块，因为它会被重新压缩。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="152"/>
         <source>Tumblr (photo)</source>
-        <translation type="unfinished"></translation>
+        <translation>Tumblr（照片）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="153"/>
         <source>20 MB for a static image. 540x810 is the recommended size and 2048x3072 is the largest view served. ANIMATION IS A DIFFERENT LIMIT: a GIF is only served up to about 5 MB, and above that Tumblr shows its first frame instead of animating, so a long animation should go out as a video.</source>
-        <translation type="unfinished"></translation>
+        <translation>静态图片为 20 MB。推荐尺寸为 540x810，最大提供的视图为 2048x3072。动画适用不同的上限：GIF 只在约 5 MB 以内才会以动画提供，超过这个体积 Tumblr 会显示第一帧而不播放动画，所以较长的动画应以视频形式发布。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="154"/>
         <source>Pinterest (image Pin)</source>
-        <translation type="unfinished"></translation>
+        <translation>Pinterest（图片 Pin）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="155"/>
         <source>20 MB on the web. PNG, JPEG, BMP, TIFF or WEBP; GIF is not accepted as an organic Pin, so animation belongs on a video Pin. 2:3 is the recommended shape (1000x1500) and 9:16 also works; keep the art out of the bottom safe zone, where the interface covers it.</source>
-        <translation type="unfinished"></translation>
+        <translation>网页端为 20 MB。PNG、JPEG、BMP、TIFF 或 WEBP；自然流量的 Pin 不接受 GIF，所以动画应放在视频 Pin 上。推荐比例为 2:3（1000x1500），9:16 也可以；请让画面避开底部的安全区域，那里会被界面遮挡。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="156"/>
         <source>DeviantArt (image)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（图片）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="157"/>
         <source>UNVERIFIED (conflicting): one DeviantArt help page says images are capped at 80 MB and another says 95 MB; 80 MB is used so a file that passes here passes both. JPEG, PNG or GIF, no pixel cap. An animated GIF counts as an IMAGE and gets this same cap, which is 16x what Tumblr allows a GIF.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：一个 DeviantArt 帮助页面说图片上限为 80 MB，另一个说 95 MB；此处采用 80 MB，这样只要能通过这里的限制，就能同时满足两个页面的标准。JPEG、PNG 或 GIF，没有像素上限。动态 GIF 算作图片并获得同样的上限，这是 Tumblr 允许 GIF 的 16 倍。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="158"/>
         <source>DeviantArt (animation)</source>
-        <translation type="unfinished"></translation>
+        <translation>DeviantArt（动画）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="159"/>
         <source>UNVERIFIED (conflicting): see the image row: 80 MB versus 95 MB on two official pages, and an animated GIF is submitted as an image rather than a video, so it gets that cap instead of the 1 GB video one. GIF means a 256-colour palette, which is a real cost for gradients but nothing else here animates on a free account.</source>
-        <translation type="unfinished"></translation>
+        <translation>未核实（互相矛盾）：参见图片那一行：两个官方页面分别写 80 MB 和 95 MB，而动态 GIF 是作为图片而不是视频提交的，所以适用的是那个上限而不是 1 GB 的视频上限。GIF 意味着 256 色调色板，这对渐变来说是实实在在的损失，但在免费账号下这里没有其他能播放动画的方式。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="160"/>
         <source>Stream overlay (OBS)</source>
-        <translation type="unfinished"></translation>
+        <translation>直播叠加层（OBS）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="161"/>
         <source>VP9 WebM is native in OBS; no chroma-key. WebKit CANNOT decode alpha in WebM.</source>
-        <translation type="unfinished"></translation>
+        <translation>VP9 WebM 在 OBS 中是原生格式；无需色度键。WebKit 无法解码 WebM 中的 alpha 通道。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="162"/>
         <source>Transparent video (Safari / iOS)</source>
-        <translation type="unfinished"></translation>
+        <translation>透明视频（Safari / iOS）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="163"/>
         <source>HEVC+alpha needs Apple&apos;s VideoToolbox encoder; libx265 ADVERTISES yuva420p and then refuses it at open. hvc1 is mandatory: Safari rejects untagged hev1. Where VideoToolbox is unavailable, use the WebM/VP9 overlay destination instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>HEVC+alpha 需要 Apple 的 VideoToolbox 编码器；libx265 声称支持 yuva420p，但在打开时又拒绝它。hvc1 是必须的：Safari 会拒收未标注的 hev1。如果 VideoToolbox 不可用，请改用 WebM/VP9 叠加层目的地。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="164"/>
         <source>YouTube re-encodes every upload. Official docs still recommend H.264/AAC; AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</source>
-        <translation type="unfinished"></translation>
+        <translation>YouTube 会重新编码每一次上传。官方文档仍推荐 H.264/AAC；AV1/H.265 每比特能提供更高的画质。编码格式通过阶梯规则确定。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="165"/>
         <source>Website</source>
-        <translation type="unfinished"></translation>
+        <translation>网站</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="166"/>
         <source>Direct playback: decode compatibility dominates, so H.264 at every bucket. For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</source>
-        <translation type="unfinished"></translation>
+        <translation>直接播放：解码兼容性最重要，所以每个档位都用 H.264。若要在网页上使用透明通道，请同时提供 .webm（VP9）和 .mov（HEVC hvc1）。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="167"/>
         <source>Just a file (not sure yet)</source>
-        <translation type="unfinished"></translation>
+        <translation>只是一个文件（还没确定）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="168"/>
         <source>The fallback when the destination is unknown: maximum compatibility.</source>
-        <translation type="unfinished"></translation>
+        <translation>目的地未知时的兜底选项：最大兼容性。</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
         <source>Keep a master copy</source>
-        <translation type="unfinished"></translation>
+        <translation>保留母版副本</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
-        <translation type="unfinished"></translation>
+        <translation>在无损质量下使用 FFV1，它携带 alpha（yuva420p）；其他档位选择 H.265，而 H.265 在这里根本无法编码 alpha。</translation>
     </message>
 </context>
 <context>
@@ -1133,7 +1133,7 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="297"/>
         <source>Choose where this is going</source>
-        <translation type="unfinished"></translation>
+        <translation>选择发布到哪里</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="617"/>
@@ -1148,177 +1148,177 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="632"/>
         <source>Auto</source>
-        <translation type="unfinished">自动</translation>
+        <translation>自动</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="785"/>
         <source>PNG sequence</source>
-        <translation type="unfinished"></translation>
+        <translation>PNG 序列</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="786"/>
         <source>JPEG sequence</source>
-        <translation type="unfinished"></translation>
+        <translation>JPEG 序列</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="912"/>
         <source>CRF:</source>
-        <translation type="unfinished"></translation>
+        <translation>CRF：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="913"/>
         <source>Quality:</source>
-        <translation type="unfinished"></translation>
+        <translation>质量：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1384"/>
         <source>First frame %1</source>
-        <translation type="unfinished"></translation>
+        <translation>起始帧%1</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1385"/>
         <source>Last frame %1</source>
-        <translation type="unfinished"></translation>
+        <translation>结束帧%1</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1489"/>
         <source>Width</source>
-        <translation type="unfinished"></translation>
+        <translation>宽度</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1490"/>
         <source>Height</source>
-        <translation type="unfinished"></translation>
+        <translation>高度</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1491"/>
         <source>Frame rate</source>
-        <translation type="unfinished"></translation>
+        <translation>帧率</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1492"/>
         <source>First frame</source>
-        <translation type="unfinished"></translation>
+        <translation>起始帧</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1493"/>
         <source>Last frame</source>
-        <translation type="unfinished">最后一帧</translation>
+        <translation>结束帧</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Format</source>
-        <translation type="unfinished"></translation>
+        <translation>格式</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Codec</source>
-        <translation type="unfinished">解码器</translation>
+        <translation>编码器</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Quality</source>
-        <translation type="unfinished">品质</translation>
+        <translation>质量</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>Quality override</source>
-        <translation type="unfinished"></translation>
+        <translation>质量覆盖值</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Image quality</source>
-        <translation type="unfinished"></translation>
+        <translation>图像质量</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Bitrate</source>
-        <translation type="unfinished"></translation>
+        <translation>比特率</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Destination</source>
-        <translation type="unfinished"></translation>
+        <translation>目的地</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Advanced</source>
-        <translation type="unfinished"></translation>
+        <translation>高级</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Export</source>
-        <translation type="unfinished">导出</translation>
+        <translation>导出</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Cancel</source>
-        <translation type="unfinished">取消</translation>
+        <translation>取消</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Export with transparency</source>
-        <translation type="unfinished">透明导出</translation>
+        <translation>透明导出</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Loop animation</source>
-        <translation type="unfinished">循环动画</translation>
+        <translation>循环动画</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Export with audio</source>
-        <translation type="unfinished">带音频导出</translation>
+        <translation>带音频导出</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Custom palette</source>
-        <translation type="unfinished">自定义色板</translation>
+        <translation>自定义色板</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Keep aspect ratio</source>
-        <translation type="unfinished">保持长宽比</translation>
+        <translation>保持长宽比</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Insert range</source>
-        <translation type="unfinished">插入区间</translation>
+        <translation>插入区间</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Remove range</source>
-        <translation type="unfinished">移除范围</translation>
+        <translation>移除范围</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Set width to native</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复原始宽度</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Set height to native</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复原始高度</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Set frame rate to native</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复原始帧率</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Image quality to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>图像质量设为自动</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Quality override to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>质量覆盖值设为自动</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Bitrate to auto</source>
-        <translation type="unfinished"></translation>
+        <translation>比特率设为自动</translation>
     </message>
 </context>
 <context>
@@ -1613,7 +1613,7 @@
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1294"/>
         <source>needs %1</source>
-        <translation type="unfinished"></translation>
+        <translation>需要 %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1362"/>
@@ -1624,53 +1624,54 @@
         <location filename="../../src/gui/MainWindow.cpp" line="1580"/>
         <location filename="../../src/gui/MainWindow.cpp" line="1611"/>
         <source>Export Error</source>
-        <translation type="unfinished">导出错误</translation>
+        <translation>导出错误</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1363"/>
         <source>Unknown export destination: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>未知的导出目的地：%1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1425"/>
         <source>File exists</source>
-        <translation type="unfinished"></translation>
+        <translation>文件已存在</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1426"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
-        <translation type="unfinished"></translation>
+        <translation>文件“%1”已存在。要覆盖吗？</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1473"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1限制了文件大小，这意味着需要多次编码，而这需要把全部%2帧都放在内存中（约%3 MB）。请减少导出帧数，或选择没有体积限制的目的地。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
-        <translation type="unfinished"></translation>
+        <translation>正在适配%1的%2 KB上限...</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
         <source>Export Canceled</source>
-        <translation type="unfinished"></translation>
+        <translation>导出已取消</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1502"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
-        <translation type="unfinished"></translation>
+        <translation>在适配%1的体积上限时导出被中止。已写入的文件是最后一次尝试的结果，可能超出该上限。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1511"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1把文件限制在%2 KB以内，而即使最小的设置也放不进（%3 KB）。
+%4</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1519"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
-        <translation type="unfinished"></translation>
+        <translation>经过%2次尝试后适配到%1字节（%3x%4）。</translation>
     </message>
 </context>
 <context>
@@ -1709,12 +1710,12 @@
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="354"/>
         <source>Export</source>
-        <translation type="unfinished">导出</translation>
+        <translation>导出</translation>
     </message>
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="355"/>
         <source>Mix this track into exported files. Untick it for a track you only need as timing reference (a voice pass, a temp music bed): it still plays while you animate, and it stays out of the file.</source>
-        <translation type="unfinished"></translation>
+        <translation>将此音轨混入导出的文件。如果某条音轨只作为对时参考（配音草稿、临时配乐），可以取消勾选：它在制作动画时仍会播放，但不会进入文件。</translation>
     </message>
     <message>
         <location filename="../../src/gui/AudioPlaybackWidget.cpp" line="361"/>
@@ -2006,52 +2007,52 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1421"/>
         <source>Format:</source>
-        <translation type="unfinished"></translation>
+        <translation>格式：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1422"/>
         <source>Codec:</source>
-        <translation type="unfinished"></translation>
+        <translation>编码器：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Destination:</source>
-        <translation type="unfinished"></translation>
+        <translation>目的地：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Quality:</source>
-        <translation type="unfinished"></translation>
+        <translation>质量：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>Smaller file</source>
-        <translation type="unfinished"></translation>
+        <translation>体积更小</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Balanced</source>
-        <translation type="unfinished"></translation>
+        <translation>均衡</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Best quality</source>
-        <translation type="unfinished"></translation>
+        <translation>最佳质量</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Lossless</source>
-        <translation type="unfinished">无损的</translation>
+        <translation>无损</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>How to encode</source>
-        <translation type="unfinished"></translation>
+        <translation>编码方式</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1440"/>
         <source>What to export</source>
-        <translation type="unfinished"></translation>
+        <translation>导出内容</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1443"/>
@@ -2079,22 +2080,22 @@
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Frame range:</source>
-        <translation type="unfinished"></translation>
+        <translation>帧范围：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1453"/>
         <source>Advanced</source>
-        <translation type="unfinished"></translation>
+        <translation>高级</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Quality override:</source>
-        <translation type="unfinished"></translation>
+        <translation>质量覆盖值：</translation>
     </message>
     <message>
         <location filename="../../src/gui/exportdiag.h" line="1534"/>
         <source>&amp;Export</source>
-        <translation type="unfinished"></translation>
+        <translation>&amp;导出</translation>
     </message>
     <message>
         <source>Frames rendered: </source>
@@ -2215,32 +2216,32 @@
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="71"/>
         <source>Send in a chat</source>
-        <translation type="unfinished"></translation>
+        <translation>在聊天中发送</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="72"/>
         <source>Post to a platform</source>
-        <translation type="unfinished"></translation>
+        <translation>发布到平台</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="73"/>
         <source>Stickers and emoji</source>
-        <translation type="unfinished"></translation>
+        <translation>贴纸与表情</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="74"/>
         <source>Overlays and transparency</source>
-        <translation type="unfinished"></translation>
+        <translation>叠加层与透明通道</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="75"/>
         <source>A file</source>
-        <translation type="unfinished"></translation>
+        <translation>一个文件</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="76"/>
         <source>Archive</source>
-        <translation type="unfinished"></translation>
+        <translation>归档</translation>
     </message>
 </context>
 <context>
@@ -2279,37 +2280,37 @@
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="112"/>
         <source>Where are you posting this?</source>
-        <translation type="unfinished"></translation>
+        <translation>你要发布到哪里？</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="124"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="unfinished"></translation>
+        <translation>搜索：telegram、sticker、reels、illustration、微信...</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="129"/>
         <source>Search destinations</source>
-        <translation type="unfinished"></translation>
+        <translation>搜索目的地</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="226"/>
         <source>%1 destinations</source>
-        <translation type="unfinished"></translation>
+        <translation>%1个目的地</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="231"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="unfinished"></translation>
+        <translation>我的平台不在列表中（我自己选择格式）</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="233"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="unfinished"></translation>
+        <translation>上面每一项都是我们了解其规则的目的地。这一项让你自行指定格式和编码器。</translation>
     </message>
     <message>
         <location filename="../../src/gui/DestinationPicker.cpp" line="238"/>
         <source>Use this destination</source>
-        <translation type="unfinished"></translation>
+        <translation>使用此目的地</translation>
     </message>
 </context>
 <context>
@@ -3128,17 +3129,17 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="195"/>
         <source>Quickly export as...</source>
-        <translation type="unfinished"></translation>
+        <translation>快速导出为...</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
         <source>Export again</source>
-        <translation type="unfinished"></translation>
+        <translation>再次导出</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="310"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
-        <translation type="unfinished"></translation>
+        <translation>&lt;br /&gt;&lt;br /&gt;视频/音频编码使用 FFmpeg 库（https://ffmpeg.org），这些库按 GNU Lesser GPL v2.1+（视构建方式也可能为 GPL）授权。我们按照该许可的要求提供其对应源代码。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
@@ -3198,12 +3199,12 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="494"/>
         <source>libav licence: </source>
-        <translation type="unfinished"></translation>
+        <translation>libav 许可证： </translation>
     </message>
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
         <source>libav configuration: </source>
-        <translation type="unfinished"></translation>
+        <translation>libav 配置： </translation>
     </message>
     <message>
         <source>FFmpeg Reach Type: </source>
@@ -3309,62 +3310,62 @@ If we forgot to include you please let us know or open a PR!</source>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1715"/>
         <source>Exported %1 (%2 KB)</source>
-        <translation type="unfinished"></translation>
+        <translation>已导出 %1（%2 KB）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1721"/>
         <source> (%1 of %2 KB allowed for %3)</source>
-        <translation type="unfinished"></translation>
+        <translation> （%1，%3 的上限为 %2 KB）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1726"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
-        <translation type="unfinished"></translation>
+        <translation>；已超出上限，将被拒收</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
         <source>All files (*)</source>
-        <translation type="unfinished"></translation>
+        <translation>所有文件 (*)</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1766"/>
         <source>%1 files (*.%2)</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 文件 (*.%2)</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="unfinished"></translation>
+        <translation>我的平台不在列表中（我自己选择格式）</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1984"/>
         <source>%1 of %2 frames at %3 x %4</source>
-        <translation type="unfinished"></translation>
+        <translation>%1，共%2帧，%3 x %4</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1990"/>
         <source>Frame rate: %1 fps</source>
-        <translation type="unfinished"></translation>
+        <translation>帧率：%1 fps</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1996"/>
         <source>%1 x %2, %3 fps</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 x %2，%3 fps</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2001"/>
         <source>Codec: %1 in %2</source>
-        <translation type="unfinished"></translation>
+        <translation>编码器：%2 中的 %1</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2010"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1无法携带透明通道，因此本次导出的画面将不透明。</translation>
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="2016"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
-        <translation type="unfinished"></translation>
+        <translation>GIF 会永远循环，所以“循环动画”复选框被固定为勾选状态。</translation>
     </message>
     <message>
         <source>FFmpeg was not found.</source>

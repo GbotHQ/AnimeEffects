@@ -27,11 +27,19 @@ export RECORDED_AGAINST=2
 # and the form that follows is the one whose inputs are remembered - so the
 # destination has to be stated, and stating it through the settings is how the
 # application itself records it (Qt's INI format keeps root keys in [General]).
+#
+# WHICH destination is part of the measurement, not a detail. It is the one whose
+# size rule is FREE, so the size this probe puts in the boxes is the size the plan
+# keeps and the size that comes back. Under a destination that only BOUNDS the size
+# (Discord 1280x720, and every other Max row) the plan re-fits the art's aspect inside
+# the box the user gave - a 160x256 request comes back as 156x256 for this project -
+# and the form would be stating the plan's fit rather than the remembered input. What
+# is being tested here is the remembering, so the size has to be the user's.
 CFG=$(mktemp -d)
 OUT=$(mktemp -d)
 export XDG_CONFIG_HOME="$CFG"
 mkdir -p "$CFG/AnimeEffectsProject"
-printf '[General]\nexport_destination=chat.discord.file\nexport_quality_bucket=1\n' \
+printf '[General]\nexport_destination=discord.animation\nexport_quality_bucket=1\n' \
     > "$CFG/AnimeEffectsProject/AnimeEffects.conf"
 export OUT
 

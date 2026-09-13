@@ -125,17 +125,28 @@ PY
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
 
-  # The completion signal is what the APP says. A file on disk is not a finished
-  # export: the muxer writes its header the moment the export opens, so a 48-byte file
-  # sits there long before the export returns.
-  wait_for() { # wait_for <name the status bar should name> <output file>
-    local status=""
+  # WHAT THE EXPORT SAID IS NOT ADDRESSABLE BY NAME. The obvious completion signal is
+  # the status bar message ("Exported repeat1.mp4 (2 KB) ..."), and it cannot be had:
+  # QStatusBar PAINTS its temporary message rather than putting a widget there, so the
+  # accessibility tree carries a nameless "status bar" node and no label with the text
+  # (measured: twelve polls over two minutes found nothing while the message was on
+  # screen, and a dump of the live application names no node with the file in it). What
+  # is waited for instead is the FILE, until its size stops moving - the muxer writes
+  # its header the moment the export opens, so a file that exists is not a finished
+  # export. What the status bar held is recorded beside this as evidence, and the note
+  # printed below the assertions says whether the tree could see it at all.
+  wait_file() { # wait_file <path>
+    local size="" prev=""
     local i
-    for i in $(seq 1 12); do
-      status=$(ae label "Exported $1" 2>/dev/null)
-      [ -n "$status" ] && break
+    for i in $(seq 1 90); do
+      if [ -s "$1" ]; then
+        size=$(stat -c %s "$1" 2>/dev/null)
+        if [ -n "$prev" ] && [ "$size" = "$prev" ]; then return 0; fi
+        prev=$size
+      fi
+      sleep 2
     done
-    printf "%s\n" "$status" > "$2"
+    return 1
   }
 
   # 1. The first export, through the flow as it is now: WHERE first, then the form.
@@ -166,8 +177,11 @@ PY
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "repeat1.mp4"; sleep 0.6
   xdotool key Return
-  wait_for "repeat1.mp4" /tmp/re_status1.txt
-  sleep 1
+  wait_file "$OUT/repeat1.mp4"
+  # What the status bar holds, recorded rather than asserted (see wait_file above).
+  ae_report /tmp/re_status.txt "Exported repeat1.mp4" "File"
+  # The first file as it stands, so the repeat can be held to leaving it alone.
+  stat -c %s "$OUT/repeat1.mp4" > /tmp/re_size1.txt 2>/dev/null
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/re_02_first_done.png
 
@@ -185,32 +199,41 @@ PY
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "repeat2.mp4"; sleep 0.6
   xdotool key Return
-  wait_for "repeat2.mp4" /tmp/re_status2.txt
+  wait_file "$OUT/repeat2.mp4"
   sleep 1
+  # A failed export raises a message box titled "Export Error": the one thing the repeat
+  # must not do quietly instead of writing the file.
+  ae_report /tmp/re_after.txt "Export Error" "File"
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/re_04_again_done.png
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
 
-# The first export has to have SUCCEEDED - that is what enables Export again, and the
-# application names the file it wrote when the export returns.
-if grep -q "Exported repeat1.mp4" /tmp/re_status1.txt; then
-    check 0 "the first export reported the file it wrote ($(head -c 80 /tmp/re_status1.txt))"
-else
-    check 1 "the first export reported the file it wrote (status bar said: $(tr -d '\n' < /tmp/re_status1.txt))"
-fi
 # THE POINT OF THE PROBE: the repeat did not re-walk the destination flow.
 assert_absent /tmp/re_repeat.txt "Search destinations" "Export again asks for no destination: the picker is not up"
 assert_absent /tmp/re_repeat.txt "Use this destination" "not even its answer button, so the picker was not required"
-# ...and it still reached the export path, which is what it says afterwards. A run that
-# quietly did nothing would leave the status bar empty and no file on disk.
-if grep -q "Exported repeat2.mp4" /tmp/re_status2.txt; then
-    check 0 "and the repeat reported the file it wrote ($(head -c 80 /tmp/re_status2.txt))"
+# ...and both runs reached the export path, which is what the files say. The first one
+# has to have been written for "Export again" to be enabled at all (it stays disabled
+# until an export succeeds), and the second could not exist otherwise.
+assert_exists "$OUT/repeat1.mp4" "the first export wrote the file it was named"
+assert_exists "$OUT/repeat2.mp4" "and the repeat wrote a second file, so it reached the export path"
+# The repeat repeats the SETTINGS, and it must not do it by overwriting the first
+# result: the earlier version of this repeated the output path as well and defended
+# itself with an overwrite confirmer on the same name, so answering yes destroyed the
+# previous export with no way back.
+first=$(stat -c %s "$OUT/repeat1.mp4" 2>/dev/null || echo 0)
+at_first=$(cat /tmp/re_size1.txt 2>/dev/null || echo 0)
+if [ "$first" -gt 0 ] && [ "$first" = "$at_first" ]; then
+    check 0 "the repeat left the first export alone ($first bytes, unchanged)"
 else
-    check 1 "and the repeat reported the file it wrote (status bar said: $(tr -d '\n' < /tmp/re_status2.txt))"
+    check 1 "the repeat left the first export alone (was $at_first bytes, is $first)"
 fi
-assert_exists "$OUT/repeat2.mp4" "the repeat wrote the file it was asked for"
-assert_exists "$OUT/repeat1.mp4" "and the first export is still there beside it"
+assert_absent /tmp/re_after.txt "Export Error" "and no export error was raised"
+# The status bar message is recorded, and deliberately NOT asserted: see wait_file in
+# the body - QStatusBar paints it, so there is no node to find it by. Asserting it would
+# report a limit of the tooling as a fault of the application, which is the one thing
+# the stale marker in _lib.sh exists to prevent.
+echo "NOTE  the status bar is not addressable by name; ae_ui.py reported: $(tr '\n' ' ' < /tmp/re_status.txt)"
 assert_rendered "$SHOTS/re_01_form.png" "the form on the first export"
 assert_rendered "$SHOTS/re_03_name_prompt.png" "the name prompt Export again opened instead of a destination picker"
 assert_rendered "$SHOTS/re_04_again_done.png" "the application after the repeat"

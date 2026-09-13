@@ -153,6 +153,112 @@ assert_rendered "$SHOTS/still_02_done.png" "the app after the still export"
 # of numbered stills is authored on the upload page, and the destination says so
 # (fps="ignored"), so the form must not ask for one.
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
+  # NUMBER BOXES, BY NAME, THROUGH THE VALUE INTERFACE - the same helper probe_export.sh
+  # carries. ae_ui.py reads a line edit and clicks what it finds, but this Qt build
+  # answers the EditableText interface with an EMPTY string for a QSpinBox, so `ae value`
+  # prints nothing for these boxes and `ae set` writes text no value is taken from. The
+  # node wanted is the first that answers to the name AND HOLDS A NUMBER: the label beside
+  # the box reads "- First frame -" (which contains the name of the box) and comes first
+  # in the tree, so a plain by-name lookup lands on the label. Setting goes through the
+  # Value interface, which Qt wires to QSpinBox::setValue.
+  #
+  #   spin set <name> <value>...   one "name=value" line per box that took one
+  #   spin read <file> <name>...   one "name=value" line per box ("absent" if no node)
+  spin() {
+    python3 - "$@" <<PY
+import os, sys, warnings
+warnings.filterwarnings("ignore")
+import gi
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi as A
+
+mode = sys.argv[1]
+want = os.environ.get("AE_UI_PID", "").strip()
+
+def walk(node, depth=0):
+    if depth > 16:
+        return
+    try:
+        count = node.get_child_count()
+    except Exception:
+        return
+    for i in range(count):
+        try:
+            child = node.get_child_at_index(i)
+        except Exception:
+            continue
+        yield child
+        yield from walk(child, depth + 1)
+
+def root():
+    best = None
+    desktop = A.get_desktop(0)
+    for i in range(desktop.get_child_count()):
+        try:
+            app = desktop.get_child_at_index(i)
+            if "AnimeEffects" not in (app.get_name() or ""):
+                continue
+            if want and str(app.get_process_id()) != want:
+                continue
+            if best is None or app.get_child_count() > best.get_child_count():
+                best = app
+        except Exception:
+            continue
+    return best
+
+def number(node):
+    iface = node.get_value_iface()
+    if iface is None:
+        return None
+    try:
+        return iface.get_current_value()
+    except Exception:
+        return None
+
+def box(name):
+    app = root()
+    if app is None:
+        return None
+    for node in walk(app):
+        if number(node) is None:
+            continue
+        try:
+            shown = node.get_name() or ""
+            described = node.get_description() or ""
+        except Exception:
+            continue
+        if name == shown or name == described or name in shown:
+            return node
+    return None
+
+def show(v):
+    return str(int(v)) if v == int(v) else str(v)
+
+if mode == "read":
+    with open(sys.argv[2], "w") as out:
+        for name in sys.argv[3:]:
+            node = box(name)
+            out.write(name + "=" + ("absent" if node is None else show(number(node))) + "\n")
+else:
+    bad = 0
+    pairs = sys.argv[2:]
+    for i in range(0, len(pairs) - 1, 2):
+        name, value = pairs[i], pairs[i + 1]
+        node = box(name)
+        if node is None:
+            print("MISSING " + name)
+            bad += 1
+            continue
+        try:
+            node.get_value_iface().set_current_value(float(value))
+            print("set " + name + "=" + show(number(node)))
+        except Exception as exc:
+            print("FAILED " + name + ": " + str(exc))
+            bad += 1
+    sys.exit(1 if bad else 0)
+PY
+  }
+
   cd "'"$OUTDIR"'"
   '"$APP"' "'"$PROJ"'" >/tmp/probe_sequence.log 2>&1 &
   app=$!
@@ -169,18 +275,27 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   ae wait "Advanced" >/dev/null 2>&1 || true
   sleep 1.5
   # Shrink the frame so the stills render quickly: a sequence is a `free` size
-  # destination, so its Width and Height belong to the user.
-  ae set "Width" "160" >/dev/null; sleep 0.8
-  ae set "Height" "256" >/dev/null; sleep 0.8
+  # destination, so its Width and Height belong to the user. The aspect lock comes off
+  # first, or the two boxes drive each other and the width this probe sets is overwritten
+  # by the height it sets next.
+  ae_press "Keep aspect ratio" "the size boxes are unlocked from each other"
+  sleep 0.8
   # ...and a SHORT range, by name, with BOTH ends given so the count of files does not
   # depend on where the range of the project starts. The format caps the range at 150
-  # frames and this probe is not here to render a hundred and fifty: what is asserted
-  # is that the range the form carries is the range that reaches the disk, which 20
-  # stills show as well as 150.
-  ae set "First frame" "1" >/dev/null; sleep 0.6
-  ae set "Last frame" "'"$SEQ_FRAMES"'" >/dev/null; sleep 0.6
+  # frames and this probe is not here to render a hundred and fifty: what is asserted is
+  # that the range the form carries is the range that reaches the disk, which 20 stills
+  # show as well as 150.
+  if spin set "Width" "160" "Height" "256" "First frame" "1" "Last frame" "'"$SEQ_FRAMES"'"; then
+    check 0 "the sequence inputs take the values this probe sets by name"
+  else
+    check 1 "the sequence inputs take the values this probe sets by name"
+  fi
+  sleep 0.8
   ae_report /tmp/seq_form.txt "Destination" "Image quality" "Width" "Height" "First frame" \
                                "Last frame" "Frame rate" "Format" "Quality"
+  # What the form HOLDS, read back through the same interface, so the file count below is
+  # checked against the form rather than against this probe.
+  spin read /tmp/seq_range.txt "First frame" "Last frame" "Width" "Height"
   ae text > /tmp/seq_facts.txt 2>/dev/null
   import -window root '"$SHOTS"'/seq_01_form.png
   ae_press "Export" "the sequence form is answered"
@@ -190,7 +305,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool key Return
   # Wait for the RANGE to have reached the disk: the last frame is the file that proves
   # it, so waiting for the first file alone would report a partial sequence as done.
-  for i in $(seq 1 240); do [ -s "'"$OUTDIR/$SEQBASE"'$(printf %04d '"$SEQ_FRAMES"').png" ] && break; sleep 0.5; done
+  for i in $(seq 1 240); do
+    n=$(ls "'"$OUTDIR/$SEQBASE"'"[0-9]*.png 2>/dev/null | wc -l)
+    [ "$n" -ge "'"$SEQ_FRAMES"'" ] && break
+    sleep 0.5
+  done
   # ...and for the app to say it finished, which is the status bar naming the export.
   status=""
   for i in $(seq 1 30); do
@@ -214,12 +333,20 @@ else
     check 1 "the facts state the artifact as numbered files (got: $(tr '\n' ' ' < /tmp/seq_facts.txt 2>/dev/null | head -c 200))"
 fi
 
-# One file per frame, numbered from 0001, at the name the user typed.
+# One file per frame, numbered from 0001, at the name the user typed. The COUNT is
+# checked against the range the FORM held, read back above: a box clamps to whatever the
+# range of the project allows, and the disk has to match the form, not this probe.
+seqfirst=$(sed -n 's/^First frame=//p' /tmp/seq_range.txt 2>/dev/null | head -1)
+seqlast=$(sed -n 's/^Last frame=//p' /tmp/seq_range.txt 2>/dev/null | head -1)
+seqwant=$(( ${seqlast:-0} - ${seqfirst:-0} + 1 ))
+[ -n "$seqfirst" ] && [ -n "$seqlast" ] && [ "$seqfirst" != "absent" ] && [ "$seqlast" != "absent" ] \
+    && [ "$seqwant" -ge 2 ] && [ "$seqwant" -le 60 ] 2>/dev/null
+check $? "the sequence form holds the short range this probe set by name ($seqfirst..$seqlast)"
 count=$(ls "$OUTDIR/$SEQBASE"[0-9]*.png 2>/dev/null | wc -l)
-[ "$count" = "$SEQ_FRAMES" ]
-check $? "the sequence wrote one file per frame of the range it was given ($count of $SEQ_FRAMES)"
+[ "$count" = "$seqwant" ]
+check $? "the sequence wrote one file per frame of the range it was given ($count of $seqwant)"
 assert_exists "$OUTDIR/${SEQBASE}0001.png" "the first frame is numbered from 0001"
-assert_exists "$OUTDIR/${SEQBASE}$(printf %04d "$SEQ_FRAMES").png" "the last frame of the range is there"
+assert_exists "$OUTDIR/${SEQBASE}$(printf %04d "$seqwant").png" "the last frame of the range is there"
 total=$(du -cb "$OUTDIR/$SEQBASE"[0-9]*.png 2>/dev/null | tail -1 | cut -f1)
 [ "${total:-0}" -le 31457280 ] && [ "${total:-0}" -gt 0 ]
 check $? "the whole set is inside ugoira's 30 MB cap (${total:-0} bytes)"

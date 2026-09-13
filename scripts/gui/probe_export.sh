@@ -31,19 +31,129 @@ export RECORDED_AGAINST=2
 OUTDIR="$AE_PROBE_DIR"
 OUTNAME="probe_export.mp4"
 OUT="$OUTDIR/$OUTNAME"
-# The frame range this probe sets BY NAME. What the file has to match is the range the
-# FORM ends up holding, which is read back inside the body and asserted below.
+# The frame range this probe sets BY NAME. The project is 601 frames and a probe has
+# minutes; what the file must match is the range the FORM ends up holding, which is read
+# back inside the body and asserted below rather than assumed from these two numbers.
 FIRST_FRAME=1
 LAST_FRAME=24
 rm -f "$OUT"
-rm -f /tmp/exp_form.txt /tmp/exp_facts.txt /tmp/exp_fps.txt /tmp/exp_range.txt /tmp/exp_status.txt
+rm -f /tmp/exp_form.txt /tmp/exp_facts.txt /tmp/exp_range.txt /tmp/exp_status.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
+  # NUMBER BOXES, BY NAME, THROUGH THE VALUE INTERFACE.
+  #
+  # ae_ui.py can read a line edit and click what it finds, but this Qt build answers the
+  # EditableText interface with an EMPTY string for a QSpinBox: `ae value` prints nothing
+  # for every number box on this form, and `ae set` writes text that no value is ever
+  # taken from - which is how an earlier draft of this probe set a range that never
+  # arrived, and then spent minutes encoding all 601 frames of the project. What is
+  # needed is the first node that answers to the name AND HOLDS A NUMBER, which is always
+  # the box and never the label beside it: that label reads "- First frame -", which
+  # contains the name of the box, and it comes first in the tree. Setting goes through
+  # the Value interface, which Qt wires to QSpinBox::setValue.
+  #
+  #   spin set <name> <value>...   one "name=value" line per box that took one
+  #   spin read <file> <name>...   one "name=value" line per box ("absent" if no node)
+  spin() {
+    python3 - "$@" <<PY
+import os, sys, warnings
+warnings.filterwarnings("ignore")
+import gi
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi as A
+
+mode = sys.argv[1]
+want = os.environ.get("AE_UI_PID", "").strip()
+
+def walk(node, depth=0):
+    if depth > 16:
+        return
+    try:
+        count = node.get_child_count()
+    except Exception:
+        return
+    for i in range(count):
+        try:
+            child = node.get_child_at_index(i)
+        except Exception:
+            continue
+        yield child
+        yield from walk(child, depth + 1)
+
+def root():
+    best = None
+    desktop = A.get_desktop(0)
+    for i in range(desktop.get_child_count()):
+        try:
+            app = desktop.get_child_at_index(i)
+            if "AnimeEffects" not in (app.get_name() or ""):
+                continue
+            if want and str(app.get_process_id()) != want:
+                continue
+            if best is None or app.get_child_count() > best.get_child_count():
+                best = app
+        except Exception:
+            continue
+    return best
+
+def number(node):
+    iface = node.get_value_iface()
+    if iface is None:
+        return None
+    try:
+        return iface.get_current_value()
+    except Exception:
+        return None
+
+def box(name):
+    app = root()
+    if app is None:
+        return None
+    for node in walk(app):
+        if number(node) is None:
+            continue
+        try:
+            shown = node.get_name() or ""
+            described = node.get_description() or ""
+        except Exception:
+            continue
+        if name == shown or name == described or name in shown:
+            return node
+    return None
+
+def show(v):
+    return str(int(v)) if v == int(v) else str(v)
+
+if mode == "read":
+    with open(sys.argv[2], "w") as out:
+        for name in sys.argv[3:]:
+            node = box(name)
+            out.write(name + "=" + ("absent" if node is None else show(number(node))) + "\n")
+else:
+    bad = 0
+    pairs = sys.argv[2:]
+    for i in range(0, len(pairs) - 1, 2):
+        name, value = pairs[i], pairs[i + 1]
+        node = box(name)
+        if node is None:
+            print("MISSING " + name)
+            bad += 1
+            continue
+        try:
+            node.get_value_iface().set_current_value(float(value))
+            print("set " + name + "=" + show(number(node)))
+        except Exception as exc:
+            print("FAILED " + name + ": " + str(exc))
+            bad += 1
+    sys.exit(1 if bad else 0)
+PY
+  }
+
   # cd as its OWN command, not as `cd X && App &`. A background job whose body is a
   # compound command is a SUBSHELL, so $! names the subshell rather than the
   # application: AE_UI_PID then matches no accessible root, and every by-name helper
-  # answers "no widget named ..." while a window is plainly on screen. That is what
-  # the version this replaces did.
+  # answers "no widget named ..." while a window is plainly on screen. That is what the
+  # version this replaces did.
   cd "'"$OUTDIR"'"
   '"$APP"' "'"$PROJ"'" >/tmp/probe_export.log 2>&1 &
   app=$!
@@ -52,69 +162,62 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   W=$(xdotool search --name "AnimeEffects" | tail -1)
   xdotool windowactivate --sync $W 2>/dev/null
 
-  # 1. Export asks WHERE first. The menu and the entry are reached by name: nothing
-  #    here depends on where a menu happens to be drawn.
+  # 1. Export asks WHERE first. The menu and the entry are reached by name: nothing here
+  #    depends on where a menu happens to be drawn.
   ae_press "File" "the File menu opens"
   ae_press "Export project as" "the export entry is there"
   require_export_flow
-  # The ID, not the label: "A video for a chat app" is one of several rows whose
-  # search haystack contains "video", and a query that matches several rows answers
-  # with whichever the tree lists first. The id is unique, so the destination this
-  # probe exports with is the one it names.
+  # The ID, not the label: "A video for a chat app" is one of several rows whose search
+  # haystack contains "video", and a query that matches several rows answers with
+  # whichever the tree lists first. The id is unique, so the destination this probe
+  # exports with is the one it names.
   ae set "Search destinations" "chat.generic.video" >/dev/null
   sleep 1.2
   ae_press "Use this destination" "the destination is accepted"
-  # Wait for the plan to have been applied before snapshotting the form: a report
-  # answers as soon as ANY name it was asked about is on screen, so it can describe
-  # the form BEFORE the destination has filled it in.
+  # Wait for the plan to have been applied before touching the form: a report answers as
+  # soon as ANY name it was asked about is on screen, so it can describe the form BEFORE
+  # the destination has filled it in.
   ae wait "Advanced" >/dev/null 2>&1 || true
   sleep 1.5
 
-  # 2. A short range, set BY NAME: both ends of it, so the count the file should hold
-  #    is the count this probe asked for. The project is 601 frames and a probe has
-  #    minutes; that the range on the form is the range that reaches the file is shown
-  #    by one second of animation as well as by twenty-five. (A destination that caps
-  #    the DURATION decides the range itself, which is why probe_capped does not set
-  #    it.)
-  ae set "First frame" "'"$FIRST_FRAME"'" >/dev/null; sleep 0.6
-  ae set "Last frame" "'"$LAST_FRAME"'" >/dev/null; sleep 0.6
-  # Read the range BACK from the form. What the file has to match is the range the form
-  # holds, not the one this probe typed: a spin box clamps to whatever the range of the
-  # project allows, and a probe that assumed its own number stuck would report the
-  # application as wrong for clamping it.
-  printf "%s %s\n" \
-      "$(ae value "First frame" 2>/dev/null | cut -d. -f1 | tr -dc 0-9)" \
-      "$(ae value "Last frame" 2>/dev/null | cut -d. -f1 | tr -dc 0-9)" \
-      > /tmp/exp_range.txt
+  # 2. A short range, set BY NAME. A destination that caps the DURATION decides the range
+  #    itself, which is why probe_capped sets none; this destination has no say in it, so
+  #    the range is the input that proves the form this probe drove is the export that
+  #    ran.
+  if spin set "First frame" "'"$FIRST_FRAME"'" "Last frame" "'"$LAST_FRAME"'"; then
+    check 0 "the frame range takes the values this probe sets by name"
+  else
+    check 1 "the frame range takes the values this probe sets by name"
+  fi
+  sleep 0.8
   ae_report /tmp/exp_form.txt "Destination" "Width" "Height" "Frame rate" "First frame" "Last frame" "Image quality"
-  # The frame rate the form will encode at, so the length of the file is judged
-  # against the numbers the application reports rather than against what this probe
-  # assumes they are.
-  ae value "Frame rate" > /tmp/exp_fps.txt 2>/dev/null
-  # What the form says it is about to make. The destination DICTATES the format, so
-  # the form states it as a fact instead of offering a Format control, and the facts
-  # are the data the destination declares, arriving through the plan.
+  # What the form HOLDS, read back through the same interface: a box clamps to whatever
+  # the range of the project allows, and the file has to match the form, not this probe.
+  spin read /tmp/exp_range.txt "First frame" "Last frame" "Frame rate"
+  # What the form says it is about to make. The destination DICTATES the format, so the
+  # form states it as a fact instead of offering a Format control, and the facts are the
+  # data the destination declares, arriving through the plan.
   ae text > /tmp/exp_facts.txt 2>/dev/null
   import -window root '"$SHOTS"'/exp_01_form.png
 
-  # 3. The form is answered, and the platform file dialog is TYPED INTO. That dialog
-  #    is the one step that cannot be driven by name: it is a different toolkit in the
-  #    same process, so its widgets are not in the accessibility tree of the
-  #    application (ae_ui.py sees the main window tree). It opens with the name field
-  #    focused and the suggested name selected, and a relative name resolves against
-  #    the working directory of the application - which is why the app was launched
-  #    from the output directory above.
+  # 3. The form is answered, and the platform file dialog is TYPED INTO. That dialog is
+  #    the one step that cannot be driven by name: it is a different toolkit in the same
+  #    process, so its widgets are not in the accessibility tree of the application
+  #    (ae_ui.py sees the main window tree). It opens with the name field focused and the
+  #    suggested name selected, and a relative name resolves against the working
+  #    directory of the application - which is why the app was launched from the output
+  #    directory above.
   ae_press "Export" "the export form is answered"
   sleep 4
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "'"$OUTNAME"'"; sleep 0.6
   xdotool key Return
 
-  # 4. The completion signal is what the APP says, not what is on disk: the muxer
-  #    writes its header the moment the export opens, so a file that exists (48 bytes)
-  #    is not a finished export, and that is exactly the file this probe used to
-  #    accept. The status bar names the file it wrote when the export RETURNS; ae label
-  #    finds it by name and prints the whole message.
+  # 4. The completion signal is what the APP says, not what is on disk: the muxer writes
+  #    its header the moment the export opens, so a file that exists (48 bytes) is not a
+  #    finished export, and that is exactly the file this probe used to accept. The
+  #    status bar names the file it wrote when the export RETURNS; ae label finds it by
+  #    name and prints the whole message.
   status=""
   for i in $(seq 1 60); do
     status=$(ae label "Exported '"$OUTNAME"'" 2>/dev/null)
@@ -127,19 +230,19 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
 
-# The form the destination dictated: the destination itself, and the frames and rate
-# it will be made of.
+# The form the destination dictated: the destination itself, and the frames and rate it
+# will be made of.
 assert_showing /tmp/exp_form.txt "Destination" "the export form states the destination it was given"
 assert_showing /tmp/exp_form.txt "Frame rate" "a video destination keeps the frame rate editable"
 assert_showing /tmp/exp_form.txt "First frame" "and the frame range it will encode"
 assert_showing /tmp/exp_form.txt "Last frame" "both ends of it"
 # The other half of what a form asks: an image writer's quality control cannot affect a
-# video, so it is hidden rather than greyed. (probe_still asserts the same control the
-# other way round, on the artifact that does go through QImage::save().)
-assert_hidden /tmp/exp_form.txt "Image quality" "and does not offer the image writer's quality control to a video"
-# The chosen destination's own decisions, in the words on screen. "20 MB" is the cap
-# this row declares in the destination table, so this checks that the destination's
-# data reached the form rather than that some particular wording is used.
+# video, so it is hidden rather than greyed. (probe_still asks the same question the other
+# way round, on the artifact that does go through QImage::save().)
+assert_hidden /tmp/exp_form.txt "Image quality" "and does not offer an image quality control to a video"
+# The chosen destination's own decisions, in the words on screen. "20 MB" is the cap this
+# row declares in the destination table, so this checks that the destination's data
+# reached the form rather than that some particular wording is used.
 for want in "libx264 in mp4" "20 MB"; do
     if grep -q "$want" /tmp/exp_facts.txt; then
         check 0 "the facts state what this destination decides ($want)"
@@ -148,28 +251,21 @@ for want in "libx264 in mp4" "20 MB"; do
     fi
 done
 
-# THE FILE. Non-empty is the floor; the frame range the form held is the assertion that
-# the form this probe drove is the export that ran.
+# THE FILE. Non-empty is the floor; the range the FORM held is the assertion that the form
+# this probe drove is the export that ran.
 assert_exists "$OUT" "the export wrote the file the user named"
-# The range the FORM held, as opposed to the one this probe typed into it: both bounds
-# are read back above, and what the file must match is what the form said.
-read -r first last < /tmp/exp_range.txt 2>/dev/null
-[ -n "$first" ] && [ -n "$last" ] && [ "$first" -ge 0 ] 2>/dev/null && [ "$last" -gt "$first" ] 2>/dev/null
-check $? "the form stated the frame range it would encode (${first:-none}..${last:-none})"
+first=$(sed -n 's/^First frame=//p' /tmp/exp_range.txt 2>/dev/null | head -1)
+last=$(sed -n 's/^Last frame=//p' /tmp/exp_range.txt 2>/dev/null | head -1)
+fps=$(sed -n 's/^Frame rate=//p' /tmp/exp_range.txt 2>/dev/null | head -1)
+[ -n "$first" ] && [ -n "$last" ] && [ "$first" != "absent" ] && [ "$last" != "absent" ] \
+    && [ "$first" -ge 0 ] 2>/dev/null && [ "$last" -gt "$first" ] 2>/dev/null
+check $? "the form holds a readable frame range ($first..$last)"
 want=$(( ${last:-0} - ${first:-0} + 1 ))
-# ...and that range is the SHORT one this probe set by name rather than the whole
-# project: without this, a probe whose range input never arrived would still pass on a
-# 601-frame export that took ten minutes to produce.
+# ...and that range is the SHORT one this probe set by name, not the whole project:
+# without this, a probe whose range input never arrived would still pass on a 601-frame
+# export that took ten minutes to produce.
 [ "$want" -ge 2 ] && [ "$want" -le 60 ]
-check $? "and the range set by name is the range on the form ($want frames, not the project's 601)"
-# The rate the form stated, so the length below is judged against the application's
-# own numbers. An unreadable value is a failure, not a skipped assertion. The value
-# interface reports a spin box as a floating-point number ("24.0"), so the integer
-# test below needs a truncated copy of it.
-fps=$(tr -dc '0-9.' < /tmp/exp_fps.txt 2>/dev/null)
-fps_int=${fps%%.*}
-[ -n "$fps_int" ] && [ "$fps_int" -gt 0 ] 2>/dev/null
-check $? "the form stated the frame rate it would encode at (got '${fps:-none}')"
+check $? "and it is the short range set by name rather than the 601 frames of the project ($want frames)"
 if [ -s "$OUT" ]; then
     frames=$(ffprobe -v error -select_streams v -show_entries stream=nb_frames -of csv=p=0 "$OUT" 2>/dev/null | head -1)
     [ -n "$frames" ] && [ "$frames" -gt 0 ] 2>/dev/null
@@ -177,27 +273,24 @@ if [ -s "$OUT" ]; then
     [ "${frames:-0}" = "$want" ]
     check $? "the frame range the form held is the range that was encoded ($want frames, got ${frames:-none})"
     duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT" 2>/dev/null | head -1)
-    ok=$(awk -v d="${duration:-0}" -v n="$want" -v f="${fps_int:-24}" \
-         'BEGIN { sec = n / f; print (sec > 0 && d > sec * 0.7 && d < sec * 1.3) ? 0 : 1 }')
-    check "$ok" "and the file lasts as long as those frames at that rate (${duration:-none} s for $want frames at ${fps_int:-?} fps)"
+    ok=$(awk -v d="${duration:-0}" -v n="$want" -v f="${fps:-24}" \
+         'BEGIN { sec = (f > 0) ? n / f : 0; print (sec > 0 && d > sec * 0.7 && d < sec * 1.3) ? 0 : 1 }')
+    check "$ok" "and the file lasts as long as those frames at the rate on the form (${duration:-none} s for $want frames at ${fps:-?} fps)"
     size=$(stat -c %s "$OUT")
     [ "$size" -gt 1000 ]
     check $? "and it is a real file rather than a muxer header ($size bytes)"
 fi
 
 # What the app said when it finished. The status bar names the file, its size, and the
-# directory it wrote to: a probe that exported into the checkout, or into a directory
-# of its own choosing, fails here as well as at the file assertion above.
+# directory it wrote to: a probe that exported into the checkout, or into a directory of
+# its own choosing, fails here as well as at the file assertion above.
 if grep -q "Exported $OUTNAME" /tmp/exp_status.txt; then
     check 0 "the status bar reports the export by name ($(tr -d '\n' < /tmp/exp_status.txt | head -c 120))"
 else
     check 1 "the status bar reports the export by name (got: $(tr -d '\n' < /tmp/exp_status.txt 2>/dev/null | head -c 120))"
 fi
-if grep -qF "$OUTDIR" /tmp/exp_status.txt; then
-    check 0 "and says it wrote into the throwaway directory, not the checkout"
-else
-    check 1 "and says it wrote into the throwaway directory, not the checkout (got: $(tr -d '\n' < /tmp/exp_status.txt 2>/dev/null | head -c 120))"
-fi
+grep -qF "$OUTDIR" /tmp/exp_status.txt
+check $? "and says it wrote into the throwaway directory, not the checkout"
 assert_rendered "$SHOTS/exp_01_form.png" "the export form carrying the chosen destination"
 assert_rendered "$SHOTS/exp_02_done.png" "the app after the export"
 summary probe_export
