@@ -87,6 +87,7 @@
 #include "gl/Framebuffer.h"
 #include "gl/Util.h"
 #include "ctrl/Exporter.h"
+#include "ctrl/Painter.h"
 #include "ctrl/ImageFileLoader.h"
 #include "ctrl/ProjectLoader.h"
 #include "gl/Global.h"
@@ -5826,6 +5827,356 @@ void suiteAnisotropy() {
     }
 }
 
+//-------------------------------------------------------------------------------------------------
+// M20: the overlay path (ctrl::Painter)
+//
+// The canvas is painted through GLCorePaintEngine, whose drawImage/drawPixmap upload the QImage or
+// QPixmap as a QOpenGLTexture with LinearMipMapLinear, over a chain Qt builds. TWO things have to
+// hold, and only the first of them was ever checked:
+//
+//   * the texture must hold PREMULTIPLIED data, or the chain averages whatever color sits under
+//     alpha 0 into the silhouette - the halo this whole probe is about - and
+//   * the composite must not apply that coverage a SECOND time. A premultiplied texture through a
+//     GL_SRC_ALPHA blend yields rgb*a*a + dst*(1-a) where it should yield rgb*a + dst*(1-a).
+//
+// The layer path gets the second half right by un-premultiplying in its shader (PREMULTIPLIED_INPUT)
+// exactly so that its straight-alpha blend is correct; the overlay drawer has no such branch, so what
+// this measures is the composite the canvas actually gets.
+//
+// The two failures are separated by two patterns, because no single one can: with the pigment black
+// the straight chain and the double-multiplied composite are numerically IDENTICAL (a black pigment
+// premultiplies to the same average the straight one computes), and with the premultiplied color 0
+// the composite bug is invisible. Each pattern below is a 2x2 checkerboard, so every level from 1
+// down holds the same uniform average and trilinear level mixing cannot pollute the reference.
+
+struct OverlayTarget {
+    QSize size;
+    QScopedPointer<gl::Texture> tex;
+    QScopedPointer<gl::Framebuffer> fbo;
+
+    void init(const QSize& aSize) {
+        size = aSize;
+        tex.reset(new gl::Texture());
+        tex->create(aSize);
+        tex->setFilter(GL_LINEAR, GL_LINEAR);
+        tex->setWrap(GL_CLAMP_TO_EDGE);
+        fbo.reset(new gl::Framebuffer());
+        fbo->setColorAttachment(0, tex->id());
+        XC_ASSERT(fbo->isComplete());
+    }
+};
+
+// Draws aSrc into aTarget through the engine the canvas uses, over an opaque backdrop.
+std::vector<uint8_t> paintOverlay(
+    OverlayTarget& aTarget, const QImage& aSrc, const QRectF& aDest, bool aAsPixmap, uint8_t aBackdrop,
+    float aScale = 1.0f
+) {
+    auto& ggl = gl::Global::functions();
+
+    ggl.glBindFramebuffer(GL_FRAMEBUFFER, aTarget.fbo->id());
+    gl::Util::setViewportAsActualPixels(aTarget.size);
+    gl::Util::clearColorBuffer(
+        aBackdrop / 255.0f, aBackdrop / 255.0f, aBackdrop / 255.0f, 1.0f
+    );
+    gl::Util::resetRenderState();
+
+    // The drawer records its vertex attributes with glVertexAttribPointer but never binds a vertex
+    // array object, which is legal only in a COMPATIBILITY context - and that is what the app gets
+    // (it asks for GL 4.0 without a profile). This probe asks for a core profile, where the same
+    // calls are invalid and the overlay silently draws nothing at all, so it binds a VAO of its
+    // own: with one bound the attribute setup lands somewhere valid, and the path under test is
+    // then exercised exactly as the canvas exercises it.
+    GLuint vao = 0;
+    ggl.glGenVertexArrays(1, &vao);
+    ggl.glBindVertexArray(vao);
+
+    // The device is read for metrics only (and for the ortho matrix PainterHandle builds from its
+    // size); the pixels land in the framebuffer bound above, as they do in the canvas widget.
+    QImage device(aTarget.size, QImage::Format_ARGB32_Premultiplied);
+    ctrl::PainterHandle handle;
+    QPainter* painter = handle.begin(device);
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+    // Scaling the painter rather than shrinking the destination rect is what keeps the texture at its
+    // own size: QPainter::drawImage with a destination smaller than the source hands the engine an
+    // image it has already scaled on the CPU (measured below), so no chain is sampled at all.
+    painter->scale(aScale, aScale);
+    // The drawer drops any non-pen draw while its brush is disabled, and a fresh QPainter has no
+    // brush, so an overlay drawn without one is silently discarded. The driver that paints the
+    // canvas sets both; white and no pen is what a fade-free overlay image is drawn with. Set AFTER
+    // the transform: a scaled draw resyncs the engine's state, and the brush that reaches the drawer
+    // is otherwise the default black - which draws the overlay black.
+    painter->setBrush(QColor(255, 255, 255, 255));
+    painter->setPen(Qt::NoPen);
+    const QRectF srcRect(0.0, 0.0, aSrc.width(), aSrc.height());
+    if (aAsPixmap) {
+        const QPixmap pixmap = QPixmap::fromImage(aSrc);
+        painter->drawPixmap(aDest, pixmap, srcRect);
+    } else {
+        painter->drawImage(aDest, aSrc, srcRect);
+    }
+    handle.end();
+
+    ggl.glBindVertexArray(0);
+    ggl.glDeleteVertexArrays(1, &vao);
+
+    std::vector<uint8_t> out((size_t)aTarget.size.width() * aTarget.size.height() * 4, 0);
+    ggl.glReadPixels(0, 0, aTarget.size.width(), aTarget.size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+    ggl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return out;
+}
+
+// The straight-alpha QImage the canvas would hand the engine (an ARGB32 image, not premultiplied:
+// the conversion inside the engine is one of the things under test).
+QImage straightQImage(const Img& aSrc) {
+    QImage img(aSrc.w, aSrc.h, QImage::Format_ARGB32);
+    for (int y = 0; y < aSrc.h; ++y) {
+        for (int x = 0; x < aSrc.w; ++x) {
+            const uint8_t* s = aSrc.at(x, y);
+            img.setPixel(x, y, qRgba(s[0], s[1], s[2], s[3]));
+        }
+    }
+    return img;
+}
+
+uint8_t overlayAt(const std::vector<uint8_t>& aPix, const QSize& aSize, int x, int y, int c) {
+    return aPix[((size_t)y * aSize.width() + x) * 4 + c];
+}
+
+// The painter's ortho matrix is top-down (Qt's convention) while glReadPixels counts rows from the
+// bottom, so a quad drawn at the TOP of the target is read back at the END of the buffer. Sampling the
+// wrong row is exactly how the first version of this suite read "the overlay drew nothing" while the
+// drawer was in fact drawing.
+uint8_t overlayAtTopDown(const std::vector<uint8_t>& aPix, const QSize& aSize, int x, int y, int c) {
+    return overlayAt(aPix, aSize, x, aSize.height() - 1 - y, c);
+}
+
+// The upload ctrl::Painter makes for an overlay: the app's own gl::Texture, given ALPHA-PREMULTIPLIED
+// bytes and asked for a chain. Mirrors uploadOverlay() in src/ctrl/Painter.cpp, which cannot be linked
+// from here (it is file-local there).
+gl::Texture* uploadOverlayTexture(const Img& aSrc) {
+    gl::Texture* tex = new gl::Texture();
+    tex->create(aSrc.size(), aSrc.d.data(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE, gl::Texture::GenerateMipmap);
+    tex->setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+    tex->setWrap(GL_CLAMP_TO_EDGE);
+    return tex;
+}
+
+// Draws a texture into aTarget through the SAME drawer the paint engine uses, at a rectangle aScale
+// times the texture's size, so the footprint and hence the mip level are known. aPremultiplied is the
+// flag the engine passes for its image/pixmap textures.
+std::vector<uint8_t> drawOverlayTexture(
+    OverlayTarget& aTarget, gl::Texture& aTex, const QRectF& aDest, uint8_t aBackdrop, bool aPremultiplied
+) {
+    auto& ggl = gl::Global::functions();
+    ggl.glBindFramebuffer(GL_FRAMEBUFFER, aTarget.fbo->id());
+    gl::Util::setViewportAsActualPixels(aTarget.size);
+    gl::Util::clearColorBuffer(aBackdrop / 255.0f, aBackdrop / 255.0f, aBackdrop / 255.0f, 1.0f);
+    gl::Util::resetRenderState();
+    GLuint vao = 0;
+    ggl.glGenVertexArrays(1, &vao);
+    ggl.glBindVertexArray(vao);
+
+    gl::PrimitiveDrawer drawer;
+    QMatrix4x4 view;
+    view.ortho(0.0f, aTarget.size.width(), aTarget.size.height(), 0.0f, -1.0f, 1.0f);
+    drawer.setViewMatrix(view);
+    drawer.begin();
+    drawer.setBrushEnable(true);
+    drawer.setBrush(QColor(255, 255, 255, 255));
+    drawer.setPenEnable(false);
+    drawer.drawTexture(
+        aDest, aTex.id(), aTex.size(), QRectF(0, 0, aTex.size().width(), aTex.size().height()), aPremultiplied
+    );
+    drawer.end();
+
+    ggl.glBindVertexArray(0);
+    ggl.glDeleteVertexArrays(1, &vao);
+
+    std::vector<uint8_t> out((size_t)aTarget.size.width() * aTarget.size.height() * 4, 0);
+    ggl.glReadPixels(0, 0, aTarget.size.width(), aTarget.size.height(), GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+    ggl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return out;
+}
+
+void suiteOverlayPath() {
+    suiteHeader("M20 the overlay path (ctrl::Painter)");
+
+    const uint8_t kBackdrop = 200;
+    OverlayTarget target;
+    target.init(QSize(64, 64));
+
+    // A flat image at half coverage: one texel per destination pixel, so nothing about the chain is
+    // in play and the only question is whether coverage is applied once or twice.
+    Img flat;
+    flat.w = flat.h = 64;
+    flat.d.assign((size_t)64 * 64 * 4, 0);
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            uint8_t* o = flat.at(x, y);
+            o[0] = 240;
+            o[1] = 80;
+            o[2] = 40;
+            o[3] = 128;
+        }
+    }
+
+    // (a) 1:1, flat half coverage: coverage applied once gives 240*0.502 + 200*0.498 over the
+    //     backdrop; applied twice it is half that again.
+    {
+        const auto pix = paintOverlay(target, straightQImage(flat), QRectF(0, 0, 64, 64), false, kBackdrop);
+        const double a = 128.0 / 255.0;
+        const double once = 240.0 * a + kBackdrop * (1.0 - a);
+        const double twice = 240.0 * a * a + kBackdrop * (1.0 - a);
+        const int got = overlayAt(pix, target.size, 32, 32, 0);
+        caseReport("M20 flat coverage at 1:1", near(got, once, 3.0),
+            QString("red %1, coverage once %2, twice %3")
+                .arg(got).arg(once, 0, 'f', 1).arg(twice, 0, 'f', 1));
+        expect(near(got, once, 3.0),
+            QString("M20 a premultiplied overlay must composite coverage once: red %1, once %2, twice %3")
+                .arg(got).arg(once, 0, 'f', 1).arg(twice, 0, 'f', 1));
+        expect(!near(got, twice, 3.0),
+            QString("M20 ...and the twice-multiplied value is not what is drawn (red %1 vs %2)")
+                .arg(got).arg(twice, 0, 'f', 1));
+    }
+
+    // (b) A checkerboard at 1:1: level 0 is what is sampled, so its texels must be visible. This is
+    //     the control for (c)/(d), where the same pattern has to come out uniform.
+    const Pattern patDark = {"overlay opaque inside, black pigment", {240, 80, 40}, {0, 0, 0}};
+    {
+        const Img src = makeChecker(patDark, 64);
+        const auto pix = paintOverlay(target, straightQImage(src), QRectF(0, 0, 64, 64), false, kBackdrop);
+        const int on = overlayAt(pix, target.size, 0, 0, 0);
+        const int off = overlayAt(pix, target.size, 1, 0, 0);
+        expect(near(on, 240.0, 3.0) && near(off, (double)kBackdrop, 3.0),
+            QString("M20 at 1:1 the checkerboard's texels are visible (on %1, off %2)").arg(on).arg(off));
+    }
+
+    // (c) The chain of the app's own upload, read off the GPU. The white pigment under alpha 0 is
+    //     what separates the two: a premultiplied chain averages it to 0, a straight chain to 127.5.
+    {
+        Img straight;
+        straight.w = straight.h = 64;
+        straight.d.assign((size_t)64 * 64 * 4, 0);
+        Img premul = straight;
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool on = ((x + y) % 2) == 0;
+                uint8_t* sp = straight.at(x, y);
+                sp[0] = on ? 0 : 255;
+                sp[1] = sp[2] = sp[0];
+                sp[3] = on ? 255 : 0;
+                uint8_t* pp = premul.at(x, y);
+                pp[0] = pp[1] = pp[2] = 0; // (255,255,255) at alpha 0 premultiplies to 0
+                pp[3] = on ? 255 : 0;
+            }
+        }
+        QScopedPointer<gl::Texture> premulTex(uploadOverlayTexture(premul));
+        Img level3;
+        level3.w = level3.h = 8;
+        level3.d = readLevel(premulTex->id(), 3, QSize(8, 8));
+        const uint8_t* px = level3.at(4, 4);
+        expect(px[0] <= 2 && px[3] > 120 && px[3] < 135,
+            QString("M20 the overlay chain must hold premultiplied data (level 3 centre = %1,%2,%3,%4, "
+                    "a straight chain would read 127,127,127,127)")
+                .arg(px[0]).arg(px[1]).arg(px[2]).arg(px[3]));
+    }
+
+    // (d) The minified composite through the drawer, over the backdrop: eight texels per pixel. This
+    //     is the shape the canvas gets when the view is zoomed out (a quad minified by the painter's
+    //     transform), and it is driven here through the drawer rather than through QPainter because
+    //     an offscreen QPainter draw under a scaled transform lands nothing at all (measured: the
+    //     engine's drawImage is called, the brush reads black, and the framebuffer keeps the
+    //     backdrop) - see the README.
+    {
+        // An OPAQUE silhouette on transparent ground, in premultiplied form: half the texels are the
+        // premultiplied colour (240,80,40) at full coverage, half are the pigment black at zero. Every
+        // level from 1 down therefore holds (120,40,20) at alpha 127.5, whatever the level mixing.
+        Img src;
+        src.w = src.h = 64;
+        src.d.assign((size_t)64 * 64 * 4, 0);
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool on = ((x + y) % 2) == 0;
+                uint8_t* o = src.at(x, y);
+                // Premultiplied opaque (240,80,40): a 2x2 block of this and of (0,0,0,0) averages
+                // to exactly (120,40,20) at alpha 127.5, so the reference below is arithmetic, not a
+                // measured constant.
+                o[0] = on ? 240 : 0;
+                o[1] = on ? 80 : 0;
+                o[2] = on ? 40 : 0;
+                o[3] = on ? 255 : 0;
+            }
+        }
+        const double a = 127.5 / 255.0;
+        const double correct = 120.0 + kBackdrop * (1.0 - a);
+
+        QScopedPointer<gl::Texture> tex(uploadOverlayTexture(src));
+        const auto good = drawOverlayTexture(target, *tex, QRectF(0, 0, 8, 8), kBackdrop, true);
+        const int gotGood = overlayAtTopDown(good, target.size, 4, 4, 0);
+        caseReport("M20 minified composite (premultiplied)", near(gotGood, correct, 3.0),
+            QString("red %1, premultiplied reference %2, coverage applied twice %3")
+                .arg(gotGood).arg(correct, 0, 'f', 1).arg(120.0 * a + kBackdrop * (1.0 - a), 0, 'f', 1));
+        expect(near(gotGood, correct, 3.0),
+            QString("M20 a minified premultiplied overlay must composite correctly: red %1, expected %2")
+                .arg(gotGood).arg(correct, 0, 'f', 1));
+
+        // ...and the same texture treated as STRAIGHT, which is what the engine did before this
+        // change (straight data in the texture, no un-premultiply): coverage applied twice.
+        const auto twice = drawOverlayTexture(target, *tex, QRectF(0, 0, 8, 8), kBackdrop, false);
+        const int gotTwice = overlayAtTopDown(twice, target.size, 4, 4, 0);
+        caseReport("M20 minified composite (flag off)", !near(gotTwice, correct, 3.0),
+            QString("red %1 (the flag is load-bearing)").arg(gotTwice));
+        expect(!near(gotTwice, correct, 3.0),
+            QString("M20 dropping the premultiplied flag must change the result (red %1 vs %2)")
+                .arg(gotTwice).arg(correct, 0, 'f', 1));
+    }
+
+    // (e) The halo itself, on a straight chain: the white pigment averaged into the silhouette. This is
+    //     what the overlay path produced BEFORE the upload was made premultiplied, measured rather
+    //     than asserted - and it is the endpoint of the check above: 100 is the correct composite,
+    //     164 is the halo.
+    {
+        Img straight;
+        straight.w = straight.h = 64;
+        straight.d.assign((size_t)64 * 64 * 4, 0);
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool on = ((x + y) % 2) == 0;
+                uint8_t* o = straight.at(x, y);
+                o[0] = on ? 0 : 255;
+                o[1] = o[2] = o[0];
+                o[3] = on ? 255 : 0;
+            }
+        }
+        const double a = 127.5 / 255.0;
+        const double correct = 0.0 + kBackdrop * (1.0 - a);
+        const double straightChain = 127.5 * a + kBackdrop * (1.0 - a);
+
+        QScopedPointer<gl::Texture> tex(uploadOverlayTexture(straight));
+        const auto pix = drawOverlayTexture(target, *tex, QRectF(0, 0, 8, 8), kBackdrop, false);
+        const int got = overlayAtTopDown(pix, target.size, 4, 4, 0);
+        caseReport("M20 straight-chain halo", near(got, straightChain, 4.0),
+            QString("red %1, straight-chain reference %2, premultiplied reference %3")
+                .arg(got).arg(straightChain, 0, 'f', 1).arg(correct, 0, 'f', 1));
+        expect(std::abs(got - correct) > 20.0,
+            QString("M20 a straight chain really does lift the silhouette (red %1 against the correct %2)")
+                .arg(got).arg(correct, 0, 'f', 1));
+    }
+
+    // (f) Both engine branches at 1:1: drawPixmap uploads through QPixmap::toImage(), a different call
+    //     site with its own conversion.
+    {
+        const Img src = makeChecker(patDark, 64);
+        const auto pixImage = paintOverlay(target, straightQImage(src), QRectF(0, 0, 64, 64), false, kBackdrop);
+        const auto pixPixmap = paintOverlay(target, straightQImage(src), QRectF(0, 0, 64, 64), true, kBackdrop);
+        const int a = overlayAt(pixImage, target.size, 0, 0, 0);
+        const int b = overlayAt(pixPixmap, target.size, 0, 0, 0);
+        expect(near(a, 240.0, 3.0), QString("M20 drawImage draws an opaque texel as itself (red %1)").arg(a));
+        caseReport("M20 drawPixmap at 1:1", near(b, (double)a, 3.0),
+            QString("red %1 against drawImage's %2").arg(b).arg(a));
+    }
+}
+
 } // namespace
 
 // The libs reference these globals; src/gui/Main.cpp defines them in the app. Same
@@ -6053,6 +6404,7 @@ int main(int argc, char** argv) {
     suiteAnisotropy();
     suiteLodSweep();
     suiteShippedLodBias();
+    suiteOverlayPath();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);

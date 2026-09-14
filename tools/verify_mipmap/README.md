@@ -158,6 +158,65 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   that footprint (4:1, 8:1 and 16:1, per requested anisotropy), the square-footprint control that
   says the ordinary case is untouched, the level shift the driver's anisotropic path introduces at
   fractional levels, and the cost against the fragment count. See "Anisotropic minification" below.
+- **M20 - the overlay path (`ctrl::Painter`).** The canvas is painted through a `QPainter` whose
+  paint engine uploads images as mipmapped textures, so the same premultiply question applies to a
+  path no layer texture touches. M20 measures the composite of partial coverage through the real
+  engine at 1:1, what the app's upload actually puts in the texture, the chain built from it, and the
+  minified composite through the drawer against the analytic reference - with the same texture drawn
+  without the premultiplied flag as the control that says the flag is load-bearing, and a
+  straight-chain draw that measures the halo the path produced before the change. See "The overlay
+  path" below.
+
+## The overlay path (ctrl::Painter): measured, and what it turned up
+
+The canvas is drawn by `gui::MainDisplayWidget::paintEvent`: the layer render goes through the GL
+driver as usual, and everything painted on top of it goes through `ctrl::PainterHandle`, whose
+`GLCorePaintEngine` uploads each `QImage`/`QPixmap` as a `QOpenGLTexture` with `LinearMipMapLinear`.
+A mip chain is only correct for premultiplied data, and the engine does convert to
+`Format_ARGB32_Premultiplied` before uploading - which is why this path was recorded as "closed by
+construction" rather than measured. Measuring it turned up three things.
+
+**The conversion never reached the sampler.** `QOpenGLTexture`, handed a QImage in
+`Format_ARGB32_Premultiplied`, converts it to a straight RGBA representation on the way in, so the
+texture held STRAIGHT data and the chain Qt built averaged straight color - the halo, exactly as
+before the conversion was added. Measured on the GPU: a (240,80,40,128) texel, which the conversion
+had turned into (120,40,20,128), read back from the uploaded texture as **239,80,40,128**. The upload
+now goes through the app's own `gl::Texture`, which uploads the bytes it is given, so the conversion
+is the one the sampler sees. (`Format_RGBA8888_Premultiplied`, not `ARGB32_Premultiplied`: the latter
+is BGRA in memory on a little-endian machine, and the first version of the fix swapped red and blue -
+measured as a red channel of 120 where the reference said 220.)
+
+**A premultiplied texture through a straight-alpha blend doubles the coverage.** The drawer's blend is
+`GL_SRC_ALPHA/GL_ONE_MINUS_SRC_ALPHA`, which is correct for the straight data it used to hold. With
+premultiplied data it would composite `rgb*a*a + dst*(1-a)` instead of `rgb*a + dst*(1-a)`, so the
+texture command now carries a premultiplied flag and the texture shader divides the coverage back out
+of the colour - the same division the layer shader does for its `PREMULTIPLIED_INPUT` variation, and
+the reason no second blend path is needed. The glyph atlas stays straight (it is white with coverage
+in alpha, so dividing would be a no-op at best) and is drawn with the flag off.
+
+**What that is worth, in numbers** (M20, backdrop 200, half-covered silhouette, footprint 8 texels):
+
+| | red channel |
+|---|---|
+| premultiplied upload + flag, analytic reference | 220.0 |
+| measured through the drawer at 8x minification | **220** |
+| the same texture drawn WITHOUT the flag | 160 |
+| a straight chain (what the path did before) | **164** (reference 163.8) |
+| partial coverage at 1:1 through the real engine | **220** (220.1) |
+
+Two platform facts are worth recording, because they are what stopped this being measured earlier and
+what the next person will hit:
+
+- **`QPainter::drawImage` pre-scales on the CPU when the destination RECT is smaller than the
+  source.** The engine receives an already-scaled image (measured: a 64x64 source with an 8x8
+  destination arrives as an 8x8 image in `Format_ARGB32_Premultiplied`), so the chain is sampled at
+  level 0 and is not what filters that shape. The chain matters when the quad - not the rect - is
+  minified, i.e. under the canvas zoom transform, which is why M20 drives the minified case by drawing
+  a small rectangle at 1:1 through the same drawer.
+- **A `QPainter` draw under a scaled transform lands nothing on this harness's offscreen platform**
+  (measured: the engine's `drawImage` is called, the drawer's brush reads black, the framebuffer keeps
+  the backdrop). Driving that shape faithfully needs the app's own platform, so the suite measures the
+  drawer directly instead - a stricter check of the same shader, flag and blend.
 
 ## Figures
 
@@ -218,6 +277,7 @@ Both halves were mutation-tested against the product, not just reasoned about:
 
 | mutation | result |
 |---|---|
+| the overlay upload made straight again (`uploadOverlay` skips the premultiply) | M20 fails: `flat coverage at 1:1` reads 228 where the reference is 220.1 |
 | `ImageKey`: premultiply deleted, mipmaps kept | M2 fails: `level 1 must match the premultiplied reference (delta 128)`, `no halo (worst deviation 128.0)` |
 | `ImageKey`: mipmaps disabled, premultiply kept | M2 fails: `7 levels expected, got 1`, `GL_TEXTURE_MAX_LEVEL must be 6 (got 0)` |
 | `ShaderHolder`: `PREMULTIPLIED_INPUT` put back to `0` | **M3 fails: the minified layer renders `red=50.0` instead of `100.0`** — the halo reproduced in a real render (`source * coverage^2 = 200 * 0.25`); M5's blur path also fails, `114.0` against the analytic `164.0` |
@@ -686,7 +746,7 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (301 checks) runs under AddressSanitizer against an ASan build of the libraries
+The whole probe (309 checks) runs under AddressSanitizer against an ASan build of the libraries
 (`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
 overflow or a double free:
 
@@ -702,7 +762,7 @@ Leak detection is worth running too, and it has now caught three real ones:
 
 ```sh
 ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 QT_QPA_PLATFORM=offscreen \
-    ./build-asan/tests/Debug/verify_mipmap     # 301 checks, 0 failures, exit 0, no leaks
+    ./build-asan/tests/Debug/verify_mipmap     # 309 checks, 0 failures, exit 0, no leaks
 ```
 
 1. `XCMemBlock` is a plain struct with a raw `uint8*` and no destructor, so a helper that allocates and
@@ -815,7 +875,8 @@ path that is "closed by construction rather than by measurement" below.
 
 Verified so far: mip chain generation, the production `ImageKey` texture and its parameters, the
 rendered composite for a normal layer, all 28 blend modes, the layer HSV branch, the folder composite
-path, the grid/mesh overlay, and every mip level of every texture size (M18).
+path, the grid/mesh overlay, every mip level of every texture size (M18), and the overlay path the
+canvas paints through (M20).
 
 Not yet verified: the export path END TO END. M6 and M8 cover what the exporter changes about the render
 that matters for mipmapping - its output-resolution camera (hence a different mip level) and its
@@ -826,11 +887,9 @@ programmatically, and `tests/media_exporter_e2e.cpp` shows the `CommonParam`/`Im
 shape. It was left undone for budget, not because anything blocked it. (`media_exporter_e2e` itself
 fails in this environment for reasons that predate this branch.)
 
-Also outstanding, closed by construction rather than by measurement: the editor overlay path
-(`ctrl::Painter`) uploads QImages as `QOpenGLTexture`s with `LinearMipMapLinear`, so Qt builds a chain
-for whatever the paint engine hands it. It now converts to `QImage::Format_ARGB32_Premultiplied` before
-the upload, the representation a chain is correct for, but there is no pixel-level measurement of that
-path here - it only runs inside a widget with a QPainter, which this harness does not drive.
+The editor overlay path (`ctrl::Painter`) is now measured - see "The overlay path" above - and that
+measurement found the conversion it relied on never reaching the sampler, plus a blend that doubled the
+coverage once it did. It is no longer closed by construction.
 
 Also outstanding: the glyph-cache decision, and the load-time/memory cost of building the chain (the
 rebuild in `gl::Texture::create` adds one readback plus a few thousand averages per non-power-of-two
