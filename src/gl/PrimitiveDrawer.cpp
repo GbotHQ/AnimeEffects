@@ -69,6 +69,7 @@ PrimitiveDrawer::State::State():
     penStyle(PenStyle_Solid),
     texture(0),
     textureColor(QColor(255, 255, 255, 255).rgba()),
+    texturePremultiplied(false),
     hasBrush(true),
     hasPen(true),
     hasMSAA(false) {}
@@ -76,6 +77,7 @@ PrimitiveDrawer::State::State():
 bool PrimitiveDrawer::State::operator==(const State& aRhs) const {
     return brushColor == aRhs.brushColor && penColor == aRhs.penColor && penWidth == aRhs.penWidth &&
         penStyle == aRhs.penStyle && texture == aRhs.texture && textureColor == aRhs.textureColor &&
+        texturePremultiplied == aRhs.texturePremultiplied &&
         hasBrush == aRhs.hasBrush && hasPen == aRhs.hasPen && hasMSAA == aRhs.hasMSAA;
 }
 
@@ -94,6 +96,7 @@ void PrimitiveDrawer::State::set(const Command& aCommand) {
     case Type_Texture:
         texture = aCommand.attr.texture.id;
         textureColor = aCommand.attr.texture.color;
+        texturePremultiplied = aCommand.attr.texture.premultiplied;
         break;
     case Type_Ability:
         hasBrush = aCommand.attr.ability.hasBrush;
@@ -113,7 +116,8 @@ bool PrimitiveDrawer::State::hasDifferentValueWith(const Command& aCommand) cons
         return penColor != aCommand.attr.pen.color || penWidth != aCommand.attr.pen.width ||
             penStyle != aCommand.attr.pen.style;
     case Type_Texture:
-        return texture != aCommand.attr.texture.id || textureColor != aCommand.attr.texture.color;
+        return texture != aCommand.attr.texture.id || textureColor != aCommand.attr.texture.color ||
+            texturePremultiplied != aCommand.attr.texture.premultiplied;
     case Type_Ability:
         return hasBrush != aCommand.attr.ability.hasBrush || hasPen != aCommand.attr.ability.hasPen ||
             hasMSAA != aCommand.attr.ability.hasMSAA;
@@ -208,9 +212,17 @@ bool PrimitiveDrawer::TextureShader::init() {
         "in vec2 vTexCoord;"
         "uniform vec4 uColor;"
         "uniform sampler2D uTexture;"
+        "uniform int uPremultiplied;"
         "out vec4 oFragColor;"
         "void main(void){"
-        "  oFragColor = uColor * texture(uTexture, vTexCoord);"
+        "  vec4 c = texture(uTexture, vTexCoord);"
+        // A premultiplied texture is what a mip chain is correct for, but the blend below is
+        // straight-alpha (GL_SRC_ALPHA/GL_ONE_MINUS_SRC_ALPHA), so the coverage has to come back out
+        // of the colour: the same division the layer shader does for its PREMULTIPLIED_INPUT
+        // variation, and the reason a premultiplied texture composites correctly without a second
+        // blend path.
+        "  if (uPremultiplied != 0) { c.rgb = min(c.rgb / max(c.a, 0.00392157), vec3(1.0)); }"
+        "  oFragColor = uColor * c;"
         "}";
 
     if (!fBuildShader(program, kVertexShaderText, kFragmentShaderText)) {
@@ -222,6 +234,7 @@ bool PrimitiveDrawer::TextureShader::init() {
     locViewMtx = program.uniformLocation("uViewMtx");
     locColor = program.uniformLocation("uColor");
     locTexture = program.uniformLocation("uTexture");
+    locPremultiplied = program.uniformLocation("uPremultiplied");
 
     GL_CHECK_ERROR();
     return true;
@@ -594,10 +607,13 @@ void PrimitiveDrawer::drawTexture(const QRectF& aRect, GLuint aTexture) {
     drawTexture(aRect, aTexture, QSize(1, 1), QRectF(0.0f, 0.0f, 1.0f, 1.0f));
 }
 
-void PrimitiveDrawer::drawTexture(const QRectF& aRect, GLuint aTexture, const QSize& aTexSize, const QRectF& aSrcRect) {
+void PrimitiveDrawer::drawTexture(
+    const QRectF& aRect, GLuint aTexture, const QSize& aTexSize, const QRectF& aSrcRect, bool aPremultiplied
+) {
     {
         Command command;
         command.type = Type_Texture;
+        command.attr.texture.premultiplied = aPremultiplied;
         command.attr.texture.id = aTexture;
         // command.attr.texture.color = QColor(255, 255, 255, 255).rgba();
         command.attr.texture.color = mScheduledState.brushColor;
@@ -630,6 +646,7 @@ void PrimitiveDrawer::drawTexture(const QRectF& aRect, GLuint aTexture, const QS
         command.type = Type_Texture;
         command.attr.texture.id = 0;
         command.attr.texture.color = QColor(255, 255, 255, 255).rgba();
+        command.attr.texture.premultiplied = false;
         pushStateCommand(command);
     }
 }
@@ -793,6 +810,9 @@ void PrimitiveDrawer::bindAppositeShader(int aSlotIndex) {
         mTextureShader.program.setAttributeBuffer(mTextureShader.locTexCoord, GL_FLOAT, 2);
         mTextureShader.program.setUniformValue(mTextureShader.locViewMtx, mViewMtx);
         mTextureShader.program.setUniformValue(mTextureShader.locTexture, 0);
+        mTextureShader.program.setUniformValue(
+            mTextureShader.locPremultiplied, mAppliedState.texturePremultiplied ? 1 : 0
+        );
         mCurrentShader = ShaderType_Texture;
     } else if (nextType == ShaderType_Stipple) {
         const QVector2D scrHalfSize(mScreenSize.width() / 2, mScreenSize.height() / 2);

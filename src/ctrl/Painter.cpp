@@ -3,6 +3,33 @@
 
 namespace ctrl {
 
+namespace {
+// Uploads an overlay image as a mipmapped texture that the sampler sees PREMULTIPLIED, which is the
+// representation a chain is correct for (see gl::Texture::MipmapPolicy).
+//
+// QOpenGLTexture cannot do this job: handed a QImage in Format_ARGB32_Premultiplied it converts the
+// image to a straight RGBA representation on the way in, so the chain Qt builds averages STRAIGHT
+// data and the halo is back. Measured on the GPU: a (240,80,40,128) texel, which the conversion had
+// turned into (120,40,20,128), read back from the uploaded texture as 239,80,40,128 - straight. The
+// draw sites below told the drawer the texture is premultiplied so its straight-alpha blend stays
+// correct; leaving the image straight here would make that claim false.
+gl::Texture* uploadOverlay(const QImage& aImage) {
+    // Format_RGBA8888_Premultiplied, not ARGB32_Premultiplied: the latter is BGRA in memory on a
+    // little-endian machine, and these bytes go to the sampler as GL_RGBA (measured: the red and blue
+    // channels came out swapped).
+    const QImage premultiplied =
+        aImage.convertToFormat(QImage::Format_RGBA8888_Premultiplied).flipped(Qt::Horizontal | Qt::Vertical);
+    gl::Texture* tex = new gl::Texture();
+    tex->create(
+        premultiplied.size(), premultiplied.constBits(), GL_RGBA, GL_RGBA8, GL_UNSIGNED_BYTE,
+        gl::Texture::GenerateMipmap
+    );
+    tex->setFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+    tex->setWrap(GL_CLAMP_TO_EDGE);
+    return tex;
+}
+} // namespace
+
 #if USE_GL_CORE_PROFILE
 //-------------------------------------------------------------------------------------------------
 GLCorePaintEngine::GLCorePaintEngine():
@@ -163,23 +190,12 @@ void GLCorePaintEngine::drawImage(
 
     auto texture = mTextureCaches.get(key, [=]() {
         auto cache = new TextureCaches::Cache();
-        // Qt's QOpenGLTexture builds a mip chain for this image, and a chain is only correct for
-        // ALPHA-PREMULTIPLIED data: glGenerateMipmap averages the channels independently, so a
-        // straight-alpha image lets the color of transparent texels bleed into the silhouette and
-        // the overlay gets a dark fringe wherever it is minified. QImage::Format_ARGB32_Premultiplied
-        // is that representation (and is what QPixmap already carries), so convert rather than upload
-        // whatever format the caller happened to pass.
-        const QImage premultiplied = ptr->convertToFormat(QImage::Format_ARGB32_Premultiplied);
-        cache->obj.reset(new QOpenGLTexture(premultiplied.flipped(Qt::Horizontal | Qt::Vertical)));
+        cache->obj.reset(uploadOverlay(*ptr));
         cache->key = key;
         cache->size = (size_t)ptr->sizeInBytes();
-
-        cache->obj->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
-        cache->obj->setMagnificationFilter(QOpenGLTexture::Linear);
-
         return cache;
     });
-    mDrawer.drawTexture(aRect, texture->textureId(), QSize(texture->width(), texture->height()), aSrcRect);
+    mDrawer.drawTexture(aRect, texture->id(), texture->size(), aSrcRect, true);
 }
 
 void GLCorePaintEngine::drawPixmap(const QRectF& aRect, const QPixmap& aPixmap, const QRectF& aSrcRect) {
@@ -189,19 +205,16 @@ void GLCorePaintEngine::drawPixmap(const QRectF& aRect, const QPixmap& aPixmap, 
 
         auto texture = mTextureCaches.get(key, [=]() {
             auto cache = new TextureCaches::Cache();
-            // QPixmap::toImage() is already premultiplied; converted anyway so the invariant is
-            // stated once, where the mipmapped upload happens, rather than assumed from Qt's canvas
-            auto image = ptr->toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
-            cache->obj.reset(new QOpenGLTexture(image.flipped(Qt::Horizontal | Qt::Vertical)));
+            // QPixmap::toImage() is already premultiplied, and uploadOverlay converts whatever it is
+            // handed, so the invariant is stated once where the mipmapped upload happens rather than
+            // assumed from Qt's canvas.
+            const QImage image = ptr->toImage();
+            cache->obj.reset(uploadOverlay(image));
             cache->key = key;
             cache->size = (size_t)image.sizeInBytes();
-
-            cache->obj->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
-            cache->obj->setMagnificationFilter(QOpenGLTexture::Linear);
-
             return cache;
         });
-        mDrawer.drawTexture(aRect, texture->textureId(), QSize(texture->width(), texture->height()), aSrcRect);
+        mDrawer.drawTexture(aRect, texture->id(), texture->size(), aSrcRect, true);
     }
 }
 

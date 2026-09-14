@@ -54,7 +54,11 @@ public:
     void drawTexture(const QRectF& aRect, gl::Texture& aTexture);
     void drawTexture(const QRectF& aRect, gl::Texture& aTexture, const QRectF& aSrcRect);
     void drawTexture(const QRectF& aRect, GLuint aTexture);
-    void drawTexture(const QRectF& aRect, GLuint aTexture, const QSize& aTexSize, const QRectF& aSrcRect);
+    // aPremultiplied says the texture holds ALPHA-PREMULTIPLIED data, which the fragment shader
+    // divides the coverage back out of so the straight-alpha blend below stays correct. Straight
+    // textures (the glyph atlas) leave it false.
+    void drawTexture(const QRectF& aRect, GLuint aTexture, const QSize& aTexSize, const QRectF& aSrcRect,
+                     bool aPremultiplied = false);
 
 private:
     enum Type { Type_Draw, Type_Brush, Type_Pen, Type_Texture, Type_Ability, Type_TERM };
@@ -83,6 +87,7 @@ private:
             struct Texture {
                 GLuint id;
                 QRgb color;
+                bool premultiplied;
             } texture;
 
             struct Ability {
@@ -106,6 +111,7 @@ private:
         PenStyle penStyle;
         GLuint texture;
         QRgb textureColor;
+        bool texturePremultiplied;
         bool hasBrush;
         bool hasPen;
         bool hasMSAA;
@@ -138,6 +144,7 @@ private:
         int locViewMtx;
         int locColor;
         int locTexture;
+        int locPremultiplied;
     };
 
     void drawConvexPolygonImpl(const std::function<QPointF(int)>& aGetPos, int aCount);

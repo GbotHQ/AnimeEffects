@@ -133,7 +133,7 @@ public:
     virtual void drawTextItem(const QPointF& aPos, const QTextItem& aTextItem);
 
 private:
-    typedef CacheHolder<qint64, QOpenGLTexture> TextureCaches;
+    typedef CacheHolder<qint64, gl::Texture> TextureCaches;
     typedef CacheHolder<gl::TextObject::MapKey, gl::TextObject> TextCaches;
     void syncBrush(const QBrush& aBrush);
     void syncPen(const QPen& aPen);
