@@ -719,11 +719,27 @@ ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 QT_QPA_PLATFORM=offscreen \
    read 80 bytes, two allocations, both from `core::Project`'s constructor. `pConf` (a
    `std::vector<audioConfig>`) and `mediaPlayer` (a `mediaState`) are raw `new` members and nothing ever
    deleted them, so every `Project` leaked them - one per document and per export in the app, not just in
-   the harness. `~Project` deletes both now.
+   the harness.
+4. **That fix as first written aborted the application.** `~Project` deleted both members, but
+   `TimeLineWidget::setPlayBackActivity` writes the playback widget's live state over them
+   (`mProject->mediaPlayer = &mPlayBack->mediaPlayer`, a member that widget holds by value), so a project
+   that had played was holding an address inside a widget and closing it freed that address: play, then
+   File > Close project, aborted inside `~Project` (SIGABRT, "double free or corruption (out)", core
+   dumped). This gate could not see it - nothing here plays audio, so nothing here runs the aliasing
+   path - and it took a core dump from the running GUI to catch. The borrowed state is explicit now and
+   never deleted, the owned members are only replaced through `Project::setAudioState`, and readers go
+   through `audioConfigs()`/`audioState()` (borrowed while the widget drives playback, the project's own
+   otherwise). The sequence survives in Debug and under ASan with the project actually closed.
 
-The probe leaks nothing at all as of this writing: with the two above fixed the run exits 0 with no leak
+The probe leaks nothing at all as of this writing: with the first three fixed the run exits 0 with no leak
 summary, which is what makes the number meaningful - a regression of a few KB would now be visible
 instead of hiding inside hundreds of megabytes of the harness's own.
+
+What the gate still cannot see, now that 4 is on record: it exercises `Project`'s lifecycle without a
+widget, so GUI-side ownership of the same audio state is unmeasured here. `PlayBackWidget::aConf` is a
+raw `new std::vector<audioConfig>` that is never deleted and is overwritten when the widget adopts the
+project's config, i.e. one leaked vector per playback widget, and LeakSanitizer cannot report it while
+the app is terminated rather than exited.
 
 ## Deformed meshes: measured, not assumed
 
