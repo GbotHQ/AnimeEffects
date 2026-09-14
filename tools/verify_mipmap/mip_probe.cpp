@@ -3755,6 +3755,151 @@ double tentIntegral(const Img& aImg, double aX0, double aY0, int aW, int aChanne
 // fractional case can show the difference. The reference is a CPU integral of the bilinear
 // reconstruction over each footprint, which is the same quantity the supersampled renders converge to
 // (measured on real layers: 0.04 to 0.25 of 255).
+// The synthetic line-art fixture M17 measures. aThickness scales the strokes: 1 is line art whose
+// strokes are 1 to 3 texels wide, which at 16x minification is a fraction of one screen pixel; 8 makes
+// them 8 to 24 texels wide, i.e. features that survive the same minification as about a pixel. The
+// random sequence is fixed and consumed in the same order, so the thickness-1 fixture is the one the
+// earlier measurements were taken on.
+Img makeStrokeFixture(int aContent, int aThickness) {
+    Img src;
+    src.w = src.h = aContent;
+    src.d.assign((size_t)aContent * aContent * 4, 0);
+    for (int i = 0; i < aContent * aContent; ++i)
+        src.d[(size_t)i * 4 + 3] = 255;   // opaque ground, so the premultiply is the identity
+    uint32_t r = 24601u;
+    const auto next = [&]() {
+        r = r * 1664525u + 1013904223u;
+        return (int)(r >> 16);
+    };
+    for (int stroke = 0; stroke < 400; ++stroke) {
+        const bool vertical = (next() & 1) != 0;
+        const int thickness = (1 + next() % 3) * aThickness;
+        const int length = 40 + next() % (aContent / 2);
+        const int at = next() % aContent;
+        const int from = next() % std::max(1, aContent - length);
+        const uint8_t v = (uint8_t)(next() & 1 ? 255 : 128);
+        for (int t = 0; t < thickness; ++t) {
+            for (int u = 0; u < length; ++u) {
+                const int x = vertical ? (at + t) : (from + u);
+                const int y = vertical ? (from + u) : (at + t);
+                if (x < 0 || y < 0 || x >= aContent || y >= aContent)
+                    continue;
+                uint8_t* p = src.at(x, y);
+                p[0] = p[1] = p[2] = v;
+            }
+        }
+    }
+    return src;
+}
+
+// The artwork padded to the aligned texture the app uploads, which is what the references integrate.
+Img paddedTexture(const Img& aSrc) {
+    const QSize texSize = img::Util::mipAlignedTextureSize(aSrc.size());
+    Img texture;
+    texture.w = texSize.width();
+    texture.h = texSize.height();
+    texture.d.assign((size_t)texture.w * texture.h * 4, 0);
+    for (int y = 0; y < aSrc.h; ++y)
+        for (int x = 0; x < aSrc.w; ++x)
+            for (int c = 0; c < 4; ++c)
+                texture.at(x, y)[c] = aSrc.at(x, y)[c];
+    return texture;
+}
+
+// Box-downsamples a raw framebuffer (a supersampled render) by an integer factor. Keeps the buffer's
+// own orientation, so it is compared pixel for pixel against the shipped render.
+std::vector<uint8_t> boxDownsampleRaw(const std::vector<uint8_t>& aSrc, const QSize& aSrcSize, int aSS) {
+    const int count = aSS * aSS;
+    std::vector<uint8_t> out((size_t)aSrcSize.width() / aSS * (aSrcSize.height() / aSS) * 4, 0);
+    const int dw = aSrcSize.width() / aSS;
+    for (int y = 0; y < aSrcSize.height() / aSS; ++y) {
+        for (int x = 0; x < dw; ++x) {
+            for (int c = 0; c < 4; ++c) {
+                int sum = 0;
+                for (int dy = 0; dy < aSS; ++dy)
+                    for (int dx = 0; dx < aSS; ++dx)
+                        sum += aSrc[((size_t)(y * aSS + dy) * aSrcSize.width() + (x * aSS + dx)) * 4 + c];
+                out[((size_t)y * dw + x) * 4 + c] = (uint8_t)((sum + count / 2) / count);
+            }
+        }
+    }
+    return out;
+}
+
+// Measures one fixture's LOD bias two ways: against the CPU tent integral of the bilinear
+// reconstruction (what M17 started with) and against a SUPERSAMPLED re-render of the same scene, box
+// downsampled. The second is independent of any assumption about how the renderer reconstructs the
+// image, which is what makes it the tie-breaker: if the two disagree the truth model is the suspect,
+// and if they agree the fixture is.
+void biasAgainstBothTruths(
+    const Img& aSrc, const QSize& aCanvas, int aStep, int aSS, const char* aWhat, bool aBiasShouldWin
+) {
+    const Img texture = paddedTexture(aSrc);
+    const float zoom = 1.0f / (float)aStep;
+    const float biases[2] = {0.0f, core::ImageKey::layerLodBias()};
+
+    // The supersampled truth: the same scene at aSS x the resolution with the layer magnified to
+    // match, so the chain is not sampled at all (level 0, where a bias cannot act), then averaged back
+    // down over exactly the shipped pixel's footprint.
+    const QSize big(aCanvas.width() * aSS, aCanvas.height() * aSS);
+    const std::vector<uint8_t> truth =
+        boxDownsampleRaw(renderLayer(big, aSrc, zoom * (float)aSS, img::BlendMode_Normal, nullptr, 0.0f), big, aSS);
+
+    double tentErr[2] = {0, 0};
+    double ssErr[2] = {0, 0};
+    double modelGap = 0;
+    int n[2] = {0, 0};
+    int gapN = 0;
+    const double half = aStep * 0.5;
+    for (int bi = 0; bi < 2; ++bi) {
+        const std::vector<uint8_t> out = renderLayer(aCanvas, aSrc, zoom, img::BlendMode_Normal, nullptr, biases[bi]);
+        for (int sy = 0; sy < aCanvas.height(); ++sy) {
+            for (int sx = 0; sx < aCanvas.width(); ++sx) {
+                const double ax = (sx + 0.5) * aStep - (aCanvas.width() * 0.5) * aStep + aSrc.w * 0.5;
+                // raw framebuffer rows are bottom-up (see M14)
+                const double ay = (aCanvas.height() - 0.5 - sy) * aStep - (aCanvas.height() * 0.5) * aStep
+                                  + aSrc.h * 0.5;
+                const double guard = 2.0 * aStep;
+                if (ax - half < guard || ay - half < guard || ax + half > aSrc.w - guard ||
+                    ay + half > aSrc.h - guard)
+                    continue;
+                const size_t i = ((size_t)sy * aCanvas.width() + sx) * 4;
+                const double tent = tentIntegral(texture, ax - half, ay - half, aStep, 0);
+                tentErr[bi] += std::fabs(out[i] - tent);
+                ssErr[bi] += std::fabs(out[i] - truth[i]);
+                if (bi == 0) {
+                    modelGap += std::fabs(tent - truth[i]);
+                    ++gapN;
+                }
+                ++n[bi];
+            }
+        }
+    }
+    const double m0 = tentErr[0] / std::max(1, n[0]);
+    const double m1 = tentErr[1] / std::max(1, n[1]);
+    const double s0 = ssErr[0] / std::max(1, n[0]);
+    const double s1 = ssErr[1] / std::max(1, n[1]);
+    const double gap = modelGap / std::max(1, gapN);
+    caseReport(QString("M17 %1").arg(aWhat), true,
+        QString("tent-integral truth: bias %2 -> %3, bias 0 -> %4 | supersampled truth: bias %2 -> %5, "
+                "bias 0 -> %6 | the two truths differ by %7 of 255 (mean, %8 px)")
+            .arg(core::ImageKey::layerLodBias(), 0, 'f', 2).arg(m1, 0, 'f', 3).arg(m0, 0, 'f', 3)
+            .arg(s1, 0, 'f', 3).arg(s0, 0, 'f', 3).arg(gap, 0, 'f', 3).arg(gapN));
+    expect(gap < 2.0,
+        QString("M17 the two truth models must agree on this fixture, so a disagreement cannot be "
+                "blamed on the model (they differ by %1 of 255)")
+            .arg(gap, 0, 'f', 3));
+    // The two truths must return the same VERDICT for the same fixture: that is what says the
+    // measurement is about the content and not about which reference was chosen.
+    expect((s1 < s0) == (m1 < m0),
+        QString("M17 the two truths must agree on the direction: supersampled %1/%2, tent %3/%4")
+            .arg(s1, 0, 'f', 3).arg(s0, 0, 'f', 3).arg(m1, 0, 'f', 3).arg(m0, 0, 'f', 3));
+    expect((s1 < s0) == aBiasShouldWin,
+        QString("M17 against the supersampled truth the shipped bias %1: %2 against %3")
+            .arg(aBiasShouldWin ? "must be the smaller error" : "is the larger error on this fixture")
+            .arg(s1, 0, 'f', 3).arg(s0, 0, 'f', 3));
+}
+
 void suiteShippedLodBias() {
     suiteHeader("M17 the shipped LOD bias: half a level finer than the footprint");
     const QSize canvas(64, 64);
@@ -3768,46 +3913,11 @@ void suiteShippedLodBias() {
     // variance mismatch instead, and extra smoothing only makes that worse. Both were tried; the
     // blurred-noise version reported the bias as 4.868 against 4.655 and would have failed a real
     // improvement, which is why the fixture looks like line art rather than like noise.
-    Img src;
-    src.w = src.h = content;
-    src.d.assign((size_t)content * content * 4, 0);
-    for (int i = 0; i < content * content; ++i)
-        src.d[(size_t)i * 4 + 3] = 255;   // opaque ground, so the premultiply is the identity
-    uint32_t r = 24601u;
-    const auto next = [&]() {
-        r = r * 1664525u + 1013904223u;
-        return (int)(r >> 16);
-    };
-    for (int stroke = 0; stroke < 400; ++stroke) {
-        const bool vertical = (next() & 1) != 0;
-        const int thickness = 1 + next() % 3;
-        const int length = 40 + next() % (content / 2);
-        const int at = next() % content;
-        const int from = next() % std::max(1, content - length);
-        const uint8_t v = (uint8_t)(next() & 1 ? 255 : 128);
-        for (int t = 0; t < thickness; ++t) {
-            for (int u = 0; u < length; ++u) {
-                const int x = vertical ? (at + t) : (from + u);
-                const int y = vertical ? (from + u) : (at + t);
-                if (x < 0 || y < 0 || x >= content || y >= content)
-                    continue;
-                uint8_t* p = src.at(x, y);
-                p[0] = p[1] = p[2] = v;
-            }
-        }
-    }
+    const Img src = makeStrokeFixture(content, 1);
 
     // the buffer the app uploads: the artwork padded to the aligned texture size, transparent right
     // and bottom. Opaque content, so the premultiply leaves it alone.
-    const QSize texSize = img::Util::mipAlignedTextureSize(QSize(content, content));
-    Img texture;
-    texture.w = texSize.width();
-    texture.h = texSize.height();
-    texture.d.assign((size_t)texture.w * texture.h * 4, 0);
-    for (int y = 0; y < content; ++y)
-        for (int x = 0; x < content; ++x)
-            for (int c = 0; c < 4; ++c)
-                texture.at(x, y)[c] = src.at(x, y)[c];
+    const Img texture = paddedTexture(src);
 
     const double half = step * 0.5;
     const float biases[2] = {0.0f, core::ImageKey::layerLodBias()};
@@ -3853,12 +3963,15 @@ void suiteShippedLodBias() {
     const double m0 = err[0] / std::max(1, n[0]);
     const double m1 = err[1] / std::max(1, n[1]);
     // What this fixture can support is the DIRECTION: a negative bias reads a finer level, so the
-    // render must carry more high-frequency detail than at bias 0. It cannot support a quality claim
-    // on synthetic content - this fixture reports the bias as slightly worse (numbers below), while
-    // the same comparison on real layers reports it as clearly better (--bias1: 000020.psd 1.816 with
-    // the bias against 3.374 without, and the 29-file corpus 2.533 against 4.198 at 16x). The two are
-    // not reconciled here; the quality evidence is the real-content runs, and this test only keeps the
-    // setting from being dropped or flipped.
+    // render must carry more high-frequency detail than at bias 0. Its quality claim is NOT what the
+    // shipped bias rests on, and the reason is now measured rather than left open: this content
+    // reports the bias as slightly worse against BOTH the tent integral and a supersampled re-render
+    // (numbers below), while the same scene with strokes 8x wider, and the real-content rows
+    // (--bias1: 000020.psd 1.816 with the bias against 3.374 without; the 29-file corpus 2.533 against
+    // 4.198 at 16x), report it as clearly better against the same supersampled truth. The difference
+    // is the feature scale - strokes 1 to 3 texels wide are a fraction of a screen pixel at 16x, so the
+    // area truth removes them and a finer level retains them - not the truth model, which agrees to
+    // within 0.8 of 255. This test keeps the setting from being dropped or flipped.
     expect(grad[1] > grad[0],
         QString("M17 the shipped bias (%1) must read a finer level, so the render must be sharper: "
                 "mean gradient %2 vs %3 of 255")
@@ -3874,6 +3987,20 @@ void suiteShippedLodBias() {
             .arg(grad[0] / std::max(1, n[0]), 0, 'f', 4)
             .arg(m1, 0, 'f', 3).arg(m0, 0, 'f', 3)
             .arg(n[0]).arg(phase, 0, 'f', 3)
+    );
+
+    // The contradiction this suite used to leave open: against the tent integral the bias reads as
+    // slightly worse here, while the corpus rows (real artwork, supersampled truth) read it as clearly
+    // better. Both truths, and both fixtures, are measured now - the difference is the content, not
+    // the model.
+    // What the measurements say: on line art whose strokes are a fraction of a screen pixel at 16x,
+    // BOTH truths put the bias very slightly behind, and on the same scene with the strokes 8x wider -
+    // features that survive the minification as features - BOTH truths put it clearly ahead (7.5
+    // against 12.4), which is the direction the real-content corpus rows report. Nothing else about
+    // the two runs differs: same texture size, same zoom, same pixel count, same references.
+    biasAgainstBothTruths(src, canvas, step, 8, "thin strokes, both truths", false);
+    biasAgainstBothTruths(
+        makeStrokeFixture(content, 8), canvas, step, 8, "strokes 8x thicker, both truths", true
     );
 }
 

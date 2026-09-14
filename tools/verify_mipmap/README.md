@@ -553,14 +553,29 @@ The evidence for the value is real content, and it is consistent:
 | 000020.psd, one layer at 16x (`--bias1`) | 3.374 | 1.816 |
 | AUTUMN.psd, one layer at 16x | 3.718 | 1.792 |
 
-What is NOT consistent is a synthetic fixture. M17 builds line-art-like strokes and compares the
-render against a CPU integral of the bilinear reconstruction, the same kind of comparison as
-`--bias1`: it reports the bias as slightly WORSE, 16.656 against 15.066, while `--bias1` on the same
-kind of comparison over real layers reports it as clearly better. The two have not been reconciled.
-M17 therefore asserts only the direction the setting is defined by - a negative bias reads a finer
-level, so the render must be sharper, measured as 27.2653 against 17.0293 of mean per-pixel gradient -
-and prints both error numbers so the contradiction stays visible instead of being tuned away. The
-quality claim rests on the real-content rows above.
+What is NOT consistent with the real-content rows is M17's synthetic fixture - and that is now
+measured rather than left open. M17 compares its render against two independent references: the CPU
+tent integral of the bilinear reconstruction (`tentIntegral`, a model) and a SUPERSAMPLED re-render of
+the same scene box downsampled (`boxDownsampleRaw`, which assumes nothing about how the renderer
+reconstructs anything). On the line-art fixture both agree the bias is very slightly worse - 17.057
+against 15.441 supersampled, 16.656 against 15.066 tent - and the two references differ by only 0.837
+of 255 on average, so the truth model is not the explanation.
+
+The content is. The same scene, the same texture size, the same zoom and the same references, with the
+strokes eight times wider (8 to 24 texels instead of 1 to 3, i.e. features that survive 16x
+minification as features rather than as sub-pixel detail), puts the bias clearly ahead under BOTH
+references:
+
+| fixture (16x, phase 0.75, 784 px) | tent-integral truth | supersampled truth |
+|---|---|---|
+| strokes 1-3 texels wide | bias -0.5: 16.656, bias 0: 15.066 | bias -0.5: 17.057, bias 0: 15.441 |
+| strokes 8-24 texels wide | bias -0.5: **7.549**, bias 0: 12.407 | bias -0.5: **7.713**, bias 0: 12.519 |
+
+That is the direction the real-content rows report. So: the shipped -0.5 rests on content whose detail
+survives the minification - the 29-file corpus and the `--bias1` rows above, all measured against the
+supersampled truth - and M17's synthetic fixture supports only the direction the setting is defined by
+(a negative bias reads a finer level, so the render must be sharper: 27.2653 against 17.0293 of mean
+per-pixel gradient). Both directions are asserted, and both error numbers stay printed.
 
 ## What can be done about it beyond a constant: the LOD bias, measured
 
@@ -746,7 +761,7 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (309 checks) runs under AddressSanitizer against an ASan build of the libraries
+The whole probe (315 checks) runs under AddressSanitizer against an ASan build of the libraries
 (`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
 overflow or a double free:
 
@@ -762,7 +777,7 @@ Leak detection is worth running too, and it has now caught three real ones:
 
 ```sh
 ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 QT_QPA_PLATFORM=offscreen \
-    ./build-asan/tests/Debug/verify_mipmap     # 309 checks, 0 failures, exit 0, no leaks
+    ./build-asan/tests/Debug/verify_mipmap     # 315 checks, 0 failures, exit 0, no leaks
 ```
 
 1. `XCMemBlock` is a plain struct with a raw `uint8*` and no destructor, so a helper that allocates and
