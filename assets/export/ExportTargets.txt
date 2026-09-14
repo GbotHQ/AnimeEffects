@@ -1169,18 +1169,4 @@
     <bucket name="lossless" position="0.00"/>
   </bucket_positions>
 
-  <!-- ===== time budgets (for the codec ladder) =============================
-
-       How long a user is presumed willing to wait, per quality intent, when
-       the ladder decides whether a slower-but-better codec is acceptable.
-       Policy, not fact: these are the numbers to tune, so they are here and
-       not in code.
-  -->
-  <time_budgets>
-    <bucket name="smaller"  maxSeconds="900"/>
-    <bucket name="balanced" maxSeconds="900"/>
-    <bucket name="best"     maxSeconds="3600"/>
-    <bucket name="lossless" maxSeconds="3600"/>
-  </time_budgets>
-
 </export_targets>

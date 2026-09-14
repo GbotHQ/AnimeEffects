@@ -88,7 +88,8 @@ QStringList exportFacts(const ctrl::ExportPlan& plan, const ctrl::ExportTarget& 
         lines << (plan.gifPath
                       ? QCoreApplication::translate("MainWindow", "Codec: animated GIF")
                       : QCoreApplication::translate("MainWindow", "Codec: %1 in %2")
-                            .arg(plan.config.codec, plan.config.container));
+                            .arg(ctrl::codecDisplayName(plan.config.codec),
+                                 ctrl::containerDisplayName(plan.config.container)));
     }
 
     // The audio half says WHY, not only whether. Three different things produce a file

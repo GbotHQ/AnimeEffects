@@ -237,9 +237,9 @@ PY
       # The cap as the form states it, and the codec the plan resolved. Read with a
       # retry: one query against a busy application can come back with an empty tree, and
       # an empty file here would be read as "the form said nothing".
-      for i in 1 2 3 4 5; do
+      for i in 1 2 3 4 5 6 7 8; do
         ae text > "'"$facts"'" 2>/dev/null
-        [ -s "'"$facts"'" ] && break
+        grep -q "Limits:" "'"$facts"'" && break
         sleep 1
       done
       import -window root '"$SHOTS"'/cap_'"$slug"'_01_form.png
@@ -372,7 +372,7 @@ PY
 # the branch of the fit loop that already worked, and the one that proves the destination
 # can cap a video whose natural size is far over the limit.
 run_case telegram.sticker probe_capped.webm 262144 256 "Telegram sticker" webm \
-    "libvpx-vp9 in webm" "" 3 \
+    "VP9 in WebM" "" 3 \
     "the Telegram sticker is inside its 256 KB cap"
 
 # A capped GIF destination: 240x240, 500 KB, GIF only. media::GifEncoder owns this

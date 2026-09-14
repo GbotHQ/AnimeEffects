@@ -61,16 +61,6 @@ bool encoderSupportsPixFormat(const QString& aEncoderName, const QString& aPixFm
 // format (cached one-frame probe). This is the one that is actually true.
 bool encoderSupportsPixFormatUsable(const QString& aEncoderName, const QString& aPixFmt);
 
-// Measured encode throughput in FRAMES PER SECOND at the given size and pixel
-// format, or <= 0 if the encoder cannot be opened there. This is the second
-// half of capability: knowing an encoder runs is not knowing whether it is
-// usable for THIS job. Measured at the real size because throughput does not
-// scale simply, and cached per (encoder, size, format).
-//
-// Cost is a handful of frames, so it is only worth it for jobs long enough that
-// a few frames are negligible — callers gate on that, not here.
-double encoderThroughput(const QString& aEncoderName, int aWidth, int aHeight,
-                         const QString& aPixFmt = QString());
 
 // True iff the container's muxer (e.g. "mp4", "webm") can carry the named
 // encoder's codec. Used to reject a container/codec mismatch up front rather

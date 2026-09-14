@@ -387,11 +387,14 @@ int main(int argc, char** argv) {
             check(codecLine != QStringLiteral("Codec: libx264 in mp4"),
                   QStringLiteral("the facts box translates with the catalog loaded (%1)")
                       .arg(codecLine));
-            const QString viaLine =
-                QCoreApplication::translate("ExportTargets", "%1 via %2")
-                    .arg(QStringLiteral("AV1"), QStringLiteral("libsvtav1"));
-            check(viaLine != QStringLiteral("AV1 via libsvtav1"),
-                  QStringLiteral("and so does the reason a codec was chosen (%1)").arg(viaLine));
+            // The facts name the FORMAT, never the library that produced it: "AV1", not
+            // "libsvtav1". Which implementation we run is ours to pick and not the
+            // user's to adjudicate.
+            check(ctrl::codecDisplayName(QStringLiteral("libsvtav1")) == QStringLiteral("AV1")
+                      && ctrl::codecDisplayName(QStringLiteral("hevc_nvenc")) == QStringLiteral("H.265")
+                      && ctrl::codecDisplayName(QStringLiteral("libvpx-vp9")) == QStringLiteral("VP9")
+                      && ctrl::containerDisplayName(QStringLiteral("matroska")) == QStringLiteral("MKV"),
+                  QStringLiteral("and it names the format and the container, not the library"));
             const ctrl::ExportTarget esAnimation =
                 ctrl::ExportTargets::find(translated, QStringLiteral("discord.animation"));
             const ctrl::ExportTarget enAnimation =

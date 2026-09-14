@@ -132,23 +132,16 @@ bool isHardwareEncoder(const QString& aName) {
            || aName.contains(QLatin1String("videotoolbox"));
 }
 
-// How to choose between two encoders THAT PRODUCE THE SAME FORMAT, which is the one
-// question a list order cannot answer honestly: what if both a hardware and a software
-// encoder exist, or two hardware ones?
-enum class EncoderChoice {
-    // Take the declared order: software first, because its rate control has the most
-    // knobs and the budget leaves room (Best, Lossless).
-    Declared,
-    // Take whichever measures FASTEST here. The format is already decided by the
-    // family, so the remaining difference IS time; picking the first name in a list
-    // instead is an arbitrary tie-break in exactly the case the user asked about
-    // ("what if both have hardware compatibility?").
-    Fastest
-};
+// Which kind of encoder a bucket wants first, when a format has both.
+//
+// A FACT ABOUT THE FORMAT, not a measurement: a hardware encoder of the same format is
+// built for speed and a software one for rate control, so the time-sensitive buckets
+// take hardware first and the fidelity buckets keep the declared (software) order.
 
 struct Ladder {
     QStringList families; // codec families, most efficient first
-    EncoderChoice choice = EncoderChoice::Fastest;
+    // true for the buckets that care about time: hardware first inside a family.
+    bool fastFirst = true;
 };
 
 Ladder ladderFor(DestClass aClass, QualityBucket aBucket) {
@@ -159,7 +152,7 @@ Ladder ladderFor(DestClass aClass, QualityBucket aBucket) {
         // browser, phone and TV plays. AV1 and H.265 remain reachable by naming a codec
         // in Advanced; they are not chosen for the user at any bucket.
         out.families = {QStringLiteral("h264")};
-        out.choice = EncoderChoice::Fastest; // hardware H.264 when it runs here
+        out.fastFirst = true; // hardware H.264 when it runs here
         return out;
     }
     const bool lossless = aBucket == QualityBucket::Lossless;
@@ -171,21 +164,14 @@ Ladder ladderFor(DestClass aClass, QualityBucket aBucket) {
     // One rule for every non-lossless bucket, and the only thing a bucket changes:
     // whether quality per bit or time wins when both encoders of a family run here.
     // "Best" has room to be slow; "Balanced" and "Smaller" do not.
-    out.choice = (aBucket == QualityBucket::Best) ? EncoderChoice::Declared
-                                                  : EncoderChoice::Fastest;
+    out.fastFirst = (aBucket != QualityBucket::Best);
     return out;
 }
 
-// The encoder as a person reads it: the format family, whether the encoder is hardware
-// or software, and which encoder it is. "hardware"/"software" are part of a sentence,
-// so they translate with it rather than as bare words.
-QString encoderLabel(const QString& aFamily, const QString& aName) {
-    return QCoreApplication::translate("ExportTargets", "%1 (%2)")
-        .arg(familyLabel(aFamily),
-             isHardwareEncoder(aName) ? QCoreApplication::translate("ExportTargets", "hardware")
-                                      : QCoreApplication::translate("ExportTargets", "software"));
-}
-
+// The format as a person reads it. NOT the library that produced it: "libsvtav1",
+// "hevc_nvenc" and "libvpx-vp9" are ours to choose and nobody's to adjudicate, so the
+// facts name the format (AV1, H.265, VP9) and the choice of implementation stays
+// internal.
 // WHY this encoder, as one whole sentence per destination class, with the encoder as
 // %1. These were three English literals glued onto a label with a leading ": ", which
 // is untranslatable in practice: word order, the colon and the sentence break all move
@@ -210,14 +196,6 @@ QString classReason(DestClass aClass, const QString& aEncoder) {
     default:
         return aEncoder;
     }
-}
-
-// The measurement, in the sentence it belongs to. "%2s" as a whole pattern rather than
-// a number with an "s" appended: seconds are not written the same way everywhere.
-QString timedReason(const QString& aEncoder, int aSeconds) {
-    return QCoreApplication::translate("ExportTargets", "%1, about %2s here")
-        .arg(aEncoder)
-        .arg(aSeconds);
 }
 
 } // namespace
@@ -487,29 +465,6 @@ QHash<QString, double> ExportTargets::loadBucketPositions(const QString& aPath) 
     return out;
 }
 
-QHash<QString, double> ExportTargets::loadTimeBudgets(const QString& aPath) {
-    static QHash<QString, QHash<QString, double>> cache;
-    const auto it = cache.constFind(aPath);
-    if (it != cache.constEnd()) return *it;
-
-    QHash<QString, double> out;
-    QFile file(aPath);
-    if (file.open(QIODevice::ReadOnly)) {
-        QDomDocument doc;
-        if (doc.setContent(&file)) {
-            const QDomElement root = doc.firstChildElement(QStringLiteral("export_targets"));
-            const QDomElement tb = root.firstChildElement(QStringLiteral("time_budgets"));
-            for (QDomElement b = tb.firstChildElement(QStringLiteral("bucket")); !b.isNull();
-                 b = b.nextSiblingElement(QStringLiteral("bucket"))) {
-                out.insert(b.attribute(QStringLiteral("name")),
-                           (double)attrDouble(b, QStringLiteral("maxSeconds")));
-            }
-        }
-    }
-    cache.insert(aPath, out);
-    return out;
-}
-
 ExportTarget ExportTargets::find(const QList<ExportTarget>& aTargets, const QString& aId) {
     for (const ExportTarget& t : aTargets) {
         if (t.id == aId) return t;
@@ -719,112 +674,61 @@ void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes) 
     }
 }
 
-QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
-                           const LadderHints& aHints, QString* aWhy) {
+QString codecDisplayName(const QString& aCodec) {
+    if (aCodec.isEmpty()) return QString();
+    if (aCodec == QLatin1String("libvpx-vp9") || aCodec == QLatin1String("vp9_vaapi")) {
+        return QStringLiteral("VP9");
+    }
+    if (aCodec.contains(QLatin1String("av1"))) return QStringLiteral("AV1");
+    if (aCodec.contains(QLatin1String("265")) || aCodec.contains(QLatin1String("hevc"))) {
+        return QStringLiteral("H.265");
+    }
+    if (aCodec.contains(QLatin1String("264"))) return QStringLiteral("H.264");
+    if (aCodec == QLatin1String("ffv1")) return QStringLiteral("FFV1");
+    if (aCodec.contains(QLatin1String("webp"))) return QStringLiteral("WebP");
+    if (aCodec == QLatin1String("gif")) return QStringLiteral("GIF");
+    if (aCodec.contains(QLatin1String("prores"))) return QStringLiteral("ProRes");
+    return aCodec;
+}
+
+QString containerDisplayName(const QString& aContainer) {
+    if (aContainer == QLatin1String("mp4") || aContainer == QLatin1String("m4v")) {
+        return QStringLiteral("MP4");
+    }
+    if (aContainer == QLatin1String("webm")) return QStringLiteral("WebM");
+    if (aContainer == QLatin1String("matroska") || aContainer == QLatin1String("mkv")) {
+        return QStringLiteral("MKV");
+    }
+    return aContainer.toUpper();
+}
+
+QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket, QString* aWhy) {
     const Ladder ladder = ladderFor(aClass, aBucket);
-    const bool canMeasure = aHints.maxSeconds > 0.0 && aHints.frameCount > 0
-                            && aHints.width > 0 && aHints.height > 0;
-    QStringList rejected;
-    // Fastest rung seen, used when NOTHING meets the budget. Returning nothing would
-    // strand the user; the right answer is the fastest available plus an honest
-    // explanation (the real ETA comes from actual progress anyway).
-    QString fallback;
-    QString fallbackWhy;
-    // The label of the encoder that fallback names, kept alongside the reason: the
-    // give-up sentence needs a PHRASE ("AV1 (software) via libsvtav1"), while the
-    // per-attempt reasons that reach aWhy are whole sentences, and %1 has to be the
-    // same kind of thing in both.
-    QString fallbackLabel;
-
+    // Nothing here is timed. The old gate measured each candidate by encoding eight
+    // black frames and rejected whatever projected past a fixed 900 s (or 3600 s),
+    // which is a number that means nothing at 480p and nothing at 4K, and which turned
+    // into "the fastest available, whatever it is" exactly on the long exports where
+    // the choice matters most. The choice is a POLICY now: the format comes from the
+    // destination's class and the quality bucket, and inside a format the faster kind
+    // of encoder is preferred unless the bucket is about fidelity.
     for (const QString& family : ladder.families) {
-        // Which of this family's encoders exist in this build, in the declared order
-        // (software first, which is the quality-first default).
-        QStringList running;
+        // Which of this family's encoders actually run here, in the order this bucket
+        // wants them: the declared order is software first (better rate control, which
+        // is what Best and Lossless are paying for), and the time-sensitive buckets
+        // take a hardware encoder first when one runs.
+        QStringList order;
         for (const QString& name : familyEncoders(family)) {
-            if (media::ffmpeg::encoderUsable(name.toUtf8().constData())) running << name;
-        }
-        if (running.isEmpty()) continue;
-
-        // WHICH ONE, when a family has more than one. Measured, when the bucket allows
-        // it: the format is already decided, so the only difference left is speed. This
-        // is the same cached sample the budget gate uses.
-        // A sample needs a size, not a budget: choosing between two encoders of the
-        // same format is a question about this machine, and it is worth answering even
-        // when nobody asked how long the export may take.
-        const bool canSample = aHints.width > 0 && aHints.height > 0;
-        QString chosen = running.first();
-        bool choseByMeasurement = false;
-        if (ladder.choice == EncoderChoice::Fastest && canSample && running.size() > 1) {
-            double chosenFps = 0.0;
-            for (const QString& name : running) {
-                const double fps = media::ffmpeg::encoderThroughput(name, aHints.width,
-                                                                    aHints.height, aHints.pixFmt);
-                if (fps > chosenFps) {
-                    chosenFps = fps;
-                    chosen = name;
-                    choseByMeasurement = true;
-                }
+            if (!media::ffmpeg::encoderUsable(name.toUtf8().constData())) continue;
+            if (ladder.fastFirst && isHardwareEncoder(name)) {
+                order.prepend(name);
+            } else {
+                order.append(name);
             }
         }
-
-        const QString label = encoderLabel(family, chosen);
-        fallbackLabel = label;
-
-        // The remaining gate: does it fit the time budget HERE? Try the rest of this
-        // family before giving up on the format (a software encoder may fit where the
-        // hardware one does not, and the other way round), then the next family.
-        QStringList order = running;
-        order.removeAll(chosen);
-        order.prepend(chosen);
-        for (const QString& name : order) {
-            fallback = name;
-            fallbackWhy = classReason(aClass, label);
-            const QString how = (choseByMeasurement && name == chosen)
-                                    ? QCoreApplication::translate(
-                                          "ExportTargets",
-                                          "%1 via %2, the fastest of %3 that runs here")
-                                          .arg(label, name)
-                                          .arg(running.size())
-                                    : QCoreApplication::translate("ExportTargets", "%1 via %2")
-                                          .arg(label, name);
-            if (!canMeasure) {
-                if (aWhy) *aWhy = classReason(aClass, how);
-                return name;
-            }
-            const double fps = media::ffmpeg::encoderThroughput(name, aHints.width,
-                                                                aHints.height, aHints.pixFmt);
-            if (fps <= 0.0) {
-                // Unmeasurable: do not reject on a failed measurement.
-                if (aWhy) *aWhy = classReason(aClass, how);
-                return name;
-            }
-            const double projected = (double)aHints.frameCount / fps;
-            if (projected > aHints.maxSeconds) {
-                rejected << QCoreApplication::translate("ExportTargets", "%1/%2 (~%3s)")
-                                .arg(label, name)
-                                .arg((int)std::llround(projected));
-                continue;
-            }
-            if (aWhy) {
-                *aWhy = classReason(aClass, timedReason(how, (int)std::llround(projected)));
-            }
-            return name;
-        }
+        if (order.isEmpty()) continue;
+        if (aWhy) *aWhy = classReason(aClass, familyLabel(family));
+        return order.first();
     }
-
-    if (!fallback.isEmpty()) {
-        if (aWhy) {
-            *aWhy = QCoreApplication::translate(
-                        "ExportTargets",
-                        "%1: nothing here is fast enough for this budget (%2), so this is the "
-                        "fastest available")
-                        .arg(QCoreApplication::translate("ExportTargets", "%1 via %2")
-                                 .arg(fallbackLabel, fallback),
-                             rejected.join(QStringLiteral(", ")));
-        }
-        return fallback;
-    }
-
     if (aWhy)
         *aWhy = QCoreApplication::translate("ExportTargets",
                                                "no suitable encoder found in this build");
@@ -930,17 +834,8 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     // --- codec --------------------------------------------------------------
     QString codec = aTarget.codec;
     if (aTarget.codecLadder) {
-        LadderHints hints;
-        hints.width = plan.size.width();
-        hints.height = plan.size.height();
-        hints.pixFmt = aTarget.pixFmt;
-        hints.frameCount = plan.frames();
-        const QHash<QString, double> budgets = ExportTargets::loadTimeBudgets();
-        hints.maxSeconds =
-            budgets.value(bucketName(aBucket), 0.0);
-
         QString why;
-        codec = resolveLadderCodec(aTarget.klass, aBucket, hints, &why);
+        codec = resolveLadderCodec(aTarget.klass, aBucket, &why);
         if (codec.isEmpty()) {
             plan.error = QCoreApplication::translate(
                 "ExportTargets", "no encoder available for this destination in this build");

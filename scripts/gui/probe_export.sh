@@ -285,7 +285,7 @@ assert_hidden /tmp/exp_form.txt "Image quality" "and does not offer an image qua
 # The chosen destination's own decisions, in the words on screen. "20 MB" is the cap this
 # row declares in the destination table, so this checks that the destination's data
 # reached the form rather than that some particular wording is used.
-for want in "libx264 in mp4" "20 MB"; do
+for want in "H.264 in MP4" "20 MB"; do
     if grep -q "$want" /tmp/exp_facts.txt; then
         check 0 "the facts state what this destination decides ($want)"
     else

@@ -392,10 +392,6 @@ public:
     static QHash<QString, QualityControl> loadQualityControl(
         const QString& aPath = defaultPath());
 
-    // Per-quality-intent time budgets (seconds), from the data file. Policy,
-    // not fact — therefore data, so it can be tuned without a rebuild.
-    static QHash<QString, double> loadTimeBudgets(const QString& aPath = defaultPath());
-
     // Where each quality intent starts within a codec's [best, worst] span
     // (0 = the codec's best value, 1 = the lowest we accept before the fit-to-cap
     // loop shrinks the image instead). Keyed by bucket name, from
@@ -437,25 +433,20 @@ QSize applySizeRule(const SizeRule& aRule, const QSize& aSource, QStringList* aN
 // half of constraint enforcement).
 void applyCaps(const Caps& aCaps, int* aFps, int* aFrames, QStringList* aNotes = nullptr);
 
-// What the ladder needs to know to judge whether a codec is fast enough here.
-struct LadderHints {
-    int width = 0;
-    int height = 0;
-    QString pixFmt;
-    int frameCount = 0;
-    double maxSeconds = 0.0; // 0 = no time limit
-};
+// What a person calls the format an encoder produces, and the container it lands in.
+// The library name ("libsvtav1", "hevc_nvenc") is an implementation detail of ours: the
+// user reads "AV1" and "MP4". Falls back to the name it was given, so an encoder without
+// a friendly name is still stated rather than hidden.
+QString codecDisplayName(const QString& aCodec);
+QString containerDisplayName(const QString& aContainer);
 
-// Pick a codec for a destination whose codec is NOT dictated. Walks the
-// (class, bucket) ladder and returns the first candidate that (a) actually runs
-// here and (b), when a budget and size are supplied, is projected to finish
-// inside it. `aWhy` receives the one-line reason the UI shows.
-//
-// Both gates are measured, not read off a list: encoderUsable() (a one-frame
-// test encode) and encoderThroughput() (timed frames at the real size).
-QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket,
-                           const LadderHints& aHints = LadderHints(),
-                           QString* aWhy = nullptr);
+// Pick a codec for a destination whose codec is NOT dictated. Walks the (class,
+// bucket) ladder and returns the first candidate that actually RUNS here, with hardware
+// preferred inside a format for the buckets that care about time. `aWhy` receives the
+// one-line reason the UI shows: the format, and what this destination does with the
+// file. Nothing about which library produced it, and nothing about how long it will
+// take: neither is the user's to adjudicate.
+QString resolveLadderCodec(DestClass aClass, QualityBucket aBucket, QString* aWhy = nullptr);
 
 // The whole point: destination + request + quality intent -> a ready-to-open
 // encoder config, plus constraint application and human-readable reasoning.
