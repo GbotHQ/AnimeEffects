@@ -66,9 +66,10 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   ae wait "Format" >/dev/null 2>&1 || true
   sleep 2
   ae text > /tmp/ax_manual_facts.txt 2>/dev/null
-  # What the Format row says the artifact is, so the facts can be read against
-  # the control rather than against a container this probe recorded: the form
-  # hands back the container it was carrying when the destination went away.
+  # What the Format row states, so the facts can be read against the CONTROL rather
+  # than against a container this probe recorded. `ae value` answers for a QComboBox
+  # again: with no Value or EditableText interface it falls back to the node name, which
+  # for a combo IS its current value.
   ae value "Format" > /tmp/ax_manual_format.txt 2>/dev/null
   ae_report /tmp/ax_manual.txt "Destination" "Format" "Codec" "Quality" "Width" "Height"
   xdotool mousemove 700 600; sleep 0.5
@@ -105,6 +106,12 @@ assert_rendered "$SHOTS/ax_01_sticker.png" "the form for a destination with ever
 # ---- and the escape hatch hands the artifact back to the user ----------------
 assert_showing /tmp/ax_manual.txt "Format" "the escape hatch offers the Format row"
 assert_showing /tmp/ax_manual.txt "Codec" "and the Codec row beside it"
+# The rows are only half of it: the facts have to name the container the Format row
+# is actually showing, which is a cross-check between a control and the words beside
+# it rather than a pattern that any "Codec: X in Y" line would satisfy. The form hands
+# back the container it was carrying when the destination went away (WebM here, since
+# the sticker had set it), so the container itself is read from the row instead of
+# being hard-coded from an earlier run.
 manualFormat=$(tr -d '\n' < /tmp/ax_manual_format.txt 2>/dev/null)
 if [ -n "$manualFormat" ] && grep -qF "in $manualFormat" /tmp/ax_manual_facts.txt; then
     check 0 "and the facts name the container the Format row states ($manualFormat)"

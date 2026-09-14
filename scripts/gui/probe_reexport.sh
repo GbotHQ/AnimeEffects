@@ -32,7 +32,7 @@ mkdir -p "$CFG/AnimeEffectsProject"
 printf '[General]\nexport_destination=chat.discord.file\nexport_quality_bucket=1\n' \
     > "$CFG/AnimeEffectsProject/AnimeEffects.conf"
 export OUT
-rm -f "$OUT/repeat1.mp4" "$OUT/repeat2.mp4" /tmp/re_status1.txt /tmp/re_status2.txt /tmp/re_set.txt
+rm -f "$OUT/repeat1.mp4" "$OUT/repeat2.mp4" /tmp/re_set.txt /tmp/re_status.txt /tmp/re_size1.txt /tmp/re_after.txt
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # The frame range, by name, through the Value interface: ae_ui.py can click what it
@@ -138,7 +138,7 @@ PY
   wait_file() { # wait_file <path>
     local size="" prev=""
     local i
-    for i in $(seq 1 90); do
+    for i in $(seq 1 150); do
       if [ -s "$1" ]; then
         size=$(stat -c %s "$1" 2>/dev/null)
         if [ -n "$prev" ] && [ "$size" = "$prev" ]; then return 0; fi
@@ -161,9 +161,9 @@ PY
   # rather than encoding the whole project - a probe that quietly ran for a quarter of
   # an hour would be worse than one that fails.
   if set_range 1 4 > /tmp/re_set.txt; then
-    check 0 "the exported range is set by name ($(tr -d '\n' < /tmp/re_set.txt))"
+    check 0 "the exported range is set by name ($(tr "\n" " " < /tmp/re_set.txt))"
   else
-    check 1 "the exported range is set by name (see /tmp/re_set.txt: $(tr -d '\n' < /tmp/re_set.txt))"
+    check 1 "the exported range is set by name (see /tmp/re_set.txt: $(tr "\n" " " < /tmp/re_set.txt))"
     xdotool mousemove 700 600; sleep 0.5
     import -window root '"$SHOTS"'/re_00_range_failed.png
     kill $app 2>/dev/null; wait $app 2>/dev/null
@@ -177,7 +177,10 @@ PY
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "repeat1.mp4"; sleep 0.6
   xdotool key Return
-  wait_file "$OUT/repeat1.mp4"
+  # The wait is asserted, not assumed: a file that never finished being written would
+  # otherwise show up as a short file that "exists", which is the shape of failure the
+  # old probe was built on.
+  wait_file "$OUT/repeat1.mp4" || check 1 "the first export finished writing its file"
   # What the status bar holds, recorded rather than asserted (see wait_file above).
   ae_report /tmp/re_status.txt "Exported repeat1.mp4" "File"
   # The first file as it stands, so the repeat can be held to leaving it alone.
@@ -199,7 +202,7 @@ PY
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "repeat2.mp4"; sleep 0.6
   xdotool key Return
-  wait_file "$OUT/repeat2.mp4"
+  wait_file "$OUT/repeat2.mp4" || check 1 "the repeat finished writing its file"
   sleep 1
   # A failed export raises a message box titled "Export Error": the one thing the repeat
   # must not do quietly instead of writing the file.

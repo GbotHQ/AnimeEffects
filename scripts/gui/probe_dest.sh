@@ -55,7 +55,16 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   sleep 1
   ae_report /tmp/dst_form.txt "Destination" "Width" "Height" "Format" "Quality" \
                                       "Advanced" "Keep aspect ratio"
-  ae text > /tmp/dst_form_text.txt 2>/dev/null
+  # Read with a retry. A single query against an application that is still working
+  # (the plan runs a short probe encode when the codec has a quality knob) can come
+  # back with an EMPTY tree, and an empty file here is read as "the form stated
+  # nothing": a failure of the read reported as a failure of the application. The
+  # assertions below are about the facts, so the facts have to arrive first.
+  for i in 1 2 3 4 5 6 7 8; do
+    ae text > /tmp/dst_form_text.txt 2>/dev/null
+    [ -s /tmp/dst_form_text.txt ] && break
+    sleep 1
+  done
   # Which words on screen belong to which field. This is the OTHER half of
   # addressing a form: a control can answer to a name and still have nothing beside
   # it that reads as its label.

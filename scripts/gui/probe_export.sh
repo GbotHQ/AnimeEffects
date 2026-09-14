@@ -42,21 +42,24 @@ rm -f /tmp/exp_form.txt /tmp/exp_facts.txt /tmp/exp_range.txt /tmp/exp_status.tx
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # NUMBER BOXES, BY NAME, THROUGH THE VALUE INTERFACE.
   #
-  # ae_ui.py can read a line edit and click what it finds, but this Qt build answers the
-  # EditableText interface with an EMPTY string for a QSpinBox: `ae value` prints nothing
-  # for every number box on this form, and `ae set` writes text that no value is ever
-  # taken from - which is how an earlier draft of this probe set a range that never
-  # arrived, and then spent minutes encoding all 601 frames of the project. What is
-  # needed is the first node that answers to the name AND HOLDS A NUMBER, which is always
-  # the box and never the label beside it: that label reads "- First frame -", which
-  # contains the name of the box, and it comes first in the tree. Setting goes through
-  # the Value interface, which Qt wires to QSpinBox::setValue.
+  # The shared tool does this as well now: ae set and ae value reach for the Value
+  # interface before the editable text (this Qt build answers EditableText with an EMPTY
+  # string for a QSpinBox, so a write can report success while changing nothing), and a
+  # name is matched EXACTLY before anything that merely contains it, so the box wins over
+  # the label "- First frame -" that reads the same words. This helper stays for two
+  # reasons of its own: one process sets a range and reads it BACK in a single walk, which
+  # is what lets the assertions below be about the range the FORM holds rather than about
+  # the numbers this probe typed at it, and its bar mode below is the cheap poll the
+  # status message needs. Setting goes through the Value interface, which Qt wires to
+  # QSpinBox::setValue.
   #
   #   spin set <name> <value>...   one "name=value" line per box that took one
   #   spin read <file> <name>...   one "name=value" line per box ("absent" if no node)
+  #   spin bar  <text>             the status bar message containing <text>, if it is
+  #                                on screen right now (exit 1 when it is not)
   spin() {
     python3 - "$@" <<PY
-import os, sys, warnings
+import os, sys, time, warnings
 warnings.filterwarnings("ignore")
 import gi
 gi.require_version("Atspi", "2.0")
@@ -124,7 +127,26 @@ def box(name):
 def show(v):
     return str(int(v)) if v == int(v) else str(v)
 
-if mode == "read":
+if mode == "bar":
+    # The status bar text, which is ONE node whose name is the whole message. This is a
+    # single walk with no retry of its own, unlike ae label (which waits ten seconds
+    # before admitting a widget is not there): a message that lives twenty seconds has
+    # to be polled for cheaply, or the poll itself outlives it.
+    needle = sys.argv[2]
+    for _ in range(3):
+        app = root()
+        if app is not None:
+            for node in walk(app):
+                try:
+                    name = node.get_name() or ""
+                except Exception:
+                    continue
+                if needle in name:
+                    print(name)
+                    sys.exit(0)
+        time.sleep(0.3)
+    sys.exit(1)
+elif mode == "read":
     with open(sys.argv[2], "w") as out:
         for name in sys.argv[3:]:
             node = box(name)
@@ -196,8 +218,14 @@ PY
   spin read /tmp/exp_range.txt "First frame" "Last frame" "Frame rate"
   # What the form says it is about to make. The destination DICTATES the format, so the
   # form states it as a fact instead of offering a Format control, and the facts are the
-  # data the destination declares, arriving through the plan.
-  ae text > /tmp/exp_facts.txt 2>/dev/null
+  # data the destination declares, arriving through the plan. Read with a retry: a single
+  # query against a busy application can come back with an empty tree, and an empty file
+  # here would be read as "the form said nothing".
+  for i in 1 2 3 4 5; do
+    ae text > /tmp/exp_facts.txt 2>/dev/null
+    [ -s /tmp/exp_facts.txt ] && break
+    sleep 1
+  done
   import -window root '"$SHOTS"'/exp_01_form.png
 
   # 3. The form is answered, and the platform file dialog is TYPED INTO. That dialog is
@@ -213,20 +241,34 @@ PY
   xdotool type --delay 25 "'"$OUTNAME"'"; sleep 0.6
   xdotool key Return
 
-  # 4. The completion signal is what the APP says, not what is on disk: the muxer writes
-  #    its header the moment the export opens, so a file that exists (48 bytes) is not a
-  #    finished export, and that is exactly the file this probe used to accept. The
-  #    status bar names the file it wrote when the export RETURNS; ae label finds it by
-  #    name and prints the whole message.
+  # 4. THE COMPLETION SIGNAL IS THE APP OWN EXPORT BOOKKEEPING, not the file on disk and
+  #    not the status message. Not the file, because the muxer writes its header the
+  #    moment the export opens: a 48-byte file that exists is not a finished export, and
+  #    that is exactly the file this probe used to accept. Not the status message,
+  #    because it lives for twenty seconds and a single accessibility query against a
+  #    loaded application can take longer than that - measured, and the reason an earlier
+  #    draft of this probe sat through a finished export and reported nothing.
+  #
+  #    When reportExportOutcome() returns it writes export_last_name into QSettings, and
+  #    that is on disk for as long as the run lasts. The library sandboxes
+  #    XDG_CONFIG_HOME, so this is the probe own settings file, never the developer own.
+  cf="$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf"
+  for i in $(seq 1 120); do
+    grep -q "^export_last_name='"$OUTNAME"'$" "$cf" 2>/dev/null && break
+    sleep 2
+  done
+  echo "waited up to $((i * 2))s for the export to report itself finished"
+  # THE SNAPSHOT COMES FIRST. The status message lives twenty seconds, and the picture is
+  # what has to catch it; reading it costs time (a miss is a whole walk of the tree), so
+  # the screenshot must not queue behind the read.
+  import -window root '"$SHOTS"'/exp_02_done.png
+  # ...and then the message itself, polled for cheaply while it is up.
   status=""
-  for i in $(seq 1 60); do
-    status=$(ae label "Exported '"$OUTNAME"'" 2>/dev/null)
+  for i in $(seq 1 40); do
+    status=$(spin bar "Exported '"$OUTNAME"'" 2>/dev/null)
     [ -n "$status" ] && break
   done
-  echo "waited up to $((i * 10))s for the export to report"
   printf "%s\n" "$status" > /tmp/exp_status.txt
-  sleep 1
-  import -window root '"$SHOTS"'/exp_02_done.png
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
 
@@ -291,6 +333,13 @@ else
 fi
 grep -qF "$OUTDIR" /tmp/exp_status.txt
 check $? "and says it wrote into the throwaway directory, not the checkout"
+# The app own bookkeeping, which is also the signal this probe waited on: the export
+# reached the end of its reporting path rather than merely leaving bytes behind.
+if grep -q "^export_last_name=$OUTNAME$" "$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf" 2>/dev/null; then
+    check 0 "and the app recorded the finished export in its own settings"
+else
+    check 1 "and the app recorded the finished export in its own settings (nothing in $XDG_CONFIG_HOME)"
+fi
 assert_rendered "$SHOTS/exp_01_form.png" "the export form carrying the chosen destination"
 assert_rendered "$SHOTS/exp_02_done.png" "the app after the export"
 summary probe_export

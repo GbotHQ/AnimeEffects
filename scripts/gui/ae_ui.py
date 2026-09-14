@@ -212,21 +212,102 @@ def showing(node):
     return True
 
 
+def match_tier(node, name):
+    """How well this node's name matches: 0 exact, 1 starts with, 2 contains, None no.
+
+    The tier exists because a control and the LABEL that names it both contain the
+    words: the spin box "First frame" is preceded by the label "- First frame -", and
+    "Width" is a substring of the label "Width: ". Taking the first substring match in
+    tree order picks the label, which has no Value interface and no editable text, so
+    `ae set Width 160` reported "no widget named" or wrote nothing while the control
+    was on screen the whole time. An exact name wins over a longer name that contains
+    it, always.
+    """
+    for candidate in names_of(node):
+        if candidate == name:
+            return 0
+    for candidate in names_of(node):
+        if candidate.startswith(name):
+            return 1
+    for candidate in names_of(node):
+        if name in candidate:
+            return 2
+    return None
+
+
+def candidates(name, role=None, visible=True):
+    """Every node that answers to the name, best match first."""
+    app = _app()
+    if app is None:
+        return []
+    out = []
+    for depth, r, _n, node in _walk(app):
+        if role is not None and r != role:
+            continue
+        if visible and not showing(node):
+            continue
+        tier = match_tier(node, name)
+        if tier is not None:
+            out.append((tier, depth, node))
+    out.sort(key=lambda item: (item[0], item[1]))
+    return [node for _tier, _depth, node in out]
+
+
 def find(name, role=None, timeout=TIMEOUT, visible=True):
-    """The first node whose name matches, optionally restricted by role. Retries,
-    because the dialog under test is built in response to a click."""
+    """The best match for the name, optionally restricted by role. Retries, because
+    the dialog under test is built in response to a click.
+
+    The FIRST candidate that satisfies the caller is not this function's job: a caller
+    that needs an interface (a Value to set, editable text to read) asks for the list
+    with candidates() and takes the first node that has one. Picking the best name
+    match here and hoping it can also do the thing is what made `ae set` silently do
+    nothing."""
     deadline = time.time() + timeout
     while True:
-        app = _app()
-        if app is not None:
-            for _, r, _n, node in _walk(app):
-                if role is not None and r != role:
-                    continue
-                if name in names_of(node) and (not visible or showing(node)):
-                    return node
+        found = candidates(name, role=role, visible=visible)
+        if found:
+            return found[0]
         if time.time() >= deadline:
             return None
         time.sleep(0.25)
+
+
+def find_capable(name, timeout=TIMEOUT, want="value"):
+    """The best match that can actually be read or written.
+
+    want="value": a node with a Value interface (a spin box, a slider) or editable
+    text. QSpinBox answers EditableText with an empty string in this Qt build while
+    its Value interface holds the number, so both are asked for and the node that
+    answers is the one returned.
+    """
+    deadline = time.time() + timeout
+    while True:
+        for node in candidates(name):
+            if want == "value" and (node.get_value_iface() is not None
+                                    or node.get_editable_text_iface() is not None):
+                return node
+            if want == "enabled" and _enabled(node):
+                return node
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.25)
+
+
+def _enabled(node):
+    """Whether the widget is usable, which is a different question from whether it is
+    on screen: a disabled menu entry is plainly visible and does nothing. Qt states it
+    through the ENABLED and SENSITIVE states."""
+    try:
+        states = node.get_state_set()
+    except Exception:
+        return False
+    for name in ("ENABLED", "SENSITIVE"):
+        try:
+            if not states.contains(getattr(Atspi.StateType, name)):
+                return False
+        except Exception:
+            continue
+    return True
 
 
 def do(node, action="click"):
@@ -327,40 +408,68 @@ def cmd_combo(name, item):
 
 
 def cmd_set(name, value):
-    node = find(name)
+    node = find_capable(name)
     if node is None:
-        print(f"no widget named {name!r}", file=sys.stderr)
+        print(f"no widget named {name!r} that holds a value", file=sys.stderr)
         return 1
-    editable = node.get_editable_text_iface()
-    if editable is not None:
-        editable.set_text_contents(value)
-        return 0
+    # Value FIRST, not EditableText: a QSpinBox here answers EditableText with "" and
+    # accepts set_text_contents() without changing the number, so writing through the
+    # text interface looks successful and changes nothing. The Value interface is the
+    # number itself.
     value_iface = node.get_value_iface()
     if value_iface is not None:
         try:
             value_iface.set_current_value(float(value))
             return 0
         except Exception as exc:
-            print(f"cannot set {name!r}: {exc}", file=sys.stderr)
+            print(f"cannot set {name!r} through its Value interface: {exc}", file=sys.stderr)
             return 1
+    editable = node.get_editable_text_iface()
+    if editable is not None:
+        editable.set_text_contents(value)
+        return 0
     print(f"{name!r} is not editable", file=sys.stderr)
     return 1
 
 
 def cmd_value(name):
-    node = find(name)
+    node = find_capable(name)
     if node is None:
-        print(f"no widget named {name!r}", file=sys.stderr)
-        return 1
+        # A QComboBox has neither interface: Qt reports its CURRENT VALUE as the node's
+        # accessible name (see names_of), which is exactly what a caller asking for the
+        # value wants. Without this fallback, `ae value "Format"` failed on the one
+        # control whose value is a word rather than a number, and a probe that had been
+        # cross-checking the facts against the Format row had to give that assertion up.
+        fallback = find(name)
+        if fallback is None:
+            print(f"no widget named {name!r}", file=sys.stderr)
+            return 1
+        print(fallback.get_name())
+        return 0
+    value_iface = node.get_value_iface()
+    if value_iface is not None:
+        current = value_iface.get_current_value()
+        # A spin box holds a number; printing it without a trailing ".0" makes the
+        # caller's comparison readable ("17", not "17.0").
+        print(int(current) if float(current).is_integer() else current)
+        return 0
     editable = node.get_editable_text_iface()
     if editable is not None:
         print(editable.get_text(0, -1))
         return 0
-    value_iface = node.get_value_iface()
-    if value_iface is not None:
-        print(value_iface.get_current_value())
-        return 0
     print(node.get_name())
+    return 0
+
+
+def cmd_enabled(name):
+    """Exit 0 when the widget is enabled, 1 when it is disabled or absent, printing
+    which. The state a menu entry is in is not visible in a screenshot of an
+    accessibility dump entry: it has to be asked for."""
+    node = find_capable(name, want="enabled")
+    if node is None:
+        print(f"{name!r} is disabled or not on screen", file=sys.stderr)
+        return 1
+    print(f"{name} is enabled")
     return 0
 
 
@@ -516,6 +625,7 @@ def main(argv):
         "report": (cmd_report, None),
         "extents": (cmd_extents, 1),
         "absent": (cmd_absent, None),
+        "enabled": (cmd_enabled, 1),
     }
     if cmd not in table:
         print(f"unknown command {cmd!r}", file=sys.stderr)

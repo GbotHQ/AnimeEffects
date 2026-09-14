@@ -47,6 +47,66 @@ rm -f /tmp/seq_form.txt /tmp/seq_facts.txt /tmp/seq_status.txt
 
 # ------------------------------------------------------------------ a still image
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
+  # THE STATUS BAR MESSAGE, by name, read cheaply and repeatedly.
+  #
+  # The message is ONE node (the status bar) whose accessible name is the whole text.
+  # ae label would find it too, but it waits ten seconds before admitting a widget is not
+  # there, and this message lives for twenty: a poll built on it can outlive the thing it
+  # is polling for. One walk of the tree with no retry of its own costs a fraction of a
+  # second, so a poll catches the message while it is up.
+  status_text() { # status_text <text> -> the message containing it, exit 1 if none
+    python3 - "$@" <<PY
+import os, sys, time, warnings
+warnings.filterwarnings("ignore")
+import gi
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi as A
+
+needle = sys.argv[1]
+want = os.environ.get("AE_UI_PID", "").strip()
+
+def walk(node, depth=0):
+    if depth > 16:
+        return
+    try:
+        count = node.get_child_count()
+    except Exception:
+        return
+    for i in range(count):
+        try:
+            child = node.get_child_at_index(i)
+        except Exception:
+            continue
+        yield child
+        yield from walk(child, depth + 1)
+
+app = None
+desktop = A.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    try:
+        candidate = desktop.get_child_at_index(i)
+        if "AnimeEffects" not in (candidate.get_name() or ""):
+            continue
+        if want and str(candidate.get_process_id()) != want:
+            continue
+        if app is None or candidate.get_child_count() > app.get_child_count():
+            app = candidate
+    except Exception:
+        continue
+
+if app is not None:
+    for node in walk(app):
+        try:
+            name = node.get_name() or ""
+        except Exception:
+            continue
+        if needle in name:
+            print(name)
+            sys.exit(0)
+sys.exit(1)
+PY
+  }
+
   # cd as its OWN command, never `cd X && App &`: that backgrounds a SUBSHELL, so $!
   # is not the application and AE_UI_PID addresses an accessible root that has no
   # tree - every by-name query then answers "no widget named ..." while a window is
@@ -72,33 +132,50 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   # 2. What the form asks a still for: a destination, the image quality the Qt image
   #    writer has, and a size. NOT a frame rate and NOT a frame range - and the
-  #    Format row is the destination's fact, not a control.
+  #    Format row is a fact the destination states, not a control.
   ae_report /tmp/still_form.txt "Destination" "Image quality" "Width" "Height" \
                                 "Frame rate" "First frame" "Last frame" "Format" "Quality"
-  ae text > /tmp/still_facts.txt 2>/dev/null
+  # Read with a retry: one query against a busy application can come back with an empty
+  # tree, and an empty file here would be read as "the form said nothing".
+  for i in 1 2 3 4 5; do
+    ae text > /tmp/still_facts.txt 2>/dev/null
+    [ -s /tmp/still_facts.txt ] && break
+    sleep 1
+  done
   import -window root '"$SHOTS"'/still_01_form.png
 
   # 3. Export, and name the image in the platform file dialog. It is the one step that
   #    cannot be driven by name: it is a different toolkit in the same process, so its
   #    widgets are not in the application accessibility tree. It opens with the name
   #    field focused and the suggested name selected, and a relative name resolves
-  #    against the application's working directory.
+  #    against the working directory of the application.
   ae_press "Export" "the export form is answered"
   sleep 4
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "'"$STILL_NAME"'"; sleep 0.6
   xdotool key Return
-  # The completion signal is what the APP says: the status bar names the image it wrote
-  # when the export returns. ae label finds it by name and prints the whole message,
-  # which carries the file name, its size, and the directory it landed in.
+  # THE COMPLETION SIGNAL IS THE APP OWN EXPORT BOOKKEEPING: reportExportOutcome()
+  # writes export_last_name into QSettings when it returns, and that survives on disk -
+  # unlike the status message, which lives for twenty seconds and can be missed by a
+  # single accessibility query against a loaded application. The library sandboxes
+  # XDG_CONFIG_HOME, so this is the probe own settings file.
+  cf="$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf"
+  for i in $(seq 1 120); do
+    grep -q "^export_last_name='"$STILL_NAME"'$" "$cf" 2>/dev/null && break
+    sleep 2
+  done
+  # THE SNAPSHOT COMES FIRST: the message lives twenty seconds and the picture is what
+  # has to catch it, so the screenshot must not queue behind the read below.
+  import -window root '"$SHOTS"'/still_02_done.png
+  # ...and then the message itself, which names the file, its size and the directory it
+  # landed in, polled cheaply while it is up.
   status=""
-  for i in $(seq 1 30); do
-    status=$(ae label "Exported '"$STILL_NAME"'" 2>/dev/null)
+  for i in $(seq 1 40); do
+    status=$(status_text "Exported '"$STILL_NAME"'" 2>/dev/null)
     [ -n "$status" ] && break
+    sleep 0.4
   done
   printf "%s\n" "$status" > /tmp/still_status.txt
-  sleep 1
-  import -window root '"$SHOTS"'/still_02_done.png
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
 
@@ -144,6 +221,13 @@ else
 fi
 grep -qF "$OUTDIR" /tmp/still_status.txt
 check $? "and says it wrote into the throwaway directory, not the checkout"
+# The app own bookkeeping, which is also the signal this case waited on. It is checked
+# HERE and not at the end of the file: the sequence case that follows overwrites it.
+if grep -q "^export_last_name=$STILL_NAME$" "$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf" 2>/dev/null; then
+    check 0 "and the app recorded the finished image export in its own settings"
+else
+    check 1 "and the app recorded the finished image export in its own settings (nothing in $XDG_CONFIG_HOME)"
+fi
 assert_rendered "$SHOTS/still_01_form.png" "the export form for a still image"
 assert_rendered "$SHOTS/still_02_done.png" "the app after the still export"
 
@@ -154,16 +238,20 @@ assert_rendered "$SHOTS/still_02_done.png" "the app after the still export"
 # (fps="ignored"), so the form must not ask for one.
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # NUMBER BOXES, BY NAME, THROUGH THE VALUE INTERFACE - the same helper probe_export.sh
-  # carries. ae_ui.py reads a line edit and clicks what it finds, but this Qt build
-  # answers the EditableText interface with an EMPTY string for a QSpinBox, so `ae value`
-  # prints nothing for these boxes and `ae set` writes text no value is taken from. The
-  # node wanted is the first that answers to the name AND HOLDS A NUMBER: the label beside
-  # the box reads "- First frame -" (which contains the name of the box) and comes first
-  # in the tree, so a plain by-name lookup lands on the label. Setting goes through the
-  # Value interface, which Qt wires to QSpinBox::setValue.
+  # carries. The shared tool does this as well now: ae set and ae value reach for the
+  # Value interface before the editable text (a QSpinBox answers EditableText with an
+  # empty string, so a write can report success while changing nothing), and a name is
+  # matched exactly before anything that merely contains it, so the label
+  # "- First frame -" cannot win over the box. This helper stays because one process sets
+  # several boxes and reads them back in a single walk - which is what the assertions
+  # below are checked against - and because its bar mode is the cheap poll the status
+  # message needs. Setting goes through the Value interface, which Qt wires to
+  # QSpinBox::setValue.
   #
   #   spin set <name> <value>...   one "name=value" line per box that took one
   #   spin read <file> <name>...   one "name=value" line per box ("absent" if no node)
+  #   spin bar  <text>             the status bar message containing <text>, if it is
+  #                                on screen right now (exit 1 when it is not)
   spin() {
     python3 - "$@" <<PY
 import os, sys, warnings
@@ -234,7 +322,26 @@ def box(name):
 def show(v):
     return str(int(v)) if v == int(v) else str(v)
 
-if mode == "read":
+if mode == "bar":
+    # The status bar text, which is ONE node whose name is the whole message. This is a
+    # single walk with no retry of its own, unlike ae label (which waits ten seconds
+    # before admitting a widget is not there): a message that lives twenty seconds has to
+    # be polled for cheaply, or the poll itself outlives it.
+    needle = sys.argv[2]
+    for _ in range(3):
+        app = root()
+        if app is not None:
+            for node in walk(app):
+                try:
+                    name = node.get_name() or ""
+                except Exception:
+                    continue
+                if needle in name:
+                    print(name)
+                    sys.exit(0)
+        time.sleep(0.3)
+    sys.exit(1)
+elif mode == "read":
     with open(sys.argv[2], "w") as out:
         for name in sys.argv[3:]:
             node = box(name)
@@ -296,29 +403,38 @@ PY
   # What the form HOLDS, read back through the same interface, so the file count below is
   # checked against the form rather than against this probe.
   spin read /tmp/seq_range.txt "First frame" "Last frame" "Width" "Height"
-  ae text > /tmp/seq_facts.txt 2>/dev/null
+  # Read with a retry: one query against a busy application can come back with an empty
+  # tree, and an empty file here would be read as "the form said nothing".
+  for i in 1 2 3 4 5; do
+    ae text > /tmp/seq_facts.txt 2>/dev/null
+    [ -s /tmp/seq_facts.txt ] && break
+    sleep 1
+  done
   import -window root '"$SHOTS"'/seq_01_form.png
   ae_press "Export" "the sequence form is answered"
   sleep 4
   xdotool key --clearmodifiers ctrl+a; sleep 0.4
   xdotool type --delay 25 "'"$SEQ_NAME"'"; sleep 0.6
   xdotool key Return
-  # Wait for the RANGE to have reached the disk: the last frame is the file that proves
-  # it, so waiting for the first file alone would report a partial sequence as done.
-  for i in $(seq 1 240); do
-    n=$(ls "'"$OUTDIR/$SEQBASE"'"[0-9]*.png 2>/dev/null | wc -l)
-    [ "$n" -ge "'"$SEQ_FRAMES"'" ] && break
-    sleep 0.5
+  # THE COMPLETION SIGNAL IS THE APP OWN EXPORT BOOKKEEPING, the same one the still case
+  # above waits on: a numbered file appearing is not the sequence being finished, and the
+  # status message is too short-lived to poll for under load.
+  cf="$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf"
+  for i in $(seq 1 150); do
+    grep -q "^export_last_name='"$SEQ_NAME"'$" "$cf" 2>/dev/null && break
+    sleep 2
   done
-  # ...and for the app to say it finished, which is the status bar naming the export.
+  # THE SNAPSHOT COMES FIRST, before a read that may miss the twenty seconds the message
+  # lives for.
+  import -window root '"$SHOTS"'/seq_02_done.png
+  # ...and then the message itself, polled cheaply while it is up.
   status=""
-  for i in $(seq 1 30); do
-    status=$(ae label "Exported '"$SEQ_NAME"'" 2>/dev/null)
+  for i in $(seq 1 40); do
+    status=$(spin bar "Exported '"$SEQ_NAME"'" 2>/dev/null)
     [ -n "$status" ] && break
+    sleep 0.4
   done
   printf "%s\n" "$status" > /tmp/seq_status.txt
-  sleep 1
-  import -window root '"$SHOTS"'/seq_02_done.png
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
 
@@ -358,6 +474,13 @@ else
 fi
 grep -qF "$OUTDIR" /tmp/seq_status.txt
 check $? "and says it wrote the frames into the throwaway directory, not the checkout"
+# The app own bookkeeping, which is also the signal both cases waited on: the export
+# reached the end of its reporting path rather than merely leaving files behind.
+if grep -q "^export_last_name=$SEQ_NAME$" "$XDG_CONFIG_HOME/AnimeEffectsProject/AnimeEffects.conf" 2>/dev/null; then
+    check 0 "and the app recorded the finished sequence export in its own settings"
+else
+    check 1 "and the app recorded the finished sequence export in its own settings (nothing in $XDG_CONFIG_HOME)"
+fi
 assert_rendered "$SHOTS/seq_01_form.png" "the export form for a frame sequence"
 assert_rendered "$SHOTS/seq_02_done.png" "the app after the sequence export"
 
