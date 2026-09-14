@@ -167,6 +167,38 @@ The blur path needs an ABSOLUTE expectation, not only equivalence: blurring a un
   straight-chain draw that measures the halo the path produced before the change. See "The overlay
   path" below.
 
+- **M21 - the export path end to end, at the level the output size asks for.** M9 drives
+  `ctrl::Exporter` over a programmatically built project and checks that the written PNG is not the
+  haloed one, which covers the readback, the PNG write and the premultiplied chain at one output size.
+  What that cannot see is WHICH level the export render read, so M21 exports one project at four output
+  sizes and compares each written file against the harness's own render of the same content at the same
+  size and footprint - the app's own `ObjectTree`/`ImageKey` path, once with the shipped bias and once
+  without. See "The export path" below.
+
+## The export path: the written image, against the render the app makes
+
+The concern here is not that the exporter writes a file (M9 covers that) but that the export render
+could read a different mip level than the canvas does - the exporter sets its own output-resolution
+camera and renders with `aUseWorkingCache=true`, and a texture that missed the shipped policy would
+produce a file that does not match what the user saw.
+
+M21 exports a 512-texel noise artwork at 256, 128, 64 and 181 pixels and compares each written PNG
+against the harness's own render of the same content at the same size, footprint and policy. The
+result is that the file is the render: mean |delta| **0.000 / 0.670 / 0.000 / 0.002** of 255 at those
+four sizes, with the differences that do exist confined to the outermost rows (two pixels at 256px,
+both on the image's top row).
+
+Why the fourth size is 181: at a fractional lambda the shipped bias changes what is sampled, and at an
+integer lambda it provably cannot for an aligned footprint - the pixel centre lands where four texels
+meet, so the level-0 bilinear sample already equals the level-1 average. Measured directly: the 256px
+render with bias 0 and with the shipped -0.5 are **bit-identical** (mean |delta| 0.000), while the
+181px pair differs by 7.78 of 255. So the integer sizes check the level and the coverage, and 181
+checks the policy: the written file matches the shipped render (0.002) and differs from an unbiased
+render of the same scene (7.70), which is what says the export carries the shipped LOD bias.
+
+The deviations also track the level: 73.82 at level 0, then 36.97 / 18.49 / 9.06 as the output shrinks,
+i.e. the export reads the level the output size asks for and is nowhere near a point sample of level 0.
+
 ## The overlay path (ctrl::Painter): measured, and what it turned up
 
 The canvas is drawn by `gui::MainDisplayWidget::paintEvent`: the layer render goes through the GL
@@ -761,7 +793,7 @@ analytic, not measured.
 
 ## ASan
 
-The whole probe (315 checks) runs under AddressSanitizer against an ASan build of the libraries
+The whole probe (340 checks) runs under AddressSanitizer against an ASan build of the libraries
 (`-DAE_ENABLE_ASAN=ON` in `build-asan/`) with **no memory errors** - never a use-after-free, an
 overflow or a double free:
 
@@ -777,7 +809,7 @@ Leak detection is worth running too, and it has now caught three real ones:
 
 ```sh
 ASAN_OPTIONS=abort_on_error=1:detect_leaks=1 QT_QPA_PLATFORM=offscreen \
-    ./build-asan/tests/Debug/verify_mipmap     # 315 checks, 0 failures, exit 0, no leaks
+    ./build-asan/tests/Debug/verify_mipmap     # 340 checks, 0 failures, exit 0, no leaks
 ```
 
 1. `XCMemBlock` is a plain struct with a raw `uint8*` and no destructor, so a helper that allocates and
@@ -893,14 +925,10 @@ rendered composite for a normal layer, all 28 blend modes, the layer HSV branch,
 path, the grid/mesh overlay, every mip level of every texture size (M18), and the overlay path the
 canvas paints through (M20).
 
-Not yet verified: the export path END TO END. M6 and M8 cover what the exporter changes about the render
-that matters for mipmapping - its output-resolution camera (hence a different mip level) and its
-`aUseWorkingCache=true` render mode - but the exporter itself is not driven, so its own framebuffer
-readback and PNG write are untested here. Driving it is tractable: `core::Project` takes a filename and
-its attribute setters (`setImageSize`/`setFps`/`setFrameRange`) allow a project to be populated
-programmatically, and `tests/media_exporter_e2e.cpp` shows the `CommonParam`/`ImageParam`/`execute`
-shape. It was left undone for budget, not because anything blocked it. (`media_exporter_e2e` itself
-fails in this environment for reasons that predate this branch.)
+The export path IS driven end to end now (M9 for the file, M21 for the level, coverage and policy of
+what is written; see "The export path" above). This paragraph used to say the exporter was untested,
+which had stopped being true when M9 was written and was never corrected. (`media_exporter_e2e`
+itself still fails in this environment for reasons that predate this branch.)
 
 The editor overlay path (`ctrl::Painter`) is now measured - see "The overlay path" above - and that
 measurement found the conversion it relied on never reaching the sampler, plus a blend that doubled the

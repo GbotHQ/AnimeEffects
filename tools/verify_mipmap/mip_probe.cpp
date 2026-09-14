@@ -1586,6 +1586,225 @@ void suiteExport() {
 
 
 //-------------------------------------------------------------------------------------------------
+// M21: the export path, end to end, against the level the output size asks for.
+//
+// M9 drives ctrl::Exporter over a programmatically built project and checks that the written PNG is
+// not the haloed one, which covers the readback, the PNG write and the premultiplied chain at ONE
+// output size. What it cannot see is WHICH mip level the export render read: at a footprint of two
+// texels several levels agree closely enough that any of them would pass.
+//
+// So: one project, exported at three output sizes, against a source whose statistics name the level.
+// Uniform noise averaged over 2^l texels has a standard deviation that halves per level, so the
+// deviation of the written image says which level(s) the export read - with the shipped LOD bias it
+// is a MIX of two levels, and the mix is predicted on the CPU from the same source. That also makes
+// this an end-to-end check of the bias itself: at 8x, bias 0 would give a deviation near 9, the
+// shipped -0.5 gives one near 15, and the written file is measured against both.
+
+Img makeNoise(int aSize) {
+    Img img;
+    img.w = img.h = aSize;
+    img.d.assign((size_t)aSize * aSize * 4, 0);
+    uint32_t r = 12345u;
+    for (int i = 0; i < aSize * aSize; ++i) {
+        r = r * 1664525u + 1013904223u;
+        const uint8_t v = (uint8_t)((r >> 16) & 0xff);
+        img.d[(size_t)i * 4 + 0] = v;
+        img.d[(size_t)i * 4 + 1] = v;
+        img.d[(size_t)i * 4 + 2] = v;
+        img.d[(size_t)i * 4 + 3] = 255;   // opaque, so premultiplied and straight agree
+    }
+    return img;
+}
+
+// Standard deviation of a channel over a margin-trimmed region of an RGBA buffer (bottom-up, as the
+// render fixtures and the exported PNG rows both are once the PNG is read back with QImage).
+double channelDeviation(const std::vector<uint8_t>& aPix, const QSize& aSize, int aMargin) {
+    double sum = 0, sum2 = 0;
+    int n = 0;
+    for (int y = aMargin; y < aSize.height() - aMargin; ++y) {
+        for (int x = aMargin; x < aSize.width() - aMargin; ++x) {
+            const double v = aPix[((size_t)y * aSize.width() + x) * 4];
+            sum += v;
+            sum2 += v * v;
+            ++n;
+        }
+    }
+    if (n == 0)
+        return 0.0;
+    const double mean = sum / n;
+    return std::sqrt(std::max(0.0, sum2 / n - mean * mean));
+}
+
+// What the chain holds at level l of aImg, and what a trilinear read of it with a LOD bias would
+// carry: the deviation of the weighted mix of the two levels the bias lands between.
+std::vector<double> chainDeviations(const Img& aImg, int aLevels) {
+    std::vector<double> out;
+    Img level = aImg;
+    for (int l = 0; l < aLevels; ++l) {
+        out.push_back(channelDeviation(level.d, level.size(), std::max(1, level.w / 16)));
+        if (level.w <= 1 || level.h <= 1)
+            break;
+        level = downsamplePremultiplied(level);
+    }
+    return out;
+}
+
+void suiteExportLevels() {
+    suiteHeader("M21 ctrl::Exporter: the written image at the level the output size asks for");
+
+    const int content = 512;
+    const Img src = makeNoise(content);
+    const QSize canvas(content, content);
+    const std::vector<double> levels = chainDeviations(src, 4);
+
+    MipAnimator animator;
+    MipReporter reporter;
+
+    core::Project project(QString(), animator, nullptr);
+    project.attribute().setImageSize(canvas);
+    project.attribute().setFps(24);
+    project.attribute().setFrameRange(util::Range(0, 0));
+
+    auto* root = new core::FolderNode("root");
+    project.objectTree().grabTopNode(root);
+    auto* res = makeResource("export_level_src", src);
+    addScaledLayer(
+        project.objectTree(), root, res, "layer",
+        QVector2D(canvas.width() * 0.5f, canvas.height() * 0.5f), 1.0f, img::BlendMode_Normal
+    );
+
+    const QString dir = QDir::temp().filePath("ae_mipmap_export_levels");
+    QDir(dir).removeRecursively();
+    QDir().mkpath(dir);
+
+    // level 0's deviation, which every minified export must be far below
+    const double level0 = levels.empty() ? 0.0 : levels[0];
+    // 181 is not a power of two on purpose: lambda = log2(512/181) = 1.5, and at a FRACTIONAL
+    // lambda the shipped bias changes what is sampled, so that size checks the policy itself and not
+    // only the level. At an integer lambda it provably cannot: the pixel centre lands where four
+    // texels meet, so the level-0 bilinear sample already equals the level-1 average (measured:
+    // bias 0 and -0.5 renders at 256px are bit-identical).
+    const int sizes[4] = {256, 128, 64, 181};
+    for (int si = 0; si < 4; ++si) {
+        const int size = sizes[si];
+        const QSize out(size, size);
+        ctrl::Exporter::Result result;
+        {
+            ctrl::Exporter ex(project);
+            ex.setOverwriteConfirmer([](const QString&) -> bool { return true; });
+            ex.setProgressReporter(reporter);
+            ctrl::Exporter::CommonParam cp;
+            cp.path = dir;
+            cp.size = out;
+            cp.selection = ctrl::FrameSelection::fromRange(0, 0);
+            cp.fps = 24;
+            ctrl::Exporter::ImageParam ip;
+            ip.name = QString("level_%1").arg(size);
+            ip.suffix = "png";
+            ip.quality = 100;
+            ip.singleFile = true;
+            result = ex.execute(cp, ip);
+        }
+        expect((bool)result, QString("M21 the %1px export must succeed (%2)").arg(size).arg(result.message));
+
+        const QString path = QDir(dir).filePath(QString("level_%1.png").arg(size));
+        const QImage png(path);
+        expect(!png.isNull(), QString("M21 the %1px export must write a decodable PNG").arg(size));
+        if (png.isNull())
+            continue;
+        expect(png.size() == out,
+            QString("M21 the %1px export must be %1x%1, got %2x%3")
+                .arg(size).arg(png.width()).arg(png.height()));
+
+        // the exported PNG is top-down; the CPU chain is bottom-up. The source is stationary noise, so
+        // only the margins matter here and the flip is irrelevant to the statistic - but the rows are
+        // copied in one order so the comparison is stated rather than assumed.
+        std::vector<uint8_t> pix((size_t)size * size * 4, 0);
+        const QImage rgba = png.convertToFormat(QImage::Format_RGBA8888);
+        for (int y = 0; y < size; ++y) {
+            std::memcpy(pix.data() + (size_t)y * size * 4, rgba.constScanLine(size - 1 - y), (size_t)size * 4);
+        }
+        const double measured = channelDeviation(pix, out, size / 16);
+
+        // The reference is not a model: it is the same content and the same footprint rendered by the
+        // harness through the app's own ObjectTree/ImageKey path, which is what carries the shipped
+        // policy - once with the shipped bias and once with none. If the written file matches the
+        // shipped render and not the unbiased one, the export carries the level the app draws.
+        const float scale = (float)size / (float)content;
+        const auto refShipped = renderLayer(
+            out, src, scale, img::BlendMode_Normal, nullptr, core::ImageKey::layerLodBias()
+        );
+        const auto refPlain = renderLayer(out, src, scale, img::BlendMode_Normal, nullptr, 0.0f);
+        const double mShipped = channelDeviation(refShipped, out, size / 16);
+        const double mPlain = channelDeviation(refPlain, out, size / 16);
+        const double lambda = std::log2((double)content / size);
+
+        const double tol = std::max(1.5, 0.15 * mShipped);
+        caseReport(QString("M21 %1px export (lambda %2)").arg(size).arg(lambda, 0, 'f', 2),
+            std::fabs(measured - mShipped) <= tol,
+            QString("written %1 | the harness's own render of the same content: %2 with the shipped "
+                    "bias, %3 with none | level 0 is %4")
+                .arg(measured, 0, 'f', 2).arg(mShipped, 0, 'f', 2).arg(mPlain, 0, 'f', 2)
+                .arg(level0, 0, 'f', 2));
+        expect(std::fabs(measured - mShipped) <= tol,
+            QString("M21 the %1px export must carry the level the shipped render does: written %2, "
+                    "shipped render %3, unbiased render %4")
+                .arg(size).arg(measured, 0, 'f', 2).arg(mShipped, 0, 'f', 2).arg(mPlain, 0, 'f', 2));
+        expect(measured < 0.6 * level0,
+            QString("M21 the %1px export must be filtered, not a point sample of level 0: deviation %2 "
+                    "against level 0's %3")
+                .arg(size).arg(measured, 0, 'f', 2).arg(level0, 0, 'f', 2));
+
+        // And the written pixels themselves, not just the statistic: the export renders the same
+        // scene at the same size as the harness does, so the two images are directly comparable.
+        double sum = 0;
+        int worst = 0;
+        int compared = 0;
+        const int margin = size / 16;
+        for (int y = margin; y < size - margin; ++y) {
+            for (int x = margin; x < size - margin; ++x) {
+                const size_t i = ((size_t)y * size + x) * 4;
+                const int d = std::abs((int)pix[i] - (int)refShipped[i]);
+                sum += d;
+                worst = std::max(worst, d);
+                ++compared;
+            }
+        }
+        const double meanDelta = compared ? sum / compared : 0.0;
+        caseReport(QString("M21 %1px written pixels vs the shipped render").arg(size), meanDelta <= 4.0,
+            QString("mean |delta| %1 of 255, worst %2").arg(meanDelta, 0, 'f', 3).arg(worst));
+        expect(meanDelta <= 1.0,
+            QString("M21 the %1px written image must match the shipped render pixel for pixel "
+                    "(mean |delta| %2 of 255, worst %3)")
+                .arg(size).arg(meanDelta, 0, 'f', 3).arg(worst));
+
+        // Where the bias actually changes the sampling, the written file must carry it: the same
+        // export compared against the render with the bias switched off has to be visibly different.
+        if (std::fabs(lambda - std::round(lambda)) > 0.1) {
+            double sumPlain = 0;
+            int plainN = 0;
+            for (int y = margin; y < size - margin; ++y) {
+                for (int x = margin; x < size - margin; ++x) {
+                    const size_t i = ((size_t)y * size + x) * 4;
+                    sumPlain += std::abs((int)pix[i] - (int)refPlain[i]);
+                    ++plainN;
+                }
+            }
+            const double meanPlain = plainN ? sumPlain / plainN : 0.0;
+            caseReport(QString("M21 %1px export carries the shipped bias").arg(size), meanPlain > 2.0,
+                QString("against the unbiased render: mean |delta| %1 of 255 (%2 against the shipped one)")
+                    .arg(meanPlain, 0, 'f', 2).arg(meanDelta, 0, 'f', 3));
+            expect(meanPlain > 2.0,
+                QString("M21 at a fractional lambda the written file must differ from an unbiased render "
+                        "(mean |delta| %1 of 255)")
+                    .arg(meanPlain, 0, 'f', 2));
+        }
+    }
+
+    QDir(dir).removeRecursively();
+}
+
+//-------------------------------------------------------------------------------------------------
 // M10: WHERE the sampler reads. Every check above asks whether the mip CHAIN and the shader's
 // handling of it are right. Not one of them asks whether the renderer reads that chain at the
 // right PLACE, and the two questions are independent: a perfectly built chain is still blurred by
@@ -6532,6 +6751,7 @@ int main(int argc, char** argv) {
     suiteLodSweep();
     suiteShippedLodBias();
     suiteOverlayPath();
+    suiteExportLevels();
 
     std::printf("\n%d checks, %d failures\n", gChecks, gFails);
     std::fflush(stdout);
