@@ -35,13 +35,16 @@ qint64 trackPositionMs(const audioConfig& config, int curFrame, int fps) {
 } // namespace
 
 void AudioPlaybackWidget::syncTracks(core::Project* aProject, int curFrame, int prevFrame, int fps) {
-    if (aProject->pConf == nullptr || aProject->mediaPlayer == nullptr || !aProject->mediaPlayer->playing)
+    // The state in effect: the playback widget's live one while the timeline is playing.
+    std::vector<audioConfig>* const conf = aProject->audioConfigs();
+    mediaState* const state = aProject->audioState();
+    if (conf == nullptr || state == nullptr || !state->playing)
         return;
     int currentPlayer = 0;
-    for (auto& file : *aProject->pConf) {
-        if (currentPlayer >= aProject->mediaPlayer->players.size())
+    for (auto& file : *conf) {
+        if (currentPlayer >= state->players.size())
             break; // a track without a backing player (config changed mid-playback)
-        auto* player = aProject->mediaPlayer->players.at(currentPlayer);
+        auto* player = state->players.at(currentPlayer);
         if (player->playbackState() == QMediaPlayer::PlayingState) {
             // Reposition on playhead jumps; during normal one-frame stepping the
             // track keeps its own clock.

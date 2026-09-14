@@ -57,8 +57,12 @@ core::Frame TargetWidget::currentFrame() const { return mTimeLine->currentFrame(
 
 void refreshMedia(core::Project* mProject, PlayBackWidget* mPlayBack){
     if(mProject->mediaRefresh){
-        mPlayBack->aConf = mProject->pConf;
-        mPlayBack->mediaPlayer = *mProject->mediaPlayer;
+        // Through the accessors: while the timeline is playing, the state that is in
+        // effect is the widget's borrowed one, not the project's own copy.
+        mPlayBack->aConf = mProject->audioConfigs();
+        if (mediaState* const state = mProject->audioState()) {
+            mPlayBack->mediaPlayer = *state;
+        }
         mProject->mediaRefresh = false;
     }
 }

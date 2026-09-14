@@ -746,8 +746,8 @@ void MainWindow::closeProjectTab(core::Project& aProject) {
     // must not overwrite the active project's mediaPlayer/config.
     const bool wasCurrent = (mProjectTabBar->currentProject() == &aProject);
 
-    const auto playerBackup = *aProject.mediaPlayer;
-    const auto configBackup = *aProject.pConf;
+    const auto playerBackup = *aProject.audioState();
+    const auto configBackup = *aProject.audioConfigs();
 
     const auto closeProject = &aProject;
     mProjectTabBar->removeProject(*closeProject);
@@ -759,8 +759,9 @@ void MainWindow::closeProjectTab(core::Project& aProject) {
 
     if (mProjectTabBar->currentProject()) {
         if (wasCurrent) {
-            mProjectTabBar->currentProject()->mediaPlayer = new mediaState(playerBackup);
-            mProjectTabBar->currentProject()->pConf = new std::vector(configBackup);
+            // Hand the state over into the inheriting project's OWN objects; the two
+            // members are deleted by ~Project, so they must not be replaced by hand.
+            mProjectTabBar->currentProject()->setAudioState(configBackup, playerBackup);
         }
         resetProjectRefs(mProjectTabBar->currentProject());
     }
@@ -1776,7 +1777,7 @@ void MainWindow::onExportAgainTriggered() {
     g.exportName = chosen.isDir() ? g.exportName : chosen.baseName();
 
     std::vector<audioConfig> validAudioStreams =
-        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->audioConfigs());
     // "Export again" repeats the settings, not the frame: a still destination
     // exports what is on screen now.
     mLastExport->playhead = mTarget->currentFrame().get();
@@ -1853,7 +1854,7 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
         settings.value(QStringLiteral("export_quality_bucket"), 1).toInt());
 
     std::vector<audioConfig> validAudioStreams =
-        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+        AudioPlaybackWidget::getValidAudioStreams(*mCurrent->audioConfigs());
     if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
         exParam->playhead = mTarget->currentFrame().get();
         const bool wrote = exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);
@@ -2016,8 +2017,8 @@ void MainWindow::onExportTriggered() {
             const int first = exportUI->firstFrameSpinBox->value();
             const int last = exportUI->lastFrameSpinBox->value();
             int exportableTracks = 0;
-            if (mCurrent->pConf) {
-                for (const audioConfig& ac : *mCurrent->pConf) {
+            if (std::vector<audioConfig>* const conf = mCurrent->audioConfigs()) {
+                for (const audioConfig& ac : *conf) {
                     if (ac.exportEnable) ++exportableTracks;
                 }
             }
@@ -2438,7 +2439,7 @@ void MainWindow::onExportTriggered() {
     exParam->generalParams = genParam;
 
     // Main export function
-    std::vector<audioConfig> validAudioStreams = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->pConf);
+    std::vector<audioConfig> validAudioStreams = AudioPlaybackWidget::getValidAudioStreams(*mCurrent->audioConfigs());
     if (isExportParamValid(exParam, exportWidget, &validAudioStreams)) {
         exParam->playhead = mTarget->currentFrame().get();
         const bool wrote = exportProject(*exParam, mCurrent, exportWidget, validAudioStreams);

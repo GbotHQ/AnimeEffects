@@ -88,11 +88,15 @@ Project::Project(QString aFileName, Animator& aAnimator, Hook* aHookGrabbed):
 Project::~Project() {
     // clear all command firstly
     mCommandStack.clear();
-    if(mediaPlayer && mediaPlayer->playing){
-        for(auto player : mediaPlayer->players){
+    // Stop through whichever state is in effect - the widget's own while it is driving
+    // playback - but delete only the members this project allocated below: the borrowed
+    // state is a widget's, and freeing it is what made closing a played-in project abort.
+    mediaState* const playing = audioState();
+    if(playing && playing->playing){
+        for(auto player : playing->players){
             if (player) { player->stop(); }
         }
-        mediaPlayer->playing = false;
+        playing->playing = false;
     }
 
     // The two audio members are heap objects - the audio widget's API takes pointers, and it reaches
@@ -100,7 +104,8 @@ Project::~Project() {
     // leaks 80 bytes plus the containers' storage. Found by the ASan leak gate of verify_mipmap once
     // the harness stopped leaking its own image buffers on top of it (267 MB of them, which is what
     // this used to hide behind). The QMediaPlayer/QAudioOutput objects inside mediaState are NOT ours
-    // to delete: the widget releases those with deleteLater().
+    // to delete: the widget releases those with deleteLater(). Nothing borrowed is deleted here
+    // either (see the borrowed members in Project.h).
     delete mediaPlayer;
     mediaPlayer = nullptr;
     delete pConf;

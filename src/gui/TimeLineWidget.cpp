@@ -197,8 +197,9 @@ void TimeLineWidget::setProject(core::Project* aProject) {
 }
 
 void TimeLineWidget::setPlayBackActivity(bool aIsActive, std::vector<audioConfig>* pConf, mediaState* mediaPlayer) {
-    mProject->pConf = pConf;
-    mProject->mediaPlayer = mediaPlayer;
+    // Borrowed, not taken over: the widget that handed these over owns them, and the
+    // project must not free them when it closes (see Project::borrowAudioState).
+    mProject->borrowAudioState(pConf, mediaPlayer);
     if (aIsActive) {
         mTimer.setInterval(static_cast<int>(getOneFrameTime()));
         mTimer.start();

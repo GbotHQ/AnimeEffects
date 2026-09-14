@@ -104,8 +104,12 @@ void PlayBackWidget::setPushDelegate(const PushDelegate& aDelegate) {
         }
 
         if(aProject && aProject->mediaRefresh){
-            owner->aConf = aProject->pConf;
-            owner->mediaPlayer = *aProject->mediaPlayer;
+            // The state in effect: the project's own, or the borrowed live one while the
+            // timeline is playing (see Project::audioConfigs/audioState).
+            owner->aConf = aProject->audioConfigs();
+            if (mediaState* const state = aProject->audioState()) {
+                owner->mediaPlayer = *state;
+            }
             aProject->mediaRefresh = false;
         }
         if(!audioUI->isHidden()){
@@ -114,7 +118,7 @@ void PlayBackWidget::setPushDelegate(const PushDelegate& aDelegate) {
         for(auto player: mediaPlayer.players){ player->stop(); }
 
         if(aProject && aProject->uiRefresh){
-            audioWidget->rectifyUI(aProject->pConf, aProject->mediaPlayer, true);
+            audioWidget->rectifyUI(aProject->audioConfigs(), aProject->audioState(), true);
             aProject->uiRefresh = false;
         }
 

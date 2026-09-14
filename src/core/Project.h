@@ -107,11 +107,45 @@ public:
     util::Signaler<void(ResourceEvent&, bool)> onResourceModified;
     util::Signaler<void(ObjectTreeEvent&, bool)> onTreeRestructured;
     util::Signaler<void(ProjectEvent&, bool)> onProjectAttributeModified;
-    // Audio
+    // Audio. These two are the project's OWN: pConf holds the track configuration read
+    // from the .aemus sidecar (and is what saving and export read), mediaPlayer mirrors
+    // the playback widget's state, and ~Project deletes both.
     std::vector<audioConfig>* pConf = new std::vector<audioConfig>();
     mediaState* mediaPlayer = new mediaState();
+    // While the timeline drives audio it hands the playback widget's LIVE state to the
+    // project so track syncing and the close-time handover can reach the players that
+    // are actually playing (TimeLineWidget::setPlayBackActivity -> borrowAudioState).
+    // That state belongs to the widget, which outlives the borrow, so it is borrowed
+    // here and never deleted. Writing it over the owned members above is what this used
+    // to do, and it left a project holding the address of a widget's member: play, then
+    // File > Close project, aborted inside ~Project (SIGABRT, core dumped) with
+    // "double free or corruption (out)".
+    std::vector<audioConfig>* borrowedConf = nullptr;
+    mediaState* borrowedPlayer = nullptr;
     bool mediaRefresh = false;
     bool uiRefresh = false;
+
+    void borrowAudioState(std::vector<audioConfig>* aConf, mediaState* aPlayer) {
+        borrowedConf = aConf;
+        borrowedPlayer = aPlayer;
+    }
+
+    // The audio state to READ: the borrowed one while the widget is driving playback,
+    // the project's own otherwise. The owned members are allocated with the project, so
+    // these return null only for a project that was moved from.
+    std::vector<audioConfig>* audioConfigs() const { return borrowedConf ? borrowedConf : pConf; }
+    mediaState* audioState() const { return borrowedPlayer ? borrowedPlayer : mediaPlayer; }
+
+    // Install an owned audio state, replacing what is there: the close-time handover
+    // gives the closing project's state to the tab that inherits playback. Copies into
+    // the owned objects rather than reallocating, and drops - without freeing - whatever
+    // was borrowed, which belongs to the widget.
+    void setAudioState(const std::vector<audioConfig>& aConf, const mediaState& aPlayer) {
+        borrowedConf = nullptr;
+        borrowedPlayer = nullptr;
+        *pConf = aConf;
+        *mediaPlayer = aPlayer;
+    }
 
 private:
     util::LifeLink mLifeLink;
