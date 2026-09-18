@@ -534,8 +534,14 @@ void MainWindow::onThemeUpdated(theme::Theme& aTheme) {
             }
 
         }
-        qDebug() << "fontOption: " << fontOption;
-        qApp->setStyleSheet(fontOption + standard);
+        // Only the window is styled here. The application-wide sheet belongs to
+        // GUIResources::applyAppearance(), which installs dialogbutton.ssa so that parentless
+        // dialogs (QMessageBox and friends) inherit it - and that call runs immediately before
+        // every theme change reaches this function. Setting the application sheet from here
+        // therefore *replaced* it, taking the tree s only QPushButton#browser rules with it and
+        // leaving NewProjectDialog s file-picker button unstyled. The font itself is already
+        // applied application-wide by QApplication::setFont a few lines above, which Qt
+        // documents as inherited by existing and future widgets, so nothing is lost.
         this->setStyleSheet(fontOption + standard);
     }
 
