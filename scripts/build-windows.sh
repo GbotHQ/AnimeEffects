@@ -57,8 +57,20 @@ if [ "$deploy_only" -eq 0 ]; then
     || die "build failed"
 fi
 
-EXE="$BUILD_DIR/src/gui/AnimeEffects.exe"
-[ -f "$EXE" ] || die "no exe at $EXE (run without --deploy-only, or set BUILD_DIR)"
+EXE=""
+# The exe's location depends on the tree's CMake: upstream's gui target writes it
+# under src/gui/<config>/, this branch's writes it at the build root (its
+# qt_add_qml_module also creates a *directory* named after the target, so a
+# single-config generator cannot even link into src/gui/). Look in both rather
+# than guessing, and fail with the paths that were tried.
+for candidate in \
+    "$BUILD_DIR/src/gui/AnimeEffects.exe" \
+    "$BUILD_DIR/AnimeEffects.exe" \
+    "$BUILD_DIR/src/gui/Release/AnimeEffects.exe" \
+    "$BUILD_DIR/src/gui/Debug/AnimeEffects.exe"; do
+  if [ -f "$candidate" ]; then EXE="$candidate"; break; fi
+done
+[ -n "$EXE" ] || die "no AnimeEffects.exe under $BUILD_DIR (run without --deploy-only, or set BUILD_DIR)"
 echo "== exe: $EXE =="
 
 # --- 2. assemble deployment ---------------------------------------------------
@@ -80,7 +92,17 @@ fi
 cp -r "$SYSROOT/lib/qt6/plugins/." "$OUT_DIR/plugins/"
 # Without qt.conf Qt looks at its compile-time prefix (a Linux mingw path) for
 # plugins; [Paths] Plugins=plugins points it at the deployed <exe-dir>/plugins.
-printf '[Paths]\r\nPlugins=plugins\r\n' > "$OUT_DIR/qt.conf"
+# Qml2Imports is only set when the QML imports were deployed below: the app's QML
+# is compiled into the binary, but `import QtQuick` is resolved at runtime from
+# the QML import path, and a path pointing at a directory that isn't there is
+# worse than no setting at all.
+QML_DIR="$SYSROOT/lib/qt6/qml"
+if [ -d "$QML_DIR" ]; then
+  cp -r "$QML_DIR" "$OUT_DIR/qml"
+  printf '[Paths]\r\nPlugins=plugins\r\nQml2Imports=qml\r\n' > "$OUT_DIR/qt.conf"
+else
+  printf '[Paths]\r\nPlugins=plugins\r\n' > "$OUT_DIR/qt.conf"
+fi
 
 # Recursively copy every non-system DLL the exe and the plugins import, resolved
 # against the sysroot (DLL import libs are lazily pulled, so walk the closure).
@@ -89,6 +111,12 @@ declare -A DLLMAP
 while IFS= read -r p; do DLLMAP[$(basename "$p" | tr 'A-Z' 'a-z')]="$p"; done < <(find "$SYSROOT" -iname '*.dll' 2>/dev/null)
 queue=("$EXE")
 while IFS= read -r f; do queue+=("$f"); done < <(find "$OUT_DIR/plugins" -iname '*.dll')
+# The QML plugins are loaded at runtime rather than imported by the exe, so they
+# have to be seeded into the closure walk as well or their own dependencies
+# (Qt6Quick.dll and friends) never get copied.
+if [ -d "$OUT_DIR/qml" ]; then
+  while IFS= read -r f; do queue+=("$f"); done < <(find "$OUT_DIR/qml" -iname '*.dll')
+fi
 i=0
 while [ "$i" -lt "${#queue[@]}" ]; do
   f="${queue[$i]}"; i=$((i+1))
