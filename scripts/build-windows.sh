@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Cross-compile AnimeEffects to a runnable Windows x86-64 build, then package a
-# self-contained deployment (exe + Qt/minugw DLL closure + Qt plugins + data/
-# + qt.conf).
+# self-contained deployment (exe + Qt/minugw DLL closure + Qt plugins + data/ when the
+# source tree still ships one + qt.conf).
 #
 # Requires (Fedora): mingw64-gcc mingw64-gcc-c++ mingw64-binutils \
 #                    mingw64-qt6-{qtbase,qtsvg,qtmultimedia,qt5compat} \
@@ -66,7 +66,15 @@ echo "== assembling deployment -> $OUT_DIR =="
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/plugins"
 cp "$EXE" "$OUT_DIR/"
-cp -r "$SRC_DIR/data" "$OUT_DIR/data"
+# The co-located data dir is layout-dependent, so it is copied only when it exists:
+# upstream still resolves `applicationDirPath() + "/data"` at runtime (fonts, shaders,
+# translations, stylesheets), whereas on this branch the fixed assets are embedded in the
+# binary via assets/assets.qrc (see 7762479/913a387/dd511a8) and the directory was renamed
+# away, so nothing at runtime reads it. An unconditional `cp -r` died here under
+# `set -euo pipefail`, which silently broke every cross-build after the rename.
+if [ -d "$SRC_DIR/data" ]; then
+  cp -r "$SRC_DIR/data" "$OUT_DIR/data"
+fi
 # Qt plugins live under lib/qt6/plugins in the sysroot; copy the whole tree so the
 # platform (qwindows), image formats, styles, multimedia, icon engines, etc. ship.
 cp -r "$SYSROOT/lib/qt6/plugins/." "$OUT_DIR/plugins/"
@@ -100,7 +108,7 @@ rm -f "$ZIP"
 echo ""
 echo "DONE."
 echo "  exe:        $EXE"
-echo "  deployment: $OUT_DIR/   (AnimeEffects.exe + data/ + plugins/ + qt.conf + DLLs)"
+echo "  deployment: $OUT_DIR/   (AnimeEffects.exe + plugins/ + qt.conf + DLLs, plus data/ if the source tree had one)"
 echo "  archive:    $ZIP"
 echo ""
 echo "Run on Windows: copy the folder (or unzip), then double-click AnimeEffects.exe."
