@@ -745,23 +745,39 @@ void TimeLineEditorWidget::onSelectRangeTriggered(int rangeType) {
 
 void TimeLineEditorWidget::onPasteCustomEasingTriggered() {
     const QClipboard *clip = QGuiApplication::clipboard();
-    if (QStringList list = clip->text().split(","); !list.isEmpty() && list.size() == 4) {
-        util::Easing::CubicBezier bezier{};
-        bezier.x1 = list[0].toFloat();
-        bezier.y1 = list[1].toFloat();
-        bezier.x2 = list[2].toFloat();
-        bezier.y2 = list[3].toFloat();
+    const QStringList list = clip->text().split(",");
+    util::Easing::CubicBezier bezier{};
+    bool ok[4] = { false, false, false, false };
+    if (list.size() == 4) {
+        bezier.x1 = list[0].toFloat(&ok[0]);
+        bezier.y1 = list[1].toFloat(&ok[1]);
+        bezier.x2 = list[2].toFloat(&ok[2]);
+        bezier.y2 = list[3].toFloat(&ok[3]);
+    }
 
-        for(auto target: mTargets.targets()) {
-            auto type = target.pos.key()->type();
-            if(type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image){
-                const int frame = target.pos.key()->frame();
-                const auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
-                assignEasing(mProject, util::Easing::Type_Custom, &target, key, frame, true, &bezier);
-            }
+    // Parsing is not validation. "nan" and "inf" convert successfully, and a control point
+    // outside [0,1] makes x(t) non-monotonic, which the solver cannot invert - the key would
+    // get a wrong or NaN transform with nothing said about it. x is the function domain here
+    // (see kMinX/kMaxX in bezierCurveEditor.h); y may overshoot, which is a legitimate bezier.
+    const bool valid = ok[0] && ok[1] && ok[2] && ok[3]
+        && qIsFinite(bezier.x1) && qIsFinite(bezier.y1)
+        && qIsFinite(bezier.x2) && qIsFinite(bezier.y2)
+        && bezier.x1 >= 0.0f && bezier.x1 <= 1.0f
+        && bezier.x2 >= 0.0f && bezier.x2 <= 1.0f;
+    if (!valid) {
+        QMessageBox::warning(this, tr("Custom easing"),
+            tr("The clipboard must hold four comma-separated numbers (x1,y1,x2,y2) with x between 0 and 1."));
+        return;
+    }
+
+    for (auto target: mTargets.targets()) {
+        auto type = target.pos.key()->type();
+        if (type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image) {
+            const int frame = target.pos.key()->frame();
+            const auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
+            assignEasing(mProject, util::Easing::Type_Custom, &target, key, frame, true, &bezier);
         }
     }
-    else { QMessageBox::information(this, "Error", "Invalid clipboard data"); }
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
