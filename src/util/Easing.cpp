@@ -213,11 +213,15 @@ double cubicBezierEasedPercent(const double percent, const double x1, const doub
 
 float calculateBezier(const Easing::Param& aParam, const float t, const float b, const float c, const float d) {
     auto [x1, y1, x2, y2] = aParam.cubicBezier;
-    // Initial linear extrapolation
-    const float result = c * (t / d) + b * aParam.weight + (c * (t / d) + b) * (1.0f - aParam.weight);
-    // Modify linear using a custom bezier curve
-    const auto bezier = cubicBezierEasedPercent(result, x1, y1, x2, y2);
-    return static_cast<float>(bezier);
+    const float linear = c * (t / d) + b;
+    // Ease the linear progress, then blend the result against that progress by the weight -
+    // the same shape the non-custom branch below uses. The previous expression folded the
+    // weight into the value handed to the solver, which scales the curve domain by
+    // (2 - weight): 1.5x at weight 0.5 and 2x at weight 0, asking the solver to invert a curve
+    // outside the interval it can invert and returning values above 1 - a non-monotonic
+    // transform - for any key whose weight is not 1. At weight 1 the result is unchanged.
+    const float eased = static_cast<float>(cubicBezierEasedPercent(linear, x1, y1, x2, y2));
+    return eased * aParam.weight + linear * (1.0f - aParam.weight);
 }
 
 float Easing::calculate(const Param& aParam, const float t, const float b, const float c, const float d) {
