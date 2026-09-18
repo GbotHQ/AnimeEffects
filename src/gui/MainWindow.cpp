@@ -125,10 +125,12 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
             fontScale = uiScale.toDouble();
         }
         auto font = this->font();
-        auto userFont = settings.value("generalsettings/ui/font");
-        if (uiScale.isValid()) {
-            if (QFontDatabase::hasFamily(userFont.toString())){
-                font = QFont(userFont.toString());
+        // Guard the font key, not uiScale: see the note in Main.cpp - the guard was
+        // constant-true, and an absent key yields an empty family that hasFamily() accepts.
+        const QString userFontFamily = settings.value("generalsettings/ui/font").toString();
+        if (!userFontFamily.isEmpty()) {
+            if (QFontDatabase::hasFamily(userFontFamily)) {
+                font = QFont(userFontFamily);
             }
             else {
                 bool customFont = settings.value("generalsettings/ui/customFont", false).toBool();
