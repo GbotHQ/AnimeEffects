@@ -9,10 +9,19 @@
 #include <QIcon>
 #include <QLinearGradient>
 #include <QMenu>
+#include <QOperatingSystemVersion>
 #include <QPainter>
 #include <QPainterPath>
 #include <QStyleOption>
 #include <QStyleOptionSlider>
+
+#ifdef Q_OS_WIN
+    #define WIN32_LEAN_AND_MEAN
+    // Lowercase on purpose: MinGW resolves headers case-sensitively, and only
+    // windows.h exists in its sysroot.
+    #include <windows.h>
+    #include <dwmapi.h>
+#endif
 
 namespace gui {
 
@@ -44,6 +53,9 @@ AppStyle::AppStyle(QStyle* aBaseStyle): QProxyStyle(aBaseStyle) {}
 bool AppStyle::eventFilter(QObject* aWatched, QEvent* aEvent) {
     if (aWatched && aWatched->isWidgetType()) {
         auto* w = static_cast<QWidget*>(aWatched);
+        // Off-Windows shaping only: this filter is installed from polish() on
+        // every platform except Windows, where DWM rounds the popup window
+        // instead (see the comment there).
         // Only QMenu gets the rounded mask. The combo drop-down
         // (QComboBoxPrivateContainer) must NOT: Qt's
         // QComboBoxPrivateContainer::paintEvent draws the popup panel
@@ -78,20 +90,43 @@ void AppStyle::polish(QWidget* aWidget) {
     // alpha window, so mark them translucent at polish time — before the
     // platform window is created. The combo popup (QComboBoxPrivateContainer)
     // draws the same PE_PanelMenu and needs the same treatment.
-    // On Windows Qt6 WA_TranslucentBackground only composites when
-    // FramelessWindowHint is also set (otherwise the corner cut is filled
-    // black) — see QTBUG and the Breeze/PortProton fixes.
     const bool isFloater = qobject_cast<QMenu*>(aWidget) || aWidget->inherits("QComboBoxPrivateContainer");
     if (isFloater) {
         // Keep Qt::Popup behavior (auto-close on outside click, grab) —
         // FramelessWindowHint alone would make it a normal top-level. OR
         // with existing flags rather than replacing, so Qt::Popup is kept.
+        // It is also what makes the translucency real on Windows: Qt only
+        // layers a translucent window that has no native frame
+        // (QWindowsWindow::setWindowLayered: hasAlpha && hasNoNativeFrame ->
+        // UpdateLayeredWindow), and an unlayered window drops the alpha
+        // channel, so the corner cut would come out black.
         aWidget->setWindowFlags(aWidget->windowFlags() | Qt::FramelessWindowHint);
         aWidget->setAttribute(Qt::WA_TranslucentBackground, true);
         aWidget->setAttribute(Qt::WA_NoSystemBackground, true);
+#ifdef Q_OS_WIN
+        // The panel paints its own 8px rounding, but on Windows 11 (22H2+) the
+        // *window* has to be rounded as well or the system-drawn shadow stays
+        // rectangular around the rounded panel. Qt exposes no API for this: its
+        // only lever, Qt::ExpandedClientAreaHint, stops a QMenu from appearing
+        // at all, and Qt never calls the corner-preference API itself. Below
+        // 22H2 the API does not exist and the popup simply has no system
+        // shadow. Measured on Windows 11 build 26200 — see
+        // upstream-review/09-popup-rounding.md.
+        if (QOperatingSystemVersion::current().microVersion() > 22000) {
+            const auto hwnd = reinterpret_cast<HWND>(aWidget->winId());
+            constexpr DWM_WINDOW_CORNER_PREFERENCE corner = DWMWCP_ROUND;
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
+        }
+#else
+        // Elsewhere the region mask does the shaping: it rounds the corner cut
+        // on compositors that don't composite Qt::Popup translucency (and makes
+        // that cut click-through). On Windows DWM shapes the window instead —
+        // the two are mutually exclusive, since a window region cannot be
+        // rounded by DWM.
         // Mask must track resizes/shows — install filter on the popup itself.
         aWidget->removeEventFilter(this);
         aWidget->installEventFilter(this);
+#endif
     }
     // The combo popup paints its items as CE_MenuItem through Qt's
     // QComboMenuDelegate, which builds the style option from the VIEW's
