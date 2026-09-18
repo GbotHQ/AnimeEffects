@@ -223,6 +223,16 @@ void AnimationSettingDialog::showAt(const QPoint& aAnchor, const util::Range& aR
     move(topLeft);
     show();
     raise();
+    // Qt shows a Qt::Popup with SW_SHOWNOACTIVATE on Windows (QWindowsWindow::
+    // setVisible) and only forces it to the foreground when the application has
+    // no focus window at all, so a popup opened from a focused main window never
+    // becomes the active window there. Widget-based fields do not care — focus
+    // is per-window for them — but a Qt Quick scene does: Item::activeFocus
+    // requires an *active* window, and this dialog gates its text-edit mode on
+    // exactly that (ScrubSpinBox: `visible: activeFocus`). Without this call,
+    // clicking a value field on Windows does nothing, while it works on
+    // X11/Wayland, where the compositor activates the popup.
+    activateWindow();
 }
 
 } // namespace gui
