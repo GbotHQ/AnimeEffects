@@ -23,6 +23,19 @@ static int hfw_h(EasingPickWidget& w) {
     return f > 0 ? f : w.sizeHint().height();
 }
 
+// This probe PRINTS measurements, but #7/#8/#9 encode REQUIREMENTS (the mock's
+// gauge geometry, the phosphor stroke width, the field's state rules and its fixed
+// height). It used to print MISMATCH and exit 0 regardless, so a stale expectation
+// sat there reporting a problem nobody could see: it said h=20 for a field the
+// widget sets to 24, and nothing failed. Mismatches are counted now and the exit
+// code carries them.
+static int gMismatches = 0;
+
+static const char* verdict(bool aOk) {
+    if (!aOk) ++gMismatches;
+    return aOk ? "OK" : "MISMATCH";
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     theme::Colors::activate(true, theme::kDefaultAccent);
@@ -219,7 +232,7 @@ int main(int argc, char** argv) {
                         && dotT >= 0 && dotB <= strip->height() - 1;
         fprintf(stderr, "#7 gauge-dot: strip=%dx%d img=%dx%d dot %dx%d rightGap=%d top=%d -> %s\n",
                 strip->width(), strip->height(), gi.width(), gi.height(), dia, dotB - dotT + 1,
-                strip->width() - 1 - dotR, dotT, ok ? "OK" : "MISMATCH");
+                strip->width() - 1 - dotR, dotT, verdict(ok));
     }
 
     // ---- #8 close X: phosphor stroke is thin (16/256 of the 14px box) ----
@@ -252,9 +265,9 @@ int main(int argc, char** argv) {
             }
             const bool ok = covered >= 1 && covered <= 2;
             fprintf(stderr, "#8 close-x: glyph=%dx%d midRow=%d covered=%d fringe=%d -> %s\n",
-                    gi.width(), gi.height(), midY, covered, fringe, ok ? "OK" : "MISMATCH");
+                    gi.width(), gi.height(), midY, covered, fringe, verdict(ok));
         } else {
-            fprintf(stderr, "#8 close-x: popover-close glyph NOT FOUND -> MISMATCH\n");
+            fprintf(stderr, "#8 close-x: popover-close glyph NOT FOUND -> %s\n", verdict(false));
         }
     }
     // ---- #9 fi fields: geometry stable + hover/focus/pressed states present ----
@@ -270,10 +283,14 @@ int main(int argc, char** argv) {
     const bool hasFocus = css.contains("[role=\"fi\"]:focus");
     const bool hasPressed = css.contains("[role=\"fi\"]:hover:pressed");
     const bool hasBorder = css.contains("[role=\"fi\"]") && css.contains("border: 1px solid");
-    const bool ok = fi && fiH == 20 && hasHover && hasFocus && hasPressed && hasBorder;
+    // 24, not 20: the field is setFixedHeight(24) in EasingPickWidget.cpp. This
+    // expectation said 20 (an earlier design height) and the probe reported
+    // MISMATCH forever without failing, which is worse than a missing check.
+    const bool ok = fi && fiH == 24 && hasHover && hasFocus && hasPressed && hasBorder;
     fprintf(stderr, "#9 fi: h=%d hover=%d focus=%d pressed=%d borderRule=%d -> %s\n",
             fiH, (int)hasHover, (int)hasFocus, (int)hasPressed, (int)hasBorder,
-            ok ? "OK" : "MISMATCH");
+            verdict(ok));
 
-    return 0;
+    fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");
+    return gMismatches == 0 ? 0 : 1;
 }
