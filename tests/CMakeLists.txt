@@ -23,9 +23,8 @@ target_link_libraries(bonekey_regression PRIVATE
 # :/shaders/*.glsl. Without assets.qrc the harness dies with
 # "XC_FATAL FileIO Error No such file or directory :/shaders/MeshTransformVert.glsl"
 # on the first real project — i.e. the one tool whose job is to round-trip real
-# projects could not open one. The sibling GL harness (media_exporter_e2e) has
-# always embedded them; this one was left behind when the assets moved from a
-# data directory on disk into the binary.
+# projects could not open one. This harness was left behind when the assets moved
+# from a data directory on disk into the binary.
 add_executable(roundtrip roundtrip_main.cpp
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc
 )
