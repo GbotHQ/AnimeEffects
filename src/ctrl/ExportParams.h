@@ -1165,7 +1165,7 @@ public:
         return true;
     }
     // renderer
-    bool update(const int* frameTick) {
+    bool update(int* frameTick) {
         if (!mExporting) {
             return false;
         }
@@ -1178,7 +1178,11 @@ public:
         // Should hopefully be faster to just check the first condition instead of the second for most exports.
         if (mParam.generalParams.exportAllFrames ||
             mParam.generalParams.framesToBeExported.contains(timeInfo.frame.get())) {
-            frameTick += 1;
+            // Advance the CALLER's counter: it is read as the "Current frame" number below.
+            // As written before, `frameTick += 1` moved the local pointer and the counter never
+            // advanced, so the dialog always read "Current frame: 0/N". Found by
+            // -Wunused-but-set-parameter once -Wall was enabled.
+            (*frameTick)++;
             // begin rendering
             gl::Global::makeCurrent();
             gl::Global::Functions& ggl = gl::Global::functions();
