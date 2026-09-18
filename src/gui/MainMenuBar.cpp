@@ -519,18 +519,20 @@ void MainMenuBar::onRecentsUpdate() {
         QSettings settings;
         settings.sync();
         recentfiles = settings.value("projectloader/recents").toStringList();
-        if (!actions.isEmpty()) {
-            for (const auto signal: actions) {
-                std::ignore = openRecent->disconnect(signal);
-                openRecent->removeAction(signal);
-            }
-        }
+        // clear() drops the previous entries and, because the path actions below are
+        // parented to this menu, deletes them too. The loop that used to sit here called
+        // openRecent->disconnect(action), which asks the menu to drop its own outgoing
+        // connections - there are none - so it was dead code either way.
         openRecent->clear();
         // Path placeholders
-        if (recentfiles.length() != 8) {
-            while (recentfiles.length() != 8) {
-                recentfiles.append("Path placeholder");
-            }
+        // Exactly eight slots: trim a longer list, pad a shorter one. The old loop only ever
+        // padded, so a stored value with more than eight entries never reached eight and this
+        // rebuild - which also runs from the constructor - spun forever.
+        if (recentfiles.length() > 8) {
+            recentfiles = recentfiles.mid(0, 8);
+        }
+        while (recentfiles.length() < 8) {
+            recentfiles.append(QStringLiteral("Path placeholder"));
         }
         QString firstPath = recentfiles[0];
         QString secondPath = recentfiles[1];
@@ -545,14 +547,14 @@ void MainMenuBar::onRecentsUpdate() {
              << eigthPath;
         // Path actions
         auto placeholderAction = new QAction(tr("No other projects"), this);
-        auto firstPathAction = new QAction(firstPath);
-        auto secondPathAction = new QAction(secondPath);
-        auto thirdPathAction = new QAction(thirdPath);
-        auto fourthPathAction = new QAction(fourthPath);
-        auto fifthPathAction = new QAction(fifthPath);
-        auto sixthPathAction = new QAction(sixthPath);
-        auto seventhPathAction = new QAction(seventhPath);
-        auto eigthPathAction = new QAction(eigthPath);
+        auto firstPathAction = new QAction(firstPath, openRecent);
+        auto secondPathAction = new QAction(secondPath, openRecent);
+        auto thirdPathAction = new QAction(thirdPath, openRecent);
+        auto fourthPathAction = new QAction(fourthPath, openRecent);
+        auto fifthPathAction = new QAction(fifthPath, openRecent);
+        auto sixthPathAction = new QAction(sixthPath, openRecent);
+        auto seventhPathAction = new QAction(seventhPath, openRecent);
+        auto eigthPathAction = new QAction(eigthPath, openRecent);
 
         actions.clear();
         actions.append({placeholderAction, firstPathAction, secondPathAction, thirdPathAction,
