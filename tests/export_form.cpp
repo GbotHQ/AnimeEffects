@@ -433,6 +433,49 @@ int main(int argc, char** argv) {
         model.setDestinationId(QStringLiteral("chat.discord.file"));
     }
 
+    // ---- the manual rows ARE the destination rows ----------------------------
+    // Same shape, same words for the same fact. The widget form's manual branch said
+    // "1100 x 790, 24 fps · 24 fps" and "VP9 in WebM · WebM" - the same fact twice in
+    // one line - and printed "Audio: no · yes", the checkbox and the project
+    // contradicting each other inside the two-column row.
+    {
+        model.setDestinationId(QString());
+        const int webmIndex = [&]() {
+            const QVariantList options = model.formatOptions();
+            for (int i = 0; i < options.size(); ++i) {
+                if (options.at(i).toMap().value(QStringLiteral("value")).toString()
+                    == QLatin1String("webm")) {
+                    return i;
+                }
+            }
+            return -1;
+        }();
+        check(webmIndex >= 0, "WebM is on the manual format list");
+        if (webmIndex >= 0) {
+            model.setFormatIndex(webmIndex);
+            const gui::ExportFact size = factById(model, QStringLiteral("size"));
+            const gui::ExportFact format = factById(model, QStringLiteral("format"));
+            const gui::ExportFact audio = factById(model, QStringLiteral("audio"));
+            check(size.detail.isEmpty(),
+                  "a manual export does not repeat the rate that has a row of its own");
+            check(format.detail == QStringLiteral("WebM")
+                      && !format.value.contains(format.detail),
+                  QStringLiteral("and names the codec and its container once each (%1 · %2)")
+                      .arg(format.value, format.detail));
+            check(audio.detail == QStringLiteral("none in this project"),
+                  "and its audio row blames the silent project, not a checkbox");
+            // And picking a destination next must not inherit the manual codec's number:
+            // the field's own minimum is THIS codec's Auto, so a value left over from
+            // another encoder's span looks exactly like a value the user named.
+            model.setDestinationId(QStringLiteral("chat.discord.file"));
+            check(model.readBack().qualityOverride == -1,
+                  "and the destination that follows restates quality as Auto, not as the "
+                  "manual codec's leftover number");
+            model.setDestinationId(QString());
+        }
+        model.setDestinationId(QStringLiteral("chat.discord.file"));
+    }
+
     // The facts of a destination that only BOUNDS the size must say what the bound is,
     // and its audio line must name the destination rather than the project.
     {

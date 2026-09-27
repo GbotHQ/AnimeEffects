@@ -319,9 +319,11 @@ void ExportViewModel::rebuildFacts() {
 }
 
 void ExportViewModel::rebuildManualFacts() {
-    // No destination row to read the answers from, so the model states them itself.
-    // The sentences and their translation contexts are the ones the widget form's
-    // manual branch used, and so are the two notes.
+    // No destination row to read the answers from, so the model states them itself. The
+    // rows are the ones exportFacts() builds for a destination-driven export - same
+    // labels, same roles, same wording for the same fact - because a form that words the
+    // artifact differently depending on how the user reached it is two forms wearing one
+    // dialog. The two notes are the widget form's manual ones.
     const bool isSequence = currentFormatIsSequence();
     const bool isGif = currentFormatIsGif();
 
@@ -330,7 +332,10 @@ void ExportViewModel::rebuildManualFacts() {
     size.id = QStringLiteral("size");
     size.label = tr("Output:");
     size.value = tr("%1 x %2, %3 fps").arg(width()).arg(height()).arg(fps());
-    size.detail = tr("%1 fps").arg(fps());
+    // No detail, deliberately: the rate has a row of its own immediately below this
+    // one, and "1100 x 790, 24 fps · 24 fps" states the same fact twice in a single
+    // line - which is the furniture the two-column row exists to remove. exportFacts()
+    // reached the same conclusion for a destination-driven export.
     facts << size;
 
     ExportFact rate;
@@ -345,18 +350,23 @@ void ExportViewModel::rebuildManualFacts() {
     if (isSequence) {
         const int frames = frameCount();
         const QString suffix = formatId().mid(6).toUpper();
+        // "61 numbered PNG files" says which format it is already, so there is no
+        // detail to add.
         format.value = tr("%1 numbered %2 files")
                            .arg(frames)
                            .arg(suffix.isEmpty() ? formatLabel() : suffix);
-        format.detail = formatLabel();
     } else {
+        // The shape exportFacts() gives a destination-driven export: the value is the
+        // codec, the detail is the container it lands in, and the row reads
+        // "VP9 · WebM". The widget form's manual branch instead printed "VP9 in WebM"
+        // AND the container after it, so the same fact was worded differently depending
+        // on how the user reached this form.
+        //
         // A container with exactly one codec (GIF, APNG, WebP) has no codec label to
-        // print, and " - in GIF animation" is not a fact, it is a gap where one
-        // should be.
+        // print and nothing to add to it: it states itself.
         const QString codecLabel = selectedCodecLabel();
-        format.value = codecLabel.isEmpty() ? formatLabel()
-                                            : tr("%1 in %2").arg(codecLabel, formatLabel());
-        format.detail = formatLabel();
+        format.value = codecLabel.isEmpty() ? formatLabel() : codecLabel;
+        format.detail = codecLabel.isEmpty() ? QString() : formatLabel();
     }
     facts << format;
 
@@ -364,7 +374,15 @@ void ExportViewModel::rebuildManualFacts() {
     audio.id = QStringLiteral("audio");
     audio.label = tr("Audio:");
     audio.value = mAudio.value() ? tr("yes") : tr("no");
-    audio.detail = mInit.exportableAudioTracks > 0 ? tr("yes") : tr("none in this project");
+    // The detail is the one thing the row's own answer cannot say: whether the project
+    // had sound to write (a ticked box over a silent project writes no audio track) or
+    // sound to leave out. The widget form's pair printed "Audio: no · yes" - the
+    // checkbox and the project contradicting each other in one two-column line.
+    const bool hasAudio = mInit.exportableAudioTracks > 0;
+    if (!hasAudio)
+        audio.detail = tr("none in this project");
+    else if (!mAudio.value())
+        audio.detail = tr("off in this dialog");
     facts << audio;
 
     ExportFact transparency;
@@ -500,18 +518,26 @@ void ExportViewModel::setQualityRangeFromCodec() {
     // the model does the equivalent bookkeeping: a value left over from another
     // codec's span (WebP's 29 inside libx264's 18..34) is an ordinary number here
     // and would silently stop being Auto.
+    //
+    // The comparison is against the Auto value the value was LAST SET FOR, not against
+    // this codec's own: this function runs after the codec changed, so asking the new
+    // control what Auto is compares the old number with the wrong answer and keeps it.
+    // Two encoders whose Auto values differ (VP9's CRF and libx264's) are enough - a
+    // manual WebM export left its CRF behind as a fixed number on the H.264
+    // destination chosen next.
     const ctrl::QualityControl control = qualityControl();
-    const int previousAuto = qualityOverrideAutoValue();
-    const bool wasAuto = mQualityOverrideValue == previousAuto
-                         || mQualityOverrideValue < 0
+    const bool wasAuto = mQualityOverrideValue < 0
+                         || mQualityOverrideValue == mQualityOverrideSentinel
                          || mQualityOverrideValue < control.autoValue()
                          || mQualityOverrideValue > std::max(control.best, control.worst);
     if (control.option.isEmpty()) {
         mQualityOverrideValue = -1;
         mQualityOverrideMaximum = 0;
+        mQualityOverrideSentinel = -1;
     } else {
         mQualityOverrideMaximum = std::max(control.best, control.worst);
         mQualityOverrideValue = wasAuto ? control.autoValue() : mQualityOverrideValue;
+        mQualityOverrideSentinel = control.autoValue();
     }
     emit qualityOverrideChanged();
 }

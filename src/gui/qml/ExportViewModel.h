@@ -611,6 +611,12 @@ private:
 
     int mQualityOverrideValue = -1;
     int mQualityOverrideMaximum = 0;
+    // The Auto value of the codec mQualityOverrideValue belongs to. The field's own
+    // MINIMUM is the current codec's Auto, so any value above it is indistinguishable
+    // from a value the user named - unless the value is remembered as "this encoder's
+    // Auto", which is how a CRF left behind by a manual WebM export must not become a
+    // fixed number for the H.264 destination the user picked next.
+    int mQualityOverrideSentinel = -1;
     bool mQualityOverrideVisible = false;
     QString mQualityOverrideLabelOverride;
     QString mBitrate = QStringLiteral("Auto");

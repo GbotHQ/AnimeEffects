@@ -18,9 +18,9 @@
 # order in the popup is not recorded anywhere either.
 #
 # What the form SAYS it will write is the other half of the evidence, and it is the
-# half that names the pairing: the facts label states the codec AND the container
-# the form has actually resolved ("Codec: VP9 in WebM"), which is exactly what the
-# Codec row has to be answering about after the Format row changed. The row itself
+# half that names the pairing: the facts row states the codec AND the container the form
+# has actually resolved ("Format: VP9 · WebM"), which is exactly what the Codec row has
+# to be answering about after the Format row changed. The row itself
 # is asserted as a control separately, through its own visibility.
 #
 # The BODY only navigates and leaves evidence. The assertions run out here.
