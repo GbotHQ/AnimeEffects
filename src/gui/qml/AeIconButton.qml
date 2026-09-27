@@ -18,7 +18,9 @@ Item {
     // The words a screen reader announces and the tooltip shows. Required:
     // an icon with no name is a control nobody can identify.
     property string label: ""
-    property bool enabled: true
+    // NO `property bool enabled`: QQuickItem already has one and redeclaring it
+    // shadows the base property (qmllint: [property-override]), so a disabled
+    // button never reports disabled to the accessibility tree. See AeButton.
     property int size: 26
     property int iconSize: 15
     // "ghost" (default) or "danger": the latter only warns on hover, in the

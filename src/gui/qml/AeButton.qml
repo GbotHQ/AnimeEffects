@@ -23,7 +23,11 @@ Item {
     // A tinted glyph name from theme.iconUrl() ("plus-bold", "trash"); empty
     // for a text-only button. See QmlTheme::iconUrl.
     property string iconName: ""
-    property bool enabled: true
+    // NO `property bool enabled`: QQuickItem already has one, and redeclaring it
+    // SHADOWS the base property (qmllint: [property-override]) so the base state
+    // stays "enabled" and a disabled button never reports itself disabled to the
+    // accessibility tree - which is how a GUI probe tells a frozen control from a
+    // live one. Item.enabled already propagates to the MouseArea and the text.
     signal clicked()
 
     implicitWidth: Math.max(72, content.implicitWidth + 24)

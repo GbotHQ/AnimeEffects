@@ -20,7 +20,9 @@ Item {
     // Show an x button that empties the field (the widget picker had
     // QLineEdit::setClearButtonEnabled).
     property bool clearButton: false
-    property bool enabled: true
+    // NO `property bool enabled`: QQuickItem already has one and redeclaring it
+    // shadows the base property (qmllint: [property-override]), so a disabled
+    // field never reports disabled to the accessibility tree. See AeButton.
     signal edited(string text)
     signal accepted(string text)
 
