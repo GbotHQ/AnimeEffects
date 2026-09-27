@@ -30,6 +30,10 @@ Item {
         font.pixelSize: 10
         font.letterSpacing: 1.1
         font.bold: true
+        // Exposed as a real heading, so a screen reader can navigate the form by
+        // section instead of reading one flat run of controls.
+        Accessible.role: Accessible.Heading
+        Accessible.name: root.text
     }
     Rectangle {
         anchors.left: label.right

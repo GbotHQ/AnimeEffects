@@ -371,8 +371,16 @@ int main(int argc, char** argv) {
             // for a different reason: a hand rolled tr() that forwarded to "ExportDiag",
             // a context no catalog has. Both are asked here so the pair cannot regress
             // together unnoticed.
-            const QString exported = QCoreApplication::translate("ExportWidgetUI", "Export");
-            check(exported != QStringLiteral("Export"),
+            //
+            // The context asked has to be one the code STILL USES. It was
+            // "ExportWidgetUI" - the widget form's context - which this check kept
+            // passing against long after exportdiag.{h,cpp} was deleted, until lupdate
+            // marked it vanished and lrelease dropped it from the .qm. The Qt Quick
+            // form's C++ strings live in gui::ExportViewModel, so that is the context
+            // a translator actually fills now.
+            const QString exported =
+                QCoreApplication::translate("gui::ExportViewModel", "Export with transparency");
+            check(exported != QStringLiteral("Export with transparency"),
                   QStringLiteral("the export dialog's own context answers in Spanish (%1)")
                       .arg(exported));
             QApplication::removeTranslator(&translator);

@@ -219,6 +219,11 @@ Item {
                         color: factSeverity === "warning" ? theme.warning : theme.textMuted
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
+                        // The notes behind "Details" are the destination's own
+                        // rules; a reader must be able to reach them, not only see
+                        // them.
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
                     }
                 }
             }

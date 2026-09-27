@@ -44,117 +44,117 @@
         <translation>详情</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="231"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
         <source>Output</source>
         <translation>输出</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="243"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
         <source>Frames</source>
         <translation>帧数</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="279"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
         <source>Add range</source>
         <translation>添加范围</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="289"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
         <source>Resolution</source>
         <translation>分辨率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="296"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
         <source>Width</source>
         <translation>宽度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="315"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
         <source>Height</source>
         <translation>高度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="328"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="354"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
         <source>Reset to native</source>
         <translation>恢复原始</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="336"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
         <source>Keep aspect ratio</source>
         <translation>保持长宽比</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="343"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="350"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
         <source>Frame rate</source>
         <translation>帧率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="369"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
         <source>Encoding</source>
         <translation>编码</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="382"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="384"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
         <source>Format</source>
         <translation>格式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="395"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="397"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
         <source>Codec</source>
         <translation>编码器</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="408"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="410"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
         <source>Quality</source>
         <translation>质量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="430"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="437"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
         <source>Image quality</source>
         <translation>图像质量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="441"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="562"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="539"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="572"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
         <source>Reset to auto</source>
         <translation>恢复自动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="458"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
         <source>Advanced</source>
         <translation>高级</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="533"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
         <source>Quality override</source>
         <translation>质量覆盖值</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="553"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="563"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
         <source>Bitrate</source>
         <translation>比特率</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="602"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
         <source>Export</source>
         <translation>导出</translation>
     </message>
@@ -184,7 +184,7 @@
         <translation>移除范围 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeFactRow.qml" line="51"/>
+        <location filename="../../src/gui/qml/AeFactRow.qml" line="58"/>
         <source> · </source>
         <translation> · </translation>
     </message>
@@ -2644,7 +2644,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="318"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -3275,32 +3275,39 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
         <source>Where are you posting this?</source>
-        <translation type="vanished">你要发布到哪里？</translation>
+        <translation>你要发布到哪里？</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="vanished">搜索：telegram、sticker、reels、illustration、微信...</translation>
+        <translation>搜索：telegram、sticker、reels、illustration、微信...</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
         <source>Search destinations</source>
-        <translation type="vanished">搜索目的地</translation>
+        <translation>搜索目的地</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
         <source>%1 destinations</source>
-        <translation type="vanished">%1个目的地</translation>
+        <translation>%1个目的地</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="vanished">我的平台不在列表中（我自己选择格式）</translation>
+        <translation>我的平台不在列表中（我自己选择格式）</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="vanished">上面每一项都是我们了解其规则的目的地。这一项让你自行指定格式和编码器。</translation>
+        <translation>上面每一项都是我们了解其规则的目的地。这一项让你自行指定格式和编码器。</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
         <source>Use this destination</source>
-        <translation type="vanished">使用此目的地</translation>
+        <translation>使用此目的地</translation>
     </message>
 </context>
 <context>

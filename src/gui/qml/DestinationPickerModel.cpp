@@ -65,16 +65,20 @@ QString sectionKeyOf(const ctrl::ExportTarget& aTarget) {
     return aTarget.group.isEmpty() ? QStringLiteral("general") : aTarget.group;
 }
 
-// The picker's own words, looked up in the catalog context the dialog class has
-// always filled: gui::DestinationPicker. The strings were translated there in the
-// shipped catalogs, and moving them to the QML module's own context
+// The picker's own words are looked up in the catalog context the dialog class
+// has always filled: gui::DestinationPicker. The strings were translated there in
+// the shipped catalogs, and moving them to the QML module's own context
 // (AnimeEffects.Dialogs) would leave every existing translation sitting under a
 // context nothing reads - the same failure the widget dialog's header documents.
-// The context is therefore named HERE, explicitly, rather than reached through
-// this model's metaobject (gui::DestinationPickerModel, which no catalog has).
-QString pickerTr(const char* aSource) {
-    return QCoreApplication::translate("gui::DestinationPicker", aSource);
-}
+//
+// WHY EVERY CALL IS A FULL QCoreApplication::translate WITH THE CONTEXT SPELLED
+// OUT, and not a file-local helper that forwards to one: lupdate extracts the
+// calls it can SEE and does not expand a helper, so a helper makes every string
+// invisible to the translator. This file was written that way first, and the
+// effect was silent: the source strings were still there, but lupdate marked all
+// of the picker's entries VANISHED on the next run, lrelease dropped them from
+// the .qm, and the picker shipped English in five languages while the catalogs
+// looked complete. gui/ExportFacts.cpp documents the same trap from its history.
 
 } // namespace
 
@@ -246,7 +250,7 @@ int DestinationPickerModel::sectionOf(int aRow) const {
 
 QString DestinationPickerModel::sectionTooltip(int aRow) const {
     if (!isSection(aRow)) return QString();
-    return pickerTr("%1 destinations").arg(mRows[aRow].childCount);
+    return QCoreApplication::translate("gui::DestinationPicker", "%1 destinations").arg(mRows[aRow].childCount);
 }
 
 QVariant DestinationPickerModel::data(const QModelIndex& aIndex, int aRole) const {
@@ -297,19 +301,19 @@ QHash<int, QByteArray> DestinationPickerModel::roleNames() const {
 }
 
 QString DestinationPickerModel::windowTitleText() const {
-    return pickerTr("Where are you posting this?");
+    return QCoreApplication::translate("gui::DestinationPicker", "Where are you posting this?");
 }
 
 QString DestinationPickerModel::searchPlaceholder() const {
-    return pickerTr("Search: telegram, sticker, reels, illustration, 微信...");
+    return QCoreApplication::translate("gui::DestinationPicker", "Search: telegram, sticker, reels, illustration, 微信...");
 }
 
 QString DestinationPickerModel::searchAccessibleName() const {
-    return pickerTr("Search destinations");
+    return QCoreApplication::translate("gui::DestinationPicker", "Search destinations");
 }
 
 QString DestinationPickerModel::okText() const {
-    return pickerTr("Use this destination");
+    return QCoreApplication::translate("gui::DestinationPicker", "Use this destination");
 }
 
 QString DestinationPickerModel::cancelText() const {
@@ -319,11 +323,11 @@ QString DestinationPickerModel::cancelText() const {
 }
 
 QString DestinationPickerModel::manualText() const {
-    return pickerTr("My platform isn't listed (I'll choose the format)");
+    return QCoreApplication::translate("gui::DestinationPicker", "My platform isn't listed (I'll choose the format)");
 }
 
 QString DestinationPickerModel::manualTooltip() const {
-    return pickerTr("Everything above is a destination we know the rules for. "
+    return QCoreApplication::translate("gui::DestinationPicker", "Everything above is a destination we know the rules for. "
                     "This one lets you state the format and codec yourself.");
 }
 

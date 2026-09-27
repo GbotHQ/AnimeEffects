@@ -44,117 +44,117 @@
         <translation>詳細</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="231"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
         <source>Output</source>
         <translation>出力</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="243"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
         <source>Frames</source>
         <translation>フレーム</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="279"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
         <source>Add range</source>
         <translation>範囲を追加</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="289"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
         <source>Resolution</source>
         <translation>解像度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="296"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
         <source>Width</source>
         <translation>幅</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="315"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
         <source>Height</source>
         <translation>高さ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="328"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="354"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
         <source>Reset to native</source>
         <translation>元の値に戻す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="336"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
         <source>Keep aspect ratio</source>
         <translation>アスペクト比を維持する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="343"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="350"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
         <source>Frame rate</source>
         <translation>フレームレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="369"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
         <source>Encoding</source>
         <translation>エンコード</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="382"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="384"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
         <source>Format</source>
         <translation>形式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="395"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="397"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
         <source>Codec</source>
         <translation>コーデック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="408"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="410"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
         <source>Quality</source>
         <translation>品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="430"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="437"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
         <source>Image quality</source>
         <translation>画質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="441"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="562"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="539"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="572"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
         <source>Reset to auto</source>
         <translation>自動に戻す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="458"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
         <source>Advanced</source>
         <translation>詳細設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="533"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
         <source>Quality override</source>
         <translation>品質の上書き</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="553"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="563"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
         <source>Bitrate</source>
         <translation>ビットレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="602"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
         <source>Export</source>
         <translation>エクスポート</translation>
     </message>
@@ -184,7 +184,7 @@
         <translation>範囲 %1 を削除</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeFactRow.qml" line="51"/>
+        <location filename="../../src/gui/qml/AeFactRow.qml" line="58"/>
         <source> · </source>
         <translation> · </translation>
     </message>
@@ -2644,7 +2644,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="318"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -3275,32 +3275,39 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
         <source>Where are you posting this?</source>
-        <translation type="vanished">どこに投稿しますか？</translation>
+        <translation>どこに投稿しますか？</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="vanished">検索: telegram, sticker, reels, illustration, 微信...</translation>
+        <translation>検索: telegram, sticker, reels, illustration, 微信...</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
         <source>Search destinations</source>
-        <translation type="vanished">出力先を検索</translation>
+        <translation>出力先を検索</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
         <source>%1 destinations</source>
-        <translation type="vanished">%1 件の出力先</translation>
+        <translation>%1 件の出力先</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="vanished">自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
+        <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="vanished">上に挙げたものはすべて、ルールが判明している出力先です。これは形式とコーデックを自分で指定できる選択肢です。</translation>
+        <translation>上に挙げたものはすべて、ルールが判明している出力先です。これは形式とコーデックを自分で指定できる選択肢です。</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
         <source>Use this destination</source>
-        <translation type="vanished">この出力先を使う</translation>
+        <translation>この出力先を使う</translation>
     </message>
 </context>
 <context>

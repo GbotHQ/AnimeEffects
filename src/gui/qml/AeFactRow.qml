@@ -40,6 +40,13 @@ Item {
         font.pixelSize: 10
         font.letterSpacing: 0.4
         elide: Text.ElideRight
+        // A QML Text is INVISIBLE to the accessibility tree unless it says
+        // otherwise, which is how the redesigned form's stated facts - the whole
+        // point of the panel - became unreadable to a screen reader and to the
+        // probes that read the form's words (scripts/gui/ae_ui.py text). StaticText
+        // maps to the AT-SPI "label" role, the same one a QLabel has always had.
+        Accessible.role: Accessible.StaticText
+        Accessible.name: text
     }
     Text {
         id: valueText
@@ -54,5 +61,7 @@ Item {
              : theme.text
         font.pixelSize: 12
         wrapMode: Text.WordWrap
+        Accessible.role: Accessible.StaticText
+        Accessible.name: text
     }
 }

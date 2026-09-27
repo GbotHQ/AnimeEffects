@@ -44,117 +44,117 @@
         <translation>Подробнее</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="231"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
         <source>Output</source>
         <translation>Вывод</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="243"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
         <source>Frames</source>
         <translation>Кадры</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="279"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
         <source>Add range</source>
         <translation>Добавить диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="289"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
         <source>Resolution</source>
         <translation>Разрешение</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="296"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
         <source>Width</source>
         <translation>Ширина</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="315"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
         <source>Height</source>
         <translation>Высота</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="328"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="354"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
         <source>Reset to native</source>
         <translation>Задать исходное</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="336"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
         <source>Keep aspect ratio</source>
         <translation>Сохранять пропорции</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="343"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="350"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
         <source>Frame rate</source>
         <translation>Частота кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="369"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
         <source>Encoding</source>
         <translation>Кодирование</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="382"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="384"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
         <source>Format</source>
         <translation>Формат</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="395"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="397"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
         <source>Codec</source>
         <translation>Кодек</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="408"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="410"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
         <source>Quality</source>
         <translation>Качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="430"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="437"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
         <source>Image quality</source>
         <translation>Качество изображения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="441"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="562"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
         <source>Auto</source>
         <translation>Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="539"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="572"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
         <source>Reset to auto</source>
         <translation>Задать автоматически</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="458"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
         <source>Advanced</source>
         <translation>Дополнительно</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="533"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
         <source>Quality override</source>
         <translation>Переопределение качества</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="553"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="563"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
         <source>Bitrate</source>
         <translation>Битрейт</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="602"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
         <source>Export</source>
         <translation>Экспортировать</translation>
     </message>
@@ -184,7 +184,7 @@
         <translation>Убрать диапазон %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeFactRow.qml" line="51"/>
+        <location filename="../../src/gui/qml/AeFactRow.qml" line="58"/>
         <source> · </source>
         <translation> · </translation>
     </message>
@@ -2636,7 +2636,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="318"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
@@ -3259,32 +3259,39 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
         <source>Where are you posting this?</source>
-        <translation type="vanished">Куда вы это публикуете?</translation>
+        <translation>Куда вы это публикуете?</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="vanished">Поиск: telegram, стикер, reels, иллюстрация, 微信...</translation>
+        <translation>Поиск: telegram, стикер, reels, иллюстрация, 微信...</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
         <source>Search destinations</source>
-        <translation type="vanished">Поиск назначений</translation>
+        <translation>Поиск назначений</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
         <source>%1 destinations</source>
-        <translation type="vanished">Назначений: %1</translation>
+        <translation>Назначений: %1</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="vanished">Моей платформы нет в списке (я сам выберу формат)</translation>
+        <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="vanished">Всё перечисленное выше это назначения, правила которых мы знаем. А здесь вы сами задаёте формат и кодек.</translation>
+        <translation>Всё перечисленное выше это назначения, правила которых мы знаем. А здесь вы сами задаёте формат и кодек.</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
         <source>Use this destination</source>
-        <translation type="vanished">Использовать это назначение</translation>
+        <translation>Использовать это назначение</translation>
     </message>
 </context>
 <context>

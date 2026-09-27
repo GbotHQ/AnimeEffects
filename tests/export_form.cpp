@@ -492,14 +492,19 @@ int main(int argc, char** argv) {
             // QCoreApplication::translate with the "MainWindow" context, and those
             // strings reach a translator only because the call is written out with its
             // context spelled literally. A file-local helper here made them invisible
-            // and the box shipped half in English, so the two a reader meets first are
-            // asserted, not assumed.
-            const QString codecLine =
-                QCoreApplication::translate("MainWindow", "Codec: %1 in %2")
-                    .arg(QStringLiteral("libx264"), QStringLiteral("mp4"));
-            check(codecLine != QStringLiteral("Codec: libx264 in mp4"),
+            // and the box shipped half in English, so the labels a reader meets first
+            // are asserted, not assumed.
+            //
+            // The string asserted has to be one the code STILL USES. The redesign
+            // replaced the single "Codec: %1 in %2" sentence with labelled rows
+            // ("Format:" plus the codec and the container), and this check went on
+            // passing against the retired sentence until lupdate marked it vanished
+            // and lrelease dropped it from the .qm - an obsolete source is not a
+            // translation gate.
+            const QString formatLabel = QCoreApplication::translate("MainWindow", "Format:");
+            check(formatLabel != QStringLiteral("Format:"),
                   QStringLiteral("the facts box translates with the catalog loaded (%1)")
-                      .arg(codecLine));
+                      .arg(formatLabel));
             // The facts name the FORMAT, never the library that produced it: "AV1", not
             // "libsvtav1". Which implementation we run is ours to pick and not the
             // user's to adjudicate.

@@ -44,117 +44,117 @@
         <translation>세부 정보</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="231"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
         <source>Output</source>
         <translation>출력</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="243"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
         <source>Frames</source>
         <translation>프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="279"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
         <source>Add range</source>
         <translation>범위 추가</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="289"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
         <source>Resolution</source>
         <translation>해상도</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="296"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
         <source>Width</source>
         <translation>너비</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="315"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
         <source>Height</source>
         <translation>높이</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="328"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="354"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
         <source>Reset to native</source>
         <translation>원본으로 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="336"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
         <source>Keep aspect ratio</source>
         <translation>가로세로 비율 유지</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="343"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="350"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
         <source>Frame rate</source>
         <translation>프레임 레이트</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="369"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
         <source>Encoding</source>
         <translation>인코딩</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="382"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="384"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
         <source>Format</source>
         <translation>형식</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="395"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="397"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
         <source>Codec</source>
         <translation>코덱</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="408"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="410"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
         <source>Quality</source>
         <translation>품질</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="430"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="437"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
         <source>Image quality</source>
         <translation>이미지 품질</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="441"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="562"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="539"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="572"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
         <source>Reset to auto</source>
         <translation>자동으로 설정</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="458"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
         <source>Advanced</source>
         <translation>고급</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="533"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
         <source>Quality override</source>
         <translation>품질 재정의</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="553"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="563"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
         <source>Bitrate</source>
         <translation>비트 전송률</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="602"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
         <source>Export</source>
         <translation>내보내기</translation>
     </message>
@@ -184,7 +184,7 @@
         <translation>범위 %1 제거</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeFactRow.qml" line="51"/>
+        <location filename="../../src/gui/qml/AeFactRow.qml" line="58"/>
         <source> · </source>
         <translation> · </translation>
     </message>
@@ -2628,7 +2628,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="318"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
         <source>Cancel</source>
         <translation>취소</translation>
     </message>
@@ -3239,32 +3239,39 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
         <source>Where are you posting this?</source>
-        <translation type="vanished">어디에 올리시나요?</translation>
+        <translation>어디에 올리시나요?</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation type="vanished">검색: telegram, 스티커, 릴스, 일러스트, 微信...</translation>
+        <translation>검색: telegram, 스티커, 릴스, 일러스트, 微信...</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
         <source>Search destinations</source>
-        <translation type="vanished">대상 검색</translation>
+        <translation>대상 검색</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
         <source>%1 destinations</source>
-        <translation type="vanished">대상 %1개</translation>
+        <translation>대상 %1개</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation type="vanished">내 플랫폼이 목록에 없음(형식 직접 선택)</translation>
+        <translation>내 플랫폼이 목록에 없음(형식 직접 선택)</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation type="vanished">위의 모든 항목은 규칙을 알고 있는 대상입니다. 이 항목에서는 형식과 코덱을 직접 지정할 수 있습니다.</translation>
+        <translation>위의 모든 항목은 규칙을 알고 있는 대상입니다. 이 항목에서는 형식과 코덱을 직접 지정할 수 있습니다.</translation>
     </message>
     <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
         <source>Use this destination</source>
-        <translation type="vanished">이 대상 사용</translation>
+        <translation>이 대상 사용</translation>
     </message>
 </context>
 <context>

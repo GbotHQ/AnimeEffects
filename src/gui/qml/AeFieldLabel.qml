@@ -23,4 +23,10 @@ Text {
     color: theme.textMuted
     font.pixelSize: 11
     elide: Text.ElideRight
+    // A QML Text is invisible to the accessibility tree unless it says otherwise.
+    // The field it names carries its own Accessible.name, so this is the same
+    // relation a screen reader gets from a QLabel buddy - the words exist in the
+    // tree rather than only in pixels.
+    Accessible.role: Accessible.StaticText
+    Accessible.name: text
 }
