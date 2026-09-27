@@ -24,10 +24,15 @@ Item {
     // The icon-only reset: hidden when the words are empty.
     property string resetLabel: ""
     property bool resetVisible: true
-    // Shown in place of the number when the value is the sentinel -1, which is how
-    // the still writer's "let QImage decide" and the codec's own sentinel are shown
-    // as a word rather than as a number nobody chose.
+    // Shown in place of the number when the value IS the sentinel, which is how the
+    // still writer's "let QImage decide" (-1) and the codec's own sentinel (one below
+    // its span: 18 for libx264's 19..34) read as a word rather than as a number
+    // nobody chose. The sentinel is NOT always negative, so it is stated, not
+    // guessed from the sign.
     property string placeholder: ""
+    property real placeholderValue: -1
+    readonly property bool atPlaceholder: root.placeholder !== ""
+                                          && Math.round(root.value) === Math.round(root.placeholderValue)
 
     signal valueEdited(real value)
     signal resetRequested()
@@ -53,6 +58,8 @@ Item {
         step: root.step
         decimals: 0
         enabled: root.enabled
+        // The word replaces the number: see the placeholder Text below.
+        showValue: !root.atPlaceholder
         // ScrubSpinBox writes `value` on a drag (which drops the caller's
         // binding), so the caller re-syncs it; changed() is what carries the value
         // back out.
@@ -73,7 +80,7 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.placeholder !== "" && root.value <= root.from && root.from < 0
+        visible: root.atPlaceholder
         text: root.placeholder
         color: theme.textMuted
         font.pixelSize: 11

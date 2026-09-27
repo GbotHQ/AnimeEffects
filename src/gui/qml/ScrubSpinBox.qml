@@ -18,6 +18,10 @@ Item {
     // Qt::Popup the QML scene stops scrubbing once the cursor leaves the popup
     // (Qt re-targets those moves with buttons()=NoButton). No grabMouse here.
     property var mouseGrabber: null
+    // A caller may draw a WORD for a sentinel value instead of the number (the
+    // export dialog shows the codec's "Auto" and the still writer's "Auto" this
+    // way), in which case the number underneath must not show through it.
+    property bool showValue: true
     // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
     // a `property bool enabled` here would shadow the base property, the item would
     // never report disabled to the accessibility tree, and a probe could not tell a
@@ -76,7 +80,7 @@ Item {
         color: root.enabled ? theme.text : theme.textDisabled
         font.pixelSize: 11
         text: root.fmt(root.value)
-        visible: !editInput.activeFocus
+        visible: !editInput.activeFocus && root.showValue
     }
 
     // Hover feedback for the field (HoverHandler matches the checkbox/buttons).

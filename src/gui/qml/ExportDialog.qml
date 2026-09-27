@@ -535,6 +535,7 @@ Item {
                         to: exportModel.qualityOverrideMaximum
                         value: exportModel.qualityOverrideValue
                         placeholder: exportModel.qualityOverrideAutoText
+                        placeholderValue: exportModel.qualityOverrideMinimum
                         resetLabel: qsTr("Reset to auto")
                         onValueEdited: (value) => { exportModel.qualityOverrideValue = value }
                         onResetRequested: exportModel.setQualityOverrideToAuto()
