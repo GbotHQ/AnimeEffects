@@ -218,7 +218,7 @@ PY
       require_export_flow
       ae set "Search destinations" "'"$dest"'" >/dev/null
       sleep 1.2
-      ae_press "Use this destination" "the '"$dest"' destination is accepted"
+      ae_activate "Use this destination" "the '"$dest"' destination is accepted"
       ae wait "Advanced" >/dev/null 2>&1 || true
       sleep 1.5
 
@@ -226,14 +226,14 @@ PY
       #    covers, and one second of animation exercises it as well as twenty-five. The
       #    range is read back below, so the file is judged against what the form holds
       #    rather than against what this probe typed at it.
-      if spin set "First frame" "1" "Last frame" "'"$FRAMES"'"; then
+      if spin set "First frame 1" "1" "Last frame 1" "'"$FRAMES"'"; then
         check 0 "the frame range takes the values this probe sets by name ('"$dest"')"
       else
         check 1 "the frame range takes the values this probe sets by name ('"$dest"')"
       fi
       sleep 0.8
-      ae_report "'"$form"'" "Destination" "Width" "Height" "Frame rate" "First frame" "Last frame"
-      spin read "'"$range"'" "First frame" "Last frame"
+      ae_report "'"$form"'" "Destination" "Width" "Height" "Frame rate" "First frame 1" "Last frame 1"
+      spin read "'"$range"'" "First frame 1" "Last frame 1"
       # The cap as the form states it, and the codec the plan resolved. Read with a
       # retry: one query against a busy application can come back with an empty tree, and
       # an empty file here would be read as "the form said nothing".
@@ -250,7 +250,7 @@ PY
       #    application. It opens with the name field focused and the suggested name
       #    selected, and resolves a relative name against the working directory of the
   #    application.
-      ae_press "Export" "the '"$dest"' form is answered"
+      ae_activate "Export" "the '"$dest"' form is answered"
       sleep 4
       xdotool key --clearmodifiers ctrl+a; sleep 0.4
       xdotool type --delay 25 "'"$name"'"; sleep 0.6
@@ -304,8 +304,8 @@ PY
     else
         check 1 "and the codec the plan resolved for it ($codec) (got: $(tr '\n' ' ' < "$facts" 2>/dev/null | head -c 200))"
     fi
-    first=$(sed -n 's/^First frame=//p' "$range" 2>/dev/null | head -1)
-    last=$(sed -n 's/^Last frame=//p' "$range" 2>/dev/null | head -1)
+    first=$(sed -n 's/^First frame 1=//p' "$range" 2>/dev/null | head -1)
+    last=$(sed -n 's/^Last frame 1=//p' "$range" 2>/dev/null | head -1)
     want=$(( ${last:-0} - ${first:-0} + 1 ))
     [ -n "$first" ] && [ -n "$last" ] && [ "$first" != "absent" ] && [ "$last" != "absent" ] \
         && [ "$want" -ge 2 ] && [ "$want" -le 60 ] 2>/dev/null
@@ -372,7 +372,7 @@ PY
 # the branch of the fit loop that already worked, and the one that proves the destination
 # can cap a video whose natural size is far over the limit.
 run_case telegram.sticker probe_capped.webm 262144 256 "Telegram sticker" webm \
-    "VP9 in WebM" "" 3 \
+    "VP9 · WebM" "" 3 \
     "the Telegram sticker is inside its 256 KB cap"
 
 # A capped GIF destination: 240x240, 500 KB, GIF only. media::GifEncoder owns this

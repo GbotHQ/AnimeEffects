@@ -54,7 +54,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   require_export_flow
   ae set "Search destinations" "zzz no such platform" >/dev/null
   sleep 1.2
-  ae_press "Use this destination" "an unmatched search answers with the manual form"
+  ae_activate "Use this destination" "an unmatched search answers with the manual form"
   ae wait "Format" >/dev/null 2>&1 || true
   sleep 2
   ae_report /tmp/fmt_manual.txt "Destination" "Format" "Codec" "Quality" \
@@ -65,9 +65,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # Choosing a format is choosing the ITEM the popup names, not the Nth row: the
   # row under a name is the only thing a reordered list cannot silently change.
   choose() {  # $1 = combo to open, $2 = the item to pick, $3 = what that means
-    ae_press "$1" "$1 opens"
+    ae_activate "$1" "$1 opens"
     sleep 1.2
-    ae_press "$2" "$3"
+    # role "list item": the open popup item, NOT the closed field that shares its
+    # name with the item it is currently showing.
+    ae_activate "$2" "$3" "list item"
     sleep 1.8
   }
 
@@ -91,7 +93,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   ae text > /tmp/fmt_seq_facts.txt 2>/dev/null
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/fmt_04_png_sequence.png
-  ae_press "Cancel" "the form closes on Cancel"
+  ae_activate "Cancel" "the form closes on Cancel"
   sleep 1
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
@@ -104,7 +106,7 @@ assert_showing /tmp/fmt_manual.txt "Codec" "and the Codec row is there beside it
 # The pairing is what has to hold: a Codec row still reading the previous
 # container codec would be the form answering a question about a format it is no
 # longer making.
-for pair in "WebM:/tmp/fmt_webm_facts.txt:Codec: VP9 in WebM" "MP4:/tmp/fmt_mp4_facts.txt:Codec: H.264 in MP4"; do
+for pair in "WebM:/tmp/fmt_webm_facts.txt:VP9 · WebM" "MP4:/tmp/fmt_mp4_facts.txt:H.264 · MP4"; do
     container=${pair%%:*}
     rest=${pair#*:}
     file=${rest%%:*}
@@ -115,7 +117,7 @@ for pair in "WebM:/tmp/fmt_webm_facts.txt:Codec: VP9 in WebM" "MP4:/tmp/fmt_mp4_
         check 1 "choosing $container makes the codec row follow the container ($text) (got: $(grep -i codec "$file" 2>/dev/null | tr '\n' ' ' | head -c 200))"
     fi
 done
-if grep -qE "^Codec: [^ ]+ in " /tmp/fmt_mp4_facts.txt && ! grep -q "VP9" /tmp/fmt_mp4_facts.txt; then
+if grep -q "H.264" /tmp/fmt_mp4_facts.txt && ! grep -q "VP9" /tmp/fmt_mp4_facts.txt; then
     check 0 "and the MP4 form no longer names the WebM codec"
 else
     check 1 "and the MP4 form no longer names the WebM codec (got: $(grep -i codec /tmp/fmt_mp4_facts.txt 2>/dev/null | tr '\n' ' ' | head -c 200))"
@@ -123,8 +125,8 @@ fi
 assert_showing /tmp/fmt_webm.txt "Codec" "WebM carries more than one codec, so that row is a real choice there"
 
 # ---- a still-image format is honest about what it can use --------------------
-if grep -qE "^PNG sequence of [0-9]+ frames" /tmp/fmt_seq_facts.txt; then
-    check 0 "the PNG sequence format is the one selected, and the form says what it will write ($(grep -E "^PNG sequence of [0-9]+ frames" /tmp/fmt_seq_facts.txt | head -1))"
+if grep -qE "^[0-9]+ numbered PNG files$" /tmp/fmt_seq_facts.txt; then
+    check 0 "the PNG sequence format is the one selected, and the form says what it will write ($(grep -E "^[0-9]+ numbered PNG files$" /tmp/fmt_seq_facts.txt | head -1))"
 else
     check 1 "the PNG sequence format is the one selected, and the form says what it will write (got: $(tr '\n' ' ' < /tmp/fmt_seq_facts.txt 2>/dev/null | head -c 200))"
 fi

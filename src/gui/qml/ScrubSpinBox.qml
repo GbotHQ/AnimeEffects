@@ -50,6 +50,17 @@ Item {
         const n = parseFloat(t);
         if (!isNaN(n)) root.value = root.clampNv(n);
     }
+    // Enter edit mode from OUTSIDE the pointer path. The accessibility layer's
+    // "press" on the spin button lands here (see AeNumberField.qml's
+    // Accessible.onPressAction): focusing the ScrubSpinBox Item alone does NOT give
+    // the inner TextInput focus, so a screen reader's press - and a GUI probe that
+    // drives the field through the accessibility action, because Qt reports a QML
+    // item's screen extents in the wrong coordinate space - would type into nothing.
+    // This is the same state a plain click enters, so the two routes agree.
+    function beginEdit() {
+        editInput.text = root.fmt(root.value);
+        editInput.forceActiveFocus();
+    }
 
     // Raised input field matching the app's dock input fields (propertywidget.ssa
     // QDoubleSpinBox): raised fill at rest, brightens to raisedHover + hover
@@ -137,8 +148,7 @@ Item {
                 root.committed(root.value);
             } else {
                 // Plain click: enter edit mode, selecting the value for typing.
-                editInput.text = root.fmt(root.value);
-                editInput.forceActiveFocus();
+                root.beginEdit();
             }
         }
         onCanceled: {

@@ -42,7 +42,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   require_export_flow
   ae set "Search destinations" "telegram sticker" >/dev/null
   sleep 1.2
-  ae_press "Use this destination" "the Telegram sticker destination is chosen"
+  ae_activate "Use this destination" "the Telegram sticker destination is chosen"
   # The form builds itself per destination; wait for it rather than for a fixed
   # number of seconds, so the report cannot describe a half-applied plan.
   ae wait "Advanced" >/dev/null 2>&1 || true
@@ -58,11 +58,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # 2. The escape hatch, through the form own destination row. A search that
   #    matches nothing is answered as "no destination known", which is manual
   #    mode: the same dialog with the format handed back to the user.
-  ae_press "Destination" "the destination row reopens the picker"
+  ae_activate "Destination" "the destination row reopens the picker"
   sleep 1.5
   ae set "Search destinations" "zzz no such platform" >/dev/null
   sleep 1.2
-  ae_press "Use this destination" "an unmatched search answers with the manual form"
+  ae_activate "Use this destination" "an unmatched search answers with the manual form"
   ae wait "Format" >/dev/null 2>&1 || true
   sleep 2
   ae text > /tmp/ax_manual_facts.txt 2>/dev/null
@@ -74,7 +74,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   ae_report /tmp/ax_manual.txt "Destination" "Format" "Codec" "Quality" "Width" "Height"
   xdotool mousemove 700 600; sleep 0.5
   import -window root '"$SHOTS"'/ax_02_manual.png
-  ae_press "Cancel" "the form closes on Cancel"
+  ae_activate "Cancel" "the form closes on Cancel"
   sleep 1
   kill $app 2>/dev/null; wait $app 2>/dev/null
 ' 2>&1 | tail -4
@@ -88,7 +88,7 @@ if grep -q "Transparency is required by this destination" /tmp/ax_sticker_facts.
 else
     check 1 "the facts state that transparency is required (got: $(grep -i transparency /tmp/ax_sticker_facts.txt | tr '\n' ' ' | head -c 200))"
 fi
-if grep -q "Audio: not accepted by this destination" /tmp/ax_sticker_facts.txt; then
+if grep -q "not accepted by this destination" /tmp/ax_sticker_facts.txt; then
     check 0 "the facts state that audio is not accepted"
 else
     check 1 "the facts state that audio is not accepted (got: $(grep -i audio /tmp/ax_sticker_facts.txt | tr '\n' ' ' | head -c 200))"

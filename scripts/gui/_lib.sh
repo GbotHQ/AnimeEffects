@@ -144,6 +144,37 @@ ae_press() { # ae_press <name> <what-the-caller-expects-to-happen>
     check 0 "$2"
 }
 
+# Press a named widget through the accessibility ACTION instead of at its
+# coordinates. Required for Qt Quick controls, because Qt reports a QML item's
+# screen extents in the coordinates of its QQuickWidget and not of the window it
+# sits in: a dialog that is not at the screen origin has every reported rectangle
+# shifted by exactly its window offset, and a coordinate click lands beside the
+# button (measured: the picker's "Cancel" reported x=333..405 while the dialog sat
+# at x=61, so the reported centre missed it and probe_menu's "dismissing the
+# picker closes it" failed; the click that worked was at x=400, where the button
+# really is). An action cannot be shifted by a window position.
+#
+# It is a SEPARATE helper rather than the default because a popup item (a menu
+# entry, a combo row) can answer a coordinate click where the action path is
+# refused - and the reverse - so each probe says which route it means.
+ae_activate() { # ae_activate <name> <what-the-caller-expects-to-happen> [role]
+    local ok=0
+    if [ -n "${3:-}" ]; then
+        # A combo OPTION needs the role: a Qt Quick combo reports its current value
+        # as its own accessible name, so with the popup open the closed field and
+        # the item share a name, and the field comes first.
+        ae click "$1" "$3" >/dev/null 2>&1 && ok=1
+    else
+        ae click "$1" >/dev/null 2>&1 && ok=1
+    fi
+    if [ "$ok" = 1 ]; then
+        check 0 "$2"
+        return 0
+    fi
+    check 1 "$2 (no accessibility action on '$1'${3:+ as a $3})"
+    return 1
+}
+
 # A probe must be re-recorded when the export flow changes SHAPE, and it must SAY SO
 # rather than click pixels that now belong to another widget: Export opens the
 # destination picker FIRST, so a probe that expects the parameter sheet at that point
@@ -291,4 +322,4 @@ summary() { # summary <probe name>
 #     and summary() counts and prints those lines as its own.
 export AE_OUTER_PID=$$
 export AE_FAIL_FLAG="$(mktemp -u)"
-export -f ae ae_center ae_press ae_report ae_report_asked check require_export_flow
+export -f ae ae_center ae_press ae_activate ae_report ae_report_asked check require_export_flow

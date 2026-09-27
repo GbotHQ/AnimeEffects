@@ -41,10 +41,43 @@ Item {
     // The field and its reset are one control on one row.
     implicitWidth: field.implicitWidth + (resetter.visible ? resetter.width + 4 : 0)
 
-    Accessible.role: Accessible.SpinBox
-    Accessible.name: root.label
-    Accessible.description: String(root.value)
-    Accessible.onPressAction: field.forceActiveFocus()
+    // The accessible VALUE node.
+    //
+    // A hand-rolled QML spin box cannot expose AT-SPI's Value interface
+    // declaratively - Qt Quick's Accessible attached type has no `value`,
+    // `minimumValue` or `stepSize` - so the old widget form's QSpinBox had a
+    // protocol this control did not: a screen reader could read AND SET the number
+    // through the standard route, and so could scripts/gui/ae_ui.py. This childless
+    // Item carries the identity, the range and a QML entry point, and the C++
+    // factory in gui/qml/NumberFieldAccessibility turns it into a real
+    // QAccessibleValueInterface (plus an ActionInterface whose press means "let me
+    // edit", exactly as a mouse click does).
+    //
+    // Its geometry is the FIELD's, not the row's: that is what a probe clicks and a
+    // magnifier frames. The label is a separate Item (AeFieldLabel) so it is not
+    // swallowed here.
+    Item {
+        id: valueNode
+        objectName: "aeAccessibleValue"
+        x: field.x
+        y: field.y
+        width: field.width
+        height: field.height
+        enabled: root.enabled
+        property string accessibleName: root.label
+        property real accessibleValue: root.value
+        property real accessibleMinimum: root.from
+        property real accessibleMaximum: root.to
+        property real accessibleStep: root.step
+        // Called from C++ (QAccessibleValueInterface::setCurrentValue), so an
+        // accessibility write takes the SAME path as a typed edit.
+        function accessibleSetValue(value) {
+            root.valueEdited(Math.round(Number(value)));
+        }
+        function accessibleBeginEdit() { field.beginEdit(); }
+        Accessible.role: Accessible.SpinBox
+        Accessible.name: root.label
+    }
 
     ScrubSpinBox {
         id: field
