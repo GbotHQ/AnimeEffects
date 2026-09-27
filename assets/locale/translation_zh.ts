@@ -2346,77 +2346,77 @@
         <translation>否</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="80"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="85"/>
         <source>This destination cannot be exported: %1</source>
         <translation>无法按此目的地导出：%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="94"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
         <source>Output:</source>
         <translation>输出：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
         <source>%1 x %2, frame %3 (the one on the timeline)</source>
         <translation>%1 x %2，第%3帧（时间轴当前帧）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="108"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
         <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
         <translation>%1 x %2，共%3帧（时序在上传页面设置）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="118"/>
         <source>%1 frames</source>
         <translation>%1 帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="115"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="120"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2，%3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="130"/>
         <source>Frame rate:</source>
         <translation>帧率：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="126"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="131"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="134"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
         <source>Format:</source>
         <translation>格式：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="136"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="141"/>
         <source>one %1 image</source>
         <translation>一张 %1 图片</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
         <source>%1 numbered %2 files</source>
         <translation>%1个编号的 %2 文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="149"/>
         <source>animated GIF</source>
         <translation>动态 GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="157"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="162"/>
         <source>Audio:</source>
         <translation>音频：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="164"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="169"/>
         <source>Transparency:</source>
         <translation>透明度：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="190"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="195"/>
         <source>Limits:</source>
         <translation>上限：</translation>
     </message>
@@ -2437,17 +2437,17 @@
         <translation type="vanished">编码器：%2 中的 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="56"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
         <source>not accepted by this destination</source>
         <translation>此目的地不支持</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="58"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="61"/>
         <source>none in this project</source>
         <translation>本项目中没有</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="60"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="63"/>
         <source>off in this dialog</source>
         <translation>在此对话框中关闭</translation>
     </message>
@@ -2456,27 +2456,27 @@
         <translation type="vanished">透明度：%1&#x3000;音频：%2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="175"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="180"/>
         <source>max %1</source>
         <translation>最大 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="177"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="182"/>
         <source>max %1 s</source>
         <translation>最长 %1 秒</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="179"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="184"/>
         <source>min %1 s</source>
         <translation>最短 %1 秒</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="181"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="186"/>
         <source>max %1 frames</source>
         <translation>最多 %1 帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="183"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="188"/>
         <source>max %1 fps</source>
         <translation>最高 %1 fps</translation>
     </message>
@@ -2485,7 +2485,7 @@
         <translation type="vanished">上限：%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="191"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="196"/>
         <source>, </source>
         <translation>、</translation>
     </message>

@@ -2346,77 +2346,77 @@
         <translation>no</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="80"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="85"/>
         <source>This destination cannot be exported: %1</source>
         <translation>Este destino no se puede exportar: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="94"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
         <source>Output:</source>
         <translation>Salida:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
         <source>%1 x %2, frame %3 (the one on the timeline)</source>
         <translation>%1 x %2, fotograma %3 (el de la línea de tiempo)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="108"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
         <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
         <translation>%1 x %2, %3 fotogramas (el tiempo se define en la página de subida)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="118"/>
         <source>%1 frames</source>
         <translation>%1 fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="115"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="120"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="130"/>
         <source>Frame rate:</source>
         <translation>Velocidad de fotogramas:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="126"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="131"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="134"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
         <source>Format:</source>
         <translation>Formato:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="136"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="141"/>
         <source>one %1 image</source>
         <translation>una imagen %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
         <source>%1 numbered %2 files</source>
         <translation>%1 archivos %2 numerados</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="149"/>
         <source>animated GIF</source>
         <translation>GIF animado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="157"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="162"/>
         <source>Audio:</source>
         <translation>Audio:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="164"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="169"/>
         <source>Transparency:</source>
         <translation>Transparencia:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="190"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="195"/>
         <source>Limits:</source>
         <translation>Límites:</translation>
     </message>
@@ -2437,17 +2437,17 @@
         <translation type="vanished">Códec: %1 en %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="56"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
         <source>not accepted by this destination</source>
         <translation>este destino no lo admite</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="58"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="61"/>
         <source>none in this project</source>
         <translation>no hay ninguno en este proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="60"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="63"/>
         <source>off in this dialog</source>
         <translation>está desactivado en este diálogo</translation>
     </message>
@@ -2456,27 +2456,27 @@
         <translation type="vanished">Transparencia: %1, audio: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="175"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="180"/>
         <source>max %1</source>
         <translation>máx. %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="177"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="182"/>
         <source>max %1 s</source>
         <translation>máx. %1 s</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="179"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="184"/>
         <source>min %1 s</source>
         <translation>mín. %1 s</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="181"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="186"/>
         <source>max %1 frames</source>
         <translation>máx. %1 fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="183"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="188"/>
         <source>max %1 fps</source>
         <translation>máx. %1 fps</translation>
     </message>
@@ -2485,7 +2485,7 @@
         <translation type="vanished">Límites: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="191"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="196"/>
         <source>, </source>
         <translation>, </translation>
     </message>

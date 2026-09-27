@@ -2334,77 +2334,77 @@
         <translation>아니요</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="80"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="85"/>
         <source>This destination cannot be exported: %1</source>
         <translation>이 대상으로는 내보낼 수 없습니다: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="94"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
         <source>Output:</source>
         <translation>출력:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
         <source>%1 x %2, frame %3 (the one on the timeline)</source>
         <translation>%1 x %2, 프레임 %3(타임라인에 표시 중)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="108"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
         <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
         <translation>%1 x %2, %3프레임(타이밍은 업로드 페이지에서 설정)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="118"/>
         <source>%1 frames</source>
         <translation>%1프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="115"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="120"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="130"/>
         <source>Frame rate:</source>
         <translation>프레임 레이트:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="126"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="131"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="134"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
         <source>Format:</source>
         <translation>형식:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="136"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="141"/>
         <source>one %1 image</source>
         <translation>%1 이미지 1개</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
         <source>%1 numbered %2 files</source>
         <translation>번호가 붙은 %2 파일 %1개</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="149"/>
         <source>animated GIF</source>
         <translation>애니메이션 GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="157"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="162"/>
         <source>Audio:</source>
         <translation>오디오:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="164"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="169"/>
         <source>Transparency:</source>
         <translation>투명도:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="190"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="195"/>
         <source>Limits:</source>
         <translation>제한:</translation>
     </message>
@@ -2425,17 +2425,17 @@
         <translation type="vanished">코덱: %2 컨테이너의 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="56"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
         <source>not accepted by this destination</source>
         <translation>이 대상에서는 지원하지 않음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="58"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="61"/>
         <source>none in this project</source>
         <translation>이 프로젝트에 없음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="60"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="63"/>
         <source>off in this dialog</source>
         <translation>이 대화 상자에서 꺼짐</translation>
     </message>
@@ -2444,27 +2444,27 @@
         <translation type="vanished">투명도: %1   오디오: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="175"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="180"/>
         <source>max %1</source>
         <translation>최대 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="177"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="182"/>
         <source>max %1 s</source>
         <translation>최대 %1초</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="179"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="184"/>
         <source>min %1 s</source>
         <translation>최소 %1초</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="181"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="186"/>
         <source>max %1 frames</source>
         <translation>최대 %1프레임</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="183"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="188"/>
         <source>max %1 fps</source>
         <translation>최대 %1 fps</translation>
     </message>
@@ -2473,7 +2473,7 @@
         <translation type="vanished">제한: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="191"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="196"/>
         <source>, </source>
         <translation>, </translation>
     </message>

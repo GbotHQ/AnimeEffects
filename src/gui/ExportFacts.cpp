@@ -50,15 +50,20 @@ QString yesNo(bool aValue) {
 // reads as a bug when the truth is that the project has nothing to send. The
 // destination refusing sound, the project having none, and the user turning it off are
 // three sentences, and only the third is the user's own decision.
-QString audioReason(const ctrl::ExportTarget& aTarget, const ctrl::ExportRequest& aRequest,
-                    const ctrl::ExportPlan& aPlan) {
+//
+// When none of the three applies there is no reason to give, and the row says only
+// what it will do. Falling through to repeat the plan's own answer printed the
+// two-column row as "Audio: yes · yes".
+QString audioReason(const ctrl::ExportTarget& aTarget, const ctrl::ExportRequest& aRequest) {
     if (aTarget.audio == ctrl::Capability::Forbidden)
         return QCoreApplication::translate("MainWindow", "not accepted by this destination");
     if (aRequest.exportableAudioTracks == 0)
         return QCoreApplication::translate("MainWindow", "none in this project");
     if (aRequest.mute)
         return QCoreApplication::translate("MainWindow", "off in this dialog");
-    return yesNo(aPlan.audioEnabled);
+    // Whatever is left is answered by the row's own value: a file that carries the
+    // project's sound needs no reason, and one that cannot carry it says "no".
+    return QString();
 }
 } // namespace
 
@@ -156,7 +161,7 @@ QList<ExportFact> exportFacts(const ctrl::ExportPlan& plan, const ctrl::ExportTa
     audio.id = QStringLiteral("audio");
     audio.label = QCoreApplication::translate("MainWindow", "Audio:");
     audio.value = yesNo(plan.audioEnabled);
-    audio.detail = audioReason(target, request, plan);
+    audio.detail = audioReason(target, request);
     facts << audio;
 
     ExportFact transparency;

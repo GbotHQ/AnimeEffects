@@ -476,6 +476,21 @@ int main(int argc, char** argv) {
         model.setDestinationId(QStringLiteral("chat.discord.file"));
     }
 
+    // ---- a row explains its answer, it does not repeat it --------------------
+    // "Audio: yes · yes" was the destination path's version of the manual branch's
+    // "Audio: no · yes": audioReason() fell through to repeating the plan's own answer
+    // as though it were the reason for it.
+    {
+        gui::ExportViewModel::Init audible = initFor();
+        audible.exportableAudioTracks = 1;
+        audible.audio = true;
+        gui::ExportViewModel withSound(audible);
+        withSound.setDestinationId(QStringLiteral("chat.discord.file"));
+        const gui::ExportFact audio = factById(withSound, QStringLiteral("audio"));
+        check(audio.value == QStringLiteral("yes") && audio.detail.isEmpty(),
+              "an audio row that carries sound states it once and gives no reason");
+    }
+
     // The facts of a destination that only BOUNDS the size must say what the bound is,
     // and its audio line must name the destination rather than the project.
     {
