@@ -108,12 +108,18 @@ assert_showing /tmp/ax_manual.txt "Format" "the escape hatch offers the Format r
 assert_showing /tmp/ax_manual.txt "Codec" "and the Codec row beside it"
 # The rows are only half of it: the facts have to name the container the Format row
 # is actually showing, which is a cross-check between a control and the words beside
-# it rather than a pattern that any "Codec: X in Y" line would satisfy. The form hands
-# back the container it was carrying when the destination went away (WebM here, since
-# the sticker had set it), so the container itself is read from the row instead of
-# being hard-coded from an earlier run.
+# it rather than a pattern that any "codec in container" line would satisfy. The form
+# hands back the container it was carrying when the destination went away (WebM here,
+# since the sticker had set it), so the container itself is read from the row instead
+# of being hard-coded from an earlier run.
+#
+# The separator is the fact row's own: the manual rows state the codec and the
+# container the way the destination rows do ("VP9 · WebM"), which probe_export,
+# probe_capped and probe_format assert in those words. This probe matched the manual
+# branch's old "VP9 in WebM" phrasing instead, so it has to ask for the container the
+# way the row next to it now says it.
 manualFormat=$(tr -d '\n' < /tmp/ax_manual_format.txt 2>/dev/null)
-if [ -n "$manualFormat" ] && grep -qF "in $manualFormat" /tmp/ax_manual_facts.txt; then
+if [ -n "$manualFormat" ] && grep -qF "· $manualFormat" /tmp/ax_manual_facts.txt; then
     check 0 "and the facts name the container the Format row states ($manualFormat)"
 else
     check 1 "and the facts name the container the Format row states (row said '$manualFormat', facts said: $(grep -i codec /tmp/ax_manual_facts.txt 2>/dev/null | tr '\n' ' ' | head -c 200))"
