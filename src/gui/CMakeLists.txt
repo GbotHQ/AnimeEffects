@@ -134,6 +134,14 @@ qt_add_qml_module(${PROJECT_NAME}
     QML_FILES
         qml/ScrubSpinBox.qml
         qml/AnimationSettingDialog.qml
+        # Shared controls for migrated dialogs. One visual language across the
+        # export flow: borderless buttons, raised fields, the theme's own icon
+        # set. A dialog that needs something else adds it here rather than
+        # hand-rolling a second look in its own file.
+        qml/AeButton.qml
+        qml/AeIconButton.qml
+        qml/AeTextField.qml
+        qml/AeToolTip.qml
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
