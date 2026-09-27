@@ -94,9 +94,17 @@ QList<ExportFact> exportFacts(const ctrl::ExportPlan& plan, const ctrl::ExportTa
     // GIF does not go through media::VideoEncoder - media::GifEncoder owns it - so
     // config.codec/container are empty for a GIF row. Naming the format from the path
     // we already know is honest; printing " -  in " is not.
+    //
+    // The size is appended BEFORE the rate's separate row, which is the order the
+    // manual facts panel states the same two rows in: what the artifact is, then how
+    // fast it runs. A detail repeats nothing here - "%1 frames" beside a sentence that
+    // already ends in "%3 frames (timing is set on the upload page)" was the same fact
+    // twice on one line, the furniture the two-column row exists to remove.
     ExportFact size;
     size.id = QStringLiteral("size");
     size.label = QCoreApplication::translate("MainWindow", "Output:");
+    ExportFact fps;
+    bool haveFps = false;
     if (plan.artifact == ctrl::ArtifactKind::Still) {
         // One image: a frame RATE here would describe a timeline this file does not
         // have. What it does have is one frame, and which one it is - the frame the
@@ -115,23 +123,22 @@ QList<ExportFact> exportFacts(const ctrl::ExportPlan& plan, const ctrl::ExportTa
                          .arg(plan.size.width())
                          .arg(plan.size.height())
                          .arg(plan.frames());
-        size.detail = QCoreApplication::translate("MainWindow", "%1 frames").arg(plan.frames());
     } else {
         size.value = QCoreApplication::translate("MainWindow", "%1 x %2, %3 fps")
                          .arg(plan.size.width())
                          .arg(plan.size.height())
                          .arg(plan.fps);
         // The rate gets a row of its own so the summary can state it as a fact rather
-        // than burying it at the end of the size sentence. Deliberately NO detail
-        // here: repeating "24 fps" on two rows is the same furniture the redesign
-        // removes (it is the reason the size row and the rate row looked identical).
-        ExportFact fps;
+        // than burying it at the end of the size sentence - but with NO detail, or it
+        // would be the third time the number appears on two rows.
         fps.id = QStringLiteral("fps");
         fps.label = QCoreApplication::translate("MainWindow", "Frame rate:");
         fps.value = QCoreApplication::translate("MainWindow", "%1 fps").arg(plan.fps);
-        facts << fps;
+        haveFps = true;
     }
     facts << size;
+    if (haveFps)
+        facts << fps;
 
     // --- the artifact ---------------------------------------------------------
     ExportFact format;
@@ -141,13 +148,13 @@ QList<ExportFact> exportFacts(const ctrl::ExportPlan& plan, const ctrl::ExportTa
         format.value = QCoreApplication::translate("MainWindow", "one %1 image")
                            .arg(plan.imageSuffix.toUpper());
     } else if (plan.artifact == ctrl::ArtifactKind::Sequence) {
+        // "61 numbered PNG files" states the format already; ".png" after it was the
+        // same fact twice.
         format.value = QCoreApplication::translate("MainWindow", "%1 numbered %2 files")
                            .arg(plan.frames())
                            .arg(plan.imageSuffix.toUpper());
-        format.detail = QStringLiteral(".%1").arg(plan.imageSuffix);
     } else if (plan.gifPath) {
         format.value = QCoreApplication::translate("MainWindow", "animated GIF");
-        format.detail = QStringLiteral("GIF");
     } else {
         format.value = ctrl::codecDisplayName(plan.config.codec);
         format.detail = target.container.isEmpty()

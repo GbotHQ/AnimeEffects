@@ -195,6 +195,22 @@ int main(int argc, char** argv) {
         check(text.contains(QStringLiteral("UNVERIFIED")) == !t.verified,
               QStringLiteral("%1: the unverified warning matches the row's own flag (%2)")
                   .arg(t.id).arg(t.verified ? QStringLiteral("verified") : QStringLiteral("unverified")));
+        // A row's detail EXPLAINS its value; it never repeats one. "Audio: yes · yes",
+        // "animated GIF · GIF" and "61 numbered PNG files · .png" were all this defect
+        // in a different row, and each of them survived a round of reading the panel -
+        // so it is asserted for every row of every destination rather than for the one
+        // that was noticed.
+        QString repeated;
+        for (const gui::ExportFact& fact : model.facts()->facts()) {
+            if (!fact.detail.isEmpty() && fact.value.contains(fact.detail)) {
+                repeated += (repeated.isEmpty() ? QString() : QStringLiteral("; "))
+                            + fact.label + fact.value + QStringLiteral(" · ") + fact.detail;
+            }
+        }
+        check(repeated.isEmpty(),
+              QStringLiteral("%1: no row repeats its own value as its explanation%2")
+                  .arg(t.id, repeated.isEmpty() ? QString()
+                                                : QStringLiteral(" (") + repeated + QStringLiteral(")")));
 
         // ---- what it OFFERS -----------------------------------------------
         check(!model.formatVisible() && !model.codecVisible(),

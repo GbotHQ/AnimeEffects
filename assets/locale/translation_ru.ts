@@ -2347,72 +2347,71 @@
         <translation>Это назначение нельзя экспортировать: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="105"/>
         <source>Output:</source>
         <translation>Вывод:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="112"/>
         <source>%1 x %2, frame %3 (the one on the timeline)</source>
         <translation>%1 x %2, кадр %3 (тот, что на шкале времени)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
         <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
         <translation>%1 x %2, кадров: %3 (тайминг задаётся на странице загрузки)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="118"/>
         <source>%1 frames</source>
-        <translation>%1 кадров</translation>
+        <translation type="vanished">%1 кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="120"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="130"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="135"/>
         <source>Frame rate:</source>
         <translation>Частота кадров:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="131"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="136"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="146"/>
         <source>Format:</source>
         <translation>Формат:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="141"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="148"/>
         <source>one %1 image</source>
         <translation>одно изображение %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="153"/>
         <source>%1 numbered %2 files</source>
         <translation>%2, нумерованных файлов: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="149"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="157"/>
         <source>animated GIF</source>
         <translation>анимированный GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="162"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="169"/>
         <source>Audio:</source>
         <translation>Аудио:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="169"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="176"/>
         <source>Transparency:</source>
         <translation>Прозрачность:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="195"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="202"/>
         <source>Limits:</source>
         <translation>Ограничения:</translation>
     </message>
@@ -2452,27 +2451,27 @@
         <translation type="vanished">Прозрачность: %1; аудио: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="180"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="187"/>
         <source>max %1</source>
         <translation>не более %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="182"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="189"/>
         <source>max %1 s</source>
         <translation>не более %1 с</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="184"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="191"/>
         <source>min %1 s</source>
         <translation>не менее %1 с</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="186"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="193"/>
         <source>max %1 frames</source>
         <translation>не более %1 кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="188"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="195"/>
         <source>max %1 fps</source>
         <translation>не более %1 fps</translation>
     </message>
@@ -2481,7 +2480,7 @@
         <translation type="vanished">Ограничения: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="196"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="203"/>
         <source>, </source>
         <translation>, </translation>
     </message>
