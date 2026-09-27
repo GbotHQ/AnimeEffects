@@ -119,6 +119,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
         prop/bezierCurveEditor.cpp
     qml/QmlTheme.cpp qml/QmlTheme.h
     qml/AnimationSettingViewModel.cpp qml/AnimationSettingViewModel.h
+    qml/DestinationPickerModel.cpp qml/DestinationPickerModel.h
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc
 )
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -134,6 +135,7 @@ qt_add_qml_module(${PROJECT_NAME}
     QML_FILES
         qml/ScrubSpinBox.qml
         qml/AnimationSettingDialog.qml
+        qml/DestinationPicker.qml
         # Shared controls for migrated dialogs. One visual language across the
         # export flow: borderless buttons, raised fields, the theme's own icon
         # set. A dialog that needs something else adds it here rather than
