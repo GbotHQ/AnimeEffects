@@ -15,22 +15,41 @@ Item {
 
     property alias text: input.text
     property string placeholderText: ""
+    // The name a screen reader announces and the accessibility tree answers to.
+    // Defaults to the placeholder - which is what it always was - but the two are
+    // different jobs: a search field's placeholder is the sentence that explains
+    // what to type, its accessible name is what a probe (scripts/gui/ae_ui.py) can
+    // address it by. An EMPTY placeholder is announced as "text" and cannot be
+    // addressed by name at all.
+    property string accessibleName: placeholderText
     // Optional leading glyph, e.g. "magnifying-glass" for a search field.
     property string leadingIcon: ""
     // Show an x button that empties the field (the widget picker had
     // QLineEdit::setClearButtonEnabled).
     property bool clearButton: false
+    // Forward the tree-navigation keys instead of letting the TextInput keep them,
+    // and announce each as navigate(key). A chooser you have to Tab out of is a
+    // chooser you fight: the search field keeps the text cursor, and Up/Down move
+    // the selection while Left/Right open and close platforms. Left/Right are the
+    // ones that need this: a TextInput consumes them for the caret.
+    property bool navigationKeys: false
     // NO `property bool enabled`: QQuickItem already has one and redeclaring it
     // shadows the base property (qmllint: [property-override]), so a disabled
     // field never reports disabled to the accessibility tree. See AeButton.
     signal edited(string text)
     signal accepted(string text)
+    signal navigate(int key)
 
     implicitHeight: 28
     implicitWidth: 160
     Accessible.role: Accessible.EditableText
-    Accessible.name: placeholderText
+    Accessible.name: root.accessibleName
     Accessible.onPressAction: input.forceActiveFocus()
+
+    // Focus the editable TEXT, not the wrapping Item: an Item with focus has no
+    // caret and drops every keystroke. A caller that wants the field focused when
+    // its scene opens calls this from Component.onCompleted.
+    function forceInputFocus() { input.forceActiveFocus() }
 
     Rectangle {
         id: bg
@@ -82,6 +101,28 @@ Item {
         clip: true
         onTextEdited: root.edited(text)
         onAccepted: root.accepted(text)
+        // The TextInput is the item with the active focus, so the accessible name
+        // and the key filter have to live on IT: a name set only on the wrapping
+        // Item leaves the node that actually holds the editable text nameless, and
+        // a Keys handler on the parent never sees Left/Right, which the TextInput
+        // consumes for the caret.
+        Accessible.name: root.accessibleName
+        Keys.onPressed: (event) => {
+            if (!root.navigationKeys) return;
+            switch (event.key) {
+            case Qt.Key_Down:
+            case Qt.Key_Up:
+            case Qt.Key_PageDown:
+            case Qt.Key_PageUp:
+            case Qt.Key_Left:
+            case Qt.Key_Right:
+                root.navigate(event.key);
+                event.accepted = true;
+                break;
+            default:
+                break;
+            }
+        }
     }
     Text {
         anchors.left: input.left
