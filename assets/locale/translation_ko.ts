@@ -3357,152 +3357,154 @@
         <translation>내 플랫폼이 목록에 없음(형식 직접 선택)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="331"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
         <source>Output:</source>
         <translation>출력:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="332"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="334"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="339"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="338"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="343"/>
         <source>Frame rate:</source>
         <translation>프레임 레이트:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="349"/>
         <source>Format:</source>
         <translation>형식:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="348"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="355"/>
         <source>%1 numbered %2 files</source>
         <translation>번호가 붙은 %2 파일 %1개</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="358"/>
         <source>%1 in %2</source>
-        <translation>%2 컨테이너의 %1</translation>
+        <translation type="vanished">%2 컨테이너의 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="365"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="375"/>
         <source>Audio:</source>
         <translation>오디오:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
         <source>yes</source>
         <translation>예</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
         <source>no</source>
         <translation>아니요</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="383"/>
         <source>none in this project</source>
         <translation>이 프로젝트에 없음</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="372"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="385"/>
+        <source>off in this dialog</source>
+        <translation>이 대화 상자에서 꺼짐</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
         <source>Transparency:</source>
         <translation>투명도:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="382"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="400"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
         <translation>%1은 투명도를 담을 수 없으므로 이 내보내기는 불투명하게 됩니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="408"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
         <translation>GIF는 영원히 반복되므로 애니메이션 반복 상자가 항상 켜져 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="411"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="429"/>
         <source>PNG sequence</source>
         <translation>PNG 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="412"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="430"/>
         <source>JPEG sequence</source>
         <translation>JPEG 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
         <source>CRF</source>
         <translation>CRF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="819"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="845"/>
         <source>Quality</source>
         <translation>품질</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Smaller file</source>
         <translation>작은 파일</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Balanced</source>
         <translation>균형</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Best quality</source>
         <translation>최고 품질</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Lossless</source>
         <translation>무손실</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="815"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="841"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1133"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1159"/>
         <source>%1 sequence</source>
         <translation>%1 시퀀스</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1135"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1161"/>
         <source>animated GIF</source>
         <translation>애니메이션 GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1209"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1235"/>
         <source>Export with transparency</source>
         <translation>투명도 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1210"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1236"/>
         <source>Loop animation</source>
         <translation>애니메이션 반복</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1211"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1237"/>
         <source>Export with audio</source>
         <translation>오디오 포함 내보내기</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1212"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1238"/>
         <source>Custom palette</source>
         <translation>사용자 지정 팔레트</translation>
     </message>

@@ -3377,152 +3377,154 @@
         <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="331"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
         <source>Output:</source>
         <translation>Вывод:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="332"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="334"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="339"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="338"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="343"/>
         <source>Frame rate:</source>
         <translation>Частота кадров:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="349"/>
         <source>Format:</source>
         <translation>Формат:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="348"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="355"/>
         <source>%1 numbered %2 files</source>
         <translation>%2, нумерованных файлов: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="358"/>
         <source>%1 in %2</source>
-        <translation>%1 в %2</translation>
+        <translation type="vanished">%1 в %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="365"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="375"/>
         <source>Audio:</source>
         <translation>Аудио:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
         <source>yes</source>
         <translation>да</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
         <source>no</source>
         <translation>нет</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="383"/>
         <source>none in this project</source>
         <translation>в проекте его нет</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="372"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="385"/>
+        <source>off in this dialog</source>
+        <translation>выключено в этом диалоге</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
         <source>Transparency:</source>
         <translation>Прозрачность:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="382"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="400"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
         <translation>%1 не поддерживает прозрачность, поэтому этот экспорт будет непрозрачным.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="408"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
         <translation>GIF зацикливается навсегда, поэтому флажок «Зациклить анимацию» всегда включён.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="411"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="429"/>
         <source>PNG sequence</source>
         <translation>Последовательность PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="412"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="430"/>
         <source>JPEG sequence</source>
         <translation>Последовательность JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
         <source>CRF</source>
         <translation>CRF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="819"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="845"/>
         <source>Quality</source>
         <translation>Качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Smaller file</source>
         <translation>Меньший размер</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Balanced</source>
         <translation>Сбалансированное</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Best quality</source>
         <translation>Лучшее качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
         <source>Lossless</source>
         <translation>Без потерь</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="815"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="841"/>
         <source>Auto</source>
         <translation>Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1133"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1159"/>
         <source>%1 sequence</source>
         <translation>Последовательность %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1135"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1161"/>
         <source>animated GIF</source>
         <translation>анимированный GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1209"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1235"/>
         <source>Export with transparency</source>
         <translation>Экспортировать с прозрачностью</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1210"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1236"/>
         <source>Loop animation</source>
         <translation>Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1211"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1237"/>
         <source>Export with audio</source>
         <translation>Экспортировать со звуком</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1212"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1238"/>
         <source>Custom palette</source>
         <translation>Пользовательская палитра</translation>
     </message>
