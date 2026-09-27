@@ -26,12 +26,18 @@ Item {
     // "ghost" (default) or "danger": the latter only warns on hover, in the
     // background, because the glyph itself is a single pre-tinted file.
     property string kind: "ghost"
+    // A STICKY state, for a toggle that is an icon (the export dialog's "keep
+    // aspect ratio" link). A mode the user turned ON has to look on: an accent
+    // tint that survives the pointer moving away, not the hover it happened to
+    // have when it was clicked.
+    property bool checked: false
     signal clicked()
 
     implicitWidth: size
     implicitHeight: size
     Accessible.role: Accessible.Button
     Accessible.name: root.label
+    Accessible.description: root.checked ? qsTr("On") : qsTr("Off")
     Accessible.onPressAction: if (root.enabled) root.clicked()
 
     Rectangle {
@@ -45,6 +51,7 @@ Item {
                 if (root.kind === "danger") return Qt.rgba(theme.danger.r, theme.danger.g, theme.danger.b, 0.16);
                 return theme.raisedHover;
             }
+            if (root.checked) return theme.active;
             return "transparent";
         }
     }

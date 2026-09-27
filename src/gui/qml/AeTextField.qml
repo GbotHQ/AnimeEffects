@@ -20,8 +20,9 @@ Item {
     // different jobs: a search field's placeholder is the sentence that explains
     // what to type, its accessible name is what a probe (scripts/gui/ae_ui.py) can
     // address it by. An EMPTY placeholder is announced as "text" and cannot be
-    // addressed by name at all.
-    property string accessibleName: placeholderText
+    // addressed by name at all. An explicit name is for a field whose placeholder
+    // is not its name (the export dialog's Bitrate field shows "Auto").
+    property string accessibleName: ""
     // Optional leading glyph, e.g. "magnifying-glass" for a search field.
     property string leadingIcon: ""
     // Show an x button that empties the field (the widget picker had
@@ -43,7 +44,7 @@ Item {
     implicitHeight: 28
     implicitWidth: 160
     Accessible.role: Accessible.EditableText
-    Accessible.name: root.accessibleName
+    Accessible.name: root.accessibleName !== "" ? root.accessibleName : root.placeholderText
     Accessible.onPressAction: input.forceActiveFocus()
 
     // Focus the editable TEXT, not the wrapping Item: an Item with focus has no

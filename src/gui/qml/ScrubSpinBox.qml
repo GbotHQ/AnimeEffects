@@ -18,6 +18,15 @@ Item {
     // Qt::Popup the QML scene stops scrubbing once the cursor leaves the popup
     // (Qt re-targets those moves with buttons()=NoButton). No grabMouse here.
     property var mouseGrabber: null
+    // A caller may draw a WORD for a sentinel value instead of the number (the
+    // export dialog shows the codec's "Auto" and the still writer's "Auto" this
+    // way), in which case the number underneath must not show through it.
+    property bool showValue: true
+    // NOTE: the enabled state is Item.enabled itself, deliberately NOT redeclared:
+    // a `property bool enabled` here would shadow the base property, the item would
+    // never report disabled to the accessibility tree, and a probe could not tell a
+    // frozen field from a live one. The fields below bind to root.enabled and the
+    // scrub/edit handlers gate on it.
 
     // Our OWN scrub flag, set on press and cleared on release / popup hide. The
     // QML scrub must gate on this, not the MouseArea's `pressed`: Qt's popup path
@@ -51,9 +60,11 @@ Item {
         id: field
         anchors.fill: parent
         radius: 4
-        color: scrub.pressed ? theme.active
+        color: !root.enabled ? theme.recessed
+              : scrub.pressed ? theme.active
               : (hoverH.hovered ? theme.raisedHover : theme.raised)
-        border.color: editInput.activeFocus ? theme.focus
+        border.color: !root.enabled ? theme.recessed
+                      : editInput.activeFocus ? theme.focus
                       : (hoverH.hovered ? theme.hover : theme.raised)
         border.width: 1
     }
@@ -66,10 +77,10 @@ Item {
         anchors.leftMargin: 8
         anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
-        color: theme.text
+        color: root.enabled ? theme.text : theme.textDisabled
         font.pixelSize: 11
         text: root.fmt(root.value)
-        visible: !editInput.activeFocus
+        visible: !editInput.activeFocus && root.showValue
     }
 
     // Hover feedback for the field (HoverHandler matches the checkbox/buttons).
@@ -86,7 +97,7 @@ Item {
     MouseArea {
         id: scrub
         anchors.fill: parent
-        enabled: !editInput.activeFocus
+        enabled: !editInput.activeFocus && root.enabled
         cursorShape: Qt.SizeHorCursor
         hoverEnabled: true
 
@@ -155,6 +166,7 @@ Item {
         color: theme.text
         font.pixelSize: 11
         visible: activeFocus
+        enabled: root.enabled
         selectByMouse: true
         inputMethodHints: Qt.ImhFormattedNumbersOnly
         objectName: "scrubEdit"
