@@ -23,6 +23,186 @@
         <source>Frames per second</source>
         <translation>Кадров в секунду</translation>
     </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="62"/>
+        <source>Select palette path</source>
+        <translation>Выбрать путь к палитре</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="112"/>
+        <source>Destination</source>
+        <translation>Назначение</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="147"/>
+        <source>Change</source>
+        <translation>Изменить</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="196"/>
+        <source>Details</source>
+        <translation>Подробнее</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="231"/>
+        <source>Output</source>
+        <translation>Вывод</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="243"/>
+        <source>Frames</source>
+        <translation>Кадры</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="279"/>
+        <source>Add range</source>
+        <translation>Добавить диапазон</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="289"/>
+        <source>Resolution</source>
+        <translation>Разрешение</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="296"/>
+        <source>Width</source>
+        <translation>Ширина</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="315"/>
+        <source>Height</source>
+        <translation>Высота</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="328"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="354"/>
+        <source>Reset to native</source>
+        <translation>Задать исходное</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="336"/>
+        <source>Keep aspect ratio</source>
+        <translation>Сохранять пропорции</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="343"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="350"/>
+        <source>Frame rate</source>
+        <translation>Частота кадров</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="369"/>
+        <source>Encoding</source>
+        <translation>Кодирование</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="382"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="384"/>
+        <source>Format</source>
+        <translation>Формат</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="395"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="397"/>
+        <source>Codec</source>
+        <translation>Кодек</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="408"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="410"/>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="430"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="437"/>
+        <source>Image quality</source>
+        <translation>Качество изображения</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="441"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="562"/>
+        <source>Auto</source>
+        <translation>Авто</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="539"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="572"/>
+        <source>Reset to auto</source>
+        <translation>Задать автоматически</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="458"/>
+        <source>Advanced</source>
+        <translation>Дополнительно</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="533"/>
+        <source>Quality override</source>
+        <translation>Переопределение качества</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="553"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="563"/>
+        <source>Bitrate</source>
+        <translation>Битрейт</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="602"/>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <source>Export</source>
+        <translation>Экспортировать</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <source>Expanded</source>
+        <translation>Развёрнуто</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <source>Collapsed</source>
+        <translation>Свёрнуто</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <source>Checked</source>
+        <translation>Отмечено</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <source>Unchecked</source>
+        <translation>Не отмечено</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeFrameRangeRow.qml" line="71"/>
+        <source>Remove range %1</source>
+        <translation>Убрать диапазон %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeFactRow.qml" line="51"/>
+        <source> · </source>
+        <translation> · </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <source>On</source>
+        <translation>Включено</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <source>Off</source>
+        <translation>Отключено</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AeTextField.qml" line="147"/>
+        <source>Clear</source>
+        <translation>Очистить</translation>
+    </message>
 </context>
 <context>
     <name>BlendModeName</name>
@@ -472,7 +652,7 @@
         <translation>Добавить новый ключ изображения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="670"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="671"/>
         <source>Change the canvas size</source>
         <translation>Изменить размер холста</translation>
     </message>
@@ -481,17 +661,17 @@
         <translation type="vanished">Изменить максимальный кадр</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="691"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="692"/>
         <source>Change the frame range</source>
         <translation>Изменить диапазон кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="712"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="713"/>
         <source>Change loop settings</source>
         <translation>Изменить настройки зацикливания</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="734"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="735"/>
         <source>Change the FPS</source>
         <translation>Изменить FPS</translation>
     </message>
@@ -1410,254 +1590,245 @@
         <translation type="vanished">FFV1 (мастер без потерь)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="183"/>
         <source>%1 (%2)</source>
-        <translation>%1 (%2)</translation>
+        <translation type="vanished">%1 (%2)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="185"/>
         <source>hardware</source>
-        <translation>аппаратный</translation>
+        <translation type="vanished">аппаратный</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="186"/>
         <source>software</source>
-        <translation>программный</translation>
+        <translation type="vanished">программный</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="196"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="182"/>
         <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
         <translation>%1. Платформа перекодирует загрузки, поэтому качество исходника важнее совместимости</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="202"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="188"/>
         <source>%1. This plays your file directly, so decode compatibility matters most</source>
         <translation>%1. Файл воспроизводится напрямую, поэтому важнее всего совместимость декодирования</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="207"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="193"/>
         <source>%1. A master copy, so fidelity matters most</source>
         <translation>%1. Мастер-копия, поэтому важнее всего точность</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="218"/>
         <source>%1, about %2s here</source>
-        <translation>%1, здесь около %2 с</translation>
+        <translation type="vanished">%1, здесь около %2 с</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="235"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="213"/>
         <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
         <translation>Выбранное качество не применено: в таблице назначений нет &lt;bucket_positions&gt;, поэтому для «%1» использовано его собственное значение по умолчанию.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="250"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="228"/>
         <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
         <translation>«%1» это кодек с потерями, поэтому «Без потерь» здесь означает его наивысшее качество, а не файл без потерь.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="320"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="298"/>
         <source>cannot open %1</source>
         <translation>не удалось открыть %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="341"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="319"/>
         <source>%1: missing &lt;export_targets&gt; root</source>
         <translation>%1: отсутствует корневой элемент &lt;export_targets&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="572"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="527"/>
         <source>no frames selected</source>
         <translation>кадры не выбраны</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="583"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="538"/>
         <source>%1 frames from %2 separate ranges</source>
         <translation>Выбрано кадров: %1 из %2 отдельных диапазонов</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="613"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="568"/>
         <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
         <translation>Размер принудительно задан как %1x%2 (требуется этим назначением); %3.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="619"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="574"/>
         <source>cropped to fill it</source>
         <translation>изображение обрезано по размеру</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="620"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="575"/>
         <source>padded to fit it</source>
         <translation>изображение дополнено по размеру</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="660"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="615"/>
         <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
         <translation>Частота кадров снижена с %1 до %2 fps (ограничение назначения).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="672"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="627"/>
         <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
         <translation>Сокращено с %1 до %2 кадров (ограничение %3 с).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="684"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="639"/>
         <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
         <translation>Сокращено с %1 до %2 кадров (ограничение назначения).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="693"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="648"/>
         <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
         <translation>ВНИМАНИЕ: назначению нужно не менее %1 кадров, а доступно только %2, поэтому загрузку, скорее всего, отклонят.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="711"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="666"/>
         <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
         <translation>ВНИМАНИЕ: назначению нужно не менее %1 с, а в этом экспорте %2 с, поэтому загрузку, скорее всего, отклонят. Выберите более длинный диапазон кадров.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="783"/>
         <source>%1 via %2, the fastest of %3 that runs here</source>
-        <translation>%1 через %2, самый быстрый из %3 доступных здесь</translation>
+        <translation type="vanished">%1 через %2, самый быстрый из %3 доступных здесь</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="788"/>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="821"/>
         <source>%1 via %2</source>
-        <translation>%1 через %2</translation>
+        <translation type="vanished">%1 через %2</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="803"/>
         <source>%1/%2 (~%3s)</source>
-        <translation>%1/%2 (~%3 с)</translation>
+        <translation type="vanished">%1/%2 (~%3 с)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="817"/>
         <source>%1: nothing here is fast enough for this budget (%2), so this is the fastest available</source>
-        <translation>%1: ничего из доступного здесь не укладывается в отведённое время (%2), поэтому выбран самый быстрый вариант</translation>
+        <translation type="vanished">%1: ничего из доступного здесь не укладывается в отведённое время (%2), поэтому выбран самый быстрый вариант</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="829"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="733"/>
         <source>no suitable encoder found in this build</source>
         <translation>в этой сборке нет подходящего кодировщика</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="842"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="746"/>
         <source>no destination selected</source>
         <translation>назначение не выбрано</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="846"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="750"/>
         <source>invalid source size</source>
         <translation>недопустимый размер источника</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="858"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="762"/>
         <source>%1 is required by this destination.</source>
         <translation>%1 требуется этим назначением.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="871"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="775"/>
         <source>Transparency</source>
         <translation>Прозрачность</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="873"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="777"/>
         <source>Audio</source>
         <translation>Аудио</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="883"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="787"/>
         <source>no frames selected for export</source>
         <translation>кадры для экспорта не выбраны</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="923"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="827"/>
         <source>%1; the ranges play back to back and the frames between them are not exported.</source>
         <translation>%1; диапазоны идут подряд, а кадры между ними не экспортируются.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="945"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="840"/>
         <source>no encoder available for this destination in this build</source>
         <translation>в этой сборке нет кодировщика для этого назначения</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="979"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="874"/>
         <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
         <translation>ВНИМАНИЕ: ограничения этого назначения НЕ ПРОВЕРЕНЫ, проверьте их, прежде чем на них полагаться.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1006"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="901"/>
         <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
         <translation>Одно статичное изображение (кадр %1), записано как %2. Диапазон кадров выше не применяется.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1013"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="908"/>
         <source>%1 frames written as numbered .%2 files.</source>
         <translation>Записано кадров: %1 (нумерованные файлы .%2).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1069"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="964"/>
         <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
         <translation>%1 требует прозрачности, но «%2» не может кодировать альфа-канал в этой сборке (он заявляет поддержку %3, а затем отказывается от неё). Выберите назначение, кодек которого несёт альфа-канал: WebM/VP9, APNG или FFV1.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1078"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="973"/>
         <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
         <translation>%1: %2 не смог закодировать %3, и запасной вариант не сработал (%4)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1085"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="980"/>
         <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
         <translation>Прозрачность отброшена: «%1» заявляет поддержку %2, но не может кодировать её здесь, поэтому вместо этого используется %3.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1091"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="986"/>
         <source>the encoder default</source>
         <translation>значение кодека по умолчанию</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1152"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1047"/>
         <source>No sound: %1 does not accept an audio track.</source>
         <translation>Без звука: %1 не принимает аудиодорожку.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1157"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1052"/>
         <source>WARNING: %1 expects sound but this project has no audio track.</source>
         <translation>ВНИМАНИЕ: %1 ожидает звук, но в этом проекте нет аудиодорожки.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1184"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1079"/>
         <source>no frames left</source>
         <translation>кадров не осталось</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1222"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1117"/>
         <source>could not write %1</source>
         <translation>не удалось записать %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1230"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1125"/>
         <source>no files produced</source>
         <translation>файлы не созданы</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1272"/>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1296"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1167"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1191"/>
         <source>no file produced</source>
         <translation>файл не создан</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1330"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1225"/>
         <source>frames: the plan selected %1, but %2 were supplied</source>
         <translation>Кадров: план выбрал %1, а передано %2</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="580"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="535"/>
         <source>%1 frame</source>
         <translation>%1 кадр</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="581"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="536"/>
         <source>%1 frames</source>
         <translation>%1 кадров</translation>
     </message>
@@ -1666,7 +1837,7 @@
         <translation type="vanished">несовпадение кадров: план выбирает %1, а передано %2 (см. plan.selection.indices())</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1399"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1294"/>
         <source>canceled</source>
         <translation>отменено</translation>
     </message>
@@ -1674,194 +1845,156 @@
 <context>
     <name>ExportWidgetUI</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="302"/>
         <source>Choose where this is going</source>
-        <translation>Укажите, куда это пойдёт</translation>
+        <translation type="vanished">Укажите, куда это пойдёт</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="622"/>
         <source>Open Palette</source>
-        <translation>Открыть палитру</translation>
+        <translation type="vanished">Открыть палитру</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="623"/>
         <source>FFmpeg palette file (*.png)</source>
-        <translation>Файл палитры FFmpeg (*.png)</translation>
+        <translation type="vanished">Файл палитры FFmpeg (*.png)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="637"/>
         <source>Auto</source>
-        <translation>Авто</translation>
+        <translation type="vanished">Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="790"/>
         <source>PNG sequence</source>
-        <translation>Последовательность PNG</translation>
+        <translation type="vanished">Последовательность PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="791"/>
         <source>JPEG sequence</source>
-        <translation>Последовательность JPEG</translation>
+        <translation type="vanished">Последовательность JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="917"/>
         <source>CRF:</source>
-        <translation>CRF:</translation>
+        <translation type="vanished">CRF:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="918"/>
         <source>Quality:</source>
-        <translation>Качество:</translation>
+        <translation type="vanished">Качество:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1389"/>
         <source>First frame %1</source>
-        <translation>Первый кадр %1</translation>
+        <translation type="vanished">Первый кадр %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1390"/>
         <source>Last frame %1</source>
-        <translation>Последний кадр %1</translation>
+        <translation type="vanished">Последний кадр %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1494"/>
         <source>Width</source>
-        <translation>Ширина</translation>
+        <translation type="vanished">Ширина</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1495"/>
         <source>Height</source>
-        <translation>Высота</translation>
+        <translation type="vanished">Высота</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1496"/>
         <source>Frame rate</source>
-        <translation>Частота кадров</translation>
+        <translation type="vanished">Частота кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1497"/>
         <source>First frame</source>
-        <translation>Первый кадр</translation>
+        <translation type="vanished">Первый кадр</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1498"/>
         <source>Last frame</source>
-        <translation>Последний кадр</translation>
+        <translation type="vanished">Последний кадр</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1499"/>
         <source>Format</source>
-        <translation>Формат</translation>
+        <translation type="vanished">Формат</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1500"/>
         <source>Codec</source>
-        <translation>Кодек</translation>
+        <translation type="vanished">Кодек</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1501"/>
         <source>Quality</source>
-        <translation>Качество</translation>
+        <translation type="vanished">Качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1502"/>
         <source>Quality override</source>
-        <translation>Переопределение качества</translation>
+        <translation type="vanished">Переопределение качества</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1503"/>
         <source>Image quality</source>
-        <translation>Качество изображения</translation>
+        <translation type="vanished">Качество изображения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1504"/>
         <source>Bitrate</source>
-        <translation>Битрейт</translation>
+        <translation type="vanished">Битрейт</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1505"/>
         <source>Destination</source>
-        <translation>Назначение</translation>
+        <translation type="vanished">Назначение</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1506"/>
         <source>Advanced</source>
-        <translation>Дополнительно</translation>
+        <translation type="vanished">Дополнительно</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1507"/>
         <source>Export</source>
-        <translation>Экспортировать</translation>
+        <translation type="vanished">Экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1508"/>
         <source>Cancel</source>
-        <translation>Отмена</translation>
+        <translation type="vanished">Отмена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1509"/>
         <source>Export with transparency</source>
-        <translation>Экспортировать с прозрачностью</translation>
+        <translation type="vanished">Экспортировать с прозрачностью</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1510"/>
         <source>Loop animation</source>
-        <translation>Зациклить анимацию</translation>
+        <translation type="vanished">Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1511"/>
         <source>Export with audio</source>
-        <translation>Экспортировать со звуком</translation>
+        <translation type="vanished">Экспортировать со звуком</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1512"/>
         <source>Custom palette</source>
-        <translation>Пользовательская палитра</translation>
+        <translation type="vanished">Пользовательская палитра</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1513"/>
         <source>Keep aspect ratio</source>
-        <translation>Сохранять пропорции</translation>
+        <translation type="vanished">Сохранять пропорции</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1514"/>
         <source>Insert range</source>
-        <translation>Добавить диапазон</translation>
+        <translation type="vanished">Добавить диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1515"/>
         <source>Remove range</source>
-        <translation>Убрать диапазон</translation>
+        <translation type="vanished">Убрать диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1516"/>
         <source>Set width to native</source>
-        <translation>Задать исходную ширину</translation>
+        <translation type="vanished">Задать исходную ширину</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1517"/>
         <source>Set height to native</source>
-        <translation>Задать исходную высоту</translation>
+        <translation type="vanished">Задать исходную высоту</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1518"/>
         <source>Set frame rate to native</source>
-        <translation>Задать исходную частоту кадров</translation>
+        <translation type="vanished">Задать исходную частоту кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1519"/>
         <source>Image quality to auto</source>
-        <translation>Качество изображения: авто</translation>
+        <translation type="vanished">Качество изображения: авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1520"/>
         <source>Quality override to auto</source>
-        <translation>Переопределение качества: авто</translation>
+        <translation type="vanished">Переопределение качества: авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1521"/>
         <source>Bitrate to auto</source>
-        <translation>Битрейт: авто</translation>
+        <translation type="vanished">Битрейт: авто</translation>
     </message>
 </context>
 <context>
@@ -2184,122 +2317,171 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="26"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
         <source>%1 GB</source>
         <translation>%1 ГБ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="29"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="34"/>
         <source>%1 MB</source>
         <translation>%1 МБ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="31"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="36"/>
         <source>%1 KB</source>
         <translation>%1 КБ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="38"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="43"/>
         <source>yes</source>
         <translation>да</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="39"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="44"/>
         <source>no</source>
         <translation>нет</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="47"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="80"/>
         <source>This destination cannot be exported: %1</source>
         <translation>Это назначение нельзя экспортировать: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="59"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="94"/>
+        <source>Output:</source>
+        <translation>Вывод:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="99"/>
         <source>%1 x %2, frame %3 (the one on the timeline)</source>
         <translation>%1 x %2, кадр %3 (тот, что на шкале времени)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="68"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="108"/>
         <source>%1 x %2, %3 frames (timing is set on the upload page)</source>
         <translation>%1 x %2, кадров: %3 (тайминг задаётся на странице загрузки)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="74"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="113"/>
+        <source>%1 frames</source>
+        <translation>%1 кадров</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="115"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="81"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <source>Frame rate:</source>
+        <translation>Частота кадров:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="126"/>
+        <source>%1 fps</source>
+        <translation>%1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="134"/>
+        <source>Format:</source>
+        <translation>Формат:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="136"/>
+        <source>one %1 image</source>
+        <translation>одно изображение %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="139"/>
+        <source>%1 numbered %2 files</source>
+        <translation>%2, нумерованных файлов: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="144"/>
+        <source>animated GIF</source>
+        <translation>анимированный GIF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="157"/>
+        <source>Audio:</source>
+        <translation>Аудио:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="164"/>
+        <source>Transparency:</source>
+        <translation>Прозрачность:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportFacts.cpp" line="190"/>
+        <source>Limits:</source>
+        <translation>Ограничения:</translation>
+    </message>
+    <message>
         <source>Artifact: one %1 image</source>
-        <translation>Артефакт: одно изображение %1</translation>
+        <translation type="vanished">Артефакт: одно изображение %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="84"/>
         <source>Artifact: %1 numbered %2 files</source>
-        <translation>Артефакт: %2, нумерованных файлов: %1</translation>
+        <translation type="vanished">Артефакт: %2, нумерованных файлов: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="89"/>
         <source>Codec: animated GIF</source>
-        <translation>Кодек: анимированный GIF</translation>
+        <translation type="vanished">Кодек: анимированный GIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="90"/>
         <source>Codec: %1 in %2</source>
-        <translation>Кодек: %1 в %2</translation>
+        <translation type="vanished">Кодек: %1 в %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="102"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="56"/>
         <source>not accepted by this destination</source>
         <translation>не принимается этим назначением</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="104"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="58"/>
         <source>none in this project</source>
         <translation>в проекте его нет</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="106"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="60"/>
         <source>off in this dialog</source>
         <translation>выключено в этом диалоге</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="110"/>
         <source>Transparency: %1   Audio: %2</source>
-        <translation>Прозрачность: %1; аудио: %2</translation>
+        <translation type="vanished">Прозрачность: %1; аудио: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="119"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="175"/>
         <source>max %1</source>
         <translation>не более %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="121"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="177"/>
         <source>max %1 s</source>
         <translation>не более %1 с</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="123"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="179"/>
         <source>min %1 s</source>
         <translation>не менее %1 с</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="125"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="181"/>
         <source>max %1 frames</source>
         <translation>не более %1 кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="127"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="183"/>
         <source>max %1 fps</source>
         <translation>не более %1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="132"/>
         <source>Limits: %1</source>
-        <translation>Ограничения: %1</translation>
+        <translation type="vanished">Ограничения: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportFacts.cpp" line="133"/>
+        <location filename="../../src/gui/ExportFacts.cpp" line="191"/>
         <source>, </source>
         <translation>, </translation>
     </message>
@@ -2389,67 +2571,74 @@
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1294"/>
         <source>needs %1</source>
-        <translation>требуется %1</translation>
+        <translation type="vanished">требуется %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1362"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1406"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1472"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1510"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1557"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1580"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1611"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1357"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1401"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1467"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1505"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1552"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1575"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1606"/>
         <source>Export Error</source>
         <translation>Ошибка экспорта</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1363"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1358"/>
         <source>Unknown export destination: %1</source>
         <translation>Неизвестное назначение экспорта: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1425"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1420"/>
         <source>File exists</source>
         <translation>Файл существует</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1426"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1421"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>Файл «%1» уже существует. Заменить его?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1473"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1468"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 ограничивает размер файла, а значит файл придётся кодировать несколько раз, и для этого все %2 кадров должны находиться в памяти (~%3 MB). Экспортируйте меньше кадров или выберите назначение без ограничения размера.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1483"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>%1: подгонка под лимит %2 KB...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1501"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1496"/>
         <source>Export Canceled</source>
         <translation>Экспорт отменён</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1502"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1497"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>Экспорт остановлен во время подгонки под ограничение размера (%1). Уже записанный файл является последней попыткой и может превышать лимит.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1511"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1506"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 ограничивает размер файла значением %2 KB, и даже минимальные настройки не уложились в него (%3 KB).
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1519"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1514"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>Подогнано до %1 байт; попыток: %2 (%3x%4).</translation>
+    </message>
+</context>
+<context>
+    <name>QPlatformTheme</name>
+    <message>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="318"/>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
     </message>
 </context>
 <context>
@@ -2711,23 +2900,20 @@
 <context>
     <name>exportWidget</name>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1423"/>
         <source>Export parameters</source>
-        <translation>Параметры экспорта</translation>
+        <translation type="vanished">Параметры экспорта</translation>
     </message>
     <message>
         <source>Intermediate </source>
         <translation type="vanished">Промежуточный </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1424"/>
         <source>Keep aspect ratio</source>
-        <translation>Сохранять пропорции</translation>
+        <translation type="vanished">Сохранять пропорции</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1425"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Last frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Последний кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Последний кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Export type:</source>
@@ -2742,19 +2928,16 @@
         <translation type="vanished">Пользовательский</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1435"/>
         <source>Insert range</source>
-        <translation>Добавить диапазон</translation>
+        <translation type="vanished">Добавить диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1436"/>
         <source>Remove range</source>
-        <translation>Убрать диапазон</translation>
+        <translation type="vanished">Убрать диапазон</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1437"/>
         <source>Custom palette</source>
-        <translation>Пользовательская палитра</translation>
+        <translation type="vanished">Пользовательская палитра</translation>
     </message>
     <message>
         <source>Force piped export </source>
@@ -2781,20 +2964,16 @@
         <translation type="vanished">PPM</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1438"/>
         <source>Width: </source>
-        <translation>Ширина: </translation>
+        <translation type="vanished">Ширина: </translation>
     </message>
     <message>
         <source>One-to-one</source>
         <translation type="vanished">Один к одному</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1440"/>
-        <location filename="../../src/gui/exportdiag.h" line="1443"/>
-        <location filename="../../src/gui/exportdiag.h" line="1446"/>
         <source>Set to native</source>
-        <translation>Задать исходное</translation>
+        <translation type="vanished">Задать исходное</translation>
     </message>
     <message>
         <source>Post</source>
@@ -2805,18 +2984,16 @@
         <translation type="vanished">Активные параметры:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1441"/>
         <source>Height:</source>
-        <translation>Высота:</translation>
+        <translation type="vanished">Высота:</translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Exporting&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Экспорт&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1444"/>
         <source>FPS:</source>
-        <translation>FPS:</translation>
+        <translation type="vanished">FPS:</translation>
     </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Rendering&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
@@ -2831,130 +3008,104 @@
         <translation type="vanished">Последовательность изображений</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1426"/>
         <source>Format:</source>
-        <translation>Формат:</translation>
+        <translation type="vanished">Формат:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1427"/>
         <source>Codec:</source>
-        <translation>Кодек:</translation>
+        <translation type="vanished">Кодек:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1428"/>
         <source>Destination:</source>
-        <translation>Назначение:</translation>
+        <translation type="vanished">Назначение:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1429"/>
         <source>Quality:</source>
-        <translation>Качество:</translation>
+        <translation type="vanished">Качество:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1430"/>
         <source>Smaller file</source>
-        <translation>Меньший размер</translation>
+        <translation type="vanished">Меньший размер</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1431"/>
         <source>Balanced</source>
-        <translation>Сбалансированное</translation>
+        <translation type="vanished">Сбалансированное</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1432"/>
         <source>Best quality</source>
-        <translation>Лучшее качество</translation>
+        <translation type="vanished">Лучшее качество</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1433"/>
         <source>Lossless</source>
-        <translation>Без потерь</translation>
+        <translation type="vanished">Без потерь</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1442"/>
         <source>How to encode</source>
-        <translation>Как кодировать</translation>
+        <translation type="vanished">Как кодировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1445"/>
         <source>What to export</source>
-        <translation>Что экспортировать</translation>
+        <translation type="vanished">Что экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1447"/>
         <source>Export with transparency</source>
-        <translation>Экспортировать с прозрачностью</translation>
+        <translation type="vanished">Экспортировать с прозрачностью</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1448"/>
         <source>Loop animation</source>
-        <translation>Зациклить анимацию</translation>
+        <translation type="vanished">Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1449"/>
         <source>Export with audio</source>
-        <translation>Экспортировать со звуком</translation>
+        <translation type="vanished">Экспортировать со звуком</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1450"/>
-        <location filename="../../src/gui/exportdiag.h" line="1464"/>
         <source>Auto</source>
-        <translation>Авто</translation>
+        <translation type="vanished">Авто</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1451"/>
-        <location filename="../../src/gui/exportdiag.h" line="1465"/>
-        <location filename="../../src/gui/exportdiag.h" line="1466"/>
         <source>Set to auto</source>
-        <translation>Задать автоматически</translation>
+        <translation type="vanished">Задать автоматически</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1454"/>
         <source>Frame range:</source>
-        <translation>Диапазон кадров:</translation>
+        <translation type="vanished">Диапазон кадров:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1458"/>
         <source>Advanced</source>
-        <translation>Дополнительно</translation>
+        <translation type="vanished">Дополнительно</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1463"/>
         <source>Quality override:</source>
-        <translation>Переопределение качества:</translation>
+        <translation type="vanished">Переопределение качества:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1539"/>
         <source>&amp;Export</source>
-        <translation>&amp;Экспортировать</translation>
+        <translation type="vanished">&amp;Экспортировать</translation>
     </message>
     <message>
         <source>Frames rendered: </source>
         <translation type="vanished">Отрисовано кадров: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1455"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- First frame -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Первый кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <translation type="vanished">&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;- Первый кадр -&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1456"/>
         <source>Bitrate (kB/s):</source>
-        <translation>Битрейт (Кбайт/с):</translation>
+        <translation type="vanished">Битрейт (Кбайт/с):</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1457"/>
         <source>Image quality:</source>
-        <translation>Качество изображения:</translation>
+        <translation type="vanished">Качество изображения:</translation>
     </message>
     <message>
         <source>Export with custom parameters</source>
         <translation type="vanished">Экспортировать с пользовательскими параметрами</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1467"/>
         <source>Select palette path</source>
-        <translation>Выбрать путь к палитре</translation>
+        <translation type="vanished">Выбрать путь к палитре</translation>
     </message>
     <message>
         <source>General Parameters</source>
@@ -3037,40 +3188,39 @@
         <translation type="vanished">Экспортировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/exportdiag.h" line="1541"/>
         <source>Cancel</source>
-        <translation>Отмена</translation>
+        <translation type="vanished">Отмена</translation>
     </message>
 </context>
 <context>
     <name>gui</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="71"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="49"/>
         <source>Send in a chat</source>
         <translation>Отправить в чате</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="72"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="50"/>
         <source>Post to a platform</source>
         <translation>Публикация на платформе</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="73"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="51"/>
         <source>Stickers and emoji</source>
         <translation>Стикеры и эмодзи</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="74"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="52"/>
         <source>Overlays and transparency</source>
         <translation>Оверлеи и прозрачность</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="75"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="53"/>
         <source>A file</source>
         <translation>Файл</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="76"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="54"/>
         <source>Archive</source>
         <translation>Архив</translation>
     </message>
@@ -3109,39 +3259,32 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="131"/>
         <source>Where are you posting this?</source>
-        <translation>Куда вы это публикуете?</translation>
+        <translation type="vanished">Куда вы это публикуете?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="143"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
-        <translation>Поиск: telegram, стикер, reels, иллюстрация, 微信...</translation>
+        <translation type="vanished">Поиск: telegram, стикер, reels, иллюстрация, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="148"/>
         <source>Search destinations</source>
-        <translation>Поиск назначений</translation>
+        <translation type="vanished">Поиск назначений</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="245"/>
         <source>%1 destinations</source>
-        <translation>Назначений: %1</translation>
+        <translation type="vanished">Назначений: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="250"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
+        <translation type="vanished">Моей платформы нет в списке (я сам выберу формат)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="252"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
-        <translation>Всё перечисленное выше это назначения, правила которых мы знаем. А здесь вы сами задаёте формат и кодек.</translation>
+        <translation type="vanished">Всё перечисленное выше это назначения, правила которых мы знаем. А здесь вы сами задаёте формат и кодек.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/DestinationPicker.cpp" line="257"/>
         <source>Use this destination</source>
-        <translation>Использовать это назначение</translation>
+        <translation type="vanished">Использовать это назначение</translation>
     </message>
 </context>
 <context>
@@ -3189,6 +3332,192 @@
     <message>
         <source>FPS</source>
         <translation type="vanished">FPS</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportDialog.cpp" line="30"/>
+        <source>Export parameters</source>
+        <translation>Параметры экспорта</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportDialog.cpp" line="89"/>
+        <source>Open Palette</source>
+        <translation>Открыть палитру</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ExportDialog.cpp" line="90"/>
+        <source>FFmpeg palette file (*.png)</source>
+        <translation>Файл палитры FFmpeg (*.png)</translation>
+    </message>
+</context>
+<context>
+    <name>gui::ExportRangeModel</name>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="89"/>
+        <source>First frame %1</source>
+        <translation>Первый кадр %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="91"/>
+        <source>Last frame %1</source>
+        <translation>Последний кадр %1</translation>
+    </message>
+</context>
+<context>
+    <name>gui::ExportViewModel</name>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="303"/>
+        <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
+        <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="331"/>
+        <source>Output:</source>
+        <translation>Вывод:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="332"/>
+        <source>%1 x %2, %3 fps</source>
+        <translation>%1 x %2, %3 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="339"/>
+        <source>%1 fps</source>
+        <translation>%1 fps</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="338"/>
+        <source>Frame rate:</source>
+        <translation>Частота кадров:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
+        <source>Format:</source>
+        <translation>Формат:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="348"/>
+        <source>%1 numbered %2 files</source>
+        <translation>%2, нумерованных файлов: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="358"/>
+        <source>%1 in %2</source>
+        <translation>%1 в %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="365"/>
+        <source>Audio:</source>
+        <translation>Аудио:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <source>yes</source>
+        <translation>да</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="366"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="373"/>
+        <source>no</source>
+        <translation>нет</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="367"/>
+        <source>none in this project</source>
+        <translation>в проекте его нет</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="372"/>
+        <source>Transparency:</source>
+        <translation>Прозрачность:</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="382"/>
+        <source>%1 cannot carry transparency, so this export will be opaque.</source>
+        <translation>%1 не поддерживает прозрачность, поэтому этот экспорт будет непрозрачным.</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
+        <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
+        <translation>GIF зацикливается навсегда, поэтому флажок «Зациклить анимацию» всегда включён.</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="411"/>
+        <source>PNG sequence</source>
+        <translation>Последовательность PNG</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="412"/>
+        <source>JPEG sequence</source>
+        <translation>Последовательность JPEG</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
+        <source>CRF</source>
+        <translation>CRF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="590"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="819"/>
+        <source>Quality</source>
+        <translation>Качество</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <source>Smaller file</source>
+        <translation>Меньший размер</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <source>Balanced</source>
+        <translation>Сбалансированное</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <source>Best quality</source>
+        <translation>Лучшее качество</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="771"/>
+        <source>Lossless</source>
+        <translation>Без потерь</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="815"/>
+        <source>Auto</source>
+        <translation>Авто</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1133"/>
+        <source>%1 sequence</source>
+        <translation>Последовательность %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1135"/>
+        <source>animated GIF</source>
+        <translation>анимированный GIF</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1209"/>
+        <source>Export with transparency</source>
+        <translation>Экспортировать с прозрачностью</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1210"/>
+        <source>Loop animation</source>
+        <translation>Зациклить анимацию</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1211"/>
+        <source>Export with audio</source>
+        <translation>Экспортировать со звуком</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1212"/>
+        <source>Custom palette</source>
+        <translation>Пользовательская палитра</translation>
     </message>
 </context>
 <context>
@@ -3700,47 +4029,47 @@ In the following screen you can instruct AnimeEffects to download and install it
 <context>
     <name>gui::MainMenuBar</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="91"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="92"/>
         <source>File</source>
         <translation>Файл</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="93"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
         <source>New project</source>
         <translation>Новый проект</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="94"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
         <source>Open project</source>
         <translation>Открыть проект</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="95"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="96"/>
         <source>Open recent</source>
         <translation>Недавние проекты</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="121"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="122"/>
         <source>No other projects</source>
         <translation>Нет других проектов</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="178"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
         <source>Save project</source>
         <translation>Сохранить проект</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="179"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
         <source>Save project as</source>
         <translation>Сохранить проект как</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="180"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
         <source>Close project</source>
         <translation>Закрыть проект</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="181"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="182"/>
         <source>Export project as</source>
         <translation>Экспортировать проект как</translation>
     </message>
@@ -3793,27 +4122,27 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">Видео AVI</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="236"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="237"/>
         <source>Edit</source>
         <translation>Правка</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="238"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
         <source>Undo</source>
         <translation>Отменить</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="239"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
         <source>Redo</source>
         <translation>Повторить</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="242"/>
         <source>Assets</source>
         <translation>Активы</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="264"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="265"/>
         <source>Preferences</source>
         <translation>Настройки</translation>
     </message>
@@ -3826,170 +4155,170 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation type="vanished">Настройки мыши</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="195"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="196"/>
         <source>Quickly export as...</source>
         <translation>Быстрый экспорт как...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="211"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="212"/>
         <source>Export again</source>
         <translation>Экспортировать снова</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="266"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
         <source>Settings</source>
         <translation>Настройки</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="267"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="268"/>
         <source>Keybindings</source>
         <translation>Горячие клавиши</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="295"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="296"/>
         <source>Help</source>
         <translation>Справка</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="297"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="298"/>
         <source>About AnimeEffects</source>
         <translation>О AnimeEffects</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
         <source>### AnimeEffects for </source>
         <translation>### AnimeEffects для </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="306"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
         <source> version </source>
         <translation> версии </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="307"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="308"/>
         <source>An easy to use 2D animation software maintained by the [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Licensed under the GPL v3.0 and powered by various open source libraries.</source>
         <translation>Простое в использовании программное обеспечение для 2D-анимации, поддерживаемое [AnimeEffectsDevs](https://github.com/AnimeEffectsDevs).&lt;br /&gt;Лицензировано по GPL v3.0 и работает на базе различных библиотек с открытым исходным кодом.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="310"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="311"/>
         <source>&lt;br /&gt;&lt;br /&gt;Video/audio encoding uses the FFmpeg libraries (https://ffmpeg.org), which are licensed under the GNU Lesser GPL v2.1+ (or GPL, depending on the build). Their corresponding source is available as required by that license.</source>
         <translation>&lt;br /&gt;&lt;br /&gt;Кодирование видео и звука использует библиотеки FFmpeg (https://ffmpeg.org), лицензированные по GNU Lesser GPL v2.1+ (или GPL, в зависимости от сборки). Их исходный код доступен, как того требует эта лицензия.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="315"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="316"/>
         <source>&lt;br /&gt;&lt;br /&gt;Contributors:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 If we forgot to include you please let us know or open a PR!</source>
         <translation>&lt;br /&gt;&lt;br /&gt;Участники:&lt;br /&gt;[Hidefuku](https://github.com/hidefuku), [Yukusai](https://github.com/p-yukusai), [Gambot](https://github.com/GbotHQ), [Arrangemonk](https://github.com/Arrangemonk), [OneByStudio](https://onebystudio.com), [Larpon](https://github.com/larpon), [Herace](https://github.com/herace), [Aodaruma](https://github.com/Aodaruma), [Azagaya](https://github.com/azagaya), [FoxyHawk](https://github.com/FoxyHawk), [Nanashia](https://github.com/Nanashia), [Henrich](https://github.com/henrich), [mcddx330](https://github.com/mcddx330), [Freddii](https://github.com/freddii), [Aki017](https://github.com/aki017), [PicoHz](https://github.com/picoHz), [Peter9811](https://github.com/peter9811), [GES233](https://github.com/GES233), [h-banii](https://github.com/h-banii), [henrich](https://github.com/henrich), [Nanashia](https://github.com/Nanashia).
 Если мы забыли включить вас, сообщите нам или откройте PR!</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="344"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="345"/>
         <source>About us</source>
         <translation>О нас</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="350"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="351"/>
         <source>Check for updates</source>
         <translation>Проверить обновления</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="355"/>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="500"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="356"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="501"/>
         <source>System telemetry</source>
         <translation>Системная телеметрия</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="395"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
         <source>Version: </source>
         <translation>Версия: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="396"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
         <source>Format version: </source>
         <translation>Версия формата: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="397"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
         <source>Platform: </source>
         <translation>Платформа: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="398"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="399"/>
         <source>Build ABI: </source>
         <translation>ABI сборки: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="423"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
         <source>CPU vendor: </source>
         <translation>Производитель CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="424"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
         <source>CPU architecture: </source>
         <translation>Архитектура CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="425"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="426"/>
         <source>CPU threads: </source>
         <translation>Потоки CPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="429"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="430"/>
         <source>System RAM:</source>
         <translation>Системная ОЗУ:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="431"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="432"/>
         <source>System </source>
         <translation>Система </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="433"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="434"/>
         <source>Current GPU: </source>
         <translation>Текущий GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="466"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
         <source>GPU Vendor: </source>
         <translation>Производитель GPU: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="467"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
         <source>Max VRAM: </source>
         <translation>Максимум VRAM: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="468"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
         <source>OpenGL version: </source>
         <translation>Версия OpenGL: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="469"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
         <source>Qt Version: </source>
         <translation>Версия Qt: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="470"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="471"/>
         <source>System locale: </source>
         <translation>Системная локаль: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="475"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="476"/>
         <source>Location Has Unicode: </source>
         <translation>Путь содержит Unicode: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="488"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="489"/>
         <source>Location Is Writable: </source>
         <translation>Путь доступен для записи: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="494"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
         <source>libav licence: </source>
         <translation>Лицензия libav: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="495"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
         <source>libav configuration: </source>
         <translation>Конфигурация libav: </translation>
     </message>
@@ -3998,17 +4327,17 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">Тип доступа к FFmpeg: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="496"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="497"/>
         <source>System specs successfully copied to the clipboard</source>
         <translation>Системные характеристики успешно скопированы в буфер обмена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="511"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="512"/>
         <source>Donate</source>
         <translation>Пожертвовать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="240"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="241"/>
         <source>Project settings</source>
         <translation>Настройки проекта</translation>
     </message>
@@ -4020,154 +4349,147 @@ If we forgot to include you please let us know or open a PR!</source>
 <context>
     <name>gui::MainWindow</name>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="568"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="571"/>
         <source>Theme changed</source>
         <translation>Тема изменена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="570"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="573"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>После смены темы могут появиться визуальные артефакты, рекомендуем перезапустить приложение.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="791"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="794"/>
         <source> has been modified. Save changes?</source>
         <translation> был изменён. Сохранить изменения?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="793"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="796"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>Некоторые проекты были изменены. Сохранить изменения?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="801"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="804"/>
         <source>Save Changes</source>
         <translation>Сохранить изменения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="802"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="805"/>
         <source>Discard Changes</source>
         <translation>Отбросить изменения</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="803"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="806"/>
         <source>Cancel</source>
         <translation>Отмена</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="824"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="827"/>
         <source>Undone : </source>
         <translation>Отменено: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="887"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="890"/>
         <source>Redone : </source>
         <translation>Повторено: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="930"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="990"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1019"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1088"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="933"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="993"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1022"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1091"/>
         <source>Loading Error</source>
         <translation>Ошибка загрузки</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="967"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="970"/>
         <source>Open File</source>
         <translation>Открыть файл</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1102"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1105"/>
         <source>Save File</source>
         <translation>Сохранить файл</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1715"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1684"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>Экспортировано %1 (%2 KB)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1721"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1690"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> (%1 из %2 KB, лимит: %3)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1726"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1695"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>; ВЫШЕ ЛИМИТА, файл будет отклонён</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1765"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1734"/>
         <source>All files (*)</source>
         <translation>Все файлы (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1766"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
         <source>%1 files (*.%2)</source>
         <translation>Файлы %1 (*.%2)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
-        <translation>Моей платформы нет в списке (я сам выберу формат)</translation>
+        <translation type="vanished">Моей платформы нет в списке (я сам выберу формат)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1984"/>
         <source>%1 of %2 frames at %3 x %4</source>
-        <translation>%1 из %2 кадров при %3 x %4</translation>
+        <translation type="vanished">%1 из %2 кадров при %3 x %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1990"/>
         <source>Frame rate: %1 fps</source>
-        <translation>Частота кадров: %1 fps</translation>
+        <translation type="vanished">Частота кадров: %1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1996"/>
         <source>%1 x %2, %3 fps</source>
-        <translation>%1 x %2, %3 fps</translation>
+        <translation type="vanished">%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2001"/>
         <source>Codec: %1 in %2</source>
-        <translation>Кодек: %1 в %2</translation>
+        <translation type="vanished">Кодек: %1 в %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2010"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
-        <translation>%1 не поддерживает прозрачность, поэтому этот экспорт будет непрозрачным.</translation>
+        <translation type="vanished">%1 не поддерживает прозрачность, поэтому этот экспорт будет непрозрачным.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="2016"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
-        <translation>GIF зацикливается навсегда, поэтому флажок «Зациклить анимацию» всегда включён.</translation>
+        <translation type="vanished">GIF зацикливается навсегда, поэтому флажок «Зациклить анимацию» всегда включён.</translation>
     </message>
     <message>
         <source>FFmpeg was not found.</source>
         <translation type="vanished">FFmpeg не найден.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="156"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="159"/>
         <source>Animation</source>
         <translation>Анимация</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="169"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="172"/>
         <source>Properties</source>
         <translation>Свойства</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="215"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="218"/>
         <source>Tools</source>
         <translation>Инструменты</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1039"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1042"/>
         <source>Recover unsaved project?</source>
         <translation>Восстановить несохранённый проект?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1040"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1043"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -4258,8 +4580,8 @@ Open it?</source>
         <translation type="vanished">Tagged Image</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1759"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1834"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1728"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1803"/>
         <source>Export Folder</source>
         <translation>Папка экспорта</translation>
     </message>
@@ -4276,7 +4598,7 @@ Open it?</source>
         <translation type="vanished">Ошибка экспорта</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1767"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
         <source>Export File</source>
         <translation>Экспорт файла</translation>
     </message>
@@ -4592,17 +4914,17 @@ The log is available below.</source>
 <context>
     <name>gui::ProjectSettingDialog</name>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="553"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="554"/>
         <source>Project settings</source>
         <translation>Настройки проекта</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="590"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="591"/>
         <source>Canvas size</source>
         <translation>Размер холста</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="614"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="615"/>
         <source>Frame range</source>
         <translation>Диапазон кадров</translation>
     </message>
@@ -4611,12 +4933,12 @@ The log is available below.</source>
         <translation type="vanished">Максимальное количество кадров</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="620"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="621"/>
         <source>Loop animation</source>
         <translation>Зациклить анимацию</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainMenuBar.cpp" line="626"/>
+        <location filename="../../src/gui/MainMenuBar.cpp" line="627"/>
         <source>Frames per second</source>
         <translation>Кадров в секунду</translation>
     </message>
@@ -5170,22 +5492,22 @@ The log is available below.</source>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="536"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="540"/>
         <source>Easing</source>
         <translation>Интерполяция</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="545"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="549"/>
         <source>Close</source>
         <translation>Закрыть</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="799"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="803"/>
         <source>Copy</source>
         <translation>Копировать</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="802"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="806"/>
         <source>Paste</source>
         <translation>Вставить</translation>
     </message>
