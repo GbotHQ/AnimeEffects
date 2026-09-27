@@ -379,36 +379,62 @@ def cmd_wait(name):
     return 0
 
 
+PRESS_ACTIONS = ("press", "click", "activate")
+# The one action that means "this node cannot be clicked": Qt hands it to every
+# static text in the Qt Quick form.
+FOCUS_ONLY = "setfocus"
+
+
+def action_names(node):
+    """The action names the node offers, lowercased."""
+    iface = node.get_action_iface()
+    if iface is None:
+        return []
+    try:
+        return [(iface.get_action_name(i) or "").lower()
+                for i in range(iface.get_n_actions())]
+    except Exception:
+        return []
+
+
 def cmd_click(name, role=None):
-    # Prefer a node that HAS an action. A name can match more than one node now that
-    # the Qt Quick form exposes its own text (a facts row states "WebM" and the open
-    # Format popup offers a "WebM" option), and picking the first name match made
-    # the popup option unreachable: the static fact won on tree order and had no
-    # action to run.
+    # Prefer a node that can actually be PRESSED, which is not the same question as
+    # "does this node have an Action interface": Qt gives every static text in the
+    # Qt Quick form an interface whose only entry is SetFocus, and a labeled field is
+    # addressed by the LABEL's name because that is the name a user reads. Taking the
+    # first node with an interface therefore pressed the label of the Format row and
+    # ran SetFocus on it - exit status 0, no popup, and a probe left reporting that
+    # the popup's items were missing.
+    #
+    # A name can match more than one node now that the Qt Quick form exposes its own
+    # text (a facts row states "WebM" and the open Format popup offers a "WebM"
+    # option), so both passes below walk the matches best-name-first and take the
+    # first one that really answers.
     #
     # `role` is required for a combo OPTION: a Qt Quick combo reports its current
     # value as its own accessible NAME, so while the popup lists "WebM" the closed
     # field is ALSO named "WebM" - and it comes first, so a plain press toggles the
     # popup shut instead of choosing the item. A caller that means the item says
     # role="list item".
-    if role is not None:
-        node = find(name, role=role)
-        if node is None:
-            print(f"no {role} named {name!r} to click", file=sys.stderr)
-            return 1
-        if not do(node):
-            print(f"{name!r} has no click action", file=sys.stderr)
-            return 1
-        return 0
+    found = candidates(name, role=role)
     node = None
-    for candidate in candidates(name):
-        if candidate.get_action_iface() is not None and _enabled(candidate):
+    for candidate in found:  # a node that offers a press
+        if _enabled(candidate) and any(n in PRESS_ACTIONS for n in action_names(candidate)):
             node = candidate
             break
     if node is None:
-        node = find(name)
+        for candidate in found:  # else any node with a non-focus action
+            if _enabled(candidate) and any(n != FOCUS_ONLY
+                                           for n in action_names(candidate)):
+                node = candidate
+                break
     if node is None:
-        print(f"no widget named {name!r} to click", file=sys.stderr)
+        if not found:
+            what = role if role is not None else "widget"
+            print(f"no {what} named {name!r} to click", file=sys.stderr)
+        else:
+            print(f"{name!r} offers nothing to click (only "
+                  f"{', '.join(action_names(found[0])) or 'no actions'})", file=sys.stderr)
         return 1
     if not do(node):
         print(f"{name!r} has no click action", file=sys.stderr)
