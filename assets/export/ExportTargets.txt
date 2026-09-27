@@ -1113,7 +1113,7 @@
 
   <!-- ===== archive ===================================================== -->
 
-  <destination id="archive.master" group="general" label="Keep a master copy"
+  <destination id="archive.master" group="general" label="Archive file (highest quality)"
                icon="dest-archive" family="archive"
                class="archive" codecSelect="ladder"
                container="mkv" codec="" pixfmt="yuva420p"

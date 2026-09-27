@@ -1393,8 +1393,8 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
-        <source>Keep a master copy</source>
-        <translation>마스터본 보관</translation>
+        <source>Archive file (highest quality)</source>
+        <translation>아카이브 파일(최고 품질)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>

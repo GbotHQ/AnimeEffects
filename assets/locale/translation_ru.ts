@@ -1397,8 +1397,8 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
-        <source>Keep a master copy</source>
-        <translation>Сохранить мастер-копию</translation>
+        <source>Archive file (highest quality)</source>
+        <translation>Файл для архива (максимальное качество)</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>

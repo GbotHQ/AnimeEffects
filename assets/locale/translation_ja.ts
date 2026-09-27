@@ -1401,8 +1401,8 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="169"/>
-        <source>Keep a master copy</source>
-        <translation>マスターを保存</translation>
+        <source>Archive file (highest quality)</source>
+        <translation>アーカイブ用ファイル（最高品質）</translation>
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
