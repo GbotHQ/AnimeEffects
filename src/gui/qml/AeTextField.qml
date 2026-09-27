@@ -21,13 +21,17 @@ Item {
     // QLineEdit::setClearButtonEnabled).
     property bool clearButton: false
     property bool enabled: true
+    // An explicit accessible name for a field whose placeholder is not its name
+    // (the export dialog's Bitrate field shows "Auto" as its placeholder). Empty
+    // means "use the placeholder", which is the common case.
+    property string accessibleName: ""
     signal edited(string text)
     signal accepted(string text)
 
     implicitHeight: 28
     implicitWidth: 160
     Accessible.role: Accessible.EditableText
-    Accessible.name: placeholderText
+    Accessible.name: root.accessibleName !== "" ? root.accessibleName : root.placeholderText
     Accessible.onPressAction: input.forceActiveFocus()
 
     Rectangle {

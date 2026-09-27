@@ -170,18 +170,16 @@ target_link_libraries(destination_picker PRIVATE
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both
-# are questions about text and widget state rather than about pixels. Compiles
-# ExportTarget.cpp + ExportFacts.cpp + the dialog header (GL-free), so it needs no
-# project, no GL context and no display. See tests/export_form.cpp.
+# are questions about state and text rather than about pixels. Since the port to Qt
+# Quick it drives gui::ExportViewModel directly - no QWidget, no offscreen show, no
+# isVisible() - so its sources compile GUI-free: no GL, no Widgets, no Quick. See
+# tests/export_form.cpp.
 add_executable(export_form
     export_form.cpp
     ../src/gui/ExportFacts.cpp
-    ../src/gui/GUIResources.cpp
-    ../src/gui/AppStyle.cpp
-    ../src/gui/theme/Icons.cpp
-    ../src/gui/theme/Theme.cpp
+    ../src/gui/qml/ExportViewModel.cpp
+    ../src/gui/qml/ExportViewModel.h
     ../src/ctrl/ExportTarget.cpp
-    ../src/gui/exportdiag.h
     # The destination TABLE, embedded the way the application embeds it.
     #
     # The table is loaded two ways: this test passes a path (AE_EXPORT_TARGETS_PATH) for
@@ -193,7 +191,7 @@ add_executable(export_form
     # ask about it were skipped for every row while the suite stayed green. A dialog test
     # that reads a different table than the application is not testing the application.
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
-target_include_directories(export_form PRIVATE .. ../src/gui)
+target_include_directories(export_form PRIVATE .. ../src ../src/gui)
 target_compile_definitions(export_form PRIVATE
     AE_MAJOR_VERSION=1
     AE_MINOR_VERSION=7
@@ -207,7 +205,7 @@ target_compile_definitions(export_form PRIVATE
     AE_I18N_QM_DIR="${PROJECT_BINARY_DIR}/src/gui"
 )
 target_link_libraries(export_form PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::Svg
+    Qt6::Core Qt6::Gui Qt6::Xml Qt6::Svg
     media
 )
 # The runtime translation assertion reads a BUILT catalog, so the test has to depend on

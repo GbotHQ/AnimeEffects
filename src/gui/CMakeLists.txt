@@ -65,7 +65,10 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     TimeRuler.cpp TimeRuler.h
     ToolWidget.cpp ToolWidget.h
     ViaPoint.cpp ViaPoint.h
-    exportdiag.cpp exportdiag.h
+    # The export form: a Qt Quick scene (qml/ExportDialog.qml) in a QDialog shell,
+    # with everything it decides in the widget-free view model beside it.
+    ExportDialog.cpp ExportDialog.h
+    qml/ExportViewModel.cpp qml/ExportViewModel.h
     # Extracted into the catalogs from here (see the i18n block below): the file is
     # GENERATED from assets/export/ExportTargets.txt by
     # scripts/i18n/gen_export_targets_i18n.py, and lupdate cannot read a data file.
@@ -134,6 +137,19 @@ qt_add_qml_module(${PROJECT_NAME}
     QML_FILES
         qml/ScrubSpinBox.qml
         qml/AnimationSettingDialog.qml
+        # The export form and the dialog-local controls it is built from. Sibling
+        # files in this directory are implicitly importable as types, so the
+        # dialog's own components live here beside the shared set rather than
+        # behind a second import.
+        qml/ExportDialog.qml
+        qml/AeSectionHeader.qml
+        qml/AeFieldLabel.qml
+        qml/AeDisclosure.qml
+        qml/AeCheckBox.qml
+        qml/AeComboBox.qml
+        qml/AeNumberField.qml
+        qml/AeFrameRangeRow.qml
+        qml/AeFactRow.qml
         # Shared controls for migrated dialogs. One visual language across the
         # export flow: borderless buttons, raised fields, the theme's own icon
         # set. A dialog that needs something else adds it here rather than
@@ -219,7 +235,6 @@ endforeach()
 # compiled into ctrl by name).
 list(APPEND AE_I18N_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../ctrl/ExportTargetStrings.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/exportdiag.h
 )
 list(REMOVE_DUPLICATES AE_I18N_SOURCES)
 
