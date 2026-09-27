@@ -8,7 +8,7 @@
 #include <QStyleHints>
 
 #include "gui/AppStyle.h"
-#include "gui/qml/NumberFieldAccessibility.h"
+#include "gui/qml/QmlFormAccessibility.h"
 #include "theme/Icons.h"
 
 namespace gui {
@@ -29,7 +29,7 @@ GUIResources::GUIResources(const QString& aResourceDir):
     // call is idempotent. It must be a QAccessible FACTORY rather than a per-item
     // setting: Qt Quick's Accessible attached type has no way to describe a value,
     // and a factory is the documented answer for a non-widget accessible object.
-    installNumberFieldAccessibility();
+    installQmlFormAccessibility();
 
     QSettings settings;
     QString themeId = settings.value("generalsettings/ui/theme", "dark").toString();

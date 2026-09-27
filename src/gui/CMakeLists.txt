@@ -123,7 +123,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     qml/QmlTheme.cpp qml/QmlTheme.h
     qml/AnimationSettingViewModel.cpp qml/AnimationSettingViewModel.h
     qml/DestinationPickerModel.cpp qml/DestinationPickerModel.h
-    qml/NumberFieldAccessibility.cpp qml/NumberFieldAccessibility.h
+    qml/QmlFormAccessibility.cpp qml/QmlFormAccessibility.h
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc
 )
 target_include_directories(${PROJECT_NAME} PRIVATE

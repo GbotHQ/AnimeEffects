@@ -33,13 +33,30 @@ Item {
 
     implicitHeight: 28
     implicitWidth: 160
-    Accessible.role: Accessible.ComboBox
-    // A combo exposes its current VALUE to a screen reader (Qt's own rule), and the
-    // dialog's probes address it by what it IS - so the accessible name carries the
-    // role and the value carries the state.
-    Accessible.name: root.text
-    Accessible.description: root.objectName
-    Accessible.onPressAction: root.popupOpen = !root.popupOpen
+
+    // The accessible COMBO node. Qt Quick's Accessible attached type cannot give
+    // this control the protocols it needs (see gui/qml/QmlFormAccessibility): Qt
+    // exposes a press action for Button/CheckBox/RadioButton/Switch roles, not for
+    // a combo, and it reports a QML item's screen rectangle in the QQuickWidget's
+    // coordinates. This childless Item carries the identity and the current value,
+    // and the C++ factory gives it role ComboBox, a name that IS the current value
+    // (Qt's own rule), the identity as its description, a press action that
+    // opens/closes the list, and a screen-correct rectangle.
+    Item {
+        id: accessibleCombo
+        objectName: "aeAccessibleCombo"
+        x: field.x
+        y: field.y
+        width: field.width
+        height: field.height
+        enabled: root.enabled
+        property string accessibleName: root.objectName
+        property string accessibleValue: root.text
+        function accessiblePress() { root.togglePopup(); }
+        Accessible.role: Accessible.ComboBox
+        Accessible.name: root.text
+        Accessible.description: root.objectName
+    }
 
     property bool popupOpen: false
 
@@ -180,15 +197,21 @@ Item {
                 width: list.width
                 height: 24
                 radius: 3
-                // Each option is its own addressable node: a probe (and a screen
-                // reader) has to be able to pick "Best" or "PNG sequence" by name
-                // while the list is open, not only read the closed field.
-                Accessible.role: Accessible.ListItem
-                Accessible.name: modelData.label
-                Accessible.onPressAction: {
+                // Each option is its own addressable node, AND it needs a press
+                // action: Qt exposes one for Button/CheckBox/RadioButton/Switch
+                // roles, not for a list item, so "open the list and pick an item"
+                // was impossible for a screen reader - and for a probe - without
+                // the C++ interface gui/qml/QmlFormAccessibility attaches to this
+                // marker. Its rect() is screen-correct too, so a click lands on it.
+                objectName: "aeAccessibleOption"
+                property string accessibleName: modelData.label
+                property string accessibleValue: modelData.label
+                function accessibleChoose() {
                     root.popupOpen = false;
                     root.activated(index);
                 }
+                Accessible.role: Accessible.ListItem
+                Accessible.name: modelData.label
                 color: rowMouse.containsMouse ? theme.raisedHover
                      : (index === root.index ? theme.active : "transparent")
                 Text {
