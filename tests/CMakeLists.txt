@@ -165,6 +165,37 @@ target_link_libraries(destination_picker PRIVATE
     media
 )
 
+# The picker's KEYBOARD contract, offscreen and windowless: which key belongs to the
+# search field's caret and which one moves the list. Neither of the two tests above
+# can ask it - the model test has no scene, so nothing routes a key, and the GUI
+# probes cannot inject a keystroke without a window manager. Measured before relying
+# on it: a key sent straight to a Qt Quick item reaches the item's Keys filter with NO
+# window and NO active focus, and everything the filter does not consume still reaches
+# the editor. So this loads the real DestinationPicker.qml, injects the keys, and
+# reads the model - the same object the scene binds to.
+add_executable(picker_keyboard
+    picker_keyboard.cpp
+    ../src/gui/qml/DestinationPickerModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/ctrl/ExportTarget.cpp)
+target_include_directories(picker_keyboard PRIVATE .. ../src ../src/gui)
+target_compile_definitions(picker_keyboard PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+add_dependencies(picker_keyboard release_translations)
+target_link_libraries(picker_keyboard PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both

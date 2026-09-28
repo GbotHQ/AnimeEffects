@@ -122,6 +122,22 @@ QKeyEvent press(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
 QCoreApplication::sendEvent(quickWidget, &press);   // reaches the scene's focus item
 ```
 
+**You do not even need the widget, the window or any focus.** Sending the event straight to the
+*item* reaches its `Keys` filter with `item->window() == nullptr` and `activeFocus == false`, and
+whatever the filter does not consume still reaches the editor (measured: a `TextField` given a
+character key really does grow its text and move its caret under `QT_QPA_PLATFORM=offscreen`). So a
+key-routing test needs no display and no GL context, and can be an ordinary `tests/` target — see
+`tests/picker_keyboard.cpp`, which loads the real `DestinationPicker.qml` and asserts on the model.
+
+Two consequences worth knowing:
+
+- `event.isAccepted()` **cannot** tell "the filter ate it" apart from "the editor ate it". Assert on
+  an observable effect instead: pick a key whose editor action you can see (Left moves
+  `cursorPosition`) and check that *that* did not happen.
+- A test where the filter could not have fired proves nothing. Assert the preconditions inside the
+  test — that some group is open, that a row below exists — so a run that could not observe the
+  regression fails loudly instead of passing quietly.
+
 Key propagation in Qt Quick follows the **item hierarchy**: an unhandled key travels to the parent
 item and **never to a sibling**. A handler on a list will not see keys typed into a search field
 beside it — the handler must live on a common ancestor, or the field must forward them.
@@ -151,4 +167,4 @@ Extend these instead of writing new one-off scripts:
 - `scripts/gui/run_probes.sh` and `scripts/gui/probe_*.sh` — the end-to-end checks; run one probe
   directly while iterating, the runner for the whole suite.
 - `tests/` — headless unit tests (`QT_QPA_PLATFORM=offscreen`), including `export_form` and
-  `destination_picker` for the export dialogs.
+  `destination_picker` for the export dialogs, and `picker_keyboard` for the key routing inside them.

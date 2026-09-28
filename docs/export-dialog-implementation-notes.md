@@ -275,9 +275,9 @@ disappointing one.
   in the control we already have. Converting it is the conversion that has to be justified, not the
   one to assume.
 
-- Seven files state a constraint as fact that is now measured false — `AeTextField.qml:7-9`,
-  `ScrubSpinBox.qml:4-6`, `AeComboBox.qml:7-12`, and copies at `AeCheckBox.qml:8-11`,
-  `AeSectionHeader.qml:15-16`, `DestinationPicker.qml:3-6`, `AeToolTip.qml:7-11`. "QC2 brings its own
+- Seven files stated a constraint as fact that is now measured false — `AeTextField.qml:7-9` (DONE,
+  converted to `TextField`; see below), `ScrubSpinBox.qml:4-6`, `AeComboBox.qml:7-12`, and copies at
+  `AeCheckBox.qml:8-11`, `AeSectionHeader.qml:15-16`, `AeToolTip.qml:7-11`. "QC2 brings its own
   chrome and its own palette" is half true (the palette is too small, the chrome is a delegate);
   "a QQuickWidget cannot render a popup outside its own bounds" is untested and wrong for Qt 6.8+
   with `Popup.Window`. Whichever rungs we take, those comments must stop giving untested limits as
@@ -290,3 +290,47 @@ disappointing one.
   `delegate`/`highlightedIndex` — but it is a `ComboBox` subclass, so it announces ComboBox and
   carries a suggestion popup the picker has no use for. `TextField` keeps the accessible role the
   picker's probes already address. Recorded as a decision, not left implicit.
+
+## Increment 2, landed: the search field is a `TextField`
+
+`AeTextField.qml` is now Qt Quick Controls' `TextField` with the design's own `background`. Same file
+name and same addressing, so no call site moved. The header comment that claimed Controls "brings
+its own chrome and its own palette, and cannot be customised per site" is gone; the chrome *is* a
+delegate and the design's background is a drop-in for it.
+
+Measured on this installation (the Basic style's `TextField.qml`, read from
+`/usr/lib64/qt6/qml/QtQuick/Controls/Basic/`):
+
+- `T.TextField` **inherits `TextInput`** — it *is* the editor, which is why the earlier probe found
+  no `contentItem`: there is nothing between the control and its text.
+- The style supplies the placeholder itself, as a child: `PlaceholderText` positioned from
+  `control.leftPadding` / `rightPadding` / `verticalAlignment`, coloured by `placeholderTextColor`,
+  and hidden while there is `length` or `preeditText`. So the hand-written placeholder `Text` is
+  gone and the leading glyph and the clear button are paid for with `leftPadding` / `rightPadding`
+  rather than with anchors.
+- Basic's defaults are `padding: 6`, `leftPadding: padding + 4`, `verticalAlignment: AlignVCenter`.
+- It installs `ContextMenu.menu: TextEditingContextMenu` — right-click cut/copy/paste/undo, which the
+  hand-rolled field did not have.
+- **`hoverEnabled` defaults to `false`**, so a background that reacts to `hovered` must set it. The
+  hand-rolled version got hover from its own `MouseArea`.
+- Two more measured API facts the conversion depends on: `textEdited()` and `accepted()` take **no
+  arguments**, so this wrapper must not declare `signal accepted(...)` (duplicate name with the
+  inherited one — Return already reaches the caller unchanged) and the clear button, whose clear is
+  programmatic and therefore emits nothing, is the only reason the custom `edited(string)` survives.
+
+What the conversion actually bought, in the terms the contract uses: caret motion, keyboard
+selection, drag-select, word jumps, the clipboard shortcuts and undo, input methods, the horizontal
+scrolling that keeps a long line's caret in view, and the I-beam cursor. That last one is B12, one of
+the reported defects: the full-bleed `MouseArea` that focused the hand-rolled field also painted an
+arrow over its text.
+
+**Behaviour decided here, not merely preserved:** B9. The field no longer forwards Left/Right at all
+— `navigationKeys` is now the VERTICAL keys only — so an arrow pressed while typing can no longer
+collapse or expand the highlighted platform. Left/Right stay with the caret. B14 was rewritten to
+say this, and Q4 was answered (focus selects nothing) and moved out of the open list.
+
+Verified by `tests/picker_keyboard.cpp`: the real `DestinationPicker.qml`, built offscreen, with the
+keys injected into the item, asserting on the model — 32 checks, B6/B7/B8/B9/B13/B15. Run it against
+the old forwarding and exactly three B9 checks fail and it exits 1, so the test is known to be able
+to fail. B11 (click outside removes focus) and B12 (the cursor shape) are deliberately absent: both
+need a real window, which this test does not have.

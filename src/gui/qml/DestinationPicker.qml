@@ -48,8 +48,10 @@ Item {
         spacing: 8
 
         // ---- the search field ----
-        // Typing filters; the arrows move the list WITHOUT leaving the field. The
-        // field keeps the text cursor; the list keeps the highlight.
+        // Typing filters; Up/Down and PageUp/PageDown move the list WITHOUT leaving
+        // the field. The field keeps the text cursor; the list keeps the highlight.
+        // Left/Right stay with the caret (contract B9) - a tree action driven from
+        // inside a text field is a tree action nobody asked for.
         AeTextField {
             id: search
             Layout.fillWidth: true
@@ -66,8 +68,9 @@ Item {
                 case Qt.Key_Up: picker.step(-1); break;
                 case Qt.Key_PageDown: picker.step(10); break;
                 case Qt.Key_PageUp: picker.step(-10); break;
-                case Qt.Key_Left: picker.collapseCurrentSection(); break;
-                case Qt.Key_Right: picker.expandCurrentSection(); break;
+                // Left/Right are NOT here: they belong to the caret (contract B9).
+                // The field never forwards them, so a platform cannot be collapsed
+                // by an arrow pressed while typing.
                 default: break;
                 }
             }

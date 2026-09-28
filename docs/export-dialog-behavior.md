@@ -65,16 +65,22 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 7. [R1] While the field has focus, Down/Up move the LIST's highlighted row. They must not move the
    caret and must not alter the text.
 8. [R1] Enter activates the highlighted row, identically to clicking it.
-9. [R2] Arrow keys must not expand or collapse groups while the search field has focus.
+9. [R2] Arrows must not expand or collapse groups while the search field has focus. Decided: only
+   Up/Down/PageUp/PageDown are forwarded, and they move the list's highlight. Left/Right are the
+   CARET's; the field does not forward them at all, so a stray arrow while typing cannot collapse
+   the highlighted platform (this was the reported defect). A group is opened and closed by a click
+   on its header (B16), or by Left/Right while the LIST itself holds the focus.
 10. [Q] Whether Escape clears the field first and only then closes the dialog.
 11. [R3] Clicking outside the field removes its focus and keeps its text (see A3).
 12. [R4] The pointer is an I-beam over the text area. The current field specifies no cursor, so it
     inherits the arrow.
 13. [D] The selection highlight uses `theme.selection` / `theme.selectionText`; the current field
     already binds both, and `selectByMouse` provides pointer selection.
-14. [D] The current `navigationKeys` forwarding (Left/Right leaving the field to the surrounding
-    navigation) is the design's behaviour and is preserved.
-15. [Q] Whether focusing the field selects its existing text.
+14. [D] The `navigationKeys` forwarding is the design's behaviour and is preserved for the VERTICAL
+    keys only (see B9): the field keeps the caret and the list gets the highlight movement.
+15. [D] Decided (was Q4): focusing the field leaves the caret where it was and selects nothing, so
+    typing refines the query instead of replacing it. Opening the picker is the one focus it gets,
+    and there is nothing there to select.
 
 ## C. Destination list (picker)
 
@@ -163,7 +169,6 @@ Every line marked `[Q]` above, collected:
 - **Q2 (C22).** Does hovering a row change the selection, or only the highlight?
 - **Q3 (B10).** In the picker, does Escape clear the search field first and close only when it is
   already empty?
-- **Q4 (B15).** Does focusing the search field select its existing text?
 - **Q5 (F34).** For a numeric field, does Escape restore the value from when it was focused, or the
   value from when the dialog opened?
 - **Q6 (G39).** Does a closed combo box support type-ahead?
