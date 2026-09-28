@@ -168,11 +168,31 @@ it.
   R1 with its text behaviour already intact rather than R2.
 - **R3 — hand-rolled.** QtQuick primitives only, which is what the exporter is today.
 
-**R2 has no members in this inventory**, and that is a result rather than a gap: every part the
-design needs to change turns out to be a delegate the style already publishes. The rung stays
-listed because it is the honest answer when a delegate *is* missing, and because `TextField` shows
-the shape of the near-miss — not a missing delegate, but no delegate slot at all, since the type is
-its own editor.
+**R2 has no members as a per-element choice, but it does have a shape: a custom style.** The Qt
+Quick Controls documentation's "Creating a Custom Style" is R2 exactly — a directory of
+`QtQuick.Templates`-rooted QML files plus a `qmldir`, found on the QML import path and selected by
+name through `QQuickStyle::setStyle()` (or `-style`), with `import QtQuick.Controls.Basic auto` in
+the `qmldir` as the fallback for controls the style does not implement. With a style, every use site
+becomes R0 — `Button { text: qsTr("Export") }` — and the design lives in one directory instead of
+being repeated in N wrapper files.
+
+That matters because our `AeButton`/`AeCheckBox`/… files are the documentation's **second** way
+("move the code into its own QML file within your project"), not a different idea: converting them
+to R1 keeps the same file structure and changes only what is inside each file. Which of the two
+routes to take — a wrapper per control, or one custom style — is a deliberate architectural choice
+and the only one on this page that is not per-element. It is the difference between the design being
+restated at each control and being defined once.
+
+One element cannot be done per-site at all, and the documentation says so: **the attached
+`ToolTip`**. "The three approaches mentioned here do not work for customizing the attached ToolTip,
+as that is a shared item created internally … To customize the attached ToolTip, it must be provided
+as part of your own style." So the tooltip's E-cluster is satisfied either by instantiating
+`ToolTip { }` objects with our `background`/`contentItem` and our `delay`, or by a style-provided
+ToolTip. That is a real constraint on E26–E30, not a preference.
+
+(The install also carries `Qt/labs/StyleKit` — a declarative styling layer over the templates, and a
+*Technology Preview* in Qt 6.11. It is another way to define the design once; not recommended here
+because of the preview status.)
 
 ## Three premises, measured rather than asserted
 
@@ -194,6 +214,12 @@ its own editor.
    | `ScrollView` | — | yes | — | — | — | |
 
    (Source kept at `.git/dsh-scratch/controls-spike` for re-measurement.)
+
+   The documentation says the same thing in different words — each control "consists of" a number
+   of *visual items*: `Button` two (background, contentItem), **`TextField` one (background)**,
+   `CheckBox` three (adds indicator), `ComboBox` five (adds popup, indicator, delegate), `ScrollBar`
+   two, `SpinBox` four (adds up/down indicator). That agrees with the table, and `TextField`'s
+   single item is the documented form of the no-`contentItem` finding.
 2. **The default style here is not Basic.** With no style requested, `QQuickStyle::name()` is
    `Fusion`. Basic — the documented base for customisation — must be selected explicitly, before the
    first scene is created.
@@ -225,7 +251,7 @@ disappointing one.
 | Checkbox (`AeCheckBox` 88 l) | **R1** | `CheckBox` — `indicator`, label colour via `palette.text` | one click/Space toggle action, `checked`, focus, the accessible toggle action |
 | Combo (`AeComboBox` 254 l) | **R1** | `ComboBox` — `background`, `contentItem`, `indicator`, `popup`, `delegate` | G39 type-ahead, G37 Up/Down highlight and Space/Escape/Enter, highlight-follows-keyboard, and the positioner that flips and clamps (G38). **The in-scene popup is not abandoned to meet G38** — `popup` is our delegate either way; what stops being ours is the list, its highlight and its keys |
 | Scrollbar (today a decorative hand-drawn Rectangle) | **R1** | `ScrollBar` attached to the list — `contentItem` (which *is* the handle; there is no `handle` property, measured) and `background` (the track) | D23 press/drag → `setPosition`, the visible/total ratio, wheel and paging, `policy: AsNeeded`; D24 is the two delegates |
-| Tooltip (`AeToolTip` 43 l) | **R1** | `ToolTip` — `background`, `contentItem`; `delay`/`timeout` are properties | E28 (a real popup, not clipped by the dialog), E27 placement and flip, E30 pass-through, one shared instance. **The stock `delay` is 0** (`qquicktooltip.cpp:111-130`), so E26 is met by the value the design sets — true on any rung |
+| Tooltip (`AeToolTip` 43 l) | **R1, but not the attached form** | an instantiated `ToolTip` — `background`, `contentItem`; `delay`/`timeout` are properties | E28 (a real popup, not clipped by the dialog), E27 placement and flip, E30 pass-through, one shared instance. **The stock `delay` is 0** (`qquicktooltip.cpp:111-130`), so E26 is met by the value the design sets — true on any rung. The *attached* `ToolTip` is excluded from per-site customisation by the documentation, so this is an instance or a style, not `ToolTip.text:` on the owner |
 | Numeric field (`ScrubSpinBox` 205 l, `AeNumberField` 121 l) | **R3, with an R1 editor inside it if we want one** | Three responsibilities, and only two of them are a delegate anywhere. **Value semantics** — `from`/`to`/`value`/`stepSize`/`editable`/`live`/`validator`/`textFromValue`/`valueFromText` — are `SpinBox`'s (measured from the type's property list). **The editor** is `SpinBox.contentItem` (a `TextInput` with `readOnly: !editable`, measured in `Basic/SpinBox.qml`). **The scrub shell** — display-until-clicked, horizontal drag, shift-fine, click-to-edit, Escape-revert — is a delegate in *no* toolkit, because it is behaviour rather than a component | the scrub is ours on any base. F31/F33 (cursor, selection tokens) are a one-line fix each in the existing control. **[open, and the reason this row is not a conversion]** `SpinBox` assumes an editor is always present (`readOnly: !editable`), while the design hides the caret until the field is clicked — so a SpinBox base still needs the mode switch written by hand *and* has to stop the always-present editor from taking the click and focus the scrub shell needs |
 | Disclosure (`AeDisclosure` 63 l) | **R1** | a checkable `Button` (`checked` = open) with a `contentItem` (caret + label) and a `background` (hover) | today it hand-writes a `MouseArea`, `Keys.onSpacePressed`/`onReturnPressed` and its own `Accessible.role`/`onPressAction`; `Button` already has all of that (`text`, `down`, `pressed`, `checked`, `checkable`, `indicator`, `activeFocusOnTab`). There is no Controls type that *is* a disclosure, so what remains ours is the caret and the words |
 | Section header (`AeSectionHeader` 46 l) | **R3** | `Label` + hairline `Rectangle` | nothing; no type is a ruled heading, and `T.Label` is `Text` plus a palette binding we do not use |
