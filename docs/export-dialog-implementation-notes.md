@@ -438,3 +438,76 @@ Verified by driving it: rest state has no border, hover gives the lighter fill *
 cursor (captured with `-draw_mouse`), a Tab puts the ring on Cancel, and Return with that focus
 closes the picker (`Use this destination`: showing → absent). Suites 16/16 in Debug; Release built
 zero-warning and also 16/16.
+
+## R1, landed: `AeCheckBox` is a `CheckBox`
+
+Same file name, same call sites (`text`, `checked`, `enabled`, `onToggled` — all four are inherited,
+none redeclared). The box, the tick and the words are the `indicator` and `contentItem` delegates;
+Qt supplies the toggle, Space, `focusPolicy`, hover, `checked`/`toggled`, the checkbox role and the
+press action. The old header's reason for hand-rolling — *"a QC2 indicator draws its own chrome"* —
+was the same non-reason as the button's: that chrome is the delegate being replaced.
+
+Measured before converting (`.git/dsh-scratch/key-spike`, offscreen):
+
+| question | answer | consequence |
+| --- | --- | --- |
+| does `toggled()` exist? | **yes** (AbstractButton's), and it fires **only on activation** — `click()`, Space, a press on the row. Writing `checked` from a binding or directly does **not** fire it | exactly what `onToggled: model.value = checked` needs: no write-back when the model pushes a value |
+| Space? | toggles **on release**, with no `Keys` filter involved | the hand-written `Keys.onSpacePressed` would have toggled **twice** (our press, Qt's release) — dropped |
+| Return / Enter? | **neither consumed nor acted on** (`accepted=0`, `checked` unchanged) | the dialog's own Enter handling still receives them, and no handler is needed — the old control had none either |
+| does Qt place our delegates? | in **x/y** our anchors win; but it writes their **width and height** from its padding: the label came out 556×12 where the hand-rolled `Text` was 17 tall | centring a box Qt had just shrunk moved every word **3 px down** (1205 differing pixels). Fixed by anchoring the label's **top** to its own line box: `topMargin = floor((height - implicitHeight)/2)` = 3, where they were |
+| can the label anchor to the box? | no: `anchors.left: ind.right` throws `ReferenceError: ind is not defined` at creation | the offset comes from `boxSize`, not from the other delegate's width |
+| `hoverEnabled` default | **false** | hover has to be asked for |
+| `focusPolicy` default | **0xB**, which *is* `Qt.StrongFocus` — the enum is Tab \| Click \| 0x8, not 3 | Tab and Click, matching the widget `QCheckBox`; a click that left the previous control focused is how Space after ticking a box types into a text field |
+
+**The focus ring is contract line A1**, which the hand-rolled control had no provision for at all.
+Its shape is not invented: `standard.ssa` already specifies it for the widget checkbox —
+`QCheckBox::indicator:focus { border: 0.04em solid @focus@ }` — so the box's hairline turns to
+`theme.focus`, focus ahead of hover exactly as the stylesheet's cascade has them. `activeFocus`
+rather than `visualFocus` (the button's choice) because the stylesheet says `:focus` and not a
+keyboard-only variant, and because the widget `QCheckBox` is `StrongFocus`: clicking it focuses it
+and lights the same border.
+
+### Verification: offscreen first, then the real application
+
+Two instruments, because a probe stack costs a machine that is being used
+(`PROBE-SAFETY.md`: measure the compositor before and after, abort when it is hot):
+
+1. **`geom` renders both versions offscreen** — old file from git, new from the working tree, four
+   states each (rest, hover over the box, hover over the label, focus), ~2 s, no display:
+
+   | old vs new | differing pixels |
+   | --- | --- |
+   | rest | **0** |
+   | hover over the box / over the label | **0** |
+   | focus | **72** — the ring: `focus vs rest` is 0 for the old control and 72 for the new |
+
+   Each state prints an `achieved=` line, and it earned its keep twice: the first run's "rest" was
+   silently a **hover** grab (the offscreen pointer sits at 0,0, on top of a control drawn there),
+   and posting the hover event to the root never reached the hand-rolled control's `MouseArea`
+   *child*, so the two sides were in different states and their difference meant nothing. Driving
+   the hover through the **window**, the way a pointer does, fixed both.
+
+2. **The real application**, three runs: the before run, the run with the fix, and a repeat of the
+   same build:
+
+   | comparison | differing pixels |
+   | --- | --- |
+   | the control's own box, any state | **0** in every pair |
+   | geometry string | identical (`rect=436,619 568x24`) in all three |
+   | hover lights | the same 72 pixels in both builds, at all three hover points |
+   | focus ring | absent after 30 Tabs before; present on Tab #9 (72 px) after |
+   | Space | `checked` yes → no → yes, read from the accessibility tree |
+   | the form as a whole | **52** between two runs of the *same* build, 53 and 72 across builds |
+
+   That last row is why the comparison now has two kinds of assertion. Qt's rasteriser does not
+   reproduce glyph edges between processes: two runs of one binary differed in 52 scattered pixels
+   **including buttons nobody touched**, and 36 of them were the same pixels in both run pairs —
+   so a dialog-wide number is judged against a measured floor (2×), while the box, the geometry,
+   the hover delta and the ring are asserted exactly. A real regression clears that floor by an
+   order of magnitude: the 3 px label drift measured **1205** in the row alone.
+
+Two counting traps, both measured: ImageMagick stamps a `date:timestamp` into every PNG it writes,
+so **compare with `magick compare -metric AE`, never a file hash**; and a raw
+`-compose difference` over un-flattened PNGs counts RGB differences *inside fully transparent
+pixels* (745 against the true 72, while the alpha channels were identical) — flatten first, or use
+`compare`.
