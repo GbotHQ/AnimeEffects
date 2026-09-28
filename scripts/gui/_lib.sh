@@ -137,6 +137,45 @@ export RECORDED_AGAINST="${RECORDED_AGAINST:-0}"
 
 ae() { python3 "$AE_UI" "$@" 2>/dev/null; }
 
+# ---- refuse to drive a REAL display ----------------------------------------
+#
+# xdotool talks to $DISPLAY, and NOTHING in this file sets it. Every probe is
+# wrapped in `xvfb-run`, which does; a command run OUTSIDE that wrapper inherits the
+# developer's own DISPLAY and drives the real desktop - the clicks, keystrokes and
+# typed text land wherever the cursor happens to be. It happened: the journal of
+# Sep 28 11:23:27 records an unwrapped
+#     xdotool mousemove 100 40 click 1; xdotool key Down; xdotool type "ab"
+# reaching the live session, and it was followed (11:25:02) by the corrected version
+# wrapped in `xvfb-run -n 55` - the defect found by accident, not by a check.
+#
+# Note what is NOT the fix: `unset WAYLAND_DISPLAY` (above) does not touch DISPLAY.
+# Qt's platform choice and xdotool's target are two different variables, and only
+# the first was guarded. `QT_QPA_PLATFORM=xcb` changes which server Qt connects to;
+# it changes nothing about where xdotool sends input.
+#
+# The test is therefore "is an Xvfb SERVING this display", never "is DISPLAY set":
+# a real session has Xorg or Xwayland on :0, and that is precisely what must not be
+# driven. Exits 97 rather than returning, because a probe that silently skips its
+# clicks passes while testing nothing.
+ae_guard_display() {
+    local d=${DISPLAY:-} n pid
+    n=${d#*:}; n=${n%%.*}
+    if [ -z "$d" ] || [ -z "$n" ]; then
+        echo "FAIL  ae: DISPLAY is unset, so there is nothing to drive." >&2
+        echo "FAIL  ae: run this under xvfb-run, as the probes do." >&2
+        exit 97
+    fi
+    for pid in $(pgrep -x Xvfb 2>/dev/null); do
+        if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -qE "(^| ):${n}( |$)"; then
+            return 0
+        fi
+    done
+    echo "FAIL  ae: DISPLAY=$d is not an Xvfb display. Synthetic input sent here would" >&2
+    echo "FAIL  reach the REAL desktop, not the test window. Wrap this command in:" >&2
+    echo "FAIL    xvfb-run -a --server-args=\"-screen 0 1440x900x24\" <command>" >&2
+    exit 97
+}
+
 # The centre of a named widget, as "x y". Empty when the widget is not there.
 ae_center() {
     local box
@@ -147,6 +186,7 @@ ae_center() {
 
 # Click a named widget, by asking it where it is.
 ae_press() { # ae_press <name> <what-the-caller-expects-to-happen>
+    ae_guard_display
     local at
     at=$(ae_center "$1")
     if [ -z "$at" ]; then
@@ -168,6 +208,7 @@ ae_y() { ae extents "$1" 2>/dev/null | awk 'NR==1 {print $2}'; }
 # one mousemove followed by a mouseup is a click, which is why a drag with no motion
 # in it cannot tell a working scroll bar from a decorative one.
 ae_drag() { # ae_drag <x> <y> <dx> <dy> [steps]
+    ae_guard_display
     local x=$1 y=$2 dx=$3 dy=$4 steps=${5:-8} i
     xdotool mousemove --sync "$x" "$y"; sleep 0.2
     xdotool mousedown 1; sleep 0.2
@@ -186,6 +227,12 @@ ae_drag() { # ae_drag <x> <y> <dx> <dy> [steps]
 # after the sleep then runs against the loading splash - a slow machine reported as a
 # broken application.
 wait_ready() { # wait_ready [seconds]
+    # Guarded HERE rather than only in ae_press/ae_drag: every probe calls this
+    # inside its xvfb-run body BEFORE its first raw `xdotool`, and the probes use
+    # raw xdotool (mousemove, key, type, search) more often than they use the
+    # helpers. One check at this point covers the input that would otherwise go
+    # unchecked.
+    ae_guard_display
     local limit=${1:-120} i
     for i in $(seq 1 "$limit"); do
         ae wait "File" >/dev/null 2>&1 && return 0
@@ -373,4 +420,4 @@ summary() { # summary <probe name>
 export AE_OUTER_PID=$$
 export AE_FAIL_FLAG="$(mktemp -u)"
 export -f ae ae_center ae_press ae_activate ae_report ae_report_asked check require_export_flow
-export -f ae_y ae_drag wait_ready
+export -f ae_y ae_drag wait_ready ae_guard_display

@@ -80,7 +80,7 @@ xvfb-run -n 71 --server-args="-screen 0 1440x900x24" bash -c '
   kill $app'
 ```
 
-Five traps, all of which have cost real time here:
+Six traps, all of which have cost real time here:
 
 - `xdotool search --name "<title>"` frequently matches **nothing** — a Qt dialog's `WM_NAME` is not
   the title you expect. Use `xdotool getactivewindow`, or `--class`.
@@ -98,6 +98,15 @@ Five traps, all of which have cost real time here:
   because the dialog window is at `x=61`. A drag aimed with the raw rect missed by exactly that
   offset, hit the row underneath, and looked like "the wrong control moved". Add the dialog's origin
   before driving `xdotool`; `ae_y` in `_lib.sh` does that for the vertical axis.
+- **`DISPLAY` is the variable that points at the REAL desktop, and nothing in `_lib.sh` sets it.**
+  `unset WAYLAND_DISPLAY` plus `QT_QPA_PLATFORM=xcb` only decide where *Qt* connects; `xdotool`
+  reads `$DISPLAY`. Measured: an unwrapped run (journal, Sep 28 11:23:27) sent
+  `xdotool mousemove 100 40 click 1`, `key Down` and `type "ab"` into the live session. `_lib.sh`
+  now has `ae_guard_display()`, which **exits 97** unless an Xvfb is serving the current display; it
+  runs from `wait_ready`, `ae_press` and `ae_drag`, and every probe calls `wait_ready` inside its
+  `xvfb-run` body before its first raw `xdotool`. Before writing a one-off script, either wrap it in
+  `xvfb-run -a --server-args="-screen 0 1440x900x24"` or call the guard first — a script that does
+  neither drives whatever is under your cursor.
 
 ### Driving a dialog that opens mid-session
 
@@ -111,6 +120,27 @@ after=$(xdotool search --onlyvisible --name . | sort)
 dialog=$(comm -13 <(echo "$before") <(echo "$after") | head -n1)
 eval $(xdotool getwindowgeometry --shell "$dialog")   # X, Y, WIDTH, HEIGHT
 ```
+
+### When the desktop itself freezes
+
+`libinput` writes its own signature to the journal when the compositor stops keeping up:
+
+```
+gnome-shell: libinput error: event2 - <your mouse>: client bug: event processing
+             lagging behind by 3988ms, your system is too slow
+```
+
+Read the **number, not the line**. In one boot there were four such lines: 49 ms, 26 ms, 75 ms and
+3988 ms. The first three are ordinary load; only the ~4 s one is a genuine stall. So this is a cheap
+before/after check for anything that might affect input latency:
+
+```bash
+journalctl -b -1 2>/dev/null | grep "lagging behind"
+```
+
+It says whether an episode happened and how bad it was — it does **not** say what caused it. During
+the 3988 ms episode `gnome-shell` itself was the hot process, and correlating it with whatever was
+running at the time is not causation.
 
 ## Asking about key *routing* rather than about the platform
 
