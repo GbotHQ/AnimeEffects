@@ -6,17 +6,29 @@ accessibility assertion that a control *exists*, and unit tests on the view mode
 observe focus, keys, hover, drag, tooltip timing or overflow — which is why fourteen defects reached
 the user with every gate green.
 
-**The design is the specification. The implementation is chosen to meet it, not the other way
-round.** Where no stock control meets a line below, the line still stands and the behaviour is
-written and tested; a toolkit's limits are never a reason to weaken this document.
+**The design is the specification. The implementation is chosen to meet it, not the other way round.**
+Where no stock control meets a line below, the line still stands and the behaviour is written and
+tested; a toolkit's limits are never a reason to weaken this document.
 
 ## Sources
 
-- **[R]** the review of the ported dialogs (sixteen items, numbered in the traceability table).
-- **[W]** the house standard: the behaviour of the equivalent QWidget control in this application.
-  "Consistent with the rest of the app" is only meaningful because these exist; each [W] line is
-  confirmed by driving that widget before the new control is accepted.
-- **[D]** the design intent of the two dialogs themselves.
+- **[R]** the corrections from the review of the ported dialogs (sixteen items, numbered in the
+  traceability table). These are the design speaking.
+- **[D]** the **current Qt Quick exporter UI** — its look, its layout, and the behaviours it already
+  specifies in its own control files. It is the design reference; it is not a first draft to be
+  replaced by a toolkit's idiom. Evidence for what it already specifies lives in
+  `src/gui/qml/AeTextField.qml` (theme selection tokens, `selectByMouse`, the `navigationKeys`
+  forwarding), `ScrubSpinBox.qml` (`selectAll()`, `Keys.onEscapePressed`, the scrub
+  `cursorShape`), `AeComboBox.qml` (Up/Down/Space/Escape), `AeButton`/`AeIconButton`
+  (`activeFocusOnTab`, Return/Space) and `DestinationPicker.qml` (its own key handling and
+  `HoverHandler`).
+- **[Q]** design questions: behaviours that neither the corrections nor the current UI settle. They
+  are listed at the end and are the user's to decide. Nothing from another toolkit's conventions is
+  smuggled into this document as a requirement — an earlier draft of it did exactly that, and the
+  affected lines are now `[Q]`.
+
+The design covers **look as well as behaviour**: layout, typography, spacing, colours and states are
+fixed as they stand. An implementation that reproduces them differently is not meeting this spec.
 
 ## How each line is verified
 
@@ -32,141 +44,161 @@ Driving the real application, never reading QML:
 | resize to the minimum size and to maximised | overflow, clipping, layout at the extremes |
 | a second capture at 1.5×/2× scaling | icon and text rendering, aliasing |
 
-A line is only "verified" when it has a captured observation or an automated test that fails when
-the behaviour regresses. "It looks right in a screenshot" is not a verification of anything below.
+A line counts as verified only with a captured observation or an automated test that fails when the
+behaviour regresses. "It looks right in a screenshot" verifies none of the lines below.
 
 ## A. Dialog level — focus and keys
 
-1. [W] Tab and Shift+Tab move through the controls in visual order; the focused control shows its
-   focus ring, and the ring never appears from a mouse click alone.
-2. [W] Enter activates the default action (Export), Escape cancels, unless a focused text field
-   consumes the key.
-3. [W] Clicking a non-focusable area does not steal focus from a text field mid-edit; the field
-   keeps its text and caret.
-4. [D] The dialog is modal over the main window, is transient for it, and restores its last size,
-   never below the minimum size, at every DPI.
+1. [D] Tab and Shift+Tab move through the controls in visual order, and the focused control shows
+   its focus ring. (The current buttons and combos already declare `activeFocusOnTab`.)
+2. [D] Enter activates the default action (Export), Escape cancels. (The current shell wires
+   accept/reject and the buttons handle Return.)
+3. [R3] A click outside a focused text field removes its focus. The field's text and the list's
+   selection are unchanged by that click. *(An earlier draft of this document required the
+   opposite; it was written from widget convention and was wrong.)*
+4. [D] The dialog is modal over the main window and transient for it, as it is today.
+5. [Q] Whether the dialog restores its last size between sessions.
 
 ## B. Search field (picker)
 
-5. [R1] The field takes focus on open, with a visible caret; typing filters the list as you type.
-6. [R1] While the field has focus, Down/Up move the LIST's highlighted row; they never move the
-   caret and never alter the text.
-7. [D] Enter activates the highlighted row, identically to clicking it.
-8. [D] Escape clears the field when it has text, and only closes the dialog when the field is
-   empty.
-9. [R3] Clicking anywhere outside the field — list, buttons, empty space — removes its focus and
-   keeps its text.
-10. [R4] The pointer is an I-beam over the text area, the arrow over the clear button, and the
-    arrow everywhere else in that field's row.
-11. [R12] The selection highlight uses the app's text-selection tokens, not a platform or style
-    default.
-12. [W] Select-all on focus, double-click word select, Ctrl+A/C/V, and IME composition behave as
-    the app's widget line edits do.
+6. [D] The field takes focus on open, with a visible caret; typing filters the list as you type.
+7. [R1] While the field has focus, Down/Up move the LIST's highlighted row. They must not move the
+   caret and must not alter the text.
+8. [R1] Enter activates the highlighted row, identically to clicking it.
+9. [R2] Arrow keys must not expand or collapse groups while the search field has focus.
+10. [Q] Whether Escape clears the field first and only then closes the dialog.
+11. [R3] Clicking outside the field removes its focus and keeps its text (see A3).
+12. [R4] The pointer is an I-beam over the text area. The current field specifies no cursor, so it
+    inherits the arrow.
+13. [D] The selection highlight uses `theme.selection` / `theme.selectionText`; the current field
+    already binds both, and `selectByMouse` provides pointer selection.
+14. [D] The current `navigationKeys` forwarding (Left/Right leaving the field to the surrounding
+    navigation) is the design's behaviour and is preserved.
+15. [Q] Whether focusing the field selects its existing text.
 
 ## C. Destination list (picker)
 
-13. [R2] A click on a group header expands or collapses it — including while the search field has
-    focus — and never selects the row.
-14. [R8] Group expansion state is explicit and stable: see the open design questions.
-15. [R6] A destination with no children is not indented as though it had a parent.
-16. [D] Search matches across every group; groups with no match are not listed; matches are
-    reachable with the keyboard, not only with the pointer.
-17. [W] The keyboard and pointer agree: the highlighted row is the row Enter activates and the row
-    a click selects, and hovering never changes the selection.
-18. [R7] No row paints a wrong intermediate colour: the hover state on first entry is the same as
-    on the fifth, with no black or unstyled frame.
+16. [R2] A click on a group header expands or collapses it, including while the search field has
+    focus, and never selects the row.
+17. [Q] Group expansion defaults and whether expansion state is remembered (see Q-list).
+18. [R6] A destination with no children is not indented as though it had a parent.
+19. [D] Search matches across every group, and groups with no match are not listed.
+20. [R1] Matches are reachable with the keyboard, not only with the pointer: the highlighted row is
+    the row Enter activates and the row a click selects.
+21. [R7] No row paints a wrong intermediate colour: the hover state on first entry is identical to
+    the hover state on the fifth, with no black or unstyled frame.
+22. [Q] Whether hovering a row changes the selection or only the highlight.
 
 ## D. Scrolling and overflow
 
-19. [R5] The list's scrollbar reflects the visible/total ratio, drags the content 1:1, pages on
+23. [R5] The list's scrollbar reflects the visible/total ratio, drags the content 1:1, pages on
     track click, responds to the wheel, and appears only when the content overflows.
-20. [R5] Its thumb, track, hover and pressed states use the app's tokens — the same ones the main
-    window's scrollbars use.
-21. [R11] The export form never exceeds the window without a scroll: when the content does not fit
+24. [R5, D] Its thumb, track, hover and pressed states use the design's tokens — the same look the
+    rest of the exporter UI uses.
+25. [R11] The export form never exceeds the window without a scroll: when the content does not fit
     (minimum size, small screen, or the Advanced section open), the content scrolls by wheel, keys
     and drag, and the Cancel/Export row stays reachable.
 
 ## E. Tooltips
 
-22. [R9] A tooltip appears after the platform's wake-up delay — never instantly — and hides after
-    the platform's timeout or when the pointer leaves the control.
-23. [R9] It is positioned relative to its control in the conventional place (below, or above when
+26. [R9] A tooltip appears after the platform's wake-up delay — never instantly — and hides after
+    the platform's timeout or when the pointer leaves.
+27. [R9] It is positioned relative to its control in the conventional place (below, or above when
     there is no room), not at the pointer.
-24. [R10] It is never clipped by the dialog's edge; it flips or shifts to stay inside the screen.
-25. [R9] It does not appear for a control whose text already states the same thing; the set of
-    controls that keep a tooltip is explicit (open design question).
-26. [W] It does not intercept the pointer, does not take focus, and hides immediately on click.
+28. [R10] It is never clipped by the dialog's edge; it flips or shifts to stay inside the screen.
+29. [R9] It does not appear for a control whose text already states the same thing; the set of
+    controls that keep a tooltip is explicit (design question).
+30. [D] It is drawn above its owner and does not intercept the pointer, as `AeToolTip` does today.
 
 ## F. Numeric fields (frames, resolution, frame rate, quality)
 
-27. [R12] In text-entry mode the pointer over the text is an I-beam and the selection uses the
-    app's selection tokens.
-28. [D] In scrub mode (the pointer over the field but not in text entry) a horizontal drag changes
-    the value by the field's step, clamped to the field's range, with a pointer that shows the
-    scrub affordance.
-29. [W] Click selects the whole value; typing replaces it; Enter commits; Escape restores the value
-    the field had when it was focused; Up/Down step by one.
-30. [D] The Auto/Reset affordance is a separate, keyboard-reachable control; using it restores the
-    automatic value and the row reads "Auto".
-31. [D] Width and height keep their aspect lock; the frame-range fields clamp against each other so
+31. [R12] In text-entry mode the pointer over the text is an I-beam. `ScrubSpinBox` currently sets
+    `Qt.SizeHorCursor` for the whole field, which is the defect.
+32. [D] In scrub mode a horizontal drag changes the value by the field's step, clamped to the
+    field's range, with the scrub cursor. (`ScrubSpinBox` specifies the drag and the cursor.)
+33. [D] `selectAll()` on entry and `Keys.onEscapePressed` are the design's behaviour; the exact
+    effect of Escape (restore on focus, or restore on open) is Q.
+34. [Q] The exact Escape semantics for a numeric field.
+35. [D] The Auto/Reset affordance is a separate, icon-only control with its words in `resetLabel`
+    (`AeNumberField` already specifies this), and the row reads its placeholder word when the value
+    is the sentinel.
+36. [D] Width and height keep their aspect lock; the frame-range fields clamp against each other so
     a range can never invert.
 
 ## G. Combo boxes (format, codec, quality intent)
 
-32. [W] Click, Down, type-ahead and Enter choose an item; the closed field shows the current item;
-    the popup closes on selection, on Escape, and on a click outside.
-33. [R10] The popup is never clipped by the dialog's edge, and it is positioned under its field
-    (flipping above when there is no room below).
-34. [D] The list is keyboard-navigable while open, with the highlighted item following the keys.
+37. [D] Click, Down, Space, Escape and Enter choose and dismiss. (`AeComboBox` specifies
+    Up/Down/Space/Escape; the popup is the design's in-scene list.)
+38. [R10] The popup is never clipped by the dialog's edge, and it is positioned under its field,
+    flipping above when there is no room below.
+39. [Q] Whether type-ahead (typing the first letters of an item) selects in the closed field.
 
 ## H. Facts panel, layout and information architecture
 
-35. [R13] The facts read as muted label / value pairs, one fact per row, with no row repeating its
+40. [R13] The facts read as muted label / value pairs, one fact per row, with no row repeating its
     own value as its explanation.
-36. [R12] The frame range lives under the Custom/Advanced section; the default surface stays
+41. [R12] The frame range lives under the Custom/Advanced section; the default surface stays
     uncluttered for the common case.
-37. [D] Controls the destination dictates are stated, not offered; controls it merely defaults stay
+42. [D] Controls the destination dictates are stated, not offered; controls it merely defaults stay
     reachable under Advanced.
 
 ## I. Destination data
 
-38. [R14] The Discord 20 MB cap is opt-in and settable: the guidance (20 MB free, 50 MB Nitro,
+43. [R14] The Discord 20 MB cap is opt-in and settable: the guidance (20 MB free, 50 MB Nitro,
     500 MB boosted) is stated as a fact the user may apply, never enforced silently.
-39. [R15] A destination row declares the codecs it accepts and which one is the default, so the
+44. [R15] A destination row declares the codecs it accepts and which one is the default, so the
     codec row can offer AV1/H.265/H.264 where the platform accepts them, instead of a fixed
     encoder. (Schema change: a list, not a mode.)
 
 ## J. Rendering
 
-40. [R7] Icons render without aliasing at 1×, 1.5× and 2×: vector sources are rasterised at the
+45. [R7] Icons render without aliasing at 1×, 1.5× and 2×: vector sources are rasterised at the
     device pixel ratio, and nothing is scaled up from a 1× bitmap.
 
-## Open design questions (design decisions, not implementation limits)
+## Design questions (yours to decide — these are not implementation limits)
 
-- **D1.** Picker: default expansion state of the groups — all collapsed, all expanded, or the last
-  state remembered per session?
-- **D2.** Picker: does typing in the search field auto-expand the groups that have matches?
-- **D3.** Tooltips: which controls keep one? (Items that restate their own label do not.)
-- **D4.** Picker: is the group header the only expansion affordance, or does a click anywhere in
-  the group's header row toggle it (the current complaint is that rows were selectable at all)?
+Every line marked `[Q]` above, collected:
+
+- **Q1 (C17).** Group expansion defaults: all collapsed, all expanded, or last state remembered?
+- **Q2 (C22).** Does hovering a row change the selection, or only the highlight?
+- **Q3 (B10).** In the picker, does Escape clear the search field first and close only when it is
+  already empty?
+- **Q4 (B15).** Does focusing the search field select its existing text?
+- **Q5 (F34).** For a numeric field, does Escape restore the value from when it was focused, or the
+  value from when the dialog opened?
+- **Q6 (G39).** Does a closed combo box support type-ahead?
+- **Q7 (E29).** Which controls keep a tooltip at all? (You noted several restate their own label.)
+- **Q8 (A5).** Does the dialog remember its size between sessions?
+- **Q9 (D25).** When the form overflows, does the action row (Cancel/Export) stay fixed at the
+  bottom while the content scrolls, or does it scroll with the content?
 
 ## Traceability: the review items → this document
 
 | Review item | Contract |
 | --- | --- |
-| search: no keyboard selection/navigation | B6, B7, C17 |
-| arrows expand/collapse while typing | B6, C13 |
-| search keeps focus on outside click | B9 |
-| search: wrong pointer | B10 |
-| scrollbar inconsistent, drag inert | D19, D20 |
-| childless top-level items indented | C15 |
-| icons aliased | J40 |
-| groups expanded by default | C14, D1 |
-| tooltips instant, redundant, at the item | E22, E23, E25, D3 |
-| tooltips clipped by the window | E24 |
-| Export parameters overflows | D21 |
-| frame range belongs under Custom | H36 |
-| scrubber: wrong pointer, wrong highlight | F27, F28 |
-| Add range hover flashes black | C18 |
-| Discord 20 MB enforced | I38 |
-| Discord codec fixed | I39 |
+| search: no keyboard selection/navigation | B7, B8, C20 |
+| arrows expand/collapse while typing | B9, C16 |
+| search keeps focus on outside click | B11, A3 |
+| search: wrong pointer | B12 |
+| scrollbar inconsistent, drag inert | D23, D24 |
+| childless top-level items indented | C18 |
+| icons aliased | J45 |
+| groups expanded by default | C17, Q1 |
+| tooltips instant, redundant, at the item | E26, E27, E29, Q7 |
+| tooltips clipped by the window | E28 |
+| Export parameters overflows | D25, Q9 |
+| frame range belongs under Custom | H41 |
+| scrubber: wrong pointer, wrong highlight | F31, F33 |
+| Add range hover flashes black | C21 |
+| Discord 20 MB enforced | I43 |
+| Discord codec fixed | I44 |
+
+## What this means for choosing an implementation
+
+Because the design reference is the current exporter UI, "use a different toolkit" is not a fix in
+itself: whatever implements these lines must also reproduce the design's look and its specified
+behaviours. The hand-rolled controls are therefore not wrong by construction — they are wrong where
+they fail a line, and each line is met by whichever mechanism does meet it: a small behavioural fix
+in the existing control, a stock control where it matches the design exactly, a template/style
+override where behaviour must change beneath a control's own API, or new code. The choice is graded
+per line by driving the result, and the look is fixed either way.
