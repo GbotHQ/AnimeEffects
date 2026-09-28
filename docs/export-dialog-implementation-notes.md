@@ -407,3 +407,34 @@ Verified by the instrument the contract prescribes (timestamped hover frames, 30
 | scanning rows re-delays | row B: vanish at **096**, reappear at **112** (+16 frames ≈ 500 ms) |
 
 Before the fix the same measurement put the hover highlight and the tooltip on the **same frame**.
+
+## R1, landed: `AeButton` is a `Button`
+
+Same file name, same call sites (they use only `text`, `kind`, `iconName`, `enabled`, `onClicked`).
+Chrome comes from delegates, so the design keeps its three fills and its rule that a focus ring is
+the only border ever drawn; Qt supplies hover, pressed, `focusPolicy`, `checked`, the button role,
+and `click()`.
+
+Measured before converting — three things had to be checked rather than assumed:
+
+| question | answer | consequence |
+| --- | --- | --- |
+| does Qt fire `clicked` on Space? | **yes, on release** (press-only fires nothing) | the hand-written `Keys.onSpacePressed` would have **fired it twice** — dropped |
+| Return / Enter? | **no** — Qt's Button has no default-button concept in QML | contract line A2 still needs `Keys.onReturnPressed` — **kept** |
+| cursor after dropping the `MouseArea`? | `HoverHandler.cursorShape` exists | the pointing-hand cursor survives without a MouseArea that would double-handle the click |
+
+Also measured: `visualFocus`, `hovered`, `pressed`, `down`, `focusPolicy`, `checked`, `palette` and
+`click()` all exist, `clicked()` takes **no** argument (calling it with one prints "Too many
+arguments, ignoring 1"), and Basic's padding is symmetric (8/8) so centred content stays centred.
+`icon.source` is a *group* and reads invalid through `QObject::property`, which is why the content
+stays ours rather than moving to Qt's `IconLabel` — Qt colourises images, and this theme hands out
+pre-tinted SVGs.
+
+One behaviour change worth naming: the focus ring now binds `visualFocus` (Qt's, true for keyboard
+focus) instead of `activeFocus`, which also lit the ring after an ordinary mouse click. Contract line
+A1 asks for a focus ring on the focused control, and a ring left behind by the pointer is not one.
+
+Verified by driving it: rest state has no border, hover gives the lighter fill **and** the hand
+cursor (captured with `-draw_mouse`), a Tab puts the ring on Cancel, and Return with that focus
+closes the picker (`Use this destination`: showing → absent). Suites 16/16 in Debug; Release built
+zero-warning and also 16/16.
