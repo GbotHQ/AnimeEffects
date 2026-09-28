@@ -48,6 +48,19 @@ fi
 unset WAYLAND_DISPLAY
 export QT_QPA_PLATFORM=xcb
 
+# AND MAKE THE APPLICATION'S OWN WORDS REACH THE LOG. Qt's default message handler
+# writes to the systemd JOURNAL when stderr is not a console, and a probe redirects
+# stderr to /tmp/probe_app.log -- so every Qt warning and every QML error has been
+# going somewhere no probe log shows. Measured: with the output redirected, QML
+# console.info produced 0 lines in the file without this and 1 line with it, and
+# journalctl held the ones that went missing. Set it so a failing probe's log is
+# the whole story rather than the part of it that happened to be a printf.
+export QT_FORCE_STDERR_LOGGING=1
+# The QML console.log category (qCDebug, "qml") is filtered by the default rules;
+# `QT_LOGGING_RULES="qml.debug=true"` turns it on when a scene needs to explain
+# itself. Deliberately NOT set here: *.debug=true drowns a probe log in Qt's own
+# font-database and pointer-trace chatter.
+
 # SANDBOX THE SETTINGS. A probe drives the real application, and the application
 # writes QSettings on every export: the remembered destination, the last output
 # directory and name, the per-destination folders, the remembered frame range and

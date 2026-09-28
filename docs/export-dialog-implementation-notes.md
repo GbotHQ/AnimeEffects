@@ -4,27 +4,55 @@ Companion to `docs/export-dialog-behavior.md`. That file is the design; this one
 line actually costs, from the Qt 6.11 sources (file and line) and from measurement where reading
 could not settle it. Verdicts are marked **[read]**, **[driven]** or **[open]**.
 
-## Method, and two instruments that do not work
+## Method — and the two instruments I first wrote off, both wrongly
 
 - **Read:** the Qt 6.11 sources of the Basic style and the templates, cited inline.
-- **Driven — keyboard:** key events injected **in-process into the QQuickWidget**, which is how Qt's
-  own autotests drive a scene. Deterministic, needs no window manager, and reproduces the routing
-  question exactly:
+- **Driven — keyboard, in-process:** key events injected into the QQuickWidget, which is how Qt's
+  own autotests drive a scene. Isolates QML routing from the platform input path:
 
   ```cpp
   QKeyEvent press(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
   QCoreApplication::sendEvent(quickWidget, &press);   // reaches the scene's focus item
   ```
 
-- **Does not work — `xdotool` under Xvfb.** Neither bare Xvfb nor Xvfb + `openbox` ever gave the
-  process an active window (`QGuiApplication::focusWindow()` stayed `nullptr`), so **not one key
-  ever reached the application**. Coordinate clicks still work, which is why the existing probes get
-  away with `ae_press` and set values through the accessibility interfaces instead of the keyboard.
-  Driving real input needs either a session with working focus or `ydotool` (installed) against a
-  real compositor.
-- **Does not work — `console.log`.** QML's `console.log` produces no output in this environment
-  (the same silent-logging trap as `qInfo`). A scene log must be accumulated in a QML property and
-  printed from C++ with `fprintf`, or a driven test will report "nothing happened" for every key.
+- **Driven — keyboard, at the OS level: it works.** My "not one key ever reached the application"
+  claim was a scripting bug, not a limitation. Under Xvfb **with a window manager** the window does
+  take focus — measured `focusWindow=yes active=1 activeFocusItem=QQuickTextInput` — and `xdotool`
+  keys arrive (`sceneKeys=KEY 65 / KEY 66`). What actually broke it: `xdotool search --name "^fx$"`
+  returned nothing, so focus went to the wrong window, and my click used guessed coordinates that
+  fell outside the window, which *removed* focus. The recipe that works:
+
+  ```bash
+  xvfb-run -n 53 --server-args="-screen 0 1024x768x24" bash -c '
+    openbox & sleep 2
+    ./app & sleep 3
+    W=$(xdotool getactivewindow)                     # or: search --class <name>
+    eval $(xdotool getwindowgeometry --shell $W)     # X, Y, WIDTH, HEIGHT
+    xdotool windowactivate --sync $W
+    xdotool mousemove $((X + WIDTH/2)) $((Y + HEIGHT/2)) click 1
+    xdotool key Down'
+  ```
+
+  Coordinate clicks need none of this, which is why the existing probes get away with `ae_press` and
+  never noticed the gap. `ydotool` stays the tool for a real Wayland compositor, where Xvfb cannot
+  stand in. Keyboard lines can therefore be verified with **real key events**, not only injection.
+
+- **Qt and QML log output: not swallowed, redirected.** Same program, stderr redirected to a file:
+
+  | environment | marks reaching stderr |
+  | --- | --- |
+  | none | 0 |
+  | `QT_FORCE_STDERR_LOGGING=1` | 1 — `console.info` arrives, `console.log` still filtered |
+  | `QT_LOGGING_RULES=*.debug=true` alone | 0 |
+
+  and the journal holds what stderr lost (`journalctl --user`, `fx[…] INFO_MARK scene ready`). Two
+  separate documented mechanisms: Qt's default handler writes to **journald** when stderr is not a
+  console (`QT_FORCE_STDERR_LOGGING`; formerly `QT_LOGGING_TO_CONSOLE` /
+  `QT_ASSUME_STDERR_HAS_CONSOLE`), and `console.log` maps to `qCDebug` in category `qml`, which the
+  default rules filter (`*.debug=true` or `qml.debug=true`). **Consequence for this project: the
+  probes launch the app with its output redirected to `/tmp/probe_app.log`, so every Qt warning and
+  QML error has been going to the journal instead of the log — `scripts/gui/_lib.sh` now exports
+  `QT_FORCE_STDERR_LOGGING=1`.**
 
 ## Measured: where a key pressed in a focused TextField actually goes
 
@@ -69,17 +97,30 @@ caret=1 text='a'               <- text insertion; the arrow never moved the care
 
 ## What this settles, and what it does not
 
-**Settled:** my earlier claim that a Controls-based implementation "is not less work" was wrong.
-Stock covers the I-beam cursor, the scrollbar drag, combo type-ahead and keyboard highlight, list
-sections, and palette-driven selection colours — five lines for free.
+### The principle, since this document keeps being asked the question
 
-**Also settled:** the lines the review actually hit — routing arrows from a focused field into a
-list, tooltip delay and placement policy, expansion, indentation, hover paint, keyboard selection
-semantics — are **neutral**. They are our code in either implementation, and no toolkit choice
-removes them. That is why "which toolkit" was never the interesting question: measured, the defect
-cluster sits in behaviour we wrote and never tested, not in a library's gaps.
+**Use the abstraction we already have unless a contract line says otherwise.** Stock Qt Quick
+Controls is the default; hand-rolling one is justified per line, in writing, by the line it fails —
+not by a preference for owning the pixels, and not by a constraint that is asserted instead of
+measured. "Which toolkit" is a real question with a real answer, and the answer is a mix: five lines
+of this cluster are met outright by stock code (see the table), the rest are the same work either
+way, and where stock is close but not exact the delegate/template override is still less code than
+a control from scratch. My own `AeToolTip.qml` is the counter-example to keep in mind: its comment
+states, as fact, a limitation I never tested ("a QQuickWidget cannot render a popup outside its own
+bounds") and that limitation is not even true for Qt 6.8+ with `Popup.Window`.
 
-**Not settled (do not claim these):**
+### Settled
+
+My earlier claim that a Controls-based implementation "is not less work" was wrong. Stock covers the
+I-beam cursor, the scrollbar drag, combo type-ahead and keyboard highlight, list sections, and
+palette-driven selection colours — five lines for free.
+
+The lines the review actually hit — routing arrows from a focused field into a list, tooltip delay
+and placement policy, expansion, indentation, hover paint, keyboard selection semantics — are
+**neutral**: our code in either implementation, and no toolkit choice removes them. Measured, the
+defect cluster sits in behaviour we wrote and never tested.
+
+### Not settled (do not claim these)
 
 1. Whether popups and tooltips can be made to work from the *existing QQuickWidget host* on Wayland.
    Needs a real compositor and real input (`ydotool`), not Xvfb. This is the one line that decides
