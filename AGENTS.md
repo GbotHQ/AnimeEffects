@@ -178,13 +178,31 @@ Xvfb is X11 and cannot stand in for a compositor when the behaviour *is* the pla
 window placement, popups and tooltips, IME, focus. For those, drive the real session with
 **`ydotool`** (installed), remembering that the window must be activated first.
 
-Two capture notes:
+Three capture notes:
 
 - `import -window root` (ImageMagick) does **not** contain the pointer — no X11 screen grab does,
-  which is why `ffmpeg` grew `-draw_mouse`. When a line is about the *cursor shape*, capture with
-  `ffmpeg -f x11grab -draw_mouse 1 -frames:v 1` (this repo has not exercised that end to end yet).
+  which is why `ffmpeg` grew `-draw_mouse`. It works end to end (measured: it captured the I-beam
+  over the export dialog's search field):
+
+  ```bash
+  ffmpeg -loglevel error -f x11grab -draw_mouse 1 -video_size 1440x900 -i ":$DISPLAY" \
+         -frames:v 1 -y shot.png
+  ```
+
+  A cursor is a handful of pixels — crop and scale it (`-filter point -resize 400%`) before judging
+  it, or you will read "no cursor" off a frame that has one.
+- To measure a **delay** (tooltip wake-up, hover), record instead of snapshot: one screenshot cannot
+  separate "instant" from "appeared during ffmpeg's ~300 ms startup". Record a few seconds at 30 fps
+  while moving the pointer, then compare, per frame, the **hover highlight** against the thing being
+  timed and take the first frame where each changes. Done that way, the picker's tooltip and the row
+  highlight changed on the same frame — ≤33 ms, i.e. no wake-up delay at all (contract line E26
+  forbids exactly that).
 - A Wayland-native window is invisible to X11 capture; a black frame usually means "you captured
   the wrong compositor", not "the app did not draw".
+
+When tearing a manual run down: `pkill -f "<pattern>"` **matches the shell running the command**,
+because that pattern is in its own command line — it SIGTERMs the command before the message it
+would print. Kill by PID (`pkill -a Xvfb`, then `kill <pid>`), or match on the process name only.
 
 ## Where the existing GUI tooling lives
 

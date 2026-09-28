@@ -334,3 +334,34 @@ keys injected into the item, asserting on the model — 32 checks, B6/B7/B8/B9/B
 the old forwarding and exactly three B9 checks fail and it exits 1, so the test is known to be able
 to fail. B11 (click outside removes focus) and B12 (the cursor shape) are deliberately absent: both
 need a real window, which this test does not have.
+
+## Verification by driving the UI, one interaction at a time
+
+The alternative to a probe script is just *looking*: one application on one Xvfb display, driven with
+`xdotool`, captured with `import`, inspected between steps. About ten minutes, no encoded navigation,
+and it covers everything a person sees. This is how the search-field conversion was verified after
+`picker_keyboard`:
+
+| line | observation |
+| --- | --- |
+| B6 | typed `telegram` → list filters to the four Telegram rows, clear button appears |
+| B7 | two × `Down` → highlight moved row 1 → row 3; text still `telegram`, caret still at the end |
+| B9 | two × `Left` → **group still open**, all four rows present, text and highlight untouched |
+| B9, caret | then typed `X` → **`telegrXam`**, i.e. `Left` really moved the caret to position 6 instead of being swallowed |
+| B12 | `ffmpeg -draw_mouse 1`, cropped and scaled 400 % → **I-beam** over the text (first end-to-end use of that path in this repo) |
+| C17 | platforms open collapsed |
+| C18 | childless platforms (Bilibili, Dailymotion, Douyin, LINE sticker) align with the section icons rather than being indented |
+
+One defect **found**, that nothing had asserted:
+
+- **E26 — the tooltip has no wake-up delay.** Contract line 26 requires "the platform's wake-up
+  delay — never instantly". Measured from a 30 fps recording while the pointer entered a row: the row
+  highlight and the tooltip changed on the **same frame** (51 → 52), so the delay is ≤33 ms —
+  effectively instant. A single screenshot cannot show this, because ffmpeg's own ~300 ms startup
+  makes any quick tooltip look like it had a delay: the instrument has to compare the first-change
+  frame of the hover highlight against the first-change frame of the tooltip.
+
+The contract already prescribes the instrument for this line ("timestamped hover frames, 0 ms →
+wake-up delay → timeout"), and that is the whole argument in miniature: a probe has to *encode* that
+measurement to have it, an agent driving the UI takes it while looking, and neither one gives you a
+regression guard for free — that part stays a test.
