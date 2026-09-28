@@ -1,10 +1,12 @@
 // The destination chooser scene, rendered full-bleed inside the DestinationPicker
 // QDialog's QQuickWidget.
 //
-// Hand-rolled QtQuick, deliberately NOT Qt Quick Controls: a QQuickWidget cannot
-// render a Controls popup outside its own bounds (see AeToolTip.qml), and the app
-// has one visual language (AeButton/AeTextField) that Controls would replace with
-// its own.
+// It mixes the two, deliberately and per element: the list is QtQuick core (a
+// ListView over a flat row model), its scroll bar is a QtQuick.Controls
+// ScrollBar with this design's two visual items, and the rest is the app's own
+// Ae* components. An earlier version of this comment claimed a QQuickWidget
+// cannot render a Controls popup outside its own bounds; that was never tested
+// and is not true for Qt 6.8+ with Popup.Window.
 //
 // The scene is a pure VIEW. Everything a person can decide - which rows exist, what
 // is open, what the search reveals, what is selected, what Enter means - is in the
@@ -21,6 +23,7 @@ pragma Translator: "AnimeEffects.Dialogs"
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 Item {
     id: root
@@ -92,7 +95,8 @@ Item {
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                // Leave room for the hand-rolled scrollbar.
+                // Reserve the lane the ScrollBar below stands in, so a row's
+                // hover highlight stops short of it.
                 width: parent.width - 12
                 clip: true
                 model: picker
@@ -213,27 +217,50 @@ Item {
                         }
                     }
                 }
-            }
 
-            // A slim, hand-rolled scrollbar (no Qt Quick Controls).
-            Rectangle {
-                id: track
-                visible: list.contentHeight > list.height
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: 8
-                color: "transparent"
-                Rectangle {
-                    id: thumb
-                    width: 6
-                    radius: 3
-                    x: 1
-                    color: thumbHover.hovered ? theme.textMuted : theme.raisedHover
-                    height: Math.max(28, track.height * list.height / Math.max(1, list.contentHeight))
-                    y: (track.height - height)
-                       * Math.max(0, Math.min(1, list.contentY / Math.max(1, list.contentHeight - list.height)))
-                    HoverHandler { id: thumbHover }
+                // The list's scroll bar is a QtQuick.Controls ScrollBar ATTACHED to
+                // the ListView, so its position, size, active and its
+                // press/drag/paging come from the ListView's own visibleArea (D23)
+                // instead of from arithmetic over contentY. Two things are stated
+                // rather than inherited, both measured from the Basic style's
+                // ScrollBar.qml:
+                //
+                //  - the style's contentItem is TRANSIENT (opacity 0 with a fade-in
+                //    state that times out 450ms after the last interaction). The
+                //    design has no fade, so contentItem is replaced outright, which
+                //    also removes the state that drove it;
+                //  - with the fade gone, the style's `visible: policy !== AlwaysOff`
+                //    would draw an empty track when nothing overflows. So visible is
+                //    the ratio test the design asks for: show it only when the
+                //    content does not fit (D23).
+                //
+                // It is parented to the list AREA rather than the list: the attached
+                // bar would otherwise re-parent itself to the ListView and sit inside
+                // its clip. The Qt docs name this as the way to keep an attached bar
+                // outside a clipping Flickable, and position/size/active stay
+                // automatic.
+                ScrollBar.vertical: ScrollBar {
+                    id: vbar
+                    parent: listArea
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 8
+                    orientation: Qt.Vertical
+                    policy: ScrollBar.AsNeeded
+                    visible: size < 1.0
+                    hoverEnabled: true
+                    // The design's minimum thumb length, expressed in the units
+                    // minimumSize takes: a fraction of the bar's own length.
+                    minimumSize: height > 0 ? 28 / height : 0
+                    background: Rectangle { color: "transparent" }
+                    contentItem: Rectangle {
+                        implicitWidth: 6
+                        radius: 3
+                        color: vbar.pressed ? theme.textMuted
+                             : vbar.hovered ? theme.textMuted
+                             : theme.raisedHover
+                    }
                 }
             }
 

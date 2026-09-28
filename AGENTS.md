@@ -71,7 +71,7 @@ xvfb-run -n 71 --server-args="-screen 0 1440x900x24" bash -c '
   sleep 2
   ./build/src/gui/Debug/AnimeEffects assets/sample.psd > /tmp/app.log 2>&1 &
   app=$!
-  sleep 20                            # llvmpipe needs ~20 s for a project; or poll for a widget
+  sleep 20                            # see "readiness" below — poll, do not sleep, in real scripts
   W=$(xdotool getactivewindow)                     # prefer this, or: search --class AnimeEffects
   eval $(xdotool getwindowgeometry --shell $W)     # gives X, Y, WIDTH, HEIGHT
   xdotool windowactivate --sync $W
@@ -80,7 +80,7 @@ xvfb-run -n 71 --server-args="-screen 0 1440x900x24" bash -c '
   kill $app'
 ```
 
-Three traps, all of which have cost real time here:
+Five traps, all of which have cost real time here:
 
 - `xdotool search --name "<title>"` frequently matches **nothing** — a Qt dialog's `WM_NAME` is not
   the title you expect. Use `xdotool getactivewindow`, or `--class`.
@@ -89,6 +89,28 @@ Three traps, all of which have cost real time here:
 - Verify focus **from inside the application** (`QGuiApplication::focusWindow()`,
   `QQuickWindow::activeFocusItem()`). "No keys arrived" has two very different causes: no focus, or
   focus with nothing handling the key.
+- **A fixed `sleep` is not a readiness check.** The app is ready in ~4 s on an idle machine but takes
+  >25 s under load, and a probe that slept 12 s failed 15/15 *while the application was healthy* —
+  what it had found and was driving was a 200x71 splash screen. Poll for something that exists only
+  once the project is loaded: `scripts/gui/_lib.sh` has `wait_ready`, which polls `ae wait "File"`.
+- **A QML item inside a `QQuickWidget` reports its rect in the *widget's* coordinates, not the
+  screen's.** AT-SPI gave the export dialog's search field `x=14` while it actually sat at `x=75`,
+  because the dialog window is at `x=61`. A drag aimed with the raw rect missed by exactly that
+  offset, hit the row underneath, and looked like "the wrong control moved". Add the dialog's origin
+  before driving `xdotool`; `ae_y` in `_lib.sh` does that for the vertical axis.
+
+### Driving a dialog that opens mid-session
+
+There is no window manager, so `xdotool getactivewindow` returns 0,0 and neither title nor class
+matching can be trusted. Identify the dialog as **the window that did not exist before**:
+
+```bash
+before=$(xdotool search --onlyvisible --name . | sort)
+# ... do whatever opens the dialog ...
+after=$(xdotool search --onlyvisible --name . | sort)
+dialog=$(comm -13 <(echo "$before") <(echo "$after") | head -n1)
+eval $(xdotool getwindowgeometry --shell "$dialog")   # X, Y, WIDTH, HEIGHT
+```
 
 ## Asking about key *routing* rather than about the platform
 

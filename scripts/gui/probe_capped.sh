@@ -206,7 +206,7 @@ PY
       '"$APP"' "'"$PROJ"'" >/tmp/probe_capped_'"$slug"'.log 2>&1 &
       app=$!
       AE_UI_PID=$app; export AE_UI_PID   # the window the tooling must address
-      sleep 12
+      wait_ready 120 || sleep 12
       W=$(xdotool search --name "AnimeEffects" | tail -1)
       xdotool windowactivate --sync $W 2>/dev/null
 

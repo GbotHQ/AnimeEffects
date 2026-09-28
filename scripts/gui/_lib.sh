@@ -157,6 +157,43 @@ ae_press() { # ae_press <name> <what-the-caller-expects-to-happen>
     check 0 "$2"
 }
 
+# The screen y of a named widget, from its AT-SPI rectangle. A LIST ROW's rect is
+# usable (measured: the picker's rows report x=14 w=520, which is the list), unlike a
+# QML control's rect inside a dialog that is not at the screen origin - see the note
+# in ae_activate. Empty when the widget is not on screen, which is also how "this row
+# scrolled out of the viewport" reads.
+ae_y() { ae extents "$1" 2>/dev/null | awk 'NR==1 {print $2}'; }
+
+# A real pointer drag: move, press, move in STEPS, release. The steps are the point -
+# one mousemove followed by a mouseup is a click, which is why a drag with no motion
+# in it cannot tell a working scroll bar from a decorative one.
+ae_drag() { # ae_drag <x> <y> <dx> <dy> [steps]
+    local x=$1 y=$2 dx=$3 dy=$4 steps=${5:-8} i
+    xdotool mousemove --sync "$x" "$y"; sleep 0.2
+    xdotool mousedown 1; sleep 0.2
+    for i in $(seq 1 "$steps"); do
+        xdotool mousemove --sync $((x + dx * i / steps)) $((y + dy * i / steps))
+        sleep 0.05
+    done
+    sleep 0.2
+    xdotool mouseup 1; sleep 0.4
+}
+
+# Wait until the MAIN WINDOW is up, by asking the accessibility tree, instead of
+# sleeping a guessed number of seconds. The probes all did `sleep 12`, which is not a
+# readiness check: the same project opened in 4s on one run and took longer than 25s on
+# another (llvmpipe, plus whatever else the machine is doing), and every assertion
+# after the sleep then runs against the loading splash - a slow machine reported as a
+# broken application.
+wait_ready() { # wait_ready [seconds]
+    local limit=${1:-120} i
+    for i in $(seq 1 "$limit"); do
+        ae wait "File" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
+
 # Press a named widget through the accessibility ACTION instead of at its
 # coordinates. Required for Qt Quick controls, because Qt reports a QML item's
 # screen extents in the coordinates of its QQuickWidget and not of the window it
@@ -336,3 +373,4 @@ summary() { # summary <probe name>
 export AE_OUTER_PID=$$
 export AE_FAIL_FLAG="$(mktemp -u)"
 export -f ae ae_center ae_press ae_activate ae_report ae_report_asked check require_export_flow
+export -f ae_y ae_drag wait_ready

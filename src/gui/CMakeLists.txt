@@ -178,7 +178,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         Qt6::Core Qt6::Core5Compat Qt6::Widgets
         Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
         Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
-        Qt6::Quick Qt6::Qml Qt6::QuickWidgets
+        Qt6::Quick Qt6::Qml Qt6::QuickWidgets Qt6::QuickControls2
         cmnd core ctrl gl img thr util media
 )
 
