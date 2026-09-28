@@ -136,6 +136,26 @@ hand-rolled. This is that walk over the exporter's controls, done in that order,
 stopped at the first rung that meets the design. "Rung" is not a quality ranking — R3 is correct
 where no Controls type fits — it is the order a type gets tried in.
 
+### What "delegate" means here, because it is two different things
+
+- **A style component.** A Controls type is a C++ object owning the state and the behaviour, plus
+  QML objects that draw that state. The documentation calls those objects *delegates*:
+  `background` (the surface), `contentItem` (what the control shows or edits), `indicator` (the mark
+  — checkbox tick, combo caret), `handle` (a draggable part; `ScrollBar` has none, its
+  `contentItem` *is* the handle), `popup` (a detached surface — the combo's list, the tooltip's
+  bubble). The C++ object instantiates them, sizes itself from them, and pushes state into them
+  (`down`, `hovered`, `pressed`, `visualFocus`, `palette`), which is why replacing them is the
+  intended hook rather than restyling from outside.
+- **A model-row renderer.** A control that has a model also has a `delegate` that renders **one
+  row**: `ListView.delegate`, `ComboBox.delegate`. Same word, unrelated job — it renders data, not
+  the control's own state.
+
+`ComboBox` has both, which is the whole confusion: its `background`/`contentItem`/`indicator`/
+`popup` are style components, and its `delegate` is the row renderer. So the `background:
+Rectangle {}` in a `Button` **is** a delegate, and that snippet is what R1 means: keep the C++
+behaviour (focus, press, Return/Space, the accessible action) and replace the components that paint
+it.
+
 - **R0 — Controls directly.** Instantiate a Controls type and set declared properties only (`text`,
   `model`, `palette.*`, `padding`, `delay`, `orientation`, `elide`). No `background`,
   `contentItem`, `indicator`, `handle`, `popup` or `delegate` assignment; the look is the style's.
@@ -206,17 +226,28 @@ disappointing one.
 | Combo (`AeComboBox` 254 l) | **R1** | `ComboBox` — `background`, `contentItem`, `indicator`, `popup`, `delegate` | G39 type-ahead, G37 Up/Down highlight and Space/Escape/Enter, highlight-follows-keyboard, and the positioner that flips and clamps (G38). **The in-scene popup is not abandoned to meet G38** — `popup` is our delegate either way; what stops being ours is the list, its highlight and its keys |
 | Scrollbar (today a decorative hand-drawn Rectangle) | **R1** | `ScrollBar` attached to the list — `contentItem` (which *is* the handle; there is no `handle` property, measured) and `background` (the track) | D23 press/drag → `setPosition`, the visible/total ratio, wheel and paging, `policy: AsNeeded`; D24 is the two delegates |
 | Tooltip (`AeToolTip` 43 l) | **R1** | `ToolTip` — `background`, `contentItem`; `delay`/`timeout` are properties | E28 (a real popup, not clipped by the dialog), E27 placement and flip, E30 pass-through, one shared instance. **The stock `delay` is 0** (`qquicktooltip.cpp:111-130`), so E26 is met by the value the design sets — true on any rung |
-| Numeric field (`ScrubSpinBox` 205 l, `AeNumberField` 121 l) | **R1 + R3** | `SpinBox` for range/step/decimals/typing — `contentItem` (a published delegate, measured) and `background`, with `up`/`down.indicator` hidden; the **scrub drag stays R3**, because no Qt control has horizontal-drag-to-scrub | range/step/validation and `Accessible.SpinBox` come for free; F31/F33 (cursor, selection tokens) are a delegate/property either way, and the C++ `QAccessibleValueInterface` factory stays because Qt exposes no value protocol to a QML spin box on *any* base. **[open]** Whether the replacement `contentItem` must remain a text editor (the C++ edits through it) is not measured — the private headers are not installed and the source has moved out of the cgit tree; it changes R1 to R2 in name only, not the work |
-| Disclosure (`AeDisclosure` 63 l) | **R1, optional** | a checkable `Button` with a `contentItem` | focus and keys; no Controls type is a disclosure, so R3 as today is equally defensible |
-| Section header (`AeSectionHeader` 46 l) | **R3** | `Label` + hairline `Rectangle` | nothing; no type is a ruled heading |
-| Fact row (`AeFactRow` 67 l) | **R3** | two `Label`s | nothing; its `Accessible.role: StaticText` is required on any rung |
+| Numeric field (`ScrubSpinBox` 205 l, `AeNumberField` 121 l) | **R3, with an R1 editor inside it if we want one** | Three responsibilities, and only two of them are a delegate anywhere. **Value semantics** — `from`/`to`/`value`/`stepSize`/`editable`/`live`/`validator`/`textFromValue`/`valueFromText` — are `SpinBox`'s (measured from the type's property list). **The editor** is `SpinBox.contentItem` (a `TextInput` with `readOnly: !editable`, measured in `Basic/SpinBox.qml`). **The scrub shell** — display-until-clicked, horizontal drag, shift-fine, click-to-edit, Escape-revert — is a delegate in *no* toolkit, because it is behaviour rather than a component | the scrub is ours on any base. F31/F33 (cursor, selection tokens) are a one-line fix each in the existing control. **[open, and the reason this row is not a conversion]** `SpinBox` assumes an editor is always present (`readOnly: !editable`), while the design hides the caret until the field is clicked — so a SpinBox base still needs the mode switch written by hand *and* has to stop the always-present editor from taking the click and focus the scrub shell needs |
+| Disclosure (`AeDisclosure` 63 l) | **R1** | a checkable `Button` (`checked` = open) with a `contentItem` (caret + label) and a `background` (hover) | today it hand-writes a `MouseArea`, `Keys.onSpacePressed`/`onReturnPressed` and its own `Accessible.role`/`onPressAction`; `Button` already has all of that (`text`, `down`, `pressed`, `checked`, `checkable`, `indicator`, `activeFocusOnTab`). There is no Controls type that *is* a disclosure, so what remains ours is the caret and the words |
+| Section header (`AeSectionHeader` 46 l) | **R3** | `Label` + hairline `Rectangle` | nothing; no type is a ruled heading, and `T.Label` is `Text` plus a palette binding we do not use |
+| Fact row (`AeFactRow` 67 l) | **R3** | two `Label`s | nothing; not interactive, so no Template has behaviour to contribute. Its `Accessible.role: StaticText` is required on any rung |
 | Field label (`AeFieldLabel` 32 l) | **R0** | `Label` | **nothing** — every property it sets is set anyway, and `Layout.*`/`Accessible.*` are not Controls features. This is the honest shape of R0 here: `Label` is `Text` plus a palette binding we do not use |
 | Frame range row (`AeFrameRangeRow` 76 l) | **R3** | composition of two numeric fields + a trash button | composition is not a rung decision; its parts have theirs |
-| Destination list (`DestinationPicker.qml`) | **not a Controls question** | `ListView` (Qt Quick core) over the flat row model | the model's rows are non-contiguous once filtered, so `ListView.section` cannot own the groups; `TreeView` resolves in this Qt (measured) but would move expansion and filtering into Qt's model contract and out of the headless tests. C18 indentation, C20 keyboard selection and C21 hover paint are ours on every rung |
+| Destination list **rows** (`DestinationPicker.qml`'s row `Rectangle` + `Text` + `MouseArea`) | **R1** | `ItemDelegate` — `background`, `contentItem` | this row was missing from the first draft and belongs here. `ItemDelegate` publishes `highlighted`, `down`, `pressed`, `checked`/`checkable`, `text`, `background`, `contentItem` and handles focus and the accessible action; C21 (hover paint) and C20 (the highlighted row the keyboard drives) are then one state binding each, not a MouseArea we reimplement. The picker's *list* stays core `ListView`; only the rows change |
+| Destination list (`DestinationPicker.qml`) | **not a Controls question** | `ListView` (Qt Quick core) over the flat row model | the model's rows are non-contiguous once filtered, so `ListView.section` cannot own the groups; `TreeView` resolves in this Qt (measured) but would move expansion and filtering into Qt's model contract and out of the headless tests. C18 indentation and the model-backed selection stay ours on every rung |
 | Form scroll container (`ExportDialog` parameters) | **R1** | `ScrollView` with the same ScrollBar delegate, or a core `Flickable` | D25's wheel/drag/keys; Q9 is a layout question, not a toolkit one |
 | Dialog shell (`QDialog` + `QQuickWidget`) | out of this table | — | the host question belongs to E28's Wayland measurement |
 
 ## What this means for the files we have
+
+- Two elements were under-called in the first draft and are corrected above: the **disclosure**,
+  which hand-writes focus, Return/Space and its own accessible action that `Button` already
+  provides; and the picker's **rows**, where `ItemDelegate` publishes the `highlighted` state that
+  C20 and C21 are about.
+- The one place an R1 conversion is plausibly **negative** is the numeric field. `SpinBox` would
+  replace roughly seven lines of clamping and parsing with a dependency, and its always-present
+  editor contradicts the design's display-until-clicked mode; F31 and F33 are a one-line fix each
+  in the control we already have. Converting it is the conversion that has to be justified, not the
+  one to assume.
 
 - Seven files state a constraint as fact that is now measured false — `AeTextField.qml:7-9`,
   `ScrubSpinBox.qml:4-6`, `AeComboBox.qml:7-12`, and copies at `AeCheckBox.qml:8-11`,
