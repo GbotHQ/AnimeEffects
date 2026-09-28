@@ -128,3 +128,108 @@ defect cluster sits in behaviour we wrote and never tested.
 2. Whether the popup positioner keeps an in-scene tooltip inside the window bounds. The source
    suggests it clamps; nobody has watched it.
 3. The picker's specific section + expansion + focus interaction, in the design's own terms.
+
+# Control inventory: which rung each element lands on
+
+The order asked for was: Controls used directly first, then delegates, then templates, then
+hand-rolled. This is that walk over the exporter's controls, done in that order, with each element
+stopped at the first rung that meets the design. "Rung" is not a quality ranking — R3 is correct
+where no Controls type fits — it is the order a type gets tried in.
+
+- **R0 — Controls directly.** Instantiate a Controls type and set declared properties only (`text`,
+  `model`, `palette.*`, `padding`, `delay`, `orientation`, `elide`). No `background`,
+  `contentItem`, `indicator`, `handle`, `popup` or `delegate` assignment; the look is the style's.
+- **R1 — delegates over a Controls type.** The same type with the same C++ behaviour; the
+  style-owned delegates are replaced with the design's.
+- **R2 — templates.** `import QtQuick.Templates as T` and build the control from the template,
+  owning the whole assembly — the route a custom style takes. For when the part that must change has
+  no delegate slot, or the style's own assembly is wrong. One type looks like this case and is not:
+  `TextField` has **no `contentItem` at all** (measured), because it *is* its own editor, so it is
+  R1 with its text behaviour already intact rather than R2.
+- **R3 — hand-rolled.** QtQuick primitives only, which is what the exporter is today.
+
+**R2 has no members in this inventory**, and that is a result rather than a gap: every part the
+design needs to change turns out to be a delegate the style already publishes. The rung stays
+listed because it is the honest answer when a delegate *is* missing, and because `TextField` shows
+the shape of the near-miss — not a missing delegate, but no delegate slot at all, since the type is
+its own editor.
+
+## Three premises, measured rather than asserted
+
+1. **Controls works in this host.** A spike scene hosted in a `QQuickWidget` — `Button`,
+   `TextField`, `CheckBox`, `ComboBox`, `ScrollBar`, `SearchField`, `ToolTip`, `SpinBox`,
+   `ScrollView`, `ItemDelegate`, `Label`, `TreeView` — loads and renders, `palette.highlight` is
+   writable, and the delegate hooks are populated by the Basic style where they exist. Which hooks
+   *exist* is not uniform, and one absence changes a rung (below). Measured property by property,
+   `exists=0` meaning the property does not exist at all as opposed to holding null:
+
+   | type | `background` | `contentItem` | `indicator` | `popup` | `delegate` | other |
+   | --- | --- | --- | --- | --- | --- | --- |
+   | `Button` | yes | yes | — | — | — | |
+   | `TextField` | yes | **no such property** | — | — | — | `placeholderTextColor` exists |
+   | `SpinBox` | yes | yes | — | — | — | |
+   | `ComboBox` | yes | yes | yes | yes | yes | |
+   | `ScrollBar` | yes | yes | — | — | — | **no `handle`**; `contentItem` *is* the handle |
+   | `CheckBox` | — | yes | yes | — | — | |
+   | `ScrollView` | — | yes | — | — | — | |
+
+   (Source kept at `.git/dsh-scratch/controls-spike` for re-measurement.)
+2. **The default style here is not Basic.** With no style requested, `QQuickStyle::name()` is
+   `Fusion`. Basic — the documented base for customisation — must be selected explicitly, before the
+   first scene is created.
+3. **The design's look does not fit in a palette.** The `theme` context property carries 25 colour
+   tokens (26 properties; `closeIcon` is a URL). `QQuickPalette` exposes 20 roles ×
+   active/inactive/disabled: `base`, `brightText`, `button`, `buttonText`, `dark`, `highlight`,
+   `highlightedText`, `light`, `link`, `linkVisited`, `mid`, `midlight`, `shadow`, `text`,
+   `toolTipBase`, `toolTipText`, `window`, `windowText`, `placeholderText`, `accent`. Exactly six
+   of the 25 have a true role: `base`, `text`, `textDisabled` (the disabled group), `accent`,
+   `selection` (`highlight`), `selectionText` (`highlightedText`). The surfaces the design is built
+   from — `raised`, `raisedHover`, `recessed`,
+   `active`, `activeHover`, `hairline`, `outline`, `focus`, `hover`, `textMuted`, `textMutedDim`,
+   `accentHover`, `accentBright`, `accentText`, `icon`, `danger`, `warning`, `floaterBody`,
+   `floaterEdge` — have none.
+
+**So R0 is nearly empty by construction, and for a different reason than the hand-rolled files
+give.** The chrome is replaceable — that is what `background`/`contentItem` are for. The palette is
+the part that is genuinely too small: three quarters of this design's colours have nowhere to live
+in it, so every control that paints a surface needs at least one delegate no matter how good
+Controls is. "Use Controls directly where we can" therefore has a real, short answer rather than a
+disappointing one.
+
+## The inventory
+
+| Element (today) | Rung | Type, and what is overridden | Lines met, and what the rung buys |
+| --- | --- | --- | --- |
+| Picker search field (`AeTextField`, 150 l, hand-rolled `TextInput`) | **R1** | `TextField` — `background`, `padding`, `placeholderTextColor`; **no `contentItem` exists to override**, because `T.TextField` is not a Control but the editor itself (measured). The leading glyph and the clear button are therefore composition beside the field, shifted in by `leftPadding`/`rightPadding` | B12 I-beam and B13 selection/`selectByMouse` come from the type; `placeholderText`/`accepted`/context menu follow. Ours either way: focus-on-open (B6), `navigate()` forwarding (B14), click-outside (B11) |
+| Buttons (`AeButton` 106 l, `AeIconButton` 81 l) | **R1** | `Button` / `ToolButton` — `background`, `contentItem` | A1 focus ring, A2 Return/Space, `down`/`hovered`/`pressed`, `Accessible.Button` and the press action Qt already exposes for that role, `checkable`/`checked` for the aspect toggle. The design's look is those two delegates |
+| Checkbox (`AeCheckBox` 88 l) | **R1** | `CheckBox` — `indicator`, label colour via `palette.text` | one click/Space toggle action, `checked`, focus, the accessible toggle action |
+| Combo (`AeComboBox` 254 l) | **R1** | `ComboBox` — `background`, `contentItem`, `indicator`, `popup`, `delegate` | G39 type-ahead, G37 Up/Down highlight and Space/Escape/Enter, highlight-follows-keyboard, and the positioner that flips and clamps (G38). **The in-scene popup is not abandoned to meet G38** — `popup` is our delegate either way; what stops being ours is the list, its highlight and its keys |
+| Scrollbar (today a decorative hand-drawn Rectangle) | **R1** | `ScrollBar` attached to the list — `contentItem` (which *is* the handle; there is no `handle` property, measured) and `background` (the track) | D23 press/drag → `setPosition`, the visible/total ratio, wheel and paging, `policy: AsNeeded`; D24 is the two delegates |
+| Tooltip (`AeToolTip` 43 l) | **R1** | `ToolTip` — `background`, `contentItem`; `delay`/`timeout` are properties | E28 (a real popup, not clipped by the dialog), E27 placement and flip, E30 pass-through, one shared instance. **The stock `delay` is 0** (`qquicktooltip.cpp:111-130`), so E26 is met by the value the design sets — true on any rung |
+| Numeric field (`ScrubSpinBox` 205 l, `AeNumberField` 121 l) | **R1 + R3** | `SpinBox` for range/step/decimals/typing — `contentItem` (a published delegate, measured) and `background`, with `up`/`down.indicator` hidden; the **scrub drag stays R3**, because no Qt control has horizontal-drag-to-scrub | range/step/validation and `Accessible.SpinBox` come for free; F31/F33 (cursor, selection tokens) are a delegate/property either way, and the C++ `QAccessibleValueInterface` factory stays because Qt exposes no value protocol to a QML spin box on *any* base. **[open]** Whether the replacement `contentItem` must remain a text editor (the C++ edits through it) is not measured — the private headers are not installed and the source has moved out of the cgit tree; it changes R1 to R2 in name only, not the work |
+| Disclosure (`AeDisclosure` 63 l) | **R1, optional** | a checkable `Button` with a `contentItem` | focus and keys; no Controls type is a disclosure, so R3 as today is equally defensible |
+| Section header (`AeSectionHeader` 46 l) | **R3** | `Label` + hairline `Rectangle` | nothing; no type is a ruled heading |
+| Fact row (`AeFactRow` 67 l) | **R3** | two `Label`s | nothing; its `Accessible.role: StaticText` is required on any rung |
+| Field label (`AeFieldLabel` 32 l) | **R0** | `Label` | **nothing** — every property it sets is set anyway, and `Layout.*`/`Accessible.*` are not Controls features. This is the honest shape of R0 here: `Label` is `Text` plus a palette binding we do not use |
+| Frame range row (`AeFrameRangeRow` 76 l) | **R3** | composition of two numeric fields + a trash button | composition is not a rung decision; its parts have theirs |
+| Destination list (`DestinationPicker.qml`) | **not a Controls question** | `ListView` (Qt Quick core) over the flat row model | the model's rows are non-contiguous once filtered, so `ListView.section` cannot own the groups; `TreeView` resolves in this Qt (measured) but would move expansion and filtering into Qt's model contract and out of the headless tests. C18 indentation, C20 keyboard selection and C21 hover paint are ours on every rung |
+| Form scroll container (`ExportDialog` parameters) | **R1** | `ScrollView` with the same ScrollBar delegate, or a core `Flickable` | D25's wheel/drag/keys; Q9 is a layout question, not a toolkit one |
+| Dialog shell (`QDialog` + `QQuickWidget`) | out of this table | — | the host question belongs to E28's Wayland measurement |
+
+## What this means for the files we have
+
+- Seven files state a constraint as fact that is now measured false — `AeTextField.qml:7-9`,
+  `ScrubSpinBox.qml:4-6`, `AeComboBox.qml:7-12`, and copies at `AeCheckBox.qml:8-11`,
+  `AeSectionHeader.qml:15-16`, `DestinationPicker.qml:3-6`, `AeToolTip.qml:7-11`. "QC2 brings its own
+  chrome and its own palette" is half true (the palette is too small, the chrome is a delegate);
+  "a QQuickWidget cannot render a popup outside its own bounds" is untested and wrong for Qt 6.8+
+  with `Popup.Window`. Whichever rungs we take, those comments must stop giving untested limits as
+  the reason.
+- The accessibility layer is orthogonal and survives every rung: `QmlFormAccessibility`'s factory,
+  the `aeAccessible*` nodes and the value interface exist because Qt exposes no value protocol for
+  QML spin boxes — not because these controls were hand-rolled.
+- One type decision is worth taking before the search field is converted: `SearchField` (Controls
+  6.10, measured present) is the B-cluster's exact shape — magnifier indicator, clear indicator,
+  `delegate`/`highlightedIndex` — but it is a `ComboBox` subclass, so it announces ComboBox and
+  carries a suggestion popup the picker has no use for. `TextField` keeps the accessible role the
+  picker's probes already address. Recorded as a decision, not left implicit.
