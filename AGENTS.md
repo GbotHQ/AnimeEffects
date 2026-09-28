@@ -58,6 +58,13 @@ unset WAYLAND_DISPLAY
 export QT_QPA_PLATFORM=xcb
 ```
 
+**Both lines, every time — setting `DISPLAY=:77` is not enough.** Qt 6 prefers Wayland whenever
+`WAYLAND_DISPLAY` is set, regardless of `DISPLAY`, so a one-off launched as `DISPLAY=:77 ./app`
+quietly connects to the real compositor and **opens its window on the desktop you are working on**
+(measured: a spike written that way did exactly that). `ae_guard_display()` below guards *input*
+only; it says nothing about where the application itself will appear. When you find yourself typing
+`DISPLAY=...` by hand instead of using `xvfb-run`, that is the moment to re-check these two lines.
+
 **Coordinate clicks and AT-SPI actions work with no window manager** — that is what `scripts/gui`
 relies on (`ae_press`, `ae_activate`).
 

@@ -365,3 +365,45 @@ The contract already prescribes the instrument for this line ("timestamped hover
 wake-up delay → timeout"), and that is the whole argument in miniature: a probe has to *encode* that
 measurement to have it, an agent driving the UI takes it while looking, and neither one gives you a
 regression guard for free — that part stays a test.
+
+## E26, landed: the tooltip waits, and it was not a matter of picking a number
+
+`AeToolTip` now arms on `shown` and reveals after **500 ms**, retires itself after **10 s**, and
+cancels immediately if the pointer leaves. Two named constants at the top of the file.
+
+The interesting part was proving there was nothing to read. Contract line 26 says "the platform's
+wake-up delay", which sounds like a lookup:
+
+- `QStyleHints::toolTipWakeUpDelay` is **Qt 6.12+**, and a grep of the whole installed 6.11.2 header
+  tree matches **no** `showDelay`, `toolTipDelay` or `hideDelay` at all.
+- Qt Quick Controls' `ToolTip.delay` **defaults to 0** ("a tooltip with a negative delay is shown
+  immediately", and `timeout` defaults to -1 = never), and **no installed style sets either** — so
+  switching to Controls would have reproduced the defect.
+- Qt's *own* `QToolTip`, measured with a self-timing Widgets spike (records `QEvent::Enter`, polls
+  for the tooltip window, prints the delta):
+
+  ```
+  ENTER    at 2846 ms
+  TOOLTIP  at 2848 ms -> DELTA 2 ms
+  ```
+
+So following the platform on Qt 6.11.2 **is** the defect: Qt's tooltip is instant here. The delay is
+therefore the design's own constant (500 ms / 10 s, chosen as the conventional desktop values), and
+the file says so, with a note that `Qt.styleHints.toolTipWakeUpDelay` should replace the first one
+if the project moves to 6.12.
+
+**The hole worth recording:** the picker sets `shown: hoveredRow >= 0`, which stays `true` while the
+pointer scans from row to row — only `text` changes. Driving it that way showed the label jumping to
+the next row instantly, i.e. the same E26 defect through a different door. `onTextChanged` now
+re-arms, which also restarts the hide timeout.
+
+Verified by the instrument the contract prescribes (timestamped hover frames, 30 fps):
+
+| E26 requirement | measurement |
+| --- | --- |
+| appears after the delay, never instantly | cursor at frame 021, tooltip at **036** → 15 frames = **500 ms** |
+| hides when the pointer leaves | drop at **081**, the frame the pointer left |
+| hides after the timeout | frame 036 → **336** = 300 frames = **10.0 s** |
+| scanning rows re-delays | row B: vanish at **096**, reappear at **112** (+16 frames ≈ 500 ms) |
+
+Before the fix the same measurement put the hover highlight and the tooltip on the **same frame**.
