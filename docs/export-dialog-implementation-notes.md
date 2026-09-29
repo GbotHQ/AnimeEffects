@@ -511,3 +511,40 @@ so **compare with `magick compare -metric AE`, never a file hash**; and a raw
 `-compose difference` over un-flattened PNGs counts RGB differences *inside fully transparent
 pixels* (745 against the true 72, while the alpha channels were identical) — flatten first, or use
 `compare`.
+
+## R1, landed: `AeDisclosure` is a `ToolButton`
+
+Both call sites are unchanged — `text`, `open`, `onToggled`, `Layout.fillWidth` — and the header's
+original argument survives, narrowed to one property instead of ruling out the toolkit: the widget
+form used `QToolButton:checked`, and that paints the checked state with the QSS `@focus@` colour,
+which would fill "Advanced" with the accent. So `checkable` stays **off**, `open` remains the
+model's word, and Qt still supplies activation, Space, hover, the focus policy and the button role.
+
+Measured before converting:
+
+| question | answer | consequence |
+| --- | --- | --- |
+| does `toggled()` exist, and can we emit it? | **yes**, and `QMetaObject::invokeMethod(..., "toggled")` returns true | `onClicked: root.toggled()` keeps `onToggled` working at the call sites while the control is deliberately not checkable — Qt's own `toggled` never fires, so there is one signal and one owner of it |
+| Space? | fires `clicked` **on release** (press only sets `down`) | `Keys.onSpacePressed` would have toggled twice — **dropped** |
+| Return / Enter? | **neither consumed nor acted on** (`accepted=0`) | unlike the checkbox, this control has always handled Return, so the design's `Keys.onReturnPressed` is **kept** and cannot double-fire |
+| `hoverEnabled` default | **false** | hover asked for explicitly |
+| `focusPolicy` default | 0xB (StrongFocus) — but the **widget `QToolButton` is TabFocus** (measured) | stated as `Qt.TabFocus`, which is also what the hand-rolled control did: `activeFocusOnTab` plus a `MouseArea` that never took focus |
+| `click()` | exists and fires `clicked` | `Accessible.onPressAction` goes through it, as on `AeButton` |
+
+**The ring is contract line A1 again**: this header declares `activeFocusOnTab`, so it must show one,
+and it drew none. `standard.ssa` has no `QToolButton:focus` rule to borrow — it has `QPushButton:focus
+{ border-color: @focus@ }` — and Qt's own Basic `ToolButton` draws a border on `visualFocus`, so the
+ring is AeButton's: 1 px of `theme.focus` around the row, the only border it ever draws.
+
+Verification, offscreen (`geom`, both files in one engine, four states each):
+
+| old vs new | differing pixels |
+| --- | --- |
+| rest | **0** |
+| hover over the row / over its right end | **0** (both light the whole 568×30 row: 17036 px, identically) |
+| focus | **1208** — a 1 px ring around 568×30, sampled at `#a78bfa` = `theme.focus` |
+
+and within a version: `focus vs rest` is **0** for the hand-rolled control (the defect) and **1208**
+for the new one. One instrument detail worth keeping: the ring binds `visualFocus`, so the grab must
+give focus with `Qt::TabFocusReason` — focus given for any other reason photographs as "no ring" and
+reads like a defect that is not there.
