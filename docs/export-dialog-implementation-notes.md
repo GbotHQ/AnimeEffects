@@ -548,3 +548,60 @@ and within a version: `focus vs rest` is **0** for the hand-rolled control (the 
 for the new one. One instrument detail worth keeping: the ring binds `visualFocus`, so the grab must
 give focus with `Qt::TabFocusReason` — focus given for any other reason photographs as "no ring" and
 reads like a defect that is not there.
+
+## R1, landed: the picker's rows are `ItemDelegate`s
+
+The last `Rectangle` in the picker became Qt Quick Controls' `ItemDelegate`: the control
+supplies activation (`clicked`), the pointer machinery and the focus policy; the row keeps how it
+looks (its own `background`), what a click means (`onClicked` → toggle a section, select a
+destination), and — unchanged — the keyboard, which the ListView's `activeFocusOnTab` plus
+`Keys.onPressed` have always owned. The caret, badge and labels stayed anchored to the delegate
+root, whose parent is still the control, so the style's padding cannot move them, and the explicit
+`width`/`height` stay for the same reason: a Control sizes its delegates from padding and
+`contentItem`, and the collapsed row's `height: 0` is load-bearing (it is how expansion and
+filtering avoid renumbering rows).
+
+Measured before converting:
+
+| question | answer | consequence |
+| --- | --- | --- |
+| `hoverEnabled` default | **true** (unlike `Button`/`CheckBox`, which default false) | see the latch defect below — the property ends up **false** on purpose |
+| `focusPolicy` default | 0x0 = **NoFocus** | a row is not a Tab stop; contract A1's tab sequence is untouched, nothing to state |
+| Basic style's own `ItemDelegate` | `padding: 12`, a `background` that draws for down/highlighted/visualFocus, an `IconLabel` `contentItem` | our `background` replaces all of that — no pressed fill appears that this design does not have |
+| does `clicked` coexist with a `TapHandler`? | yes: one tap gives `clicked=1 AND tapped=1`, a double tap adds `double=1` | `onClicked` owns select/toggle, the handler keeps **only** `onDoubleTapped`; wiring both would toggle a section twice. A double tap on a section still nets two toggles — two clicks plus a `doubleTapped` that ignores sections — exactly as before |
+
+### The latch defect, found by the verification rather than by reading
+
+The first conversion had the background read the control's `hovered`. The drag state of `geom`
+(press a row, drag 100 px, release) then disagreed with the old build by **31544 px** over a
+bounding box of exactly two rows. A per-event trace named the mechanism: the gesture delivers
+**MouseMove to every crossed row and no HoverLeave at all** — not during the drag, not after it —
+so `hovered` latched true on all three crossed rows and two of them (the third was the selected
+row, whose colour the selection token overrides) kept `theme.raised` after the pointer had long
+left. The same trace exposed a second defect: during that gesture the row's own `HoverHandler`
+reported nothing (`listArea.hoveredRow` stayed −1 where the old Rectangle tracked 1→2→3), so the
+tooltip and the pointing-hand cursor would have diverged too.
+
+The fix is the old design, restated with the reason: `hoverEnabled: false` (its `hovered`
+deliberately unread) and the colour reads `rowHover.hovered` again, the handler that also feeds
+the cursor and the tooltip. One divergence remains and was accepted as-is: **while a button is
+held**, the handler no longer follows the pointer across rows the way the old Rectangle did; the
+first buttonless move after release puts it back exactly where the old code left it, all five
+pixel states are equal, and in a normal click the freeze is invisible.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `destination_picker` 82 checks PASS both configs; `picker_keyboard` **32 checks, 0 failures** both configs; full suites **16/16** Debug and Release |
+| `geom` preconditions | **10/10 `achieved=yes`**, 0 `no` |
+| old vs new, `magick compare -metric AE` | rest **0**, hover-over-box **0**, hover-over-label **0**, focus **0**, drag **0** |
+| catalogs | six files, `grep -c unfinished` = **0** |
+| end-to-end sweep | **13/13** probes, 0 stale, 0 portal lines (dialog canary first); `cosmic-comp`'s main thread 0–7% across 189 samples, never near the 35% abort |
+
+Instrument notes worth keeping: `findChildren<QQuickItem*>` reaches **0** ListView delegates
+(QObject parenting) — walk `childItems()`; a scratch binary left uncompilable by a previous edit
+made the first run silently use a **stale binary**; and the old baseline only loads from the
+directory that holds the component symlinks (`oldpicker/`), since the picker's `Ae*` siblings are
+not on its own.

@@ -1,10 +1,18 @@
 // The destination chooser scene, rendered full-bleed inside the DestinationPicker
 // QDialog's QQuickWidget.
 //
-// It mixes the two, deliberately and per element: the list is QtQuick core (a
-// ListView over a flat row model), its scroll bar is a QtQuick.Controls
-// ScrollBar with this design's two visual items, and the rest is the app's own
-// Ae* components. An earlier version of this comment claimed a QQuickWidget
+// It mixes four things deliberately, per element:
+//   * the list is a ListView over a flat row model (QtQuick core), and its ROWS are
+//     QtQuick.Controls ItemDelegates that carry this design's own background, caret,
+//     badge and words - the control supplies activation and the focus policy, the row
+//     supplies how it looks, what a click means, and (through its HoverHandler, not
+//     the control's own hover state - measured, see the delegate) where the pointer is;
+//   * its scroll bar is a QtQuick.Controls ScrollBar with this design's two visual
+//     items;
+//   * the search field, the buttons and the tooltip are the app's own Ae* components;
+//   * and everything a person can decide - which rows exist, what is open, what Enter
+//     means - lives in the model, so the scene is only ever a view.
+// An earlier version of this comment claimed a QQuickWidget
 // cannot render a Controls popup outside its own bounds; that was never tested
 // and is not true for Qt 6.8+ with Popup.Window.
 //
@@ -127,18 +135,64 @@ Item {
 
                 // Every tree node is a row; one that is not on screen collapses to
                 // zero height, so expansion and filtering never renumber anything.
-                delegate: Rectangle {
+                //
+                // Measured on this Qt before the rows became ItemDelegates:
+                //   * `hoverEnabled` defaults to TRUE here (unlike Button and CheckBox,
+                //     which default false) and `focusPolicy` to 0x0 = NoFocus, so a row
+                //     is not a Tab stop and the ListView's activeFocusOnTab +
+                //     Keys.onPressed keep owning the keyboard - contract A1's tab order
+                //     is untouched. Neither is stated below as a guess: both were read
+                //     off a built ItemDelegate in an offscreen spike.
+                //   * The control's OWN `hovered` cannot carry this row's highlight, and
+                //     the reason is a measured one. An event trace of a 100px
+                //     press-drag logged, for every row the pointer crossed, MouseMove
+                //     and NO HoverLeave - so with hoverEnabled true, `hovered` latched
+                //     true on all three crossed rows and was still true after release
+                //     with the pointer on the last of them: exactly the leftover
+                //     highlight this design never had. During that same gesture the
+                //     row's HoverHandler reports nothing at all (listArea.hoveredRow
+                //     stays -1 where the old Rectangle tracked 1,2,3), and with
+                //     hoverEnabled false it reports what it always did, because the
+                //     colour, the cursor and the tooltip read from the handler, as
+                //     they always did. One divergence remains, measured and
+                //     deliberate: while a button is held the handler no longer follows
+                //     the pointer (the old rows did); the first buttonless move after
+                //     release puts it back exactly where the old code left it.
+                //   * The Basic style's ItemDelegate sets padding: 12, its own
+                //     `background` (visible only when down/highlighted/visualFocus) and
+                //     an IconLabel `contentItem`. Supplying our own background removes
+                //     those fills - no pressed fill appears that this design does not
+                //     have - and our children are anchored to the DELEGATE ROOT, whose
+                //     parent is still the control, so the style's padding never moves
+                //     them. The explicit width/height stay for the same reason: a
+                //     Control sizes its delegates from padding and contentItem, and the
+                //     collapsed row's height of 0 is load-bearing (it is how expansion
+                //     and filtering avoid renumbering).
+                //   * `clicked` and a TapHandler coexist on one row: a tap gives
+                //     clicked=1 AND tapped=1, a double tap adds double=1. So select and
+                //     toggle live in `onClicked` and the handler keeps only
+                //     onDoubleTapped - wiring both would toggle a section twice.
+                delegate: ItemDelegate {
                     id: rowItem
                     width: list.width
                     height: model.onScreen ? 30 : 0
                     visible: model.onScreen
-                    radius: 4
-                    color: {
-                        if (model.isSection)
+                    // Off on purpose - see the measured note above. Hover is the
+                    // HoverHandler's job; the control supplies activation and focus.
+                    hoverEnabled: false
+
+                    // The row's own highlight, in this design's terms: the selection
+                    // token, or the raised token while hovered - not the style's
+                    // background, which draws only for down/highlighted/visualFocus.
+                    background: Rectangle {
+                        radius: 4
+                        color: {
+                            if (model.isSection)
+                                return rowHover.hovered ? theme.raised : "transparent";
+                            if (model.selected)
+                                return theme.selection;
                             return rowHover.hovered ? theme.raised : "transparent";
-                        if (model.selected)
-                            return theme.selection;
-                        return rowHover.hovered ? theme.raised : "transparent";
+                        }
                     }
 
                     // The disclosure caret: the one affordance that says a platform
@@ -194,6 +248,12 @@ Item {
                         else picker.select(index);
                     }
 
+                    // The row's hover, still - colour, pointing-hand cursor and tooltip
+                    // all read from this handler, exactly as they did when the row was
+                    // a Rectangle. It is not redundant with the control: measured, the
+                    // two disagree during a press-drag (the control latches and never
+                    // leaves, the handler tracks the pointer step by step), and only
+                    // the handler behaves the way this design's highlight requires.
                     HoverHandler {
                         id: rowHover
                         cursorShape: Qt.PointingHandCursor
@@ -210,11 +270,18 @@ Item {
                     // One click on a platform opens or closes it; one click on a
                     // destination selects it; a double click on a destination is the
                     // answer. A platform never answers, whatever is clicked.
+                    onClicked: {
+                        if (model.isSection) picker.toggleSection(index);
+                        else picker.select(index);
+                    }
+                    // The DOUBLE tap only: the control above owns the single click.
+                    // This stays a handler because it still sees every tap alongside
+                    // `clicked` (measured: tapped and clicked both increment per tap,
+                    // and double arrives once), so there is nothing to reconstruct from
+                    // click timing. A double tap on a section still nets two toggles -
+                    // two clicks, plus a doubleTapped that ignores sections - which is
+                    // exactly what it did when the handler owned both.
                     TapHandler {
-                        onTapped: {
-                            if (model.isSection) picker.toggleSection(index);
-                            else picker.select(index);
-                        }
                         onDoubleTapped: {
                             if (!model.isSection) picker.activate(index);
                         }
