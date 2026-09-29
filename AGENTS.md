@@ -65,6 +65,40 @@ quietly connects to the real compositor and **opens its window on the desktop yo
 only; it says nothing about where the application itself will appear. When you find yourself typing
 `DISPLAY=...` by hand instead of using `xvfb-run`, that is the moment to re-check these two lines.
 
+**And the platform theme has to be pinned, or the FILE DIALOG opens on that same real desktop.**
+`scripts/gui/_lib.sh` exports `QT_QPA_PLATFORMTHEME=generic`. A session that sets the variable
+(COSMIC sets `cosmic`) makes Qt load that theme's plugin, and `libcutecosmictheme.so` asks
+`org.freedesktop.portal.FileChooser` for its dialog — the *portal* draws that window in the live
+session, while the probe types into Xvfb and waits for a dialog that is not there. Measured
+2026-09-29: a probe sweep prompted for a filename over and over on the desktop, with the
+counterpart line in the journal:
+
+```
+xdg-desktop-portal-cosmic[575979]: no file chooser dialog with ID Id(642)
+```
+
+Two wrong fixes to skip, both checked: `QT_NO_XDG_DESKTOP_PORTAL=1` does not stop it (cutecosmic
+never reads that variable — zero occurrences of it in the plugin), and *unsetting*
+`QT_QPA_PLATFORMTHEME` does not either (Qt's candidate list came out `("cosmic","generic")`, so the
+portal theme is offered even when nothing was asked for). Only pinning a theme with no portal
+strings works: of the four platform themes installed, `libcutecosmictheme.so` (1) and
+`libqxdgdesktopportal.so` (2) contain the FileChooser bus name, `libqgtk3.so` and `libqt6ct.so`
+contain none. With `generic` the dialog is an ordinary widget window inside Xvfb — verified by
+opening one deliberately: a new window on the Xvfb display, "Save As" with `nene.mp4` already
+selected in its filename field, and no portal line in the journal.
+
+So before a long run that will open a dialog, run one dialog as a **canary** and ask the journal:
+
+```bash
+T0=$(date '+%Y-%m-%d %H:%M:%S')
+# ... open exactly one dialog the probes would open ...
+journalctl --user --since "$T0" | grep -i file_chooser   # must print nothing
+xdotool search --onlyvisible --name . | sort            # the dialog's window must be in here
+```
+
+PROBE-SAFETY §R3 (`/home/gambot/dev/dsh-demo/PROBE-SAFETY.md`) predicted this class of failure —
+this is what it looks like on a Wayland desktop.
+
 **Coordinate clicks and AT-SPI actions work with no window manager** — that is what `scripts/gui`
 relies on (`ae_press`, `ae_activate`).
 

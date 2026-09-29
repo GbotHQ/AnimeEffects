@@ -48,6 +48,28 @@ fi
 unset WAYLAND_DISPLAY
 export QT_QPA_PLATFORM=xcb
 
+# AND PIN THE PLATFORM THEME, OR THE FILE DIALOG APPEARS ON THE USER'S DESKTOP.
+# A session that sets QT_QPA_PLATFORMTHEME (COSMIC sets "cosmic") makes Qt load that
+# theme's plugin, and `libcutecosmictheme.so` opens org.freedesktop.portal.FileChooser:
+# the PORTAL draws that window in the live session, while the probe types into Xvfb and
+# waits for a dialog that is not there. Measured 2026-09-29: a sweep prompted for a
+# filename over and over on the desktop and the journal logged
+#   xdg-desktop-portal-cosmic ... file_chooser: no file chooser dialog with ID Id(642)
+# Three things are worth knowing before "fixing" it differently:
+#   * QT_NO_XDG_DESKTOP_PORTAL does NOT stop this - cutecosmic never reads that
+#     variable (measured: zero occurrences of it in the plugin).
+#   * Leaving the variable unset is not enough either: Qt's candidate list came out as
+#     ("cosmic", "generic"), so the portal theme is offered even when we ask for
+#     nothing.
+#   * Of the four platform themes installed, only libcutecosmictheme.so (1) and
+#     libqxdgdesktopportal.so (2) contain the FileChooser bus name; libqgtk3.so and
+#     libqt6ct.so contain none.
+# "generic" is Qt's own theme: it has no plugin file and no portal strings, so the
+# dialog is an ordinary widget dialog rendered inside this Xvfb, where xdotool can
+# reach it. This pins the HARNESS only - the shipped application still follows the
+# user's session.
+export QT_QPA_PLATFORMTHEME=generic
+
 # AND MAKE THE APPLICATION'S OWN WORDS REACH THE LOG. Qt's default message handler
 # writes to the systemd JOURNAL when stderr is not a console, and a probe redirects
 # stderr to /tmp/probe_app.log -- so every Qt warning and every QML error has been
