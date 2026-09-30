@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QQuickWidget>
 #include <QQmlContext>
+#include <QScreen>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -32,8 +33,19 @@ ExportDialog::ExportDialog(const ExportViewModel::Init& aInit, GUIResources& aRe
     // resizable by the window manager, and modal over the main window.
     setModal(true);
     setSizeGripEnabled(true);
-    resize(kDefaultWidth, kDefaultHeight);
-    setMinimumSize(kMinimumWidth, kMinimumHeight);
+    // The floor is "low enough for a small laptop screen" - and on a screen
+    // SHORTER than the floor the minimum itself pushes the action row off the
+    // screen (D25: the row must stay reachable). So the floor yields to the
+    // screen: the scene scrolls its content at any size below natural (D25's
+    // own rule), so a screen-clamped minimum costs the form nothing it does not
+    // already handle. Interpretation flagged in the increment's report: the
+    // line names "small screen" as a cause of content not fitting; this is the
+    // shell's half of that clause.
+    const QRect avail = screen() ? screen()->availableGeometry() : QRect();
+    const int maxW = avail.width() > 0 ? avail.width() : kDefaultWidth;
+    const int maxH = avail.height() > 0 ? avail.height() : kDefaultHeight;
+    resize(qMin(kDefaultWidth, maxW), qMin(kDefaultHeight, maxH));
+    setMinimumSize(qMin(kMinimumWidth, maxW), qMin(kMinimumHeight, maxH));
 
     mModel = new ExportViewModel(aInit, this);
     mTheme = new QmlTheme(this);

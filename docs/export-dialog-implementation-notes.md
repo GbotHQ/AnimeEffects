@@ -944,3 +944,71 @@ content-minimum behavior on the form side.
 | visual/measured | before/after geometry dumps at real call sites (`tooltip-spike/`), clip −8→0 and 433..523→410..500 |
 | targeted probes | `dest`, `inputs`, `dialog` **3/3** (portal canary first, clean with the fixed `[systemd-run]` filter) |
 | catalogs | 0 `unfinished` ×6; kept strings unchanged |
+
+## Post-R1, landed: the form scrolls, the action row does not (D25 + Q9)
+
+### Before, measured (`overflow-spike/`, real `ExportDialog.qml` + real `ExportViewModel`, offscreen)
+
+| scenario | content vs page | before |
+| --- | --- | --- |
+| 560×640 Advanced open + 4 ranges | 630 / 558 | **+72 px CUT, no recourse** — the defect |
+| 400×300 / 320×300, Advanced open | 534 / 218 | +316 px cut, +68 / +148 px horizontal overflow |
+| the action row | — | was already anchored (footer y=588) — Q9's "fixed" half held; D25's scroll was missing entirely |
+
+### What landed
+
+- `page` lives in a clipped 2-D `Flickable` (`formScroller`; `StopAtBounds`; content grows to
+  `implicitWidth/Height`); the footer is untouched and stays pinned. Wheel and drag are the
+  Flickable's own (both driven in tests). Keys: focus travel scrolls the target's whole **row** into
+  view (`ensureVisible`), PageUp/PageDown/Home/End page at the root (editors keep their Home/End —
+  they consume first).
+- A themed `ScrollBar` (the picker's D23 pattern: attached, parented **outside** the clip, no fade,
+  visible only on overflow, 28 px minimum thumb). **Flagged choice**: the contract does not require
+  a form scrollbar — this applies item 23/24's rules by analogy ("a scroll area with no affordance
+  is its own defect"). Pixel evidence shows exactly this lane and nothing else in the overflow
+  states (AE=3762/2155/1675 = lane + one 1 px AA clip-edge fix at (544,401); no-overflow states
+  AE=1 — that same pixel only).
+- `AeToolTip.clampRect()`: the fit rect is the window **intersected with every clipping ancestor** —
+  necessary because the Flickable is clipped now (and measured: `QQuickFlickable` does NOT clip by
+  default), so in-content tooltips would be cut at the viewport without it. E27 flip / E28 clamp
+  unchanged in spirit, now against the visible viewport.
+- **Flagged interpretation (shell)**: the window minimum/default now clamps to the available screen
+  (`min(560×640, avail)`) — D25's "small screen" clause otherwise leaves a 640 px floor taller than
+  the screen, pushing the action row off it. Revert in `ExportDialog.cpp` if the line is read as
+  scene-only.
+
+### Regression proofs (deliberate breaks, run, reverted)
+
+Un-clamping the tooltip fails exactly the 2 E28/E27 asserts **at the measured old defect position**
+(342,635 vs viewport 0,72 528×558); disabling `ensureVisible` fails exactly the 4 deep controls.
+**One self-catch worth its own line**: the first reachability block passed with `ensureVisible`
+deliberately disabled — it ran at `contentY=max`, where everything already fit. A test that could
+not observe the regression was tightened (start at `contentY=0`, the destination row as a real
+button) and re-proved. That is the precondition rule from the key-routing notes, caught in the act.
+
+### Two QML traps the edge test bought (now in AGENTS.md)
+
+`parentItem` is a C++ getter — QML walks must use `.parent` or they die silently after one hop; and
+bindings cannot track `mapToItem` — x/y stay stale across scrolls until the walk explicitly reads
+each ancestor's geometry (those reads are the dependencies).
+
+### The routed finding: labels-cut-vs-elide does NOT reproduce here
+
+`AeFieldLabel` elides (`Text.ElideRight`) with slack at the 560 minimum (w=104 vs 34–69 px text).
+Below ~468 px window width the layout minimums overflow **horizontally** (measured +68/+148) —
+covered by the same line ("never exceeds **without a scroll**") via the 2-D scroll host. Nothing
+fixed because nothing was broken.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `scripts/run_suites.sh` **19/19 Debug, 19/19 Release**, exit 0 (orchestrator re-run; `form_layout` in both) |
+| regression proof | un-clamp → exactly 2 asserts; no-`ensureVisible` → exactly 4; both reverted green |
+| visual | before/after per scenario (`overflow-spike/out_before` vs `out`); no-overflow AE=1 (the clip-edge pixel), overflow AE = the flagged scrollbar lane |
+| targeted probes | canary PASS (fixed pattern), `dialog`/`export`/`format`/`inputs` **4/4** (`probe_scroll` measured to drive the PICKER's bar, not the form — substituted deliberately) |
+| catalogs | 0 `unfinished` ×6; no string churn |
+
+**Three flagged choices for the user** (all reversible): root-level key paging, the added form
+scrollbar, the screen-clamped window floor.

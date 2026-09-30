@@ -257,6 +257,37 @@ target_link_libraries(tooltip_contract PRIVATE
     media
 )
 
+# The export form's overflow contract (D25 + Q9): the content scrolls by wheel,
+# drag and keys while the Cancel/Export row stays pinned and reachable, every
+# control is scrolled into view on focus, the bar appears only on overflow, and
+# the tooltip/combo popups inside the scrolling content are clipped by NOTHING
+# (E28's clamp narrows to the visible viewport). Hosts the REAL ExportDialog.qml
+# with the real view model. See form_layout.cpp.
+add_executable(form_layout
+    form_layout.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/qml/ExportViewModel.cpp
+    ../src/gui/qml/ExportViewModel.h
+    ../src/gui/ExportFacts.cpp
+    ../src/ctrl/ExportTarget.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(form_layout PRIVATE .. ../src ../src/gui)
+target_compile_definitions(form_layout PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+add_dependencies(form_layout release_translations)
+target_link_libraries(form_layout PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both

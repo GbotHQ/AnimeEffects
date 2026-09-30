@@ -219,6 +219,19 @@ Key propagation in Qt Quick follows the **item hierarchy**: an unhandled key tra
 item and **never to a sibling**. A handler on a list will not see keys typed into a search field
 beside it — the handler must live on a common ancestor, or the field must forward them.
 
+## Two QML traps for geometry walks (measured 2026-09-30, the overflow increment)
+
+- **`parentItem` is a C++ getter, not a QML property.** `a.parentItem` inside QML JavaScript is
+  `undefined`, and a walk written with it dies **silently after one hop** (or parks the item at its
+  fallback position — a tooltip sat 30 px past the viewport while its fit-rect was correct). Walk
+  the item tree with `.parent`.
+- **QML bindings cannot track `mapToItem` geometry.** An `x:`/`y:` binding that calls
+  `mapToItem`/`mapFromItem` stays **stale after scrolls and resizes** even though the function's
+  result would change — the binding engine cannot see through the call. The walk must explicitly
+  read each ancestor's `x`/`y`/`width`/`height`/`contentX`/`contentY`; **those reads are the
+  dependencies** the binding needs. Measured: `clampRect()` returned the right rect while `tip.y`
+  kept the pre-scroll value until the reads were added.
+
 ## Wayland
 
 Xvfb is X11 and cannot stand in for a compositor when the behaviour *is* the platform:

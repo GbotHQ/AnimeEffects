@@ -77,15 +77,45 @@ Item {
     property real ownerW: parent ? parent.width : 0
     property real ownerH: parent ? parent.height : 0
 
-    // The hosting window's rectangle in the parent's coordinates: the window's
-    // content item is the topmost ancestor of any in-scene item. Called inside
-    // the x/y bindings so placement re-evaluates with the geometry it rests on.
-    function windowRect() {
+    // The rectangle the bubble must FIT, in the tooltip's PARENT's coordinates.
+    // Start from the hosting window (its content item is the topmost ancestor of
+    // any in-scene item) and narrow to the visible part of every clipping
+    // ancestor: since D25 the form's content scrolls inside a clipped Flickable,
+    // and a bubble clamped to the WINDOW alone would still be cut by that
+    // viewport - the same E28 defect arriving through a new door (measured class:
+    // a 324px tip overhanging its bounds by 114px and simply cut). Flickable-
+    // derived views count as clipping even at clip:false: conservative, and the
+    // cost is a bubble that stays a few pixels further inside than strictly
+    // needed beside a non-clipping view. The walk reads each ancestor's
+    // contentX/contentY/width/height ON PURPOSE - those reads are what make the
+    // x/y bindings below re-evaluate when the content scrolls under a revealed
+    // bubble. Called inside the x/y bindings so placement re-evaluates with the
+    // geometry it rests on.
+    function clampRect() {
+        if (!root.parent) return { l: -1e9, t: -1e9, r: 1e9, b: 1e9 };
         var top = root.parent;
         while (top && top.parent) top = top.parent;
-        if (!top || !root.parent) return { l: -1e9, t: -1e9, r: 1e9, b: 1e9 };
-        var o = root.parent.mapToItem(top, 0, 0);
-        return { l: -o.x, t: -o.y, r: top.width - o.x, b: top.height - o.y };
+        var l = -1e9, t = -1e9, r = 1e9, b = 1e9;
+        // NB: QML items walk by `.parent` (the item parent); `parentItem` is a
+        // C++ getter and reads as undefined here, which silently ends the walk
+        // after one hop - measured (form_layout's edge case caught it).
+        for (var a = root.parent; a; a = a.parent) {
+            // The reads below are as much for the BINDING as for the math:
+            // mapToItem cannot notify, so without reading x/y/contentX/contentY
+            // of every ancestor the bubble keeps whatever it computed at
+            // creation (measured: tip.y frozen 30px past the viewport after a
+            // scroll while clampRect() itself returned the right rect).
+            var dep = a.x + a.y + a.width + a.height
+                    + (a.contentX !== undefined ? a.contentX + a.contentY : 0);
+            if (a === top || a.clip || a.contentX !== undefined) {
+                var o = root.parent.mapToItem(a, 0, 0);
+                l = Math.max(l, -o.x);
+                t = Math.max(t, -o.y);
+                r = Math.min(r, a.width - o.x);
+                b = Math.min(b, a.height - o.y);
+            }
+        }
+        return { l: l, t: t, r: r, b: b };
     }
     function clamp(v, lo, hi) { return hi < lo ? lo : Math.max(lo, Math.min(hi, v)); }
 
@@ -94,7 +124,7 @@ Item {
     // the flip chooses the side, the clamp guarantees the fit.
     y: {
         if (!parent) return 0;
-        var w = windowRect();
+        var w = clampRect();
         var below = ownerY + ownerH + 6;
         var v = (below + height <= w.b) ? below : ownerY - height - 6;
         return Math.round(clamp(v, w.t, w.b - height));
@@ -102,7 +132,7 @@ Item {
     // E27: centred on the owner, not at the pointer; E28: shifted inside.
     x: {
         if (!parent) return 0;
-        var w = windowRect();
+        var w = clampRect();
         return Math.round(clamp(ownerX + ownerW / 2 - width / 2, w.l, w.r - width));
     }
 

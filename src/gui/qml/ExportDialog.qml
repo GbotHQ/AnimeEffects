@@ -6,6 +6,9 @@ pragma Translator: "AnimeEffects.Dialogs"
 
 import QtQuick
 import QtQuick.Layouts
+// For ScrollBar only (the scroll host's attached bar, the picker's pattern):
+// the controls in this form are the Ae* family; the bar is stock, styled below.
+import QtQuick.Controls
 
 // The export parameter form, rendered as a full-bleed Qt Quick scene inside the
 // ExportDialog QDialog shell.
@@ -73,7 +76,31 @@ Item {
     Shortcut { sequence: "Ctrl+Return"; onActivated: exportModel.accept() }
     Shortcut { sequence: "Escape"; onActivated: exportModel.cancel() }
 
+    // D25's "keys", the second kind: keyboard travel brings the target INTO VIEW
+    // (a focused control scrolled out of sight is unreachable), and
+    // PageUp/PageDown/Home/End scroll by page wherever the focus sits - the
+    // single-line editors do not consume these four, so they bubble to here.
+    // Home/End inside a text field stay the caret's (the editor consumes them).
+    Connections {
+        target: root.Window ? root.Window : null
+        function onActiveFocusItemChanged() {
+            const fi = root.Window ? root.Window.activeFocusItem : null;
+            if (fi) scroller.ensureVisible(fi);
+        }
+    }
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_PageUp) { scroller.pageBy(24 - scroller.height); event.accepted = true; }
+        else if (event.key === Qt.Key_PageDown) { scroller.pageBy(scroller.height - 24); event.accepted = true; }
+        else if (event.key === Qt.Key_Home) { scroller.contentX = 0; scroller.contentY = 0; event.accepted = true; }
+        else if (event.key === Qt.Key_End) {
+            scroller.contentY = Math.max(0, scroller.contentHeight - scroller.height);
+            scroller.contentX = Math.max(0, scroller.contentWidth - scroller.width);
+            event.accepted = true;
+        }
+    }
+
     Rectangle {
+        id: shell
         anchors.fill: parent
         color: theme.base
 
@@ -87,13 +114,72 @@ Item {
             }
         }
 
-        ColumnLayout {
-            id: page
+        // D25/Q9 (decided 2026-09-30): when the content does not fit - the measured
+        // case is minimum size with Advanced open and four frame ranges: 630px of
+        // content in 558px of page, cut with no recourse before this - the CONTENT
+        // scrolls and the action row below stays put and reachable. Wheel and drag
+        // are the Flickable's own; the keys are two kinds: focus movement scrolls
+        // the target into view (every control stays reachable), and
+        // PageUp/PageDown/Home/End scroll by page when the focused editor does not
+        // consume them. Horizontal too: below 468px of width the form's layout
+        // minimums overflow (measured, overflow-spike), and the line says never
+        // exceeds the window WITHOUT A SCROLL - so it scrolls rather than cuts.
+        Flickable {
+            id: scroller
+            // What a test or a probe addresses this scroll host by.
+            objectName: "formScroller"
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16
             anchors.topMargin: 16
             anchors.bottomMargin: 66
+            clip: true
+            contentWidth: Math.max(width, page.implicitWidth)
+            contentHeight: page.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+
+            // Scroll a descendant of the page into the visible area (both axes).
+            // Called from the window's focus changes: keyboard travel is the
+            // "keys" in the line, and a focused control that is scrolled out of
+            // sight is unreachable. The target's rect is UNIONED with its
+            // ancestors' up to the page (skipping anything larger than the
+            // viewport), so focusing a field brings its whole ROW into view -
+            // a field with its row half-cut is only half reachable. Call from
+            // the window's focus changes.
+            function ensureVisible(it) {
+                if (contentHeight <= height) contentY = 0;
+                if (contentWidth <= width) contentX = 0;
+                // QML items walk by `.parent` - `parentItem` reads as undefined
+                // here (C++ getter only) and would end every walk after one hop.
+                var p = it;
+                while (p && p !== page) p = p.parent;
+                if (p !== page || contentHeight <= height) return;
+                var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+                for (var a = it; a && a !== page; a = a.parent) {
+                    if (a.width > width || a.height > height) continue;
+                    var r = a.mapToItem(page, 0, 0);
+                    x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y);
+                    x1 = Math.max(x1, r.x + a.width); y1 = Math.max(y1, r.y + a.height);
+                }
+                var maxY = contentHeight - height;
+                if (y0 < contentY) contentY = Math.max(0, y0 - 8);
+                else if (y1 > contentY + height)
+                    contentY = Math.min(maxY, y1 - height + 8);
+                var maxX = contentWidth - width;
+                if (maxX > 0) {
+                    if (x0 < contentX) contentX = Math.max(0, x0 - 8);
+                    else if (x1 > contentX + width)
+                        contentX = Math.min(maxX, x1 - width + 8);
+                }
+            }
+            function pageBy(dy) {
+                contentY = Math.max(0, Math.min(contentHeight - height, contentY + dy));
+            }
+
+        ColumnLayout {
+            id: page
+            objectName: "formPage"
+            width: scroller.contentWidth
             spacing: 0
 
             // ================================================== where it is going
@@ -585,11 +671,42 @@ Item {
                 }
             }
 
-            Item { Layout.fillHeight: true }
+        }
+
+            // The scroll bar is the picker's own pattern (its D23 comment says why
+            // each line): attached to the Flickable so position, size and the
+            // press/drag/paging come from its visibleArea instead of arithmetic,
+            // parented OUTSIDE the clip (the shell) so the clip cannot cut it, the
+            // style's transient contentItem replaced outright (the design has no
+            // fade), and shown only when the content overflows (D23).
+            ScrollBar.vertical: ScrollBar {
+                id: vbar
+                objectName: "formVBar"
+                parent: shell
+                anchors.right: scroller.right
+                anchors.top: scroller.top
+                anchors.bottom: scroller.bottom
+                width: 8
+                orientation: Qt.Vertical
+                policy: ScrollBar.AsNeeded
+                visible: size < 1.0
+                hoverEnabled: true
+                // The design's minimum thumb length (28px) in minimumSize units.
+                minimumSize: height > 0 ? 28 / height : 0
+                background: Rectangle { color: "transparent" }
+                contentItem: Rectangle {
+                    implicitWidth: 6
+                    radius: 3
+                    color: vbar.pressed ? theme.textMuted
+                         : vbar.hovered ? theme.textMuted
+                         : theme.raisedHover
+                }
+            }
         }
 
         // ================================================================ FOOTER
         Rectangle {
+            objectName: "formFooter"
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
