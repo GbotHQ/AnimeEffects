@@ -1062,3 +1062,84 @@ The gate samples the property, not the grab.
 | visual | settled AE=0 both states; timeline signature quadratic→linear; video frames + crops |
 | targeted probes | canary PASS, `dialog`/`inputs`/`export` **3/3** |
 | catalogs | 0 `unfinished` ×6 |
+
+## Post-R1, landed: the picker remembers its platforms and the dialog its size (C17 + A5)
+
+### The headline finding: stable keying was impossible as shipped
+
+Section rows never carried their identity — `ExportGroup::id` exists ("matches
+`ExportTarget::group`") but the model copied only `title`/`icon` into the section row, so
+`idOf(sectionRow)` returned `""` for every platform and "remember which groups were open" could
+only have remembered **row numbers** (the wrong platform in a reordered tree). Caught by the first
+test run (saved ids came out empty), fixed with one line (`section.id = g.id`). Proof it is real
+keying: `'bluesky'`'s state restored correctly across a **reversed table where its row moved
+5 → 77**.
+
+### What landed
+
+- **C17**: `expandedIds()`/`applyExpandedIds()` in `DestinationPickerModel`, `expansionChanged()`
+  on every change (toggle, a search opening what it found, preselection), saved to
+  `picker/expansion` on every change + at `done()`; absent key = first run = collapsed. A restore
+  guard prevents write-back echo. **Preselection invariant preserved**: a restore reopens the
+  current row's platform — C17 decides which groups start open, never that the current answer may
+  be hidden.
+- **A5**: `exportdialog/size` restored at construction (first open = designed default 620×720,
+  screen-clamped like the default), saved at `done()`. **Position is not persisted** (the
+  compositor's business on Wayland).
+
+### Behavior table
+
+| scenario | before | after |
+| --- | --- | --- |
+| first open (no key) | collapsed (accidentally — no ids to save!) | collapsed **except** the preselection's platform (the invariant); default size |
+| toggle groups, restart | never remembered | the same **platforms** reopen (stable ids, verified across the reversed table) |
+| search opens groups, clear, restart | n/a | search-opened state persists ("as the user left it"); clearing never closes |
+| remembered state would hide the selection | n/a | the invariant reopens it (M4) |
+| dialog size, restart | always default | the closed-at size returns (700×680 round-trip; 20000×20000 clamps to screen) |
+
+### Regression proofs (deliberate breaks, exact counts)
+
+Break the SAVE → 2 failures; break the APPLY → 1; break the MACHINERY → 3; reverted → all 27 green
+(`persist_state` M0–M5, D1–D3, A5×3, P1–P3 + preconditions).
+
+### "Not settled" item 3 — closed
+
+Picker section + expansion + focus, in the design's own terms: header click/Enter toggles and never
+selects (B16, incl. search-focused); arrows never expand while typing (B9/C16 — `picker_keyboard`);
+a search opens what it found and clearing never closes (M5); collapsed rows are unreachable by
+keyboard and open rows are (C20 — P3 + B7/B8); childless top-level rows unindented (C18); first
+hover == fifth with no black frame (C21 — `hover_parity`); the preselection stays on screen through
+any restore (M4). The line is no longer open.
+
+### Scope decisions flagged (each one line to change)
+
+1. **A5 covers the export dialog only** — the decided question's scope ("Should the export dialog
+   remember its size?"). The picker dialog's size is NOT persisted; `picker/size` would be a
+   5-line copy.
+2. **First-open "all collapsed" is literal only when there is nothing to preselect** — with a
+   remembered/current destination its platform opens (the preselection invariant predates C17 and
+   forbids hiding the current answer).
+3. Save policy = on every change **and** at close (the close-save is the belt).
+
+### Sandbox interplay (routed)
+
+Probes run with `XDG_CONFIG_HOME=$(mktemp -d)` (`_lib.sh`), so every probe starts "first run" —
+deterministic. Within a single run, close+reopen now remembers state; `probe_reexport`'s "Export
+again" is the one candidate that could notice. The full sweep at this increment is the check; if it
+trips, the probe's expectation is stale, not the persistence.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `scripts/run_suites.sh` **21/21 Debug, 21/21 Release**, exit 0 (orchestrator re-run; `persist_state` in both) |
+| regression proof | save/apply/machinery breaks fail 2/1/3 asserts exactly |
+| targeted probes | canary PASS, `dest` 98s, `dialog` 92s (agent run; the full sweep supersedes at this increment) |
+| full sweep | run by the orchestrator at this increment (shell/dialog wiring per the gate policy) — result in the run log |
+| catalogs | 0 `unfinished` ×6 |
+
+**Test caveat (honest)**: dialog-level tests construct the real `gui::DestinationPicker` /
+`gui::ExportDialog` (real ctors, keys, close path) but their QML scenes live in the app's
+`qt_add_qml_module` and load empty in test binaries — the state machinery is fully real; the
+scene's own routes are covered by `picker_keyboard`/`tooltip_contract`/probes.

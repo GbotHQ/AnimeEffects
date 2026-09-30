@@ -10,6 +10,7 @@
 #include <QQuickWidget>
 #include <QQmlContext>
 #include <QScreen>
+#include <QSettings>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -44,8 +45,16 @@ ExportDialog::ExportDialog(const ExportViewModel::Init& aInit, GUIResources& aRe
     const QRect avail = screen() ? screen()->availableGeometry() : QRect();
     const int maxW = avail.width() > 0 ? avail.width() : kDefaultWidth;
     const int maxH = avail.height() > 0 ? avail.height() : kDefaultHeight;
-    resize(qMin(kDefaultWidth, maxW), qMin(kDefaultHeight, maxH));
+    // A5 (decided 2026-09-30): the dialog restores its last size across sessions;
+    // the first open uses the designed default. A remembered size clamps to the
+    // available screen exactly like the default does, and Qt clamps it up to the
+    // minimum floor on resize.
+    const QSize remembered = QSettings().value(QStringLiteral("exportdialog/size")).toSize();
+    const QSize wanted = remembered.isValid() && remembered.width() > 0
+                             ? remembered
+                             : QSize(kDefaultWidth, kDefaultHeight);
     setMinimumSize(qMin(kMinimumWidth, maxW), qMin(kMinimumHeight, maxH));
+    resize(qMin(wanted.width(), maxW), qMin(wanted.height(), maxH));
 
     mModel = new ExportViewModel(aInit, this);
     mTheme = new QmlTheme(this);
@@ -93,6 +102,15 @@ ExportDialog::~ExportDialog() {
     // animation settings shell follows).
     delete mQuick;
     mQuick = nullptr;
+}
+
+void ExportDialog::done(int aResult) {
+    // A5: the size the dialog is closed at is the size it returns at. Saved on
+    // every close route (accept, reject, Esc, the window button) rather than on
+    // resize-end: the user's final size is what "remembers its size" means, and a
+    // half-resized transient state is never the choice.
+    QSettings().setValue(QStringLiteral("exportdialog/size"), size());
+    QDialog::done(aResult);
 }
 
 void ExportDialog::choosePalette() {

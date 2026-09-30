@@ -3,6 +3,7 @@
 #include <QQmlContext>
 #include <QQmlError>
 #include <QQuickWidget>
+#include <QSettings>
 #include <QShowEvent>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -44,6 +45,27 @@ DestinationPicker::DestinationPicker(const QList<ctrl::ExportTarget>& aTargets,
 
     // The model owns every decision (grouping, expansion, filtering, selection).
     mModel = new DestinationPickerModel(aTargets, aGroups, aCurrentId, this);
+
+    // C17 (decided 2026-09-30): the group expansion state is remembered across
+    // sessions. First run - no key - leaves every group collapsed (the model's
+    // constructor already opened the preselection's platform; applyExpandedIds
+    // keeps that invariant). The persisted shape is a set of stable section ids
+    // (see DestinationPickerModel::expandedIds), so a rebuilt or reordered tree
+    // reopens the same PLATFORMS and never a saved row number.
+    {
+        QSettings settings;
+        static const QString kKey(QStringLiteral("picker/expansion"));
+        if (settings.contains(kKey)) {
+            mRestoring = true;
+            mModel->applyExpandedIds(settings.value(kKey).toStringList());
+            mRestoring = false;
+        }
+    }
+    // Persist on every expansion change (toggle, a search opening what it found)
+    // and again at close: whatever state the user leaves is the state remembered.
+    connect(mModel, &DestinationPickerModel::expansionChanged,
+            this, &DestinationPicker::saveExpansion);
+
     // The window title is the model's string, so the translation path the test
     // asserts is the one the window actually uses.
     setWindowTitle(mModel->windowTitleText());
@@ -103,6 +125,21 @@ void DestinationPicker::showEvent(QShowEvent* aEvent) {
     // window manager does not activate the new window for us.
     activateWindow();
     mQuick->setFocus();
+}
+
+void DestinationPicker::saveExpansion() {
+    // The restore itself is not a state the user produced; writing it back would
+    // turn "apply the remembered state" into "change the remembered state".
+    if (mRestoring || !mModel) return;
+    QSettings().setValue(QStringLiteral("picker/expansion"), mModel->expandedIds());
+}
+
+void DestinationPicker::done(int aResult) {
+    // Whatever expansion state the dialog is CLOSED in is the state it returns to
+    // (C17): every change already saved on the way here, this is the belt for any
+    // path that changed state without a signal.
+    saveExpansion();
+    QDialog::done(aResult);
 }
 
 } // namespace gui

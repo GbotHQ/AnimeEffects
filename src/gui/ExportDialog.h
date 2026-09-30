@@ -41,6 +41,8 @@ public:
 
 private:
     void choosePalette();
+    // A5: every close saves the dialog's size (the restore is in the constructor).
+    void done(int aResult) override;
 
     GUIResources& mResources;
     ExportViewModel* mModel = nullptr;

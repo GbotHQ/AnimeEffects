@@ -83,12 +83,21 @@ public:
 
 protected:
     void showEvent(QShowEvent* aEvent) override;
+    // Every close (accept, reject, Esc, the window button) saves the expansion
+    // state first: C17 remembers the dialog as the user left it.
+    void done(int aResult) override;
 
 private:
+    // C17: write the current expansion state (stable section ids) to QSettings.
+    void saveExpansion();
+
     DestinationPickerModel* mModel = nullptr;
     QmlTheme* mTheme = nullptr;
     QQuickWidget* mQuick = nullptr;
     QString mChosenId;
+    // True while the remembered expansion state is being applied, so the restore
+    // is not mistaken for a user change and written back.
+    bool mRestoring = false;
 };
 
 } // namespace gui

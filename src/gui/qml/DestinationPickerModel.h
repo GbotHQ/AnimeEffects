@@ -116,6 +116,17 @@ public:
     // The translated tooltip of a section ("%1 destinations"); empty elsewhere.
     Q_INVOKABLE QString sectionTooltip(int aRow) const;
 
+    // ---- persistence (C17, decided 2026-09-30: expansion state is remembered) ----
+    // The ids of every expanded section, in row order. What persists is a set of
+    // STABLE ids - never row numbers: rows are rebuilt and reordered on every
+    // construction and a saved index would open the wrong platform.
+    Q_INVOKABLE QStringList expandedIds() const;
+    // Restore a persisted expansion state. Absent/empty input is the first run and
+    // leaves every group collapsed. The preselection invariant survives the
+    // restore: the current row's platform re-opens if the given state would hide
+    // the selection ("the preselection has to be on screen, not merely current").
+    Q_INVOKABLE void applyExpandedIds(const QStringList& aIds);
+
     // ---- the dialog's own words (translated; see the Q_PROPERTY block) ----
     QString windowTitleText() const;
     QString searchPlaceholder() const;
@@ -166,6 +177,10 @@ signals:
     void currentRowChanged();
     void visibleRowCountChanged();
     void queryChanged();
+    // Any expansion change, whatever route made it (a toggle, a search that opens
+    // what it found, the preselection opening its platform). The dialog persists
+    // on this; it is also what a test can wait on.
+    void expansionChanged();
 
 private:
     struct Row {

@@ -313,6 +313,44 @@ target_link_libraries(form_layout PRIVATE
     media
 )
 
+# Persistence: C17 (group expansion remembered across sessions) and A5 (the
+# dialog remembers its size). Drives the MACHINERY (DestinationPickerModel's
+# expandedIds/applyExpandedIds) and the WIRING (gui::DestinationPicker and
+# gui::ExportDialog reading and writing QSettings) through the real dialog
+# classes. Their QML scenes live in the application's qml module and are not
+# linked here (the scene routes are picker_keyboard's and the probes' job).
+add_executable(persist_state
+    persist_state.cpp
+    ../src/gui/DestinationPicker.cpp
+    ../src/gui/ExportDialog.cpp
+    ../src/gui/GUIResources.cpp
+    ../src/gui/AppStyle.cpp
+    ../src/gui/qml/QmlFormAccessibility.cpp
+    ../src/gui/qml/DestinationPickerModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/qml/ExportViewModel.cpp
+    ../src/gui/theme/Theme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/ExportFacts.cpp
+    ../src/ctrl/ExportTarget.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(persist_state PRIVATE .. ../src ../src/gui)
+target_compile_definitions(persist_state PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_EXPORT_TARGETS_PATH="${CMAKE_SOURCE_DIR}/assets/export/ExportTargets.txt"
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+add_dependencies(persist_state release_translations)
+target_link_libraries(persist_state PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickWidgets Qt6::QuickControls2
+    media
+)
+
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both

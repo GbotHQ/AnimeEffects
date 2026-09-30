@@ -172,6 +172,11 @@ void DestinationPickerModel::build(const QList<ctrl::ExportTarget>& aTargets,
         Row section;
         section.label = g.title;
         section.section = true;
+        // The group's stable key, same as every destination row's. Persistence
+        // keys the remembered expansion state off THIS (C17): a section identity
+        // of "" would make "remember which platforms were open" remember nothing,
+        // and a row number would open the wrong platform in a reordered tree.
+        section.id = g.id;
         // A platform's badge is its destinations' badge: every row in a section
         // carries the same brand icon, so the closed tree still says WHICH platform
         // each line is, at a glance. Taken from the first row rather than added as
@@ -364,6 +369,7 @@ void DestinationPickerModel::setQuery(const QString& aQuery) {
 void DestinationPickerModel::applyQuery() {
     const QString q = mQuery;
     int firstDestination = -1;
+    bool expansionMoved = false;
     for (int i = 0; i < mRows.size(); ++i) {
         Row& r = mRows[i];
         if (r.section) {
@@ -383,7 +389,10 @@ void DestinationPickerModel::applyQuery() {
             // be an answer the user cannot see. Expansion is never undone here,
             // because closing a platform the user opened themselves - or one they
             // are about to browse - is not what clearing a search field means.
-            if (anyChild && !q.isEmpty()) r.expanded = true;
+            if (anyChild && !q.isEmpty() && !r.expanded) {
+                r.expanded = true;
+                expansionMoved = true;
+            }
         } else if (r.error) {
             r.visible = true;
         } else {
@@ -404,7 +413,10 @@ void DestinationPickerModel::applyQuery() {
         // Never select something inside a closed platform: the preselection has to
         // be on screen, not merely current.
         const int parent = mRows[target].parent;
-        if (parent >= 0) mRows[parent].expanded = true;
+        if (parent >= 0 && !mRows[parent].expanded) {
+            mRows[parent].expanded = true;
+            expansionMoved = true;
+        }
         setCurrentRow(target);
     }
 
@@ -412,6 +424,7 @@ void DestinationPickerModel::applyQuery() {
         emit dataChanged(index(0), index(mRows.size() - 1));
     }
     emit visibleRowCountChanged();
+    if (expansionMoved) emit expansionChanged();
 }
 
 void DestinationPickerModel::selectRemembered(const QString& aId) {
@@ -420,9 +433,53 @@ void DestinationPickerModel::selectRemembered(const QString& aId) {
         if (mRows[i].section || mRows[i].error || mRows[i].id != aId) continue;
         setCurrentRow(i);
         const int parent = mRows[i].parent;
-        if (parent >= 0) mRows[parent].expanded = true;
+        if (parent >= 0 && !mRows[parent].expanded) {
+            mRows[parent].expanded = true;
+            emit dataChanged(index(parent), index(parent), {ExpandedRole, OnScreenRole});
+            const int first = parent + 1;
+            const int last = parent + mRows[parent].childCount;
+            if (last >= first) emit dataChanged(index(first), index(last), {OnScreenRole});
+            emit visibleRowCountChanged();
+            emit expansionChanged();
+        }
         return;
     }
+}
+
+QStringList DestinationPickerModel::expandedIds() const {
+    QStringList out;
+    for (const Row& r : mRows)
+        if (r.section && !r.error && r.expanded && !r.id.isEmpty()) out << r.id;
+    return out;
+}
+
+void DestinationPickerModel::applyExpandedIds(const QStringList& aIds) {
+    const QSet<QString> want(aIds.begin(), aIds.end());
+    bool moved = false;
+    for (int i = 0; i < mRows.size(); ++i) {
+        Row& r = mRows[i];
+        if (!r.section || r.error) continue;
+        const bool open = want.contains(r.id);
+        if (r.expanded != open) {
+            r.expanded = open;
+            moved = true;
+        }
+    }
+    // The preselection invariant survives the restore (C17 decides WHICH groups
+    // start open, not whether the current answer may be hidden): the current
+    // row's platform re-opens so the selection is on screen, not merely current.
+    if (validRow(mCurrentRow)) {
+        const int parent = mRows[mCurrentRow].parent;
+        if (parent >= 0 && !mRows[parent].expanded) {
+            mRows[parent].expanded = true;
+            moved = true;
+        }
+    }
+    if (!moved) return;
+    if (!mRows.isEmpty()) emit dataChanged(index(0), index(mRows.size() - 1),
+                                           {ExpandedRole, OnScreenRole});
+    emit visibleRowCountChanged();
+    emit expansionChanged();
 }
 
 void DestinationPickerModel::select(int aRow) {
@@ -441,6 +498,7 @@ void DestinationPickerModel::toggleSection(int aRow) {
     const int last = aRow + mRows[aRow].childCount;
     if (last >= first) emit dataChanged(index(first), index(last), {OnScreenRole});
     emit visibleRowCountChanged();
+    emit expansionChanged();
 }
 
 void DestinationPickerModel::activate(int aRow) {
