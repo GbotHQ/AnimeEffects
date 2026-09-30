@@ -103,6 +103,9 @@ Item {
 
             ListView {
                 id: list
+                // What a test or a probe addresses this view by (the rows have
+                // their own accessible names; the view itself is this).
+                objectName: "pickerList"
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -390,5 +393,27 @@ Item {
             if (picker.currentRow >= 0)
                 list.positionViewAtIndex(picker.currentRow, ListView.Contain);
         }
+    }
+
+    // B10 (decided 2026-09-30): Escape empties the search field FIRST and closes
+    // the picker only when the field is already empty - a half-typed query is never
+    // a reason to throw the dialog away. The handler is on the scene ROOT because
+    // Escape belongs to the picker whatever holds focus: the field keeps Left/Right
+    // for the caret and does not touch Escape, the list's handler takes its own
+    // keys and leaves the rest, and whatever neither wants bubbles up to here.
+    // The clear reports an edit exactly like the clear button does; the close
+    // takes the Cancel button's own route (picker.reject, which the shell wires to
+    // QDialog::reject), so one press is one action however it arrives. Both
+    // branches consume the key (measured: a Keys key handler accepts unless it is
+    // told otherwise) so the dialog shell never ALSO reacts to an Escape this
+    // scene has answered.
+    Keys.onEscapePressed: (event) => {
+        if (search.text !== "") {
+            search.text = "";
+            search.edited("");
+        } else {
+            picker.reject();
+        }
+        event.accepted = true;
     }
 }

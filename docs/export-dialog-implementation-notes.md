@@ -810,3 +810,71 @@ Consequences, in order:
   ≈50 s, one ~5 s window from a mechanics check that leaked onto the XWayland desktop (should have
   used `xvfb-run`), and one driver bug whose garbage targets injected ~18 synthetic events near the
   screen's left edge. No typing beyond Escape, no file dialogs.
+
+## Post-R1, landed: Escape belongs to the picker policy and the edit's first moment (B10, F34)
+
+The first post-R1 increment, both lines decided by the user 2026-09-30. Tests are the evidence home
+here (`tests/picker_keyboard.cpp` extended, `tests/scrub_escape.cpp` new — auto-discovered by
+`run_suites.sh`, so the suite count is now 17): keys are observable headlessly, so every behavior
+below is a **failing-on-regression assertion**, not a photograph.
+
+### Measured first: three routing facts the design rests on
+
+Scratch probes (`escape-spike/`): a key sent straight to an item reaches only **that** item's `Keys`
+filters and editor and **never bubbles to ancestors** (direct send is a same-item probe), while a
+key sent to a `QQuickWindow` under `offscreen` goes to the `activeFocusItem` and **does** bubble up
+the parent chain (so window delivery is the honest end-to-end route, headlessly), and specific
+`Keys.onXPressed` handlers auto-accept while generic `Keys.onPressed` does not. Hence B10's policy
+sits on the scene **root** and the tests drive it **through a window** — the route is under test,
+not just the policy.
+
+### Before → after
+
+| scenario | before | after |
+| --- | --- | --- |
+| picker Escape, text present | text kept; key leaks to the shell (which cancels — with text present)* | clears text + query, hidden rows return, **not** rejected |
+| picker Escape, field empty | leaks to shell → closes | `model.rejected` (= the shell's `QDialog::reject` — the Cancel route) |
+| same two steps with LIST focus | n/a (no policy existed) | identical clear-then-close |
+| F34: type "12", owner re-syncs `value` 95→50 mid-edit, Escape | **keeps 50** (the property at Escape time) | restores **95**, owner re-synced, edit exits |
+| F34: committed 30, second edit, Escape | already right (keep-committed == edit-start absent a re-sync) | restores 30 — not 95 ("dialog open") |
+| F34: sentinel "Auto" (−1), type "30", re-sync to 7, Escape | **keeps 7** | restores **−1** and the placeholder word returns |
+| F34: plain cancel / Enter commit | already right | unchanged |
+
+\* The before column's shell close is the known `QDialog::reject`-on-unaccepted-Escape path plus the
+measured "the scene leaves Escape unaccepted"; the model-level observable cannot see the shell's
+close — recorded so nobody reads more into the row than was measured.
+
+### The F34 rule the implementation embodies
+
+`editStartValue` is snapshotted where the edit **begins** (both entry routes: `beginEdit()` and the
+editor's focus-gain), and Escape restores *that* — "keep the committed value" was the old wording
+and is only equal to it while nothing re-syncs `value` mid-edit (the dialog re-syncs on aspect locks
+and range clamps; the a11y setter writes the same path — measured). The restore is a scrub-style
+write: `changed()` fires only if the value actually moved, `committed()` never fires (it has **no
+consumers** — verified before relying on that).
+
+### Regression proof (deliberate breaks, run, reverted)
+
+Removing the F34 restore failed exactly its 4 restore assertions (value/owner/sentinel/word);
+removing the B10 clear failed 7 (both clear assertions and the close coupling — without the clear
+the field is never empty so nothing closes, in both focus states). Clean reverts, 0 failures.
+
+### Harness lesson this increment bought: the canary false-FAIL
+
+`probe_inputs` opens an OS file dialog by design, so the portal canary ran first and said FAIL —
+**wrongly**. The journal grep for `file_chooser` was matching the harness's own `[systemd-run]`
+scope START lines, which log the command **text**: any command containing the word contaminates its
+own canary window (measured: 4 hits in a clean window, all echoes — one was the check itself — 0
+real portal lines; the only genuine portal line all day preceded this work). Fixed in
+`canary_dialog.sh`, `sweep_runner.sh` (both checks) and the AGENTS.md recipe with
+`grep -v '\[systemd-run\]'`, keeping the broad match so real leaks still trip it.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** (affected units force-recompiled with kept logs) |
+| units | `scripts/run_suites.sh` **17/17 Debug, 17/17 Release**, exit 0 (orchestrator re-run; `scrub_escape` in both) |
+| regression proof | deliberate breaks caught by exactly 4 and 7 assertions |
+| targeted probes | `dest`, `inputs`, `axes`, `quality` **4/4 PASS** (~8 min; `noproject` skipped — its Escape asserts the picker's absence, untouched here) |
+| catalogs | 0 `unfinished` ×6; no strings changed |

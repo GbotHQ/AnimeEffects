@@ -196,6 +196,34 @@ target_link_libraries(picker_keyboard PRIVATE
     media
 )
 
+# The numeric fields' Escape contract (F34, decided 2026-09-30): Escape restores
+# the value from when THIS edit began - not the value the property happens to hold
+# at Escape time (the owner can re-sync it mid-edit) and not the session's opening
+# value - with the AeNumberField sentinel ("Auto") as part of the same line.
+# Loads the REAL ScrubSpinBox.qml and AeNumberField.qml and drives the edit
+# lifecycle through a real offscreen window, because the lifecycle IS focus:
+# beginEdit() focuses the editor, Escape blurs it, and onActiveFocusChanged is
+# where the edit starts and ends. See scrub_escape.cpp for the measured routing
+# facts this rests on.
+add_executable(scrub_escape
+    scrub_escape.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(scrub_escape PRIVATE .. ../src ../src/gui)
+target_compile_definitions(scrub_escape PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(scrub_escape PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both

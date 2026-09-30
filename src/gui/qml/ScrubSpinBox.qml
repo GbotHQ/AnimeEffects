@@ -63,6 +63,7 @@ Item {
     // item's screen extents in the wrong coordinate space - would type into nothing.
     // This is the same state a plain click enters, so the two routes agree.
     function beginEdit() {
+        editInput.editStartValue = root.value;
         editInput.text = root.fmt(root.value);
         editInput.forceActiveFocus();
     }
@@ -174,8 +175,9 @@ Item {
 
     // Direct-entry field, on top while editing. Selects the whole value on
     // focus so the user can type over it; commits on Enter or focus out; Escape
-    // cancels the edit (reverts to the committed value) and blurs the field
-    // without letting the event close the window.
+    // cancels the edit (restores the value the edit BEGAN with - F34, decided
+    // 2026-09-30) and blurs the field without letting the event close the
+    // window.
     TextInput {
         id: editInput
         anchors.fill: parent
@@ -198,6 +200,15 @@ Item {
         inputMethodHints: Qt.ImhFormattedNumbersOnly
         objectName: "scrubEdit"
         property bool cancelEdit: false
+        // F34: the value this edit BEGAN with, captured where the edit starts
+        // (both routes into an edit land in these two spots). Escape restores
+        // THIS - not "whatever the property holds when the edit ends": the owner
+        // can write `value` while an edit is open (the dialog re-syncs on aspect
+        // locks and range clamps; the accessibility setter writes the same way),
+        // and an undone edit must never keep a value the edit never saw.
+        // Measured: without this snapshot, "keep the committed value" silently
+        // keeps the re-sync.
+        property real editStartValue: 0
         Keys.onEscapePressed: {
             cancelEdit = true;
             focus = false;
@@ -206,11 +217,23 @@ Item {
         onAccepted: focus = false // commit via onActiveFocusChanged
         onActiveFocusChanged: {
             if (activeFocus) {
+                // F34: the edit starts HERE, so the snapshot is taken here too -
+                // it covers any route that focuses the editor without beginEdit().
+                editStartValue = root.value;
                 selectAll();
             } else {
                 if (cancelEdit) {
-                    // Escape: discard the typed text, keep the committed value.
+                    // Escape (F34): undo the edit back to where it began. The
+                    // restore is the same kind of write the scrub path makes, so
+                    // it re-syncs the owner the same way: changed() fires ONLY if
+                    // the value actually moved (a cancelled edit that changes
+                    // nothing reports nothing), and committed() never fires -
+                    // a cancel finalizes nothing.
                     cancelEdit = false;
+                    if (root.value !== editStartValue) {
+                        root.value = editStartValue;
+                        root.changed(root.value);
+                    }
                 } else {
                     root.commitText(text);
                     root.changed(root.value);

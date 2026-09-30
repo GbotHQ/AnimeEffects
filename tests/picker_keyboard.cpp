@@ -36,6 +36,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <QUrl>
@@ -58,7 +59,13 @@ static void check(bool ok, const QString& what) {
 // Send one key straight to the item. Returns whether it was accepted, which is a
 // useful extra fact but never the assertion by itself: "accepted" cannot tell the
 // filter apart from the editor, and that distinction is the whole contract.
-static bool sendKey(QQuickItem* aItem, int aKey, const QString& aText = QString()) {
+// Takes QObject* so the SAME helper can also target a window: measured, the two
+// routes differ (scratch: escape-spike/) - a direct send reaches the item's own
+// Keys filters and editor and does NOT bubble to ancestors, while a window send is
+// delivered to the activeFocusItem and DOES bubble up the item hierarchy. B10's
+// Escape is a routing question as much as a policy one, so it is driven the honest
+// way, through the window.
+static bool sendKey(QObject* aItem, int aKey, const QString& aText = QString()) {
     QKeyEvent event(QEvent::KeyPress, aKey, Qt::NoModifier, aText);
     QCoreApplication::sendEvent(aItem, &event);
     return event.isAccepted();
@@ -121,6 +128,10 @@ int main(int argc, char** argv) {
         ++acceptedCount;
         chosen = model.chosenId();
     });
+    // What "the picker CLOSED" means to the shell (DestinationPicker.cpp wires this
+    // to QDialog::reject): the observable behind B10's second Escape.
+    int rejectedCount = 0;
+    QObject::connect(&model, &Model::rejected, [&rejectedCount]() { ++rejectedCount; });
 
     QQmlEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("picker"), &model);
@@ -141,6 +152,17 @@ int main(int argc, char** argv) {
         QTextStream(stderr) << "the picker's root object is not an item\n";
         return 2;
     }
+
+    // Host the scene in a real (offscreen) window. The blocks above send keys
+    // straight at an item and measure SAME-ITEM routing; B10 sends at the window,
+    // because "does Escape typed in the field reach the picker's policy?" is a
+    // delivery-chain question (measured: direct send never bubbles to ancestors,
+    // window delivery does - scratch: escape-spike/). The window costs the
+    // direct-send assertions nothing: their route is unchanged.
+    QQuickWindow window;
+    window.resize(640, 480);
+    window.show();
+    root->setParentItem(window.contentItem());
 
     // The search field, addressed the way the probes address it: by the accessible
     // name the model gives it. A field that is merely "the first TextField" would
@@ -271,6 +293,87 @@ int main(int argc, char** argv) {
         check(acceptedCount == 1, "B8: Return answers with the highlighted row");
         check(chosen == QLatin1String("telegram.sticker"),
               QStringLiteral("B8: and the answer is that row (%1)").arg(chosen));
+    }
+
+    // B10 (decided 2026-09-30): Escape empties the search field FIRST and closes
+    // the picker only when the field is already empty - a half-typed query is never
+    // a reason to throw the dialog away. Driven through the WINDOW (see sendKey):
+    // the field and the list must both CARRY Escape to the picker's policy, so a
+    // test that poked the policy function directly would prove neither half.
+    {
+        // --- with text: the FIRST Escape clears, and must not close. ---
+        const QStringList rowsAll = onScreenRows(model);
+        search->setProperty("text", QStringLiteral("telegram"));
+        check(model.query() == QLatin1String("telegram"),
+              "precondition: the typed query reached the model");
+        check(onScreenRows(model) != rowsAll,
+              "precondition: the query actually filtered the list, so clearing is observable");
+
+        search->forceActiveFocus();
+        check(window.activeFocusItem() == search,
+              "precondition: the field holds the window's focus, the state the picker opens in");
+
+        sendKey(&window, Qt::Key_Escape);
+        check(search->property("text").toString().isEmpty(),
+              "B10: Escape empties the search field");
+        check(model.query().isEmpty(),
+              "B10: and the query goes with it");
+        {
+            // Every row the filter hid is back. NOT "the lists are equal": the
+            // model never closes what it or a search opened (setQuery's own
+            // contract), so a revealed group legitimately STAYS open and the
+            // cleared list can be a SUPERSET of the captured one.
+            const QStringList rowsBack = onScreenRows(model);
+            QStringList missing;
+            for (const QString& row : rowsAll)
+                if (!rowsBack.contains(row)) missing << row;
+            check(missing.isEmpty(),
+                  "B10: and every row the filter had hidden comes back (missing: "
+                      + (missing.isEmpty() ? QStringLiteral("none") : missing.join(QLatin1String(", "))) + ")");
+        }
+        check(rejectedCount == 0,
+              "B10: the FIRST Escape does not close the picker");
+
+        // --- the SECOND Escape, field now empty, closes. ---
+        sendKey(&window, Qt::Key_Escape);
+        check(rejectedCount == 1,
+              "B10: the second Escape closes the picker (model.rejected -> the shell's QDialog::reject)");
+        check(search->property("text").toString().isEmpty(),
+              "B10: and there was nothing left to clear");
+
+        // --- the same two-step from the LIST's focus: Escape belongs to the
+        // picker whatever holds it, and neither a row nor the list's own key
+        // handler may eat it. Where inside the list's subtree the window puts the
+        // focus item is a Qt detail (measured: it varies between the view and a
+        // delegate row), so the precondition is "somewhere in the list's subtree,
+        // and not the field" - and the behaviour below is the real assertion. ---
+        QQuickItem* list = root->findChild<QQuickItem*>(QStringLiteral("pickerList"));
+        check(list != nullptr, "precondition: the list is addressable");
+        if (list) {
+            search->setProperty("text", QStringLiteral("telegram"));
+            list->forceActiveFocus();
+            QQuickItem* focused = window.activeFocusItem();
+            bool inList = false;
+            for (QQuickItem* p = focused; p; p = p->parentItem())
+                if (p == list) { inList = true; break; }
+            check(focused != nullptr && focused != search && inList,
+                  "precondition: the window's focus is in the list's subtree, not the field");
+            sendKey(&window, Qt::Key_Escape);
+            check(search->property("text").toString().isEmpty(),
+                  "B10: Escape clears the field even when the LIST has focus");
+            check(rejectedCount == 1,
+                  "B10: and still does not close while there was text");
+            sendKey(&window, Qt::Key_Escape);
+            check(rejectedCount == 2,
+                  "B10: the second one, from the list, closes");
+        }
+
+        // Routing guard (a supplementary fact, never the assertion by itself): the
+        // field must leave Escape alone. If a future edit makes it CONSUME the key,
+        // the window routes above stop working - and this names the culprit.
+        search->setProperty("text", QStringLiteral("x"));
+        check(!sendKey(search, Qt::Key_Escape),
+              "B10 routing: the search field itself does not consume Escape");
     }
 
     delete created;
