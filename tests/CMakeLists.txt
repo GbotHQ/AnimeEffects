@@ -224,6 +224,39 @@ target_link_libraries(scrub_escape PRIVATE
     media
 )
 
+# The tooltip contract (E26/E27/E28/E29, decided 2026-09-30): WHICH controls
+# keep a tooltip (the set is explicit - the Auto/Reset affordances and truncated
+# picker rows), WHERE the bubble sits (below-first, flipping above at the bottom
+# edge) and that it is NEVER clipped at the dialog's edge. Hosts the REAL
+# call-site files and the real ExportDialog.qml (so the set cannot silently
+# grow) with the real view model. See tooltip_contract.cpp.
+add_executable(tooltip_contract
+    tooltip_contract.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/qml/ExportViewModel.cpp
+    ../src/gui/qml/ExportViewModel.h
+    ../src/gui/ExportFacts.cpp
+    ../src/ctrl/ExportTarget.cpp
+    # The embedded destination table (see export_form below: the dialog's own
+    # lookups go through the static loaders to ":/export/ExportTargets.txt").
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(tooltip_contract PRIVATE .. ../src ../src/gui)
+target_compile_definitions(tooltip_contract PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+add_dependencies(tooltip_contract release_translations)
+target_link_libraries(tooltip_contract PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The export dialog, headless: what it STATES and what it OFFERS per destination.
 # This is the coverage hole the session named twice: every export-form bug was either
 # a fact contradicting a control or a control the destination did not decide, and both

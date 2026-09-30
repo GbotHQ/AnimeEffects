@@ -106,6 +106,10 @@ Item {
         enabled: root.enabled
         iconName: "arrow-clockwise"
         label: root.resetLabel
+        // E29's kept kind: the Auto/Reset affordance keeps its words as the
+        // tooltip ("Reset to native" / "Reset to auto" - item 35's resetLabel).
+        // Keyed on the words: a field with no resetLabel has no reset to hover.
+        showTip: root.resetLabel !== ""
         onClicked: root.resetRequested()
     }
     // The word for the sentinel, on top of the field's own "-1".

@@ -30,6 +30,8 @@
 //
 // Run: QT_QPA_PLATFORM=offscreen ./build/tests/Debug/picker_keyboard
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QHoverEvent>
 #include <QKeyEvent>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -39,6 +41,7 @@
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QTextStream>
+#include <QThread>
 #include <QUrl>
 #include <QColor>
 
@@ -374,6 +377,171 @@ int main(int argc, char** argv) {
         search->setProperty("text", QStringLiteral("x"));
         check(!sendKey(search, Qt::Key_Escape),
               "B10 routing: the search field itself does not consume Escape");
+    }
+
+    // ---- E29: the row tooltip is only for a TRUNCATED label, and carries it in
+    // full (decided 2026-09-30). Hover is REAL window-delivered hover (geom's
+    // measured pattern - pointer handlers see the window's delivery path, never
+    // events posted at the item), and ONE row is checked at two widths so
+    // neither side of the gate can pass vacuously.
+    {
+        auto spin = [](int ms) {
+            QElapsedTimer t;
+            t.start();
+            while (t.elapsed() < ms) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                QThread::msleep(5);
+            }
+        };
+        auto hoverAt = [&](QQuickItem* target, QPointF local) {
+            QQuickItem* content = window.contentItem();
+            const QPointF p = target->mapToItem(content, local);
+            // A real pointer's hover arrives as a MOUSE MOVE (the delivery agent
+            // derives item/handler hover state from it). A bare HoverMove reaches
+            // only the topmost accepting item: measured, it left the delegate's
+            // own `hovered` at 0 when the row's label sat on top. Send both, as
+            // a real move would produce.
+            QMouseEvent me(QEvent::MouseMove, p, p, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(&window, &me);
+            QHoverEvent he(QEvent::HoverMove, p, p, p - QPointF(40, 0));
+            QCoreApplication::sendEvent(&window, &he);
+            QCoreApplication::processEvents();
+        };
+        auto hoverAway = [&]() {
+            const QPointF p(-100, -100);
+            QMouseEvent me(QEvent::MouseMove, p, p, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(&window, &me);
+            QHoverEvent he(QEvent::HoverMove, p, p, QPointF(0, 0));
+            QCoreApplication::sendEvent(&window, &he);
+            QCoreApplication::processEvents();
+        };
+
+        // The ROW tooltip is the only tooltip in the picker that is not inside an
+        // icon button (the search field's Clear keeps a gated instance - E29 drops
+        // its hover text, not the component). The manual button's explanatory
+        // prose is gone instance and all.
+        QObject* rowTip = nullptr;
+        int rowTips = 0;
+        bool manualFound = false;
+        const auto all = root->findChildren<QObject*>();
+        for (QObject* o : all) {
+            const QByteArray cls = o->metaObject()->className();
+            if (cls.contains("AeToolTip")) {
+                bool inButton = false;
+                for (QObject* p = o->parent(); p; p = p->parent())
+                    if (QByteArray(p->metaObject()->className()).contains("AeIconButton")) { inButton = true; break; }
+                if (!inButton) { ++rowTips; rowTip = o; }
+            }
+            if (cls.contains("AeButton")
+                && o->property("text").toString() == model.property("manualText").toString()) {
+                manualFound = true;
+                int underManual = 0;
+                for (QObject* d : o->findChildren<QObject*>())
+                    if (QByteArray(d->metaObject()->className()).contains("AeToolTip")) ++underManual;
+                check(underManual == 0, "E29: the manual button carries NO tooltip (its prose is dropped)");
+            }
+        }
+        check(manualFound, "precondition: the manual button is in the scene");
+        check(rowTips == 1 && rowTip, "E29: exactly one ROW tooltip feeds from the list hover");
+
+        QQuickItem* list = root->findChild<QQuickItem*>(QStringLiteral("pickerList"));
+        check(list != nullptr, "precondition: the list is addressable");
+
+        // Narrow: some label elide. Take the first visible row that does.
+        // itemAtIndex is the view's invokable (the item is found as QQuickItem),
+        // so it is called reflectively - the QML call site does the same.
+        // The picker sizes from its ROOT item (ColumnLayout anchors.fill), and
+        // the window must match so the E28 clamp boundary IS the dialog edge.
+        auto itemAt = [&](int row) -> QQuickItem* {
+            QQuickItem* it = nullptr;
+            QMetaObject::invokeMethod(list, "itemAtIndex",
+                                      Q_RETURN_ARG(QQuickItem*, it), Q_ARG(int, row));
+            return it;
+        };
+        auto sizeTo = [&](int w) {
+            window.resize(w, 480);
+            root->setWidth(w);
+            root->setHeight(480);
+            spin(250);
+        };
+        // Measured: the picker's list keeps its CONTENT's natural width - the
+        // ColumnLayout's minimums mean window-driven narrowing clips labels at
+        // the viewport instead of ELIDING them (rootW=180 measured with
+        // listW=211 = the widest row's natural width, at every window width).
+        // So the elide is exercised where the geometry allows: an imperative
+        // write on the delegate's `width: list.width` binding, after which the
+        // label re-anchors narrower and Text.elide/truncated engage for real.
+        sizeTo(640);
+        QQuickItem* rowItem = nullptr;
+        QQuickItem* rowLabelText = nullptr;
+        QString fullLabel;
+        int rowIdx = -1;
+        for (int row = 0; row < model.rowCount(); ++row) {
+            QQuickItem* it = itemAt(row);
+            // onScreen=false rows are the load-bearing 0-height ones; recycled
+            // OFF-VIEWPORT rows take no pointer. (`hoverEnabled: false` on the
+            // delegate is deliberate - hover is rowHover's job - so the
+            // delegate's own `hovered` is always 0 and says nothing.)
+            if (!it || it->height() < 5) continue;
+            const QPointF centre = it->mapToItem(window.contentItem(),
+                                                 QPointF(it->width() / 2, it->height() / 2));
+            if (centre.x() < 0 || centre.x() > 640 || centre.y() < 0 || centre.y() > 480) continue;
+            QQuickItem* lbl = it->findChild<QQuickItem*>(QStringLiteral("rowLabelText"));
+            const QString label = model.labelOf(row);
+            if (!lbl || label.isEmpty()) continue;
+            // The LONGEST on-screen label: at 90px any real label elides (a short
+            // one like "pixiv" fits even a 32px lane - measured), and the widest
+            // makes the composed tooltip's three lines meaningful.
+            if (rowItem && label.length() <= fullLabel.length()) continue;
+            rowItem = it;
+            rowLabelText = lbl;
+            rowIdx = row;
+            fullLabel = label;
+        }
+        check(rowItem != nullptr, "precondition: an on-screen row with a label exists");
+        if (rowItem) {
+            const QString tipRole =
+                model.data(model.index(rowIdx, 0), gui::DestinationPickerModel::TooltipRole).toString();
+            const QString expected =
+                tipRole.isEmpty() ? fullLabel : fullLabel + QLatin1Char('\n') + tipRole;
+
+            // --- the truncated side: the row narrowed until its label elides ---
+            rowItem->setWidth(90); // the label lane = 90 - 62 - 10 = 18px
+            spin(150);
+            check(rowLabelText->property("truncated").toBool(),
+                  "precondition: the narrowed row's label actually elides");
+            hoverAt(rowItem, QPointF(30, 15));
+            spin(250);
+            check(!rowTip->property("revealed").toBool(),
+                  "E26: the row tooltip still waits at 250ms");
+            spin(600);
+            check(rowTip->property("text").toString() == expected,
+                  QString("E29: a truncated row's tooltip = the label IN FULL + the identification (\"%1\")")
+                      .arg(rowTip->property("text").toString().replace('\n', '|')));
+            check(rowTip->property("revealed").toBool(), "E29: and it revealed after the dwell");
+            // E27/E28 on the real row rect: below the row, inside the window.
+            QQuickItem* content = window.contentItem();
+            const QPointF rp = rowItem->mapToItem(content, QPointF(0, 0));
+            auto* tip = qobject_cast<QQuickItem*>(rowTip);
+            const QPointF tp = tip->mapToItem(content, QPointF(0, 0));
+            check(tp.y() >= rp.y() + rowItem->height(),
+                  "E27: the row tooltip sits BELOW its row (flip applies only at the edge)");
+            check(tp.x() >= 0 && tp.x() + tip->width() <= 640.5 && tp.y() + tip->height() <= 480.5,
+                  "E28: and fully inside the window (never clipped)");
+
+            // --- the untruncated side: the same row widened past its label ---
+            hoverAway();
+            spin(120);
+            rowItem->setWidth(600); // the label lane = 528px, the label fits
+            spin(150);
+            check(!rowLabelText->property("truncated").toBool(),
+                  "precondition: widened, the same row's label fits");
+            hoverAt(rowItem, QPointF(30, 15));
+            spin(900);
+            check(rowTip->property("text").toString().isEmpty(),
+                  "E29: an untruncated row gets NO tooltip (its label already states it)");
+            hoverAway();
+        }
     }
 
     delete created;

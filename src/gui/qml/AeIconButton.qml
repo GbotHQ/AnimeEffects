@@ -8,8 +8,9 @@ import QtQuick
 // Icon-only is the point. The widget dialog spelled every one of these out in
 // words - "Set to native", "Set to auto", "Insert range", "Remove range" - so a
 // form whose actual decisions are four numbers was mostly labels for buttons
-// that undo an edit. The accessible name and the tooltip carry the words
-// instead, where a screen reader and a hovering mouse can still find them.
+// that undo an edit. The accessible name carries the words for every button,
+// where a screen reader can find them; the TOOLTIP keeps them only for the
+// Auto/Reset affordances (E29's explicit set).
 Item {
     id: root
 
@@ -18,6 +19,12 @@ Item {
     // The words a screen reader announces and the tooltip shows. Required:
     // an icon with no name is a control nobody can identify.
     property string label: ""
+    // E29 (decided 2026-09-30): the tooltip set is EXPLICIT and small - only the
+    // Auto/Reset affordances keep one ("Reset to native" / "Reset to auto", per
+    // item 35's words). Every other icon button drops the hover text and keeps
+    // the accessible name alone. Default OFF: a new call site does not silently
+    // join the set.
+    property bool showTip: false
     // NO `property bool enabled`: QQuickItem already has one and redeclaring it
     // shadows the base property (qmllint: [property-override]), so a disabled
     // button never reports disabled to the accessibility tree. See AeButton.
@@ -73,7 +80,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: root.clicked()
     }
-    AeToolTip { text: root.label; shown: mouse.containsMouse && root.enabled }
+    AeToolTip { text: root.label; shown: root.showTip && mouse.containsMouse && root.enabled }
 
     activeFocusOnTab: true
     Keys.onSpacePressed: if (root.enabled) { root.clicked(); event.accepted = true }

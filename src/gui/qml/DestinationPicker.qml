@@ -225,6 +225,9 @@ Item {
                         fillMode: Image.PreserveAspectFit
                     }
                     Text {
+                        id: rowLabel
+                        // What the E29 truncation test reads (truncated) by.
+                        objectName: "rowLabelText"
                         anchors.left: parent.left
                         anchors.leftMargin: model.isSection ? 48 : 62
                         anchors.right: parent.right
@@ -263,7 +266,16 @@ Item {
                         onHoveredChanged: {
                             if (hovered) {
                                 listArea.hoveredRow = index;
-                                listArea.hoveredTooltip = model.tooltip;
+                                // E29 (decided 2026-09-30): a tooltip only where
+                                // the label is ACTUALLY truncated, and then it
+                                // carries the label in full (the elide hid it)
+                                // ahead of the model's identification (the family
+                                // and the id for a destination, the count for a
+                                // section). An untruncated row's label already
+                                // states the same thing - no tooltip for it.
+                                listArea.hoveredTooltip = rowLabel.truncated
+                                    ? (model.label + (model.tooltip !== "" ? "\n" + model.tooltip : ""))
+                                    : "";
                             } else if (listArea.hoveredRow === index) {
                                 listArea.hoveredRow = -1;
                                 listArea.hoveredTooltip = "";
@@ -337,19 +349,19 @@ Item {
                 }
             }
 
-            // The row tooltip (the family and the id), drawn by the list AREA so the
-            // ListView's own clip cannot cut it off at the first row.
+            // The row tooltip, drawn by the list AREA so the ListView's own clip
+            // cannot cut it off at the first row. Its content is the hovered
+            // row's full label plus the model's identification (E29's kept kind),
+            // and it sits on the ROW rect passed as ownerX/Y/W/H - AeToolTip
+            // does the rest: below-first, flipping above at the bottom edge, and
+            // shifted inside the window so it is never clipped (E27/E28).
             AeToolTip {
                 text: listArea.hoveredTooltip
                 shown: listArea.hoveredRow >= 0 && text !== ""
-                x: {
-                    const item = list.itemAtIndex(listArea.hoveredRow);
-                    return item ? list.x + Math.round(item.x + item.width / 2 - width / 2) : 0;
-                }
-                y: {
-                    const item = list.itemAtIndex(listArea.hoveredRow);
-                    return item ? list.y + item.y - height - 6 : 0;
-                }
+                ownerX: { const item = list.itemAtIndex(listArea.hoveredRow); return item ? list.x + item.x : 0 }
+                ownerY: { const item = list.itemAtIndex(listArea.hoveredRow); return item ? list.y + item.y : 0 }
+                ownerW: { const item = list.itemAtIndex(listArea.hoveredRow); return item ? item.width : 0 }
+                ownerH: { const item = list.itemAtIndex(listArea.hoveredRow); return item ? item.height : 0 }
             }
         }
 
@@ -365,8 +377,11 @@ Item {
                 text: picker.manualText
                 onClicked: picker.acceptManually()
             }
-            HoverHandler { id: manualHover }
-            AeToolTip { text: picker.manualTooltip; shown: manualHover.hovered }
+            // No tooltip here (E29, decided 2026-09-30): the button's own text
+            // states what it is and cannot elide, and the explanatory prose that
+            // used to hover above it is neither kept kind. picker.manualTooltip
+            // stays in the model - untranslated strings belong to lupdate - in
+            // case the design ever asks for explanation tooltips back.
         }
 
         // ---- OK / Cancel ----

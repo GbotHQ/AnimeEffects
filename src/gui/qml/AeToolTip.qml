@@ -6,14 +6,31 @@ import QtQuick
 //
 // It is a CHILD of the control it labels, which is what gives it a position; the
 // owner drives it:
-//   AeToolTip { text: qsTr("Remove this range"); shown: mouse.containsMouse }
+//   AeToolTip { text: root.label; shown: root.showTip && mouse.containsMouse }
+// (E29, decided 2026-09-30, keeps tooltips ONLY on the Auto/Reset affordances
+// and on picker rows whose label truncates - see AeIconButton's `showTip`.)
 //
-// Hand-rolled for the design's sake, not for want of Controls: contract line E30
-// specifies that it is drawn above its owner and does not intercept the pointer, a
-// Popup would take a window of its own and the shared instance behind Controls'
-// attached ToolTip cannot be positioned per site. (The old header gave a different
-// reason - "a QQuickWidget cannot render a popup outside its own bounds" - which is
-// untested and false for Qt 6.8+ with `Popup.Window`; that is not why this exists.)
+// WHERE IT SITS is the contract's, not Qt's (E27/E28):
+//   E27 - below its owner, or above when there is no room below (measured
+//         2026-09-30 in host-spike: stock Controls.ToolTip places ABOVE always,
+//         which is not the line's placement);
+//   E28 - never clipped by the dialog's edge: shifted and flipped to stay
+//         INSIDE the window (the host ruling of 2026-09-30; the measured defect
+//         this replaces: a 324px tip overhung a 500px window by 114px and was
+//         simply cut, `x: parent.width/2 - width/2` with no clamp at all).
+// The owner's rectangle arrives as ownerX/Y/W/H in THIS item's coordinate frame
+// (default: the whole parent), because one call site - the picker's row tooltip
+// - parents the label to the list area while positioning it under a row.
+//
+// E30: it is drawn ABOVE its owner (the z, below) and does not intercept the
+// pointer: it declares no pointer handlers, so hover and clicks pass through.
+//
+// Hand-rolled for the design's sake, not for want of Controls: a Popup would
+// take a window of its own and the shared instance behind Controls' attached
+// ToolTip cannot be positioned per site. (The old header gave a different
+// reason - "a QQuickWidget cannot render a popup outside its own bounds" -
+// which is untested and false for Qt 6.8+ with `Popup.Window`; that is not why
+// this exists.)
 //
 // TIMING (contract line E26): it appears after a delay and never instantly, and it
 // hides after a timeout or as soon as the pointer leaves.
@@ -47,9 +64,47 @@ Item {
     visible: revealed && text !== ""
     z: 1000
     implicitWidth: label.implicitWidth + 14
-    implicitHeight: 22
-    x: parent ? Math.round(parent.width / 2 - width / 2) : 0
-    y: parent ? -height - 6 : 0
+    // 22 is the single-line look as it stands; a multi-line tooltip (the picker
+    // row's full label + identification) grows to fit rather than spilling out
+    // of a fixed-height bubble - "shows it in full" (E29) and "never clipped"
+    // (E28) both require the bubble to fit its text.
+    implicitHeight: label.lineCount > 1 ? label.implicitHeight + 8 : 22
+
+    // The owner's rectangle in the tooltip's PARENT's coordinates. Defaults:
+    // the whole parent (the common case - the tooltip is a child of its owner).
+    property real ownerX: 0
+    property real ownerY: 0
+    property real ownerW: parent ? parent.width : 0
+    property real ownerH: parent ? parent.height : 0
+
+    // The hosting window's rectangle in the parent's coordinates: the window's
+    // content item is the topmost ancestor of any in-scene item. Called inside
+    // the x/y bindings so placement re-evaluates with the geometry it rests on.
+    function windowRect() {
+        var top = root.parent;
+        while (top && top.parent) top = top.parent;
+        if (!top || !root.parent) return { l: -1e9, t: -1e9, r: 1e9, b: 1e9 };
+        var o = root.parent.mapToItem(top, 0, 0);
+        return { l: -o.x, t: -o.y, r: top.width - o.x, b: top.height - o.y };
+    }
+    function clamp(v, lo, hi) { return hi < lo ? lo : Math.max(lo, Math.min(hi, v)); }
+
+    // E27: below the owner, flipping above only when there is no room below.
+    // E28: then shifted vertically so the tip is never cut at either edge -
+    // the flip chooses the side, the clamp guarantees the fit.
+    y: {
+        if (!parent) return 0;
+        var w = windowRect();
+        var below = ownerY + ownerH + 6;
+        var v = (below + height <= w.b) ? below : ownerY - height - 6;
+        return Math.round(clamp(v, w.t, w.b - height));
+    }
+    // E27: centred on the owner, not at the pointer; E28: shifted inside.
+    x: {
+        if (!parent) return 0;
+        var w = windowRect();
+        return Math.round(clamp(ownerX + ownerW / 2 - width / 2, w.l, w.r - width));
+    }
 
     function disarm() {
         showTimer.stop();

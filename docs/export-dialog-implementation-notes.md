@@ -878,3 +878,69 @@ real portal lines; the only genuine portal line all day preceded this work). Fix
 | regression proof | deliberate breaks caught by exactly 4 and 7 assertions |
 | targeted probes | `dest`, `inputs`, `axes`, `quality` **4/4 PASS** (~8 min; `noproject` skipped — its Escape asserts the picker's absence, untouched here) |
 | catalogs | 0 `unfinished` ×6; no strings changed |
+
+## Post-R1, landed: the tooltip set is two kinds, and the bubble keeps itself inside (E29, E27, E28)
+
+The decided set (user, 2026-09-30) plus the placement lines. Mechanism stays the design's own
+in-scene `AeToolTip` (item 30: drawn above its owner in z, never intercepts the pointer); what
+changed is **who has one, what it says, and where it sits**.
+
+### E29 — the set, per call site (measured before judging)
+
+| call site | before | after | why |
+| --- | --- | --- | --- |
+| 5× Auto/Reset affordances (3 `AeNumberField` resets + size "Reset to native" + bitrate "Reset to auto") | tooltip = `resetLabel` | **KEPT** | the decided kind (b); strings unchanged — "Reset to …" is the user's "along the lines of 'Reset to default'" |
+| aspect toggle "Keep aspect ratio" | tooltip = label | **DROPPED** | a toggle, not a reset (link icon toggling a flag) |
+| `AeTextField` Clear | "Clear" | **DROPPED** | not one of the two kinds |
+| `AeFrameRangeRow` remove | "Remove range N" | **DROPPED** | not one of the two kinds |
+| picker rows | family+id, **always** | **KEPT but gated + enriched**: only when the row label actually elides (`Text.truncated`), text = the full label ahead of the identification | the decided kind (a): "tooltip only where text can be truncated" |
+| manual button | explanatory prose | **DROPPED** (instance removed) | neither kind; `AeButton` has no elide (measured) so it can never truncate. **Judgment flag**: the model property + translated string are left in place — if the user ever wants explanation tooltips back anywhere, this is the one to restore. |
+
+Accessible names are kept everywhere (a dropped tooltip loses hover text only). The gate is explicit
+per call site (`AeIconButton.showTip`, default false) — the set is a declared list, not a side
+effect.
+
+### E27/E28 — placement: below-first, flipped, clamped
+
+Interpretation recorded: **E27 governs placement** ("below, or above when there is no room, not at
+the pointer") while **item 30 governs layering + hit-testing** (drawn above = z; does not intercept
+the pointer) — the two are not in conflict under that reading, and the tooltip's own header now
+says so. (If the design intends the old always-*above* look instead, it is a one-line revert in
+`AeToolTip` and a contract edit — flagged, not assumed.)
+
+Measured at real call sites in a 500×400 window (`tooltip-spike/`, re-runnable):
+
+| site | before | after |
+| --- | --- | --- |
+| reset at the left edge | `winX=−8` — **clipped** | `winX=0` — clamped inside, and **below** the owner |
+| owner near the bottom-right corner | `winX=433..523` — **23 px cut** | `winX=410..500` — clamped + **flipped above** (no room below for a 370 px owner) |
+| every site | above the owner always (E27 violation) | below-first, `y = ownerBottom+6` exactly, flip only when needed |
+
+The bubble also grows for multi-line text (the composed picker tooltip is 3 lines; the old fixed
+22 px height would itself have clipped it — single-line look unchanged). E26 timing is **pinned by
+asserts**: no reveal at 150/250 ms, reveal after the dwell, both for a driven tip and a real
+hovered reset button.
+
+### Regression proof (deliberate breaks, run, reverted)
+
+Removing the clamp failed the E28 asserts in `tooltip_contract` **and** the picker's E28 assert
+(cross-catch); removing the truncation gate failed "an untruncated row gets NO tooltip". Reverted:
+all green.
+
+### Finding routed to the overflow increment
+
+The picker's list will not shrink below its content's natural width (measured `rootW=180` with
+`listW=211` = the widest row's natural width, at every window width): ColumnLayout minimums
+overflow and labels are **cut by the viewport clip instead of eliding**. D25 must check the same
+content-minimum behavior on the form side.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `scripts/run_suites.sh` **18/18 Debug, 18/18 Release**, exit 0 (orchestrator re-run; `tooltip_contract` + `scrub_escape` auto-discovered) |
+| regression proof | clamp break → 3 asserts fail across 2 suites; gate break → 1 assert fails |
+| visual/measured | before/after geometry dumps at real call sites (`tooltip-spike/`), clip −8→0 and 433..523→410..500 |
+| targeted probes | `dest`, `inputs`, `dialog` **3/3** (portal canary first, clean with the fixed `[systemd-run]` filter) |
+| catalogs | 0 `unfinished` ×6; kept strings unchanged |

@@ -331,6 +331,8 @@ Item {
                     AeIconButton {
                         iconName: "arrow-clockwise"
                         label: qsTr("Reset to native")
+                        // E29's kept kind: an Auto/Reset affordance.
+                        showTip: true
                         enabled: exportModel.sizeEditable
                         onClicked: exportModel.setSizeToNative()
                     }
@@ -575,6 +577,8 @@ Item {
                         AeIconButton {
                             iconName: "arrow-clockwise"
                             label: qsTr("Reset to auto")
+                            // E29's kept kind: an Auto/Reset affordance.
+                            showTip: true
                             onClicked: exportModel.bitrate = "Auto"
                         }
                     }
