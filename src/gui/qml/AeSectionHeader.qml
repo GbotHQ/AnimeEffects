@@ -12,8 +12,13 @@ import QtQuick
 // the two sections are legible as structure without competing with their own
 // contents.
 //
-// NOT a Controls Label, for the same reason every control in this dialog is hand
-// rolled: a QC2 control brings its own chrome and palette into a QQuickWidget.
+// Not a Controls Label because Label has nothing this heading needs: measured
+// offscreen against a plain Text, it IS a Text (QQuickLabel -> QQuickText) whose
+// only additions are a style-palette colour binding (its color follows
+// palette.windowText; Text's does not) that this design replaces with
+// theme.textMutedDim anyway, and background/inset chrome slots this heading
+// never fills. And no Controls type is a ruled heading — the hairline is ours on
+// any rung (docs/export-dialog-implementation-notes.md, "Control inventory").
 Item {
     id: root
 

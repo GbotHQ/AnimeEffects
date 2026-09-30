@@ -1,9 +1,14 @@
 import QtQuick
 
 // Hand-rolled Blender-style numeric input: drag horizontally to scrub the
-// value, click to type a value directly. Deliberately NOT Qt Quick Controls —
-// a QC2 SpinBox cannot be restyled to match the app's raised-input look nor
-// given scrub-drag behavior. Binds to the "theme" context property.
+// value, click to type a value directly. Not a QC2 SpinBox: a SpinBox could
+// host the styling (it is delegate-based — its editor is SpinBox.contentItem, a
+// TextInput with readOnly: !editable, measured in Basic/SpinBox.qml) but it
+// assumes an always-present editor, which contradicts the design's
+// display-until-clicked mode and the scrub shell's click/focus needs; the scrub
+// is behaviour no toolkit ships as a delegate (measured inventory:
+// docs/export-dialog-implementation-notes.md, "Control inventory", numeric field).
+// Binds to the "theme" context property.
 Item {
     id: root
 
@@ -103,13 +108,17 @@ Item {
     // Scrub + click-to-edit, ABOVE the value text so it reliably receives the
     // hover and pointer events. A click (press with no drag) enters edit mode;
     // a drag scrubs the value. Enabled only while not editing so the (on-top)
-    // TextInput receives the pointer while typing. The cursor hints the
-    // horizontal scrub (not a click-pointer).
+    // TextInput receives the pointer while typing. The cursor follows the mode:
+    // the horizontal scrub hint over the scrub target (F32), an I-beam while the
+    // field is text to select and edit (F31) — a constant SizeHor here was
+    // measured (run.sh captures) painting the double arrow over the text even
+    // after a hover re-evaluation, and the switch must land at the click, before
+    // this area disables itself and the pointer has moved.
     MouseArea {
         id: scrub
         anchors.fill: parent
         enabled: !editInput.activeFocus && root.enabled
-        cursorShape: Qt.SizeHorCursor
+        cursorShape: editInput.activeFocus ? Qt.IBeamCursor : Qt.SizeHorCursor
         hoverEnabled: true
 
         property real pressX: 0
@@ -174,10 +183,18 @@ Item {
         anchors.rightMargin: 8
         verticalAlignment: Text.AlignVCenter
         color: theme.text
+        // F33: the selection is the theme's selection pair, like AeTextField.
+        selectionColor: theme.selection
+        selectedTextColor: theme.selectionText
         font.pixelSize: 11
         visible: activeFocus
         enabled: root.enabled
         selectByMouse: true
+        // F31: over the text the pointer is an I-beam. This handler owns the
+        // cursor for a FRESH hover in edit mode (leaving and re-entering the
+        // field); the mode switch at the click itself is the MouseArea's
+        // cursorShape binding above.
+        HoverHandler { cursorShape: Qt.IBeamCursor }
         inputMethodHints: Qt.ImhFormattedNumbersOnly
         objectName: "scrubEdit"
         property bool cancelEdit: false

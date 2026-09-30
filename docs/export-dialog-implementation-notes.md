@@ -677,3 +677,82 @@ xdotool XTEST jumping across windows in one event) is not evidence about hover: 
 in-window approach exercised the entry event, and only there did the HoverHandler's cursor apply —
 the old `MouseArea` path survived the jump by setting the cursor per-motion, which is why the old
 control always looked right in the same test. Photograph the real path, or photograph nothing.
+
+## R1, landed: `ScrubSpinBox` keeps its shell — F31 and F33 fixed, two headers measured true
+
+The last R1 item was never a conversion (the inventory's numeric-field row decides the scrub shell
+is behaviour no toolkit ships, ours on any base): two review defects inside the control, plus two
+header comments whose stated reasons had stopped being true.
+
+### F31 — the pointer follows the mode, and the defect was actively wrong, not stale
+
+Measured on the real X pointer path (`ffmpeg -draw_mouse 1`, judged only at 600% nearest zoom) in
+**three** edit states — stationary after the click (the acceptance frame), after a 2px move-and-back
+jiggle (fresh hover re-evaluation), and after leaving to the background and re-entering over the
+text. The baseline shows `Qt.SizeHorCursor` over the text in **all three**, so no amount of hover
+re-evaluation was going to fix it. The fix has two owners, matching the two ways the cursor can
+arrive: `cursorShape: editInput.activeFocus ? Qt.IBeamCursor : Qt.SizeHorCursor` on the scrub
+`MouseArea` (the switch lands at the click itself — the property write applies at the focus flip,
+before the area disables itself and without pointer motion), and `HoverHandler { cursorShape:
+Qt.IBeamCursor }` on `editInput` (owns a fresh hover in edit mode). Scrub-hover keeps
+`Qt.SizeHorCursor` (F32): rest-frame AE before vs after = **0**.
+
+| state | baseline | after |
+| --- | --- | --- |
+| rest / scrub hover | SizeHor | SizeHor (F32, AE=0 before-vs-after) |
+| edit, stationary after click | **SizeHor (the defect)** | **I-beam** |
+| edit, after jiggle | **SizeHor** | **I-beam** |
+| edit, leave + re-enter | **SizeHor** | **I-beam**, AE=0 vs the stationary frame |
+
+### F33 — the selection is the theme pair, sampled not asserted
+
+Live-object readings of the real `editInput` (objectName `scrubEdit`, both fields in one window):
+baseline `#ff000080`/`#ffffffff` (Qt default palette), after `#666d28d9`/`#fff5f5f5` — **exactly**
+`theme.selection`/`theme.selectionText` as `QmlTheme` prints them (the only pair QML can bind;
+`Colors::textSelection` exists in the C++ struct but is not exposed, and the design reference
+`AeTextField` binds `selection`/`selectionText`). Rendered proof: the highlight's clean 22x3 block
+is `#52367D` = `theme.selection` (alpha 0x66) composited over the measured `theme.raised` `#404040`
+— `magick compare -metric AE` against a synthetic blend = **0**; the baseline's navy sample fails
+the same check **66/66 px**. Selected-glyph pixels are subpixel-AA blends at 11px (never full
+coverage), so `selectionText` is honestly evidenced by the live-object reading plus the baseline
+contrast, not by pixel sampling.
+
+### The two headers, each rewritten only after measuring its claim
+
+- `ScrubSpinBox.qml:3-6` claimed "a QC2 SpinBox cannot be restyled … nor given scrub-drag
+  behavior". Unmeasured and false in the interesting half: the inventory row measured that a
+  `SpinBox` **can** host the styling (delegate-based; its editor is `SpinBox.contentItem`, a
+  `TextInput` with `readOnly: !editable`, from `Basic/SpinBox.qml`) but assumes an always-present
+  editor, which contradicts the design's display-until-clicked mode and the scrub shell's
+  click/focus needs. The header now says exactly that, with the citation.
+- `AeSectionHeader.qml:15-16` claimed "NOT a Controls Label, for the same reason every control in
+  this dialog is hand rolled". The premise died with `f5aa28d..f7ef22e` (AeButton/AeCheckBox/
+  AeDisclosure/AeComboBox all import QtQuick.Controls — verified). A fresh offscreen probe settled
+  the true reason: `Label` **is** a `Text` (`QQuickLabel → QQuickText`; Qt docs "Inherits: Text"),
+  its only property delta over `Text` is `background` + the four inset slots (chrome this heading
+  never fills), default colour and font are identical, and the one live difference is the palette
+  binding (`palette.windowText` green moved `Label.color`, not `Text.color`) — which this design
+  replaces with `theme.textMutedDim` anyway. And no Controls type is a ruled heading.
+
+### Traps recorded
+
+- **ImageMagick hex is `#RRGGBBAA`, Qt's is `#AARRGGBB`** — and ImageMagick's 16-bit internal depth
+  inflates AE even between identical 8-bit colours. Compare at `-alpha off -depth 8 -colorspace
+  sRGB -type TrueColor` (the AE=0 above is at matched depth).
+- AE=0 still cannot see a pointer (the contract's own table): the cursor claims are photographs,
+  per state, with the re-enter frame AE=0 against the acceptance frame as the stability check.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** (logs in `scrub-spike/gates/`; artifacts rebuilt after the edit) |
+| units | `scripts/run_suites.sh` **16/16 Debug, 16/16 Release**, exit 0 both (orchestrator re-run; includes `picker_keyboard` and `media_exporter_e2e`) |
+| cursor | three edit states photographed I-beam after / SizeHor before; rest SizeHor both (AE=0) |
+| selection | live-object tokens exact; rendered blend AE=0 after / 66-px fail before |
+| field crops | harness symmetric at baseline (old-vs-new AE=0); fix delta in edit only (AE=640, 0.37%); rest unchanged (AE=0) |
+| catalogs | untouched, `grep -c unfinished` = 0 |
+
+Evidence: `.git/dsh-scratch/scrub-spike/` (`out/before` the baseline set, `out/after` the fixed set
+incl. `_edit_hover`/`_edit_reenter`, `gates/` the gate logs; `run.sh` extended with the jiggle and
+re-enter states).
