@@ -1012,3 +1012,53 @@ fixed because nothing was broken.
 
 **Three flagged choices for the user** (all reversible): root-level key paging, the added form
 scrollbar, the screen-clamped window floor.
+
+## Post-R1, landed: the ghost fill was black in its RGB — C21, reproduced then removed
+
+*"No row paints a wrong intermediate colour… with no black or unstyled frame"* (item 21). The
+review's "Add range hover flashes black" now has both a reproduction and a root cause, measured.
+
+### Reproduced twice before touching anything
+
+- **Deterministic** (real dialog + real view model offscreen; `QHoverEvent` posted to the window —
+  the proven hover route — per-frame read of the background Rectangle's own colour): hover entry
+  went `#ff000000 → #ff020202 → #ff0a0a0a → #ff171717 → #ff292929 → #ff404040` over ~86 ms; leave
+  mirrored it downward. Entries 1–5 identical.
+- **Real pointer** (Xvfb, 30 fps video, 5 entries on the real Add-range button, 316 frames): the
+  **leave** transition dipped below the base on screen — (31,33,30) vs base (37,37,37) — visible
+  (`hover-spike/out/crop_0082.png`). Honest caveat: at 30 fps the entry fade fell between frames;
+  entry evidence is the deterministic instrument + the test's 8 ms sampling.
+
+### Root cause and fix (one line)
+
+`Behavior on color { ColorAnimation { duration: 80 } }` lerps **straight RGBA**, and the ghost's
+rest fill `"transparent"` = `rgba(0,0,0,0)` carries **black** in its RGB — so every fade passed
+through dark semi-transparent fills. Fix: the rest fill is now
+`Qt.rgba(theme.raised.r, theme.raised.g, theme.raised.b, 0)` — zero alpha in the **hover colour's
+own RGB** — so the fade is a clean alpha ramp. Signature proof: before, the grab timeline is
+quadratic-ish (RGB *and* alpha ramping 2,10,23,41,64); after, linear alpha-only (13,26,38,51,64).
+Only `AeButton` has this class (`AeIconButton`/`AeCheckBox` have no `Behavior`/`ColorAnimation` —
+grep-checked; instant swaps cannot flash).
+
+### Proof and gate
+
+Settled visuals byte-identical (AE=0 before/after, rest and hover); first entry == fifth; no
+transition frame leaves the base↔hover range after the fix. `tests/hover_parity.cpp` (suite #20)
+samples the **animated property** every ~8 ms: RGB-constancy through both fades, a black-frame
+detector, first==fifth parity, the invisible-rest rule, and the secondary variant's fade staying
+within its endpoints. Deliberate break (`"transparent"` restored) fails exactly 5 asserts.
+
+**Instrument note worth keeping**: `grabToImage` composites the item onto **opaque black** — it
+hides alpha and turns every fade into a climb from 0, i.e. it is blind to this whole defect class.
+The gate samples the property, not the grab.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `scripts/run_suites.sh` **20/20 Debug, 20/20 Release**, exit 0 (orchestrator re-run) |
+| regression proof | `"transparent"` restored → exactly 5 asserts fail |
+| visual | settled AE=0 both states; timeline signature quadratic→linear; video frames + crops |
+| targeted probes | canary PASS, `dialog`/`inputs`/`export` **3/3** |
+| catalogs | 0 `unfinished` ×6 |

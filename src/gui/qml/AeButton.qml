@@ -72,7 +72,17 @@ Button {
                 return theme.raisedHover;
             }
             if (root.kind === "primary") return theme.accent;
-            if (root.kind === "ghost") return "transparent";
+            // C21: the ghost's rest fill is INVISIBLE but NOT "transparent".
+            // `Behavior on color` below lerps straight RGBA, and rgba(0,0,0,0)
+            // carries BLACK in its RGB: the 80 ms fade to theme.raised passed
+            // through dark semi-transparent frames - the "Add range hover
+            // flashes black" defect (measured: the fill's own colour climbed
+            // #000000 -> #020202 -> #0a0a0a -> #171717 -> #292929 -> #404040
+            // over 86 ms, and the leave fade dipped below the base on screen).
+            // A zero-alpha fill in the HOVER colour's own RGB fades as a clean
+            // alpha ramp and paints nothing at rest - identical settled look,
+            // no dark frame in either direction.
+            if (root.kind === "ghost") return Qt.rgba(theme.raised.r, theme.raised.g, theme.raised.b, 0);
             return theme.raised;
         }
         border.width: root.visualFocus ? 1 : 0

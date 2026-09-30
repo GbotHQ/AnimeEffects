@@ -224,6 +224,31 @@ target_link_libraries(scrub_escape PRIVATE
     media
 )
 
+# C21's hover-fade rule (item 21): no wrong intermediate colour. The ghost
+# button's rest fill must fade through its OWN RGB at varying alpha - the old
+# "transparent" endpoint made the ColorAnimation pass through semi-transparent
+# black ("Add range hover flashes black"). Samples the ANIMATED background.color
+# property per frame (a grabToImage is blind here: it composites over opaque
+# black and hides alpha - measured). See hover_parity.cpp.
+add_executable(hover_parity
+    hover_parity.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(hover_parity PRIVATE .. ../src ../src/gui)
+target_compile_definitions(hover_parity PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(hover_parity PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The tooltip contract (E26/E27/E28/E29, decided 2026-09-30): WHICH controls
 # keep a tooltip (the set is explicit - the Auto/Reset affordances and truncated
 # picker rows), WHERE the bubble sits (below-first, flipping above at the bottom
