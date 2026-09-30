@@ -57,7 +57,9 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
    selection are unchanged by that click. *(An earlier draft of this document required the
    opposite; it was written from widget convention and was wrong.)*
 4. [D] The dialog is modal over the main window and transient for it, as it is today.
-5. [Q] Whether the dialog restores its last size between sessions.
+5. [D] The dialog restores its last size between sessions. (Decided 2026-09-30: yes — geometry is
+   persisted across sessions, as users expect of desktop dialogs; the first open uses the designed
+   default size.)
 
 ## B. Search field (picker)
 
@@ -70,7 +72,8 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
    CARET's; the field does not forward them at all, so a stray arrow while typing cannot collapse
    the highlighted platform (this was the reported defect). A group is opened and closed by a click
    on its header (B16), or by Left/Right while the LIST itself holds the focus.
-10. [Q] Whether Escape clears the field first and only then closes the dialog.
+10. [D] Escape clears the field first and closes the dialog only when the field is already empty.
+    (Decided 2026-09-30.)
 11. [R3] Clicking outside the field removes its focus and keeps its text (see A3).
 12. [R4] The pointer is an I-beam over the text area. The current field specifies no cursor, so it
     inherits the arrow.
@@ -86,14 +89,16 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 
 16. [R2] A click on a group header expands or collapses it, including while the search field has
     focus, and never selects the row.
-17. [Q] Group expansion defaults and whether expansion state is remembered (see Q-list).
+17. [D] Groups start collapsed and their expansion state is remembered across sessions.
+    (Decided 2026-09-30: collapsed default, state persisted.)
 18. [R6] A destination with no children is not indented as though it had a parent.
 19. [D] Search matches across every group, and groups with no match are not listed.
 20. [R1] Matches are reachable with the keyboard, not only with the pointer: the highlighted row is
     the row Enter activates and the row a click selects.
 21. [R7] No row paints a wrong intermediate colour: the hover state on first entry is identical to
     the hover state on the fifth, with no black or unstyled frame.
-22. [Q] Whether hovering a row changes the selection or only the highlight.
+22. [D] Hovering a row changes the highlight only; the selection changes on a click.
+    (Decided 2026-09-30: hover must not select.)
 
 ## D. Scrolling and overflow
 
@@ -103,7 +108,8 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
     rest of the exporter UI uses.
 25. [R11] The export form never exceeds the window without a scroll: when the content does not fit
     (minimum size, small screen, or the Advanced section open), the content scrolls by wheel, keys
-    and drag, and the Cancel/Export row stays reachable.
+    and drag, and the Cancel/Export row stays fixed at the bottom while the content scrolls —
+    reachable without scrolling to the end. (Decided 2026-09-30.)
 
 ## E. Tooltips
 
@@ -113,7 +119,10 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
     there is no room), not at the pointer.
 28. [R10] It is never clipped by the dialog's edge; it flips or shifts to stay inside the screen.
 29. [R9] It does not appear for a control whose text already states the same thing; the set of
-    controls that keep a tooltip is explicit (design question).
+    controls that keep a tooltip is explicit. (Decided 2026-09-30: exactly two kinds — picker rows,
+    where the name can be truncated and the tooltip shows it in full, and the icon-only Auto/Reset
+    buttons, whose tooltip says "Reset to default". Every other tooltip is dropped, including any
+    hint on the numeric fields.)
 30. [D] It is drawn above its owner and does not intercept the pointer, as `AeToolTip` does today.
 
 ## F. Numeric fields (frames, resolution, frame rate, quality)
@@ -122,12 +131,14 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
     `Qt.SizeHorCursor` for the whole field, which is the defect.
 32. [D] In scrub mode a horizontal drag changes the value by the field's step, clamped to the
     field's range, with the scrub cursor. (`ScrubSpinBox` specifies the drag and the cursor.)
-33. [D] `selectAll()` on entry and `Keys.onEscapePressed` are the design's behaviour; the exact
-    effect of Escape (restore on focus, or restore on open) is Q.
-34. [Q] The exact Escape semantics for a numeric field.
+33. [D] `selectAll()` on entry and `Keys.onEscapePressed` are the design's behaviour. (Escape's
+    effect decided 2026-09-30: restore the value the field had when this edit began — see 34.)
+34. [D] Escape restores the value from when the field was focused (the start of the current edit),
+    not the value from when the dialog opened. (Decided 2026-09-30.)
 35. [D] The Auto/Reset affordance is a separate, icon-only control with its words in `resetLabel`
     (`AeNumberField` already specifies this), and the row reads its placeholder word when the value
-    is the sentinel.
+    is the sentinel. The words surface as the button's tooltip — "Reset to default" (Decided
+    2026-09-30, see E29).
 36. [D] Width and height keep their aspect lock; the frame-range fields clamp against each other so
     a range can never invert.
 
@@ -166,20 +177,21 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 45. [R7] Icons render without aliasing at 1×, 1.5× and 2×: vector sources are rasterised at the
     device pixel ratio, and nothing is scaled up from a 1× bitmap.
 
-## Design questions (yours to decide — these are not implementation limits)
+## Design questions (all decided 2026-09-30 — kept for traceability)
 
-Every line marked `[Q]` above, collected:
+Every line marked `[Q]` above, collected. All were decided by the user on 2026-09-30 and the lines
+above now carry the decisions; Q4 (item 15), Q6 (item 39) and the Tab+list-open ruling (item 37)
+were decided earlier the same way:
 
-- **Q1 (C17).** Group expansion defaults: all collapsed, all expanded, or last state remembered?
-- **Q2 (C22).** Does hovering a row change the selection, or only the highlight?
-- **Q3 (B10).** In the picker, does Escape clear the search field first and close only when it is
-  already empty?
-- **Q5 (F34).** For a numeric field, does Escape restore the value from when it was focused, or the
-  value from when the dialog opened?
-- **Q7 (E29).** Which controls keep a tooltip at all? (You noted several restate their own label.)
-- **Q8 (A5).** Does the dialog remember its size between sessions?
-- **Q9 (D25).** When the form overflows, does the action row (Cancel/Export) stay fixed at the
-  bottom while the content scrolls, or does it scroll with the content?
+| Q | Question | Decided |
+| --- | --- | --- |
+| Q1 (C17) | Group expansion defaults and memory | Start collapsed; expansion state remembered across sessions |
+| Q2 (C22) | Hover: selection or highlight? | Highlight only — hover never selects; selection is a click |
+| Q3 (B10) | Escape in the picker | Clears the search field first; closes only when it is already empty |
+| Q5 (F34) | Escape in a numeric field | Restores the value from when the field was focused |
+| Q7 (E29) | Which controls keep a tooltip | Only picker rows (full truncated name) and the icon-only Auto/Reset buttons ("Reset to default"); all others dropped |
+| Q8 (A5) | Remember dialog size between sessions | Yes, persisted; first open uses the designed default |
+| Q9 (D25) | Action row on overflow | Fixed at the bottom while the content scrolls |
 
 ## Traceability: the review items → this document
 
