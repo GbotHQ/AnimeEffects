@@ -1,115 +1,151 @@
 pragma Translator: "AnimeEffects.Dialogs"
 
 import QtQuick
+import QtQuick.Controls
 
-// A raised dropdown with an IN-SCENE popup.
+// A raised dropdown whose popup is an IN-SCENE list — by design, not by
+// impossibility. This file's earlier comment claimed Controls' ComboBox cannot
+// render its popup outside the hosting QQuickWidget; that claim was measured
+// false on this Qt (6.11): the stock popup is `popupType: Popup.Item`, parented
+// to the window overlay inside the widget's own window, and `Popup.Window`
+// renders outside it too. The design keeps the list in-scene regardless —
+// export-dialog-behavior G37: "the popup is the design's in-scene list" — and
+// Qt's popup positioner performs the same dance `updatePopupGeometry()` did:
+// below the field, flipped above when there is no room, clamped inside the
+// window as the last resort (measured against the old control's geometry).
 //
-// Deliberately not Qt Quick Controls' ComboBox: its popup is a Popup, which is a
-// separate window and cannot render outside the QQuickWidget that hosts this
-// dialog (the dialog is a widget-hosted scene, not a QQuickWindow). So the list is
-// a plain Rectangle in the same scene, parented to the scene's root item, anchored
-// under the field and flipped ABOVE it when there is no room below - which is the
-// whole reason this control exists rather than a one-line import.
+// `options` is a list of { label, value } maps (the shape the view model
+// exposes), `index` is the current row and is written ONLY by the call sites'
+// bindings (`index: exportModel.X`); `onActivated` is how every user choice
+// reaches the model. Measured: stock emits `activated` exactly once for
+// type-ahead on the closed field, for Enter's commit, and for a row click;
+// a popup-open type-ahead moves only the highlight and emits nothing (the
+// field does not change, so the model stays consistent). Up/Down are ours —
+// see the Keys handler below.
 //
-// `options` is a list of { label, value } maps (the shape the view model exposes),
-// `index` is the current row. `overlay` is the scene's root item: the list is
-// parented there and positioned in ITS coordinates, so a field near the bottom of
-// the dialog still opens onto a list that is fully on screen.
-Item {
+// Type-ahead ships because Q6/G39 was decided: typing letters on the closed
+// field selects the matching item. It needs `textRole: "label"` — with the
+// raw {label,value} objects keySearch has no text to match (measured: idx
+// never moved, and the style logged `Unable to assign QVariantMap to
+// QString`); with the role, 'a'/'d' from row 2 select Alpha/Delta and the
+// warning disappears.
+//
+// Escape and Space and Enter are the control's own (measured against the old
+// hand-rolled file): Escape closes an open popup and otherwise PROPAGATES —
+// the old control accepted it unconditionally and so failed design line A2
+// ("Escape cancels") whenever the field was closed; that is a defect this
+// conversion fixes. Space toggles on release (the AeDisclosure precedent).
+// Enter with the popup open commits the highlighted row and dismisses (G37);
+// with the popup closed it is swallowed, and nothing in the shell consumes a
+// plain Return anyway (A2 scopes Return to the buttons and shortcuts).
+//
+// `flat` marks a field that reports a frozen fact: same shape, recessed fill.
+// `overlay` is kept for the call sites — popup positioning belongs to Qt now.
+ComboBox {
     id: root
 
     property var options: []
     property int index: -1
-    // True for a field that reports a frozen fact: same shape, recessed fill.
-    property bool flat: false
+    // `flat` marks a field that reports a frozen fact (same shape, recessed fill)
+    // — and it is Qt's OWN property on ComboBox (`Q_PROPERTY(bool flat … FINAL
+    // REVISION(2,1))`), not ours: redeclaring it is the load error this file used
+    // to hit (`Cannot override FINAL property`). The old control declared it
+    // locally with this meaning, no call site has ever set it to anything, and
+    // the background below is the only thing that reads it.
+    // Kept so the call sites' `overlay: root` stays valid; the popup no longer
+    // needs it — Qt's positioner places the list (below / flipped above /
+    // clamped inside the window, measured).
     property Item overlay: null
 
     readonly property string value: (index >= 0 && index < options.length)
                                     ? String(options[index].value) : ""
     readonly property string text: (index >= 0 && index < options.length)
                                    ? String(options[index].label) : ""
+    // The field's open state, in the old control's words (the background's
+    // focus-coloured border reads it, as it read `popupOpen` before).
+    readonly property bool popupOpen: popup.visible
 
-    signal activated(int index)
+    // index → currentIndex only. Every user path reaches the model through
+    // `activated`, so the binding re-evaluates and comes back through here;
+    // writing `index` from inside would destroy that binding, which is why
+    // this control never does.
+    onIndexChanged: if (index !== currentIndex) currentIndex = index
 
-    implicitHeight: 28
+    model: options
+    textRole: "label"
+    focusPolicy: Qt.TabFocus        // the old control was Tab-only; stock's default
+                                    // is StrongFocus and a click would TAKE focus
+                                    // (measured) — it must not.
+    hoverEnabled: true
+    padding: 0                      // the field spans the full control, as the old
+                                    // Rectangle did (stock padding would shrink it)
+    // The style's own double-arrow: it lives OUTSIDE background/contentItem, so
+    // overriding those still left it drawn (measured: 133 differing pixels, a second
+    // caret beside ours). The old control had one caret; this is how it has none.
+    // The Basic style's padding bindings null-check `indicator`, so null is safe.
+    indicator: null
     implicitWidth: 160
+    implicitHeight: 28
 
-    // The accessible COMBO node. Qt Quick's Accessible attached type cannot give
-    // this control the protocols it needs (see gui/qml/QmlFormAccessibility): Qt
-    // exposes a press action for Button/CheckBox/RadioButton/Switch roles, not for
-    // a combo, and it reports a QML item's screen rectangle in the QQuickWidget's
-    // coordinates. This childless Item carries the identity and the current value,
-    // and the C++ factory gives it role ComboBox, a name that IS the current value
-    // (Qt's own rule), the identity as its description, a press action that
-    // opens/closes the list, and a screen-correct rectangle.
-    Item {
-        id: accessibleCombo
-        objectName: "aeAccessibleCombo"
-        x: field.x
-        y: field.y
-        width: field.width
-        height: field.height
-        enabled: root.enabled
-        property string accessibleName: root.objectName
-        property string accessibleValue: root.text
-        function accessiblePress() { root.togglePopup(); }
-        Accessible.role: Accessible.ComboBox
-        Accessible.name: root.text
-        Accessible.description: root.objectName
+    // G37: Up/Down CHOOSE. Two measured facts shape this:
+    //   * `highlightedIndex` is READ-ONLY from QML — writing it throws
+    //     `Cannot assign to read-only property`, and the first version of this
+    //     filter died on that line mid-handler, silently dropping the emission
+    //     that came after it (the run_keys matrix caught it: closed worked only
+    //     because stock rescues that case itself, open committed nothing);
+    //   * stock's Down/Up with the popup OPEN moves only the highlight (no
+    //     `activated`), while closed it moves the index AND emits exactly once.
+    // So the filter only MARKS the key and lets stock run: stock moves the
+    // highlight as it always did, and the highlight's change is mirrored to
+    // `activated` only when a Down/Up put it there — one emission per press,
+    // index and highlight ending on the same row, so Enter/Space then commit
+    // what the eye sees. A type-ahead also moves the highlight while open; it
+    // is not flagged, so it stays highlight-only until Enter commits it (the
+    // decided closed-field type-ahead emits through stock itself, measured).
+    property bool _keyNav: false
+
+    Keys.onPressed: (event) => {
+        event.accepted = false;
+        _keyNav = event.key === Qt.Key_Down || event.key === Qt.Key_Up;
     }
 
-    property bool popupOpen: false
-
-    // The popup is reparented to `overlay` as soon as there is one, and sits above
-    // everything else in the scene.
-    function popupParent() { return root.overlay ? root.overlay : root; }
-
-    function openPopup() {
-        if (!root.enabled || options.length === 0) return;
-        root.popupOpen = true;
-        root.updatePopupGeometry();
+    onHighlightedIndexChanged: {
+        if (!_keyNav || highlightedIndex < 0 || highlightedIndex === currentIndex) return;
+        _keyNav = false;
+        root.activated(highlightedIndex);
     }
 
+    // Toggle for the accessible node's press action (and the field's own
+    // open/close), with the old control's guard: a disabled or empty combo
+    // never opens.
     function togglePopup() {
-        if (root.popupOpen) { root.popupOpen = false; return; }
-        root.openPopup();
+        if (popup.visible) { popup.close(); return; }
+        if (!root.enabled || root.options.length === 0) return;
+        popup.open();
     }
 
-    // Place the list under the field, in the OVERLAY's coordinates, flipping it
-    // above when there is no room below. Computed when the list opens (and when the
-    // overlay resizes) rather than bound: mapToItem() has no change notification of
-    // its own, so a binding over it caches the position from creation time - which
-    // parked the list in the dialog's top-left corner.
-    function updatePopupGeometry() {
-        const parent = root.popupParent();
-        if (!parent) return;
-        const topLeft = root.mapToItem(parent, 0, 0);
-        popup.x = topLeft.x;
-        const h = popup.height;
-        const below = topLeft.y + root.height + 2;
-        if (below + h <= parent.height - 4) {
-            popup.y = below;
-        } else {
-            const above = topLeft.y - h - 2;
-            popup.y = above >= 4 ? above : Math.max(4, parent.height - h - 4);
-        }
+    // The field points like every other control in this dialog: the old control's
+    // field MouseArea carried `cursorShape: Qt.PointingHandCursor`, and every
+    // sibling keeps it the same way (AeButton's HoverHandler — copied here). An
+    // offscreen grab can never show this (no pointer in the pixels), so it is
+    // verified by photographing the Xvfb screen with `ffmpeg -draw_mouse 1`.
+    HoverHandler {
+        enabled: root.enabled
+        cursorShape: Qt.PointingHandCursor
     }
 
-    onPopupOpenChanged: if (popupOpen) updatePopupGeometry()
-    onHeightChanged: if (popupOpen) updatePopupGeometry()
-    onWidthChanged: if (popupOpen) updatePopupGeometry()
-
-    Rectangle {
-        id: field
-        anchors.fill: parent
+    // ---- the field ----------------------------------------------------------
+    background: Rectangle {
         radius: 4
         color: !root.enabled || root.flat ? theme.recessed
-             : mouse.containsMouse ? theme.raisedHover : theme.raised
+             : root.hovered ? theme.raisedHover : theme.raised
         border.width: 1
         border.color: root.popupOpen ? theme.focus
-                    : mouse.containsMouse ? theme.hover
+                    : root.hovered ? theme.hover
                     : (root.enabled && !root.flat ? theme.raised : theme.recessed)
+    }
 
+    contentItem: Item {
         Text {
             anchors.left: parent.left
             anchors.leftMargin: 9
@@ -135,62 +171,83 @@ Item {
             opacity: root.enabled ? 0.85 : 0.4
         }
     }
-    MouseArea {
-        id: mouse
+
+    // The accessible COMBO node. Qt Quick's Accessible attached type cannot give
+    // this control the protocols it needs (see gui/qml/QmlFormAccessibility): Qt
+    // exposes a press action for Button/CheckBox/RadioButton/Switch roles, not for
+    // a combo, and it reports a QML item's screen rectangle in the QQuickWidget's
+    // coordinates. This childless Item carries the identity and the current value,
+    // and the C++ factory gives it role ComboBox, a name that IS the current value
+    // (Qt's own rule), the identity as its description, a press action that
+    // opens/closes the list, and a screen-correct rectangle. Qt now also creates
+    // its OWN ComboBox node for the control (measured: role ComboBox with an empty
+    // name and description), which no probe can match by name — the marker stays
+    // the addressable one.
+    Item {
+        id: accessibleCombo
+        objectName: "aeAccessibleCombo"
         anchors.fill: parent
-        hoverEnabled: true
         enabled: root.enabled
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.togglePopup()
+        property string accessibleName: root.objectName
+        property string accessibleValue: root.text
+        function accessiblePress() { root.togglePopup(); }
+        Accessible.role: Accessible.ComboBox
+        Accessible.name: root.text
+        Accessible.description: root.objectName
     }
-    activeFocusOnTab: true
-    Keys.onDownPressed: if (root.enabled && root.index + 1 < root.options.length) root.activated(root.index + 1)
-    Keys.onUpPressed: if (root.enabled && root.index > 0) root.activated(root.index - 1)
-    Keys.onSpacePressed: { root.togglePopup(); event.accepted = true }
-    Keys.onEscapePressed: { root.popupOpen = false; event.accepted = true }
 
     // ---- the popup ---------------------------------------------------------
-    // A backstop that swallows a click outside the list, so the dropdown closes
-    // the way every dropdown does.
-    Rectangle {
-        id: scrim
-        parent: root.popupParent()
-        visible: root.popupOpen
-        x: 0
-        y: 0
-        width: parent ? parent.width : 0
-        height: parent ? parent.height : 0
-        color: "transparent"
-        z: 900
-        MouseArea {
-            anchors.fill: parent
-            onClicked: root.popupOpen = false
-        }
-    }
-
-    Rectangle {
-        id: popup
-        parent: root.popupParent()
-        visible: root.popupOpen
-        z: 901
+    // modal + dim:false reproduce the old scrim exactly: while the list is open
+    // a press outside CLOSES it and does not reach the control beneath
+    // (measured: stock's default non-modal overlay passed that press through —
+    // outsideClicks 0→1 — and only modal restored the old swallow, 0→0, with
+    // the popup still closing). dim stays off: the old scrim was transparent.
+    // closePolicy is stock's default and matches the old backstop: Escape, and
+    // a press anywhere outside the list.
+    popup: Popup {
+        modal: true
+        dim: false
+        // Below the field, with the old control's 2px gap: this is the same `y`
+        // binding the Basic style ships for its own popup (`y: control.height`),
+        // shifted by the gap `updatePopupGeometry()` used, and the 4px margins are
+        // its clamp. (Without a `y` binding the positioner had no baseline and the
+        // list opened AT the field instead of under it — measured: popup y=0/scene
+        // 100 where the old control placed 130.) Qt's positioner keeps the
+        // below → flip-above → clamp dance from there.
+        y: root.height + 2
+        topMargin: 4
+        bottomMargin: 4
         width: root.width
+        // The old control's own sizing rule, kept: a short list is its
+        // contentHeight, a long one caps at 220.
         height: Math.min(220, list.contentHeight + 8)
-        radius: 4
-        color: theme.floaterBody
-        border.width: 1
-        border.color: theme.floaterEdge
+        padding: 4                  // the old ListView's anchors.margins
 
-        // x/y are set by updatePopupGeometry() (see its note): mapToItem() through
-        // the whole parent chain, because the field sits inside a layout and
-        // `root.x/y` is not its position in the window.
+        background: Rectangle {
+            radius: 4
+            color: theme.floaterBody
+            border.width: 1
+            border.color: theme.floaterEdge
+        }
 
-        ListView {
+        // x/y are the positioner's (see the header): under the field, flipped
+        // above when there is no room, clamped inside the window.
+        //
+        // …and the list always opens at the TOP, like the old control's: Qt's
+        // ComboBox scrolls its popup ListView to the current row on open
+        // (measured: contentY=48 with currentIndex=0 — row 2 pulled to the top)
+        // while the old list never moved from contentY=0. No contract line asks
+        // for the scroll, so the reference decides.
+        onOpened: {
+            list.contentY = 0;
+            root._keyNav = false;
+        }
+        onClosed: root._keyNav = false
+        contentItem: ListView {
             id: list
-            anchors.fill: parent
-            anchors.margins: 4
-            clip: true
             model: root.options
             boundsBehavior: Flickable.StopAtBounds
+            clip: true
             delegate: Rectangle {
                 required property int index
                 required property var modelData
@@ -207,7 +264,7 @@ Item {
                 property string accessibleName: modelData.label
                 property string accessibleValue: modelData.label
                 function accessibleChoose() {
-                    root.popupOpen = false;
+                    root.popup.close();
                     root.activated(index);
                 }
                 Accessible.role: Accessible.ListItem
@@ -244,7 +301,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        root.popupOpen = false;
+                        root.popup.close();
                         root.activated(index);
                     }
                 }

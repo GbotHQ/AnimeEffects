@@ -134,10 +134,15 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 ## G. Combo boxes (format, codec, quality intent)
 
 37. [D] Click, Down, Space, Escape and Enter choose and dismiss. (`AeComboBox` specifies
-    Up/Down/Space/Escape; the popup is the design's in-scene list.)
+    Up/Down/Space/Escape; the popup is the design's in-scene list.) Tab with the list open
+    dismisses the list and moves on. (Decided 2026-09-29: the current UI left the list and its
+    blocking scrim behind while focus moved away — an unowned accident of its implementation,
+    not a specified behaviour; the dismissal is stock's and was adopted over it.)
 38. [R10] The popup is never clipped by the dialog's edge, and it is positioned under its field,
     flipping above when there is no room below.
-39. [Q] Whether type-ahead (typing the first letters of an item) selects in the closed field.
+39. [D] Type-ahead: typing the first letters of an item selects it in the closed field.
+    (Decided 2026-09-29: yes — the widget-era form did this; stock `ComboBox`'s `keySearch`
+    supplies it.)
 
 ## H. Facts panel, layout and information architecture
 
@@ -171,7 +176,6 @@ Every line marked `[Q]` above, collected:
   already empty?
 - **Q5 (F34).** For a numeric field, does Escape restore the value from when it was focused, or the
   value from when the dialog opened?
-- **Q6 (G39).** Does a closed combo box support type-ahead?
 - **Q7 (E29).** Which controls keep a tooltip at all? (You noted several restate their own label.)
 - **Q8 (A5).** Does the dialog remember its size between sessions?
 - **Q9 (D25).** When the form overflows, does the action row (Cancel/Export) stay fixed at the

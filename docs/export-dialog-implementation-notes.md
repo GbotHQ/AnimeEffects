@@ -605,3 +605,75 @@ Instrument notes worth keeping: `findChildren<QQuickItem*>` reaches **0** ListVi
 made the first run silently use a **stale binary**; and the old baseline only loads from the
 directory that holds the component symlinks (`oldpicker/`), since the picker's `Ae*` siblings are
 not on its own.
+
+## R1, landed: `AeComboBox` is a `ComboBox`
+
+The last risky R1 item. The root is now `Controls.ComboBox`; the call sites (Format, Codec,
+Quality) did not change — `options`, `index`, `flat`, `overlay`, `value`, `text`, `activated` all
+survive, and every user choice still reaches the model through `activated(int)` with `index`
+written only by the call sites' bindings (the control mirrors `index → currentIndex` one-way and
+never writes `index`, so no binding can be destroyed).
+
+### The header's reason for existing was false — and irrelevant to the design
+
+The old header claimed Controls' ComboBox cannot render its popup outside the hosting
+QQuickWidget. Measured on this Qt (6.11, QQuickWidget host): the stock popup is
+`popupType: Popup.Item`, parented to the overlay **inside the widget's own window** (window count
+unchanged), clipped to the widget, with Qt's positioner doing below → flip-above → clamp — the
+same dance `updatePopupGeometry()` hand-wrote. `Popup.Window` also works here (a fourth window
+drawing over the title bar, screenshot captured). The design decides anyway: `export-dialog-
+behavior` G37 — *"the popup is the design's in-scene list"* — so in-scene stays, now as a choice.
+
+### Decisions taken during the conversion (all from the contract, none invented)
+
+| question | verdict | basis |
+| --- | --- | --- |
+| type-ahead (Q6/G39) | **adopted**, ships with `textRole: "label"` | user decision 2026-09-29; without the role `keySearch` has no text (idx never moved) and the style logs `Unable to assign QVariantMap to QString` — the role fixes both |
+| Enter, popup closed | stock **swallows**; observably identical to old | the old key propagated into a **void**: no QML Return handler (only `Ctrl+Return`/`Escape` shortcuts), no C++ key handler, no default `QPushButton` for `QDialog` — an earlier claim that it fired Export was retracted as inference from acceptance flags, never observed |
+| Escape, popup closed | stock **propagates** → cancels | A2 `[D] Escape cancels`; the old control's unconditional `event.accepted = true` failed A2 whenever the list was closed — a defect the conversion fixes |
+| Down/Up with list open | **choose** (emits `activated`, list stays) | design reference = current UI (which chose) and G37 lists Down among the choose actions; stock's highlight-only deviates |
+| Enter with list open | stock: **commit + dismiss** | G37 says dismiss; old left the list open (its Enter would have reached Export with the list up) |
+| Space | stock's **release** timing; with list open it also chooses | `AeDisclosure` precedent (release, not press); G37's literal "Space … choose and dismiss" |
+| Tab with list open | **dismisses the list** | decided 2026-09-29, recorded in the contract (item 37): old's list-and-scrim-left-behind was an unowned accident, not a specified behaviour |
+| click focus | `focusPolicy: Qt.TabFocus` — click opens, does **not** focus | old = Tab-only; stock's default StrongFocus would take focus on click (measured) |
+| outside click while open | `popup { modal: true; dim: false }` | old's transparent scrim swallowed the press (measured 0→0); stock's default non-modal passed it through (0→1) — clicking Export under an open list would have fired it |
+| pointer cursor | `HoverHandler { cursorShape: Qt.PointingHandCursor }` | old field's `MouseArea` carried it; every sibling control keeps it (AeButton precedent). **Pixel comparison cannot see a pointer** — the contract's own verification table names that trap — so it was caught by diff review, not by AE=0, and verified by `ffmpeg -draw_mouse 1` photographs of both controls on Xvfb |
+
+### Five defects the gates caught, each measured then re-measured
+
+1. **`flat` is Qt's own FINAL property** (`Q_PROPERTY … REVISION(2,1)`) — redeclaring it killed the
+   file at load, while the app build's qmlcache compiled happily. Dropped ours; no call site ever
+   set it; the background reads Qt's.
+2. **The style's double-arrow drew anyway** — overriding `background`/`contentItem` does not remove
+   `indicator`: 133 px in every closed-field state, a second caret beside ours. `indicator: null`
+   (the style null-checks it) → 0.
+3. **The popup opened AT the field** (y=0) — the positioner's baseline is a *style binding*
+   (`y: control.height …` in Basic/ComboBox.qml). `y: root.height + 2` + 4 px margins restored
+   old's geometry exactly: open box at 130 = 130, flip at 134 = 134, same positioner dance.
+4. **Qt auto-scrolled the list to the current row on open** (contentY=48 vs old 0). No contract line
+   asks for the scroll; the reference decides → `onOpened: list.contentY = 0`.
+5. **`highlightedIndex` is read-only from QML** — the first Keys preempt threw mid-handler, so
+   Down-with-list-open committed nothing (the closed case worked only because stock rescues it).
+   Caught by the against-the-file key matrix. The shipped design: the filter only *marks* Down/Up
+   (`_keyNav`), stock moves the highlight, and `onHighlightedIndexChanged` mirrors it to
+   `activated` **once, only when a key put it there** — type-ahead (unmarked) stays highlight-only
+   per the ruling, and the flag resets on the next key/open/close.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | suites **16/16** both configs (includes `export_form`, which covers the combos, and the real 45-assertion `media_exporter_e2e`) |
+| `geom` preconditions | **12/12 `achieved=yes`** (rest, hover×2, focus, popup-open, popup-flipped-above) |
+| old vs new, `magick compare -metric AE` | all six states **0** |
+| key matrix, shipped file vs baseline (`run_keys_final.log`) | parity on Down/Up closed+open (exactly one `activated` per press, list stays), Space, Escape (as ruled), Enter (as ruled), type-ahead (decided behaviour: moves + emits closed; highlight-only open), Tab/Shift+Tab closed, outside-click swallow 0→0, wheel; one decided divergence (Tab + list open) recorded in the contract |
+| cursor | both controls photographed showing the pointing hand (`out/cursor_final_pair.png`) |
+| targeted probes (`format`, `quality`, `axes`, `dialog` — the combo drivers, via AT-SPI) | **4/4 PASS**, 446 s, no file dialogs opened (no canary needed) |
+| catalogs | untouched, `grep -c unfinished` = 0 |
+
+Instrument note: the cursor hunt shows why a synthetic pointer *teleport* (`QCursor::setPos` /
+xdotool XTEST jumping across windows in one event) is not evidence about hover: only the
+in-window approach exercised the entry event, and only there did the HoverHandler's cursor apply —
+the old `MouseArea` path survived the jump by setting the cursor per-motion, which is why the old
+control always looked right in the same test. Photograph the real path, or photograph nothing.
