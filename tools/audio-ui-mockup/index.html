@@ -45,7 +45,7 @@ tailwind.config = { theme: { extend: { colors: {
 }
 /* accent = the selected accent row at dark cols 7 (kAccent) / 4 (kAccentBright,
    RESERVED for playhead/selection/marquee — audio chrome never uses it as a
-   fill; only focus rings and the audition pulse may borrow accentBright). */
+   fill; audio chrome borrows accentBright only for focus rings). */
 body[data-accent="red"]     { --accent:#b91c1c; --accent-bright:#f87171; }
 body[data-accent="orange"]  { --accent:#c2410c; --accent-bright:#fb923c; }
 body[data-accent="yellow"]  { --accent:#a16207; --accent-bright:#facc15; }
@@ -66,12 +66,15 @@ code { font:400 11px/1.4 ui-monospace,monospace; color:var(--text-muted); }
 /* icon tint: icons are runtime-tinted in the app — tint here via CSS only */
 i[class^="ph-"] { color:var(--icon); }
 .tint-muted i[class^="ph-"], i.ph-tint-muted { color:var(--text-muted); }
-/* element callout badge (maps mockup -> inventory catalog numbers) */
+/* element callout badges (map mockup -> inventory catalog numbers). Hidden by
+   default so screenshots show exactly what the user sees; the page-level
+   "Show annotations" switch reveals them (page chrome, never product chrome). */
 .el { position:relative; }
 .el::after { content:attr(data-el); position:absolute; top:-7px; right:-7px;
-  width:15px; height:15px; border-radius:50%; background:var(--window-edge);
-  color:var(--window-text); font-size:9px; font-weight:600;
-  display:grid; place-items:center; }
+  width:15px; height:15px; border-radius:50%; background:#7c2d12;
+  color:#ffedd5; font-size:9px; font-weight:600;
+  display:none; place-items:center; }
+body.show-el .el::after { display:grid; }
 /* ToolSlider look (gui::tool::ToolSlider): circular head on a thin track */
 .tool-slider { position:relative; height:14px; flex:1; min-width:80px; }
 .tool-slider .track { position:absolute; top:50%; left:0; right:0; height:3px;
@@ -84,13 +87,19 @@ i[class^="ph-"] { color:var(--icon); }
 /* row seam (element 13: the separator, now a seam not a QFrame) */
 .seam { border-bottom:1px solid var(--hairline); }
 /* toggle pill for the independent play/export enables (Q2) */
+/* toggle pills are CONTROLS: outlined, never the filled “answer” look of the
+   state badge; a corner dot shows the control is on. Never wrap mid-label. */
 .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px;
   border:1px solid var(--hairline); border-radius:999px; font-size:11px;
-  color:var(--text-muted); cursor:pointer; user-select:none; }
-.pill.on { background:var(--active); color:var(--text); border-color:var(--active); }
+  color:var(--text-muted); cursor:pointer; user-select:none;
+  white-space:nowrap; position:relative; }
+.pill.on { background:transparent; color:var(--text); border-color:var(--icon); }
 .pill.on i[class^="ph-"] { color:var(--text); }
-.badge { font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
-  padding:2px 6px; border-radius:3px; }
+.pill.on::after { content:""; position:absolute; top:-3px; right:-3px;
+  width:7px; height:7px; border-radius:50%; background:var(--window-edge); }
+/* the state badge is THE answer per row: filled and dominant */
+.badge { font-size:10.5px; font-weight:600; letter-spacing:.04em;
+  padding:3px 8px; border-radius:4px; white-space:nowrap; }
 </style>
 </head>
 <body data-accent="violet">
@@ -98,6 +107,7 @@ i[class^="ph-"] { color:var(--icon); }
 <div class="flex items-baseline gap-6 flex-wrap">
   <h1>Audio UI redesign — docked panel &amp; states</h1>
   <span class="text-dim text-xs">Palette: TailwindPalette.h verbatim · tokens: Colors.h (dark) · accent reserved for playhead/selection — audio chrome stays neutral.</span>
+  <label class="pill cursor-pointer" title="page chrome only — reveals the numbered element callouts; product screenshots are taken with this OFF"><input type="checkbox" id="annToggle"> Show annotations</label>
   <div class="flex gap-1.5 items-center ml-auto">
     <span class="text-muted text-xs mr-1">Accent</span>
     <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="red"     style="background:#b91c1c"></div>
@@ -111,10 +121,13 @@ i[class^="ph-"] { color:var(--icon); }
   </div>
 </div>
 
-<div class="section-h">1 — Main window: the audio panel docked inline (Q3), with the redesigned track rows (elements ①–⑬)</div>
-<div class="case-cap">Default design — one coherent row anatomy <small>Audio is a docked panel below the timeline (its transport-strip speaker toggles the panel, not a floating window). Row grammar: file chip · timeline placement · volume · independent Preview/Export enables · meter · remove. Column headers express PLACEMENT on the timeline (Q10): “at frame / to frame”, 0 = “to end” (Q5). Remove deletes the clicked row (Q9); Add is a list-footer button, never dual-mode.</small></div>
+<div class="mt-10 mb-3 px-3 py-2 rounded text-xs font-semibold tracking-widest uppercase" style="background:var(--raised);color:var(--text)">What the user sees — product UI only (spec notes are below the divider)</div>
 
-<div class="inline-flex flex-col rounded-lg overflow-hidden" style="border:1px solid #171717; width:1180px">
+<div class="section-h">1 — The audio panel in the main window (track rows ①–⑬)</div>
+<div class="case-cap">Default design — one coherent row anatomy <small>Audio is a panel docked under the timeline (the transport speaker button toggles it). Row grammar: file + state badge · timeline placement · volume · the two JOB toggles — “Hear while working” (a preview mute: animate without being distracted by e.g. music) and “In exported video” (what ships: e.g. match the animation to a voice clip you don’t want in the export) · level meter · remove. The trash button always removes the row it sits on; “Add audio track” lives once at the end of the list.</small></div>
+<div class="text-xs mb-2" style="color:var(--text-muted)">The state badge, the two toggles, and the header counts all derive from the same two flags and can never disagree.</div>
+
+<div class="inline-flex flex-col rounded-lg overflow-hidden" style="border:1px solid #171717; width:1220px">
   <!-- window chrome: menu + viewport stub + transport, to show the integration point -->
   <div class="flex items-center gap-3 px-3 py-1.5" style="background:var(--base)">
     <span class="text-xs text-muted">main window</span>
@@ -131,7 +144,6 @@ i[class^="ph-"] { color:var(--icon); }
       <span class="text-xs text-muted ml-2">frame 24 / 360</span>
       <span class="ml-auto flex items-center gap-2">
         <span class="pill on" title="Toggle the docked audio panel (was: open detached window)"><i class="ph ph-speaker-high"></i> Audio</span>
-        <span class="pill" title="Audition the actual export mix (Q1)"><i class="ph ph-headphones"></i> Audition mix</span>
       </span>
     </div>
   </div>
@@ -142,42 +154,47 @@ i[class^="ph-"] { color:var(--icon); }
       <span class="font-semibold text-sm">Audio</span>
       <span class="text-xs px-2 py-0.5 rounded" style="background:var(--active);color:var(--text)">Tracks</span>
       <span class="text-xs px-2 py-0.5 rounded text-muted">Config</span>
-      <!-- summary counts are DERIVED from the visible row states and always
-           agree with them (the R1 lesson: UI summary and truth must match).
-           Row 1 = play+export (has file) -> preview AND mix; row 2 = reference
-           (play only) -> preview; row 3 = unconfigured -> counts toward NOTHING. -->
-      <span class="ml-auto flex items-center gap-2 text-xs text-muted" title="counts derive from the visible row states: an unconfigured row counts toward nothing; each configured row counts once per path its enable flags reach">
-        <span class="badge" style="background:var(--hairline);color:var(--text)">In mix 1</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text)">Preview 2</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text-disabled)">Unconfigured 1</span>
+      <!-- counts are MUTUALLY EXCLUSIVE buckets (they sum to the track count)
+           and use the same vocabulary as the per-row state badges, so every
+           answer is visible in exactly one glanceable place per row. -->
+      <span class="ml-auto flex items-center gap-3 text-[10px] text-dim" title="summary only — the badge on each row is the answer. Buckets are mutually exclusive and sum to the number of tracks">
+        <span>In exported video: <b style="color:var(--text-muted)">1</b></span>
+        <span>Heard only: <b style="color:var(--text-muted)">1</b></span>
+        <span>Not set: <b style="color:var(--text-muted)">1</b></span>
       </span>
     </div>
 
     <!-- header row (elements ⑪ ⑫: the old start/end column labels, reborn as
          placement headers) -->
-    <div class="grid items-center gap-x-3 px-3 pb-1 text-xs font-semibold" style="color:var(--text-muted);grid-template-columns:250px 300px 170px 92px 84px 74px 28px">
+    <div class="grid items-center gap-x-3 px-3 pb-1 text-xs font-semibold" style="color:var(--text-muted);grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
       <span class="el" data-el="11">Track file</span>
-      <span class="el" data-el="12">Placement on timeline — at frame / to frame (0 = to end)</span>
+      <span class="el" data-el="12">Placement on timeline — at frame / to frame (or “to end of range”)</span>
       <span>Volume</span>
-      <span>Preview</span>
-      <span>Export</span>
+      <span>Hear while working</span>
+      <span>In exported video</span>
       <span>Meter</span>
       <span></span>
     </div>
 
     <!-- ===== TRACK ROW 1 — configured, play+export (both on) ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:250px 300px 170px 92px 84px 74px 28px">
-      <span class="el" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)">
-        <i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button></span>
-      <span class="flex items-center gap-2">
-        <span class="el flex items-center gap-1" data-el="5"><span class="text-xs text-muted">at</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24"></span>
-        <span class="el flex items-center gap-1" data-el="6"><span class="text-xs text-muted">to</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
-        <span class="el text-xs" data-el="10" style="color:var(--text-muted)">200 fr · 0:08.3</span>
-        <span class="relative flex-1 h-4" title="the file begins at frame 24 and runs to frame 224 (Q10)">
-          <span class="absolute inset-x-0 top-1.5 h-1.5 rounded" style="background:var(--recessed)"></span>
-          <span class="absolute top-1.5 h-1.5 rounded" style="left:6.7%;width:55.5%;background:var(--window-edge)"></span>
+    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
+      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)" title="battle_theme_loop.wav">
+        <i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
+        <span class="badge" style="background:var(--hairline);color:var(--text)" title="one-glance state: heard while working AND in the exported video">Heard + exported</span></span>
+      <span class="flex flex-col gap-1">
+        <span class="flex items-center gap-2">
+          <span class="el flex items-center gap-1" data-el="5"><span class="text-xs text-muted">Start frame</span>
+            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24" title="Where the file begins on the timeline. Measured in frames (fr)."><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
+          <span class="el flex items-center gap-1" data-el="6"><span class="text-xs text-muted">End frame</span>
+            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224" title="Measured in frames (fr). End frame can’t come before the start frame — it is pulled back to the start."><span class="text-xs" style="color:var(--text-muted)">fr</span>
+            <label class="flex items-center gap-1 text-xs" style="color:var(--text-muted)" title="Runs to the end of the range. The end frame box is ignored."><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end of range</label></span>
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="el text-xs" data-el="10" style="color:var(--text-muted)">200 fr · 0:08.3</span>
+          <span class="relative flex-1 h-3" title="the file begins at frame 24 and runs to frame 224">
+            <span class="absolute inset-x-0 top-1 h-1.5 rounded" style="background:var(--recessed)"></span>
+            <span class="absolute top-1 h-1.5 rounded" style="left:6.7%;width:55.5%;background:var(--window-edge)"></span>
+          </span>
         </span>
       </span>
       <span class="el flex items-center gap-2" data-el="8">
@@ -185,30 +202,36 @@ i[class^="ph-"] { color:var(--icon); }
         <span class="tool-slider"><span class="track"></span><span class="fill" style="width:80%"></span><span class="head" style="left:80%"></span></span>
         <span class="text-xs w-9 text-right" data-el="9">80%</span>
       </span>
-      <span class="el" data-el="3"><span class="pill on"><i class="ph ph-speaker-high"></i> On</span></span>
-      <span class="el" data-el="4"><span class="pill on"><i class="ph ph-export"></i> On</span></span>
-      <span class="flex gap-0.5 items-end h-4" title="live level (engine meter, Q8)">
+      <span class="el" data-el="3"><span class="pill on" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
+      <span class="el" data-el="4"><span class="pill on" title="Put this track in the exported video. Unticking never mutes playback — the two are independent."><i class="ph ph-export"></i> In exported video</span></span>
+      <span class="flex gap-0.5 items-end h-4" title="Live sound level of this track.">
         <span class="w-1 rounded-sm" style="height:60%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:85%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:40%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:70%;background:#22c55e"></span>
       </span>
-      <button class="el w-6 h-6 rounded grid place-items-center" data-el="1" title="Remove THIS row (Q9)"><i class="ph ph-x"></i></button>
+      <button class="el w-7 h-7 rounded grid place-items-center" data-el="1" title="Remove this track"><i class="ph ph-trash"></i></button>
     </div>
 
     <!-- ===== TRACK ROW 2 — reference track: preview on, export off ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:250px 300px 170px 92px 84px 74px 28px">
-      <span class="el" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)">
-        <i class="ph ph-file-audio"></i><span class="truncate">dialogue_director_notes.ogg</span></button></span>
-      <span class="flex items-center gap-2">
-        <span class="flex items-center gap-1"><span class="text-xs text-muted">at</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0"></span>
-        <span class="flex items-center gap-1"><span class="text-xs text-muted">to</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0" title="0 = to end of the export range (Q5)"></span>
-        <span class="text-xs" style="color:var(--text-muted)">to end →</span>
-        <span class="relative flex-1 h-4">
-          <span class="absolute inset-x-0 top-1.5 h-1.5 rounded" style="background:var(--recessed)"></span>
-          <span class="absolute top-1.5 h-1.5 rounded" style="left:0;right:0;background:var(--window-edge)"></span>
+    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
+      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)" title="dialogue_director_notes.ogg">
+        <i class="ph ph-file-audio"></i><span class="truncate">dialogue_director_notes.ogg</span></button>
+        <span class="badge" style="background:var(--hairline);color:var(--text)" title="one-glance state: heard while working, NOT in the exported video">Heard only · reference</span></span>
+      <span class="flex flex-col gap-1">
+        <span class="flex items-center gap-2">
+          <span class="flex items-center gap-1"><span class="text-xs text-muted">Start frame</span>
+            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0" title="Where the file begins on the timeline. Measured in frames (fr)."><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
+          <span class="flex items-center gap-1"><span class="text-xs text-muted">End frame</span>
+            <input class="w-24 px-1.5 py-1 rounded text-xs" style="background:var(--recessed);border:1px solid var(--hairline);color:var(--text-disabled)" value="end of range" disabled title="The file runs to the end of the range, so this box is off.">
+            <label class="flex items-center gap-1 text-xs" style="color:var(--text)" title="Runs to the end of the range. The end frame box is ignored."><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> to end of range</label></span>
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="text-xs" style="color:var(--text-muted)">plays from frame 0 to the end · 0:15.0</span>
+          <span class="relative flex-1 h-3" title="the file begins at frame 0 and runs to the end of the range">
+            <span class="absolute inset-x-0 top-1 h-1.5 rounded" style="background:var(--recessed)"></span>
+            <span class="absolute top-1 h-1.5 rounded" style="left:0;right:0;background:var(--window-edge)"></span>
+          </span>
         </span>
       </span>
       <span class="flex items-center gap-2">
@@ -216,37 +239,41 @@ i[class^="ph-"] { color:var(--icon); }
         <span class="tool-slider"><span class="track"></span><span class="fill" style="width:45%"></span><span class="head" style="left:45%"></span></span>
         <span class="text-xs w-9 text-right">45%</span>
       </span>
-      <span><span class="pill on"><i class="ph ph-speaker-high"></i> On</span></span>
-      <span><span class="pill" title="reference-only: heard while animating, never exported"><i class="ph ph-export"></i> Off</span></span>
-      <span class="flex gap-0.5 items-end h-4">
+      <span><span class="pill on" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
+      <span><span class="pill" title="Reference only: e.g. a voice clip you match the animation to but don’t want in the export — heard while animating, never in the exported video"><i class="ph ph-export"></i> Not in exported video</span></span>
+      <span class="flex gap-0.5 items-end h-4" title="Live sound level of this track.">
         <span class="w-1 rounded-sm" style="height:35%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:55%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:30%;background:#22c55e"></span>
         <span class="w-1 rounded-sm" style="height:45%;background:#22c55e"></span>
       </span>
-      <button class="w-6 h-6 rounded grid place-items-center" title="Remove THIS row (Q9)"><i class="ph ph-x"></i></button>
+      <button class="w-7 h-7 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
     </div>
 
     <!-- ===== TRACK ROW 3 — unconfigured (state detail in section 2) ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:250px 300px 170px 92px 84px 74px 28px">
-      <span class="el" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left" style="background:var(--recessed);border:1px dashed var(--outline);color:var(--text-muted)">
-        <i class="ph ph-plus"></i><span>Select audio file…</span></button></span>
-      <span class="flex items-center gap-2 opacity-45">
-        <span class="flex items-center gap-1"><span class="text-xs text-muted">at</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="0" disabled></span>
-        <span class="flex items-center gap-1"><span class="text-xs text-muted">to</span>
-          <input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="0" disabled></span>
-        <span class="text-xs" style="color:var(--text-disabled)">—</span>
+    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
+      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left" style="background:var(--recessed);border:1px dashed var(--outline);color:var(--text-muted)">
+        <i class="ph ph-plus"></i><span>Select audio file…</span></button>
+        <span class="badge" style="background:var(--hairline);color:var(--text-disabled)" title="one-glance state: no file chosen yet — heard nowhere, exported nowhere">Not set</span></span>
+      <span class="flex flex-col gap-1 opacity-45">
+        <span class="flex items-center gap-2">
+          <span class="flex items-center gap-1"><span class="text-xs text-muted">Start frame</span>
+            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
+          <span class="flex items-center gap-1"><span class="text-xs text-muted">End frame</span>
+            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled><span class="text-xs" style="color:var(--text-muted)">fr</span>
+            <label class="flex items-center gap-1 text-xs" style="color:var(--text-disabled)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end of range</label></span>
+        </span>
+        <span class="text-xs" style="color:var(--text-disabled)">choose a file first</span>
       </span>
       <span class="flex items-center gap-2 opacity-45">
         <i class="ph ph-speaker-high"></i>
         <span class="tool-slider"><span class="track"></span><span class="fill" style="width:100%"></span><span class="head" style="left:100%"></span></span>
         <span class="text-xs w-9 text-right">100%</span>
       </span>
-      <span><span class="pill"><i class="ph ph-speaker-high"></i> On</span></span>
-      <span><span class="pill"><i class="ph ph-export"></i> On</span></span>
+      <span><span class="pill" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
+      <span><span class="pill" title="Put this track in the exported video. Unticking never mutes playback — the two are independent."><i class="ph ph-export"></i> In exported video</span></span>
       <span class="text-xs" style="color:var(--text-disabled)">—</span>
-      <button class="w-6 h-6 rounded grid place-items-center" title="Remove THIS row (Q9)"><i class="ph ph-x"></i></button>
+      <button class="w-7 h-7 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
     </div>
 
     <!-- list footer: Add (Q9 — the add never lives on a track row) -->
@@ -256,20 +283,22 @@ i[class^="ph-"] { color:var(--icon); }
   </div>
 </div>
 
-<div class="section-h">2 — Row states &amp; the enable truth table (Q2 · Q7 · Q9)</div>
+<div class="section-h">2 — Track states and the four toggle combinations</div>
 
 <div class="flex gap-10 flex-wrap">
   <!-- STATE: unconfigured -->
   <div class="flex flex-col gap-2">
-    <div class="case-cap">State: unconfigured <small>No file yet. Not an error (R7’s “Placeholder” name-as-state-flag is gone: empty path is the state). Placement/volume dim until a file is chosen; the row still round-trips through save/load (Q6).</small></div>
+    <div class="case-cap">State: not set <small>No file chosen yet. It isn’t an error — the row simply counts toward nothing until you pick a file. Placement and volume stay dimmed. The row is kept when you save and reload your setup.</small></div>
     <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <div class="flex items-center gap-3 px-3 py-2 seam">
         <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs" style="background:var(--recessed);border:1px dashed var(--outline);color:var(--text-muted)"><i class="ph ph-plus"></i> Select audio file…</button>
-        <span class="flex gap-2 opacity-45"><span class="text-xs text-muted">at</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="0" disabled>
-        <span class="text-xs text-muted">to</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="0" disabled></span>
-        <span class="pill ml-2"><i class="ph ph-speaker-high"></i> On</span>
-        <span class="pill"><i class="ph ph-export"></i> On</span>
-        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove THIS row"><i class="ph ph-x"></i></button>
+        <span class="flex gap-2 opacity-45"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled>
+        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled>
+        <label class="flex items-center gap-1 text-xs" style="color:var(--text-disabled)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end</label></span>
+        <span class="pill ml-2"><i class="ph ph-speaker-high"></i> Hear while working</span>
+        <span class="pill"><i class="ph ph-export"></i> In exported video</span>
+        <span class="badge ml-2" style="background:var(--hairline);color:var(--text-disabled)">Not set</span>
+        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove this track"><i class="ph ph-trash"></i></button>
       </div>
       <div class="px-3 py-1.5 text-xs" style="color:var(--text-muted)">empty track — silent in preview and export until a file is selected</div>
     </div>
@@ -277,23 +306,24 @@ i[class^="ph-"] { color:var(--icon); }
 
   <!-- STATE: playing -->
   <div class="flex flex-col gap-2">
-    <div class="case-cap">State: playing (playback clock) <small>Transport is running and the playhead is inside this track’s placement window: the row reads active (neutral fill, never accent), the meter is live (Q8), and the placement bar shows the playhead passing through the span.</small></div>
+    <div class="case-cap">State: playing <small>Playback is running and the cursor is inside this track’s span: the row reads active (neutral fill — the accent is left to the playhead), the level meter is live, and the bar shows the cursor moving through the span.</small></div>
     <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <div class="flex items-center gap-3 px-3 py-2" style="background:var(--active)">
         <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">at</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
-        <span class="text-xs text-muted">to</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
+        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
+        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
         <span class="relative flex-1 h-4" title="playhead crossing the placement span">
           <span class="absolute inset-x-0 top-1.5 h-1.5 rounded" style="background:var(--recessed)"></span>
           <span class="absolute top-1.5 h-1.5 rounded" style="left:6.7%;width:55.5%;background:var(--window-edge)"></span>
           <span class="absolute top-0.5 h-3.5 w-0.5" style="left:38%;background:var(--window-edge)"></span>
         </span>
-        <span class="pill on"><i class="ph ph-speaker-high"></i> On</span>
-        <span class="pill on"><i class="ph ph-export"></i> On</span>
+        <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
+        <span class="badge" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
         <span class="flex gap-0.5 items-end h-4"><span class="w-1 rounded-sm" style="height:65%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:90%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:50%;background:#22c55e"></span></span>
-        <button class="w-6 h-6 rounded grid place-items-center" title="Remove THIS row"><i class="ph ph-x"></i></button>
+        <button class="w-6 h-6 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
       </div>
-      <div class="px-3 py-1.5 text-xs flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-play"></i> playing — preview position = playhead − 24 (Q10 placement reading; fixes R15 divergence)</div>
+      <div class="px-3 py-1.5 text-xs flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-play"></i> playing — the file’s sound sits where it belongs: cursor 48 plays the file’s own 24th frame</div>
     </div>
   </div>
 </div>
@@ -301,128 +331,137 @@ i[class^="ph-"] { color:var(--icon); }
 <div class="flex gap-10 flex-wrap mt-8">
   <!-- STATE: error (Q7 inline per-row) -->
   <div class="flex flex-col gap-2">
-    <div class="case-cap">State: error — inline, on the row (Q7 · R13) <small>The missing/corrupt file is marked ON ITS ROW the moment it is known (selection, load, playback error hook): hairline turns danger red (TailwindPalette red row), an inline banner names the file and offers Relocate / Remove. No modal, no silence.</small></div>
+    <div class="case-cap">State: error — marked right on the row <small>A missing or broken file is flagged ON ITS ROW the moment it’s known (on selection, on load, or when playback fails): the row hairline turns red and a banner names the file with Relocate / Remove actions. No popup, no silence.</small></div>
     <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <div class="flex items-center gap-3 px-3 py-2" style="border-bottom:1px solid #ef4444">
         <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid #ef4444;color:#fca5a5"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">at</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
-        <span class="text-xs text-muted">to</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
-        <span class="pill"><i class="ph ph-speaker-high"></i> On</span>
-        <span class="pill on"><i class="ph ph-export"></i> On</span>
+        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
+        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
+        <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
+        <span class="badge" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
         <span class="badge" style="background:#7f1d1d;color:#fef2f2">Error</span>
-        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove THIS row"><i class="ph ph-x"></i></button>
+        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove this track"><i class="ph ph-trash"></i></button>
       </div>
-      <div class="flex items-center gap-2 px-3 py-1.5 text-xs" style="background:#450a0a;color:#fca5a5">
-        <i class="ph ph-warning-circle"></i> File not found: <code style="color:#fecaca">battle_theme_loop.wav</code> — silent in preview; excluded from the export mix and the audition says so.
+      <div class="flex items-center gap-2 px-3 py-2" style="background:#450a0a;color:#fca5a5">
+        <i class="ph ph-warning-circle"></i> File not found: <code style="color:#fecaca">battle_theme_loop.wav</code> — silent while working and left out of the exported video.
         <span class="ml-auto flex gap-2">
           <button class="pill" style="border-color:#ef4444;color:#fca5a5">Relocate…</button>
           <button class="pill" style="border-color:#ef4444;color:#fca5a5">Remove row</button>
         </span>
       </div>
     </div>
-    <div class="text-xs" style="color:var(--text-muted);max-width:640px">File-level failures (unparseable <code>.aemus</code>) have no row to mark — see the Config section for the open question on their loudness.</div>
+    <div class="text-xs" style="color:var(--text-muted);max-width:640px">If the whole saved setup can’t be read, there is no row to mark — see the save/load section for how that’s reported.</div>
   </div>
 
   <!-- STATE: export-only -->
   <div class="flex flex-col gap-2">
-    <div class="case-cap">State: export-only (the R1 victim, made loud) <small>Preview off + Export on is a MEANINGFUL combo (Q2): the track is in the export mix but never heard while animating. It gets a badge so its silence in preview is legible, and the export path counts it (R1 fix — no silent drop).</small></div>
+    <div class="case-cap">State: in exported video only <small>Muted while working, shipped in the video — e.g. a music bed that would distract you while animating. A MEANINGFUL combination: it goes into the exported video but is NEVER hearable in the app. The badge makes its silence legible and the export counts it.</small></div>
     <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <div class="flex items-center gap-3 px-3 py-2 seam">
         <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">foley_final_mix.flac</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">at</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0">
-        <span class="text-xs text-muted">to</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0"></span>
-        <span class="pill"><i class="ph ph-speaker-high"></i> Off</span>
-        <span class="pill on"><i class="ph ph-export"></i> On</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text)">Export only</span>
-        <button class="w-6 h-6 rounded grid place-items-center" title="Remove THIS row"><i class="ph ph-x"></i></button>
+        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0">
+        <span class="text-xs text-muted">End frame</span><input class="w-20 px-1.5 py-1 rounded text-xs" style="background:var(--recessed);border:1px solid var(--hairline);color:var(--text-disabled)" value="end of range" disabled>
+        <label class="flex items-center gap-1 text-xs" style="color:var(--text)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> to end</label></span>
+        <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
+        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
+        <span class="badge" style="background:var(--hairline);color:var(--text)">In exported video only</span>
+        <button class="w-6 h-6 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
       </div>
-      <div class="px-3 py-1.5 text-xs" style="color:var(--text-muted)">in the export mix ✓ · silent while animating (by choice) · audible in Audition (Q1 plays the EXPORT mix)</div>
+      <div class="px-3 py-1.5 text-xs" style="color:var(--text-muted)">in the exported file ✓ · muted while animating (preview mute) · never playable anywhere in the app</div>
     </div>
   </div>
 </div>
 
+<div class="case-cap mt-8">State: end pulled back to start — the rule, visible <small>You typed 10 for End while Start is 24: at the moment of entry the field visibly pulls back to 24 and says so right in the row. Never a silent correction, never silent weirdness.</small></div>
+<div class="rounded px-3 py-2 mb-2 flex items-center gap-3 text-xs" style="background:var(--base);border:1px solid #171717;width:640px">
+  <span class="flex items-center gap-1"><span class="text-muted">Start frame</span><input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24"><span style="color:var(--text-muted)">fr</span></span>
+  <span class="flex items-center gap-1"><span class="text-muted">End frame</span><input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24"><span style="color:var(--text-muted)">fr</span></span>
+  <span style="color:#f59e0b">← pulled back to 24</span>
+  <span style="color:var(--text-disabled)">you typed 10 · End can’t come before Start</span>
+</div>
+
 <!-- Q2 truth table: ALL FOUR combos as captioned rows -->
-<div class="case-cap mt-8">Enable truth table — all four combos as rows (Q2) <small>Preview and Export are independent; every combo is a first-class row with a summarizing badge derived from the two flags. The old filter that made export-only vanish from export (R1) is removed: export-only VISIBLY exports without previewing.</small></div>
+<div class="case-cap mt-8">The four toggle combinations <small>The two toggles do two different JOBS: “Hear while working” is a preview mute — animate without being distracted by e.g. music; “In exported video” decides what ships — e.g. match the animation to a voice clip you don’t want in the export. Every combination is a first-class row with a badge derived from the two flags. A track marked “In exported video” always ships, even when it’s muted while working.</small></div>
 <div class="grid gap-6" style="grid-template-columns:repeat(2,minmax(0,640px))">
 
   <div class="flex flex-col gap-2">
-    <div class="case-cap">① Preview On · Export On — <em>mix + preview</em> <small>The default: heard while animating and present in the export mix and the audition.</small></div>
+    <div class="case-cap">① Hear while working + In exported video — <em>heard + exported</em> <small>The everyday track: heard while working and shipped in the exported video.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 24 · to 224</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> On</span>
-      <span class="pill on"><i class="ph ph-export"></i> On</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Mix + preview</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-x"></i></button>
+      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
+      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
+      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
+      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
     </div>
   </div>
 
   <div class="flex flex-col gap-2">
-    <div class="case-cap">② Preview On · Export Off — <em>reference</em> <small>Scratch/guide track: audible at work time, never in the export mix, never in the audition.</small></div>
+    <div class="case-cap">② Hear while working + Not in exported video — <em>heard only · reference</em> <small>“Match the animation to a voice clip… but don’t want the voice clip in the export”: heard while working, never in the exported video.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">dialogue_director_notes.ogg</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 0 · to end</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> On</span>
-      <span class="pill"><i class="ph ph-export"></i> Off</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Reference</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-x"></i></button>
+      <span class="flex gap-2 text-xs text-muted">Start frame 0 fr · to end of range</span>
+      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+      <span class="pill"><i class="ph ph-export"></i> Not in exported video</span>
+      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Heard only · reference</span>
+      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
     </div>
   </div>
 
   <div class="flex flex-col gap-2">
-    <div class="case-cap">③ Preview Off · Export On — <em>export only</em> (the headline R1 fix) <small>Silent while animating BY CHOICE, but the export path counts it and the mixer receives it: it exports without previewing. Audition (Q1) plays the export mix, so it is still hearable before commit.</small></div>
+    <div class="case-cap">③ Muted + In exported video — <em>in exported video only</em> <small>“A preview mute so the animator can animate without being distracted by e.g. music” — silent while working and NEVER hearable in the app, but it always goes into the exported video.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">foley_final_mix.flac</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 0 · to end</span>
-      <span class="pill"><i class="ph ph-speaker-high"></i> Off</span>
-      <span class="pill on"><i class="ph ph-export"></i> On</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Export only</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-x"></i></button>
+      <span class="flex gap-2 text-xs text-muted">Start frame 0 fr · to end of range</span>
+      <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
+      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
+      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">In exported video only</span>
+      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
     </div>
   </div>
 
   <div class="flex flex-col gap-2">
-    <div class="case-cap">④ Preview Off · Export Off — <em>parked</em> (muted track) <small>In neither path: kept with all settings, absent from preview, export, and audition counts. Still round-trips through save/load (Q6).</small></div>
+    <div class="case-cap">④ Muted + Not in exported video — <em>parked</em> <small>In neither path: kept with all its settings, absent from your ears and from the exported video. It survives saving and reloading your setup.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">alt_theme_unused.mp3</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 120 · to 300</span>
-      <span class="pill"><i class="ph ph-speaker-high"></i> Off</span>
-      <span class="pill"><i class="ph ph-export"></i> Off</span>
+      <span class="flex gap-2 text-xs text-muted">Start frame 120 fr · End frame 300 fr</span>
+      <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
+      <span class="pill"><i class="ph ph-export"></i> Not in exported video</span>
       <span class="badge ml-auto" style="background:var(--hairline);color:var(--text-disabled)">Parked</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-x"></i></button>
+      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
     </div>
   </div>
 </div>
 
 <!-- add/remove flows (Q9) -->
-<div class="case-cap mt-8">Add / remove flows — conventional row semantics (Q9 · fixes R9) <small>Remove deletes the row whose × was clicked, whatever the track count (the 2-track divergence is gone). Add is a dedicated footer button (element ① leaves the row). Both mutate the list in place — no full teardown/rebuild (R4).</small></div>
+<div class="case-cap mt-8">Add / remove flows <small>Remove deletes the row whose trash button you click, whatever the track count. Add is a dedicated footer button (element ① leaves the row). Rows change in place — nothing flickers or loses your scroll position.</small></div>
 <div class="flex gap-6 items-start flex-wrap">
   <div class="rounded px-3 py-2 text-xs flex flex-col gap-1" style="background:var(--base);border:1px solid #171717;width:300px">
     <span class="text-muted">before</span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-x ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised);outline:1px solid var(--window-edge)">dialogue_notes.ogg <i class="ph ph-x ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-x ml-auto"></i></span>
+    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-trash ml-auto"></i></span>
+    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised);outline:1px solid var(--window-edge)">dialogue_notes.ogg <i class="ph ph-trash ml-auto"></i></span>
+    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-trash ml-auto"></i></span>
   </div>
   <div class="text-muted text-xs pt-8">× on row 2 clicked →</div>
   <div class="rounded px-3 py-2 text-xs flex flex-col gap-1" style="background:var(--base);border:1px solid #171717;width:300px">
     <span class="text-muted">after — row 2 itself is removed</span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-x ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-x ml-auto"></i></span>
+    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-trash ml-auto"></i></span>
+    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-trash ml-auto"></i></span>
     <span class="flex items-center gap-2 px-2 py-1 rounded" style="border:1px dashed var(--outline);color:var(--text-muted)"><i class="ph ph-plus"></i> Add audio track</span>
   </div>
 </div>
 
-<div class="section-h">3 — Audition the actual export mix (Q1 · Q8 engine features) &amp; transport integration</div>
-<div class="case-cap">Default design — the master strip <small>The panel footer is a master strip: MIX meter + CLIP readout + a prominent “Audition export mix” button. Audition renders the true offline mix (media::AudioMixer sum — the exact buffer the encoder muxes, Q8 legitimizes the engine work) and plays it from the playhead; the row meters then show PER-TRACK contributions into that sum, not independent QMediaPlayer output. While auditioning, per-track preview players are muted and the strip turns active (neutral fill — accent stays reserved for the playhead).</small></div>
-<div class="rounded" style="background:var(--base);border:1px solid #171717;width:1180px">
-  <!-- master strip: idle -->
+<div class="section-h">3 — What the export will do to the levels</div>
+<div class="case-cap">Default design — read-only level strip <small>No play button anywhere. The strip shows what the export will do to the levels while you work: a combined level meter for everything marked “In exported video”, live during playback, and a latching CLIP warning when that sum would pass the loudest possible level — exactly where the exported sound would distort.</small></div>
+<div class="rounded" style="background:var(--base);border:1px solid #171717;width:1220px">
+  <!-- master strip: nominal -->
   <div class="flex items-center gap-4 px-3 py-2.5 seam">
-    <button class="flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold" style="background:var(--active);color:var(--text)" title="Render and play the EXACT export sum (48 kHz stereo, hard-clamped ±1.0)">
-      <i class="ph ph-headphones"></i> Audition export mix</button>
-    <span class="text-xs" style="color:var(--text-muted)">exact export buffer · 2 export tracks · range 0–360</span>
+    <span class="text-sm font-semibold">What the export will do to the levels</span>
+    <span class="text-xs" style="color:var(--text-muted)">Level of everything going into the exported video · updates while you work</span>
     <span class="ml-auto flex items-center gap-2">
       <span class="text-xs" style="color:var(--text-muted)">MIX</span>
-      <span class="flex gap-0.5 items-end h-5 w-28 relative" title="post-sum master level, incl. the ±1.0 hard clamp (G1)">
+      <span class="flex gap-0.5 items-end h-5 w-28 relative" title="passive sum meter (sanctioned engine addition: per-track levels or a sum hook from AudioMixer)">
         <span class="absolute inset-x-0 bottom-0 top-0 rounded" style="background:var(--recessed)"></span>
         <span class="relative w-1 rounded-sm ml-1" style="height:55%;background:#22c55e"></span>
         <span class="relative w-1 rounded-sm" style="height:75%;background:#22c55e"></span>
@@ -431,14 +470,13 @@ i[class^="ph-"] { color:var(--icon); }
         <span class="relative w-1 rounded-sm" style="height:20%;background:#22c55e"></span>
         <span class="absolute right-0 bottom-0 top-0 w-px" style="background:var(--window-edge)"></span>
       </span>
-      <span class="badge" style="background:var(--hairline);color:var(--text-muted)">CLIP −∞</span>
+      <span class="badge" style="background:var(--hairline);color:var(--text-muted)">CLIP clear</span>
     </span>
   </div>
-  <!-- master strip: auditioning + clip + rendering states -->
-  <div class="flex items-center gap-4 px-3 py-2.5 seam" style="background:var(--active)">
-    <button class="flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold" style="background:var(--raised);color:var(--text)">
-      <i class="ph ph-stop"></i> Stop audition</button>
-    <span class="text-xs" style="color:var(--text)">auditioning the export mix — 0:03.1 / 0:15.0 · frame 76</span>
+  <!-- master strip: clip latched -->
+  <div class="flex items-center gap-4 px-3 py-2.5 seam">
+    <span class="text-sm font-semibold">What the export will do to the levels</span>
+    <span class="text-xs" style="color:#f59e0b">everything together would pass the loudest possible level here — the exported sound would distort at these frames</span>
     <span class="ml-auto flex items-center gap-2">
       <span class="text-xs" style="color:var(--text-muted)">MIX</span>
       <span class="flex gap-0.5 items-end h-5 w-28 relative">
@@ -449,25 +487,18 @@ i[class^="ph-"] { color:var(--icon); }
         <span class="relative w-1 rounded-sm" style="height:70%;background:#22c55e"></span>
         <span class="relative w-1 rounded-sm" style="height:40%;background:#22c55e"></span>
       </span>
-      <span class="badge" style="background:#7c2d12;color:#ffedd5">CLIP 2×</span>
+      <span class="badge" style="background:#7c2d12;color:#ffedd5" title="latches on first clip; click to clear the latch">CLIP 2× — click to clear</span>
     </span>
   </div>
-  <div class="flex items-center gap-4 px-3 py-2.5 seam text-xs" style="color:var(--text-muted)">
-    <span class="flex items-center gap-2"><i class="ph ph-hourglass"></i> Mixing… 1 of 2 export tracks decoded</span>
-    <span>one-shot render (G1 has no streaming) — strip shows progress per decoded track</span>
-  </div>
-  <div class="flex items-center gap-4 px-3 py-2.5 text-xs" style="color:#fca5a5">
-    <i class="ph ph-warning"></i> Audition could not decode <code style="color:#fecaca">battle_theme_loop.wav</code> — same track is marked in error on its row (Q7); what you hear is what exports.
-  </div>
+  <div class="px-3 py-2.5 text-xs" style="color:var(--text-muted)">Only tracks marked “In exported video” count here (2 of them). Reference, parked, not-set, and error rows contribute nothing.</div>
 </div>
 
-<div class="case-cap mt-8">Transport integration point (Q3) <small>The transport’s speaker button toggles the DOCKED panel (checked state = visible). During Audition the transport clock drives the mixed buffer, and a headphones glyph marks the mode. The timeline’s temporary playback window keeps kWindowBand — the audio panel never wears it.</small></div>
-<div class="rounded flex items-center gap-3 px-3 py-2" style="background:var(--base);border:1px solid #171717;width:1180px">
+<div class="case-cap mt-8">Transport integration point <small>The transport’s speaker button toggles the DOCKED panel (checked state = visible). The combined level meter rides along with ordinary playback — there is no special playback mode. The timeline’s own playback-window band keeps its reserved color; the audio panel never wears it.</small></div>
+<div class="rounded flex items-center gap-3 px-3 py-2" style="background:var(--base);border:1px solid #171717;width:1220px">
   <i class="ph ph-skip-back"></i><i class="ph ph-play"></i><i class="ph ph-skip-forward"></i><i class="ph ph-arrows-clockwise"></i>
   <span class="text-xs text-muted ml-2">frame 24 / 360</span>
   <span class="ml-auto flex items-center gap-2">
     <span class="pill on"><i class="ph ph-speaker-high"></i> Audio panel</span>
-    <span class="pill on" style="border-color:var(--active)"><i class="ph ph-headphones"></i> Auditioning mix</span>
   </span>
 </div>
 
@@ -475,11 +506,11 @@ i[class^="ph-"] { color:var(--icon); }
 <div class="rounded p-3 flex flex-col gap-2 text-xs" style="background:var(--floater-body);border:1px solid var(--floater-edge);width:560px">
   <span class="flex items-center gap-2"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> Export with audio</span>
   <span class="grid" style="grid-template-columns:104px 1fr"><span style="color:var(--text-muted)">Audio:</span><span>2 of 4 tracks in the mix <span style="color:var(--text-muted)">· 1 reference-only (preview) · 1 error, excluded</span></span></span>
-  <span class="grid" style="grid-template-columns:104px 1fr"><span style="color:var(--text-muted)"></span><span style="color:#f59e0b">webm carries audio (libopus) · 1 track clips at ±1.0 in the sum</span></span>
+  <span class="grid" style="grid-template-columns:104px 1fr"><span style="color:var(--text-muted)"></span><span style="color:#f59e0b">webm keeps sound in the file · 1 track would distort in the exported sound</span></span>
 </div>
 
-<div class="section-h">4 — Config tab: save / load round-trips ALL tracks (C1 · C2 · Q6 · fixes R2)</div>
-<div class="case-cap">Default design <small>Save writes every row — unconfigured, parked, errored, playback-disabled — nothing is filtered (R2 fix). Load restores every track and marks anything invalid ON ITS ROW; a one-line summary reports the round trip instead of a modal success box. The .aemus schema grows explicit fields (path empty = unconfigured; no more “Placeholder” name-as-flag, R7).</small></div>
+<div class="section-h">4 — Saving and loading your audio setup</div>
+<div class="case-cap">Default design <small>Save keeps EVERY row — no file yet, parked, broken, or muted — nothing is quietly dropped. Load brings back every track and marks anything that needs attention right on its row, with one summary line instead of a success popup.</small></div>
 <div class="rounded" style="background:var(--base);border:1px solid #171717;width:760px">
   <div class="flex items-center gap-3 px-3 py-2 seam">
     <span class="font-semibold text-sm">Audio</span>
@@ -489,28 +520,30 @@ i[class^="ph-"] { color:var(--icon); }
   <div class="flex items-center gap-2 px-3 py-3 seam">
     <button class="pill"><i class="ph ph-floppy"></i> Save audio configuration…</button>
     <button class="pill"><i class="ph ph-upload-simple"></i> Load audio configuration…</button>
-    <span class="text-xs ml-2" style="color:var(--text-muted)">project.aemus · autosaved with the project (sidecar)</span>
+    <span class="text-xs ml-2" style="color:var(--text-muted)">your audio setup is saved with the project, automatically</span>
   </div>
   <div class="px-3 py-2 text-xs flex items-center gap-2 seam" style="color:var(--text-muted)">
-    <i class="ph ph-check-circle" style="color:#22c55e"></i> Loaded 5 of 5 tracks from <code>scene7.aemus</code> — 2 need attention, marked on their rows. Nothing dropped (Q6).
+    <i class="ph ph-check-circle" style="color:#22c55e"></i> Loaded all 5 saved tracks — 2 need attention, marked on their rows. Nothing was dropped.
   </div>
   <div class="px-3 py-2 text-xs flex flex-col gap-1">
-    <span class="flex items-center gap-2"><i class="ph ph-warning-circle" style="color:#f59e0b"></i> Row 3 “Placeholder” had no file — restored empty, ready to configure.</span>
-    <span class="flex items-center gap-2"><i class="ph ph-x-circle" style="color:#ef4444"></i> Row 5 “drums_take2.wav” missing on disk — restored and marked in error (Q7).</span>
-    <span class="flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-dots-three-outline"></i> Old files without the Export key load with Export = On, and the summary SAYS it defaulted (R14 no longer silent).</span>
+    <span class="flex items-center gap-2"><i class="ph ph-warning-circle" style="color:#f59e0b"></i> Row 3 had no file yet — restored empty, ready to set up.</span>
+    <span class="flex items-center gap-2"><i class="ph ph-x-circle" style="color:#ef4444"></i> Row 5 “drums_take2.wav” is missing on disk — restored and marked in error.</span>
+    <span class="flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-dots-three-outline"></i> Older saves without the export setting load with “In exported video” on — and the summary says so.</span>
   </div>
 </div>
 
-<div class="section-h">5 — Open look items: 2 captioned options (behavior settled above; styling is open)</div>
+<div class="mt-12 mb-3 px-3 py-2 rounded text-xs font-semibold tracking-widest uppercase" style="background:var(--raised);color:var(--text)">Spec &amp; design notes — not part of the UI (codes and jargon live here)</div>
+
+<div class="section-h">5 — Meter styling (open look: M1/M2) · failure dialogs (decided pair)</div>
 
 <div class="flex gap-10 flex-wrap">
   <div class="flex flex-col gap-2">
     <div class="case-cap">Meter styling — Option M1: row-end LED segments <small>Compact vertical segments at the row end (green/amber/orange = warn/clip ramp from the TailwindPalette status rows). Master MIX meter uses the same language on the strip. Peak reads as the tallest lit segment.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 24 · to 224</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> On</span>
-      <span class="pill on"><i class="ph ph-export"></i> On</span>
+      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
+      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
       <span class="flex gap-0.5 items-end h-5 ml-auto"><span class="w-1 rounded-sm" style="height:60%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:85%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:45%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:100%;background:#f59e0b"></span><span class="w-1 rounded-sm" style="height:25%;background:#22c55e"></span></span>
     </div>
   </div>
@@ -518,44 +551,48 @@ i[class^="ph-"] { color:var(--icon); }
     <div class="case-cap">Meter styling — Option M2: continuous bar under the slider <small>A thin continuous bar (with a peak-hold tick) sits under the ToolSlider in the volume cell; quieter, reads as “level” next to “gain”. Same color ramp; the master MIX strip keeps the bar form.</small></div>
     <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717;width:640px">
       <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">at 24 · to 224</span>
+      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
       <span class="flex flex-col gap-1 w-32">
         <span class="tool-slider"><span class="track"></span><span class="fill" style="width:80%"></span><span class="head" style="left:80%"></span></span>
         <span class="relative h-1 rounded" style="background:var(--recessed)"><span class="absolute left-0 top-0 h-1 rounded" style="width:72%;background:#22c55e"></span><span class="absolute top-0 h-1 w-px" style="left:88%;background:#f59e0b"></span></span>
       </span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> On</span>
-      <span class="pill on"><i class="ph ph-export"></i> On</span>
+      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
+      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
     </div>
   </div>
 </div>
 
+<div class="case-cap mt-8">Remove affordance — Option R1 (default in the rows above): always-visible trash button <small>A trash icon with tooltip “Remove this track”. Unmistakably destructive — the bare × read as “close”. The row it sits on is the row that goes (R2 user review: the ×-delete trap).</small></div>
+<div class="case-cap">Remove affordance — Option R2: trash on row hover <small>Same icon and tooltip, revealed only on row hover so rows read quieter at rest. Risk: the affordance is undiscoverable until hover. OPEN — choose one.</small></div>
+<div class="case-cap">Label vocabulary — DECIDED: “Hear while working” / “In exported video” <small>Adopted from the fresh-eyes review: no decoding needed, and the words match the state badges. The shorter set (“Audible” / “In export”) was considered and rejected: it reads like jargon. “Start frame” / “End frame” with an explicit “fr” unit replace the cryptic “at”/“to”; tooltips answer the remaining questions (“end can’t come before start”, “in frames”, and unticking “In exported video” never mutes playback).</small></div>
+
 <div class="flex gap-10 flex-wrap mt-8">
   <div class="flex flex-col gap-2">
-    <div class="case-cap">File-level load failure loudness — Option F1: inline banner in the Config tab (shown above) <small>Q7 settles per-row errors inline, but an unparseable <code>.aemus</code> has no row. F1 keeps the inline grammar: a danger banner under the Config buttons; current config untouched.</small></div>
+    <div class="case-cap">File-level load failure loudness — DECIDED: F1, inline banner in the Config tab (shown above) <small>Q7 settles per-row errors inline; a file-scope failure (unparseable <code>.aemus</code>) has no row, so it keeps the inline grammar: a danger banner under the Config buttons, current config untouched. F2’s “keep the modal for load failures” reading is RETIRED.</small></div>
     <div class="rounded px-3 py-2 text-xs flex items-center gap-2" style="background:#450a0a;border:1px solid #ef4444;color:#fca5a5;width:640px">
       <i class="ph ph-x-circle"></i> Could not read <code style="color:#fecaca">scene7.aemus</code> — current tracks kept as-is.<span class="ml-auto"><button class="pill" style="border-color:#ef4444;color:#fca5a5">Details…</button></span>
     </div>
   </div>
   <div class="flex flex-col gap-2">
-    <div class="case-cap">File-level load failure loudness — Option F2: keep the modal <small>The current design is modal at config load/save (§A). Q7’s “inline per-row” cannot cover file-scope failures; F2 keeps one narrow modal class for them. OPEN — not settled by the answers (reported to the orchestrator).</small></div>
+    <div class="case-cap">C2 overwrite confirmation — DECIDED: keep the small modal (the one remaining dialog) <small>Loading a config replaces the current track list — a destructive choice, not an error — so it keeps a small confirmation modal. Everything else is inline (CONFLICT 4 closed).</small></div>
     <div class="rounded px-4 py-3 text-xs flex flex-col gap-2" style="background:var(--floater-body);border:1px solid var(--floater-edge);width:640px">
-      <span class="flex items-center gap-2 font-semibold"><i class="ph ph-warning-circle" style="color:#ef4444"></i> Load audio configuration</span>
-      <span style="color:var(--text-muted)">Could not read scene7.aemus (JSON parse error at line 12). Your current tracks were not changed.</span>
-      <span class="ml-auto"><button class="pill">OK</button></span>
+      <span class="flex items-center gap-2 font-semibold"><i class="ph ph-warning-circle" style="color:#f59e0b"></i> Load audio configuration</span>
+      <span style="color:var(--text-muted)">Loading scene7.aemus replaces your current 3 audio tracks. Continue?</span>
+      <span class="ml-auto flex gap-2"><button class="pill">Cancel</button><button class="pill">Replace tracks</button></span>
     </div>
   </div>
 </div>
 
 <div class="section-h">6 — Design notes: where each binding answer and R-fix lives</div>
-<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid #171717;max-width:1180px">
-  <span><b>Q1 — audition the actual export mix:</b> §3 master strip — “Audition export mix” renders the true AudioMixer sum (the exact muxed buffer) and plays it from the playhead; per-track preview players mute; clip readout exposes the ±1.0 clamp. Export-only tracks are only hearable here.</span>
-  <span><b>Q2 — 4 meaningful combos:</b> §2 truth table, four captioned rows (mix+preview / reference / export only / parked) with badges derived from the two flags; §1 panel badges derive counts the same way (unconfigured counts toward nothing). Fixes R1: export-only is counted and mapped into the mixer.</span>
+<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid #171717;max-width:1220px">
+  <span><b>Q1 — export-mix level visibility (REVISED: audition dropped):</b> §3 master strip — PASSIVE only, no play button: a MIX level meter (the SUM of In-export tracks’ contribution, live during preview playback) and a latching CLIP warning for the ±1.0 hard clamp (G1), captioned “What the export will do to the levels”. Export-only tracks are never hearable anywhere in the app (DECISION 2).</span>
+  <span><b>Q2 — 4 meaningful combos:</b> §2 truth table, four captioned rows (heard + exported / reference only / export only / parked) with badges derived from the two flags; §1 panel badges derive counts the same way (unconfigured counts toward nothing). Fixes R1: export-only is counted and mapped into the mixer. Toggle framing (DECISION 2): “Audible” = a preview mute (animate without being distracted by e.g. music); “In export” = what ships (e.g. match the animation to a voice clip you don’t want in the export).</span>
   <span><b>Q3 — docked/inline:</b> §1 — the panel is a main-window dock below the timeline; the transport speaker button toggles it (checked pill), never a detached Qt::Window (old flow stopped all players on open — gone). §3 transport integration caption.</span>
-  <span><b>Q4 — audio follows video:</b> no divergent audio UI anywhere: the §3 strip states “range 0–360” and audition/export both use the per-range cut-together mix (R12 kept deliberately; Exporter.cpp:588-593).</span>
-  <span><b>Q5 — clamp + one sentinel:</b> §1 placement cells — “to” clamps ≥ “at” at the control (F36-style), 0 renders as “to end” everywhere (row 2 shows it). Sentinel replaces the 500 default (R11). See CONFLICT 1 below on the clamp × sentinel tension.</span>
+  <span><b>Q4 — audio follows video:</b> no divergent audio UI anywhere: export uses the per-range cut-together mix (R12 kept deliberately; Exporter.cpp:588-593) and nothing in the UI implies otherwise.</span>
+  <span><b>Q5 — clamp + explicit “to end” (REVISED):</b> §1 placement cells — “to” clamps ≥ “at” at the control while a number is entered (F36-style); an explicit “to end” toggle disables the end input, which reads “end of range” (rows 2 and 3 of §2 show it on). Users never see or type 0 — it is internal storage only, meaning “to end” everywhere in code. Replaces the 500 default (R11) and dissolves the clamp/sentinel tension (§7, C1 RESOLVED).</span>
   <span><b>Q6 — round-trip all tracks:</b> §4 Config tab — save writes every row (unconfigured/parked/errored included), load restores all and marks invalid ones on their rows with a summary line. Fixes R2; R7 (Placeholder-as-flag) dies with the explicit empty-path state (§2 “unconfigured”); R14 defaults are now announced.</span>
-  <span><b>Q7 — inline per-row errors:</b> §2 error state — danger hairline (red row hexes), inline banner naming the file with Relocate/Remove, mirrored in the §3 audition caption and §4 load summary. Fixes R13’s silence. File-scope errors: see §5 F1/F2 (open).</span>
-  <span><b>Q8 — engine features allowed:</b> §3/§5 — level meters (per-row + MIX), CLIP readout for the ±1.0 hard clamp (G1), audition buffer, per-decode progress. These are the sanctioned engine additions.</span>
+  <span><b>Q7 — inline per-row errors:</b> §2 error state — danger hairline (red row hexes), inline banner naming the file with Relocate/Remove, mirrored in the §4 load summary. Fixes R13’s silence. File-scope failures use the same inline grammar (§5 F1, DECIDED); C2’s overwrite confirmation keeps a small modal (the one remaining dialog).</span>
+  <span><b>Q8 — engine features allowed:</b> §3/§5 — per-row level meters + the passive MIX sum meter and latching CLIP warning (sanctioned engine addition: per-track levels or a sum hook from AudioMixer). The audition buffer and decode-progress additions went away with the audition (§7, C5 MOOT).</span>
   <span><b>Q9 — remove the clicked row:</b> §1 rows ① = per-row × + footer Add; §2 add/remove flow diagram. Fixes R9 including the 2-track divergence; the dual-mode button and its invariant comment are gone (R5’s grid pressure too — the row is a CSS grid, not a 5-column QGridLayout).</span>
   <span><b>Q10 — timeline placement:</b> §1 headers “Placement on timeline — at frame / to frame”, per-row mini span bar, duration readout = placed span (“200 fr · 0:08.3”); §2 playing caption states preview position = playhead − startFrame. Resolves R15 to the export/mixer reading.</span>
   <span><b>Cross-cutting R-fixes:</b> R3 (objectName collision) — every control gets a unique id in the implementation spec; R4 (teardown/rebuild) — rows mutate in place (add/remove flow caption); R6 (scratch-dir icon coupling) — icons stay runtime-tinted, tint specified via CSS variables only; R8 (core→GUI layering) — .aemus parsing moves to a non-GUI module (the Config tab is only a view); R10 (mute inversion) — the export checkbox keeps “Export with audio” wording; one inversion at the request boundary, asserted in tests; the §4 facts row speaks mix language, never “mute”.</span>
@@ -563,13 +600,13 @@ i[class^="ph-"] { color:var(--icon); }
   <span><b>Preview note:</b> self-contained page (Tailwind CDN + Geist + Phosphor). For <code>preview.png</code>, screenshot at 1280px wide like <code>tools/dock_mockup/preview.png</code> (browser capture; no build step).</span>
 </div>
 
-<div class="section-h">7 — Open conflicts, reported not resolved</div>
-<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid var(--hairline);max-width:1180px">
-  <span><b>CONFLICT 1 (Q5 internal tension):</b> “end ≥ start at the control” and “0 = to end” cannot both hold literally when start &gt; 0 (0 &lt; start). The mockup exempts the sentinel (0 renders as “to end”, never clamped) — one interpretation, needs confirmation. The inventory compounds it: getValidAudioStreams requires a “non-empty window” (AudioPlaybackWidget.h:103) and syncTracks reads a half-open [startFrame, endFrame) — both read end=0 as EMPTY, opposite to AudioMixer.h:21.</span>
-  <span><b>CONFLICT 2 (Q1 × export surfaces):</b> “the actual export mix” is ambiguous when the export dialog’s “Export with audio” is OFF or the destination can’t carry audio (containerCarriesAudio, GIF/sequences — §C/§E): the actual export then has NO audio. The mockup defines Audition as the track-level export mix (export-enabled tracks) and flags this; whether Audition should mirror the pending dialog/destination state is NOT settled by any answer.</span>
-  <span><b>CONFLICT 3 (Q1 × Q4):</b> for a gapped selection the export audio is per-range concat (R12); which range Audition renders — full timeline, current selection, or the export dialog’s range — is nowhere specified (the strip shows “range 0–360” as a placeholder readout).</span>
-  <span><b>CONFLICT 4 (Q7 scope gap):</b> inline per-row errors cannot express file-scope failures (JSON parse error, deserialize failure) nor C2’s overwrite confirmation (§A lists it as a modal). §5 F1/F2 shows both readings; the overwrite-confirm dialog is likewise unaddressed by the answers.</span>
-  <span><b>CONFLICT 5 (Q8 creep, minor):</b> the §3 “Mixing… 1 of 2 tracks decoded” progress assumes decode-level progress reporting that AudioMixer does not expose today (mix() is one-shot, G4); permissible under Q8 but it is an engine addition beyond “expose existing capability”.</span>
+<div class="section-h">7 — Conflicts: closed at revision (C1/C4 RESOLVED · C2/C3/C5 MOOT)</div>
+<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid var(--hairline);max-width:1220px">
+  <span><b>C1 — RESOLVED (was: Q5 clamp × sentinel tension):</b> the explicit “to end” toggle (DECISION 3) dissolves it — “to end” is exempt from the end≥start clamp (a numeric end is still clamped at the control), and end=0 means “to end” EVERYWHERE in code: the old empty-window reading of getValidAudioStreams (“non-empty window”, AudioPlaybackWidget.h:103) and syncTracks’ half-open [startFrame, endFrame) dies. Users never see 0.</span>
+  <span><b>C2 — MOOT (was: Q1 × export surfaces):</b> the audition is removed (DECISION 1), so there is no mix-preview whose scope could clash with the export dialog’s “Export with audio” or containerCarriesAudio. The passive MIX meter reads In-export track levels only and claims nothing about the pending dialog.</span>
+  <span><b>C3 — MOOT (was: Q1 × Q4 range ambiguity):</b> the audition is removed; no UI element renders or plays a mix, so the question of which range (timeline / selection / export range) it would use no longer arises. Export keeps the per-range cut-together concat (R12).</span>
+  <span><b>C4 — RESOLVED (was: Q7 scope gap):</b> file-scope failures (JSON parse error, deserialize failure) use the inline danger banner grammar (§5 F1, DECIDED); C2’s overwrite confirmation keeps a small modal — the one remaining dialog class (§5, DECIDED).</span>
+  <span><b>C5 — MOOT (was: Q8 decode-progress creep):</b> the “Mixing… N tracks decoded” state was part of the audition and is gone. The passive MIX meter + latching CLIP warning remain as the sanctioned Q8 engine addition (per-track levels or a sum hook; mix() stays one-shot).</span>
 </div>
 
 <script>
@@ -578,6 +615,10 @@ document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", ()
   document.querySelectorAll(".swatch").forEach(x => x.style.outline = "");
   s.style.outline = "2px solid #a3a3a3"; s.style.outlineOffset = "2px";
 }));
+// annotations are OFF by default: screenshots show exactly what the user sees
+document.getElementById("annToggle").addEventListener("change", e => {
+  document.body.classList.toggle("show-el", e.target.checked);
+});
 </script>
 </body>
 </html>
