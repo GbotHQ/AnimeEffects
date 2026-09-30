@@ -92,9 +92,15 @@ So before a long run that will open a dialog, run one dialog as a **canary** and
 ```bash
 T0=$(date '+%Y-%m-%d %H:%M:%S')
 # ... open exactly one dialog the probes would open ...
-journalctl --user --since "$T0" | grep -i file_chooser   # must print nothing
+journalctl --user --since "$T0" | grep -i file_chooser | grep -v '\[systemd-run\]'   # must print nothing
 xdotool search --onlyvisible --name . | sort            # the dialog's window must be in here
 ```
+
+The `grep -v '\[systemd-run\]'` half is load-bearing: this harness runs every command through a
+`[systemd-run]` scope whose journal START line records the command **text**, so a command that
+merely *contains* the word `file_chooser` (say, a script that greps for it) contaminates its own
+canary window and false-FAILs. Measured 2026-09-30: 4 journal hits in a clean window, all four the
+harness's own echoes (one was the check itself), 0 real portal lines.
 
 PROBE-SAFETY §R3 (`/home/gambot/dev/dsh-demo/PROBE-SAFETY.md`) predicted this class of failure —
 this is what it looks like on a Wayland desktop.
