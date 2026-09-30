@@ -756,3 +756,57 @@ contrast, not by pixel sampling.
 Evidence: `.git/dsh-scratch/scrub-spike/` (`out/before` the baseline set, `out/after` the fixed set
 incl. `_edit_hover`/`_edit_reenter`, `gates/` the gate logs; `run.sh` extended with the jiggle and
 re-enter states).
+
+## The host question, decided: keep the `QQuickWidget` (2026-09-30, measured on the live Wayland session)
+
+The last open architecture question — host the export dialogs in the existing `QDialog` +
+`QQuickWidget` shell, or in real QML windows — turned on exactly one unknown: whether in-scene
+popups and tooltips can work from a `QQuickWidget` host on Wayland ("Not settled" item 1), and how
+the positioner treats them at the window edges (item 2). The user authorized driving the live
+Wayland session for it; a two-variant spike (`--host=widget|window`, the real `AeComboBox.qml` and
+`AeToolTip.qml` via symlinks) answered it.
+
+### Measured — placement is identical in both hosts, on both platforms
+
+Zero-input selftest (programmatic `popup.open()` / `shown = true`) on Wayland-native windows, once
+per host; the same sequence under Xvfb/xcb exercised the real pointer path. **Every geometry line
+identical** across host × platform (raw logs `host-spike/out/selftest/*_app.log`):
+
+| probe | logged geometry | verdict |
+| --- | --- | --- |
+| combo popup at the bottom edge (G38) | `x=20 y=108 w=200 h=220 win 500x400`, settled same — baseline below was y=366 | the positioner **flips above** and stays fully in-bounds — G38 satisfied from either host, Wayland-native included |
+| `AeToolTip` at the right edge (E28) | `x=290 y=142 w=324 h=22` → spans 614 of 500 | **114 px overhang, clipped** — the real `AeToolTip.qml` has no flip and no clamp (`x: parent.width/2 - width/2`); identical in both hosts |
+| stock `Controls.ToolTip` (E27 baseline) | `x=180 y=183 w=140 h=29`, `popupType=0 sameWindow=true` | an **in-scene Item popup**, placed **above** its owner even with room below — E27 wants below-first, so a delegate must place it, stock does not |
+| `Popup.Window` (prior measurement, not re-run) | — | created but **never mapped from a `QQuickWidget`** on Wayland; maps from a real window host — the one behavior that differs between hosts |
+
+### The ruling, and the decision it yields
+
+The E28 wording was put to the user: "The design here allows for either. This is nuanced." — both
+resolutions (overhang unclipped, or flip/shift inside) satisfy the line; clipping is the defect.
+Consequences, in order:
+
+1. No contract line requires a tooltip that overhangs the dialog ⇒ no line requires window-backed
+   tooltips ⇒ **no line requires the real-QML-window host** (its only measured advantage on Wayland
+   is mapping `Popup.Window`, which the design does not need).
+2. The chosen resolution in this host is **flip/shift-inside**: it is plain positioning code ("ours
+   either way") and works identically in both hosts — so the fix for the 114 px clip is the tooltip
+   increment's clamp work, not a host migration.
+3. **Verdict: keep `QQuickWidget`.** By the settled principle — use the abstraction we already have
+   unless a contract line says otherwise — and against the measured evidence there is no line that
+   says otherwise. **Reopen condition** (the only one): wanting the overhang look for tooltips
+   would require window-backed tooltips, which on Wayland requires the real-window host.
+
+### Verification honesty
+
+- Placement/flip/clip: **Wayland-native, measured** (selftest logs above; screenshots via
+  `cosmic-screenshot --interactive=false --notify=false`).
+- Input semantics (real hover reveals the tooltip after the 500 ms delay, real click opens the
+  combo): exercised under Xvfb/xcb only. Wayland-native input delivery through `ydotool` did not
+  land (its absolute-move/acceleration caveat) and was NOT retried past the budget — a re-run with
+  pointer acceleration disabled is available if Wayland input-path proof is ever wanted. The
+  placement math itself is platform-independent Qt Quick code, and the measured zero divergence
+  between platforms supports that.
+- Disturbance (user-facing disclosure): three brief spike windows ≈45 s + two selftest windows
+  ≈50 s, one ~5 s window from a mechanics check that leaked onto the XWayland desktop (should have
+  used `xvfb-run`), and one driver bug whose garbage targets injected ~18 synthetic events near the
+  screen's left edge. No typing beyond Escape, no file dialogs.

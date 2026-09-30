@@ -117,7 +117,13 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
     the platform's timeout or when the pointer leaves.
 27. [R9] It is positioned relative to its control in the conventional place (below, or above when
     there is no room), not at the pointer.
-28. [R10] It is never clipped by the dialog's edge; it flips or shifts to stay inside the screen.
+28. [R10] It is never clipped by the dialog's edge. (Wording decided 2026-09-30, the user: "The
+    design here allows for either. This is nuanced." — so both resolutions satisfy this line: a
+    tooltip that **overhangs** the dialog unclipped, or one that **flips/shifts to stay inside**
+    it. What the line forbids is clipping at the edge — which is what `AeToolTip` does today
+    (measured 2026-09-30: 114 px cut off, no flip, no clamp). The host decision recorded in the
+    implementation notes picks the flip/shift-inside resolution; if the overhang look is wanted
+    later, that alone reopens the host question.)
 29. [R9] It does not appear for a control whose text already states the same thing; the set of
     controls that keep a tooltip is explicit. (Decided 2026-09-30: exactly two kinds — picker rows,
     where the name can be truncated and the tooltip shows it in full, and the icon-only Auto/Reset
