@@ -60,6 +60,9 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 5. [D] The dialog restores its last size between sessions. (Decided 2026-09-30: yes — geometry is
    persisted across sessions, as users expect of desktop dialogs; the first open uses the designed
    default size.)
+   Scope confirmed 2026-10-01: the EXPORT dialog's size (the picker's is not persisted); and on
+   first open a remembered destination's platform opens so the current answer is never hidden —
+   "start collapsed" governs the rest.
 
 ## B. Search field (picker)
 
@@ -109,14 +112,18 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 25. [R11] The export form never exceeds the window without a scroll: when the content does not fit
     (minimum size, small screen, or the Advanced section open), the content scrolls by wheel, keys
     and drag, and the Cancel/Export row stays fixed at the bottom while the content scrolls —
-    reachable without scrolling to the end. (Decided 2026-09-30.)
+    reachable without scrolling to the end. (Decided 2026-09-30.) Confirmed 2026-10-01 with its three
+implementation calls: a scrollbar on the scroll area (item 23/24 rules, only on overflow),
+PageUp/PageDown/Home/End paging at the root (editors keep their keys), and a screen-clamped window
+minimum (the "small screen" clause).
 
 ## E. Tooltips
 
 26. [R9] A tooltip appears after the platform's wake-up delay — never instantly — and hides after
     the platform's timeout or when the pointer leaves.
 27. [R9] It is positioned relative to its control in the conventional place (below, or above when
-    there is no room), not at the pointer.
+    there is no room), not at the pointer. (Placement CONFIRMED 2026-10-01 by the user: below-first as written;
+item 30's "drawn above its owner" is the z-order.)
 28. [R10] It is never clipped by the dialog's edge. (Wording decided 2026-09-30, the user: "The
     design here allows for either. This is nuanced." — so both resolutions satisfy this line: a
     tooltip that **overhangs** the dialog unclipped, or one that **flips/shifts to stay inside**
@@ -168,15 +175,23 @@ behaviour regresses. "It looks right in a screenshot" verifies none of the lines
 41. [R12] The frame range lives under the Custom/Advanced section; the default surface stays
     uncluttered for the common case.
 42. [D] Controls the destination dictates are stated, not offered; controls it merely defaults stay
-    reachable under Advanced.
+    reachable under Advanced. (Ruled 2026-10-01: the offered codec row belongs HERE for destination
+mode — this clause governs it; manual mode's Encoding trio is unchanged.)
 
 ## I. Destination data
 
 43. [R14] The Discord 20 MB cap is opt-in and settable: the guidance (20 MB free, 50 MB Nitro,
-    500 MB boosted) is stated as a fact the user may apply, never enforced silently.
+    500 MB boosted) is stated as a fact the user may apply, never enforced silently. (Scope ruled 2026-10-01: this applies to EVERY destination's size cap —
+the audit generalizes; Telegram/WeChat caps stop auto-enforcing too, their facts keep stating them.
+Cap unit = MB. At the limit: refuse with a visible reason.)
 44. [R15] A destination row declares the codecs it accepts and which one is the default, so the
     codec row can offer AV1/H.265/H.264 where the platform accepts them, instead of a fixed
     encoder. (Schema change: a list, not a mode.)
+   Archive-row rule ruled 2026-10-01: `archive.master` offers FFV1/AV1/H.265 and its default
+   follows the transparency toggle + bucket — Lossless → FFV1; other buckets with alpha ON → the
+   alpha-capable lossy pick (AV1 if the build's encoder measures alpha-capable, else VP9); alpha
+   OFF → AV1 at efficiency buckets, H.265 at size-focused ones. X follows its facts (H.264 only)
+   and YouTube@Lossless stays within its accepted list (no FFV1) — both ruled 2026-10-01.
 
 ## J. Rendering
 
