@@ -110,6 +110,7 @@ int main(int argc, char** argv) {
 
     int rows = 0, stills = 0, fpsIgnoredRows = 0, capped = 0, unverified = 0, unbuildable = 0;
     int maxRows = 0, sequenceRows = 0, videoRows = 0, adjacentRows = 0;
+    bool capChecked = false;
 
     for (const ctrl::ExportTarget& t : targets) {
         // The order MainWindow uses, and it matters: the destination's defaults go into
@@ -271,6 +272,34 @@ int main(int argc, char** argv) {
                   .arg(t.id)
                   .arg(wantImageQuality ? QStringLiteral("offered (QImage::save writes this)")
                                         : QStringLiteral("hidden (no still writer)")));
+        // I43 (decided 2026-09-30): the size cap is opt-in and settable, and
+        // starts on "Auto" = 0 = NO cap — silent fitting is the reviewed defect.
+        // A byte cap needs one file: numbered stills have no one size to fit,
+        // stills and single files keep the row.
+        const bool wantSizeCap = !isSequence;
+        check(model.sizeCapVisible() == wantSizeCap,
+              QStringLiteral("%1: the size cap is %2")
+                  .arg(t.id)
+                  .arg(wantSizeCap ? QStringLiteral("offered (opt-in, Auto = no cap)")
+                                   : QStringLiteral("hidden (numbered stills, no one size)")));
+        check(model.sizeCapValue() == 0.0 && model.sizeCapAutoValue() == 0.0,
+              QStringLiteral("%1: the size cap starts on Auto = no cap enforced").arg(t.id));
+        if (!capChecked) {
+            capChecked = true;
+            // The MB field reaches the fit loop in BYTES (GeneralParams::
+            // sizeCapBytes); the "Auto" sentinel stays 0 and the loop never runs.
+            model.setSizeCap(0.25);
+            check(model.readBack().sizeCapBytes == 262144,
+                  QStringLiteral("I43: 0.25 MB reaches the fit loop as 262144 bytes (got %1)")
+                      .arg((qlonglong)model.readBack().sizeCapBytes));
+            model.setSizeCap(99999.0);
+            check(model.sizeCapValue() == model.sizeCapMaximum(),
+                  QStringLiteral("I43: the size cap clamps to its maximum (%1)")
+                      .arg(model.sizeCapMaximum()));
+            model.setSizeCapToAuto();
+            check(model.readBack().sizeCapBytes == 0 && model.sizeCapValue() == 0.0,
+                  QStringLiteral("I43: Reset to auto returns to no cap"));
+        }
         const bool sizeIsUsers = t.size.mode == ctrl::SizeMode::Free
                                  || t.size.mode == ctrl::SizeMode::Max;
         check(model.sizeEditable() == sizeIsUsers,

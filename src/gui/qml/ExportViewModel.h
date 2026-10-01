@@ -239,6 +239,16 @@ class ExportViewModel : public QObject {
     Q_PROPERTY(bool imageQualityVisible READ imageQualityVisible NOTIFY constraintsChanged)
     Q_PROPERTY(bool imageQualityEnabled READ imageQualityEnabled NOTIFY constraintsChanged)
 
+    // I43 (decided 2026-09-30): the size cap, in MB. The value 0 is the
+    // sentinel = "Auto" = NO cap enforced (the destination's own cap stays a
+    // stated fact). Opt-in and settable; GeneralParams::sizeCapBytes is the
+    // bytes side of the same setting.
+    Q_PROPERTY(double sizeCapValue READ sizeCapValue WRITE setSizeCap NOTIFY sizeCapChanged)
+    Q_PROPERTY(double sizeCapMinimum READ sizeCapMinimum CONSTANT)
+    Q_PROPERTY(double sizeCapMaximum READ sizeCapMaximum CONSTANT)
+    Q_PROPERTY(double sizeCapAutoValue READ sizeCapAutoValue CONSTANT)
+    Q_PROPERTY(bool sizeCapVisible READ sizeCapVisible NOTIFY constraintsChanged)
+
     // ---- the disclosure ----------------------------------------------------
     Q_PROPERTY(bool advancedVisible READ advancedVisible NOTIFY constraintsChanged)
     Q_PROPERTY(bool advancedOpen READ advancedOpen WRITE setAdvancedOpen NOTIFY advancedOpenChanged)
@@ -386,6 +396,18 @@ public:
     bool imageQualityVisible() const { return mImageQualityVisible; }
     bool imageQualityEnabled() const { return mImageQualityEnabled; }
     Q_INVOKABLE void setImageQualityToAuto();
+    double sizeCapValue() const { return mSizeCapValue; }
+    void setSizeCap(double aValue);
+    double sizeCapMinimum() const { return 0.0; }
+    // Above every guidance tier the facts state (500 MB Nitro is the largest).
+    double sizeCapMaximum() const { return 1024.0; }
+    double sizeCapAutoValue() const { return 0.0; }
+    // A byte cap needs ONE file to fit: hidden only for a directory of numbered
+    // stills. Stills keep the row (a single image has one size — Weibo's 20 MB
+    // fact is exactly such a cap); video and GIF keep it too. (The image-quality
+    // row's own visibility is still-or-sequence, which is NOT this test.)
+    bool sizeCapVisible() const { return !(mImageQualityVisible && !mArtifactIsStill); }
+    Q_INVOKABLE void setSizeCapToAuto();
 
     // ---- the disclosure ----------------------------------------------------
     bool advancedVisible() const { return mAdvancedVisible; }
@@ -439,6 +461,7 @@ public:
         int bitrate = 0;          // parsed the same way the widget form parsed it
         int qualityOverride = -1; // -1 = the quality intent decides
         int imageExportQuality = -1;
+        qint64 sizeCapBytes = 0; // 0 = "Auto" = no cap enforced (I43)
         bool allowTransparency = true;
         bool loop = true;
         bool exportWithAudio = false;
@@ -476,6 +499,7 @@ signals:
     void qualityOverrideChanged();
     void bitrateChanged();
     void imageQualityChanged();
+    void sizeCapChanged();
     void advancedOpenChanged();
     void palettePathChanged();
     void operationCancelledChanged();
@@ -635,6 +659,7 @@ private:
     int mImageQuality = -1;
     bool mImageQualityVisible = false;
     bool mImageQualityEnabled = true;
+    double mSizeCapValue = 0.0; // MB; 0 = the "Auto" sentinel = no cap
 
     bool mAdvancedVisible = false;
     bool mAdvancedOpen = false;

@@ -1378,16 +1378,19 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QWidget* widge
         // A still destination exports the frame on screen; the plan takes it from
         // the request rather than the range (see ExportRequest::playhead).
         request.playhead = exParam.playhead;
-        // The same stem the exporter would use for a frame sequence, so a fitted
-        // set has the same file names as an unfitted one.
-        request.imageStem = QFileInfo(g.fileName).baseName();
-        if (request.imageStem.isEmpty() && target.artifact == ctrl::ArtifactKind::Sequence) {
-            // The stem for numbered frames. The exporter's own rule prefers the
-            // project name, which the dialog does not always pass down; falling back
-            // to the name the user typed keeps a fitted set and an unfitted one
-            // identically named instead of "0001.png" in one case and
-            // "ugoira0001.png" in the other.
-            request.imageStem = QFileInfo(g.osExportTarget).completeBaseName();
+        // The stem for numbered frames is the name the USER TYPED ("one file per
+        // frame, numbered from 0001, at the name the user typed" — the save
+        // dialog's promise, probe_still's assertion), so a fitted set and an
+        // unfitted one are identically named. Measured regression (2026-10-01):
+        // the priority below was reversed — the PROJECT name won, and a sequence
+        // came out as "nene0000.png" beside a status bar that said
+        // probe_frames.png. It stayed invisible while every capped sequence rode
+        // the fit path (whose request never carried a stem and fell back to the
+        // typed name); I43's opt-in cap gate moved sequences to the direct path
+        // and the two writers' disagreement appeared.
+        request.imageStem = QFileInfo(g.osExportTarget).completeBaseName();
+        if (request.imageStem.isEmpty()) {
+            request.imageStem = QFileInfo(g.fileName).baseName();
         }
         imageStem = request.imageStem;
         // GIF parameters, so a fitted GIF is the same file a plain export writes.
@@ -1448,10 +1451,23 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QWidget* widge
     // a capped destination the exporter renders the frames and hands them over
     // instead of encoding.
     bool fitFailed = false;
-    if (havePlan && plan.target.caps.maxBytes > 0) {
+    // I43 (decided 2026-09-30): the size cap is OPT-IN. This block used to run
+    // whenever the DESTINATION declared caps.maxBytes — silently fitting every
+    // export under a number the user never chose (the review's "Discord 20 MB
+    // enforced"). It runs only when the USER set a cap (GeneralParams::
+    // sizeCapBytes; "Auto" = 0 = off) and then fits under the USER's number.
+    // The destination's own cap stays a stated fact (ExportFacts, the picker
+    // badge). At the limit the fit refuses with a visible reason (fitFailed
+    // below) — that part is unchanged, it is merely no longer silent.
+    if (havePlan && g.sizeCapBytes > 0) {
         ctrl::ExportTarget fitTarget = plan.target;
+        fitTarget.caps.maxBytes = g.sizeCapBytes;
         ctrl::ExportRequest fitRequest;
         fitRequest.outputPath = g.osExportTarget;
+        // The same stem a plain export writes ("a fitted set has the same file
+        // names as an unfitted one" is the flow's invariant; the fit writer's
+        // fallback computes the same name, this makes it structural).
+        fitRequest.imageStem = imageStem;
         fitRequest.sourceSize = mCurrent->attribute().imageSize();
         fitRequest.requestedSize = QSize(g.exportWidth, g.exportHeight);
         fitRequest.fps = cparam.fps;
@@ -1547,10 +1563,13 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QWidget* widge
             cparam.path = chosen.absolutePath();
             iparam.name = chosen.completeBaseName();
         } else {
-            // A sequence is a directory of numbered frames; the name comes from the
-            // project, which is what the dialog's directory-only chooser implies.
+            // A sequence is a directory of numbered frames; the stem is the name
+            // the user typed (see the imageStem computation above — 2026-10-01:
+            // "the name comes from the project" was measured wrong and produced
+            // nene0001.png files under a probe_frames.png status).
             cparam.path = g.exportDirectory.absolutePath();
-            iparam.name = imageStem.isEmpty() ? QFileInfo(g.fileName).baseName() : imageStem;
+            iparam.name = imageStem.isEmpty() ? QFileInfo(g.osExportTarget).completeBaseName()
+                                             : imageStem;
         }
         auto res = exporter.execute(cparam, iparam);
         if (!res && !exporter.isCanceled())
@@ -1690,6 +1709,10 @@ void MainWindow::reportExportOutcome(const exportParam& aParam, bool aWrote) {
 
     const ctrl::ExportTarget target =
         ctrl::ExportTargets::find(ctrl::ExportTargets::load(), aParam.destinationId);
+    // This clause is the GUIDANCE, stated — I43: "a fact the user may apply". It
+    // reports where the file landed against the destination's own limit and warns
+    // of the platform's rejection; it is NOT enforcement. Enforcement (fitting)
+    // happens only when the user sets a size cap (GeneralParams::sizeCapBytes).
     if (target.caps.maxBytes > 0) {
         const bool within = bytes <= target.caps.maxBytes;
         msg += tr(" (%1 of %2 KB allowed for %3)")
@@ -1833,6 +1856,7 @@ void MainWindow::onQuickExportDestinationTriggered(const QString& aDestinationId
     genParam.allowTransparency = true; // the destination decides, in the plan
     genParam.loop = true;
     genParam.imageExportQuality = -1;
+    genParam.sizeCapBytes = 0; // I43: this path never caps (no dialog chose one)
     const frameExportRange fer{mCurrent->attribute().frameRange().min(),
                                mCurrent->attribute().frameRange().max()};
     genParam.nativeFrameRange = fer;
@@ -2066,6 +2090,7 @@ void MainWindow::openExportDialog(const QString& aDestinationId) {
     genParam.bitrate = back.bitrate;
     genParam.qualityOverride = back.qualityOverride;
     genParam.imageExportQuality = back.imageExportQuality;
+    genParam.sizeCapBytes = back.sizeCapBytes; // I43: 0 = Auto = no cap
     genParam.allowTransparency = back.allowTransparency;
     genParam.loop = back.loop;
     genParam.exportWithAudio = back.exportWithAudio;

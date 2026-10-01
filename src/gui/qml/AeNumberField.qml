@@ -18,6 +18,9 @@ Item {
     property real from: 0
     property real to: 100
     property real step: 1
+    // Fractional values (the size cap is MB: 0.25 = 256 KiB). 0 keeps every
+    // existing caller showing whole numbers.
+    property int decimals: 0
     // The words a probe or a screen reader addresses this field by
     // ("Width", "Frame rate", ...). Required: a bare spin box announces nothing.
     property string label: ""
@@ -36,6 +39,13 @@ Item {
 
     signal valueEdited(real value)
     signal resetRequested()
+
+    // To the field's own decimals (0 keeps every existing caller at whole
+    // numbers). See accessibleSetValue for the measured bug this replaces.
+    function quantize(v) {
+        const p = Math.pow(10, root.decimals);
+        return Math.round(Number(v) * p) / p;
+    }
 
     implicitHeight: 28
     // The field and its reset are one control on one row.
@@ -70,9 +80,12 @@ Item {
         property real accessibleMaximum: root.to
         property real accessibleStep: root.step
         // Called from C++ (QAccessibleValueInterface::setCurrentValue), so an
-        // accessibility write takes the SAME path as a typed edit.
+        // accessibility write takes the SAME path as a typed edit. Quantized to
+        // the field's own precision: Math.round alone flattened the size cap's
+        // 0.25 MB to 0 (measured 2026-09-30: probe_capped read back 0), and it
+        // did the same to scrub drags on any decimals>0 field.
         function accessibleSetValue(value) {
-            root.valueEdited(Math.round(Number(value)));
+            root.valueEdited(root.quantize(value));
         }
         function accessibleBeginEdit() { field.beginEdit(); }
         Accessible.role: Accessible.SpinBox
@@ -89,14 +102,14 @@ Item {
         from: root.from
         to: root.to
         step: root.step
-        decimals: 0
+        decimals: root.decimals
         enabled: root.enabled
         // The word replaces the number: see the placeholder Text below.
         showValue: !root.atPlaceholder
         // ScrubSpinBox writes `value` on a drag (which drops the caller's
         // binding), so the caller re-syncs it; changed() is what carries the value
         // back out.
-        onChanged: (value) => { root.valueEdited(Math.round(value)) }
+        onChanged: (value) => { root.valueEdited(root.quantize(value)) }
     }
     AeIconButton {
         id: resetter

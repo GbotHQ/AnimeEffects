@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         qml += "        label: \"Width\"\n";
         qml += "        placeholder: \"Auto\"\n";
         qml += "        placeholderValue: -1\n";
-        qml += "        from: -1; to: 4096; step: 1\n";
+        qml += "        from: -1; to: 4096; step: 1; decimals: 2\n";
         qml += "        property real external: -1\n";
         qml += "        value: external\n";
         qml += "        onValueEdited: (v) => { external = v }\n";
@@ -319,6 +319,23 @@ int main(int argc, char** argv) {
         check(beginPlainEdit(), "precondition: the edit begins");
         check(sendKey(scene.plainEdit, Qt::Key_Escape),
               "the editor consumes Escape (an undone edit must not also cancel the dialog)");
+    }
+
+    // ---- the field's precision survives an accessibility write ----------------
+    // Measured 2026-09-30 (probe_capped read back 0): accessibleSetValue used to
+    // Math.round its input, so the size cap's 0.25 MB landed as 0 — and the scrub
+    // drag path rounded the same way. The write must take the typed-edit path AT
+    // THE FIELD'S PRECISION (decimals: 2 on this scene's number field).
+    {
+        makeScene();
+        check(scene.found(), "precondition: a fresh scene for the precision check");
+        check(QMetaObject::invokeMethod(scene.numValueNode, "accessibleSetValue",
+                                        Q_ARG(QVariant, 0.25)),
+              "the accessibility write lands through the entry point");
+        check(qFuzzyCompare(scene.num->property("value").toReal() + 1.0, 1.25),
+              "and the value keeps the field's decimals (0.25, not rounded to 0)");
+        check(qFuzzyCompare(scene.num->property("external").toReal() + 1.0, 1.25),
+              "and the owner's re-sync carries the same precision");
     }
 
     if (scene.root) delete scene.root;

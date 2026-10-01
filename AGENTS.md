@@ -102,6 +102,15 @@ merely *contains* the word `file_chooser` (say, a script that greps for it) cont
 canary window and false-FAILs. Measured 2026-09-30: 4 journal hits in a clean window, all four the
 harness's own echoes (one was the check itself), 0 real portal lines.
 
+**And the check cannot attribute a line to a process.** On a desktop in active use, other apps'
+file-chooser traffic trips it too: measured 2026-10-01, a sweep flagged `portal=1` on
+`xdg-desktop-portal-cosmic … file_chooser: no file chooser dialog with ID Id(1064)` while the
+journal's own neighborhood showed the user's `vicinae` clipboard activity and unrelated portal
+traffic (same signature appeared at Id(872) with no agent work running at all). Before treating
+`portal=1` as a leak: read the journal neighborhood — if the surrounding lines are other apps and
+the canary was green, it is ambient traffic, not us. Our runs are identifiable by the pinned
+`QT_QPA_PLATFORMTHEME=generic` + Xvfb (the canary proves dialog placement).
+
 PROBE-SAFETY §R3 (`/home/gambot/dev/dsh-demo/PROBE-SAFETY.md`) predicted this class of failure —
 this is what it looks like on a Wayland desktop.
 

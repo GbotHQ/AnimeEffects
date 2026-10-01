@@ -668,6 +668,36 @@ Item {
                             onClicked: exportModel.bitrate = "Auto"
                         }
                     }
+
+                    // I43 (decided 2026-09-30): the size cap is OPT-IN and
+                    // settable. "Auto" (the sentinel) means NO cap is enforced —
+                    // the destination's own cap stays a stated fact in the facts
+                    // panel and the picker badge. Set a value and the export is
+                    // fitted under it; when it cannot fit, the export is REFUSED
+                    // with a visible reason rather than silently reduced further.
+                    AeFieldLabel { text: qsTr("Size cap (MB)"); visible: exportModel.sizeCapVisible }
+                    AeNumberField {
+                        id: sizeCapField
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 160
+                        Layout.maximumWidth: 260
+                        visible: exportModel.sizeCapVisible
+                        label: qsTr("Size cap (MB)")
+                        from: exportModel.sizeCapMinimum
+                        to: exportModel.sizeCapMaximum
+                        decimals: 2
+                        step: 0.1
+                        value: exportModel.sizeCapValue
+                        placeholder: qsTr("Auto")
+                        placeholderValue: exportModel.sizeCapAutoValue
+                        resetLabel: qsTr("Reset to auto")
+                        onValueEdited: (value) => { exportModel.sizeCapValue = value }
+                        onResetRequested: exportModel.setSizeCapToAuto()
+                        Connections {
+                            target: exportModel
+                            function onSizeCapChanged() { sizeCapField.value = exportModel.sizeCapValue }
+                        }
+                    }
                 }
             }
 

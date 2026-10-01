@@ -885,6 +885,21 @@ void ExportViewModel::setImageQualityToAuto() {
     setImageQuality(-1);
 }
 
+void ExportViewModel::setSizeCap(double aValue) {
+    if (aValue < sizeCapMinimum())
+        aValue = sizeCapMinimum();
+    if (aValue > sizeCapMaximum())
+        aValue = sizeCapMaximum();
+    if (qFuzzyCompare(mSizeCapValue, aValue))
+        return;
+    mSizeCapValue = aValue;
+    emit sizeCapChanged();
+}
+
+void ExportViewModel::setSizeCapToAuto() {
+    setSizeCap(0.0);
+}
+
 // ---------------------------------------------------------------- disclosure
 void ExportViewModel::setAdvancedOpen(bool aOpen) {
     if (mAdvancedOpen == aOpen)
@@ -1300,6 +1315,9 @@ ExportViewModel::ReadBack ExportViewModel::readBack() const {
                               ? mQualityOverrideValue
                               : -1;
     out.imageExportQuality = mImageQuality;
+    // I43: the opt-in cap travels in bytes. 0 (the "Auto" sentinel) stays 0 —
+    // the fit block runs only on a value the user chose.
+    out.sizeCapBytes = (mSizeCapValue > 0.0) ? qint64(qRound64(mSizeCapValue * 1048576.0)) : 0;
     out.allowTransparency = mTransparency.value();
     out.loop = mLoop.value();
     out.exportWithAudio = mAudio.value();

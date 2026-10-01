@@ -1200,3 +1200,95 @@ constraint 1 applied ("declare what the facts support") — each is one attribut
    strict reading of item 42 would move it under Advanced — one QML move either way.
 3. hevc-into-mp4 rows don't carry the `hvc1` tag (only safari.transparent pins it) — not a
    regression (the ladder didn't tag either), facts silent; one attribute per row fixes it.
+
+## Post-R1, landed: the size cap asks first (I43 — opt-in and settable)
+
+### Before, measured
+
+`ExportTarget::Caps::maxBytes` fed `MainWindow::exportProject`'s gate → `exportWithFit()` **silently
+fitted every export** under the destination's declared cap (encode/measure/re-encode bisections).
+The status message already stated the guidance as fact ("…of %2 KB allowed…; OVER THE LIMIT, it will
+be rejected") — the defect was the enforcement, not the words.
+
+### After
+
+| scenario | behavior |
+| --- | --- |
+| default ("Auto" sentinel = 0) | **no cap enforced**: one encode, untouched (e2e: attempts==1) |
+| opt-in ("Size cap (MB)" in Advanced, the `imageQualityField` idiom + icon-only "Reset to auto" per item 35/E29) | fitted under the **user's** bytes (`GeneralParams::sizeCapBytes`, 1 MB = 1,048,576) |
+| at the limit | refuse with the visible "could not fit under…" reason (unchanged — now the ONLY limit semantics; pre-agreed flag) |
+| reset / destination switch | back to Auto; the cap is a user setting (global) and survives switches (flagged) |
+| guidance (20/50/500 etc.) | stays stated verbatim in facts + status — a fact the user may apply |
+
+### Findings this increment bought
+
+- **The audit generalizes I43 beyond Discord** (flagged): Telegram's 256 KB and WeChat's 500 KB also
+  stop auto-enforcing; their facts/badges keep stating the caps. The same defect class the review
+  named cannot survive "never enforced silently" on other rows.
+- **A prerequisite bug, found by measurement**: `AeNumberField`'s accessibility setter did
+  `Math.round(Number(value))` — `spin set "Size cap (MB)" 0.25` landed as **0** (probe read-back
+  proved it), and scrub drags rounded the same way for any `decimals>0` field. Fixed with a
+  decimals-aware `quantize()` at both call sites (`AeNumberField` gained `decimals`, default 0 —
+  every existing caller unchanged); regression check in `scrub_escape`.
+- **The old probe cases were VACUOUS** — the 20-frame GIF measured 142,141 B, under every cap, so
+  the old "fit" asserts were no-ops. `probe_capped` now runs heavier ranges (72/100 frames) with a
+  **loud natural-size precondition** and a new **default case** whose two asserts (file lands OVER
+  the declared cap + status states the guidance and consequence) are the silent-enforcement
+  detector. Frame-count change justified per case; the range-assert bound relaxed 60→120.
+
+### probe_capped edits, justified line-by-line vs contract 43
+
+(a) `capmb`/`cframes` args + a `spin set "Size cap (MB)"` opt-in step = 43's "opt-in and settable";
+(b) weigh against the USER's bytes = the cap the user applied; (c) the new Auto-case = "stated as a
+fact … never enforced silently" (a silent fit makes it fit and fails the case); (d) the
+facts/status asserts unchanged — the message clause is the guidance statement, not enforcement;
+(e) the heavier ranges fix the vacuous cases.
+
+### String delta and the lupdate escape clause
+
+ONE new source string: `Size cap (MB)` (reused: "Auto", "Reset to auto"). Catalogs deliberately NOT
+lupdate'd: a throwaway run showed a full-tree lupdate churns **2,151 lines/catalog**, surfaces a
+**54-string extraction debt (53 pre-existing)** and would fill the EN skeleton (893 entries, today a
+4-line empty file) with unfinished entries — breaking the 0-unfinished gate for debt this change
+didn't create. Exactly what remains: one source string awaiting a future extraction pass.
+**Maintenance finding for the user**: the catalogs carry that 54-string debt; a real
+lupdate+translate pass is its own task.
+
+### Verification
+
+| gate | result |
+| --- | --- |
+| builds | Debug **0 warnings**, Release **0 warnings** |
+| units | `scripts/run_suites.sh` **21/21 Debug, 21/21 Release**, exit 0 (orchestrator re-run) |
+| regression proof | readBack-drop → exactly 1 assert; silent enforcement reintroduced at the real gate → exactly the default case's 2 asserts |
+| e2e boundary | Auto = 1 attempt; opt-in fits below every declared cap (only the user's number achieves it); impossible cap refuses with a non-empty reason |
+| targeted probes | canary PASS ×2, `capped` **57/57**, `export` 165s, `format` 121s |
+| catalogs | 0 `unfinished` ×6; both i18n checks pass (151 strings up to date) |
+| full sweep | run by the orchestrator at this increment (probe change = harness change; plan completion = rung milestone) — result in the run log |
+
+### The sweep's catch: two writers disagreed about sequence names (fixed in the same landing)
+
+The final milestone sweep failed `probe_still` — the numbered-PNG sequence wrote "0 of 20" by the
+probe's globs. **The files were never lost**: they landed as `nene0000.png…` (PROJECT stem,
+0-based) instead of `probe_frames0001.png…` (TYPED stem, 1-based). Two writers disagreed on both
+axes and their comments falsely claimed parity:
+
+- the **fit writer** (`exportWithFit`'s image arm) numbered `arg(i+1, 4, …)` from the typed name;
+- the **direct writer** (`Exporter::decideImagePath`) used `QFileInfo(fileName).baseName()` = the
+  **project** name and the **0-based** render index.
+
+Before I43 every capped sequence rode the fit writer (`caps.maxBytes > 0`), so the disagreement
+never surfaced; I43's opt-in gate routes uncapped sequences to the direct writer — and the status
+bar, a third source, named the typed file. Fixed structurally: both writers now take
+`request.imageStem` (typed name first, project as fallback) and number 1-based 4-digit;
+`fitRequest.imageStem` is set so parity cannot drift again. Net: `media_exporter_e2e` Scenario 7
+naming asserts + **Scenario 7b naming-parity** (direct vs fit, same frames, identical name sets —
+deliberate break fails exactly 4 asserts with the divergence printed). The manual PNG/JPEG
+sequence hatch follows the same convention now (it was 0-based project-named — untested before).
+
+### And the harness budget the honest cases outran
+
+`probe_capped`'s honest cases (72/100-frame real exports with fit bisections) measure **1120 s**
+standalone — the blanket `timeout 900` in `run_probes.sh` killed it mid-case even unloaded. The
+budget is now **per probe** (`PROBE_TIMEOUT=( [probe_capped]=1800 )`), so one probe's honest
+runtime cannot silently eat the sweep budget the others live in. Harness edit.
