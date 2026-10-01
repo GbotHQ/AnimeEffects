@@ -109,9 +109,9 @@ an empty lane.
 
 ## Open items at handoff
 
-1. **Compact lane height + track-text font** — user is unsure (84px too tall; vertical space
-   precious). Two options were to be rendered side by side (app-rhythm vs slightly taller) for
-   the user to choose. THE APP'S REAL METRICS need measuring (TimeLineWidget.cpp / theme/TimeLine.h).
+1. **Lane height — DECIDED (final session act): 44px, filename OVERLAID on the waveform** with a
+   drop shadow for contrast (no reserved name line; wave fills the clip). LANDED AND VERIFIED
+   (verify_name_overlay.png: glyphs separate from a loud peak at 2x).
 2. **Final Phase 2 gate**: overall design approval after the last batch lands and is verified.
 3. Parked knowingly: the guide-track case (audible while animating, never exported) — dropped
    with the reference/export distinction "for now".

@@ -88,8 +88,8 @@ body.show-el .el::after { display:grid; }
 :root {
   --row-ruler:28px;
   --row-track:48px;
-  --row-lane:84px;
-  --row-lane-compact:76px;
+  --row-lane:44px;
+  --row-lane-compact:44px;
 }
 /* ---- Animation panel chrome — matches the real app (reference:
      .scratch-orch/capture-home/timeline_detail.png): titled 'Animation' panel
@@ -172,7 +172,7 @@ body.show-el .el::after { display:grid; }
   gap:8px; color:var(--text-dim); font-size:13px; }
 /* ---- clip (FLOW: head row + wave body column; absolute only for lane
    placement on .clip, the gain line and the trim handles) ---- */
-.clip { position:absolute; top:6px; bottom:6px; border-radius:6px;
+.clip { position:absolute; top:4px; bottom:4px; border-radius:6px;
   background:var(--raised); border:1px solid var(--outline);
   display:flex; flex-direction:column; }
 .clip.hovering { border-color:var(--hairlinehover); }
@@ -180,11 +180,12 @@ body.show-el .el::after { display:grid; }
 .clip.err { border-color:#ef4444; }
 .clip.parked { opacity:.55; }
 .clip.ghost { opacity:.35; border-style:dashed; }
-.clip-head { display:flex; align-items:center; gap:8px; padding:6px 8px; }
-.clip-name { flex:1 1 auto; min-width:0; font-size:13px; line-height:18px;
-  font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden;
-  text-overflow:ellipsis; }
-.face { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
+.clip-name { position:absolute; top:4px; left:8px; right:64px; z-index:2;
+  font-size:13px; line-height:16px; font-weight:600; color:var(--text);
+  text-shadow:0 1px 3px #09090b, 0 0 6px #09090b;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.face { position:absolute; top:2px; right:6px; height:18px; z-index:2;
+  display:flex; align-items:center; gap:4px; }
 /* control scale from src/gui/qml: AeIconButton (26px target / 15px glyph),
    AeCheckBox (24px row / 16px box) — the clip face uses the 24px standard
    with an 18px glyph for presence at clip scale */
@@ -260,13 +261,6 @@ body.show-el .el::after { display:grid; }
 .led .l4,.led .l5 { background:#ef4444; }
 /* compact-height proposals (gate choice): the app's row rhythm (28px, 12px
    text) vs 44px for waveform legibility */
-.lane.h-a, .thead.h-a { height:28px; }
-.lane.h-b, .thead.h-b { height:44px; }
-.miniclip { position:absolute; top:2px; bottom:2px; border-radius:4px;
-  background:var(--raised); border:1px solid var(--outline);
-  display:flex; align-items:center; gap:8px; padding:0 8px; }
-.mc-name { font-size:12px; font-weight:600; color:var(--text); }
-.mc-wave { height:60%; flex:1; opacity:.5; fill:var(--text-muted); }
 /* OVER: terse latched metering mark — unlit = clear, lit = over (click clears) */
 .over-mark { font-size:10px; font-weight:600; letter-spacing:.08em;
   padding:2px 8px; border-radius:4px; cursor:pointer; user-select:none;
@@ -359,14 +353,14 @@ function Clip({ file, peaks, missing, muted,
     muted && "muted", ghost && "ghost"].filter(Boolean).join(" ");
   return (
     <div className={cls} style={style}>
-      {!ghost && <div className="clip-head">
+      <div className="clip-body">
+        {!ghost && <React.Fragment>
         <div className="clip-name" title={file}>{file}</div>
         <div className="face">
           {muted && <span className="unmute" title="Unmute"><Ico n="speaker-slash" s={18} /></span>}
           {x && <span className="fx" title="Remove clip"><Ico n="x" s={18} /></span>}
         </div>
-      </div>}
-      <div className="clip-body">
+        </React.Fragment>}
         {hasPeaks && <React.Fragment>
           <div className="wavewrap">
             <svg className="wave" viewBox="0 0 240 24" preserveAspectRatio="none">
@@ -655,39 +649,6 @@ function ClipFaceOptions() {
   );
 }
 
-// COMPACT LANE HEIGHTS — two proposals for the gate (measured app rhythm:
-// menu rows 24px/12px text (standard.ssa, AppStyle.cpp), AeCheckBox 24px row
-// + 12px label, AeFrameRangeRow 28px, AeIconButton 26px).
-function HeightsOptions() {
-  const Panel = ({ cls, title, small }) => (
-    <div className="flex flex-col gap-2">
-      <div className="case-cap doc">{title}<small>{small}</small></div>
-      <div className={"relative rounded-lg bg-base border border-recessed w-[420px]"}>
-        <div className={"thead " + cls}><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 1</span>
-          <span className="lmute" title="Mute"><Ico n="speaker-high" s={15} /></span></div>
-        <div className={"lane " + cls} style={{ borderBottom: "none" }}>
-          <div className="miniclip" style={{ left: "6%", width: "64%" }}>
-            <span className="mc-name">theme_loop.wav</span>
-            <svg className="mc-wave" viewBox="0 0 240 24" preserveAspectRatio="none"><use href="#wf-loop1" /></svg>
-            
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-  return (
-    <React.Fragment>
-      <div className="section-h doc">Compact lane heights — two proposals (gate choice)</div>
-      <div className="surface flex gap-10 flex-wrap items-start" id="surface-heights">
-        <Panel cls="h-a" title="Option 1 — the app’s row rhythm: 28px"
-               small="Exactly the app’s measured rows (AeFrameRangeRow 28px; menu/AeCheckBox 24px) with 12px track text. Name + marks inline; waveform is a slim strip." />
-        <Panel cls="h-b" title="Option 2 — 44px for waveform legibility"
-               small="Same 12px text; taller body keeps the waveform envelope readable — still 40px shorter per lane than the current 84px." />
-      </div>
-    </React.Fragment>
-  );
-}
-
 function SpecRegion() {
   return (
     <React.Fragment>
@@ -701,7 +662,7 @@ function SpecRegion() {
         <span><b>Q8 engine additions (Phase 3):</b> (1) <b>real-time mix bus — ONE AUDIO TRUTH</b> (user decision; closes O2): preview plays the real mixed sum; one mixer path feeds ears and export, so the MIX/OVER readout measures the true export sum BY CONSTRUCTION — the preview≠export divergence (old R15/Q1 class) dies permanently. (2) waveform envelopes per clip (file peaks as trim feedback). (3) master MIX level tap + OVER latch (per-clip meters deliberately absent — meter on the master).</span>
         <span><b>What died (not coming back):</b> the per-track settings grid · frame fields as a primary surface (numbers live in the menu display + the on-demand editor) · selection-spawned popovers (selection spawns nothing) · the 0-sentinel and “to end” word games · state badges · header counts · per-row span bars · long in-row text · add/remove-next row buttons · the detached “Audio Player” window · per-clip LED ladders · text checkboxes and icon-only-without-words on the clip face · the corner-dot notation (decode failure; Option B keeps only the “ref” mark) · explanation pasted into the OVER control (tooltip only) · the preview≠export divergence · the invented timeline chrome — dense 0–192 ruler numbering, keyframe diamonds, horizontal transport pills (the chrome is now the real Animation panel: titled panel, “>” heads, sparse 1/48/96 ruler with fine ticks, violet frame pill, fading playhead, vertical transport strip) · the Option A icon-pair face · any clip-face buttons or marks at rest (the face is name + waveform; the only clip-face control is the muted clip’s unmute speaker) · the reference/export distinction: ‘ref’ marks, the “In exported file” menu item, the 4-combo truth table, export-only/reference states (dropped “for now” by user decision; the hear-but-not-export voice-guide case is unsupported at present) · the “MIX” word in the UI (spec may say master meter) · the band-wash/gray-body mute visuals (opacity is the one language) · the invented MIX/frame-count footer and the vertical transport column — the transport now lives in the timeline HEADER BAR ([panel name] [transport] [MIX + OVER] [spare] [float]), with the app’s own tooltips and icon geometry (assets/icons/).</span>
         <span><b>Open items:</b> O1–O5 closed (whole frames only · one audio truth · parked dims · in-point: .aemus must generalize to clips-per-lane with InFrame/OutFrame/Volume per clip — sketch, not implemented · rubber-band volume). O6 — OPEN: R12 gapped selections still cut clip audio to the selected frames back-to-back (binding: audio follows video); clips spanning an unselected gap lose that stretch silently — same as video, flagged.</span>
-        <span><b>Compact lane heights (gate choice):</b> measured app values — menu rows 24px with 12px text and 9px separators (standard.ssa / AppStyle.cpp), AeCheckBox 24px row + 16px box + 12px label, AeFrameRangeRow 28px, AeIconButton 26px. Proposal 1 = 28px rows (the app’s row rhythm exactly, 12px track text); Proposal 2 = 44px rows (same text, legible waveform strip). Both are far below the current 84px. The comparison capture is <code>capture_heights.png</code>.</span>
+        <span><b>Compact lane height — DECIDED: 44px</b> (the waveform-legible proposal; the 28px option retired). The filename now OVERLAYS the waveform — no reserved name line; the wave fills the clip and the name sits on it with a drop shadow for contrast (verified at 2x over loud peaks and quiet stretches).</span>
         <span><b>Palette discipline:</b> every hex is a verbatim TailwindPalette.h cell; tokens follow Colors.h (dark). Accent appears only on the playhead, the selected clip edge and the menu’s checked indicator (AeCheckBox look); audio chrome stays neutral (icon-on = kActive). LED meter cells use the meter status rows (green/amber/red). kWindowBand appears only as the ruler’s playback-window band.</span>
       </div>
     </React.Fragment>
@@ -790,7 +751,6 @@ function Page() {
       <div className="case-cap doc">What ships is still confirmed at export<small>The existing “Export with audio” checkbox and the “Audio:” facts row stay exactly as they are — the clip toggles and context menu decide per sound, this dialog decides the whole file.</small></div>
       <div className="mt-2 surface" id="surface-export-wrap"><ExportSurfaces /></div>
 
-      <HeightsOptions />
       <SpecRegion />
     </React.Fragment>
   );
