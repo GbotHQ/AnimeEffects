@@ -277,6 +277,9 @@ void ExportViewModel::setDestinationId(const QString& aId) {
     if (mDestinationId == aId)
         return;
     mDestinationId = aId;
+    // A destination switch re-syncs the codec row (I44): the user's pin belonged
+    // to the row they left and does not survive into the next one.
+    mCodecPinned = false;
     if (aId.isEmpty()) {
         // Manual mode is the escape hatch: from here the combo IS the answer.
         mArtifactFormatId.clear();
@@ -1036,13 +1039,38 @@ void ExportViewModel::setArtifactFromPlan(const QString& aFormatId, const QStrin
     }
     mCodecChoices.clear();
     if (!aCodecId.isEmpty()) {
-        for (const media::ffmpeg::CodecOption& c :
-             media::ffmpeg::usableCodecsForContainer(aFormatId)) {
-            mCodecChoices.append({c.label, c.encoder, c.alphaCapable});
+        if (!mTarget.id.isEmpty() && mTarget.artifact == ctrl::ArtifactKind::Video) {
+            // I44: in destination mode the codec row offers the destination's
+            // ACCEPTED codecs - its declared list ∩ what this build can produce,
+            // one entry per FORMAT ("H.264", "H.265", "AV1") - not the
+            // container's every encoder. A row that accepts one codec has one
+            // entry, which is what keeps the row hidden for dictated ones.
+            const QList<media::ffmpeg::CodecOption> containerCodecs =
+                media::ffmpeg::usableCodecsForContainer(aFormatId);
+            for (const ctrl::CodecChoice& c : ctrl::offeredCodecs(mTarget)) {
+                bool alpha = false;
+                for (const media::ffmpeg::CodecOption& o : containerCodecs) {
+                    if (o.encoder == c.encoder) {
+                        alpha = o.alphaCapable;
+                        break;
+                    }
+                }
+                mCodecChoices.append({c.label, c.encoder, alpha});
+            }
+        } else {
+            for (const media::ffmpeg::CodecOption& c :
+                 media::ffmpeg::usableCodecsForContainer(aFormatId)) {
+                mCodecChoices.append({c.label, c.encoder, c.alphaCapable});
+            }
         }
         mCodecIndex = 0;
         for (int i = 0; i < mCodecChoices.size(); ++i) {
-            if (mCodecChoices.at(i).encoder == aCodecId) {
+            // The exact encoder first, then its FORMAT: the plan's own resolution
+            // may name a hardware encoder where the offered entry names the
+            // software one, and the row must still land on the right line.
+            if (mCodecChoices.at(i).encoder == aCodecId
+                || ctrl::formatKeyForEncoder(mCodecChoices.at(i).encoder)
+                       == ctrl::formatKeyForEncoder(aCodecId)) {
                 mCodecIndex = i;
                 break;
             }
@@ -1090,6 +1118,12 @@ ctrl::ExportRequest ExportViewModel::buildRequest() const {
     request.exportableAudioTracks = mInit.exportableAudioTracks;
     request.mute = !mAudio.value();
     request.playhead = mPlayhead;
+    // I44: the user's codec row choice travels on the request - but only once
+    // they HAVE chosen. Unpinned, the request says nothing and the plan applies
+    // the destination's own default (its declared one, else the class policy),
+    // so the policy's own encoder pick (hardware first where the bucket is
+    // time-sensitive) is never mistaken for a user override.
+    request.codec = mCodecPinned ? codecValue() : QString();
     return request;
 }
 
@@ -1188,6 +1222,10 @@ void ExportViewModel::setCodecIndex(int aIndex) {
     if (aIndex < 0 || aIndex >= mCodecChoices.size() || aIndex == mCodecIndex)
         return;
     mCodecIndex = aIndex;
+    // A change through THIS path is the user choosing from the codec row (I44):
+    // from here the export uses their codec, not the destination's default. The
+    // plan-driven writes go through setArtifactFromPlan and leave the flag alone.
+    mCodecPinned = true;
     emit codecChanged();
     // The codec's knob, its span and its alpha capability all just changed.
     applyArtifactConstraints();
@@ -1275,7 +1313,15 @@ ExportViewModel::ReadBack ExportViewModel::readBack() const {
                                       : (out.artifactId.startsWith(QLatin1String("image/"))
                                              ? out.artifactId.mid(6)
                                              : out.artifactId);
-    out.codec = out.sequence ? QString() : codecValue();
+    // I44: the codec that goes into the export. The user's pin, when they set
+    // one; otherwise the PLAN's exact resolution (possibly a hardware encoder of
+    // the offered format) - the row shows its FORMAT either way, and the
+    // passthrough must not silently downgrade what the plan picked.
+    out.codec = out.sequence
+                    ? QString()
+                    : (manualMode() || mCodecPinned
+                           ? codecValue()
+                           : (mArtifactCodecId.isEmpty() ? codecValue() : mArtifactCodecId));
     return out;
 }
 

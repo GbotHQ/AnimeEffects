@@ -1143,3 +1143,60 @@ trips, the probe's expectation is stale, not the persistence.
 `gui::ExportDialog` (real ctors, keys, close path) but their QML scenes live in the app's
 `qt_add_qml_module` and load empty in test binaries — the state machinery is fully real; the
 scene's own routes are covered by `picker_keyboard`/`tooltip_contract`/probes.
+
+## Post-R1, landed: the codec row speaks for the destination (I44 — a list, not a mode)
+
+### Schema
+
+`codecSelect fixed|ladder` (a mode) is gone. Each destination row now declares `codecs=` (accepted
+**format** keys, preference order) + `default=` (declared default; absent = the class policy,
+**constrained to the list** — the same "empty = derive" convention `AudioSpec` uses). `codec=`
+survives only as an internal **encoder pin** (safari.transparent's `hevc_videotoolbox` needs one).
+66 rows migrated: 50 dictated (`codecs="X" default="X"`, pins untouched), 8 merely-defaulted by
+hand, 8 image rows (none). The codec row offers `accepted ∩ build-capable` — one entry per
+**format** ("H.264/H.265/AV1") — with the default preselected; dictated rows keep the row **hidden**
+(item 42: "stated, not offered"). The user's choice travels: `ExportRequest.codec` → `planExport`,
+validated against the offered list (a stale pick cannot smuggle a refused codec), and the plan's
+exact/hardware encoder passes through until the user actually pins one. `src/gui/MainWindow.cpp`'s
+4 lines are the wire that makes the row non-decorative — without `request.codec = …` the reviewed
+defect would merely move from the schema to the UI.
+
+### The intersection table (facts ∩ this build → offered + default)
+
+| row | accepted (source) | offered here | default | note |
+| --- | --- | --- | --- | --- |
+| chat.discord.file | h264 hevc av1 (review I44 names the trio) | H.264 H.265 AV1 | h264 (declared) | the reviewed case |
+| post.instagram.reels | h264 hevc (its fact) | H.264 H.265 | h264 (declared) | declared beats the policy's H.265 |
+| post.pinterest.video | h264 hevc (its fact) | H.264 H.265 | h264 (declared) | |
+| post.vimeo.video | h264 prores (its fact) | **H.264 only** | h264 | honest intersection: this build cannot put ProRes in mp4 |
+| post.x.video | h264 (its fact) | H.264 | policy→h264 | **delta**: ladder used to export AV1 at efficiency buckets — its facts name only H.264 |
+| youtube.video | h264 hevc av1 (its fact) | H.264 H.265 AV1 | policy→av1 | **delta at Lossless**: was FFV1; FFV1 is not YouTube-accepted per facts — the policy is now list-constrained |
+| archive.master | ffv1 hevc (its own note) | FFV1 H.265 | Lossless→ffv1 else hevc | **delta at non-lossless**: ladder picked AV1, contradicting the row's own note — the note is now literally true |
+| website / generic | h264 hevc av1 (design rows) | all three | policy→h264 | unchanged |
+| 50 single rows | their one codec | 1 (or 0) | declared | dictated → no combo (item 42) |
+
+Build-capable here: h264/hevc/av1/ffv1/vp9/webp/apng/gif ✓, prores ✗. The three deltas are
+constraint 1 applied ("declare what the facts support") — each is one attribute to revert.
+
+### Verification
+
+- `media_export_target`'s new I44 section + `export_form`'s row/re-sync blocks: the intersection
+  rule per row, declared-default-beats-policy (the reels case where they diverge — discord's
+  declared H.264 equals the policy's, so the first net was blind and was strengthened),
+  list-constrained policy (YouTube no longer receives FFV1 at Lossless), `request.codec` reaches
+  the plan, a refused codec falls back to the default, exact-encoder passthrough survives,
+  destination switch re-syncs options and lands on the new default while dropping a user's pin.
+- Deliberate breaks: ignoring the declared default fails exactly its named assert; ignoring the
+  user's choice fails exactly "the codec row's choice reaches the plan". Reverted: all green.
+- Gates: builds **0 warnings ×2**, suites **21/16→21 both configs** exit 0, `ExportTargetStrings.h
+  up to date (151 strings)` = **zero string changes** (attribute-only edits; no lupdate), catalogs
+  0, targeted probes `format`/`axes`/`quality` **3/3** (no OS dialog → no canary needed).
+
+### Flagged for the user (batch)
+
+1. The three fact-constrained deltas above (X, YouTube@Lossless, archive@non-lossless).
+2. Placement: the offered codec row stays at its Encoding call site (contract G groups codec with
+   format/quality; item 42's "under Advanced" clause is evidenced against the capabilities). The
+   strict reading of item 42 would move it under Advanced — one QML move either way.
+3. hevc-into-mp4 rows don't carry the `hvc1` tag (only safari.transparent pins it) — not a
+   regression (the ladder didn't tag either), facts silent; one attribute per row fixes it.

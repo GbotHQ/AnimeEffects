@@ -1395,6 +1395,11 @@ bool exportProject(exportParam& exParam, core::Project* mCurrent, QWidget* widge
                                      ? g.palettePath.absolutePath()
                                      : QString();
         request.gifLoop = g.loop ? 0 : -1;
+        // I44: the dialog's codec row travels here - the user's pick where they
+        // made one, the plan's own resolution where they did not (empty means
+        // "the destination's default"). planExport re-validates it against the
+        // destination's accepted list either way.
+        request.codec = exParam.videoParams.codec;
 
         plan = ctrl::planExport(target, request, exParam.qualityBucket);
         if (!plan.ok()) {

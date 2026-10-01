@@ -469,8 +469,10 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
     }
     check(unique, "destination ids are unique");
 
-    // every row: container present; fixed codecs exist and fit their muxer
-    int fixedRows = 0, ladderRows = 0;
+    // every row: container present; the accepted codec list is coherent; pinned
+    // encoders exist and fit their muxer (I44: a LIST plus a declared default,
+    // not the old fixed|ladder mode)
+    int dictatedRows = 0, multiRows = 0, policyRows = 0;
     for (const auto& t : all) {
         if (t.container.isEmpty()) {
             check(false, QStringLiteral("%1: missing container").arg(t.id));
@@ -481,11 +483,28 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
                                 << t.platform << ") — skipped on this OS\n";
             continue;
         }
-        if (t.codecLadder) {
-            ++ladderRows;
-            continue;
+        if (t.artifact == ctrl::ArtifactKind::Video) {
+            // I44: the schema is a list + a default, and the default is one of
+            // the list (or empty = the class policy decides, constrained to it).
+            check(!t.codecs.isEmpty(),
+                  QStringLiteral("%1: accepts at least one codec").arg(t.id));
+            check(t.defaultCodec.isEmpty() || t.codecs.contains(t.defaultCodec),
+                  QStringLiteral("%1: the declared default '%2' is one of the accepted (%3)")
+                      .arg(t.id, t.defaultCodec, t.codecs.join(QLatin1Char(' '))));
+            if (t.codecs.size() == 1) ++dictatedRows;
+            else ++multiRows;
+            if (t.defaultCodec.isEmpty() && t.codecs.size() > 1) ++policyRows;
+            // a pin's format must be one the row accepts
+            if (!t.codec.isEmpty()) {
+                check(t.codecs.contains(ctrl::formatKeyForEncoder(t.codec)),
+                      QStringLiteral("%1: pin '%2' produces an accepted codec (%3)")
+                          .arg(t.id, t.codec, t.codecs.join(QLatin1Char(' '))));
+            }
+        } else {
+            // an image artifact has no codec to pick
+            check(t.codecs.isEmpty(),
+                  QStringLiteral("%1: an image row declares no codecs").arg(t.id));
         }
-        ++fixedRows;
         const bool isGif = t.container.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0;
         if (isGif) continue; // media::GifEncoder owns GIF, not VideoEncoder
         // An image artifact has no codec to resolve: `container` names the image
@@ -493,16 +512,20 @@ TEST_SECTION("load + validate every row", run_load_and_validate) {
         // format is writable, and the conformance loop writes and reads one back.
         if (t.artifact != ctrl::ArtifactKind::Video) continue;
 
-        const QString resolved = media::ffmpeg::resolveEncoderName(t.codec);
-        check(!resolved.isEmpty(),
-              QStringLiteral("%1: codec '%2' exists in this build").arg(t.id, t.codec));
-        if (resolved.isEmpty()) continue;
+        if (!t.codec.isEmpty()) {
+            const QString resolved = media::ffmpeg::resolveEncoderName(t.codec);
+            check(!resolved.isEmpty(),
+                  QStringLiteral("%1: codec '%2' exists in this build").arg(t.id, t.codec));
+            if (resolved.isEmpty()) continue;
 
-        check(media::ffmpeg::muxerSupportsCodec(t.container, resolved),
-              QStringLiteral("%1: muxer '%2' can carry '%3'").arg(t.id, t.container, resolved));
+            check(media::ffmpeg::muxerSupportsCodec(t.container, resolved),
+                  QStringLiteral("%1: muxer '%2' can carry '%3'").arg(t.id, t.container, resolved));
+        }
     }
-    check(fixedRows >= 8, QStringLiteral("dictated-codec rows present (%1)").arg(fixedRows));
-    check(ladderRows >= 3, QStringLiteral("ladder rows present (%1)").arg(ladderRows));
+    check(dictatedRows >= 8,
+          QStringLiteral("dictated-codec rows present (%1)").arg(dictatedRows));
+    check(multiRows >= 3, QStringLiteral("multi-acceptance rows present (%1)").arg(multiRows));
+    check(policyRows >= 3, QStringLiteral("policy-default rows present (%1)").arg(policyRows));
 
     // provenance: every row is dated, and unverified rows are flagged as such
     int dated = 0, unverified = 0;
@@ -1232,6 +1255,157 @@ static QVector<float> makeAudio(int aFrames, int aFps, int aRate, int aChannels)
     return out;
 }
 
+// I44: the schema is a LIST of accepted codecs plus a declared default, the
+// codec row offers accepted ∩ build-capable, the default follows the row, and
+// the user's choice travels through the plan. The review item was "Discord
+// codec fixed": a row that merely defaults the codec must leave the choice
+// open (contract item 42), and the class policy must never pick past the list.
+TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists) {
+    const QList<ctrl::ExportTarget> all =
+        ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
+    auto row = [&](const char* id) {
+        return ctrl::ExportTargets::find(all, QString::fromLatin1(id));
+    };
+
+    // ---- the intersection rule, every row ---------------------------------
+    for (const auto& t : all) {
+        if (t.artifact != ctrl::ArtifactKind::Video) continue;
+        const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(t);
+        for (const ctrl::CodecChoice& c : offered) {
+            check(t.codecs.contains(c.format),
+                  QStringLiteral("%1: offered '%2' is accepted by the row").arg(t.id, c.format));
+            check(!c.encoder.isEmpty() && !c.label.isEmpty(),
+                  QStringLiteral("%1: the %2 entry names its encoder and its label")
+                      .arg(t.id, c.format));
+            check(c.format == QLatin1String("gif")
+                      || media::ffmpeg::encoderUsable(c.encoder.toUtf8().constData()),
+                  QStringLiteral("%1: offered encoder %2 runs in this build").arg(t.id, c.encoder));
+        }
+        for (const QString& format : t.codecs) {
+            bool has = false;
+            for (const ctrl::CodecChoice& c : offered) {
+                if (c.format == format) {
+                    has = true;
+                    break;
+                }
+            }
+            if (!has)
+                QTextStream(stdout) << "      note: " << t.id << " accepts " << format
+                                    << " but this build cannot produce it into " << t.container
+                                    << "\n";
+        }
+    }
+
+    // ---- the named rows: the review's case and the facts' own lists --------
+    const ctrl::ExportTarget discord = row("chat.discord.file");
+    check(discord.codecs == QStringList({QStringLiteral("h264"), QStringLiteral("hevc"),
+                                         QStringLiteral("av1")}),
+          "discord declares the trio the review names (AV1/H.265/H.264)");
+    check(discord.defaultCodec == QLatin1String("h264"), "and declares which one is the default");
+    {
+        const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(discord);
+        check(!offered.isEmpty(), "discord offers at least its default codec here");
+        for (const ctrl::CodecChoice& c : offered) {
+            check(c.label == QStringLiteral("H.264") || c.label == QStringLiteral("H.265")
+                      || c.label == QStringLiteral("AV1"),
+                  QStringLiteral("the row offers FORMAT names, not libraries (%1)").arg(c.label));
+        }
+    }
+    const ctrl::ExportTarget archive = row("archive.master");
+    check(archive.codecs == QStringList({QStringLiteral("ffv1"), QStringLiteral("hevc")}),
+          "the master row accepts what its own note names (FFV1 and H.265)");
+
+    // ---- the default resolution -------------------------------------------
+    const ctrl::CodecChoice declared =
+        ctrl::resolveDefaultCodec(discord, ctrl::QualityBucket::Balanced);
+    check(declared.format == discord.defaultCodec,
+          "a declared default resolves first, whatever the bucket");
+    // A row where the declared default DIVERGES from the policy: reels accepts
+    // H.264 and H.265 but declares H.264, while the efficiency policy would
+    // take H.265. Without the declared-default rule this resolves to H.265.
+    const ctrl::ExportTarget reels = row("post.instagram.reels");
+    check(reels.defaultCodec == QLatin1String("h264")
+              && reels.codecs.contains(QLatin1String("hevc")),
+          "precondition: reels declares H.264 while accepting H.265 too");
+    const ctrl::CodecChoice reelsDefault =
+        ctrl::resolveDefaultCodec(reels, ctrl::QualityBucket::Best);
+    check(reelsDefault.format == QLatin1String("h264"),
+          "the declared default beats the efficiency policy (Best would otherwise take H.265)");
+
+    const ctrl::ExportTarget website = row("website.video");
+    for (const ctrl::QualityBucket bucket :
+         {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced, ctrl::QualityBucket::Best,
+          ctrl::QualityBucket::Lossless}) {
+        const ctrl::CodecChoice def = ctrl::resolveDefaultCodec(website, bucket);
+        check(def.format == QLatin1String("h264"),
+              QStringLiteral("direct playback stays H.264 at every bucket, list-constrained (%1)")
+                  .arg(def.format));
+    }
+
+    const bool hevcRuns = media::ffmpeg::encoderUsable("libx265")
+                          || media::ffmpeg::encoderUsable("hevc_nvenc")
+                          || media::ffmpeg::encoderUsable("hevc_qsv")
+                          || media::ffmpeg::encoderUsable("hevc_vaapi");
+    const ctrl::CodecChoice archiveLossless =
+        ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Lossless);
+    check(archiveLossless.format == QLatin1String("ffv1"),
+          "the master row still leads with FFV1 at Lossless");
+    const ctrl::CodecChoice archiveBest =
+        ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Best);
+    check(archiveBest.format == (hevcRuns ? QStringLiteral("hevc") : QStringLiteral("ffv1")),
+          "and H.265 otherwise: the accepted list constrains the policy (it used to pick AV1)");
+
+    const ctrl::ExportTarget youtube = row("youtube.video");
+    const ctrl::CodecChoice youtubeLossless =
+        ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Lossless);
+    check(youtubeLossless.format != QLatin1String("ffv1")
+              && youtube.codecs.contains(youtubeLossless.format),
+          "YouTube no longer receives FFV1 at Lossless: the policy picks only what the row accepts");
+    const bool av1Runs = media::ffmpeg::encoderUsable("libsvtav1")
+                         || media::ffmpeg::encoderUsable("libaom-av1");
+    if (av1Runs) {
+        const ctrl::CodecChoice youtubeBest =
+            ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Best);
+        check(youtubeBest.format == QLatin1String("av1"),
+              "the efficiency buckets still lead with AV1 where the row accepts it");
+    }
+
+    // ---- the user's choice reaches the plan -------------------------------
+    ctrl::ExportRequest req;
+    req.sourceSize = QSize(640, 360);
+    req.selection = ctrl::FrameSelection::fromRange(0, 29);
+    req.fps = 24;
+
+    const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(discord);
+    if (offered.size() > 1) {
+        req.codec = offered.at(1).encoder;
+        const ctrl::ExportPlan plan =
+            ctrl::planExport(discord, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok() && plan.config.codec == offered.at(1).encoder,
+              QStringLiteral("the codec row's choice reaches the plan (%1)")
+                  .arg(offered.at(1).encoder));
+    }
+
+    // a codec the destination does not accept is refused, not smuggled in:
+    req.codec = QStringLiteral("ffv1");
+    {
+        const ctrl::ExportPlan plan =
+            ctrl::planExport(discord, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok() && ctrl::formatKeyForEncoder(plan.config.codec) == QLatin1String("h264"),
+              "a codec the destination refuses falls back to its declared default");
+    }
+
+    // the passthrough keeps the EXACT encoder of an accepted format (the plan's
+    // own resolution may name hardware; the request must not downgrade it):
+    if (media::ffmpeg::encoderUsable("libx264")) {
+        req.codec = QStringLiteral("libx264");
+        const ctrl::ExportPlan plan =
+            ctrl::planExport(discord, req, ctrl::QualityBucket::Balanced);
+        check(plan.ok() && plan.config.codec == QLatin1String("libx264"),
+              "an exact accepted encoder passes through untouched");
+    }
+}
+
 // Codecs whose decoded alpha we can actually observe in-process. WebP's
 // libwebp decoder cannot read ANIMATED WebP, and HEVC alpha is not surfaced
 // through the native decoder, so those rows skip the alpha assertion (rather
@@ -1749,7 +1923,9 @@ TEST_SECTION("quality intent reaches the encoder", run_bucket_quality) {
         ctrl::ExportTargets::load(QStringLiteral(AE_EXPORT_TARGETS_PATH));
     const ctrl::ExportTarget telegram =
         ctrl::ExportTargets::find(targets, QStringLiteral("telegram.sticker"));
-    check(telegram.codecLadder == false, "telegram.sticker fixes its codec (the case that was inert)");
+    check(telegram.defaultCodec == QLatin1String("vp9")
+              && telegram.codecs == QStringList{QStringLiteral("vp9")},
+          "telegram.sticker dictates its codec (the case that was inert): one accepted, declared");
 
     ctrl::ExportRequest req;
     req.sourceSize = QSize(512, 512);

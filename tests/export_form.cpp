@@ -213,9 +213,50 @@ int main(int argc, char** argv) {
                                                 : QStringLiteral(" (") + repeated + QStringLiteral(")")));
 
         // ---- what it OFFERS -----------------------------------------------
-        check(!model.formatVisible() && !model.codecVisible(),
-              QStringLiteral("%1: the destination dictates the format, so there is no combo")
+        check(!model.formatVisible(),
+              QStringLiteral("%1: the destination dictates the format, so there is no format combo")
                   .arg(t.id));
+        // I44 + item 42: a destination that DICTATES one codec states it (no
+        // combo); one that merely defaults among several accepted codecs leaves
+        // the choice open. The row offers exactly accepted ∩ this build can
+        // produce - a list, not a mode - one entry per FORMAT, with the default
+        // preselected. This per-row walk is also the destination-switch re-sync
+        // check: every iteration above changed the destination under the model.
+        const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(t);
+        const bool wantCodecCombo = offered.size() > 1;
+        check(model.codecVisible() == wantCodecCombo,
+              QStringLiteral("%1: the codec row is %2 (%3 offerable: %4)")
+                  .arg(t.id,
+                       wantCodecCombo ? QStringLiteral("offered")
+                                      : QStringLiteral("stated, not offered"))
+                  .arg(offered.size())
+                  .arg([&] {
+                      QStringList fs;
+                      for (const ctrl::CodecChoice& c : offered) fs << c.format;
+                      return fs.join(QLatin1Char(' '));
+                  }()));
+        if (wantCodecCombo) {
+            const QVariantList options = model.codecOptions();
+            check(options.size() == offered.size(),
+                  QStringLiteral("%1: the codec row lists every accepted codec (%2, got %3)")
+                      .arg(t.id).arg(offered.size()).arg(options.size()));
+            QStringList labels;
+            for (const QVariant& option : options)
+                labels << option.toMap().value(QStringLiteral("label")).toString();
+            QStringList wantLabels;
+            for (const ctrl::CodecChoice& c : offered) wantLabels << c.label;
+            check(labels == wantLabels,
+                  QStringLiteral("%1: the row offers the accepted FORMATS (%2)")
+                      .arg(t.id, labels.join(QLatin1Char('/'))));
+            // the default is preselected: the row's DECLARED default, or the
+            // class policy where the row declares none - either way exactly what
+            // the plan resolved.
+            const int idx = model.codecIndex();
+            const QString planFormat = ctrl::formatKeyForEncoder(plan.config.codec);
+            check(idx >= 0 && idx < offered.size() && offered.at(idx).format == planFormat,
+                  QStringLiteral("%1: the row starts on the default (%2 at index %3)")
+                      .arg(t.id, planFormat).arg(idx));
+        }
         const bool wantFps = !isStill && !t.fpsIgnored;
         check(model.fpsVisible() == wantFps,
               QStringLiteral("%1: the frame rate is %2 (%3)")
@@ -260,6 +301,46 @@ int main(int argc, char** argv) {
         check(!model.advancedVisible() || anythingInside,
               QStringLiteral("%1: Advanced never opens onto nothing").arg(t.id));
         if (model.qualityInCharge()) ++adjacentRows;
+    }
+
+    // ---- destination switches re-sync the codec row (I44) ------------------
+    // Two rows that merely default their codec; the walk above proved the
+    // per-destination state, this proves the SWITCHES: the offered list moves,
+    // the selection lands on the new default, and a user's pin does not survive
+    // into a destination they did not set it for.
+    {
+        ctrl::ExportTarget first, second;
+        for (const ctrl::ExportTarget& t : targets) {
+            if (ctrl::offeredCodecs(t).size() < 2) continue;
+            if (first.id.isEmpty()) {
+                first = t;
+            } else if (second.id.isEmpty() && t.codecs != first.codecs) {
+                second = t;
+                break;
+            }
+        }
+        if (!first.id.isEmpty() && !second.id.isEmpty()) {
+            model.setDestinationId(first.id);
+            const QVariantList firstOptions = model.codecOptions();
+            const int firstDefault = model.codecIndex();
+            check(firstDefault >= 0 && firstOptions.size() > 1,
+                  QStringLiteral("precondition: %1 offers a choice (%2)")
+                      .arg(first.id).arg(firstOptions.size()));
+            // the user pins the other codec
+            model.setCodecIndex(firstDefault == 0 ? 1 : 0);
+            check(model.codecIndex() != firstDefault,
+                  "precondition: the pin moved the row off its default");
+            // switching away and back drops the pin and re-syncs
+            model.setDestinationId(second.id);
+            check(model.codecOptions() != firstOptions,
+                  "a destination switch re-syncs the offered list");
+            check(ctrl::formatKeyForEncoder(model.selectedCodecKey())
+                      == ctrl::formatKeyForEncoder(model.lastPlan().config.codec),
+                  "and lands on the NEW destination's default, not the old pin");
+            model.setDestinationId(first.id);
+            check(model.codecIndex() == firstDefault,
+                  "returning re-syncs to the default again: the pin did not survive the switch");
+        }
     }
 
     // ---- the codec's own value, and the sentinel that means "let the Quality setting

@@ -312,7 +312,12 @@ public:
     QVariantList codecOptions() const;
     int codecIndex() const { return mCodecIndex; }
     void setCodecIndex(int aIndex);
-    bool codecVisible() const { return manualMode() && !currentFormatIsSequence() && mCodecChoices.size() > 1; }
+    // I44: the row appears exactly when there is a CHOICE - more than one codec
+    // the destination accepts and this build can produce. A destination that
+    // dictates one codec states it in the facts instead of offering it
+    // (contract item 42), and a manual form always offers whatever the
+    // container can carry.
+    bool codecVisible() const { return !currentFormatIsSequence() && mCodecChoices.size() > 1; }
     bool codecEnabled() const { return codecVisible(); }
     // The encoder that would actually be used: the combo's choice, or the
     // container's probed default when the user left it alone.
@@ -554,6 +559,11 @@ private:
     QList<CodecOption> mCodecChoices;
     int mFormatIndex = -1;
     int mCodecIndex = -1;
+    // I44: whether the current codec index is the USER's choice (set only by
+    // setCodecIndex, i.e. by the codec row itself). Unpinned, the destination's
+    // own default decides and the plan's exact encoder (hardware included)
+    // passes through untouched. Reset on a destination switch.
+    bool mCodecPinned = false;
 
     // What the form is about, as opposed to what the hidden manual combos hold.
     QString mArtifactFormatId;
