@@ -116,6 +116,7 @@ QStringList familyEncoders(const QString& aFamily) {
     if (aFamily == QLatin1String("hevc")) return {"libx265", "hevc_nvenc", "hevc_qsv", "hevc_vaapi", "hevc_amf"};
     if (aFamily == QLatin1String("h264")) return {"libx264", "h264_nvenc", "h264_qsv", "h264_vaapi", "h264_amf"};
     if (aFamily == QLatin1String("lossless")) return {"ffv1"};
+    if (aFamily == QLatin1String("vp9")) return {"libvpx-vp9", "vp9_vaapi"};
     return {};
 }
 
@@ -854,7 +855,7 @@ QList<CodecChoice> offeredCodecs(const ExportTarget& aTarget) {
 // never beyond it (the old ladder would hand YouTube an FFV1 upload at Lossless
 // because the policy knew the class but not the row).
 CodecChoice resolveDefaultCodec(const ExportTarget& aTarget, QualityBucket aBucket,
-                                QString* aWhy) {
+                                bool aAlphaOn, QString* aWhy) {
     const QList<CodecChoice> offered = offeredCodecs(aTarget);
     if (offered.isEmpty()) {
         if (aWhy)
@@ -876,7 +877,24 @@ CodecChoice resolveDefaultCodec(const ExportTarget& aTarget, QualityBucket aBuck
     //    order rule applies unchanged (hardware first for the time-sensitive
     //    buckets, declared order for the fidelity ones).
     const Ladder ladder = ladderFor(aTarget.klass, aBucket);
-    for (const QString& family : ladder.families) {
+    QStringList families = ladder.families;
+    if (aTarget.klass == DestClass::Archive && aBucket != QualityBucket::Lossless) {
+        // The archive rule (decided 2026-10-01; alpha capability MEASURED in
+        // this build — libsvtav1 accepts yuva420p but stores no alpha at all,
+        // libx265 refuses it outright, libvpx-vp9 and ffv1 carry it):
+        //   transparency ON  -> VP9, the alpha-capable lossy pick;
+        //   transparency OFF -> AV1 where quality per bit wins (the Best
+        //       bucket), H.265 where the ladder puts time/size first (Balanced,
+        //       Smaller) — the ladder's own fastFirst split, nothing
+        //       hand-ordered. Lossless stays the ladder's own FFV1, always.
+        if (aAlphaOn) {
+            families = QStringList{QStringLiteral("vp9")};
+        } else if (ladder.fastFirst) {
+            families = QStringList{QStringLiteral("hevc"), QStringLiteral("av1"),
+                                   QStringLiteral("h264")};
+        }
+    }
+    for (const QString& family : families) {
         const QString format =
             (family == QLatin1String("lossless")) ? QStringLiteral("ffv1") : family;
         const CodecChoice* here = nullptr;
@@ -1032,7 +1050,12 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
         }
         if (codec.isEmpty()) {
             QString why;
-            const CodecChoice def = resolveDefaultCodec(aTarget, aBucket, &why);
+            // The archive codec rule follows the user's transparency toggle
+            // (the row's Capability can force or veto it).
+            const bool alphaOn = (aTarget.alpha == Capability::Required)
+                                 || (aTarget.alpha != Capability::Forbidden
+                                     && aRequest.allowTransparency);
+            const CodecChoice def = resolveDefaultCodec(aTarget, aBucket, alphaOn, &why);
             if (def.encoder.isEmpty()) {
                 plan.error = QCoreApplication::translate(
                     "ExportTargets", "no encoder available for this destination in this build");

@@ -1130,13 +1130,15 @@
   <destination id="archive.master" group="general" label="Archive file (highest quality)"
                icon="dest-archive" family="archive"
                class="archive"
-               container="mkv" codec="" codecs="ffv1 hevc" pixfmt="yuva420p"
+               container="mkv" codec="" codecs="ffv1 av1 hevc vp9" pixfmt="yuva420p"
                alpha="default-on" audio="default-on" loop="forbidden"
-               checked="2026-09-05" source="(design decision)" verified="true">
+               checked="2026-10-01" source="(design decision)" verified="true">
     <size mode="free"/>
     <audio codec="flac" channels="2" rate="48000"/>
-    <note>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other
-          buckets pick H.265, which cannot encode alpha here at all.</note>
+    <note>Lossless quality always writes FFV1, which carries transparency. With transparency ON
+          the other quality buckets use VP9, the lossy codec that keeps the alpha channel here
+          (AV1 drops it silently and H.265 refuses it). With transparency OFF, Best quality is
+          AV1 and Smaller file / Balanced are H.265.</note>
   </destination>
 
   <!-- ===== quality control (for the post-encode fit-to-cap loop) ============

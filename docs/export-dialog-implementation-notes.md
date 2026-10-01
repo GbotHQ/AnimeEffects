@@ -1292,3 +1292,61 @@ sequence hatch follows the same convention now (it was 0-based project-named —
 standalone — the blanket `timeout 900` in `run_probes.sh` killed it mid-case even unloaded. The
 budget is now **per probe** (`PROBE_TIMEOUT=( [probe_capped]=1800 )`), so one probe's honest
 runtime cannot silently eat the sweep budget the others live in. Harness edit.
+
+## Post-R1, landed: the batch rulings (2026-10-01) — archive rule, Advanced codec row, and an alpha measurement
+
+### The measurement that decided the archive rule
+
+Real encodes through the app's own `media::VideoEncoder` with `yuva420p`, decoded back (the suite's
+side-data-aware method — a first run mis-called `libvpx` and falsely cleared VP9; corrected to
+`libvpx-vp9`, matching `media_video_encoder`'s own "VP9/WebM alpha" case):
+
+| encoder | yuva420p verdict |
+| --- | --- |
+| `libsvtav1` (mkv/mp4/webm/ivf) | **SILENT_FALLBACK** — encode "ok", alpha GONE (advertises only yuv420p/10le; SVT logs "color format: 8 / YUV420") |
+| `libvpx-vp9` (webm/mkv) | **ALPHA_WORKS** (255/0 verified at pixel level) |
+| `libx265` | **REJECTED** ("does not support alpha layer encoding") |
+| `ffv1` | **ALPHA_WORKS** |
+
+So "AV1 with alpha" is measured-forever-off in this build — shipping the unmeasured rule would
+have silently destroyed transparency (the fallback is silent: the file "succeeds").
+
+### The archive rule (`archive.master`, ruled 2026-10-01)
+
+Offered list: `ffv1 av1 hevc vp9`. Default follows the transparency toggle + bucket:
+
+| bucket | transparency ON | transparency OFF |
+| --- | --- | --- |
+| Lossless | FFV1 | FFV1 |
+| Best quality | **VP9** | **AV1** |
+| Balanced | **VP9** | **H.265** |
+| Smaller file | **VP9** | **H.265** |
+
+("efficiency buckets" mapped onto the ladder's own `fastFirst` split — Best has room to be slow;
+Balanced/Smaller don't. Flagged to the user; one branch swap changes it.) The fact text is rewritten
+to state the rule (one source string replaced; `ExportTargetStrings.h` regenerated = 151 up to date;
+no lupdate per the I43 precedent — catalogs still at 0). Wiring found missing en route:
+`ExportRequest::allowTransparency` never reached `planExport` (the rule couldn't follow the toggle
+without it) and `familyEncoders` silently returned `{}` for vp9 (the alpha-ON pick would have
+fallen through).
+
+### The codec row: a placement-only split
+
+Measurement first: the row was ONE shared call site for both modes — and `probe_format`/`probe_axes`
+**pin manual mode's row beside Format** (verified behavior). Both rulings honored by splitting the
+placement: manual mode's escape-hatch row stays in Encoding (probes green again); the offered
+destination-mode row sits at the top of the **Advanced** grid, directly under the transparency
+toggle (one of its inputs now). Dictated rows stay stated-not-offered.
+
+**Trap found en route (now in AGENTS.md)**: `visible: … && exportModel.manualMode()` — the CALL
+form of a `Q_PROPERTY` method registers no binding dependency and the binding froze at its first
+value. The property form (with `NOTIFY`) works. Latent instance spotted and left for a later fix:
+`ExportDialog.qml`'s Quality label uses the call form (masked today).
+
+### Verification
+
+Deliberate break (alpha branch picks AV1) fails exactly 4 named asserts (3 unit buckets + the
+plan-level toggle wire); reverted green. Builds 0 warnings ×2; suites 21/21 ×2; catalogs 0; both
+i18n checks green; targeted probes `format` 124s / `axes` 134s PASS (post-split). The placement
+asserts are model-level and carried over unchanged. Full sweep run by the orchestrator as the
+closing rung gate — result in the run log.

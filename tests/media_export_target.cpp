@@ -1312,12 +1312,15 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
         }
     }
     const ctrl::ExportTarget archive = row("archive.master");
-    check(archive.codecs == QStringList({QStringLiteral("ffv1"), QStringLiteral("hevc")}),
-          "the master row accepts what its own note names (FFV1 and H.265)");
+    check(archive.codecs == QStringList({QStringLiteral("ffv1"), QStringLiteral("av1"),
+                                         QStringLiteral("hevc"), QStringLiteral("vp9")}),
+          "the master row accepts FFV1 / AV1 / H.265 / VP9 (rule decided 2026-10-01)");
 
     // ---- the default resolution -------------------------------------------
+    // The alpha flag is irrelevant outside Archive+non-lossless (the rule
+    // decided 2026-10-01); those calls state it explicitly below.
     const ctrl::CodecChoice declared =
-        ctrl::resolveDefaultCodec(discord, ctrl::QualityBucket::Balanced);
+        ctrl::resolveDefaultCodec(discord, ctrl::QualityBucket::Balanced, false);
     check(declared.format == discord.defaultCodec,
           "a declared default resolves first, whatever the bucket");
     // A row where the declared default DIVERGES from the policy: reels accepts
@@ -1328,7 +1331,7 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
               && reels.codecs.contains(QLatin1String("hevc")),
           "precondition: reels declares H.264 while accepting H.265 too");
     const ctrl::CodecChoice reelsDefault =
-        ctrl::resolveDefaultCodec(reels, ctrl::QualityBucket::Best);
+        ctrl::resolveDefaultCodec(reels, ctrl::QualityBucket::Best, false);
     check(reelsDefault.format == QLatin1String("h264"),
           "the declared default beats the efficiency policy (Best would otherwise take H.265)");
 
@@ -1336,36 +1339,87 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
     for (const ctrl::QualityBucket bucket :
          {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced, ctrl::QualityBucket::Best,
           ctrl::QualityBucket::Lossless}) {
-        const ctrl::CodecChoice def = ctrl::resolveDefaultCodec(website, bucket);
+        const ctrl::CodecChoice def = ctrl::resolveDefaultCodec(website, bucket, false);
         check(def.format == QLatin1String("h264"),
               QStringLiteral("direct playback stays H.264 at every bucket, list-constrained (%1)")
                   .arg(def.format));
     }
 
+    // ---- the archive rule (user's call 2026-10-01) -------------------------
+    // Alpha capability MEASURED in this build (adjudication/alpha_probe: one
+    // real encode per codec through media::VideoEncoder, decoded back): ffv1
+    // and libvpx-vp9 carry yuva420p; libsvtav1 accepts the request but stores
+    // NO alpha at all (silent fallback, all four containers); libx265 refuses
+    // it outright. So the transparency-ON pick is VP9 and the offered list
+    // carries it.
     const bool hevcRuns = media::ffmpeg::encoderUsable("libx265")
                           || media::ffmpeg::encoderUsable("hevc_nvenc")
                           || media::ffmpeg::encoderUsable("hevc_qsv")
                           || media::ffmpeg::encoderUsable("hevc_vaapi");
-    const ctrl::CodecChoice archiveLossless =
-        ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Lossless);
-    check(archiveLossless.format == QLatin1String("ffv1"),
-          "the master row still leads with FFV1 at Lossless");
-    const ctrl::CodecChoice archiveBest =
-        ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Best);
-    check(archiveBest.format == (hevcRuns ? QStringLiteral("hevc") : QStringLiteral("ffv1")),
-          "and H.265 otherwise: the accepted list constrains the policy (it used to pick AV1)");
+    const bool av1Runs = media::ffmpeg::encoderUsable("libsvtav1")
+                         || media::ffmpeg::encoderUsable("libaom-av1");
+    const bool vp9Runs = media::ffmpeg::encoderUsable("libvpx-vp9");
+    const bool ffv1Runs = media::ffmpeg::encoderUsable("ffv1");
+    {
+        const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(archive);
+        QStringList formats;
+        for (const ctrl::CodecChoice& c : offered) formats << c.format;
+        QStringList want;
+        if (ffv1Runs) want << QStringLiteral("ffv1");
+        if (av1Runs) want << QStringLiteral("av1");
+        if (hevcRuns) want << QStringLiteral("hevc");
+        if (vp9Runs) want << QStringLiteral("vp9");
+        check(formats == want,
+              QStringLiteral("the master row offers exactly FFV1/AV1/H.265/VP9 in order (%1)")
+                  .arg(formats.join(QLatin1Char('/'))));
+    }
+    if (ffv1Runs) {
+        for (const bool alphaOn : {true, false}) {
+            const ctrl::CodecChoice c =
+                ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Lossless, alphaOn);
+            check(c.format == QLatin1String("ffv1"),
+                  QStringLiteral("Lossless writes FFV1 whatever the transparency toggle (on=%1)")
+                      .arg(alphaOn ? "true" : "false"));
+        }
+    }
+    if (vp9Runs) {
+        for (const ctrl::QualityBucket bucket :
+             {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced,
+              ctrl::QualityBucket::Best}) {
+            const ctrl::CodecChoice c = ctrl::resolveDefaultCodec(archive, bucket, true);
+            check(c.format == QLatin1String("vp9"),
+                  QStringLiteral(
+                      "transparency ON takes the alpha-capable lossy codec (VP9, bucket %1)")
+                      .arg(static_cast<int>(bucket)));
+        }
+    }
+    // Transparency OFF: AV1 where quality per bit wins (Best), H.265 where the
+    // ladder puts time/size first (Balanced, Smaller — its own fastFirst split).
+    if (av1Runs) {
+        const ctrl::CodecChoice c =
+            ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Best, false);
+        check(c.format == QLatin1String("av1"),
+              "transparency OFF at Best is AV1 (the efficiency bucket)");
+    }
+    if (hevcRuns) {
+        for (const ctrl::QualityBucket bucket :
+             {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced}) {
+            const ctrl::CodecChoice c = ctrl::resolveDefaultCodec(archive, bucket, false);
+            check(c.format == QLatin1String("hevc"),
+                  QStringLiteral("transparency OFF at the size buckets is H.265 (bucket %1)")
+                      .arg(static_cast<int>(bucket)));
+        }
+    }
 
     const ctrl::ExportTarget youtube = row("youtube.video");
     const ctrl::CodecChoice youtubeLossless =
-        ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Lossless);
+        ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Lossless, false);
     check(youtubeLossless.format != QLatin1String("ffv1")
               && youtube.codecs.contains(youtubeLossless.format),
           "YouTube no longer receives FFV1 at Lossless: the policy picks only what the row accepts");
-    const bool av1Runs = media::ffmpeg::encoderUsable("libsvtav1")
-                         || media::ffmpeg::encoderUsable("libaom-av1");
     if (av1Runs) {
         const ctrl::CodecChoice youtubeBest =
-            ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Best);
+            ctrl::resolveDefaultCodec(youtube, ctrl::QualityBucket::Best, false);
         check(youtubeBest.format == QLatin1String("av1"),
               "the efficiency buckets still lead with AV1 where the row accepts it");
     }
@@ -1375,6 +1429,31 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
     req.sourceSize = QSize(640, 360);
     req.selection = ctrl::FrameSelection::fromRange(0, 29);
     req.fps = 24;
+
+    // The archive rule through planExport: the TRANSPARENCY TOGGLE reaches it
+    // (the request carries it), and the user's pin still wins over it.
+    {
+        ctrl::ExportRequest aReq = req;
+        aReq.allowTransparency = false;
+        const ctrl::ExportPlan off =
+            ctrl::planExport(archive, aReq, ctrl::QualityBucket::Balanced);
+        if (hevcRuns)
+            check(off.ok() && ctrl::formatKeyForEncoder(off.config.codec) == QLatin1String("hevc"),
+                  "the toggle OFF reaches the rule through planExport (H.265 at Balanced)");
+        aReq.allowTransparency = true;
+        const ctrl::ExportPlan on =
+            ctrl::planExport(archive, aReq, ctrl::QualityBucket::Balanced);
+        if (vp9Runs)
+            check(on.ok() && ctrl::formatKeyForEncoder(on.config.codec) == QLatin1String("vp9"),
+                  "the toggle ON reaches the rule through planExport (VP9 at Balanced)");
+        aReq.codec = QStringLiteral("libx265");
+        if (hevcRuns) {
+            const ctrl::ExportPlan pinned =
+                ctrl::planExport(archive, aReq, ctrl::QualityBucket::Balanced);
+            check(pinned.ok() && pinned.config.codec == QLatin1String("libx265"),
+                  "the user's pinned codec wins over the archive rule");
+        }
+    }
 
     const QList<ctrl::CodecChoice> offered = ctrl::offeredCodecs(discord);
     if (offered.size() > 1) {

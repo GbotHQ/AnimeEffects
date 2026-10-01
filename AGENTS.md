@@ -241,6 +241,16 @@ beside it — the handler must live on a common ancestor, or the field must forw
   dependencies** the binding needs. Measured: `clampRect()` returned the right rect while `tip.y`
   kept the pre-scroll value until the reads were added.
 
+## A `Q_INVOKABLE`/method CALL in a binding is not a dependency (measured 2026-10-01)
+
+`visible: … && exportModel.manualMode()` — the **call** form of a `Q_PROPERTY` method registers
+**no binding dependency**, so the binding evaluates once and freezes at its first value (measured:
+the codec row stayed hidden in the mode it should have shown in; the dump said "hidden Codec" no
+matter what). The **property** form `exportModel.manualMode` (with its `NOTIFY`) re-evaluates
+correctly. Check every `()` binding on an object property when a state switch "doesn't take".
+Known latent instance at the time of writing: `ExportDialog.qml`'s Quality label uses the call
+form (masked today; one-word fix).
+
 ## Wayland
 
 Xvfb is X11 and cannot stand in for a compositor when the behaviour *is* the platform:

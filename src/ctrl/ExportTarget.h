@@ -308,6 +308,15 @@ struct ExportRequest {
     // cannot smuggle in a codec the destination refuses.
     QString codec;
 
+    // The "Export with transparency" checkbox (the dialog always carries its
+    // state; bare requests assume it on). This is the ALPHA STATE the archive
+    // codec rule follows (user's call 2026-10-01): the default codec may depend
+    // on whether transparency is wanted, because the alpha-capable codecs are a
+    // strict subset of the accepted ones (MEASURED 2026-10-01 in this build:
+    // ffv1 and libvpx-vp9 carry yuva420p; libsvtav1 accepts the request but
+    // stores no alpha at all; libx265 refuses it outright).
+    bool allowTransparency = true;
+
     // Whether audio is exported is NOT a preference — it is derived:
     //   included  iff  the project HAS audio  AND  not muted  AND  the
     //   destination permits it.
@@ -506,10 +515,15 @@ QList<CodecChoice> offeredCodecs(const ExportTarget& aTarget);
 // class policy (the ladder, constrained to the row's accepted list - the policy
 // picks among what the destination accepts and never beyond it). Returns an
 // empty choice when the row accepts nothing this build can produce.
+// `aAlphaOn` is the user's transparency state (ExportRequest::allowTransparency):
+// it changes the default only for Archive outside Lossless (rule decided
+// 2026-10-01) — transparency ON takes the alpha-capable lossy codec (VP9 here;
+// measured: AV1 drops alpha silently in this build), OFF takes AV1 where quality
+// per bit wins and H.265 where the ladder puts time/size first.
 // `aWhy` receives the class-policy reason when the policy decided; a declared
 // default needs no advocacy.
 CodecChoice resolveDefaultCodec(const ExportTarget& aTarget, QualityBucket aBucket,
-                                QString* aWhy = nullptr);
+                                bool aAlphaOn, QString* aWhy = nullptr);
 
 // The whole point: destination + request + quality intent -> a ready-to-open
 // encoder config, plus constraint application and human-readable reasoning.

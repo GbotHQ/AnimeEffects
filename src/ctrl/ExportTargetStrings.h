@@ -167,7 +167,7 @@ inline void exportTargetStrings() {
         QT_TRANSLATE_NOOP("ExportTargets", "Just a file (not sure yet)"),
         QT_TRANSLATE_NOOP("ExportTargets", "The fallback when the destination is unknown: maximum compatibility."),
         QT_TRANSLATE_NOOP("ExportTargets", "Archive file (highest quality)"),
-        QT_TRANSLATE_NOOP("ExportTargets", "At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all."),
+        QT_TRANSLATE_NOOP("ExportTargets", "Lossless quality always writes FFV1, which carries transparency. With transparency ON the other quality buckets use VP9, the lossy codec that keeps the alpha channel here (AV1 drops it silently and H.265 refuses it). With transparency OFF, Best quality is AV1 and Smaller file / Balanced are H.265."),
     };
     (void)strings;
 }
@@ -329,7 +329,7 @@ inline QStringList exportTargetStringList() {
         QStringLiteral("Just a file (not sure yet)"),
         QStringLiteral("The fallback when the destination is unknown: maximum compatibility."),
         QStringLiteral("Archive file (highest quality)"),
-        QStringLiteral("At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all."),
+        QStringLiteral("Lossless quality always writes FFV1, which carries transparency. With transparency ON the other quality buckets use VP9, the lossy codec that keeps the alpha channel here (AV1 drops it silently and H.265 refuses it). With transparency OFF, Best quality is AV1 and Smaller file / Balanced are H.265."),
     };
 }
 

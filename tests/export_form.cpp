@@ -219,7 +219,10 @@ int main(int argc, char** argv) {
                   .arg(t.id));
         // I44 + item 42: a destination that DICTATES one codec states it (no
         // combo); one that merely defaults among several accepted codecs leaves
-        // the choice open. The row offers exactly accepted ∩ this build can
+        // the choice open — and that offered row lives UNDER ADVANCED (item 42's
+        // strict reading, the user's call 2026-10-01; its QML instance is the
+        // destination-mode one, manual mode keeps its own beside Format). The
+        // row offers exactly accepted ∩ this build can
         // produce - a list, not a mode - one entry per FORMAT, with the default
         // preselected. This per-row walk is also the destination-switch re-sync
         // check: every iteration above changed the destination under the model.

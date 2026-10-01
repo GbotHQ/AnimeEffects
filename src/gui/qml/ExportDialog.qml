@@ -485,12 +485,22 @@ Item {
                     onActivated: (index) => exportModel.formatIndex = index
                 }
 
-                AeFieldLabel { text: qsTr("Codec"); visible: exportModel.codecVisible }
+                // MANUAL mode's codec row stays beside Format (the escape
+                // hatch's own combo group, contract section G) — pinned by
+                // probe_format and probe_axes ("the Codec row is there beside
+                // it"). The DESTINATION-mode offered row is a separate instance
+                // under Advanced (item 42's strict reading, the user's call
+                // 2026-10-01): the two share every binding and are never both
+                // visible, so the split is placement-only.
+                AeFieldLabel {
+                    text: qsTr("Codec")
+                    visible: exportModel.codecVisible && exportModel.manualMode
+                }
                 AeComboBox {
                     objectName: qsTr("Codec")
                     Layout.fillWidth: true
                     Layout.maximumWidth: 260
-                    visible: exportModel.codecVisible
+                    visible: exportModel.codecVisible && exportModel.manualMode
                     overlay: root
                     enabled: exportModel.codecEnabled
                     options: exportModel.codecOptions
@@ -608,6 +618,32 @@ Item {
                     columns: 2
                     columnSpacing: 12
                     rowSpacing: 8
+
+                    // The offered codec row lives UNDER ADVANCED (contract item
+                    // 42's strict reading, the user's explicit call 2026-10-01:
+                    // "controls the destination merely defaults stay reachable
+                    // under Advanced") — this is the DESTINATION-mode instance
+                    // (manual mode's stays beside Format above; the two share
+                    // every binding and are never both visible). It sits first
+                    // in this grid, right under the transparency toggle, because
+                    // the toggle is one of its inputs: the archive rule's
+                    // default codec follows it. A destination that DICTATES one
+                    // codec keeps the row hidden and states the fact instead.
+                    AeFieldLabel {
+                        text: qsTr("Codec")
+                        visible: exportModel.codecVisible && !exportModel.manualMode
+                    }
+                    AeComboBox {
+                        objectName: qsTr("Codec")
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: 260
+                        visible: exportModel.codecVisible && !exportModel.manualMode
+                        overlay: root
+                        enabled: exportModel.codecEnabled
+                        options: exportModel.codecOptions
+                        index: exportModel.codecIndex
+                        onActivated: (index) => exportModel.codecIndex = index
+                    }
 
                     // The codec's own value, for a user who knows the number they
                     // want instead of the intent. It starts on the codec's own
