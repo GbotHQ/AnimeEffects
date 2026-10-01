@@ -2,623 +2,801 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Audio UI redesign — Phase 2 mockup</title>
+<title>Audio UI redesign — sounds on the timeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script>
-/* Tailwind utilities with the app palette bound as custom colors — the hexes
-   are cells of src/gui/theme/TailwindPalette.h (verified verbatim), never stock
-   Tailwind colors. Token roles/columns follow src/gui/theme/Colors.h (dark). */
+/* Tailwind = PAGE CHROME vocabulary (see styling rule). Colors are verbatim
+   cells of src/gui/theme/TailwindPalette.h — never stock Tailwind colors. */
 tailwind.config = { theme: { extend: { colors: {
   base:'#262626', recessed:'#171717', raised:'#404040', raisedhover:'#525252',
   active:'#525252', hairline:'#404040', hairlinehover:'#525252', outline:'#525252',
   txt:'#f5f5f5', muted:'#a3a3a3', dim:'#737373', iconc:'#e5e5e5',
   floater:'#171717', floateredge:'#262626',
   wband:'#737373', wedge:'#a3a3a3', wtext:'#171717',
-  ok:'#22c55e', warn:'#f59e0b', bad:'#ef4444', clip:'#f97316',
+  ok:'#22c55e', warn:'#f59e0b', bad:'#ef4444',
 }, fontFamily:{ geist:['Geist','-apple-system','"Segoe UI"','sans-serif'] } } } }
 </script>
 <style>
-/* ---- design tokens from src/gui/theme/TailwindPalette.h (26x11 table) via
-   src/gui/theme/Colors.h role->column maps, DARK theme, neutral row (row 20
-   "neutral") for structure; accent rows per body[data-accent]. Every hex below
-   is copied verbatim from TailwindPalette.h. ---- */
+/* ==========================================================================
+   STYLING RULE (this mockup is the implementation template):
+   PRODUCT components — .tl/.ruler/.track/.lane/.clip/.menu/.inspector/.strip/
+   .export-panel/.led/.over-mark and their parts — are styled ONLY by these
+   custom classes, and their colors come ONLY from the token vars below
+   (src/gui/theme/TailwindPalette.h verbatim via src/gui/theme/Colors.h, dark).
+   PAGE CHROME — page head, section headings, captions, capture frames — is
+   styled ONLY with Tailwind utilities. NEVER mix the two vocabularies on one
+   element, and never pick ad hoc between them.
+   SPACING SCALE: one rhythm — 4 / 6 / 8 / 12 px (rows pad 6px vertical,
+   8px horizontal; gaps 4 or 8). No magic pixel numbers outside this scale,
+   the theme tokens, and the app-measured metrics (menu 24px rows / 9px
+   separators, from standard.ssa + AppStyle.cpp).
+   LAYOUT: flow first (flex rows/columns). Absolute positioning only where
+   inherently positional: lane placement, the gain line, trim handles.
+   ========================================================================== */
 :root {
   --base:#262626;        /* neutral-800  kBase            (dark col 8) */
   --recessed:#171717;    /* neutral-900  kRecessed        (dark col 9) */
   --raised:#404040;      /* neutral-700  kRaised          (dark col 7) */
   --hairline:#404040;    /* neutral-700  kHairline        (dark col 7) */
+  --hairlinehover:#525252;/* neutral-600 kHairlineHover   (dark col 6) */
+  --outline:#525252;     /* neutral-600  kOutline         (dark col 6) */
   --text:#f5f5f5;        /* neutral-50   kText            (dark col 1) */
   --text-muted:#a3a3a3;  /* neutral-400  kTextMuted       (dark col 4) */
-  --text-disabled:#737373;/* neutral-500 kTextDisabled    (dark col 5) */
+  --text-dim:#737373;    /* neutral-500  kTextMutedDim    (dark col 5) */
   --icon:#e5e5e5;        /* neutral-200  kIcon            (dark col 2) */
   --active:#525252;      /* neutral-600  kActive          (dark col 6) */
   --floater-body:#171717;/* neutral-900  kFloaterBody     (dark col 9) */
   --floater-edge:#262626;/* neutral-800  kFloaterEdge     (dark col 8) */
-  --window-band:#737373; /* neutral-500  kWindowBand @30% (dark col 5) — reserved
-                            for temporary playback-window surfaces ONLY */
+  --recessed-guide:#404040;/* neutral-700 kRecessedGuideLine (dark col 7) */
+  --window-band:#737373; /* neutral-500  kWindowBand @30% — playback-window
+                            band ONLY; audio chrome never uses it */
   --window-edge:#a3a3a3; /* neutral-400  kWindowEdge      (dark col 4) */
-  --window-text:#171717; /* neutral-900  kWindowText      (dark col 9) */
+  --accent-bright-text:#171717;/* neutral-900 kAccentBrightText (dark col 9) */
 }
-/* accent = the selected accent row at dark cols 7 (kAccent) / 4 (kAccentBright,
-   RESERVED for playhead/selection/marquee — audio chrome never uses it as a
-   fill; audio chrome borrows accentBright only for focus rings). */
-body[data-accent="red"]     { --accent:#b91c1c; --accent-bright:#f87171; }
-body[data-accent="orange"]  { --accent:#c2410c; --accent-bright:#fb923c; }
-body[data-accent="yellow"]  { --accent:#a16207; --accent-bright:#facc15; }
-body[data-accent="green"]   { --accent:#15803d; --accent-bright:#4ade80; }
-body[data-accent="teal"]    { --accent:#0f766e; --accent-bright:#2dd4bf; }
-body[data-accent="cyan"]    { --accent:#0e7490; --accent-bright:#22d3ee; }
-body[data-accent="violet"]  { --accent:#6d28d9; --accent-bright:#a78bfa; }
-body[data-accent="fuchsia"] { --accent:#a21caf; --accent-bright:#e879f9; }
+/* accent = accent row at dark col 7 (kAccent) / col 4 (kAccentBright) /
+   col 6 (kAccentHover). RESERVED for playhead/selection/marquee — audio
+   chrome stays neutral. */
+body[data-accent="red"]     { --accent:#b91c1c; --accent-bright:#f87171; --accent-hover:#dc2626; }
+body[data-accent="orange"]  { --accent:#c2410c; --accent-bright:#fb923c; --accent-hover:#ea580c; }
+body[data-accent="yellow"]  { --accent:#a16207; --accent-bright:#facc15; --accent-hover:#ca8a04; }
+body[data-accent="green"]   { --accent:#15803d; --accent-bright:#4ade80; --accent-hover:#16a34a; }
+body[data-accent="teal"]    { --accent:#0f766e; --accent-bright:#2dd4bf; --accent-hover:#0d9488; }
+body[data-accent="cyan"]    { --accent:#0e7490; --accent-bright:#22d3ee; --accent-hover:#0891b2; }
+body[data-accent="violet"]  { --accent:#6d28d9; --accent-bright:#a78bfa; --accent-hover:#7c3aed; }
+body[data-accent="fuchsia"] { --accent:#a21caf; --accent-bright:#e879f9; --accent-hover:#c026d3; }
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:var(--recessed); color:var(--text);
   font:400 13px/1.45 "Geist",-apple-system,"Segoe UI",sans-serif; padding:28px; }
-h1 { font-size:15px; font-weight:600; }
-.section-h { font-size:12px; font-weight:600; letter-spacing:.08em;
-  text-transform:uppercase; color:var(--text-disabled); margin:34px 0 12px; }
-.case-cap { font-size:12px; font-weight:600; margin-bottom:4px; }
-.case-cap small { display:block; font-weight:400; color:var(--text-muted); max-width:560px; }
-code { font:400 11px/1.4 ui-monospace,monospace; color:var(--text-muted); }
-/* icon tint: icons are runtime-tinted in the app — tint here via CSS only */
-i[class^="ph-"] { color:var(--icon); }
-.tint-muted i[class^="ph-"], i.ph-tint-muted { color:var(--text-muted); }
-/* element callout badges (map mockup -> inventory catalog numbers). Hidden by
-   default so screenshots show exactly what the user sees; the page-level
-   "Show annotations" switch reveals them (page chrome, never product chrome). */
+/* CLEAN MODE (#clean / #only=<surface>): only product surfaces render */
+body.clean .doc { display:none !important; }
+body.clean { padding:12px; }
+/* annotation callout badges: page chrome, hidden by default */
 .el { position:relative; }
 .el::after { content:attr(data-el); position:absolute; top:-7px; right:-7px;
   width:15px; height:15px; border-radius:50%; background:#7c2d12;
-  color:#ffedd5; font-size:9px; font-weight:600;
-  display:none; place-items:center; }
+  color:#ffedd5; font-size:9px; font-weight:600; display:none; place-items:center; }
 body.show-el .el::after { display:grid; }
-/* ToolSlider look (gui::tool::ToolSlider): circular head on a thin track */
-.tool-slider { position:relative; height:14px; flex:1; min-width:80px; }
-.tool-slider .track { position:absolute; top:50%; left:0; right:0; height:3px;
-  transform:translateY(-50%); background:var(--recessed); border-radius:2px; }
-.tool-slider .fill  { position:absolute; top:50%; left:0; height:3px;
-  transform:translateY(-50%); background:var(--active); border-radius:2px; }
-.tool-slider .head  { position:absolute; top:50%; width:12px; height:12px;
-  border-radius:50%; background:var(--raised); border:1px solid var(--icon);
-  transform:translate(-50%,-50%); }
-/* row seam (element 13: the separator, now a seam not a QFrame) */
-.seam { border-bottom:1px solid var(--hairline); }
-/* toggle pill for the independent play/export enables (Q2) */
-/* toggle pills are CONTROLS: outlined, never the filled “answer” look of the
-   state badge; a corner dot shows the control is on. Never wrap mid-label. */
-.pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px;
-  border:1px solid var(--hairline); border-radius:999px; font-size:11px;
-  color:var(--text-muted); cursor:pointer; user-select:none;
-  white-space:nowrap; position:relative; }
-.pill.on { background:transparent; color:var(--text); border-color:var(--icon); }
-.pill.on i[class^="ph-"] { color:var(--text); }
-.pill.on::after { content:""; position:absolute; top:-3px; right:-3px;
-  width:7px; height:7px; border-radius:50%; background:var(--window-edge); }
-/* the state badge is THE answer per row: filled and dominant */
-.badge { font-size:10.5px; font-weight:600; letter-spacing:.04em;
-  padding:3px 8px; border-radius:4px; white-space:nowrap; }
+/* ROW METRICS: one variable per row type drives BOTH the header column and
+   the content column (identical border-box heights -> shared row boundaries) */
+:root {
+  --row-ruler:28px;
+  --row-track:48px;
+  --row-lane:84px;
+  --row-lane-compact:76px;
+}
+/* ---- Animation panel chrome — matches the real app (reference:
+     .scratch-orch/capture-home/timeline_detail.png): titled 'Animation' panel
+     with the dock-float mark, narrow '>' track heads, sparse ruler (1/48/96
+     style) with fine ticks below the numbers, light-violet frame pill, thin
+     violet playhead fading at the bottom, vertical transport strip on the
+     panel's right edge. ---- */
+.tl { width:100%; max-width:1560px; background:var(--base);
+  border:1px solid var(--recessed); border-radius:8px; overflow:hidden;
+  display:flex; flex-direction:column; }
+/* header bar: [panel name] [transport, horizontal] [MIX meter + OVER]
+   [SPARE SPACE] [float mark] — the planned timeline header (the vertical
+   transport column is gone). 26px buttons = AeIconButton metric. */
+.tl-bar { display:flex; align-items:center; gap:8px; height:34px;
+  padding:0 8px; border-bottom:1px solid var(--hairline); }
+.tl-name { font-size:12px; font-weight:600; margin-right:4px; }
+.tbtn { width:26px; height:26px; display:grid; place-items:center;
+  border-radius:4px; color:var(--icon); cursor:pointer; }
+.tbtn.loop { border:1px solid var(--outline); background:var(--active);
+  color:var(--text); }
+.tsep { width:1px; height:18px; background:var(--hairline); margin:0 4px; }
+.spare { flex:1 1 auto; }
+.dock-float { width:16px; height:16px; display:grid; place-items:center;
+  color:var(--text-muted); }
+/* MIX meter: a proper small meter — segmented LED cells in a well */
+.meter { display:flex; gap:1px; }
+.meter span { width:3px; height:9px; background:var(--hairline); }
+.meter .g { background:#22c55e; }
+.meter .a { background:#f59e0b; }
+.meter .r { background:#ef4444; }
+.tl-main { display:flex; flex:1; min-height:0; }
+.tl-heads { width:110px; flex:0 0 110px; border-right:1px solid var(--hairline); }
+.thead { display:flex; align-items:flex-start; gap:6px; padding:6px 8px;
+  font-size:11px; color:var(--text); border-bottom:1px solid var(--hairline); }
+.thead .tname { flex:1 1 auto; min-width:0; overflow:hidden;
+  white-space:nowrap; text-overflow:ellipsis; }
+.thead .exp { flex:0 0 12px; height:12px; color:var(--text-muted); margin-top:1px; }
+.thead.sample { height:calc(var(--row-ruler) + var(--row-track)); }
+.thead.lane-h { height:var(--row-lane); }
+.tl-body { flex:1; position:relative; min-width:0; }
+.ruler { height:var(--row-ruler); position:relative; }
+.rulenum { position:absolute; top:4px; font-size:11px; color:var(--text-muted);
+  transform:translateX(-50%); }
+.tick { position:absolute; top:18px; height:6px; width:1px;
+  background:var(--text-dim); }
+.pill { position:absolute; top:2px; transform:translateX(-50%);
+  background:var(--accent-bright); color:var(--accent-bright-text);
+  font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px; }
+.track { height:var(--row-track); border-bottom:1px solid var(--hairline);
+  position:relative; background:var(--recessed); }
+.lane { height:var(--row-lane); border-bottom:1px solid var(--hairline);
+  position:relative; background:var(--recessed); }
+.lane.compact { height:var(--row-lane-compact); border-bottom:none; }
+.playhead { position:absolute; top:0; bottom:0; width:2px; z-index:6;
+  pointer-events:none;
+  background:linear-gradient(to bottom, var(--accent-bright) 72%, transparent); }
+/* MUTE = the app's layer-visibility language, exact values:
+   ObjectTreeWidget.cpp baseOpacity 0.66 (hidden scope), AppStyle.cpp
+   kBranchCaretOpacity / kBranchLineOpacity 0.4. A muted scope draws at
+   reduced opacity — no washes, no grays. The crossed-speaker UNMUTE control
+   (top-right, only in the muted state) fades with its clip. */
+.clip.muted { opacity:.66; }
+.thead.muted .tname, .thead.muted .lmute { opacity:.66; }
+.thead.muted .exp { opacity:.4; }
+.unmute { width:24px; height:24px; display:grid; place-items:center;
+  border-radius:4px; color:var(--text-muted); cursor:pointer; }
+.unmute:hover { background:var(--active); color:var(--text); }
+/* lane hearing control (lane header) + lane-muted band wash: the wash covers
+   the WHOLE band (empty space included) so lane-mute never reads as clip-mute */
+.lmute { margin-left:auto; margin-top:-1px; width:22px; height:22px;
+  display:grid; place-items:center; border-radius:4px; cursor:pointer;
+  color:var(--icon); }
+.lane.muted > * { opacity:.66; }
+.thead-add { display:flex; align-items:center; padding:2px 8px; }
+.thead-add .plus { width:20px; height:20px; display:grid; place-items:center;
+  border-radius:4px; color:var(--icon); cursor:pointer; }
+.thead-add .plus:hover { background:var(--active); }
+.drop-hint { position:absolute; inset:8px; border:1px dashed var(--recessed-guide);
+  border-radius:6px; display:flex; align-items:center; justify-content:center;
+  gap:8px; color:var(--text-dim); font-size:13px; }
+/* ---- clip (FLOW: head row + wave body column; absolute only for lane
+   placement on .clip, the gain line and the trim handles) ---- */
+.clip { position:absolute; top:6px; bottom:6px; border-radius:6px;
+  background:var(--raised); border:1px solid var(--outline);
+  display:flex; flex-direction:column; }
+.clip.hovering { border-color:var(--hairlinehover); }
+.clip.selected { border-color:var(--accent-bright); }
+.clip.err { border-color:#ef4444; }
+.clip.parked { opacity:.55; }
+.clip.ghost { opacity:.35; border-style:dashed; }
+.clip-head { display:flex; align-items:center; gap:8px; padding:6px 8px; }
+.clip-name { flex:1 1 auto; min-width:0; font-size:13px; line-height:18px;
+  font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; }
+.face { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
+/* control scale from src/gui/qml: AeIconButton (26px target / 15px glyph),
+   AeCheckBox (24px row / 16px box) — the clip face uses the 24px standard
+   with an 18px glyph for presence at clip scale */
+.ft { width:24px; height:24px; border-radius:4px; display:grid;
+  place-items:center; cursor:pointer; }
+.ft i { color:inherit; }
+.ft.on { background:var(--active); color:var(--text); }
+.ft.off { color:var(--text-dim); }
+.fx { width:24px; height:24px; display:grid; place-items:center;
+  color:var(--text-dim); cursor:pointer; }
+.clip-body { position:relative; flex:1 1 auto; min-height:0; }
+.wavewrap { height:100%; }
+.wave { display:block; width:100%; height:100%;
+  transform:scaleY(1.15); opacity:.5; fill:var(--text-muted); }
+.vline { position:absolute; left:0; right:0; top:38%; height:1.5px;
+  background:var(--text-muted); cursor:ns-resize; }
+.gain { position:absolute; top:calc(38% + 5px); left:8px; font-size:10px;
+  padding:2px 6px; border-radius:4px; background:var(--base); color:var(--text); }
+.edge { position:absolute; top:8px; bottom:8px; width:10px;
+  background:transparent; cursor:ew-resize; }
+.edge::before { content:""; position:absolute; top:0; bottom:0; width:4px;
+  border-radius:2px; background:var(--window-edge); }
+.edge.l { left:-5px; }
+.edge.l::before { left:3px; }
+.edge.r { right:-5px; }
+.edge.r::before { right:3px; }
+.err-banner { padding:3px 8px; background:#7f1d1d; color:#fef2f2; font-size:11px;
+  border-radius:0 0 5px 5px; }
+/* ---- context menu (app QMenu conventions: recessed panel + 1px base edge,
+   24px rows inset 4px, accentHover selection, 9px separators) ---- */
+.menu { width:214px; background:var(--floater-body); border:1px solid var(--base);
+  border-radius:8px; padding:4px; box-shadow:0 10px 24px #09090b; }
+.mi { height:24px; display:flex; align-items:center; gap:8px;
+  padding:0 12px 0 6px; border-radius:3px; font-size:12px; color:var(--text);
+  cursor:pointer; white-space:nowrap; }
+.mi:hover { background:var(--accent-hover); color:#f5f5f5; }
+.mi.danger { color:#ef4444; }
+.mi i { color:inherit; }
+.mi .val { margin-left:auto; color:var(--text-dim); font-size:11px; }
+.msep { height:9px; position:relative; }
+.msep::after { content:""; position:absolute; left:8px; right:8px; top:4px;
+  height:1px; background:var(--hairline); }
+.mchk { position:relative; width:11px; height:11px; flex:0 0 11px;
+  border-radius:2px; border:1px solid var(--outline); background:var(--raised); }
+.mchk.on { background:var(--accent); border-color:var(--accent); }
+.mchk.on::after { content:""; position:absolute; left:1.5px; top:2px;
+  width:5px; height:2.5px; border-left:1.5px solid #f5f5f5;
+  border-bottom:1.5px solid #f5f5f5; transform:rotate(-45deg); }
+/* ---- frame editor popover (AeNumberField / AeFrameRangeRow language;
+   opened on demand, never by selection) ---- */
+.inspector { position:absolute; z-index:30; width:250px;
+  background:var(--floater-body); border:1px solid var(--floater-edge);
+  border-radius:8px; padding:8px; box-shadow:0 8px 20px #09090b; }
+.ititle { font-size:12px; font-weight:600; line-height:18px; }
+.irow { display:flex; gap:8px; margin-top:6px; }
+.ifield { display:flex; flex-direction:column; gap:4px; flex:1 1 0; }
+.ilabel { font-size:12px; color:var(--text-muted); }
+.numfield { display:flex; align-items:center; gap:6px; height:26px; width:100%;
+  padding:0 8px; border-radius:4px; background:var(--raised);
+  border:1px solid var(--outline); font-size:12px; }
+.numfield .unit { margin-left:auto; color:var(--text-dim); font-size:11px; }
+.ipath { font-size:12px; color:var(--text-dim); margin-top:6px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* ---- transport readout strip ---- */
+.readout { display:flex; align-items:center; gap:8px; }
+.sicon { font-size:18px; color:var(--icon); }
+.sval { font-size:12px; color:var(--text-muted); }
+.slabel { font-size:12px; font-weight:600; }
+.led { display:flex; gap:2px; }
+.led span { width:5px; height:10px; border-radius:1px; background:var(--recessed); }
+.led .l1,.led .l2 { background:#22c55e; }
+.led .l3 { background:#f59e0b; }
+.led .l4,.led .l5 { background:#ef4444; }
+/* compact-height proposals (gate choice): the app's row rhythm (28px, 12px
+   text) vs 44px for waveform legibility */
+.lane.h-a, .thead.h-a { height:28px; }
+.lane.h-b, .thead.h-b { height:44px; }
+.miniclip { position:absolute; top:2px; bottom:2px; border-radius:4px;
+  background:var(--raised); border:1px solid var(--outline);
+  display:flex; align-items:center; gap:8px; padding:0 8px; }
+.mc-name { font-size:12px; font-weight:600; color:var(--text); }
+.mc-wave { height:60%; flex:1; opacity:.5; fill:var(--text-muted); }
+/* OVER: terse latched metering mark — unlit = clear, lit = over (click clears) */
+.over-mark { font-size:10px; font-weight:600; letter-spacing:.08em;
+  padding:2px 8px; border-radius:4px; cursor:pointer; user-select:none;
+  border:1px solid var(--outline); background:transparent; color:var(--text-dim); }
+.over-mark.lit { background:#ef4444; border-color:#ef4444; color:#fef2f2; }
+/* ---- export surfaces (unchanged app QML) ---- */
+.export-panel { width:460px; padding:8px 12px; border-radius:8px;
+  background:var(--floater-body); border:1px solid var(--floater-edge); }
+.ep-row { display:flex; align-items:center; gap:8px; }
+.ep-check { width:16px; height:16px; border-radius:3px;
+  background:var(--accent); border:1px solid var(--accent);
+  display:grid; place-items:center; color:#f5f5f5; font-size:11px; }
+.ep-facts { display:flex; gap:12px; font-size:12px; margin-top:8px; }
+.ep-key { flex:0 0 104px; color:var(--text-muted); }
+.ep-dim { color:var(--text-dim); }
 </style>
 </head>
 <body data-accent="violet">
+<div id="root"></div>
 
-<div class="flex items-baseline gap-6 flex-wrap">
-  <h1>Audio UI redesign — docked panel &amp; states</h1>
-  <span class="text-dim text-xs">Palette: TailwindPalette.h verbatim · tokens: Colors.h (dark) · accent reserved for playhead/selection — audio chrome stays neutral.</span>
-  <label class="pill cursor-pointer" title="page chrome only — reveals the numbered element callouts; product screenshots are taken with this OFF"><input type="checkbox" id="annToggle"> Show annotations</label>
-  <div class="flex gap-1.5 items-center ml-auto">
-    <span class="text-muted text-xs mr-1">Accent</span>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="red"     style="background:#b91c1c"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="orange"  style="background:#c2410c"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="yellow"  style="background:#a16207"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="green"   style="background:#15803d"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="teal"    style="background:#0f766e"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="cyan"    style="background:#0e7490"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="violet"  style="background:#6d28d9;outline:2px solid #a3a3a3;outline-offset:2px"></div>
-    <div class="swatch w-4 h-4 rounded cursor-pointer" data-a="fuchsia" style="background:#a21caf"></div>
-  </div>
-</div>
+<!-- waveform shapes: mirrored amplitude envelopes around a center axis; the
+     wave x-axis IS the clip span (in-point→out-point) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<g id="wf-loop1"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,6.9 9.2,5.4 18.5,3.9 27.7,5.4 36.9,5.3 46.2,4.1 55.4,5.2 64.6,5.7 73.8,6.5 83.1,6.9 92.3,9.2 101.5,9.8 110.8,9.3 120.0,7.7 129.2,8.2 138.5,8.8 147.7,6.3 156.9,5.4 166.2,5.6 175.4,4.4 184.6,4.5 193.8,5.4 203.1,5.5 212.3,6.9 221.5,7.0 230.8,8.0 240.0,8.7 240.0,15.3 230.8,16.0 221.5,17.0 212.3,17.1 203.1,18.5 193.8,18.6 184.6,19.5 175.4,19.6 166.2,18.4 156.9,18.6 147.7,17.7 138.5,15.2 129.2,15.8 120.0,16.3 110.8,14.7 101.5,14.2 92.3,14.8 83.1,17.1 73.8,17.5 64.6,18.3 55.4,18.8 46.2,19.9 36.9,18.7 27.7,18.6 18.5,20.1 9.2,18.6 0.0,17.1"/></g>
+<g id="wf-voice1"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,11.4 9.2,11.2 18.5,10.2 27.7,10.2 36.9,7.0 46.2,3.7 55.4,7.7 64.6,8.6 73.8,7.5 83.1,9.8 92.3,11.4 101.5,11.4 110.8,11.2 120.0,9.5 129.2,10.0 138.5,6.7 147.7,4.4 156.9,5.1 166.2,9.8 175.4,8.8 184.6,10.2 193.8,11.5 203.1,11.4 212.3,11.1 221.5,9.1 230.8,8.4 240.0,8.5 240.0,15.5 230.8,15.6 221.5,14.9 212.3,12.9 203.1,12.6 193.8,12.5 184.6,13.8 175.4,15.2 166.2,14.2 156.9,18.9 147.7,19.6 138.5,17.3 129.2,14.0 120.0,14.5 110.8,12.8 101.5,12.6 92.3,12.6 83.1,14.2 73.8,16.5 64.6,15.4 55.4,16.3 46.2,20.3 36.9,17.0 27.7,13.8 18.5,13.8 9.2,12.8 0.0,12.6"/></g>
+<g id="wf-rise1"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,11.0 9.2,10.8 18.5,10.7 27.7,10.5 36.9,10.8 46.2,10.7 55.4,10.4 64.6,10.1 73.8,9.6 83.1,10.1 92.3,10.0 101.5,9.9 110.8,9.1 120.0,8.3 129.2,7.9 138.5,8.7 147.7,9.5 156.9,8.4 166.2,7.4 175.4,5.3 184.6,6.0 193.8,7.2 203.1,7.2 212.3,5.6 221.5,2.9 230.8,2.7 240.0,5.4 240.0,18.6 230.8,21.3 221.5,21.1 212.3,18.4 203.1,16.8 193.8,16.8 184.6,18.0 175.4,18.7 166.2,16.6 156.9,15.6 147.7,14.5 138.5,15.3 129.2,16.1 120.0,15.7 110.8,14.9 101.5,14.1 92.3,14.0 83.1,13.9 73.8,14.4 64.6,13.9 55.4,13.6 46.2,13.3 36.9,13.2 27.7,13.5 18.5,13.3 9.2,13.2 0.0,13.0"/></g>
+<g id="wf-loop2"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,7.5 9.2,5.1 18.5,4.5 27.7,4.4 36.9,5.8 46.2,4.9 55.4,3.8 64.6,5.4 73.8,7.1 83.1,7.1 92.3,8.9 101.5,9.5 110.8,9.3 120.0,8.4 129.2,7.9 138.5,8.5 147.7,7.5 156.9,5.7 166.2,5.7 175.4,5.5 184.6,3.4 193.8,3.8 203.1,6.3 212.3,5.7 221.5,7.1 230.8,7.8 240.0,8.7 240.0,15.3 230.8,16.2 221.5,16.9 212.3,18.3 203.1,17.7 193.8,20.2 184.6,20.6 175.4,18.5 166.2,18.3 156.9,18.3 147.7,16.5 138.5,15.5 129.2,16.1 120.0,15.6 110.8,14.7 101.5,14.5 92.3,15.1 83.1,16.9 73.8,16.9 64.6,18.6 55.4,20.2 46.2,19.1 36.9,18.2 27.7,19.6 18.5,19.5 9.2,18.9 0.0,16.5"/></g>
+<g id="wf-voice2"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,11.3 9.2,11.4 18.5,10.2 27.7,10.2 36.9,5.1 46.2,4.7 55.4,6.8 64.6,8.8 73.8,7.3 83.1,9.5 92.3,11.5 101.5,11.5 110.8,11.0 120.0,9.6 129.2,9.9 138.5,7.8 147.7,2.1 156.9,5.0 166.2,9.2 175.4,9.2 184.6,9.8 193.8,11.4 203.1,11.5 212.3,11.0 221.5,8.7 230.8,9.3 240.0,8.4 240.0,15.6 230.8,14.7 221.5,15.3 212.3,13.0 203.1,12.5 193.8,12.6 184.6,14.2 175.4,14.8 166.2,14.8 156.9,19.0 147.7,21.9 138.5,16.2 129.2,14.1 120.0,14.4 110.8,13.0 101.5,12.5 92.3,12.5 83.1,14.5 73.8,16.7 64.6,15.2 55.4,17.2 46.2,19.3 36.9,18.9 27.7,13.8 18.5,13.8 9.2,12.6 0.0,12.7"/></g>
+<g id="wf-rise2"><rect x="0" y="11.6" width="240" height="0.8" fill="#737373"/><polygon points="0.0,10.9 9.2,10.8 18.5,10.8 27.7,10.7 36.9,10.7 46.2,10.5 55.4,10.4 64.6,9.8 73.8,10.1 83.1,10.0 92.3,10.1 101.5,9.9 110.8,8.6 120.0,8.4 129.2,7.9 138.5,8.4 147.7,9.2 156.9,7.7 166.2,6.3 175.4,5.7 184.6,7.4 193.8,7.7 203.1,7.5 212.3,6.5 221.5,4.8 230.8,4.1 240.0,5.4 240.0,18.6 230.8,19.9 221.5,19.2 212.3,17.5 203.1,16.5 193.8,16.3 184.6,16.6 175.4,18.3 166.2,17.7 156.9,16.3 147.7,14.8 138.5,15.6 129.2,16.1 120.0,15.6 110.8,15.4 101.5,14.1 92.3,13.9 83.1,14.0 73.8,13.9 64.6,14.2 55.4,13.6 46.2,13.5 36.9,13.3 27.7,13.3 18.5,13.2 9.2,13.2 0.0,13.1"/></g>
+</defs></svg>
 
-<div class="mt-10 mb-3 px-3 py-2 rounded text-xs font-semibold tracking-widest uppercase" style="background:var(--raised);color:var(--text)">What the user sees — product UI only (spec notes are below the divider)</div>
+<script type="text/babel">
+const { useEffect } = React;
 
-<div class="section-h">1 — The audio panel in the main window (track rows ①–⑬)</div>
-<div class="case-cap">Default design — one coherent row anatomy <small>Audio is a panel docked under the timeline (the transport speaker button toggles it). Row grammar: file + state badge · timeline placement · volume · the two JOB toggles — “Hear while working” (a preview mute: animate without being distracted by e.g. music) and “In exported video” (what ships: e.g. match the animation to a voice clip you don’t want in the export) · level meter · remove. The trash button always removes the row it sits on; “Add audio track” lives once at the end of the list.</small></div>
-<div class="text-xs mb-2" style="color:var(--text-muted)">The state badge, the two toggles, and the header counts all derive from the same two flags and can never disagree.</div>
+/* Phosphor glyphs inlined from @phosphor-icons/core assets (regular, 256 viewBox, fill=currentColor) — captures can never race the CDN webfont. */
+const ICONS = {
+  "speaker-high": "M155.51,24.81a8,8,0,0,0-8.42.88L77.25,80H32A16,16,0,0,0,16,96v64a16,16,0,0,0,16,16H77.25l69.84,54.31A8,8,0,0,0,160,224V32A8,8,0,0,0,155.51,24.81ZM32,96H72v64H32ZM144,207.64,88,164.09V91.91l56-43.55Zm54-106.08a40,40,0,0,1,0,52.88,8,8,0,0,1-12-10.58,24,24,0,0,0,0-31.72,8,8,0,0,1,12-10.58ZM248,128a79.9,79.9,0,0,1-20.37,53.34,8,8,0,0,1-11.92-10.67,64,64,0,0,0,0-85.33,8,8,0,1,1,11.92-10.67A79.83,79.83,0,0,1,248,128Z",
+  "speaker-slash": "M53.92,34.62A8,8,0,1,0,42.08,45.38L73.55,80H32A16,16,0,0,0,16,96v64a16,16,0,0,0,16,16H77.25l69.84,54.31A8,8,0,0,0,160,224V175.09l42.08,46.29a8,8,0,1,0,11.84-10.76ZM32,96H72v64H32ZM144,207.64,88,164.09V95.89l56,61.6Zm42-63.77a24,24,0,0,0,0-31.72,8,8,0,1,1,12-10.57,40,40,0,0,1,0,52.88,8,8,0,0,1-12-10.59Zm-80.16-76a8,8,0,0,1,1.4-11.23l39.85-31A8,8,0,0,1,160,32v74.83a8,8,0,0,1-16,0V48.36l-26.94,21A8,8,0,0,1,105.84,67.91ZM248,128a79.9,79.9,0,0,1-20.37,53.34,8,8,0,0,1-11.92-10.67,64,64,0,0,0,0-85.33,8,8,0,1,1,11.92-10.67A79.83,79.83,0,0,1,248,128Z",
+  "export": "M216,112v96a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V112A16,16,0,0,1,56,96H80a8,8,0,0,1,0,16H56v96H200V112H176a8,8,0,0,1,0-16h24A16,16,0,0,1,216,112ZM93.66,69.66,120,43.31V136a8,8,0,0,0,16,0V43.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,69.66Z",
+  "x": "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z",
+  "pencil-simple": "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z",
+  "folder-open": "M245,110.64A16,16,0,0,0,232,104H216V88a16,16,0,0,0-16-16H130.67L102.94,51.2a16.14,16.14,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V208h0a8,8,0,0,0,8,8H211.1a8,8,0,0,0,7.59-5.47l28.49-85.47A16.05,16.05,0,0,0,245,110.64ZM93.34,64,123.2,86.4A8,8,0,0,0,128,88h72v16H69.77a16,16,0,0,0-15.18,10.94L40,158.7V64Zm112,136H43.1l26.67-80H232Z",
+  "trash": "M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z",
+  "play": "M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z",
+  "skip-back": "M199.81,34a16,16,0,0,0-16.24.43L64,109.23V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V146.77l119.57,74.78A15.95,15.95,0,0,0,208,208.12V47.88A15.86,15.86,0,0,0,199.81,34ZM192,208,64.16,128,192,48.07Z",
+  "check": "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z",
+  "file-audio": "M99.06,128.61a8,8,0,0,0-8.72,1.73L68.69,152H48a8,8,0,0,0-8,8v40a8,8,0,0,0,8,8H68.69l21.65,21.66A8,8,0,0,0,104,224V136A8,8,0,0,0,99.06,128.61ZM88,204.69,77.66,194.34A8,8,0,0,0,72,192H56V168H72a8,8,0,0,0,5.66-2.34L88,155.31ZM152,180a40.55,40.55,0,0,1-20,34.91A8,8,0,0,1,124,201.09a24.49,24.49,0,0,0,0-42.18A8,8,0,0,1,132,145.09,40.55,40.55,0,0,1,152,180Zm61.66-97.66-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40v80a8,8,0,0,0,16,0V40h88V88a8,8,0,0,0,8,8h48V216H168a8,8,0,0,0,0,16h32a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160Z",
+  "skip-back": "M199.81,34a16,16,0,0,0-16.24.43L64,109.23V40a8,8,0,0,0-16,0V216a8,8,0,0,0,16,0V146.77l119.57,74.78A15.95,15.95,0,0,0,208,208.12V47.88A15.86,15.86,0,0,0,199.81,34ZM192,208,64.16,128,192,48.07Z",
+  "skip-forward": "M200,32a8,8,0,0,0-8,8v69.23L72.43,34.45A15.95,15.95,0,0,0,48,47.88V208.12a16,16,0,0,0,24.43,13.43L192,146.77V216a8,8,0,0,0,16,0V40A8,8,0,0,0,200,32ZM64,207.93V48.05l127.84,80Z",
+  "caret-left": "M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z",
+  "caret-right": "M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z",
+  "arrows-clockwise": "M224,48V96a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h28.69L182.06,73.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,72.71,8,8,0,0,1,58.41,61.27a96,96,0,0,1,135,.79L208,76.69V48a8,8,0,0,1,16,0ZM186.41,183.29a80,80,0,0,1-112.47-.66L59.31,168H88a8,8,0,0,0,0-16H40a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V179.31l14.63,14.63A95.43,95.43,0,0,0,130,222.06h.53a95.36,95.36,0,0,0,67.07-27.33,8,8,0,0,0-11.18-11.44Z",
+  "faders": "M136,120v96a8,8,0,0,1-16,0V120a8,8,0,0,1,16,0Zm64,72a8,8,0,0,0-8,8v16a8,8,0,0,0,16,0V200A8,8,0,0,0,200,192Zm24-32H208V40a8,8,0,0,0-16,0V160H176a8,8,0,0,0,0,16h48a8,8,0,0,0,0-16ZM56,160a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V168A8,8,0,0,0,56,160Zm24-32H64V40a8,8,0,0,0-16,0v88H32a8,8,0,0,0,0,16H80a8,8,0,0,0,0-16Zm72-48H136V40a8,8,0,0,0-16,0V80H104a8,8,0,0,0,0,16h48a8,8,0,0,0,0-16Z",
+  "faders-horizontal": "M176,80a8,8,0,0,1,8-8h32a8,8,0,0,1,0,16H184A8,8,0,0,1,176,80ZM40,88H144v16a8,8,0,0,0,16,0V56a8,8,0,0,0-16,0V72H40a8,8,0,0,0,0,16Zm176,80H120a8,8,0,0,0,0,16h96a8,8,0,0,0,0-16ZM88,144a8,8,0,0,0-8,8v16H40a8,8,0,0,0,0,16H80v16a8,8,0,0,0,16,0V152A8,8,0,0,0,88,144Z",
+  "step-glyph": "M232,200a8,8,0,0,1-8,8H32a8,8,0,1,1,0-16H224A8,8,0,0,1,232,200ZM25.59,150.84a16,16,0,0,1,2-17.07L109.26,32.94a24.11,24.11,0,0,1,37.48,0l81.65,100.83A16.1,16.1,0,0,1,215.91,160H40.09A16,16,0,0,1,25.59,150.84ZM40,143.91s0,.09.08.11l175.83,0s.08-.09.08-.13L134.3,43a8.1,8.1,0,0,0-12.6,0L40,143.84A.28.28,0,0,0,40,143.91Z",
+  "plus": "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z",
+};
+function Ico({ n, s = 14 }) {
+  return <svg className="ico" viewBox="0 0 256 256" width={s} height={s}>
+    <path d={ICONS[n]} fill="currentColor" /></svg>;
+}
 
-<div class="inline-flex flex-col rounded-lg overflow-hidden" style="border:1px solid #171717; width:1220px">
-  <!-- window chrome: menu + viewport stub + transport, to show the integration point -->
-  <div class="flex items-center gap-3 px-3 py-1.5" style="background:var(--base)">
-    <span class="text-xs text-muted">main window</span>
-    <div class="flex gap-1 ml-4 text-muted text-xs">
-      <span class="px-2 py-0.5 rounded" style="background:var(--hairline)">Viewport</span>
-      <span class="px-2 py-0.5 rounded" style="background:var(--hairline)">Timeline</span>
-      <span class="px-2 py-0.5 rounded" style="background:var(--active);color:var(--text)">Audio</span>
-    </div>
-  </div>
-  <div class="h-24 relative" style="background:#171717">
-    <div class="absolute inset-x-0 bottom-0 h-8 flex items-center gap-2 px-3" style="background:var(--base);border-top:1px solid var(--hairline)">
-      <i class="ph ph-skip-back"></i><i class="ph ph-play"></i><i class="ph ph-skip-forward"></i>
-      <i class="ph ph-arrows-clockwise"></i>
-      <span class="text-xs text-muted ml-2">frame 24 / 360</span>
-      <span class="ml-auto flex items-center gap-2">
-        <span class="pill on" title="Toggle the docked audio panel (was: open detached window)"><i class="ph ph-speaker-high"></i> Audio</span>
-      </span>
-    </div>
-  </div>
+/* ================================================================
+   PRODUCT COMPONENTS — one definition each; every instance on the page
+   is JSX through these. Boundaries match the future QML modules.
+   ================================================================ */
 
-  <!-- ================= DOCKED AUDIO PANEL ================= -->
-  <div style="background:var(--base);border-top:1px solid var(--hairline)">
-    <div class="flex items-center gap-3 px-3 py-2">
-      <span class="font-semibold text-sm">Audio</span>
-      <span class="text-xs px-2 py-0.5 rounded" style="background:var(--active);color:var(--text)">Tracks</span>
-      <span class="text-xs px-2 py-0.5 rounded text-muted">Config</span>
-      <!-- counts are MUTUALLY EXCLUSIVE buckets (they sum to the track count)
-           and use the same vocabulary as the per-row state badges, so every
-           answer is visible in exactly one glanceable place per row. -->
-      <span class="ml-auto flex items-center gap-3 text-[10px] text-dim" title="summary only — the badge on each row is the answer. Buckets are mutually exclusive and sum to the number of tracks">
-        <span>In exported video: <b style="color:var(--text-muted)">1</b></span>
-        <span>Heard only: <b style="color:var(--text-muted)">1</b></span>
-        <span>Not set: <b style="color:var(--text-muted)">1</b></span>
-      </span>
-    </div>
+// QML port: AudioLane (TimeLineWidget lane) — a sound lane under the animation tracks.
+function Lane({ children, empty, compact, muted }) {
+  return <div className={"lane" + (compact ? " compact" : "") + (muted ? " muted" : "")}>
+    {empty
+      ? <div className="drop-hint"><Ico n="file-audio" />Drop a sound file here</div>
+      : children}
+  </div>;
+}
 
-    <!-- header row (elements ⑪ ⑫: the old start/end column labels, reborn as
-         placement headers) -->
-    <div class="grid items-center gap-x-3 px-3 pb-1 text-xs font-semibold" style="color:var(--text-muted);grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
-      <span class="el" data-el="11">Track file</span>
-      <span class="el" data-el="12">Placement on timeline — at frame / to frame (or “to end of range”)</span>
-      <span>Volume</span>
-      <span>Hear while working</span>
-      <span>In exported video</span>
-      <span>Meter</span>
-      <span></span>
-    </div>
-
-    <!-- ===== TRACK ROW 1 — configured, play+export (both on) ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
-      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)" title="battle_theme_loop.wav">
-        <i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-        <span class="badge" style="background:var(--hairline);color:var(--text)" title="one-glance state: heard while working AND in the exported video">Heard + exported</span></span>
-      <span class="flex flex-col gap-1">
-        <span class="flex items-center gap-2">
-          <span class="el flex items-center gap-1" data-el="5"><span class="text-xs text-muted">Start frame</span>
-            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24" title="Where the file begins on the timeline. Measured in frames (fr)."><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
-          <span class="el flex items-center gap-1" data-el="6"><span class="text-xs text-muted">End frame</span>
-            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224" title="Measured in frames (fr). End frame can’t come before the start frame — it is pulled back to the start."><span class="text-xs" style="color:var(--text-muted)">fr</span>
-            <label class="flex items-center gap-1 text-xs" style="color:var(--text-muted)" title="Runs to the end of the range. The end frame box is ignored."><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end of range</label></span>
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="el text-xs" data-el="10" style="color:var(--text-muted)">200 fr · 0:08.3</span>
-          <span class="relative flex-1 h-3" title="the file begins at frame 24 and runs to frame 224">
-            <span class="absolute inset-x-0 top-1 h-1.5 rounded" style="background:var(--recessed)"></span>
-            <span class="absolute top-1 h-1.5 rounded" style="left:6.7%;width:55.5%;background:var(--window-edge)"></span>
-          </span>
-        </span>
-      </span>
-      <span class="el flex items-center gap-2" data-el="8">
-        <i class="ph ph-speaker-high el" data-el="7"></i>
-        <span class="tool-slider"><span class="track"></span><span class="fill" style="width:80%"></span><span class="head" style="left:80%"></span></span>
-        <span class="text-xs w-9 text-right" data-el="9">80%</span>
-      </span>
-      <span class="el" data-el="3"><span class="pill on" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
-      <span class="el" data-el="4"><span class="pill on" title="Put this track in the exported video. Unticking never mutes playback — the two are independent."><i class="ph ph-export"></i> In exported video</span></span>
-      <span class="flex gap-0.5 items-end h-4" title="Live sound level of this track.">
-        <span class="w-1 rounded-sm" style="height:60%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:85%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:40%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:70%;background:#22c55e"></span>
-      </span>
-      <button class="el w-7 h-7 rounded grid place-items-center" data-el="1" title="Remove this track"><i class="ph ph-trash"></i></button>
-    </div>
-
-    <!-- ===== TRACK ROW 2 — reference track: preview on, export off ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
-      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left truncate" style="background:var(--raised);border:1px solid var(--hairline)" title="dialogue_director_notes.ogg">
-        <i class="ph ph-file-audio"></i><span class="truncate">dialogue_director_notes.ogg</span></button>
-        <span class="badge" style="background:var(--hairline);color:var(--text)" title="one-glance state: heard while working, NOT in the exported video">Heard only · reference</span></span>
-      <span class="flex flex-col gap-1">
-        <span class="flex items-center gap-2">
-          <span class="flex items-center gap-1"><span class="text-xs text-muted">Start frame</span>
-            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0" title="Where the file begins on the timeline. Measured in frames (fr)."><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
-          <span class="flex items-center gap-1"><span class="text-xs text-muted">End frame</span>
-            <input class="w-24 px-1.5 py-1 rounded text-xs" style="background:var(--recessed);border:1px solid var(--hairline);color:var(--text-disabled)" value="end of range" disabled title="The file runs to the end of the range, so this box is off.">
-            <label class="flex items-center gap-1 text-xs" style="color:var(--text)" title="Runs to the end of the range. The end frame box is ignored."><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> to end of range</label></span>
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="text-xs" style="color:var(--text-muted)">plays from frame 0 to the end · 0:15.0</span>
-          <span class="relative flex-1 h-3" title="the file begins at frame 0 and runs to the end of the range">
-            <span class="absolute inset-x-0 top-1 h-1.5 rounded" style="background:var(--recessed)"></span>
-            <span class="absolute top-1 h-1.5 rounded" style="left:0;right:0;background:var(--window-edge)"></span>
-          </span>
-        </span>
-      </span>
-      <span class="flex items-center gap-2">
-        <i class="ph ph-speaker-high"></i>
-        <span class="tool-slider"><span class="track"></span><span class="fill" style="width:45%"></span><span class="head" style="left:45%"></span></span>
-        <span class="text-xs w-9 text-right">45%</span>
-      </span>
-      <span><span class="pill on" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
-      <span><span class="pill" title="Reference only: e.g. a voice clip you match the animation to but don’t want in the export — heard while animating, never in the exported video"><i class="ph ph-export"></i> Not in exported video</span></span>
-      <span class="flex gap-0.5 items-end h-4" title="Live sound level of this track.">
-        <span class="w-1 rounded-sm" style="height:35%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:55%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:30%;background:#22c55e"></span>
-        <span class="w-1 rounded-sm" style="height:45%;background:#22c55e"></span>
-      </span>
-      <button class="w-7 h-7 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
-    </div>
-
-    <!-- ===== TRACK ROW 3 — unconfigured (state detail in section 2) ===== -->
-    <div class="grid items-center gap-x-3 px-3 py-2 seam" style="grid-template-columns:1.6fr 2.5fr 0.95fr 1.05fr 1.15fr 44px 36px">
-      <span class="el flex flex-col gap-1 items-start" data-el="2"><button class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left" style="background:var(--recessed);border:1px dashed var(--outline);color:var(--text-muted)">
-        <i class="ph ph-plus"></i><span>Select audio file…</span></button>
-        <span class="badge" style="background:var(--hairline);color:var(--text-disabled)" title="one-glance state: no file chosen yet — heard nowhere, exported nowhere">Not set</span></span>
-      <span class="flex flex-col gap-1 opacity-45">
-        <span class="flex items-center gap-2">
-          <span class="flex items-center gap-1"><span class="text-xs text-muted">Start frame</span>
-            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled><span class="text-xs" style="color:var(--text-muted)">fr</span></span>
-          <span class="flex items-center gap-1"><span class="text-xs text-muted">End frame</span>
-            <input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled><span class="text-xs" style="color:var(--text-muted)">fr</span>
-            <label class="flex items-center gap-1 text-xs" style="color:var(--text-disabled)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end of range</label></span>
-        </span>
-        <span class="text-xs" style="color:var(--text-disabled)">choose a file first</span>
-      </span>
-      <span class="flex items-center gap-2 opacity-45">
-        <i class="ph ph-speaker-high"></i>
-        <span class="tool-slider"><span class="track"></span><span class="fill" style="width:100%"></span><span class="head" style="left:100%"></span></span>
-        <span class="text-xs w-9 text-right">100%</span>
-      </span>
-      <span><span class="pill" title="Hear this track while working. Unticking “In exported video” never mutes this — the two are independent."><i class="ph ph-speaker-high"></i> Hear while working</span></span>
-      <span><span class="pill" title="Put this track in the exported video. Unticking never mutes playback — the two are independent."><i class="ph ph-export"></i> In exported video</span></span>
-      <span class="text-xs" style="color:var(--text-disabled)">—</span>
-      <button class="w-7 h-7 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
-    </div>
-
-    <!-- list footer: Add (Q9 — the add never lives on a track row) -->
-    <div class="px-3 py-2">
-      <button class="pill"><i class="ph ph-plus"></i> Add audio track</button>
-    </div>
-  </div>
-</div>
-
-<div class="section-h">2 — Track states and the four toggle combinations</div>
-
-<div class="flex gap-10 flex-wrap">
-  <!-- STATE: unconfigured -->
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">State: not set <small>No file chosen yet. It isn’t an error — the row simply counts toward nothing until you pick a file. Placement and volume stay dimmed. The row is kept when you save and reload your setup.</small></div>
-    <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <div class="flex items-center gap-3 px-3 py-2 seam">
-        <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs" style="background:var(--recessed);border:1px dashed var(--outline);color:var(--text-muted)"><i class="ph ph-plus"></i> Select audio file…</button>
-        <span class="flex gap-2 opacity-45"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled>
-        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text-disabled)" value="—" disabled>
-        <label class="flex items-center gap-1 text-xs" style="color:var(--text-disabled)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--raised);border:1px solid var(--outline)"></span> to end</label></span>
-        <span class="pill ml-2"><i class="ph ph-speaker-high"></i> Hear while working</span>
-        <span class="pill"><i class="ph ph-export"></i> In exported video</span>
-        <span class="badge ml-2" style="background:var(--hairline);color:var(--text-disabled)">Not set</span>
-        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove this track"><i class="ph ph-trash"></i></button>
+// QML port: Clip.qml (AeClip) — one sound clip: name strip + wave body.
+// Props: file, peaks (decoded file peaks id) | missing, inExport, muted,
+// hover, selected, ghost, gain, x, handles, style.
+// FACE IS CLEAN AT REST: filename + waveform ONLY — no buttons, no marks.
+// A MUTED clip shows a grayed body and the crossed-speaker UNMUTE control
+// top-right (it appears ONLY when muted; click unmutes). MUTE = OUT OF THE
+// MIX ENTIRELY (not heard AND not exported — one audio truth). selected =
+// accent outline ONLY. DATA TRUTH: peaks render only from a readable file.
+function Clip({ file, peaks, missing, muted,
+                hover, selected, ghost, gain, x, handles, style }) {
+  const hasPeaks = peaks && !missing;
+  const cls = ["clip",
+    hover && "hovering", selected && "selected", missing && "err",
+    muted && "muted", ghost && "ghost"].filter(Boolean).join(" ");
+  return (
+    <div className={cls} style={style}>
+      {!ghost && <div className="clip-head">
+        <div className="clip-name" title={file}>{file}</div>
+        <div className="face">
+          {muted && <span className="unmute" title="Unmute"><Ico n="speaker-slash" s={18} /></span>}
+          {x && <span className="fx" title="Remove clip"><Ico n="x" s={18} /></span>}
+        </div>
+      </div>}
+      <div className="clip-body">
+        {hasPeaks && <React.Fragment>
+          <div className="wavewrap">
+            <svg className="wave" viewBox="0 0 240 24" preserveAspectRatio="none">
+              <use href={"#" + peaks} />
+            </svg>
+          </div>
+          <div className="vline"></div>
+          {gain && <div className="gain">{gain}</div>}
+        </React.Fragment>}
       </div>
-      <div class="px-3 py-1.5 text-xs" style="color:var(--text-muted)">empty track — silent in preview and export until a file is selected</div>
+      {handles && <React.Fragment>
+        <div className="edge l"></div><div className="edge r"></div>
+      </React.Fragment>}
+      {missing && <div className="err-banner">Sound file missing</div>}
     </div>
-  </div>
+  );
+}
 
-  <!-- STATE: playing -->
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">State: playing <small>Playback is running and the cursor is inside this track’s span: the row reads active (neutral fill — the accent is left to the playhead), the level meter is live, and the bar shows the cursor moving through the span.</small></div>
-    <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <div class="flex items-center gap-3 px-3 py-2" style="background:var(--active)">
-        <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
-        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
-        <span class="relative flex-1 h-4" title="playhead crossing the placement span">
-          <span class="absolute inset-x-0 top-1.5 h-1.5 rounded" style="background:var(--recessed)"></span>
-          <span class="absolute top-1.5 h-1.5 rounded" style="left:6.7%;width:55.5%;background:var(--window-edge)"></span>
-          <span class="absolute top-0.5 h-3.5 w-0.5" style="left:38%;background:var(--window-edge)"></span>
-        </span>
-        <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
-        <span class="flex gap-0.5 items-end h-4"><span class="w-1 rounded-sm" style="height:65%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:90%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:50%;background:#22c55e"></span></span>
-        <button class="w-6 h-6 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
-      </div>
-      <div class="px-3 py-1.5 text-xs flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-play"></i> playing — the file’s sound sits where it belongs: cursor 48 plays the file’s own 24th frame</div>
+// QML port: ClipContextMenu.qml — clip right-click menu (app QMenu conventions).
+// First/Last frame rows are the always-available DISPLAY of the numbers;
+// "Edit frames…" opens the frame editor on demand (double-click does too).
+// "Mute" is the clip-level hearing control (the lane owns "Hear while
+// working"); heard = lane heard AND clip not muted.
+// ONE control: Mute (lane header owns lane-level Mute). Mute = out of the mix
+// entirely — not heard AND not exported.
+function ClipContextMenu({ muted, first, last }) {
+  return (
+    <div className="menu surface" id="surface-contextmenu">
+      <div className="mi"><span className={"mchk " + (muted ? "on" : "")}></span>Mute</div>
+      <div className="msep"></div>
+      <div className="mi">First frame<span className="val">{first} fr</span></div>
+      <div className="mi">Last frame<span className="val">{last} fr</span></div>
+      <div className="mi"><Ico n="pencil-simple" />Edit frames…</div>
+      <div className="msep"></div>
+      <div className="mi"><Ico n="folder-open" />Reveal file</div>
+      <div className="msep"></div>
+      <div className="mi danger"><Ico n="trash" />Remove clip</div>
     </div>
-  </div>
-</div>
+  );
+}
 
-<div class="flex gap-10 flex-wrap mt-8">
-  <!-- STATE: error (Q7 inline per-row) -->
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">State: error — marked right on the row <small>A missing or broken file is flagged ON ITS ROW the moment it’s known (on selection, on load, or when playback fails): the row hairline turns red and a banner names the file with Relocate / Remove actions. No popup, no silence.</small></div>
-    <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <div class="flex items-center gap-3 px-3 py-2" style="border-bottom:1px solid #ef4444">
-        <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid #ef4444;color:#fca5a5"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24">
-        <span class="text-xs text-muted">End frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="224"></span>
-        <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
-        <span class="badge" style="background:#7f1d1d;color:#fef2f2">Error</span>
-        <button class="w-6 h-6 rounded grid place-items-center ml-auto" title="Remove this track"><i class="ph ph-trash"></i></button>
+// QML port: LaneContextMenu.qml — lane (sound track) context menu: lane
+// hearing, list lifecycle ("Add sound lane" / "Rename lane…" / "Delete lane";
+// Rename included as the standard list action in the app's ellipsis-action
+// convention). Delete lane removes the lane's clips behind the app's
+// overwrite-confirm modal convention.
+function LaneContextMenu({ muted }) {
+  return (
+    <div className="menu surface" id="surface-lanemenu">
+      <div className="mi"><span className={"mchk " + (muted ? "on" : "")}></span>Mute</div>
+      <div className="msep"></div>
+      <div className="mi"><Ico n="plus" s={16} />Add sound lane</div>
+      <div className="mi"><Ico n="pencil-simple" s={16} />Rename lane…</div>
+      <div className="msep"></div>
+      <div className="mi danger"><Ico n="trash" s={16} />Delete lane</div>
+    </div>
+  );
+}
+
+// QML port: Inspector.qml — the frame editor popover (AeNumberField/
+// AeFrameRangeRow language). ON-DEMAND only: opened by "Edit frames…" or
+// double-click; closes on commit/Escape. Selection spawns nothing.
+function Inspector({ file, first, last, path, style }) {
+  return (
+    <div className="inspector keep" style={style}>
+      <div className="ititle">{file}</div>
+      <div className="irow">
+        <div className="ifield"><span className="ilabel">First frame</span>
+          <div className="numfield"><span>{first}</span><span className="unit">fr</span></div></div>
+        <div className="ifield"><span className="ilabel">Last frame</span>
+          <div className="numfield"><span>{last}</span><span className="unit">fr</span></div></div>
       </div>
-      <div class="flex items-center gap-2 px-3 py-2" style="background:#450a0a;color:#fca5a5">
-        <i class="ph ph-warning-circle"></i> File not found: <code style="color:#fecaca">battle_theme_loop.wav</code> — silent while working and left out of the exported video.
-        <span class="ml-auto flex gap-2">
-          <button class="pill" style="border-color:#ef4444;color:#fca5a5">Relocate…</button>
-          <button class="pill" style="border-color:#ef4444;color:#fca5a5">Remove row</button>
-        </span>
+      <div className="ipath">{path}</div>
+    </div>
+  );
+}
+
+// QML port: ReadoutStrip.qml — MIX meter + terse OVER latch (master only).
+// DATA TRUTH: cells light only from real signal; no data = no meter activity.
+function ReadoutStrip({ latched, level = 0, bare }) {
+  const zones = ["g", "g", "g", "g", "g", "a", "a", "r", "r", "r"];
+  const litN = level * 2;
+  const id = bare ? undefined : (latched ? "surface-over" : "surface-transport");
+  return (
+    <div className="readout surface" id={id}>
+      {latched
+        ? <span className="over-mark lit el" data-el="13"
+            title="the exported sound would distort here — click to clear the latch">OVER</span>
+        : <span className="meter" title="master level">
+            {zones.map((z, i) => <span key={i} className={i < litN ? z : ""}></span>)}
+          </span>}
+    </div>
+  );
+}
+
+// QML port: existing ExportDialog.qml surfaces (unchanged app QML) — AeCheckBox row + AeFactRow.
+function ExportSurfaces() {
+  return (
+    <div className="export-panel surface" id="surface-export">
+      <div className="ep-row">
+        <span className="ep-check"><Ico n="check" /></span>
+        <span className="sval" style={{ color: "var(--text)" }}>Export with audio</span>
+      </div>
+      <div className="ep-facts">
+        <span className="ep-key">Audio:</span>
+        <span>2 sounds — theme_loop.wav, impact_02.wav</span>
       </div>
     </div>
-    <div class="text-xs" style="color:var(--text-muted);max-width:640px">If the whole saved setup can’t be read, there is no row to mark — see the save/load section for how that’s reported.</div>
-  </div>
+  );
+}
 
-  <!-- STATE: export-only -->
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">State: in exported video only <small>Muted while working, shipped in the video — e.g. a music bed that would distract you while animating. A MEANINGFUL combination: it goes into the exported video but is NEVER hearable in the app. The badge makes its silence legible and the export counts it.</small></div>
-    <div class="rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <div class="flex items-center gap-3 px-3 py-2 seam">
-        <button class="w-52 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">foley_final_mix.flac</span></button>
-        <span class="flex gap-2"><span class="text-xs text-muted">Start frame</span><input class="w-14 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="0">
-        <span class="text-xs text-muted">End frame</span><input class="w-20 px-1.5 py-1 rounded text-xs" style="background:var(--recessed);border:1px solid var(--hairline);color:var(--text-disabled)" value="end of range" disabled>
-        <label class="flex items-center gap-1 text-xs" style="color:var(--text)"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> to end</label></span>
-        <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
-        <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-        <span class="badge" style="background:var(--hairline);color:var(--text)">In exported video only</span>
-        <button class="w-6 h-6 rounded grid place-items-center" title="Remove this track"><i class="ph ph-trash"></i></button>
+/* ---- composed scenes (page composition through the components above) ---- */
+
+// frame-step glyph: EXACT assets/icons/step-back.svg / step-forward.svg
+// geometry (one path, rotated ±90° — the app rotates the same path).
+function StepIco({ dir }) {
+  return <svg className="ico" viewBox="0 0 256 256" width={18} height={18}>
+    <path transform={dir < 0 ? "rotate(-90 128 128)" : "rotate(90 128 128)"}
+          d={ICONS["step-glyph"]} fill="currentColor" />
+  </svg>;
+}
+
+// dock-float mark: EXACT assets/icons/undock.svg geometry (stroked diamond)
+function DockFloat() {
+  return <svg className="ico" viewBox="0 0 100 100" width={11} height={11}>
+    <path d="M 12.919083,53.164037 49.369081,89.614035 85.819087,53.164037 49.369081,16.71404 Z"
+      fill="none" stroke="currentColor" strokeWidth="7.29" />
+  </svg>;
+}
+
+function TimelineScene() {
+  const nums = [[1, "0.5%"], [48, "25%"], [96, "50%"], [144, "75%"]];
+  /* real frame rhythm: minor tick every 24 frames, numbers at 48-frame majors */
+  const ticks = ["0%", "12.5%", "25%", "37.5%", "50%", "62.5%", "75%", "87.5%"];
+  return (
+    <div className="tl">
+      <div className="tl-bar">
+        <span className="tl-name">Animation</span>
+        <div className="tbtn" title="Return to initial frame"><Ico n="skip-back" s={18} /></div>
+        <div className="tbtn" title="One frame back"><StepIco dir={-1} /></div>
+        <div className="tbtn" title="Play"><Ico n="play" s={18} /></div>
+        <div className="tbtn" title="One frame forward"><StepIco dir={1} /></div>
+        <div className="tbtn" title="Advance to final frame"><Ico n="skip-forward" s={18} /></div>
+        <div className="tbtn loop" title="Loop animation"><Ico n="arrows-clockwise" s={16} /></div>
+        <div className="tbtn" title="Animation settings"><Ico n="faders-horizontal" s={18} /></div>
+        <div className="tsep"></div>
+        <div className="tbtn" title="Audio track"><Ico n="speaker-high" s={18} /></div>
+        <ReadoutStrip level={2} bare />
+        <div className="spare"></div>
+        <div className="dock-float" title="Float panel"><DockFloat /></div>
       </div>
-      <div class="px-3 py-1.5 text-xs" style="color:var(--text-muted)">in the exported file ✓ · muted while animating (preview mute) · never playable anywhere in the app</div>
+      <div className="tl-main">
+        <div className="tl-heads">
+          <div className="thead sample"><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">sample</span></div>
+          <div className="thead lane-h"><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 1</span>
+            <span className="lmute" title="Mute"><Ico n="speaker-high" s={15} /></span></div>
+          <div className="thead lane-h muted"><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 2</span>
+            <span className="lmute is-muted" title="Mute"><Ico n="speaker-slash" s={15} /></span></div>
+          <div className="thead lane-h" style={{ borderBottom: "none" }}><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 3</span>
+            <span className="lmute" title="Mute"><Ico n="speaker-high" s={15} /></span></div>
+          <div className="thead-add"><span className="plus" title="Add sound lane"><Ico n="plus" s={14} /></span></div>
+        </div>
+        <div className="tl-body">
+          <div className="ruler">
+            {ticks.map(t => <div className="tick" key={t} style={{ left: t }}></div>)}
+            {nums.map(([n, x]) => <span className="rulenum" key={n} style={{ left: x }}>{n}</span>)}
+            <span className="pill" style={{ left: "37.5%" }}>72</span>
+          </div>
+          <div className="track"></div>
+          <Lane>
+            <Clip file="theme_loop.wav" peaks="wf-loop1"
+                  style={{ left: "6%", width: "40%" }} />
+            <Clip file="riser.wav" peaks="wf-rise1"
+                  style={{ left: "50%", width: "23%" }} />
+          </Lane>
+          <Lane muted>
+            <Clip file="vo_guide_take3.wav" peaks="wf-voice1"
+                  style={{ left: "22%", width: "35%" }} />
+            <Clip file="stinger_alt.wav" peaks="wf-loop2" muted
+                  style={{ left: "61%", width: "24%" }} />
+          </Lane>
+          <Lane empty />
+          <div className="playhead" style={{ left: "37.5%" }}></div>
+        </div>
+      </div>
+
     </div>
-  </div>
-</div>
+  );
+}
 
-<div class="case-cap mt-8">State: end pulled back to start — the rule, visible <small>You typed 10 for End while Start is 24: at the moment of entry the field visibly pulls back to 24 and says so right in the row. Never a silent correction, never silent weirdness.</small></div>
-<div class="rounded px-3 py-2 mb-2 flex items-center gap-3 text-xs" style="background:var(--base);border:1px solid #171717;width:640px">
-  <span class="flex items-center gap-1"><span class="text-muted">Start frame</span><input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24"><span style="color:var(--text-muted)">fr</span></span>
-  <span class="flex items-center gap-1"><span class="text-muted">End frame</span><input class="w-12 px-1.5 py-1 rounded text-xs" style="background:var(--raised);border:1px solid var(--outline);color:var(--text)" value="24"><span style="color:var(--text-muted)">fr</span></span>
-  <span style="color:#f59e0b">← pulled back to 24</span>
-  <span style="color:var(--text-disabled)">you typed 10 · End can’t come before Start</span>
-</div>
-
-<!-- Q2 truth table: ALL FOUR combos as captioned rows -->
-<div class="case-cap mt-8">The four toggle combinations <small>The two toggles do two different JOBS: “Hear while working” is a preview mute — animate without being distracted by e.g. music; “In exported video” decides what ships — e.g. match the animation to a voice clip you don’t want in the export. Every combination is a first-class row with a badge derived from the two flags. A track marked “In exported video” always ships, even when it’s muted while working.</small></div>
-<div class="grid gap-6" style="grid-template-columns:repeat(2,minmax(0,640px))">
-
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">① Hear while working + In exported video — <em>heard + exported</em> <small>The everyday track: heard while working and shipped in the exported video.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Heard + exported</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
+function StatesBand() {
+  const frame = "relative rounded-lg bg-base border border-recessed w-[340px] overflow-visible";
+  return (
+    <div className="row surface flex gap-8 flex-wrap items-start" id="surface-states">
+      <div className="flex flex-col gap-2">
+        <div className="case-cap doc">Hover<small>Edge handles appear at both clip edges (resize cursor) and a small x appears in the face row (delete; Del key). The gain number shows on the gain line.</small></div>
+        <div className={frame + " surface"} id="surface-hover">
+          <Lane compact><Clip file="impact_02.wav" peaks="wf-rise2" hover
+                      gain="−3.0 dB" x handles style={{ left: "7%", width: "80%" }} /></Lane>
+        </div>
+        <div className="text-xs text-muted doc">Trim = drag an edge. Edges clamp: left can’t cross right.</div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="case-cap doc">Dragging<small>Body drag = move. The clip follows the pointer with a ghost left at its origin; a snap line marks the landing frame.</small></div>
+        <div className={frame + " surface"} id="surface-drag">
+          <Lane compact>
+            <Clip ghost style={{ left: "7%", width: "52%" }} />
+            <Clip file="impact_02.wav" peaks="wf-loop2"
+                  style={{ left: "35%", width: "52%", transform: "translate(6px,-4px)", boxShadow: "0 6px 14px #09090b" }} />
+            <div style={{ position: "absolute", left: "calc(35% + 6px)", top: 0, bottom: 0, width: 1, background: "var(--window-edge)" }}></div>
+          </Lane>
+        </div>
+        <div className="text-xs text-muted doc">Clips land on whole frames (the timeline’s unit) — the only snapping (confirmed default).</div>
+      </div>
+      <div className="flex flex-col gap-2" style={{ position: "relative", minHeight: 340 }}>
+        <div className="case-cap doc">Exact numbers, on demand<small>(a) Selection is an accent outline — it spawns nothing. (b) The frame editor opens only when asked: the menu’s “Edit frames…” item or a double-click; it closes on commit/Escape. The menu always displays First/Last frame.</small></div>
+        <div className={frame + " surface"} id="surface-selected">
+          <Lane compact><Clip file="theme_loop.wav" peaks="wf-loop1" selected
+                      style={{ left: "7%", width: "76%" }} /></Lane>
+        </div>
+        <div className={frame + " surface"} id="surface-inspector">
+          <Lane compact><Clip file="theme_loop.wav" peaks="wf-loop1" selected
+                      style={{ left: "7%", width: "76%" }} /></Lane>
+          <Inspector file="theme_loop.wav" first={18} last={122} path="/sounds/theme_loop.wav"
+                     style={{ left: 60, top: 88 }} />
+        </div>
+        <div className="text-xs text-muted doc">Numbers exist; they are not the primary surface — dragging remains the fast path.</div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="case-cap doc">Load error, inline<small>A missing or unreadable file marks only its clip: a red hairline and a short banner. No modal, no silent silence.</small></div>
+        <div className={frame + " surface"} id="surface-error">
+          <Lane compact><Clip file="stinger.wav" missing
+                      style={{ left: "7%", width: "70%" }} /></Lane>
+        </div>
+        <div className="text-xs text-muted doc">Saves (.aemus) round-trip every clip: a broken path reloads as this state, not as a lost sound.</div>
+      </div>
     </div>
-  </div>
+  );
+}
 
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">② Hear while working + Not in exported video — <em>heard only · reference</em> <small>“Match the animation to a voice clip… but don’t want the voice clip in the export”: heard while working, never in the exported video.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">dialogue_director_notes.ogg</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 0 fr · to end of range</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-      <span class="pill"><i class="ph ph-export"></i> Not in exported video</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">Heard only · reference</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
+function ClipFaceOptions() {
+  return (
+    <React.Fragment>
+      <div className="section-h doc">The clip face — clean at rest / muted</div>
+      <div className="flex gap-10 flex-wrap items-start">
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Clip face at rest<small>Filename + waveform ONLY — no buttons, no marks. Everything else lives in the clip’s right-click menu.</small></div>
+          <div className="relative rounded-lg bg-base border border-recessed w-[420px] surface" id="surface-clipface-a">
+            <Lane compact><Clip file="vo_guide_take3.wav" peaks="wf-voice1"
+                        style={{ left: "6%", width: "82%" }} /></Lane>
+          </div>
+          <div className="text-xs text-muted doc">Shown at rest — name and waveform. Nothing to click.</div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Muted clip<small>Grayed body + the crossed-speaker UNMUTE control top-right. The icon exists ONLY in this state (click unmutes); heard = lane heard AND clip not muted.</small></div>
+          <div className="relative rounded-lg bg-base border border-recessed w-[420px] surface" id="surface-clipface-b">
+            <Lane compact><Clip file="stinger_alt.wav" peaks="wf-loop2" muted
+                        style={{ left: "6%", width: "82%" }} /></Lane>
+          </div>
+          <div className="text-xs text-muted doc">Shown: a muted clip — grayed body, one control (the unmute speaker).</div>
+        </div>
+      </div>
+
+      <div className="section-h doc">Context menus</div>
+      <div className="flex gap-10 flex-wrap items-start">
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Clip menu — right-click a clip<small>“Mute” is the clip-level hearing control (the lane owns “Hear while working”); the numbers display, “Edit frames…”, reveal and remove follow.</small></div>
+          <ClipContextMenu muted={false} first={18} last={122} />
+          <div className="text-xs text-muted doc">Shown open on an unmuted clip.</div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Lane menu — right-click a lane header<small>Lane hearing and list lifecycle. “Delete lane” removes the lane’s clips behind the app’s overwrite-confirm modal convention.</small></div>
+          <div className="surface flex gap-6 items-start" id="surface-lanemenu">
+            <div className="relative rounded-lg bg-base border border-recessed w-[220px]">
+              <div className="thead lane-h muted"><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 2</span>
+                <span className="lmute is-muted" title="Mute"><Ico n="speaker-slash" s={15} /></span></div>
+              <Lane compact muted><Clip file="vo_guide_take3.wav" peaks="wf-voice2"
+                          style={{ left: "5%", width: "88%" }} /></Lane>
+            </div>
+            <LaneContextMenu muted={false} />
+          </div>
+          <div className="text-xs text-muted doc">Shown open on a muted lane (reduced-opacity scope).</div>
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
+// COMPACT LANE HEIGHTS — two proposals for the gate (measured app rhythm:
+// menu rows 24px/12px text (standard.ssa, AppStyle.cpp), AeCheckBox 24px row
+// + 12px label, AeFrameRangeRow 28px, AeIconButton 26px).
+function HeightsOptions() {
+  const Panel = ({ cls, title, small }) => (
+    <div className="flex flex-col gap-2">
+      <div className="case-cap doc">{title}<small>{small}</small></div>
+      <div className={"relative rounded-lg bg-base border border-recessed w-[420px]"}>
+        <div className={"thead " + cls}><span className="exp"><Ico n="caret-right" s={12} /></span><span className="tname">Audio 1</span>
+          <span className="lmute" title="Mute"><Ico n="speaker-high" s={15} /></span></div>
+        <div className={"lane " + cls} style={{ borderBottom: "none" }}>
+          <div className="miniclip" style={{ left: "6%", width: "64%" }}>
+            <span className="mc-name">theme_loop.wav</span>
+            <svg className="mc-wave" viewBox="0 0 240 24" preserveAspectRatio="none"><use href="#wf-loop1" /></svg>
+            
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  );
+  return (
+    <React.Fragment>
+      <div className="section-h doc">Compact lane heights — two proposals (gate choice)</div>
+      <div className="surface flex gap-10 flex-wrap items-start" id="surface-heights">
+        <Panel cls="h-a" title="Option 1 — the app’s row rhythm: 28px"
+               small="Exactly the app’s measured rows (AeFrameRangeRow 28px; menu/AeCheckBox 24px) with 12px track text. Name + marks inline; waveform is a slim strip." />
+        <Panel cls="h-b" title="Option 2 — 44px for waveform legibility"
+               small="Same 12px text; taller body keeps the waveform envelope readable — still 40px shorter per lane than the current 84px." />
+      </div>
+    </React.Fragment>
+  );
+}
 
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">③ Muted + In exported video — <em>in exported video only</em> <small>“A preview mute so the animator can animate without being distracted by e.g. music” — silent while working and NEVER hearable in the app, but it always goes into the exported video.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">foley_final_mix.flac</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 0 fr · to end of range</span>
-      <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
-      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text)">In exported video only</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
-    </div>
-  </div>
+function SpecRegion() {
+  return (
+    <React.Fragment>
+      <div className="mt-16 mb-3 px-3 py-2 rounded text-xs font-semibold tracking-widest uppercase doc" style={{ background: "var(--raised)" }}>Spec notes — codes and jargon live only below this divider</div>
+      <div className="text-xs leading-relaxed flex flex-col gap-3 doc text-muted" style={{ maxWidth: 900 }}>
+        <span><b>Interaction model (binding, APPENDIX 4 + decided refinements):</b> sounds are clips in audio lanes under the animation tracks. Placement = clip position; trim = clip edges with clamp (edges can’t cross — F36 semantics preserved). LEFT-EDGE TRIM = IN-POINT (decided: it trims into the file’s head, video-editor convention); a clip is timeline placement + in/out points. <b>Waveform time mapping:</b> the wave’s x-axis IS the clip’s span (in-point→out-point), drawn flush edge-to-edge; trimming an edge reveals/hides the file’s slice accordingly, and silence is drawn only where the file is actually silent. <b>PRODUCT RULE — peaks from file or nothing:</b> a waveform exists only where a readable file exists (missing/unreadable = flat empty body + error banner, no gain line, no gain state, no meter activity — never a decorative wave or a fake idle bar); demos use illustrative peaks and meter levels because demo files are fictional. Snapping is whole frames only (confirmed). Volume is a rubber-band gain line (body = move · line = volume · edges = trim). Zero-config default: a dropped clip has playback and export enabled — it plays where dropped and exports.</span>
+        <span><b>Lane lifecycle &amp; mute (decided):</b> MUTE is the one control at both levels — the lane header’s speaker toggle and the clip menu’s “Mute” item (plain app words at both levels). The clip face is CLEAN at rest (filename + waveform only — no buttons, no marks); a muted clip grays its body and shows the crossed-speaker UNMUTE control top-right, which exists ONLY in that state (click unmutes). Lane create: “+” at the foot of the lane-name column (list-footer pattern) AND dropping a sound file below the last lane. Lane delete: lane menu “Delete lane” (red) removes the lane’s clips behind the app’s overwrite-confirm modal convention. Lane menu order: [☐ Mute] —sep— [Add sound lane] [Rename lane…] —sep— [Delete lane]. <b>Rename lane… — JUDGMENT: included</b>, grouped with “Add sound lane”: it is the standard list action and matches the app’s ellipsis-action convention (“Select audio file…”, “Edit frames…”). <b>Lane-muted feedback — CHOSEN: uniform darker band wash (empty space included) + muted glyph on the header toggle; NOT per-clip dimming.</b> Justification: clip-mute marks the CLIP (grayed body + crossed icon), lane-mute marks the BAND (uniform wash over the whole scope) — different scopes and signatures, so they cannot be confused; clips keep their own appearance inside a muted lane, so the owner of the silence is one glance away in the header.</span>
+        <span><b>Selection spawns nothing (decided):</b> selecting a clip is an accent outline and nothing else — no popover, no panel, no overlay. The context menu always displays “First frame” / “Last frame”; editing exact frames is ON-DEMAND only (the menu’s “Edit frames…” item or a double-click opens the anchored frame editor; it closes on commit/Escape). The numbers remain non-primary — dragging is still the fast path.</span>
+        <span><b>ONE control — Mute (supersedes the four-combo model):</b> mute lives at two levels — the lane header toggle and the clip’s “Mute” menu item — in the app’s plain words. MUTE = OUT OF THE MIX ENTIRELY: not heard AND not exported (one audio truth: what you hear is what exports). The reference/export distinction (‘ref’ marks, the “In exported file” item, the 4-combo truth table, export-only/reference states) is DROPPED “for now” by user decision — it made the design too messy. <b>Consequence, stated honestly:</b> the hear-but-not-export case (voice guide for timing) is UNSUPPORTED at present; it can return later behind one added flag without touching this model.</span>
+        <span><b>Mapping to the inventory’s R-fixes:</b> R1 → independent toggles; export no longer filters on playbackEnable · R2 → .aemus round-trips ALL clips; load errors mark the affected clip inline · R4/R5 → the settings grid is gone · R7 → a clip exists or it doesn’t · R9 → delete removes the clip you grabbed (x / Del) · R11 → trim edges clamp at the gesture · R12 → unchanged, audio follows video · R15 → clip placement + in/out points ARE the reading · R10 → internal only; the UI says “Export”.</span>
+        <span><b>Q8 engine additions (Phase 3):</b> (1) <b>real-time mix bus — ONE AUDIO TRUTH</b> (user decision; closes O2): preview plays the real mixed sum; one mixer path feeds ears and export, so the MIX/OVER readout measures the true export sum BY CONSTRUCTION — the preview≠export divergence (old R15/Q1 class) dies permanently. (2) waveform envelopes per clip (file peaks as trim feedback). (3) master MIX level tap + OVER latch (per-clip meters deliberately absent — meter on the master).</span>
+        <span><b>What died (not coming back):</b> the per-track settings grid · frame fields as a primary surface (numbers live in the menu display + the on-demand editor) · selection-spawned popovers (selection spawns nothing) · the 0-sentinel and “to end” word games · state badges · header counts · per-row span bars · long in-row text · add/remove-next row buttons · the detached “Audio Player” window · per-clip LED ladders · text checkboxes and icon-only-without-words on the clip face · the corner-dot notation (decode failure; Option B keeps only the “ref” mark) · explanation pasted into the OVER control (tooltip only) · the preview≠export divergence · the invented timeline chrome — dense 0–192 ruler numbering, keyframe diamonds, horizontal transport pills (the chrome is now the real Animation panel: titled panel, “>” heads, sparse 1/48/96 ruler with fine ticks, violet frame pill, fading playhead, vertical transport strip) · the Option A icon-pair face · any clip-face buttons or marks at rest (the face is name + waveform; the only clip-face control is the muted clip’s unmute speaker) · the reference/export distinction: ‘ref’ marks, the “In exported file” menu item, the 4-combo truth table, export-only/reference states (dropped “for now” by user decision; the hear-but-not-export voice-guide case is unsupported at present) · the “MIX” word in the UI (spec may say master meter) · the band-wash/gray-body mute visuals (opacity is the one language) · the invented MIX/frame-count footer and the vertical transport column — the transport now lives in the timeline HEADER BAR ([panel name] [transport] [MIX + OVER] [spare] [float]), with the app’s own tooltips and icon geometry (assets/icons/).</span>
+        <span><b>Open items:</b> O1–O5 closed (whole frames only · one audio truth · parked dims · in-point: .aemus must generalize to clips-per-lane with InFrame/OutFrame/Volume per clip — sketch, not implemented · rubber-band volume). O6 — OPEN: R12 gapped selections still cut clip audio to the selected frames back-to-back (binding: audio follows video); clips spanning an unselected gap lose that stretch silently — same as video, flagged.</span>
+        <span><b>Compact lane heights (gate choice):</b> measured app values — menu rows 24px with 12px text and 9px separators (standard.ssa / AppStyle.cpp), AeCheckBox 24px row + 16px box + 12px label, AeFrameRangeRow 28px, AeIconButton 26px. Proposal 1 = 28px rows (the app’s row rhythm exactly, 12px track text); Proposal 2 = 44px rows (same text, legible waveform strip). Both are far below the current 84px. The comparison capture is <code>capture_heights.png</code>.</span>
+        <span><b>Palette discipline:</b> every hex is a verbatim TailwindPalette.h cell; tokens follow Colors.h (dark). Accent appears only on the playhead, the selected clip edge and the menu’s checked indicator (AeCheckBox look); audio chrome stays neutral (icon-on = kActive). LED meter cells use the meter status rows (green/amber/red). kWindowBand appears only as the ruler’s playback-window band.</span>
+      </div>
+    </React.Fragment>
+  );
+}
 
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">④ Muted + Not in exported video — <em>parked</em> <small>In neither path: kept with all its settings, absent from your ears and from the exported video. It survives saving and reloading your setup.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">alt_theme_unused.mp3</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 120 fr · End frame 300 fr</span>
-      <span class="pill"><i class="ph ph-speaker-high"></i> Muted</span>
-      <span class="pill"><i class="ph ph-export"></i> Not in exported video</span>
-      <span class="badge ml-auto" style="background:var(--hairline);color:var(--text-disabled)">Parked</span>
-      <button class="w-6 h-6 rounded grid place-items-center"><i class="ph ph-trash"></i></button>
-    </div>
-  </div>
-</div>
+function Page() {
+  useEffect(() => {
+    document.getElementById("annToggle").addEventListener("change", e =>
+      document.body.classList.toggle("show-el", e.target.checked));
+    document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => {
+      document.body.dataset.accent = s.dataset.a;
+      document.querySelectorAll(".swatch").forEach(x => x.style.outline = "");
+      s.style.outline = "2px solid #a3a3a3"; s.style.outlineOffset = "2px";
+    }));
+    /* CLEAN MODE: #clean = product surfaces only; #only=<surface-id> isolates
+       one surface for tight captures (ancestors + descendants stay visible). */
+    const h = location.hash || "";
+    const only = (h.match(/^#only=([\w-]+)/) || [])[1];
+    if (h.includes("clean") || only) {
+      document.body.classList.add("clean");
+      if (only) {
+        const target = document.getElementById(only);
+        document.querySelectorAll(".surface").forEach(s => {
+          if (s === target) s.style.display = "";
+          else if (!s.contains(target) && !target.contains(s)) s.style.display = "none";
+        });
+        let n = target;
+        while (n && n !== document.body) {
+          Array.from(n.parentElement.children).forEach(c => {
+            if (c !== n && !c.contains(target) && !c.classList.contains("keep"))
+              c.style.display = "none";
+          });
+          n.style.margin = "0";
+          n = n.parentElement;
+        }
+        /* the frame editor lives only inside the states band; the walk above
+           already excludes it from unrelated captures */
+        document.body.style.padding = "0";
+      }
+    }
+  }, []);
+  const accents = ["red", "orange", "yellow", "green", "teal", "cyan", "violet", "fuchsia"];
+  const hex = { red: "#b91c1c", orange: "#c2410c", yellow: "#a16207", green: "#15803d",
+                teal: "#0f766e", cyan: "#0e7490", violet: "#6d28d9", fuchsia: "#a21caf" };
+  return (
+    <React.Fragment>
+      <div className="flex items-baseline gap-6 flex-wrap doc">
+        <h1 className="text-base font-semibold">Audio UI redesign — sounds live on the timeline</h1>
+        <span className="text-xs text-dim">Palette: TailwindPalette.h verbatim · tokens: Colors.h (dark) · accent reserved for playhead/selection — audio chrome stays neutral.</span>
+        <label className="cursor-pointer text-xs text-muted" title="page chrome only — reveals numbered callouts; product screenshots are taken with this OFF">
+          <input type="checkbox" id="annToggle" /> Show annotations</label>
+        <div className="flex gap-1.5 items-center ml-auto">
+          <span className="text-xs mr-1 text-muted">Accent</span>
+          {accents.map(a => <div key={a} className="swatch w-4 h-4 rounded cursor-pointer"
+            data-a={a} style={{ background: hex[a], outline: a === "violet" ? "2px solid #a3a3a3" : undefined, outlineOffset: "2px" }}></div>)}
+        </div>
+      </div>
 
-<!-- add/remove flows (Q9) -->
-<div class="case-cap mt-8">Add / remove flows <small>Remove deletes the row whose trash button you click, whatever the track count. Add is a dedicated footer button (element ① leaves the row). Rows change in place — nothing flickers or loses your scroll position.</small></div>
-<div class="flex gap-6 items-start flex-wrap">
-  <div class="rounded px-3 py-2 text-xs flex flex-col gap-1" style="background:var(--base);border:1px solid #171717;width:300px">
-    <span class="text-muted">before</span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-trash ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised);outline:1px solid var(--window-edge)">dialogue_notes.ogg <i class="ph ph-trash ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-trash ml-auto"></i></span>
-  </div>
-  <div class="text-muted text-xs pt-8">× on row 2 clicked →</div>
-  <div class="rounded px-3 py-2 text-xs flex flex-col gap-1" style="background:var(--base);border:1px solid #171717;width:300px">
-    <span class="text-muted">after — row 2 itself is removed</span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">battle_theme_loop.wav <i class="ph ph-trash ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="background:var(--raised)">foley_final_mix.flac <i class="ph ph-trash ml-auto"></i></span>
-    <span class="flex items-center gap-2 px-2 py-1 rounded" style="border:1px dashed var(--outline);color:var(--text-muted)"><i class="ph ph-plus"></i> Add audio track</span>
-  </div>
-</div>
+      <div className="mt-6 surface" id="surface-timeline">
+        <TimelineScene />
+        <div className="text-xs mt-2 doc text-muted">Zero-config default: the drop is the only required action — a dropped sound plays where it was dropped and exports. <b>Mute is the one control</b> (lane header toggle or the clip’s “Mute” menu item) and it takes a sound <b>out of the mix entirely — not heard, not exported</b> (one audio truth: what you hear is what exports). <b>stinger_alt.wav</b> is muted — reduced opacity + the crossed-speaker unmute control. The reference/export distinction is dropped “for now” by user decision: the hear-but-not-export voice-guide case is unsupported at present (see spec).</div>
+      </div>
 
-<div class="section-h">3 — What the export will do to the levels</div>
-<div class="case-cap">Default design — read-only level strip <small>No play button anywhere. The strip shows what the export will do to the levels while you work: a combined level meter for everything marked “In exported video”, live during playback, and a latching CLIP warning when that sum would pass the loudest possible level — exactly where the exported sound would distort.</small></div>
-<div class="rounded" style="background:var(--base);border:1px solid #171717;width:1220px">
-  <!-- master strip: nominal -->
-  <div class="flex items-center gap-4 px-3 py-2.5 seam">
-    <span class="text-sm font-semibold">What the export will do to the levels</span>
-    <span class="text-xs" style="color:var(--text-muted)">Level of everything going into the exported video · updates while you work</span>
-    <span class="ml-auto flex items-center gap-2">
-      <span class="text-xs" style="color:var(--text-muted)">MIX</span>
-      <span class="flex gap-0.5 items-end h-5 w-28 relative" title="passive sum meter (sanctioned engine addition: per-track levels or a sum hook from AudioMixer)">
-        <span class="absolute inset-x-0 bottom-0 top-0 rounded" style="background:var(--recessed)"></span>
-        <span class="relative w-1 rounded-sm ml-1" style="height:55%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:75%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:35%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:65%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:20%;background:#22c55e"></span>
-        <span class="absolute right-0 bottom-0 top-0 w-px" style="background:var(--window-edge)"></span>
-      </span>
-      <span class="badge" style="background:var(--hairline);color:var(--text-muted)">CLIP clear</span>
-    </span>
-  </div>
-  <!-- master strip: clip latched -->
-  <div class="flex items-center gap-4 px-3 py-2.5 seam">
-    <span class="text-sm font-semibold">What the export will do to the levels</span>
-    <span class="text-xs" style="color:#f59e0b">everything together would pass the loudest possible level here — the exported sound would distort at these frames</span>
-    <span class="ml-auto flex items-center gap-2">
-      <span class="text-xs" style="color:var(--text-muted)">MIX</span>
-      <span class="flex gap-0.5 items-end h-5 w-28 relative">
-        <span class="absolute inset-x-0 bottom-0 top-0 rounded" style="background:var(--recessed)"></span>
-        <span class="relative w-1 rounded-sm ml-1" style="height:80%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:95%;background:#f59e0b"></span>
-        <span class="relative w-1 rounded-sm" style="height:100%;background:#f97316"></span>
-        <span class="relative w-1 rounded-sm" style="height:70%;background:#22c55e"></span>
-        <span class="relative w-1 rounded-sm" style="height:40%;background:#22c55e"></span>
-      </span>
-      <span class="badge" style="background:#7c2d12;color:#ffedd5" title="latches on first clip; click to clear the latch">CLIP 2× — click to clear</span>
-    </span>
-  </div>
-  <div class="px-3 py-2.5 text-xs" style="color:var(--text-muted)">Only tracks marked “In exported video” count here (2 of them). Reference, parked, not-set, and error rows contribute nothing.</div>
-</div>
+      <div className="section-h doc">Interaction states — tight crops of the same clip</div>
+      <StatesBand />
 
-<div class="case-cap mt-8">Transport integration point <small>The transport’s speaker button toggles the DOCKED panel (checked state = visible). The combined level meter rides along with ordinary playback — there is no special playback mode. The timeline’s own playback-window band keeps its reserved color; the audio panel never wears it.</small></div>
-<div class="rounded flex items-center gap-3 px-3 py-2" style="background:var(--base);border:1px solid #171717;width:1220px">
-  <i class="ph ph-skip-back"></i><i class="ph ph-play"></i><i class="ph ph-skip-forward"></i><i class="ph ph-arrows-clockwise"></i>
-  <span class="text-xs text-muted ml-2">frame 24 / 360</span>
-  <span class="ml-auto flex items-center gap-2">
-    <span class="pill on"><i class="ph ph-speaker-high"></i> Audio panel</span>
-  </span>
-</div>
+      <ClipFaceOptions />
 
-<div class="case-cap mt-8">Export dialog surfaces (catalog §E) <small>Checkbox and facts row keep their place in the export dialog, reworded around the mix: the facts row reports WHAT will be in the mix (counts + exclusions), with AeFactRow severity colors (danger/warning/text).</small></div>
-<div class="rounded p-3 flex flex-col gap-2 text-xs" style="background:var(--floater-body);border:1px solid var(--floater-edge);width:560px">
-  <span class="flex items-center gap-2"><span class="w-3.5 h-3.5 rounded-sm grid place-items-center" style="background:var(--active)"><i class="ph ph-check text-[9px]"></i></span> Export with audio</span>
-  <span class="grid" style="grid-template-columns:104px 1fr"><span style="color:var(--text-muted)">Audio:</span><span>2 of 4 tracks in the mix <span style="color:var(--text-muted)">· 1 reference-only (preview) · 1 error, excluded</span></span></span>
-  <span class="grid" style="grid-template-columns:104px 1fr"><span style="color:var(--text-muted)"></span><span style="color:#f59e0b">webm keeps sound in the file · 1 track would distort in the exported sound</span></span>
-</div>
+      <div className="section-h doc">The mix that ships — passive transport readout</div>
+      <div className="case-cap doc">Master meter — one smart slot<small>A master meter (NLE convention — never on clips). Normal playback: the meter cells only. When the sum would clip: the slot REPLACES the cells with the terse red OVER mark, latched until click-to-clear — then the meter returns. Chrome appears only when it has something to say. One audio truth: the readout measures the real export sum.</small></div>
+      <div className="surface flex gap-8 flex-wrap items-start mt-2" id="surface-readouts">
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Resting</div>
+          <ReadoutStrip level={2} />
+          <div className="text-xs text-muted doc">At rest the slot shows the meter only — no OVER chrome when there is nothing to say.</div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <div className="case-cap doc">Latched</div>
+          <ReadoutStrip latched level={5} />
+          <div className="text-xs text-muted doc">OVER replaces the meter cells and latches; click clears it and the meter returns.</div>
+        </div>
+      </div>
 
-<div class="section-h">4 — Saving and loading your audio setup</div>
-<div class="case-cap">Default design <small>Save keeps EVERY row — no file yet, parked, broken, or muted — nothing is quietly dropped. Load brings back every track and marks anything that needs attention right on its row, with one summary line instead of a success popup.</small></div>
-<div class="rounded" style="background:var(--base);border:1px solid #171717;width:760px">
-  <div class="flex items-center gap-3 px-3 py-2 seam">
-    <span class="font-semibold text-sm">Audio</span>
-    <span class="text-xs px-2 py-0.5 rounded text-muted">Tracks</span>
-    <span class="text-xs px-2 py-0.5 rounded" style="background:var(--active);color:var(--text)">Config</span>
-  </div>
-  <div class="flex items-center gap-2 px-3 py-3 seam">
-    <button class="pill"><i class="ph ph-floppy"></i> Save audio configuration…</button>
-    <button class="pill"><i class="ph ph-upload-simple"></i> Load audio configuration…</button>
-    <span class="text-xs ml-2" style="color:var(--text-muted)">your audio setup is saved with the project, automatically</span>
-  </div>
-  <div class="px-3 py-2 text-xs flex items-center gap-2 seam" style="color:var(--text-muted)">
-    <i class="ph ph-check-circle" style="color:#22c55e"></i> Loaded all 5 saved tracks — 2 need attention, marked on their rows. Nothing was dropped.
-  </div>
-  <div class="px-3 py-2 text-xs flex flex-col gap-1">
-    <span class="flex items-center gap-2"><i class="ph ph-warning-circle" style="color:#f59e0b"></i> Row 3 had no file yet — restored empty, ready to set up.</span>
-    <span class="flex items-center gap-2"><i class="ph ph-x-circle" style="color:#ef4444"></i> Row 5 “drums_take2.wav” is missing on disk — restored and marked in error.</span>
-    <span class="flex items-center gap-2" style="color:var(--text-muted)"><i class="ph ph-dots-three-outline"></i> Older saves without the export setting load with “In exported video” on — and the summary says so.</span>
-  </div>
-</div>
+      <div className="section-h doc">Export dialog surfaces (unchanged)</div>
+      <div className="case-cap doc">What ships is still confirmed at export<small>The existing “Export with audio” checkbox and the “Audio:” facts row stay exactly as they are — the clip toggles and context menu decide per sound, this dialog decides the whole file.</small></div>
+      <div className="mt-2 surface" id="surface-export-wrap"><ExportSurfaces /></div>
 
-<div class="mt-12 mb-3 px-3 py-2 rounded text-xs font-semibold tracking-widest uppercase" style="background:var(--raised);color:var(--text)">Spec &amp; design notes — not part of the UI (codes and jargon live here)</div>
+      <HeightsOptions />
+      <SpecRegion />
+    </React.Fragment>
+  );
+}
 
-<div class="section-h">5 — Meter styling (open look: M1/M2) · failure dialogs (decided pair)</div>
-
-<div class="flex gap-10 flex-wrap">
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">Meter styling — Option M1: row-end LED segments <small>Compact vertical segments at the row end (green/amber/orange = warn/clip ramp from the TailwindPalette status rows). Master MIX meter uses the same language on the strip. Peak reads as the tallest lit segment.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-      <span class="flex gap-0.5 items-end h-5 ml-auto"><span class="w-1 rounded-sm" style="height:60%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:85%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:45%;background:#22c55e"></span><span class="w-1 rounded-sm" style="height:100%;background:#f59e0b"></span><span class="w-1 rounded-sm" style="height:25%;background:#22c55e"></span></span>
-    </div>
-  </div>
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">Meter styling — Option M2: continuous bar under the slider <small>A thin continuous bar (with a peak-hold tick) sits under the ToolSlider in the volume cell; quieter, reads as “level” next to “gain”. Same color ramp; the master MIX strip keeps the bar form.</small></div>
-    <div class="flex items-center gap-3 px-3 py-2 rounded" style="background:var(--base);border:1px solid #171717;width:640px">
-      <button class="w-44 flex items-center gap-2 px-2 py-1.5 rounded text-xs truncate" style="background:var(--raised);border:1px solid var(--hairline)"><i class="ph ph-file-audio"></i><span class="truncate">battle_theme_loop.wav</span></button>
-      <span class="flex gap-2 text-xs text-muted">Start frame 24 fr · End frame 224 fr</span>
-      <span class="flex flex-col gap-1 w-32">
-        <span class="tool-slider"><span class="track"></span><span class="fill" style="width:80%"></span><span class="head" style="left:80%"></span></span>
-        <span class="relative h-1 rounded" style="background:var(--recessed)"><span class="absolute left-0 top-0 h-1 rounded" style="width:72%;background:#22c55e"></span><span class="absolute top-0 h-1 w-px" style="left:88%;background:#f59e0b"></span></span>
-      </span>
-      <span class="pill on"><i class="ph ph-speaker-high"></i> Hear while working</span>
-      <span class="pill on"><i class="ph ph-export"></i> In exported video</span>
-    </div>
-  </div>
-</div>
-
-<div class="case-cap mt-8">Remove affordance — Option R1 (default in the rows above): always-visible trash button <small>A trash icon with tooltip “Remove this track”. Unmistakably destructive — the bare × read as “close”. The row it sits on is the row that goes (R2 user review: the ×-delete trap).</small></div>
-<div class="case-cap">Remove affordance — Option R2: trash on row hover <small>Same icon and tooltip, revealed only on row hover so rows read quieter at rest. Risk: the affordance is undiscoverable until hover. OPEN — choose one.</small></div>
-<div class="case-cap">Label vocabulary — DECIDED: “Hear while working” / “In exported video” <small>Adopted from the fresh-eyes review: no decoding needed, and the words match the state badges. The shorter set (“Audible” / “In export”) was considered and rejected: it reads like jargon. “Start frame” / “End frame” with an explicit “fr” unit replace the cryptic “at”/“to”; tooltips answer the remaining questions (“end can’t come before start”, “in frames”, and unticking “In exported video” never mutes playback).</small></div>
-
-<div class="flex gap-10 flex-wrap mt-8">
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">File-level load failure loudness — DECIDED: F1, inline banner in the Config tab (shown above) <small>Q7 settles per-row errors inline; a file-scope failure (unparseable <code>.aemus</code>) has no row, so it keeps the inline grammar: a danger banner under the Config buttons, current config untouched. F2’s “keep the modal for load failures” reading is RETIRED.</small></div>
-    <div class="rounded px-3 py-2 text-xs flex items-center gap-2" style="background:#450a0a;border:1px solid #ef4444;color:#fca5a5;width:640px">
-      <i class="ph ph-x-circle"></i> Could not read <code style="color:#fecaca">scene7.aemus</code> — current tracks kept as-is.<span class="ml-auto"><button class="pill" style="border-color:#ef4444;color:#fca5a5">Details…</button></span>
-    </div>
-  </div>
-  <div class="flex flex-col gap-2">
-    <div class="case-cap">C2 overwrite confirmation — DECIDED: keep the small modal (the one remaining dialog) <small>Loading a config replaces the current track list — a destructive choice, not an error — so it keeps a small confirmation modal. Everything else is inline (CONFLICT 4 closed).</small></div>
-    <div class="rounded px-4 py-3 text-xs flex flex-col gap-2" style="background:var(--floater-body);border:1px solid var(--floater-edge);width:640px">
-      <span class="flex items-center gap-2 font-semibold"><i class="ph ph-warning-circle" style="color:#f59e0b"></i> Load audio configuration</span>
-      <span style="color:var(--text-muted)">Loading scene7.aemus replaces your current 3 audio tracks. Continue?</span>
-      <span class="ml-auto flex gap-2"><button class="pill">Cancel</button><button class="pill">Replace tracks</button></span>
-    </div>
-  </div>
-</div>
-
-<div class="section-h">6 — Design notes: where each binding answer and R-fix lives</div>
-<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid #171717;max-width:1220px">
-  <span><b>Q1 — export-mix level visibility (REVISED: audition dropped):</b> §3 master strip — PASSIVE only, no play button: a MIX level meter (the SUM of In-export tracks’ contribution, live during preview playback) and a latching CLIP warning for the ±1.0 hard clamp (G1), captioned “What the export will do to the levels”. Export-only tracks are never hearable anywhere in the app (DECISION 2).</span>
-  <span><b>Q2 — 4 meaningful combos:</b> §2 truth table, four captioned rows (heard + exported / reference only / export only / parked) with badges derived from the two flags; §1 panel badges derive counts the same way (unconfigured counts toward nothing). Fixes R1: export-only is counted and mapped into the mixer. Toggle framing (DECISION 2): “Audible” = a preview mute (animate without being distracted by e.g. music); “In export” = what ships (e.g. match the animation to a voice clip you don’t want in the export).</span>
-  <span><b>Q3 — docked/inline:</b> §1 — the panel is a main-window dock below the timeline; the transport speaker button toggles it (checked pill), never a detached Qt::Window (old flow stopped all players on open — gone). §3 transport integration caption.</span>
-  <span><b>Q4 — audio follows video:</b> no divergent audio UI anywhere: export uses the per-range cut-together mix (R12 kept deliberately; Exporter.cpp:588-593) and nothing in the UI implies otherwise.</span>
-  <span><b>Q5 — clamp + explicit “to end” (REVISED):</b> §1 placement cells — “to” clamps ≥ “at” at the control while a number is entered (F36-style); an explicit “to end” toggle disables the end input, which reads “end of range” (rows 2 and 3 of §2 show it on). Users never see or type 0 — it is internal storage only, meaning “to end” everywhere in code. Replaces the 500 default (R11) and dissolves the clamp/sentinel tension (§7, C1 RESOLVED).</span>
-  <span><b>Q6 — round-trip all tracks:</b> §4 Config tab — save writes every row (unconfigured/parked/errored included), load restores all and marks invalid ones on their rows with a summary line. Fixes R2; R7 (Placeholder-as-flag) dies with the explicit empty-path state (§2 “unconfigured”); R14 defaults are now announced.</span>
-  <span><b>Q7 — inline per-row errors:</b> §2 error state — danger hairline (red row hexes), inline banner naming the file with Relocate/Remove, mirrored in the §4 load summary. Fixes R13’s silence. File-scope failures use the same inline grammar (§5 F1, DECIDED); C2’s overwrite confirmation keeps a small modal (the one remaining dialog).</span>
-  <span><b>Q8 — engine features allowed:</b> §3/§5 — per-row level meters + the passive MIX sum meter and latching CLIP warning (sanctioned engine addition: per-track levels or a sum hook from AudioMixer). The audition buffer and decode-progress additions went away with the audition (§7, C5 MOOT).</span>
-  <span><b>Q9 — remove the clicked row:</b> §1 rows ① = per-row × + footer Add; §2 add/remove flow diagram. Fixes R9 including the 2-track divergence; the dual-mode button and its invariant comment are gone (R5’s grid pressure too — the row is a CSS grid, not a 5-column QGridLayout).</span>
-  <span><b>Q10 — timeline placement:</b> §1 headers “Placement on timeline — at frame / to frame”, per-row mini span bar, duration readout = placed span (“200 fr · 0:08.3”); §2 playing caption states preview position = playhead − startFrame. Resolves R15 to the export/mixer reading.</span>
-  <span><b>Cross-cutting R-fixes:</b> R3 (objectName collision) — every control gets a unique id in the implementation spec; R4 (teardown/rebuild) — rows mutate in place (add/remove flow caption); R6 (scratch-dir icon coupling) — icons stay runtime-tinted, tint specified via CSS variables only; R8 (core→GUI layering) — .aemus parsing moves to a non-GUI module (the Config tab is only a view); R10 (mute inversion) — the export checkbox keeps “Export with audio” wording; one inversion at the request boundary, asserted in tests; the §4 facts row speaks mix language, never “mute”.</span>
-  <span><b>Theme discipline:</b> all hexes verbatim from TailwindPalette.h (accent rows at dark cols 7/4 per Colors.h kAccent/kAccentBright). Audio chrome uses only neutral tokens — accent is untouched (reserved for playhead/selection/marquee); the focus ring is the only accentBright borrow. kWindowBand/kWindowEdge appear solely as the timeline placement-span/playhead visuals (its reserved playback-window meaning). Volume = ToolSlider look (circular head on thin track). Status hues (green/amber/orange/red rows) are reserved for meters and errors.</span>
-  <span><b>Preview note:</b> self-contained page (Tailwind CDN + Geist + Phosphor). For <code>preview.png</code>, screenshot at 1280px wide like <code>tools/dock_mockup/preview.png</code> (browser capture; no build step).</span>
-</div>
-
-<div class="section-h">7 — Conflicts: closed at revision (C1/C4 RESOLVED · C2/C3/C5 MOOT)</div>
-<div class="rounded p-4 text-xs flex flex-col gap-2" style="background:var(--base);border:1px solid var(--hairline);max-width:1220px">
-  <span><b>C1 — RESOLVED (was: Q5 clamp × sentinel tension):</b> the explicit “to end” toggle (DECISION 3) dissolves it — “to end” is exempt from the end≥start clamp (a numeric end is still clamped at the control), and end=0 means “to end” EVERYWHERE in code: the old empty-window reading of getValidAudioStreams (“non-empty window”, AudioPlaybackWidget.h:103) and syncTracks’ half-open [startFrame, endFrame) dies. Users never see 0.</span>
-  <span><b>C2 — MOOT (was: Q1 × export surfaces):</b> the audition is removed (DECISION 1), so there is no mix-preview whose scope could clash with the export dialog’s “Export with audio” or containerCarriesAudio. The passive MIX meter reads In-export track levels only and claims nothing about the pending dialog.</span>
-  <span><b>C3 — MOOT (was: Q1 × Q4 range ambiguity):</b> the audition is removed; no UI element renders or plays a mix, so the question of which range (timeline / selection / export range) it would use no longer arises. Export keeps the per-range cut-together concat (R12).</span>
-  <span><b>C4 — RESOLVED (was: Q7 scope gap):</b> file-scope failures (JSON parse error, deserialize failure) use the inline danger banner grammar (§5 F1, DECIDED); C2’s overwrite confirmation keeps a small modal — the one remaining dialog class (§5, DECIDED).</span>
-  <span><b>C5 — MOOT (was: Q8 decode-progress creep):</b> the “Mixing… N tracks decoded” state was part of the audition and is gone. The passive MIX meter + latching CLIP warning remain as the sanctioned Q8 engine addition (per-track levels or a sum hook; mix() stays one-shot).</span>
-</div>
-
-<script>
-document.querySelectorAll(".swatch").forEach(s => s.addEventListener("click", () => {
-  document.body.dataset.accent = s.dataset.a;
-  document.querySelectorAll(".swatch").forEach(x => x.style.outline = "");
-  s.style.outline = "2px solid #a3a3a3"; s.style.outlineOffset = "2px";
-}));
-// annotations are OFF by default: screenshots show exactly what the user sees
-document.getElementById("annToggle").addEventListener("change", e => {
-  document.body.classList.toggle("show-el", e.target.checked);
-});
+ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
 </script>
 </body>
 </html>
