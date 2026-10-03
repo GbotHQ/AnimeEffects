@@ -158,7 +158,11 @@ item 30's "drawn above its owner" is the z-order.)
     is the sentinel. The words surface as the button's tooltip — "Reset to default" (Decided
     2026-09-30, see E29).
 36. [D] Width and height keep their aspect lock; the frame-range fields clamp against each other so
-    a range can never invert.
+    a range can never invert. (Lock ruled again 2026-10-03, with the crash report: while the lock is
+    on, an edit keeps the ratio; pressing Reset re-bases the ratio to the size it just reset to, so
+    the NEXT edit holds that one. The lock's own write-back was unbounded — a locked edit recursed
+    261 291 frames deep and killed the process; see `docs/export-dialog-implementation-notes.md`,
+    "The aspect lock crashed the app".)
 
 ## G. Combo boxes (format, codec, quality intent)
 

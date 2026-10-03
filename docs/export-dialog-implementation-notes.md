@@ -1552,6 +1552,48 @@ i18n checks green; targeted probes `format` 124s / `axes` 134s PASS (post-split)
 asserts are model-level and carried over unchanged. Full sweep run by the orchestrator as the
 closing rung gate — result in the run log.
 
+## Post-R1, landed: the aspect lock crashed the app (2026-10-03)
+
+Reported from the live session as "the keep-aspect-ratio button crashes the application". The button
+is not the cause; **any** width or height write while the lock is on is. A core dump was waiting
+(`coredumpctl info 1437101`, 28 MB, `build/src/gui/Debug/AnimeEffects`) and it unwinds to:
+
+```
+#0  ExportViewModel::setWidth (this=0xe910080, aValue=418) at ExportViewModel.cpp:663
+#1  ExportViewModel::setWidth (aValue=418)                 at ExportViewModel.cpp:665
+#2  ExportViewModel::setHeight (aValue=680)                at ExportViewModel.cpp:684
+    ... alternating to ...
+#261283 setHeight (aValue=682)
+#261284 qt_static_metacall (_c=QMetaObject::WriteProperty, _id=19)  moc_ExportViewModel.cpp:943
+```
+
+261 291 frames of **unbounded mutual recursion**, i.e. a stack overflow — not a QML binding loop,
+and the frame above it is the property write the QML field performs (`ExportDialog.qml:392`/`:411`
+→ moc `WriteProperty`).
+
+There is no fixed point to converge on. 720×1172 native, width 418 → height `(1172*418)/720 = 680`
+(even) → width `(720*680)/1172 = 417.7 → 417 → even 418`. The pair alternates `418×680` forever.
+The one guard that existed, `if (mWidth != aValue)`, sits *before* the derivation and cannot stop a
+call that always arrives with a new value; `writeSize()` also runs unprotected, so a locked edit
+reaches it from either direction.
+
+Fix: **the write-back is one way.** `setWidth` holds `mWritingSize` across its `setHeight()` call and
+`setHeight` mirrors that, so the derived field is written without deriving back. Arithmetic, the
+even-up rounding and `writeSize()` are untouched; no header change. Pre/post, both directions:
+
+| run | before | after |
+| --- | --- | --- |
+| `export_form` under `ulimit -s 512` | RC=139, dumped core, output stops after "PASS the aspect lock is on over the crash's own 720x1172 native size" | RC=0, 1232 PASS, 0 FAIL |
+| `export_form`, default stack | RC=139 | RC=0, 0 FAIL |
+
+Both post-fix rows being green matters: the recursion is bounded, not merely surviving one stack
+size. The new regression block drives the same moc `WriteProperty` path QML uses (`setProperty`) and
+asserts that a locked edit still moves its partner in both directions, and that `setSizeToNative()`
+lands exactly on 720×1172. Unverified corner, flagged rather than guessed: the *order* of clamping
+and deriving is unspecified when a ceiling is active and the partner value was itself clamped
+(reachable on `max`-mode destinations) — there was no working behaviour to match, because that path
+crashed.
+
 ### Open evidence gap, deferred by the user (2026-10-03): the Wayland input path
 
 Every run behind this contract drives input through **X11** — `scripts/gui` sends synthetic X events

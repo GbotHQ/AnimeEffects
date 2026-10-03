@@ -60,6 +60,11 @@ static void check(bool ok, const QString& what) {
     if (!ok) ++failures;
 }
 
+// The aspect partner the view model derives is rounded UP to an even number (a codec's
+// chroma plane is not half a pixel). Spelled out here independently of the model, so a
+// change to that arithmetic has to be a deliberate change to this test as well.
+static int evenUp(int aValue) { return aValue % 2 ? aValue + 1 : aValue; }
+
 // The project facts the dialog is constructed with, matching what MainWindow passes:
 // a 1000x400 project, MIXED aspect so an exact rule has to pad or crop, frame 0..59,
 // the playhead on frame 3, and NO audio, which is the case whose facts used to read
@@ -632,6 +637,84 @@ int main(int argc, char** argv) {
         check(factById(model, QStringLiteral("audio")).detail
                   .contains(QStringLiteral("none in this project")),
               "and its audio line blames the silent project, not Telegram");
+    }
+
+    // ---- the aspect lock writes back ONE WAY --------------------------------
+    //
+    // The export dialog's "Keep aspect ratio" control crashed the application. QML wrote
+    // `height` ONCE; setHeight derived a width and called setWidth, setWidth derived a
+    // height and called setHeight, and because the derive block runs on EVERY call - not
+    // only when the value changes - the two setters alternated until the stack was gone
+    // (coredump: 261291 frames, then SIGSEGV). The equality check at the top cannot stop
+    // it, and the pair is not a fixed point of the arithmetic either: rounding the
+    // partner up to even makes 680 -> 418 -> 680 a loop that never settles. The guard
+    // therefore has to cross the recursive call, so the derived write does not derive
+    // again.
+    //
+    // QML takes the WriteProperty route through moc, so the test writes through
+    // setProperty() rather than writeSize(), using the crashed frame's own geometry
+    // (native 720x1172, the pair 418/680). Contract item 36 still requires the lock to
+    // WORK, so both directions are asserted, not merely that the call returns.
+    {
+        gui::ExportViewModel::Init native = initFor();
+        native.nativeSize = QSize(720, 1172); // the crash's own geometry
+        native.keepAspectRatio = true;
+        gui::ExportViewModel aspect(native);
+        check(aspect.keepAspectRatio() && aspect.nativeWidth() == 720 && aspect.nativeHeight() == 1172,
+              "the aspect lock is on over the crash's own 720x1172 native size");
+
+        // Editing Width must still move Height to the formula's number (item 36).
+        const int width = 418;
+        const int expectedHeight = evenUp((native.nativeSize.height() * width) / native.nativeSize.width());
+        check(aspect.setProperty("width", width),
+              "a direct width write (the WriteProperty route QML uses) returns");
+        check(aspect.width() == width,
+              QStringLiteral("and lands (%1)").arg(aspect.width()));
+        check(aspect.height() == expectedHeight,
+              QStringLiteral("with the aspect-locked height (%1, formula %2)")
+                  .arg(aspect.height()).arg(expectedHeight));
+
+        // The mirror: editing Height must still move Width.
+        const int height = 680;
+        const int expectedWidth = evenUp((native.nativeSize.width() * height) / native.nativeSize.height());
+        check(aspect.setProperty("height", height),
+              "a direct height write returns too");
+        check(aspect.height() == height,
+              QStringLiteral("and lands (%1)").arg(aspect.height()));
+        check(aspect.width() == expectedWidth,
+              QStringLiteral("with the aspect-locked width (%1, formula %2)")
+                  .arg(aspect.width()).arg(expectedWidth));
+
+        // Re-write the values already held: the VALUE does not change, but the derive
+        // block used to run anyway and start the alternation over again.
+        for (int i = 0; i < 3; ++i) {
+            check(aspect.setProperty("width", width) && aspect.width() == width
+                      && aspect.height() == expectedHeight,
+                  QStringLiteral("re-writing the held width returns and stays put (%1)").arg(i));
+        }
+        for (int i = 0; i < 3; ++i) {
+            check(aspect.setProperty("height", height) && aspect.height() == height
+                      && aspect.width() == expectedWidth,
+                  QStringLiteral("re-writing the held height returns and stays put (%1)").arg(i));
+        }
+
+        // The guard has to be put BACK DOWN. If a derived write leaked it (left
+        // mWritingSize true), every later direct edit would take the "derived" path and
+        // the aspect lock would silently stop working - a quieter, worse bug than the
+        // crash. So edit again, AFTER the locked writes, and require the partner to move.
+        const int later = 300;
+        const int laterHeight = evenUp((native.nativeSize.height() * later) / native.nativeSize.width());
+        check(aspect.setProperty("width", later) && aspect.height() == laterHeight,
+              QStringLiteral("an edit after the locked ones still moves the partner, so the guard came back down (%1x%2)")
+                  .arg(aspect.width()).arg(aspect.height()));
+
+        // writeSize() runs with the guard already up, so it must land BOTH numbers
+        // exactly - the native size, not an aspect partner of it. Different from the
+        // value just held, so a guard left up by writeSize() would show here.
+        aspect.setSizeToNative();
+        check(aspect.width() == native.nativeSize.width() && aspect.height() == native.nativeSize.height(),
+              QStringLiteral("and writeSize lands the native size exactly (%1x%2)")
+                  .arg(aspect.width()).arg(aspect.height()));
     }
 
     // ---- the read-back MainWindow assembles the export from ----------------

@@ -660,9 +660,17 @@ void ExportViewModel::setWidth(int aValue) {
     // The aspect link: editing Width moves Height, rounded UP to an even number so a
     // codec's chroma plane is not half a pixel. The formula is the widget form's, so
     // the numbers a user has seen for years do not change.
+    //
+    // The write-back is ONE WAY: the derived Height write must not derive a Width in
+    // turn. The equality check above cannot stop that, because the derive block runs on
+    // every call, and the rounding makes the pair unstable (680 -> 418 -> 680, forever).
+    // So the guard is carried ACROSS the recursive call, which makes the derived write
+    // terminal while leaving both numbers exactly as they were.
     if (!mWritingSize && mKeepAspectRatio && mNativeSize.width() > 0 && mNativeSize.height() > 0) {
         const int res = (mNativeSize.height() * mWidth) / mNativeSize.width();
+        mWritingSize = true;
         setHeight(res % 2 ? res + 1 : res);
+        mWritingSize = false;
     }
     if (!mWritingSize) {
         mUserSize = QSize(mWidth, mHeight);
@@ -679,9 +687,12 @@ void ExportViewModel::setHeight(int aValue) {
         mHeight = aValue;
         emit sizeChanged();
     }
+    // The mirror of setWidth, and ONE WAY for the same reason.
     if (!mWritingSize && mKeepAspectRatio && mNativeSize.height() > 0 && mNativeSize.width() > 0) {
         const int res = (mNativeSize.width() * mHeight) / mNativeSize.height();
+        mWritingSize = true;
         setWidth(res % 2 ? res + 1 : res);
+        mWritingSize = false;
     }
     if (!mWritingSize) {
         mUserSize = QSize(mWidth, mHeight);
