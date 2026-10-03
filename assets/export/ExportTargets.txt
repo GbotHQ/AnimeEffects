@@ -95,7 +95,13 @@
   <encOptions>    private encoder options (avcodec_open2). e.g. libvpx's
                   auto-alt-ref=0, which VP9+alpha requires.
   <codecTag>      four-char stream codec tag. NOT an encoder option — it lives
-                  in the container's stream entry (hvc1 for HEVC).
+                  in the container's stream entry (hvc1 for HEVC). The optional
+                  codec="<family>" attribute qualifies it to that codec FAMILY:
+                  the planner writes the tag only when the codec it resolved for
+                  the plan is that family. No attribute = unconditional. Both
+                  sides are canonicalized the same way (family key or encoder
+                  name: "hevc" and "libx265" match; a container spelling such as
+                  "hev1" matches nothing, so the tag would never be written).
   <audio>         per-destination audio parameters. Empty codec = derive from
                   the container (WebM cannot carry AAC).
   minScalePct     floor for fit-to-cap's scale phase (never shrink past this).
@@ -342,6 +348,7 @@
     <size mode="max" w="1280" h="720"/>
     <caps maxBytes="20971520"/>
     <audio codec="aac" bitrate="128000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>20 MB to send, 50 MB with Nitro Basic, 500 MB with Nitro; a boosted server
           lifts everyone to 50 MB (level 2) or 100 MB (level 3). Discord's older help
           pages still say 10 MB. On mobile the size is now measured BEFORE
@@ -521,6 +528,7 @@
     <size mode="max" w="1080" h="1920"/>
     <caps maxBytes="314572800" maxDurationSec="900"/>
     <audio codec="aac" bitrate="128000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>300 MB, 3 seconds to 15 minutes, 9:16 up to 1920 px wide, H.264 or HEVC in a
           closed GOP. The moov atom must be at the FRONT of the file with no edit lists,
           which is what the faststart muxer option below does: without it the upload is
@@ -837,6 +845,7 @@
     <size mode="max" w="1080" h="1920"/>
     <caps maxDurationSec="300"/>
     <audio codec="aac" bitrate="128000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>4 seconds to 5 minutes. No byte cap is published for organic video Pins; the
           "2 GB / 15 minutes" figure belongs to the ADVERTISING spec, which is a different
           surface and is quoted constantly as if it were this one. MP4/M4V, H.264 or
@@ -1099,6 +1108,7 @@
                checked="2026-09-05" source="https://support.google.com/youtube/answer/1722171" verified="true">
     <size mode="free"/>
     <audio codec="aac" bitrate="256000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>YouTube re-encodes every upload. Official docs still recommend H.264/AAC;
           AV1/H.265 give more quality per bit. Codec is resolved by the ladder.</note>
   </destination>
@@ -1110,6 +1120,7 @@
                checked="2026-09-05" source="(design decision)" verified="true">
     <size mode="free"/>
     <audio codec="aac" bitrate="128000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>Direct playback: decode compatibility dominates, so H.264 at every bucket.
           For transparency on the web, ship BOTH .webm (VP9) and .mov (HEVC hvc1).</note>
   </destination>
@@ -1122,6 +1133,7 @@
                checked="2026-09-05" source="(design decision)" verified="true">
     <size mode="free"/>
     <audio codec="aac" bitrate="160000" channels="2" rate="48000"/>
+    <codecTag value="hvc1" codec="hevc"/>
     <note>The fallback when the destination is unknown: maximum compatibility.</note>
   </destination>
 
@@ -1137,8 +1149,9 @@
     <audio codec="flac" channels="2" rate="48000"/>
     <note>Lossless quality always writes FFV1, which carries transparency. With transparency ON
           the other quality buckets use VP9, the lossy codec that keeps the alpha channel here
-          (AV1 drops it silently and H.265 refuses it). With transparency OFF, Best quality is
-          AV1 and Smaller file / Balanced are H.265.</note>
+          (AV1 drops it silently and H.265 refuses it). With transparency OFF AV1 is used at every
+          quality bucket — Best, Balanced and Smaller file alike; H.265 is only the fallback for a
+          build with no usable AV1 encoder.</note>
   </destination>
 
   <!-- ===== quality control (for the post-encode fit-to-cap loop) ============

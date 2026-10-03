@@ -187,16 +187,52 @@ Cap unit = MB. At the limit: refuse with a visible reason.)
 44. [R15] A destination row declares the codecs it accepts and which one is the default, so the
     codec row can offer AV1/H.265/H.264 where the platform accepts them, instead of a fixed
     encoder. (Schema change: a list, not a mode.)
-   Archive-row rule ruled 2026-10-01: `archive.master` offers FFV1/AV1/H.265 and its default
-   follows the transparency toggle + bucket — Lossless → FFV1; other buckets with alpha ON → the
-   alpha-capable lossy pick (AV1 if the build's encoder measures alpha-capable, else VP9); alpha
-   OFF → AV1 at efficiency buckets, H.265 at size-focused ones. X follows its facts (H.264 only)
+   Archive-row rule ruled 2026-10-01, amended 2026-10-01: `archive.master` offers FFV1/AV1/H.265
+   and its default follows the transparency toggle + bucket — Lossless → FFV1; other buckets with
+   alpha ON → VP9, unconditionally (amended 2026-10-01: this clause read "the alpha-capable lossy
+   pick (AV1 if the build's encoder measures alpha-capable, else VP9)", which contradicted the
+   measurement the code follows — `libsvtav1` silently drops alpha, `libx265` rejects it, and
+   `libvpx-vp9` is the only lossy encoder that carries it (255/0); the code pins VP9 on the toggle
+   alone and asks no capability question. The user's own confirmation stands: transparency ON stays
+   VP9. Should a future build's AV1 encoder ever measure alpha-capable, that measurement reopens
+   this line rather than silently changing it.); alpha OFF → AV1 at EVERY quality bucket, Best /
+   Balanced / Smaller file alike (amended
+   2026-10-01 on the user's ruling, "AV1 all the way makes more sense"; H.265 is now only the
+   fallback where no AV1 encoder is usable, and the fastFirst ladder split no longer orders this
+   row's families). X follows its facts (H.264 only)
    and YouTube@Lossless stays within its accepted list (no FFV1) — both ruled 2026-10-01.
+   H.265 tag ruled 2026-10-03: a row that offers H.265 tags its stream `hvc1` whenever H.265 is the
+   codec actually resolved, because the muxer's default for HEVC in an ISO container is `hev1`,
+   which Safari/iOS and QuickTime refuse. The tag therefore belongs to the RESOLVED CODEC, not to the
+   row: `safari.transparent` pins it unconditionally (H.265 is its only codec, so the row and the
+   codec coincide), while the six rows that offer H.265 among others — `chat.discord.file`,
+   `post.instagram.reels`, `post.pinterest.video`, `youtube.video`, `website.video`, `generic.file` —
+   carry the same requirement behind that condition (the schema expresses it as an optional
+   `codec="<family>"` qualifier on `<codecTag>`; a `codecTag` with no qualifier stays
+   unconditional, which is how the Safari row keeps its pin). H.264 and AV1 output is unchanged: no tag is
+   written for any other codec. (The facts documented the requirement only for Safari; the ruling
+   extends the same mechanism wherever H.265 can be the resolved codec.)
 
 ## J. Rendering
 
 45. [R7] Icons render without aliasing at 1×, 1.5× and 2×: vector sources are rasterised at the
     device pixel ratio, and nothing is scaled up from a 1× bitmap.
+
+## K. The quality row's scope
+
+46. [D] The Quality row appears wherever a video encoder writes the file, and only there: it is
+    hidden exactly when the artifact is written by `QImage::save` — manual mode's `image/*` formats,
+    and the destination rows whose artifact is a sequence or a single still. Those artifacts show
+    `Image quality` instead, the number that actually reaches the file, and the two rows are
+    complementary by construction (one predicate, negated). Manual mode's Encoding trio is
+    unchanged for every video container: Format + Codec + Quality, in the same dialog and by the
+    same rules as destination mode. (Ruled 2026-10-01, answering "How does one pick quality in
+    manual mode then?": only the control that governs the file is shown. Measured basis: for a
+    non-video artifact the planner returns before codec resolution and the writer takes
+    `imageExportQuality`, so a bucket beside it would set nothing at all. The 2026-09-27 QML port
+    wrote this row's condition as "not manual mode" — wrong in both directions, and masked because
+    the call form `exportModel.manualMode()` registers no binding dependency and froze the row
+    visible; see the notes' call-form account. Fixed 2026-10-03.)
 
 ## Design questions (all decided 2026-09-30 — kept for traceability)
 

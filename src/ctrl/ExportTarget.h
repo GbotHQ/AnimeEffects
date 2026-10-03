@@ -173,6 +173,12 @@ struct ExportTarget {
     // Instagram, which rejects an MP4 without its moov atom at the front).
     QMap<QString, QString> muxerOptions;
     QString codecTag;
+    // Codec FAMILY the tag above applies to (the `codec=` attribute on the
+    // element: "hevc"). Empty = unconditional, which is what a row whose codec
+    // list is a single family needs. A qualified tag is written only when the
+    // codec the plan actually resolved is that family (ruling 2026-10-03:
+    // hvc1 for HEVC in an ISO container, and NOTHING ELSE changes).
+    QString codecTagCodec;
     AudioSpec audioSpec; // parameters (the `audio` member is the capability)
 
     // Floor for fit-to-cap's scale phase, in percent. Below this the image is

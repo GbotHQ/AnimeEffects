@@ -8,8 +8,9 @@
 # get right - the Format row is really there, and the Codec row answers about the
 # container that was just chosen rather than about the one before it - and then
 # that a still-image format is honest about itself: a PNG sequence offers Image
-# quality (the writer setting it actually uses) and withdraws the frame rate (a
-# directory of stills has no timing).
+# quality (the writer setting it actually uses) and withdraws both the frame rate
+# (a directory of stills has no timing) and the video encoders Quality bucket (no
+# encoder writes these frames) - see K46 in export-dialog-behavior.md.
 #
 # The previous version of this probe drove the Format row by pixel and asserted
 # that a screenshot was not black, so it passed while the export flow was
@@ -102,6 +103,17 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 assert_showing /tmp/fmt_manual.txt "Format" "with no destination the Format row is the users decision"
 assert_showing /tmp/fmt_manual.txt "Codec" "and the Codec row is there beside it"
 
+# ---- and every row about the file belongs to the writer that writes it --------
+# K46: the Quality row is the video encoder's, and Image quality is QImage::save()'s;
+# they are complements, so each artifact shows exactly one of them. A form that shows
+# the video bucket over a folder of PNGs offers a number that never reaches a file.
+assert_showing /tmp/fmt_manual.txt "Quality" "a video container is what the form resolved to, so the encoders own bucket is the one that decides"
+assert_hidden /tmp/fmt_manual.txt "Image quality" "and Qt image writers, which write none of these frames, keep their number out of the way"
+assert_showing /tmp/fmt_webm.txt "Quality" "a WebM artifact is written by an encoder, so the encoders bucket is here"
+assert_hidden /tmp/fmt_webm.txt "Image quality" "and the image writers own number is not, over a WebM file"
+assert_showing /tmp/fmt_mp4.txt "Quality" "the same for MP4"
+assert_hidden /tmp/fmt_mp4.txt "Image quality" "and the same withdrawal"
+
 # ---- the codec row answers about the container that was chosen ----------------
 # The pairing is what has to hold: a Codec row still reading the previous
 # container codec would be the form answering a question about a format it is no
@@ -131,6 +143,7 @@ else
     check 1 "the PNG sequence format is the one selected, and the form says what it will write (got: $(tr '\n' ' ' < /tmp/fmt_seq_facts.txt 2>/dev/null | head -c 200))"
 fi
 assert_showing /tmp/fmt_seq.txt "Image quality" "a sequence of stills offers Image quality, the writer own setting"
+assert_hidden /tmp/fmt_seq.txt "Quality" "and withdraws the video encoders bucket, which has no file here to write into - the writer that owns the artifact is the one whose number is offered"
 assert_hidden /tmp/fmt_seq.txt "Frame rate" "and withdraws the frame rate, which a directory of stills has not got"
 assert_hidden /tmp/fmt_seq.txt "Codec" "and the Codec row, since Qt writes these files rather than a video encoder"
 assert_rendered "$SHOTS/fmt_01_manual.png" "the escape hatch"

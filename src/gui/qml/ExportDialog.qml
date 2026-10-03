@@ -508,12 +508,17 @@ Item {
                     onActivated: (index) => exportModel.codecIndex = index
                 }
 
-                AeFieldLabel { text: qsTr("Quality"); visible: !exportModel.manualMode() }
+                // K46: the Quality row appears exactly where a video encoder writes
+                // the file, so it follows the ARTIFACT rather than the mode -
+                // qualityVisible is the negation of imageQualityVisible, so a still or
+                // a sequence of stills (written by QImage::save, which has no bucket)
+                // shows "Image quality" below instead, and never both.
+                AeFieldLabel { text: qsTr("Quality"); visible: exportModel.qualityVisible }
                 AeComboBox {
                     objectName: qsTr("Quality")
                     Layout.fillWidth: true
                     Layout.maximumWidth: 260
-                    visible: !exportModel.manualMode()
+                    visible: exportModel.qualityVisible
                     overlay: root
                     enabled: exportModel.qualityInCharge
                     options: {

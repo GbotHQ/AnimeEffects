@@ -469,7 +469,11 @@ QList<ExportTarget> ExportTargets::load(const QString& aPath, QString* aError) {
         t.minScalePct = attrInt(d, QStringLiteral("minScalePct"), 25);
 
         const QDomElement tagElem = d.firstChildElement(QStringLiteral("codecTag"));
-        if (!tagElem.isNull()) t.codecTag = tagElem.attribute(QStringLiteral("value"));
+        if (!tagElem.isNull()) {
+            t.codecTag = tagElem.attribute(QStringLiteral("value"));
+            // The optional family qualifier; empty means the tag is unconditional.
+            t.codecTagCodec = tagElem.attribute(QStringLiteral("codec"));
+        }
 
         const QDomElement noteElem = d.firstChildElement(QStringLiteral("note"));
         if (!noteElem.isNull() && t.note.isEmpty()) t.note = tableText(oneLine(noteElem.text()));
@@ -882,16 +886,23 @@ CodecChoice resolveDefaultCodec(const ExportTarget& aTarget, QualityBucket aBuck
         // The archive rule (decided 2026-10-01; alpha capability MEASURED in
         // this build — libsvtav1 accepts yuva420p but stores no alpha at all,
         // libx265 refuses it outright, libvpx-vp9 and ffv1 carry it):
-        //   transparency ON  -> VP9, the alpha-capable lossy pick;
-        //   transparency OFF -> AV1 where quality per bit wins (the Best
-        //       bucket), H.265 where the ladder puts time/size first (Balanced,
-        //       Smaller) — the ladder's own fastFirst split, nothing
-        //       hand-ordered. Lossless stays the ladder's own FFV1, always.
+        //   transparency ON  -> VP9, the alpha-capable lossy pick (a MEASURED
+        //       capability limit, not a preference: AV1 drops alpha silently
+        //       here and H.265 refuses it);
+        //   transparency OFF -> AV1 at EVERY non-Lossless bucket (Best,
+        //       Balanced and Smaller file alike). Ruled 2026-10-01: "AV1 all
+        //       the way makes more sense" — the ladder's family order already
+        //       leads with AV1, and the transparency flag no longer reorders
+        //       this row's families. H.265 is only the fallback for a build
+        //       with no usable AV1 encoder. Lossless stays the ladder's own
+        //       FFV1, always.
+        //
+        // The ladder's fastFirst split does NOT order this row's families any
+        // more; it still governs hardware-encoder preference WITHIN a family
+        // (the per-family loop below prepends hardware when fastFirst is set),
+        // exactly as it does for every other class.
         if (aAlphaOn) {
             families = QStringList{QStringLiteral("vp9")};
-        } else if (ladder.fastFirst) {
-            families = QStringList{QStringLiteral("hevc"), QStringLiteral("av1"),
-                                   QStringLiteral("h264")};
         }
     }
     for (const QString& family : families) {
@@ -1215,7 +1226,22 @@ ExportPlan planExport(const ExportTarget& aTarget, const ExportRequest& aRequest
     plan.config.fit = fitMode; // makeConfig() replaced the config; see above
     plan.config.encOptions = aTarget.encOptions;
     plan.config.muxerOptions = aTarget.muxerOptions;
-    plan.config.codecTag = aTarget.codecTag;
+    // The stream codec tag, gated by the optional family qualifier on the
+    // element (ruling 2026-10-03: tag hvc1 whenever HEVC lands in an mp4/mov,
+    // and nothing else changes).
+    //
+    // The witness is plan.config.codec — the encoder that will ACTUALLY be
+    // encoded, after resolveEncoderName()'s same-family substitution and the
+    // pixfmt fallback just above (which replaces the whole config, so reading a
+    // local captured earlier would answer for a codec we are no longer using).
+    // It is non-empty here: the empty case returned at the makeConfig() error
+    // above. formatKeyForEncoder() is the same canonicalizer the codec
+    // resolution itself uses (the `c.format` comparison above), so the
+    // destination's qualifier and this witness speak one vocabulary.
+    plan.config.codecTag = (aTarget.codecTagCodec.isEmpty() ||
+                            aTarget.codecTagCodec == formatKeyForEncoder(plan.config.codec))
+                               ? aTarget.codecTag
+                               : QString();
 
     // The user's quality intent, applied through the codec's OWN knob.
     //

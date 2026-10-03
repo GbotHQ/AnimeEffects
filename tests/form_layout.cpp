@@ -36,12 +36,31 @@
 #include <QThread>
 #include <QWheelEvent>
 
+#include <cstdlib>
+
 #include "ctrl/ExportTarget.h"
 #include "gui/qml/ExportViewModel.h"
 #include "gui/qml/QmlTheme.h"
 #include "gui/theme/Icons.h"
 
 static int failures = 0;
+
+// K46: a QML binding that cannot evaluate writes NO value at all - the property keeps
+// its default and the form still looks plausible, which is how the Quality row stayed
+// drawn in both modes through four TypeError lines nobody read. The message handler is
+// the only place that fact is observable, so the run fails on the first one; anything
+// that is not a throw goes to stderr exactly as Qt would have written it.
+static int qmlThrows = 0;
+static QString qmlThrowFirst;
+
+static void collectQmlThrows(QtMsgType type, const QMessageLogContext&, const QString& msg) {
+    if (msg.contains(QLatin1String("TypeError")) || msg.contains(QLatin1String("is not a function"))) {
+        if (qmlThrows == 0) qmlThrowFirst = msg;
+        ++qmlThrows;
+    }
+    QTextStream(stderr) << msg << "\n";
+    if (type == QtFatalMsg) std::abort();
+}
 
 static void check(bool ok, const QString& what) {
     QTextStream(stdout) << (ok ? "PASS  " : "FAIL  ") << what << "\n";
@@ -75,6 +94,41 @@ static QString rs(const QRectF& r) {
     return QString("(%1,%2 %3x%4)").arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height());
 }
 
+// K46 (ruled 2026-10-01): which of the form's two quality rows belongs to which
+// artifact. The rows are drawn as a label and a control that are SIBLINGS in one
+// layout, and only the control carries the objectName the probes address - so a
+// row is found as the pair and the label is looked up next to its control.
+static void qualityRow(QQuickItem* root, QQuickItem** label, QQuickItem** combo) {
+    *label = nullptr;
+    *combo = root ? root->findChild<QQuickItem*>(QStringLiteral("Quality")) : nullptr;
+    if (!*combo || !(*combo)->parentItem()) return;
+    // Among the combo's own siblings, never by a tree-wide search for the word: the
+    // Advanced section carries a second control whose label reads "Quality override",
+    // and a whole-tree match is one substring away from reporting the wrong row.
+    const QList<QQuickItem*> siblings = (*combo)->parentItem()->childItems();
+    for (QQuickItem* c : siblings) {
+        if (c != *combo && c->property("text").toString() == QLatin1String("Quality")) {
+            *label = c;
+            break;
+        }
+    }
+}
+
+// The "Image quality" row. AeNumberField draws no label of its own - the form puts
+// an AeFieldLabel beside it - so the words match exactly one Text, and the control is
+// the field that carries the same words as the accessible name a probe reads.
+static void imageQualityRow(QQuickItem* root, QQuickItem** label, QQuickItem** field) {
+    *label = nullptr;
+    *field = nullptr;
+    if (!root) return;
+    for (QQuickItem* c : root->findChildren<QQuickItem*>()) {
+        if (!*label && c->property("text").toString() == QLatin1String("Image quality"))
+            *label = c;
+        if (!*field && c->property("label").toString() == QLatin1String("Image quality"))
+            *field = c;
+    }
+}
+
 struct Form {
     QQuickWindow* win = nullptr;
     QQuickItem* root = nullptr;
@@ -102,6 +156,7 @@ struct Form {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    qInstallMessageHandler(collectQmlThrows);
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     gui::QmlTheme theme;
     QTemporaryDir iconDir;
@@ -409,6 +464,158 @@ int main(int argc, char** argv) {
         check(g.contentY() == 0, "no overflow: the wheel cannot scroll the content away");
         check(g.footer->mapToItem(g.root, 0, 0).y() == y0, "no overflow: the row is where it was");
         dispose(&g);
+    }
+
+    // =====================================================================
+    // K46: which quality row belongs to which artifact.
+    //
+    // The Quality row belongs to the video encoder that writes the file, and
+    // "Image quality" to QImage::save(); the two are complements by construction
+    // (`qualityVisible = !imageQualityVisible`), so every case asserts BOTH rows -
+    // one shown, the other hidden. Asserting only the row that ought to be there
+    // is the test that missed the defect: `visible: !exportModel.manualMode()` was
+    // the CALL form of a Q_PROPERTY, which registers no binding dependency, threw
+    // a TypeError and wrote no value at all - so the row kept its default `true`
+    // and was drawn in every mode, doubling with "Image quality" wherever Qt wrote
+    // the file. A binding that cannot evaluate is invisible to a test that never
+    // looks at the other half.
+    //
+    // Each case states its own precondition - the mode, the resolved format id,
+    // and that the row's section is on screen - so a screen that could not be
+    // reached FAILs loudly instead of passing quietly.
+    // =====================================================================
+    {
+        auto says = [](QQuickItem* it) {
+            if (!it) return QStringLiteral("absent from the tree");
+            return it->isVisible() ? QStringLiteral("shown") : QStringLiteral("hidden");
+        };
+        auto formatIndexOf = [](gui::ExportViewModel* m, const char* id) {
+            const QVariantList options = m->formatOptions();
+            for (int i = 0; i < options.size(); ++i) {
+                if (options.at(i).toMap().value(QStringLiteral("value")).toString()
+                    == QLatin1String(id)) {
+                    return i;
+                }
+            }
+            return -1;
+        };
+        auto assertRows = [&](Form* fm, const QString& what, bool qualityShown) {
+            QQuickItem* qLabel = nullptr;
+            QQuickItem* qCombo = nullptr;
+            qualityRow(fm->root, &qLabel, &qCombo);
+            QQuickItem* iLabel = nullptr;
+            QQuickItem* iField = nullptr;
+            imageQualityRow(fm->root, &iLabel, &iField);
+            check(qLabel && qCombo && iLabel && iField,
+                  QStringLiteral("K46 %1: both rows are whole in the tree (Quality label %2, "
+                                 "combo %3, Image quality label %4, field %5)")
+                      .arg(what, says(qLabel), says(qCombo), says(iLabel), says(iField)));
+            if (!qCombo || !iField) return;
+            check(qCombo->parentItem() && qCombo->parentItem()->isVisible(),
+                  QStringLiteral("K46 %1: the row's section is on screen, so \"hidden\" below "
+                                 "means hidden by its own binding").arg(what));
+            const bool qShown = qLabel && qLabel->isVisible() && qCombo->isVisible();
+            const bool iShown = iLabel && iLabel->isVisible() && iField->isVisible();
+            check(qShown == qualityShown,
+                  QStringLiteral("K46 %1: the encoder's Quality row is %2, and %3 is what this "
+                                 "artifact should give it")
+                      .arg(what, says(qCombo),
+                           qualityShown ? QStringLiteral("shown") : QStringLiteral("hidden")));
+            check(iShown == !qualityShown,
+                  QStringLiteral("K46 %1: QImage's Image quality row is %2 - the complement, "
+                                 "never both and never neither")
+                      .arg(what, says(iField)));
+        };
+
+        // Manual mode, a video container: no destination describes the artifact, so
+        // the Format row IS the artifact and a video encoder writes it.
+        {
+            Form fm;
+            makeForm(620, 720, false, 1, &fm);
+            fm.model->setDestinationId(QString());
+            spin(60);
+            const int mp4 = formatIndexOf(fm.model, "mp4");
+            check(fm.model->manualMode() && mp4 >= 0,
+                  QStringLiteral("K46 precondition: manual mode offers MP4 in the Format row "
+                                 "(mode %1, format %2)")
+                      .arg(fm.model->manualMode() ? QStringLiteral("manual") : QStringLiteral("not manual"),
+                           fm.model->formatId()));
+            if (mp4 >= 0) fm.model->setFormatIndex(mp4);
+            spin(60);
+            check(!fm.model->formatId().startsWith(QLatin1String("image/")),
+                  QStringLiteral("K46 precondition: a video encoder writes this artifact (%1)")
+                      .arg(fm.model->formatId()));
+            assertRows(&fm, QStringLiteral("manual + MP4"), true);
+            dispose(&fm);
+        }
+
+        // Manual mode, one of the two image/* formats: QImage::save owns the file,
+        // so the row that matters is its own number. This is the case the defect
+        // showed the wrong control for, and it needs no destination to reach.
+        {
+            Form fm;
+            makeForm(620, 720, false, 1, &fm);
+            fm.model->setDestinationId(QString());
+            spin(60);
+            const int png = formatIndexOf(fm.model, "image/png");
+            check(png >= 0, "K46 precondition: PNG sequence is on the manual format list");
+            if (png >= 0) fm.model->setFormatIndex(png);
+            spin(60);
+            check(fm.model->formatId() == QLatin1String("image/png"),
+                  QStringLiteral("K46 precondition: the artifact is the sequence QImage writes (%1)")
+                      .arg(fm.model->formatId()));
+            assertRows(&fm, QStringLiteral("manual + PNG sequence"), false);
+            dispose(&fm);
+        }
+
+        // A destination whose artifact is a single still.
+        {
+            Form fm;
+            makeForm(620, 720, false, 1, &fm);
+            fm.model->setDestinationId(QStringLiteral("still.pixiv.illustration"));
+            spin(60);
+            check(!fm.model->manualMode() && fm.model->imageQualityVisible(),
+                  "K46 precondition: pixiv's illustration row is a still, so QImage writes it");
+            assertRows(&fm, QStringLiteral("still.pixiv.illustration"), false);
+            dispose(&fm);
+        }
+
+        // A destination whose artifact is a sequence of stills.
+        {
+            Form fm;
+            makeForm(620, 720, false, 1, &fm);
+            fm.model->setDestinationId(QStringLiteral("post.pixiv.ugoira"));
+            spin(60);
+            check(fm.model->imageQualityVisible(),
+                  "K46 precondition: ugoira is a folder of numbered stills, so QImage writes it");
+            assertRows(&fm, QStringLiteral("post.pixiv.ugoira"), false);
+            dispose(&fm);
+        }
+
+        // A destination whose artifact is a video: the encoder's own number is the
+        // one that reaches the file, and Qt's image writer never touches it.
+        {
+            Form fm;
+            makeForm(620, 720, false, 1, &fm);
+            fm.model->setDestinationId(QStringLiteral("chat.discord.file"));
+            spin(60);
+            check(!fm.model->imageQualityVisible(),
+                  "K46 precondition: Discord's chat row is written by a video encoder");
+            assertRows(&fm, QStringLiteral("chat.discord.file"), true);
+            dispose(&fm);
+        }
+    }
+
+    // The dialog was built six times above; a binding that threw did so on every one
+    // of them and still left a form that looks almost right.
+    {
+        QString throwInfo = QStringLiteral("%1 TypeError%2")
+                                .arg(qmlThrows)
+                                .arg(qmlThrows == 1 ? QString() : QStringLiteral("s"));
+        if (!qmlThrowFirst.isEmpty()) throwInfo += QStringLiteral("; first: %1").arg(qmlThrowFirst);
+        check(qmlThrows == 0,
+              QStringLiteral("K46: no binding in the dialog threw while these screens were "
+                             "built (%1)").arg(throwInfo));
     }
 
     QTextStream(stdout) << (failures ? "FAILURES: " : "ALL PASS ") << failures << "\n";

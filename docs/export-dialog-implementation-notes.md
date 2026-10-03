@@ -1319,11 +1319,16 @@ Offered list: `ffv1 av1 hevc vp9`. Default follows the transparency toggle + buc
 | --- | --- | --- |
 | Lossless | FFV1 | FFV1 |
 | Best quality | **VP9** | **AV1** |
-| Balanced | **VP9** | **H.265** |
-| Smaller file | **VP9** | **H.265** |
+| Balanced | **VP9** | **AV1** |
+| Smaller file | **VP9** | **AV1** |
 
-("efficiency buckets" mapped onto the ladder's own `fastFirst` split — Best has room to be slow;
-Balanced/Smaller don't. Flagged to the user; one branch swap changes it.) The fact text is rewritten
+The first cut mapped "efficiency buckets" onto the ladder's own `fastFirst` split (Best → AV1,
+Balanced/Smaller → H.265) and flagged it to the user as one branch swap. **The user rejected it:
+"Why would the ladder pick H.265? AV1 all the way makes more sense."** Ruled 2026-10-01: with
+transparency OFF the archive row takes AV1 at every non-Lossless bucket; H.265 is only the
+fallback where no AV1 encoder is usable, and the `fastFirst` split no longer orders this row's
+families at all. Transparency ON stays VP9 — that half is a MEASURED capability limit (table
+above), not a preference. The fact text is rewritten
 to state the rule (one source string replaced; `ExportTargetStrings.h` regenerated = 151 up to date;
 no lupdate per the I43 precedent — catalogs still at 0). Wiring found missing en route:
 `ExportRequest::allowTransparency` never reached `planExport` (the rule couldn't follow the toggle
@@ -1340,8 +1345,100 @@ toggle (one of its inputs now). Dictated rows stay stated-not-offered.
 
 **Trap found en route (now in AGENTS.md)**: `visible: … && exportModel.manualMode()` — the CALL
 form of a `Q_PROPERTY` method registers no binding dependency and the binding froze at its first
-value. The property form (with `NOTIFY`) works. Latent instance spotted and left for a later fix:
-`ExportDialog.qml`'s Quality label uses the call form (masked today).
+value. The property form (with `NOTIFY`) works. The last instance of it was the Quality row: the
+predicate it should have had was ruled 2026-10-01 (contract item 46, section K) and the fix landed
+2026-10-03 — section below.
+
+### The Quality row: last instance of the call-form trap, and the predicate it needed
+
+Two defects sat on the same two lines (`ExportDialog.qml:511` label, `:516` combo), both
+`visible: !exportModel.manualMode()`:
+
+1. **The call form.** `manualMode` is a `Q_PROPERTY(bool)`, so `manualMode()` was not a function.
+   The binding threw and never wrote `visible`, and the property kept its default `true`: measured
+   on `89da2ed`, `QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ./build/tests/Debug/form_layout`
+   exited 0 with `ALL PASS 0` while stderr carried, twice (two dialog instances),
+   `ExportDialog.qml:511: TypeError: Property 'manualMode' of object gui::ExportViewModel(...) is
+   not a function` and the same for `:516`. The suite passed because nothing asserted the label, and
+   the row was drawn everywhere: for a PNG sequence or a still destination it sat beside
+   `Image quality` as a dead control (its `enabled: exportModel.qualityInCharge` is false wherever no
+   codec owns a quality control), which is exactly the shape the widget era never had.
+2. **The predicate was the mode, and it should be the artifact.** The widget era's own rule was
+   `setVisible({qualityLabel, qualityCombo}, !isSequence)` — the sequence, not the mode. Manual mode
+   with an MP4/WebM container must keep the Encoding trio (Format + Codec + Quality); a destination
+   whose artifact is a still or a sequence must withdraw the row. Ruling 2026-10-01: "How does one
+   pick quality in manual mode then?" → show only the control that governs the file.
+
+The fix is one predicate, negated: `ExportViewModel` gained `qualityVisible` = `!mImageQualityVisible`
+(same `NOTIFY constraintsChanged`), and `mImageQualityVisible` is true exactly where Qt's image
+writers own the artifact — `currentFormatId().startsWith("image/")` (the manual PNG/JPEG sequence
+escape hatch) or a destination whose artifact resolves to Still/Sequence. So the two rows are
+complementary by construction and neither mode is special-cased. Verified by the `form_layout`
+assertions (manual MP4 → Quality shown / Image quality hidden; manual PNG sequence → the reverse; a
+still destination → the reverse; a video destination → the first) plus an explicit
+`assert_hidden /tmp/fmt_seq.txt "Quality"` in `probe_format`, which fails on the old binding and
+passes on the new one.
+
+### The conditional `hvc1` tag (ruled 2026-10-03)
+
+Six destination rows write an MP4/MOV artifact and offer HEVC among their codecs — `chat.discord.file`,
+`post.instagram.reels`, `post.pinterest.video`, `youtube.video`, `website.video`, `generic.file`. None
+of them carried a `<codecTag>`, so whenever the ladder resolved to an HEVC encoder the stream got
+whatever tag FFmpeg's muxer chose for it. The one row whose artifact is explicitly an Apple-facing
+MOV, `safari.transparent` (`container="mov" codecs="hevc"`), had carried an unconditional
+`<codecTag value="hvc1"/>` from the start — this project already treated `hvc1` as the tag that makes
+HEVC play in QuickTime/Safari.
+
+Put to the user on 2026-10-03 as a choice between "tag `hvc1` whenever HEVC enters mp4/mov" and
+"keep the facts as-is and record a known limitation"; the user chose the former. *Not measured here:
+no Apple client exists in this environment, so "Apple's decoder wants `hvc1` over `hev1`" is the
+user's premise plus the in-repo precedent above, not an observation of ours.* The scope is therefore
+the smallest thing that cannot be wrong: only a row that already declares HEVC can ever get the tag,
+and only when the planner in fact resolved HEVC for that export.
+
+Shape — an optional family qualifier on the existing element:
+
+```xml
+<codecTag value="hvc1" codec="hevc"/>
+```
+
+The *value* is static but the *whether* is dynamic (the ladder resolves a family at plan time from
+the quality bucket and the encoders this build can actually use), so the condition has to be
+evaluated in the planner rather than expressed as two data rows. An absent `codec` attribute means
+unconditional — which is exactly how the pre-existing `safari.transparent` pin keeps working,
+untouched. The schema comment in `ExportTargets.txt` lives inside a non-translatable comment block
+(so it adds no catalog string) and documents the rule, including the trap that a qualifier written
+as a container value (`codec="hev1"`) canonicalizes to no family and then silently never fires — a
+data-entry hazard the tests cannot catch, because their negative branch asserts the tag's *absence*.
+
+The gate, at the end of `planExport` (`src/ctrl/ExportTarget.cpp`, after the pixfmt fallback):
+
+```cpp
+plan.config.codecTag = (aTarget.codecTagCodec.isEmpty() ||
+                        aTarget.codecTagCodec == formatKeyForEncoder(plan.config.codec))
+                           ? aTarget.codecTag
+                           : QString();
+```
+
+Two details that each took a wrong turn to find:
+
+- **The witness must be `plan.config.codec`, read after `plan.config = fallback`.** The first draft
+  keyed on a local named `codec`; that local (`:1042`) holds an *encoder name*, and
+  `CodecChoice::format` is never stored in it, so `codec.format` does not compile. The pixfmt probe
+  can replace the whole config (`fallback` built at `:1186-1188`, assigned at `:1222`), so a value
+  captured before it can name a different encoder than the one that will be written.
+- **`formatKeyForEncoder()` is the one normalizer**, not a second family test: it is what the codec
+  row's eligibility (`:835`) and the request→resolved match (`:1048`) already use, and the comment at
+  the gate binds the two together. Pinning an HEVC encoder through `ExportRequest::codec` is admitted
+  by `:1048` (`formatKeyForEncoder(aRequest.codec) == c.format`) and stored verbatim at `:1054-1057`,
+  so the pinned path ends in the same normalizer — no new equivalence class, no second spelling.
+
+H.264 and AV1 output are unchanged **structurally**, not merely by measurement: for those exports the
+gate yields an empty string, `VideoEncoder` assigns `codecpar->codec_tag` only for a non-empty
+4-character tag, and no other producer exists — `MainWindow` copies `plan.config.codecTag` into the
+video parameters and `Exporter` copies it once more into the encoder config; nothing else writes it.
+The `archive.master` row is Matroska (`mkv`), where `hvc1`/`hev1` have no meaning, and stays
+deliberately untagged.
 
 ### Verification
 
@@ -1350,3 +1447,22 @@ plan-level toggle wire); reverted green. Builds 0 warnings ×2; suites 21/21 ×2
 i18n checks green; targeted probes `format` 124s / `axes` 134s PASS (post-split). The placement
 asserts are model-level and carried over unchanged. Full sweep run by the orchestrator as the
 closing rung gate — result in the run log.
+
+### Open evidence gap, deferred by the user (2026-10-03): the Wayland input path
+
+Every run behind this contract drives input through **X11** — `scripts/gui` sends synthetic X events
+with `xdotool` / AT-SPI actions inside `Xvfb`, and the widget-free suites inject `QKeyEvent`s
+in-process. Nothing here has measured the **Wayland** input path: libinput → compositor → client,
+with the compositor's own focus and pointer-grab semantics. A defect that lives only in that path
+(a key dropped on the way to the scene's focus item, a click that the compositor routes to the wrong
+surface, a dialog that never becomes activatable without a WM) is invisible to every observation we
+hold, including a green 13-probe sweep.
+
+That gap was put to the user on 2026-10-03 and **deliberately deferred**: closing it means driving
+the live desktop session with `ydotool`, and the cost of a wrong tooltip or a stray keystroke landing
+on the user's own session is higher than the confidence it buys. It is not an unverified contract
+line — each line is backed by a captured observation or a regression test that fails on the old
+behaviour — it is a **platform-confidence gap**, recorded so it is not mistaken for coverage.
+Reopens if a Wayland-only input complaint ever arrives; the measurement would then be: activate the
+window, drive one dialog with `ydotool`, and screenshot the pointer path with
+`ffmpeg -f x11grab -draw_mouse 1` (see AGENTS.md).

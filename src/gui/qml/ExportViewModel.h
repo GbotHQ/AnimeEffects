@@ -237,6 +237,12 @@ class ExportViewModel : public QObject {
     Q_PROPERTY(bool bitrateEnabled READ bitrateEnabled NOTIFY constraintsChanged)
     Q_PROPERTY(int imageQuality READ imageQuality WRITE setImageQuality NOTIFY imageQualityChanged)
     Q_PROPERTY(bool imageQualityVisible READ imageQualityVisible NOTIFY constraintsChanged)
+    // K46 (ruled 2026-10-01): the Quality row belongs to the encoder that writes the
+    // file, so it is exactly the complement of the image-quality row - one predicate,
+    // negated, and never both or neither. mImageQualityVisible is true whenever Qt's
+    // image writers own the artifact (an image/* format, or a destination whose
+    // artifact is a still or a sequence).
+    Q_PROPERTY(bool qualityVisible READ qualityVisible NOTIFY constraintsChanged)
     Q_PROPERTY(bool imageQualityEnabled READ imageQualityEnabled NOTIFY constraintsChanged)
 
     // I43 (decided 2026-09-30): the size cap, in MB. The value 0 is the
@@ -394,6 +400,9 @@ public:
     int imageQuality() const { return mImageQuality; }
     void setImageQuality(int aValue);
     bool imageQualityVisible() const { return mImageQualityVisible; }
+    // The writer that owns the file gets its own number, and only it: see the
+    // Q_PROPERTY above.
+    bool qualityVisible() const { return !mImageQualityVisible; }
     bool imageQualityEnabled() const { return mImageQualityEnabled; }
     Q_INVOKABLE void setImageQualityToAuto();
     double sizeCapValue() const { return mSizeCapValue; }

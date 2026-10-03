@@ -1393,20 +1393,21 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
                       .arg(static_cast<int>(bucket)));
         }
     }
-    // Transparency OFF: AV1 where quality per bit wins (Best), H.265 where the
-    // ladder puts time/size first (Balanced, Smaller — its own fastFirst split).
-    if (av1Runs) {
-        const ctrl::CodecChoice c =
-            ctrl::resolveDefaultCodec(archive, ctrl::QualityBucket::Best, false);
-        check(c.format == QLatin1String("av1"),
-              "transparency OFF at Best is AV1 (the efficiency bucket)");
-    }
-    if (hevcRuns) {
-        for (const ctrl::QualityBucket bucket :
-             {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced}) {
-            const ctrl::CodecChoice c = ctrl::resolveDefaultCodec(archive, bucket, false);
+    // Transparency OFF: AV1 at EVERY non-Lossless bucket. The ladder's family
+    // order (quality per bit: AV1, then H.265, then H.264) is the same at every
+    // bucket, and the transparency flag no longer reorders this row's families
+    // (user's call 2026-10-01, "AV1 all the way makes more sense"): H.265 is
+    // only the fallback for a build with no usable AV1 encoder.
+    for (const ctrl::QualityBucket bucket :
+         {ctrl::QualityBucket::Smaller, ctrl::QualityBucket::Balanced, ctrl::QualityBucket::Best}) {
+        const ctrl::CodecChoice c = ctrl::resolveDefaultCodec(archive, bucket, false);
+        if (av1Runs) {
+            check(c.format == QLatin1String("av1"),
+                  QStringLiteral("transparency OFF takes AV1 at every size bucket (bucket %1)")
+                      .arg(static_cast<int>(bucket)));
+        } else if (hevcRuns) {
             check(c.format == QLatin1String("hevc"),
-                  QStringLiteral("transparency OFF at the size buckets is H.265 (bucket %1)")
+                  QStringLiteral("with no AV1 encoder, transparency OFF is H.265 (bucket %1)")
                       .arg(static_cast<int>(bucket)));
         }
     }
@@ -1437,9 +1438,12 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
         aReq.allowTransparency = false;
         const ctrl::ExportPlan off =
             ctrl::planExport(archive, aReq, ctrl::QualityBucket::Balanced);
-        if (hevcRuns)
+        if (av1Runs)
+            check(off.ok() && ctrl::formatKeyForEncoder(off.config.codec) == QLatin1String("av1"),
+                  "the toggle OFF reaches the rule through planExport (AV1 at Balanced)");
+        else if (hevcRuns)
             check(off.ok() && ctrl::formatKeyForEncoder(off.config.codec) == QLatin1String("hevc"),
-                  "the toggle OFF reaches the rule through planExport (H.265 at Balanced)");
+                  "with no AV1 encoder the toggle OFF reaches H.265 at Balanced");
         aReq.allowTransparency = true;
         const ctrl::ExportPlan on =
             ctrl::planExport(archive, aReq, ctrl::QualityBucket::Balanced);
@@ -1482,6 +1486,59 @@ TEST_SECTION("I44: accepted lists, defaults and the codec row", run_codec_lists)
             ctrl::planExport(discord, req, ctrl::QualityBucket::Balanced);
         check(plan.ok() && plan.config.codec == QLatin1String("libx264"),
               "an exact accepted encoder passes through untouched");
+    }
+
+    // ---- hvc1 is gated on the RESOLVED family (ruling 2026-10-03) ----------
+    // Every ISO row that offers HEVC must ASK for the hvc1 tag, and must say so
+    // with the qualifier rather than by offering HEVC over the other families.
+    for (const char* id : {"chat.discord.file", "post.instagram.reels",
+                           "post.pinterest.video", "youtube.video", "website.video",
+                           "generic.file"}) {
+        const ctrl::ExportTarget t = row(id);
+        check(t.container == QLatin1String("mp4") && t.codecs.contains(QLatin1String("hevc")),
+              QStringLiteral("%1: mp4 offering HEVC, so hvc1 is meaningful there")
+                  .arg(QLatin1String(id)));
+        check(t.codecTag == QLatin1String("hvc1")
+                  && t.codecTagCodec == QLatin1String("hevc"),
+              QStringLiteral("%1: asks for hvc1, qualified to hevc (tag='%2' codec='%3')")
+                  .arg(QLatin1String(id), t.codecTag, t.codecTagCodec));
+    }
+    // The one row whose codec list is a single family keeps the UNQUALIFIED form:
+    // the gate must not need a qualifier to write the tag it always wrote.
+    {
+        const ctrl::ExportTarget safari = row("safari.transparent");
+        check(safari.codecTag == QLatin1String("hvc1") && safari.codecTagCodec.isEmpty(),
+              "safari.transparent: hvc1 stays unconditional (H.265 is its only codec)");
+    }
+
+    // ... and the gate itself, at the planner: the SAME row and bucket, asked for
+    // H.265 and then H.264, carries the tag and then does not. This is what makes
+    // "H.264 output is unchanged" an assertion instead of a promise.
+    if (media::ffmpeg::encoderUsable("libx265") && media::ffmpeg::encoderUsable("libx264")) {
+        ctrl::ExportRequest aReq = req;
+        aReq.codec = QStringLiteral("libx265");
+        const ctrl::ExportPlan hevcPlan =
+            ctrl::planExport(youtube, aReq, ctrl::QualityBucket::Balanced);
+        check(hevcPlan.ok()
+                  && ctrl::formatKeyForEncoder(hevcPlan.config.codec) == QLatin1String("hevc"),
+              QStringLiteral("hvc1 gate: the HEVC request really resolves to HEVC ('%1')")
+                  .arg(hevcPlan.config.codec));
+        check(hevcPlan.ok() && hevcPlan.config.codecTag == QLatin1String("hvc1"),
+              QStringLiteral("hvc1 gate: HEVC in mp4 carries hvc1 (got '%1')")
+                  .arg(hevcPlan.config.codecTag));
+        aReq.codec = QStringLiteral("libx264");
+        const ctrl::ExportPlan h264Plan =
+            ctrl::planExport(youtube, aReq, ctrl::QualityBucket::Balanced);
+        check(h264Plan.ok()
+                  && ctrl::formatKeyForEncoder(h264Plan.config.codec) == QLatin1String("h264"),
+              QStringLiteral("hvc1 gate: the H.264 request really resolves to H.264 ('%1')")
+                  .arg(h264Plan.config.codec));
+        check(h264Plan.ok() && h264Plan.config.codecTag.isEmpty(),
+              QStringLiteral("hvc1 gate: H.264 in mp4 carries NO codec tag (got '%1')")
+                  .arg(h264Plan.config.codecTag));
+    } else {
+        QTextStream(stdout) << "      SKIP  hvc1 gate: libx265 or libx264 is not usable in this "
+                               "build, so the planner pair cannot be exercised\n";
     }
 }
 
@@ -1773,12 +1830,29 @@ TEST_SECTION("destination conformance (every row)", run_conformance) {
             }
         }
 
-        // Stream codec tag (hvc1) must actually land in the container.
+        // Stream codec tag (hvc1) must actually land in the container — and only
+        // when the plan resolved the codec FAMILY that the tag is qualified to
+        // (ruling 2026-10-03: tag HEVC in an ISO container; nothing else moves).
+        // An element without the qualifier stays unconditional: safari.transparent
+        // offers H.265 alone, so there the condition cannot arise.
         if (!t.codecTag.isEmpty()) {
-            check(p.codecTag == fourcc(t.codecTag),
-                  QStringLiteral("%1: stream codec tag is '%2' (got 0x%3)")
-                      .arg(t.id, t.codecTag)
-                      .arg(p.codecTag, 0, 16));
+            const QString resolvedFamily = ctrl::formatKeyForEncoder(plan.config.codec);
+            const bool applies = t.codecTagCodec.isEmpty() || t.codecTagCodec == resolvedFamily;
+            if (applies) {
+                check(p.codecTag == fourcc(t.codecTag),
+                      QStringLiteral("%1: stream codec tag is '%2' (got 0x%3)")
+                          .arg(t.id, t.codecTag)
+                          .arg(p.codecTag, 0, 16));
+            } else {
+                // Not "== 0": the muxer writes its OWN tag for the codec it wrote
+                // (avc1, av01, hev1). What must not happen is the qualified one.
+                check(p.codecTag != fourcc(t.codecTag),
+                      QStringLiteral("%1: tag '%2' is NOT written for '%3' (family '%4', "
+                                     "tag qualified to '%5'; container wrote 0x%6)")
+                          .arg(t.id, t.codecTag, plan.config.codec, resolvedFamily,
+                               t.codecTagCodec)
+                          .arg(p.codecTag, 0, 16));
+            }
         }
     }
 }

@@ -248,8 +248,15 @@ beside it — the handler must live on a common ancestor, or the field must forw
 the codec row stayed hidden in the mode it should have shown in; the dump said "hidden Codec" no
 matter what). The **property** form `exportModel.manualMode` (with its `NOTIFY`) re-evaluates
 correctly. Check every `()` binding on an object property when a state switch "doesn't take".
-Known latent instance at the time of writing: `ExportDialog.qml`'s Quality label uses the call
-form (masked today; one-word fix).
+
+The last instance was the export dialog's Quality row (`ExportDialog.qml:511` label, `:516` combo,
+both `!exportModel.manualMode()`). It threw `TypeError: Property 'manualMode' … is not a function`
+on every dialog construction and left the row **visibly drawn in both modes** — and no test noticed,
+because a throwing binding writes no value and the property kept its default `true`. Measured on the
+`89da2ed` tree and fixed 2026-10-03, together with the predicate it should have had: the row follows the **artifact**, not the
+mode (`qualityVisible` = `!imageQualityVisible`; see export-dialog-behavior.md item 46). A binding
+that cannot evaluate is invisible to a suite that only asserts what it expects to see — assert both
+directions, and keep the stderr check that catches the `TypeError`.
 
 ## Wayland
 
