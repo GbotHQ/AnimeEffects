@@ -1552,6 +1552,47 @@ i18n checks green; targeted probes `format` 124s / `axes` 134s PASS (post-split)
 asserts are model-level and carried over unchanged. Full sweep run by the orchestrator as the
 closing rung gate — result in the run log.
 
+## Post-R1, landed: a childless top-level destination is no longer indented as a child (C18, 2026-10-03)
+
+Reported 2026-10-03: "in the destination list, why is a top-level item with no children indented as
+though it were a second level?" That is the contract already — item 18 `[R6]`: *"a top-level
+destination with no children is not indented like one with a parent."* The delegate did not have a
+level to read, so it asked `isSection` instead: caret 6/24, badge 24/38, label 48/62. `isSection` is
+true only for a real heading, so every destination took the child lane — including the ones that
+have no parent at all.
+
+They have no parent by design: `build()` appends a group's targets **flat**, with `parent = -1`,
+when the group has one row or its rows are not variants of one platform
+(`DestinationPickerModel.cpp`: `if (rows.size() == 1 || !g.variants) { … appendDestination(t, -1); }`).
+That is a sectionless group — "General" and every one-row platform — not a defect. The defect was
+one expression in the scene, not the model.
+
+Fix, and it is two lines of meaning plus three of geometry: the model gains `LevelRole`
+(`"level"`, derived at build time from the `parent` it already has — 0 for a section or a
+destination with no section above it, 1 for a nested one; no QML walks a parent chain), and the
+delegate states its horizontal position **once** as `indentPx: model.level * 14` with every lane
+that statement plus a fixed offset — caret 6, badge 24, label 48. Measured, live delegate geometry,
+before -> after:
+
+| row | before (badge / label) | after (caret / badge / label) |
+| --- | --- | --- |
+| section, level 0 | 24 / 48 | 6 / 24 / 48 |
+| **childless top-level destination, level 0** | **38 / 62** | **6 (hidden) / 24 / 48** |
+| nested destination, level 1 | 38 / 62 | 20 (hidden) / 38 / 62 |
+
+`model.isSection` survives on every non-geometric use — the disclosure caret's `visible`, the
+background colour, `font.bold`, the label colour branch, `Accessible.role`, `toggleSection()` and the
+`if (!model.isSection) picker.activate(index)` branch — because it still says what a row *means*
+(a heading that discloses, versus a row that can be selected). It no longer says where anything is
+drawn.
+
+Verification: `tests/destination_picker.cpp` resolves the role **by name** (`levelOf()` returns -1
+when it is absent), so the new C18 block compiles and fails honestly on the pre-fix tree; it asserts
+both directions and sweeps the whole model for wrongly-levelled rows. `tests/picker_keyboard.cpp`
+asserts the same against the real delegate geometry, with its preconditions asserted in-test (the
+search field's stale filter is cleared, each row is scrolled on screen before it is read). Builds
+0 warnings x2; suites 21/21 x2; catalogs 0; `probe_dest` PASS.
+
 ## Post-R1, landed: the aspect lock crashed the app (2026-10-03)
 
 Reported from the live session as "the keep-aspect-ratio button crashes the application". The button

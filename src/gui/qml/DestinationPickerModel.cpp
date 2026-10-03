@@ -274,6 +274,11 @@ QVariant DestinationPickerModel::data(const QModelIndex& aIndex, int aRole) cons
     case TooltipRole:   return r.section ? sectionTooltip(row) : r.tooltip;
     case SelectedRole:  return row == mCurrentRow;
     case ChildCountRole: return r.childCount;
+    // C18. Derived from a BUILD-TIME field: `parent` is the section row this
+    // destination was appended under, or -1 when `appendDestination` was called
+    // with no section (a group whose rows are not variants of one platform, or
+    // has exactly one row). No QML walks a parent chain to find this.
+    case LevelRole:     return r.parent < 0 ? 0 : 1;
     default:            return QVariant();
     }
 }
@@ -302,6 +307,7 @@ QHash<int, QByteArray> DestinationPickerModel::roleNames() const {
         { TooltipRole, "tooltip" },
         { SelectedRole, "selected" },
         { ChildCountRole, "childCount" },
+        { LevelRole, "level" },
     };
 }
 

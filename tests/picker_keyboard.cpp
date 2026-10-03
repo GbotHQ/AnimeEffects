@@ -544,6 +544,181 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ---- C18 (contract line 97): "A destination with no children is not indented as
+    // though it had a parent." This is a GEOMETRY assertion on the real delegate, and
+    // it is deliberately not satisfied by a flag: what was wrong is where the row was
+    // drawn. Before the fix the only horizontal discriminator was `isSection`, so a
+    // childless top-level destination - which the model really does produce, for every
+    // platform with a single destination and for a group whose rows are not variants of
+    // one platform - took the CHILD lanes (badge x=38, label margin 62) while a section
+    // took (24/48). Now both draw 0/24/48 and only a real child sits one lane in.
+    //
+    // The role is read by the NAME the scene binds ("level"), so this test compiles
+    // and runs against the pre-fix tree too, where the honest failure is "no such role"
+    // and the measured x is 62.
+    {
+        auto spin = [](int ms) {
+            QElapsedTimer t;
+            t.start();
+            while (t.elapsed() < ms) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                QThread::msleep(5);
+            }
+        };
+        auto near = [](double a, double b) { return a > b - 0.5 && a < b + 0.5; };
+
+        // The preceding block leaves a live filter in the field ("x"), and a filter
+        // is a different table: it drops most rows, including every childless
+        // top-level one. C18 is about the unfiltered listing, so clear it through
+        // the field (the same route B10 uses) and prove the table is whole again.
+        search->setProperty("text", QString());
+        spin(250);
+        check(model.query().isEmpty(),
+              "precondition (C18): the search filter is cleared, so the whole table is listed");
+
+        const int levelRole = [&model] {
+            const QHash<int, QByteArray> names = model.roleNames();
+            for (auto it = names.cbegin(); it != names.cend(); ++it) {
+                if (it.value() == "level") return it.key();
+            }
+            return -1;
+        }();
+        check(levelRole >= 0, "C18: the model exposes a 'level' role for the scene to bind");
+        auto levelOf = [&](int row) {
+            return levelRole < 0 ? -1 : model.data(model.index(row, 0), levelRole).toInt();
+        };
+
+        QQuickItem* list = root->findChild<QQuickItem*>(QStringLiteral("pickerList"));
+        check(list != nullptr, "precondition (C18): the list is addressable");
+        auto itemAt = [&](int row) -> QQuickItem* {
+            QQuickItem* it = nullptr;
+            QMetaObject::invokeMethod(list, "itemAtIndex",
+                                      Q_RETURN_ARG(QQuickItem*, it), Q_ARG(int, row));
+            return it;
+        };
+        // The first row of each class the MODEL offers. The scroll position at this
+        // moment is not consulted: the picker opens scrolled to the current destination
+        // (Telegram in this fixture) and the window is 640x480, so only a handful of
+        // rows have delegates at all. Each row is brought into the viewport just before
+        // it is measured - that is the only thing scrolling is used for here, since a
+        // row that was never instantiated has no delegate. Where a row sits in the
+        // viewport is not what C18 is about.
+        int sectionRow = -1, flatRow = -1, childRow = -1;
+        for (int row = 0; row < model.rowCount(); ++row) {
+            if (!model.isOnScreen(row) || model.idOf(row).isEmpty()) continue;  // skips collapsed rows
+            if (model.isSection(row)) {
+                if (sectionRow < 0) sectionRow = row;
+                continue;
+            }
+            if (levelOf(row) == 0) {
+                if (flatRow < 0) flatRow = row;    // childless TOP-LEVEL destination
+            } else if (levelOf(row) == 1) {
+                if (childRow < 0) childRow = row;  // destination under a section
+            }
+        }
+        check(sectionRow >= 0, "precondition (C18): the model has an expanded section to measure");
+        check(flatRow >= 0,
+              "precondition (C18): the model has a childless top-level destination to measure");
+        check(childRow >= 0, "precondition (C18): the model has a destination under a section");
+        check(flatRow >= 0 && !model.isSection(flatRow) && model.sectionOf(flatRow) < 0
+                  && model.childCount(flatRow) == 0,
+              "precondition (C18): the row measured as top-level really is childless and sectionless");
+        // Scrolling is a measurement aid, not the claim: it makes the delegate exist.
+        auto reveal = [&](int row) {
+            QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, row), Q_ARG(int, 0));
+            spin(250);
+        };
+
+        if (sectionRow >= 0 && flatRow >= 0 && childRow >= 0) {
+            // The model's own discrimination, for the three rows being measured.
+            check(levelOf(sectionRow) == 0, "C18: a section row is level 0");
+            check(levelOf(flatRow) == 0,
+                  QString("C18: a CHILDLESS top-level destination is level 0, not 1 (%1)")
+                      .arg(levelOf(flatRow)));
+            check(levelOf(childRow) == 1,
+                  QString("C18: a destination under a section is level 1 (%1)").arg(levelOf(childRow)));
+            check(model.sectionOf(flatRow) < 0 && model.sectionOf(childRow) >= 0,
+                  "C18: the rows measured as top-level and nested really are (sectionOf)");
+
+            // The lanes, read off the delegate's own items. The label is the anchored
+            // Text ("rowLabelText"), so its x IS its left margin inside the row; the
+            // badge and the disclosure caret are the row's two Images, told apart by
+            // their size (18 and 12).
+            struct Lanes {
+                double badge = -1;
+                double label = -1;
+                double caret = -1;
+                bool caretVisible = false;
+                bool found = false;
+            };
+            auto lanesOf = [&](int row) {
+                Lanes l;
+                QQuickItem* it = itemAt(row);
+                if (!it) return l;
+                l.found = true;
+                if (QQuickItem* lbl = it->findChild<QQuickItem*>(QStringLiteral("rowLabelText")))
+                    l.label = lbl->x();
+                const auto kids = it->findChildren<QQuickItem*>();
+                for (QQuickItem* c : kids) {
+                    if (!c->inherits("QQuickImage")) continue;
+                    if (near(c->width(), 18.0) && near(c->height(), 18.0)) l.badge = c->x();
+                    if (near(c->width(), 12.0) && near(c->height(), 12.0)) {
+                        l.caret = c->x();
+                        l.caretVisible = c->isVisible();
+                    }
+                }
+                return l;
+            };
+            reveal(sectionRow);
+            const Lanes sec = lanesOf(sectionRow);
+            reveal(flatRow);
+            const Lanes flat = lanesOf(flatRow);
+            reveal(childRow);
+            const Lanes child = lanesOf(childRow);
+            check(sec.found && flat.found && child.found,
+                  "precondition (C18): all three measured rows have a delegate to read");
+            check(sec.label > 0 && flat.label > 0 && child.label > 0,
+                  "precondition (C18): all three labels have a real x (not NaN)");
+
+            // The label lane: the thing a person reads as "this is indented".
+            check(near(sec.label, 48.0),
+                  QString("C18: a section's label sits at x=48 (measured %1)").arg(sec.label));
+            check(near(flat.label, 48.0),
+                  QString("C18: a CHILDLESS top-level destination's label sits at x=48, level with "
+                          "a section - NOT at the child indent (measured %1)").arg(flat.label));
+            check(near(child.label, 62.0),
+                  QString("C18: a destination really inside a section still sits at x=62 (measured %1)")
+                      .arg(child.label));
+            check(!near(flat.label, child.label),
+                  "C18: the childless top-level row is not drawn at the child indent");
+            check(near(flat.label, sec.label),
+                  "C18: it is drawn at exactly the section lane");
+
+            // The badge lane: the other visible expression that used `isSection`.
+            check(near(sec.badge, 24.0),
+                  QString("C18: a section's icon badge sits at x=24 (measured %1)").arg(sec.badge));
+            check(near(flat.badge, 24.0),
+                  QString("C18: a childless top-level destination's badge sits at x=24 (measured %1)")
+                      .arg(flat.badge));
+            check(near(child.badge, 38.0),
+                  QString("C18: a nested destination's badge still sits at x=38 (measured %1)")
+                      .arg(child.badge));
+
+            // The caret lane. The disclosure glyph is still sections-only (visible:
+            // model.isSection is untouched), so it is asserted where it is visible; its
+            // x follows the same level statement, which is checked on the invisible
+            // instance that a destination really does carry.
+            check(sec.caretVisible, "C18: a section still discloses (its caret is visible)");
+            check(!flat.caretVisible && !child.caretVisible,
+                  "C18: a DESTINATION still has no disclosure caret, childless or not (isSection unchanged)");
+            check(near(sec.caret, 6.0),
+                  QString("C18: a section's caret sits at x=6 (measured %1)").arg(sec.caret));
+            check(near(child.caret, 20.0),
+                  QString("C18: the caret lane follows the level for a nested row too (measured %1)")
+                      .arg(child.caret));
+        }
+    }
+
     delete created;
     QTextStream(stdout) << (failures ? "=== FAILED " : "=== OK ")
                         << failures << " failures\n";

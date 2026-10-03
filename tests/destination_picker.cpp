@@ -198,6 +198,71 @@ int main(int argc, char** argv) {
         check(destinations(model).size() == targets.size(),
               QStringLiteral("every destination is in the list once (%1 of %2)")
                   .arg(destinations(model).size()).arg(targets.size()));
+
+        // C18 (contract line 97): "A destination with no children is not indented as
+        // though it had a parent." The row's LEVEL is the model's one authoritative
+        // statement of that - 0 = listed directly (a section, or a destination whose
+        // platform has no section row above it), 1 = nested under a section - and it
+        // is what the delegate draws every horizontal lane from. `isSection` cannot
+        // answer it: a platform with a single destination, or a group whose rows are
+        // not variants of one platform, is appended with NO section above it, so such
+        // a destination is top-level (and was, before this role existed, drawn with
+        // the CHILD offsets 38/62 instead of 24/48 - the reported bug).
+        //
+        // Read the role by the NAME the scene binds, not by enum: that is the
+        // contract with QML, and it lets this same test compile against the tree
+        // before the fix (where the failure is "no such role" plus wrong geometry).
+        const int levelRole = [&model] {
+            const QHash<int, QByteArray> names = model.roleNames();
+            for (auto it = names.cbegin(); it != names.cend(); ++it) {
+                if (it.value() == "level") return it.key();
+            }
+            return -1;
+        }();
+        check(levelRole >= 0, "C18: the model exposes a 'level' role for the scene to bind");
+        auto levelOf = [&](int aRow) {
+            return levelRole < 0 ? -1 : model.data(model.index(aRow, 0), levelRole).toInt();
+        };
+
+        int flatRow = -1;   // a childless TOP-LEVEL destination: no section above it
+        int nestedRow = -1; // a destination that really is inside a section
+        for (int i = 0; i < model.rowCount(); ++i) {
+            if (model.isSection(i) || model.idOf(i).isEmpty()) continue;
+            if (model.sectionOf(i) < 0) {
+                if (flatRow < 0) flatRow = i;
+            } else if (nestedRow < 0) {
+                nestedRow = i;
+            }
+        }
+        check(flatRow >= 0, "precondition (C18): a childless top-level destination exists to measure");
+        check(nestedRow >= 0, "precondition (C18): a destination under a section exists to measure");
+        if (flatRow >= 0 && nestedRow >= 0) {
+            check(model.sectionOf(flatRow) < 0 && model.sectionOf(nestedRow) >= 0,
+                  "C18: the two measured rows really are one top-level and one nested (sectionOf)");
+            check(levelOf(flatRow) == 0,
+                  QStringLiteral("C18: a CHILDLESS top-level destination is level 0, not 1 (%1)")
+                      .arg(levelOf(flatRow)));
+            check(levelOf(nestedRow) == 1,
+                  QStringLiteral("C18: a destination under a section is level 1 (%1)")
+                      .arg(levelOf(nestedRow)));
+            const int flatSection = model.sectionOf(flatRow);
+            const int nestedSection = model.sectionOf(nestedRow);
+            check(flatSection < 0 && levelOf(nestedSection) == 0,
+                  "C18: the section a child was measured against is itself level 0");
+            check(model.childCount(flatRow) == 0 && model.childCount(nestedRow) == 0,
+                  "C18: childCount keeps its meaning (a section's children; 0 for a destination)");
+            check(model.childCount(nestedSection) > 0,
+                  "C18: the measured section still reports the children it has");
+        }
+        // Both directions, every row: level is exactly "was appended under a section",
+        // and a section is always level 0. A missing role reads -1 and fails every row.
+        int wrongLevel = 0;
+        for (int i = 0; i < model.rowCount(); ++i) {
+            const int want = model.sectionOf(i) < 0 ? 0 : 1;
+            if (levelOf(i) != want) ++wrongLevel;
+        }
+        check(wrongLevel == 0,
+              QStringLiteral("C18: every row's level states its own parent fact (%1 wrong)").arg(wrongLevel));
     }
 
     // 4. A platform is not an answer, and (the reported bug) it is not SELECTABLE:

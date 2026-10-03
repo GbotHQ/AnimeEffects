@@ -187,6 +187,18 @@ Item {
                     // HoverHandler's job; the control supplies activation and focus.
                     hoverEnabled: false
 
+                    // C18: ONE statement of where this row sits horizontally, and
+                    // every lane below is that statement plus a fixed offset. It is
+                    // deliberately NOT `isSection`: a platform with a single
+                    // destination, or a group whose rows are not variants of one
+                    // platform, is appended with no section above it, so such a
+                    // destination is level 0 and lines up with the sections instead
+                    // of taking the one-lane-in child offset. `isSection` still says
+                    // what the row MEANS (a heading that discloses vs. a row that can
+                    // be selected); it no longer decides where anything is drawn.
+                    // Lanes: caret 6, badge 24, label 48, then +14 per level.
+                    readonly property int indentPx: model.level * 14
+
                     // The row's own highlight, in this design's terms: the selection
                     // token, or the raised token while hovered - not the style's
                     // background, which draws only for down/highlighted/visualFocus.
@@ -205,7 +217,7 @@ Item {
                     // opens. Quiet, like the platform row itself.
                     Image {
                         visible: model.isSection
-                        x: 6
+                        x: 6 + rowItem.indentPx
                         anchors.verticalCenter: parent.verticalCenter
                         width: 12
                         height: 12
@@ -218,7 +230,7 @@ Item {
                     // list still says which platform each line is.
                     Image {
                         visible: model.iconName !== ""
-                        x: model.isSection ? 24 : 38
+                        x: 24 + rowItem.indentPx
                         anchors.verticalCenter: parent.verticalCenter
                         width: 18
                         height: 18
@@ -232,7 +244,7 @@ Item {
                         // What the E29 truncation test reads (truncated) by.
                         objectName: "rowLabelText"
                         anchors.left: parent.left
-                        anchors.leftMargin: model.isSection ? 48 : 62
+                        anchors.leftMargin: 48 + rowItem.indentPx
                         anchors.right: parent.right
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter

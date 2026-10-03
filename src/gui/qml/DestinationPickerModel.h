@@ -69,6 +69,13 @@ public:
         TooltipRole,
         SelectedRole,
         ChildCountRole,
+        // C18: how far in the row sits, as ONE statement the scene can bind
+        // every horizontal lane to. 0 = listed directly (a section, or a
+        // destination whose platform has no section row above it), 1 = nested
+        // under a section. It is NOT "is a section": a childless top-level
+        // destination is level 0 and must not be indented as though it had a
+        // parent, which is the whole of the contract line this role exists for.
+        LevelRole,
     };
 
     // aCurrentId is the remembered destination (empty = none). Its platform is
