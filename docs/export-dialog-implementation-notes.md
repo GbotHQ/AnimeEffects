@@ -90,7 +90,7 @@ caret=1 text='a'               <- text insertion; the arrow never moved the care
 | **G37** combo Up/Down | Template moves the highlight | `setHighlightedIndex(highlightedIndex ± 1, …)` (`qquickcombobox.cpp:700,715`) | **stock does it** [read] |
 | **E26** tooltip delay, never instant | `int delay = 0`, and the delay timer only starts `if (delay > 0)` | `qquicktooltip.cpp:111-130` | **the stock default is instant** — the line requires setting the delay explicitly, in any implementation [read] |
 | **E27** tooltip placement | Basic positions it above its parent with `margins: 6`; the shared instance's position is the framework's | `Basic/ToolTip.qml`; `qquickpopuppositioner.cpp` | **mechanism exists; the design's placement must still be specified and driven** [open] |
-| **E28, G38** never clipped by the dialog | `Popup.Window` creates a real popup window | Re-measured 2026-10-03 (weston 15.0.1, Qt 6.11.2): on xcb both hosts behave identically (byte-identical captures); on Wayland the **compositor backend** decides — weston's headless backend never maps it from a `QQuickWidget`, its `x11` backend does, and a `QQuickView` host maps it on both. See *The Wayland limitation is a backend limitation* | **closed: in-scene tooltips meet E28 by flipping/shifting, so the host question stays settled** [driven] |
+| **E28, G38** never clipped by the dialog | `Popup.Window` creates a real popup window | Re-measured 2026-10-03 (weston 15.0.1, Qt 6.11.2): on xcb both hosts behave identically (byte-identical captures); on Wayland the **compositor backend** decides — weston's headless backend never maps it from a `QQuickWidget`, its `x11` backend does, and a `QQuickView` host maps it on both. See *The Wayland limitation is a backend limitation* | **closed, and the reopen condition is declined: the user ruled 2026-10-03 that the overhang look is not wanted; in-scene flip/shift satisfies E28, so the host question stays settled** [driven] |
 | **C21** no wrong hover frame | State binding in our own delegate | — | **ours either way**; needs a driven reproduction first [open] |
 | **C18, C20** indentation, keyboard selection | Our model and delegate | — | **ours either way** [read] |
 | **B6, B10, B11** search behaviour | Our field's code | — | **ours either way** [read] |
@@ -787,7 +787,7 @@ identical** across host × platform (raw logs `host-spike/out/selftest/*_app.log
 | probe | logged geometry | verdict |
 | --- | --- | --- |
 | combo popup at the bottom edge (G38) | `x=20 y=108 w=200 h=220 win 500x400`, settled same — baseline below was y=366 | the positioner **flips above** and stays fully in-bounds — G38 satisfied from either host, Wayland-native included |
-| `AeToolTip` at the right edge (E28) | `x=290 y=142 w=324 h=22` → spans 614 of 500 | **114 px overhang, clipped** — the real `AeToolTip.qml` has no flip and no clamp (`x: parent.width/2 - width/2`); identical in both hosts |
+| `AeToolTip` at the right edge (E28) | `x=290 y=142 w=324 h=22` → spans 614 of 500 | **114 px overhang, clipped**, state at the time of this selftest — the `AeToolTip.qml` of `31cfb2d` had no flip and no clamp (`x: parent.width/2 - width/2`); identical in both hosts. **Fixed later by `9abcea2`** ("the bubble keeps itself inside"): the flip chooses the side, the clamp guarantees the fit, so the shipped tooltip no longer clips. The measurement still stands as evidence that *placement is host-independent* |
 | stock `Controls.ToolTip` (E27 baseline) | `x=180 y=183 w=140 h=29`, `popupType=0 sameWindow=true` | an **in-scene Item popup**, placed **above** its owner even with room below — E27 wants below-first, so a delegate must place it, stock does not |
 | `Popup.Window` | the same diff box `620x30+0+420` (`AE=18600`) under **both** hosts on xcb | **corrected 2026-10-03**: it *is* a real window painting outside the host's rect (its left edge 200 px left of the host, `OVERGEO … left=200`); on Wayland, mapping it from a `QQuickWidget` depends on the compositor's **backend** — see below |
 
@@ -806,9 +806,18 @@ Consequences, in order:
    increment's clamp work, not a host migration.
 3. **Verdict: keep `QQuickWidget`.** By the settled principle — use the abstraction we already have
    unless a contract line says otherwise — and against the measured evidence there is no line that
-   says otherwise. **Reopen condition** (the only one): wanting the overhang look for tooltips
-   would require window-backed tooltips, which on Wayland requires the real-window host (and, per
-   the backend correction below, a compositor backend that maps popups at all).
+   says otherwise. **The reopen condition** was: wanting the overhang look for tooltips would
+   require window-backed tooltips, which on Wayland requires the real-window host (and, per the
+   backend correction below, a compositor backend that maps popups at all).
+
+**RULED 2026-10-03, the user — the overhang look is NOT wanted; keep the in-scene flip/shift.** The
+condition above is therefore not triggered and the host question stays settled. The question was put
+only after the measurement half was finished (`c30c6e5`), because the condition had been sitting on
+the user's desk since 2026-09-30 with its premise unmeasured. It was decided against a *measured*
+cost: the overhang needs a window-backed tooltip, which on Wayland needs both a real-window host and
+a compositor backend that maps popups, so it would have degraded on exactly the hosts that cannot.
+Contract line E28 is satisfied by the resolution already shipped — `AeToolTip` flips the side and
+clamps to the fit-rect (item 2 above, landed in `9abcea2`) — and no code changed for this ruling.
 
 ### Correction, 2026-10-03: "The Wayland limitation is a backend limitation"
 

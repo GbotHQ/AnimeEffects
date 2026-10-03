@@ -127,10 +127,15 @@ item 30's "drawn above its owner" is the z-order.)
 28. [R10] It is never clipped by the dialog's edge. (Wording decided 2026-09-30, the user: "The
     design here allows for either. This is nuanced." — so both resolutions satisfy this line: a
     tooltip that **overhangs** the dialog unclipped, or one that **flips/shifts to stay inside**
-    it. What the line forbids is clipping at the edge — which is what `AeToolTip` does today
-    (measured 2026-09-30: 114 px cut off, no flip, no clamp). The host decision recorded in the
-    implementation notes picks the flip/shift-inside resolution; if the overhang look is wanted
-    later, that alone reopens the host question.)
+    it. What the line forbids is clipping at the edge — which is what `AeToolTip` did *before*
+    `9abcea2` (measured 2026-09-30: 114 px cut off, no flip, no clamp; that commit gave it the
+    flip and the clamp, so the clipped state is historical, not current).
+    **RESOLVED 2026-10-03, the user: keep the in-scene flip/shift; the overhang look is not
+    wanted.** Asked only after the reopen condition's measurement half was finished (`c30c6e5`):
+    the overhang needs a window-backed tooltip, which on Wayland needs both a real-QML-window host
+    and a compositor backend that maps popups at all — so it would have degraded exactly where the
+    flip/shift does not. The host ruling `31cfb2d` is therefore not reopened; the mechanism is in
+    the implementation notes, "The Wayland limitation is a backend limitation".)
 29. [R9] It does not appear for a control whose text already states the same thing; the set of
     controls that keep a tooltip is explicit. (Decided 2026-09-30: exactly two kinds — picker rows,
     where the name can be truncated and the tooltip shows it in full, and the icon-only Auto/Reset
