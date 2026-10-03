@@ -90,7 +90,7 @@ caret=1 text='a'               <- text insertion; the arrow never moved the care
 | **G37** combo Up/Down | Template moves the highlight | `setHighlightedIndex(highlightedIndex ± 1, …)` (`qquickcombobox.cpp:700,715`) | **stock does it** [read] |
 | **E26** tooltip delay, never instant | `int delay = 0`, and the delay timer only starts `if (delay > 0)` | `qquicktooltip.cpp:111-130` | **the stock default is instant** — the line requires setting the delay explicitly, in any implementation [read] |
 | **E27** tooltip placement | Basic positions it above its parent with `margins: 6`; the shared instance's position is the framework's | `Basic/ToolTip.qml`; `qquickpopuppositioner.cpp` | **mechanism exists; the design's placement must still be specified and driven** [open] |
-| **E28, G38** never clipped by the dialog | `Popup.Window` creates a real popup window | Measured earlier: X11 correct geometry; **Wayland: created but never mapped from a QQuickWidget**, while a real `QQuickView` host mapped correctly | **open, and it decides the host** [driven] |
+| **E28, G38** never clipped by the dialog | `Popup.Window` creates a real popup window | Re-measured 2026-10-03 (weston 15.0.1, Qt 6.11.2): on xcb both hosts behave identically (byte-identical captures); on Wayland the **compositor backend** decides — weston's headless backend never maps it from a `QQuickWidget`, its `x11` backend does, and a `QQuickView` host maps it on both. See *The Wayland limitation is a backend limitation* | **closed: in-scene tooltips meet E28 by flipping/shifting, so the host question stays settled** [driven] |
 | **C21** no wrong hover frame | State binding in our own delegate | — | **ours either way**; needs a driven reproduction first [open] |
 | **C18, C20** indentation, keyboard selection | Our model and delegate | — | **ours either way** [read] |
 | **B6, B10, B11** search behaviour | Our field's code | — | **ours either way** [read] |
@@ -106,8 +106,11 @@ measured. "Which toolkit" is a real question with a real answer, and the answer 
 of this cluster are met outright by stock code (see the table), the rest are the same work either
 way, and where stock is close but not exact the delegate/template override is still less code than
 a control from scratch. My own `AeToolTip.qml` is the counter-example to keep in mind: its comment
-states, as fact, a limitation I never tested ("a QQuickWidget cannot render a popup outside its own
-bounds") and that limitation is not even true for Qt 6.8+ with `Popup.Window`.
+stated, as fact, a limitation I never tested ("a QQuickWidget cannot render a popup outside its own
+bounds") — and the limitation is not true at all, a `Popup.Window` does draw outside the scene. The
+correction that followed over-shot in the other direction ("works for Qt 6.8+"), which is its own
+lesson: the tested claim is narrower and is stated, with its platform, in the 2026-10-03 correction
+below.
 
 ### Settled
 
@@ -279,9 +282,15 @@ disappointing one.
   converted to `TextField`; see below), `ScrubSpinBox.qml:4-6`, `AeComboBox.qml:7-12`, and copies at
   `AeCheckBox.qml:8-11`, `AeSectionHeader.qml:15-16`, `AeToolTip.qml:7-11`. "QC2 brings its own
   chrome and its own palette" is half true (the palette is too small, the chrome is a delegate);
-  "a QQuickWidget cannot render a popup outside its own bounds" is untested and wrong for Qt 6.8+
-  with `Popup.Window`. Whichever rungs we take, those comments must stop giving untested limits as
-  the reason.
+  "a QQuickWidget cannot render a popup outside its own bounds" is wrong — a window-backed
+  `Popup.Window` does draw outside the scene, and on Wayland whether it *maps* from a
+  `QQuickWidget` host depends on the compositor's backend (2026-10-03 correction below). Whichever
+  rungs we take, those comments must stop giving untested limits as the reason.
+  [Corrected 2026-10-03: the line numbers above are the state *at the time* — every one of those
+  headers has since been rewritten and moved. Note that the bullet conflated two different claims:
+  the QC2 chrome/palette one (the list) and the popup-bounds one. The popup-bounds claim lived in
+  exactly three headers — `AeComboBox.qml`, `AeToolTip.qml` and `DestinationPicker.qml` — and all
+  three now state the measured, backend-scoped result instead; it survives in no QML file.]
 - The accessibility layer is orthogonal and survives every rung: `QmlFormAccessibility`'s factory,
   the `aeAccessible*` nodes and the value interface exist because Qt exposes no value protocol for
   QML spin boxes — not because these controls were hand-rolled.
@@ -621,7 +630,8 @@ QQuickWidget. Measured on this Qt (6.11, QQuickWidget host): the stock popup is
 `popupType: Popup.Item`, parented to the overlay **inside the widget's own window** (window count
 unchanged), clipped to the widget, with Qt's positioner doing below → flip-above → clamp — the
 same dance `updatePopupGeometry()` hand-wrote. `Popup.Window` also works here (a fourth window
-drawing over the title bar, screenshot captured). The design decides anyway: `export-dialog-
+drawing over the title bar, screenshot captured) — that capture is xcb, and on Wayland the mapping
+is backend-dependent (2026-10-03 correction below). The design decides anyway: `export-dialog-
 behavior` G37 — *"the popup is the design's in-scene list"* — so in-scene stays, now as a choice.
 
 ### Decisions taken during the conversion (all from the contract, none invented)
@@ -766,7 +776,9 @@ the positioner treats them at the window edges (item 2). The user authorized dri
 Wayland session for it; a two-variant spike (`--host=widget|window`, the real `AeComboBox.qml` and
 `AeToolTip.qml` via symlinks) answered it.
 
-### Measured — placement is identical in both hosts, on both platforms
+### Measured — in-scene placement is identical in both hosts, on both platforms
+
+(Only the window-backed popup differs, and not by host: see the backend correction below.)
 
 Zero-input selftest (programmatic `popup.open()` / `shown = true`) on Wayland-native windows, once
 per host; the same sequence under Xvfb/xcb exercised the real pointer path. **Every geometry line
@@ -777,7 +789,7 @@ identical** across host × platform (raw logs `host-spike/out/selftest/*_app.log
 | combo popup at the bottom edge (G38) | `x=20 y=108 w=200 h=220 win 500x400`, settled same — baseline below was y=366 | the positioner **flips above** and stays fully in-bounds — G38 satisfied from either host, Wayland-native included |
 | `AeToolTip` at the right edge (E28) | `x=290 y=142 w=324 h=22` → spans 614 of 500 | **114 px overhang, clipped** — the real `AeToolTip.qml` has no flip and no clamp (`x: parent.width/2 - width/2`); identical in both hosts |
 | stock `Controls.ToolTip` (E27 baseline) | `x=180 y=183 w=140 h=29`, `popupType=0 sameWindow=true` | an **in-scene Item popup**, placed **above** its owner even with room below — E27 wants below-first, so a delegate must place it, stock does not |
-| `Popup.Window` (prior measurement, not re-run) | — | created but **never mapped from a `QQuickWidget`** on Wayland; maps from a real window host — the one behavior that differs between hosts |
+| `Popup.Window` | the same diff box `620x30+0+420` (`AE=18600`) under **both** hosts on xcb | **corrected 2026-10-03**: it *is* a real window painting outside the host's rect (its left edge 200 px left of the host, `OVERGEO … left=200`); on Wayland, mapping it from a `QQuickWidget` depends on the compositor's **backend** — see below |
 
 ### The ruling, and the decision it yields
 
@@ -787,14 +799,79 @@ Consequences, in order:
 
 1. No contract line requires a tooltip that overhangs the dialog ⇒ no line requires window-backed
    tooltips ⇒ **no line requires the real-QML-window host** (its only measured advantage on Wayland
-   is mapping `Popup.Window`, which the design does not need).
+   is mapping `Popup.Window`, which the design does not need — and which, per the backend
+   correction below, is not even a property of the host).
 2. The chosen resolution in this host is **flip/shift-inside**: it is plain positioning code ("ours
    either way") and works identically in both hosts — so the fix for the 114 px clip is the tooltip
    increment's clamp work, not a host migration.
 3. **Verdict: keep `QQuickWidget`.** By the settled principle — use the abstraction we already have
    unless a contract line says otherwise — and against the measured evidence there is no line that
    says otherwise. **Reopen condition** (the only one): wanting the overhang look for tooltips
-   would require window-backed tooltips, which on Wayland requires the real-window host.
+   would require window-backed tooltips, which on Wayland requires the real-window host (and, per
+   the backend correction below, a compositor backend that maps popups at all).
+
+### Correction, 2026-10-03: "The Wayland limitation is a backend limitation"
+
+The table row above said "never mapped from a `QQuickWidget` on Wayland" on the strength of a single
+measurement that was never re-run, and the ruling weighed it as a property of the *host*. Re-measured
+2026-10-03 with a purpose-built spike (`host-spike/popup-spike.cpp`, `--host=widget|window
+--popup=item|window --open=0|1 --open-ms=N`), weston **15.0.1**, Qt **6.11.2**, always in a private
+`XDG_RUNTIME_DIR` and a private socket — never the live session:
+
+| host | compositor | `Popup.Window` maps? | evidence |
+| --- | --- | --- | --- |
+| `QQuickWidget` | weston `--backend=headless` | **no — 0/9** | `out/count-headless/` (desktop shell, 0/6), `out/count-headless-kiosk/` (0/3), `out/delay-headless/` |
+| `QQuickWidget` | weston `--backend=x11` | **yes — 9/9** | `out/count-x11/` (6/6), `out/count-x11-kiosk/` (3/3) |
+| `QQuickView` | weston `--backend=headless` | **yes — 9/9** | the same two directories, `window_*` |
+| `QQuickView` | weston `--backend=x11` | **yes — 9/9** | the same two directories, `window_*` |
+| either host | xcb (Xvfb) | **yes** | `out/popup_at200/`, byte-identical across hosts |
+
+- **Not timing.** `delay_sweep.sh headless 300 1200 3000 5000` (`out/delay-headless/`): `mapped=0
+  closed=1` at every delay, with an identical settle line (`TIP settled x=0 y=0 w=620 h=30
+  visible=false popupType=1`) and an identical client warning — `qt.qpa.wayland: Failed to create
+  popup. Ensure popup  QQuickPopupWindow(0x…) has a transientParent set`. A 16× spread of settle
+  time changes nothing.
+- **Not the shell**: reproduced under weston's default desktop shell *and* `--shell=kiosk`.
+- **Not the client's GL/EGL integration.** `WAYLAND_DEBUG=1` wire (`wl_trace.sh`,
+  `out/trace-headless/wire.log`, `out/trace-x11/wire.log`) shows the same mesa bootstrap on both
+  backends — same registry order, same globals (`wl_compositor` v5, `wl_subcompositor` v1,
+  `wp_viewporter` v1, `zxdg_output_manager_v1` v2, `wp_presentation` v2) — and no MESA/EGL/driver
+  error line in either log.
+- **What the wire does show.** *Headless*: the host toplevel is created and the client **never sends
+  `get_xdg_popup`** — one `get_xdg_surface`, two surfaces, no `create_positioner`, no
+  `xdg_popup.configure`. *x11*: the full handshake — `get_xdg_surface` ×2 (three surfaces),
+  `create_positioner`, `xdg_surface#27.get_popup(xdg_popup#35, xdg_surface#25, xdg_positioner#23)`,
+  `xdg_popup#35.configure(0, 210, 620, 30)`, `ack_configure` — and the popup is parented to the
+  **host widget's** toplevel (`#25`), not to the scene-graph offscreen window, which on *both*
+  backends gets a `wl_surface` and **never a role**. So the refusal happens inside Qt before any
+  protocol call, and weston's own log contains no popup/xdg/error line at all.
+- **Not claimed: the mechanism.** *Why* the same client window tree resolves a transient parent
+  against the x11-backed compositor and not the headless one is **not** determined; the wire stops
+  at the client boundary, so it lives in `QQuickWidget`/`QWaylandWindow` parent resolution and would
+  need client-side instrumentation. The table is the finding.
+- **On xcb there was never a host difference to find.** `out/popup_at200/` gives `widget/item` =
+  `window/item` = `AE 14820`, box `494x30+206+234`, and `widget/window` = `window/window` =
+  `AE 18600`, box `620x30+0+420` — the same images to the byte. The window-backed popup's rect sits
+  200 px to the **left** of the host (`OVERGEO popup=0,420 620x30 right=-80 left=200 top=-300
+  bottom=-70`), i.e. it really does paint outside the host's own X window, which an item popup
+  cannot do (its box lies wholly inside the host's 200..700 span). Positions in that no-WM capture
+  are not the app's requested ones; the host/window *identity* is what the pairs prove.
+- **Harness traps paid for here, so nobody re-derives them.** (1) `weston-screenshooter` is a dead
+  end on this box: on the headless backend it prints `Output capture error: unauthorized`, then the
+  shm buffer format and size, and **writes no file**, exit 0 — hence the weston-on-X11/Xvfb capture
+  path. (2) `--shell` takes the shell's **base** name: `--shell=kiosk` loads `kiosk-shell.so`, but
+  `--shell=desktop-shell` resolves to `desktop-shell-shell.so`, which does not exist — weston exits,
+  the harness takes its `FAIL no weston socket` path (which prints no rows), and both
+  `out/count-*-desktop-shell/` directories contain a weston log and nothing else. Use
+  `--shell=desktop`. (3) `pkill -f weston` **and** `ps | grep weston`-derived PID loops both match
+  the invoking shell's own command line (the second time the pattern sat inside an `awk` program
+  text and SIGTERM'd the shell mid-loop): filter on `ps -eo pid,comm`.
+
+**Effect on the ruling: none, and it now rests on firmer ground.** The host difference the ruling
+weighed was Wayland-only even before the backend split, and in shipping code **no QML file uses a
+window-backed popup at all** (`grep -rn popupType src/gui/qml` matches one comment, no code) — the
+in-scene, item-backed tooltip meets E28 by flipping/shifting, never by overhanging. So the reopen
+condition stands exactly as stated: wanting the *overhang look* is a design change, not a defect.
 
 ### Verification honesty
 

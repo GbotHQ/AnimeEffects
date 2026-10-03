@@ -29,8 +29,11 @@ import QtQuick
 // take a window of its own and the shared instance behind Controls' attached
 // ToolTip cannot be positioned per site. (The old header gave a different
 // reason - "a QQuickWidget cannot render a popup outside its own bounds" -
-// which is untested and false for Qt 6.8+ with `Popup.Window`; that is not why
-// this exists.)
+// which is false of Qt 6.11: a `Popup.Window` does draw outside the scene, and
+// whether it maps from a QQuickWidget host on Wayland depends on the
+// compositor's backend, measured 2026-10-03 - see the notes section titled
+// "The Wayland limitation is a backend limitation".
+// That is still not why this exists.)
 //
 // TIMING (contract line E26): it appears after a delay and never instantly, and it
 // hides after a timeout or as soon as the pointer leaves.

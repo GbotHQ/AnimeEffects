@@ -7,8 +7,12 @@ import QtQuick.Controls
 // impossibility. This file's earlier comment claimed Controls' ComboBox cannot
 // render its popup outside the hosting QQuickWidget; that claim was measured
 // false on this Qt (6.11): the stock popup is `popupType: Popup.Item`, parented
-// to the window overlay inside the widget's own window, and `Popup.Window`
-// renders outside it too. The design keeps the list in-scene regardless —
+// to the window overlay inside the widget's own window. A window-backed
+// `Popup.Window` draws outside the scene — on xcb always; on Wayland whether it
+// maps at all from a QQuickWidget host depends on the compositor's backend
+// (measured 2026-10-03: weston's x11 backend maps it, its headless backend does
+// not; notes, "The Wayland limitation is a backend limitation").
+// The design keeps the list in-scene regardless —
 // export-dialog-behavior G37: "the popup is the design's in-scene list" — and
 // Qt's popup positioner performs the same dance `updatePopupGeometry()` did:
 // below the field, flipped above when there is no room, clamped inside the

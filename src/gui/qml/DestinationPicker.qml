@@ -13,8 +13,11 @@
 //   * and everything a person can decide - which rows exist, what is open, what Enter
 //     means - lives in the model, so the scene is only ever a view.
 // An earlier version of this comment claimed a QQuickWidget
-// cannot render a Controls popup outside its own bounds; that was never tested
-// and is not true for Qt 6.8+ with Popup.Window.
+// cannot render a Controls popup outside its own bounds; that is false - a
+// `Popup.Window` draws outside the scene, though on Wayland whether it maps from
+// a QQuickWidget host depends on the compositor's backend (measured 2026-10-03;
+// notes, "The Wayland limitation is a backend limitation"). This scene is
+// in-scene by design, not by impossibility.
 //
 // The scene is a pure VIEW. Everything a person can decide - which rows exist, what
 // is open, what the search reveals, what is selected, what Enter means - is in the
