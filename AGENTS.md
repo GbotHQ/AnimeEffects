@@ -290,6 +290,42 @@ When tearing a manual run down: `pkill -f "<pattern>"` **matches the shell runni
 because that pattern is in its own command line — it SIGTERMs the command before the message it
 would print. Kill by PID (`pkill -a Xvfb`, then `kill <pid>`), or match on the process name only.
 
+## Translations (`assets/locale/*.ts`)
+
+Extraction runs through the build, never by hand — lupdate renumbers every `<location>` in a
+catalog, so a hand edit and a real run are indistinguishable in the diff except by being wrong:
+
+```bash
+ninja -C build 'src/gui/update_translations:Debug'   # the :Debug / :Release suffix is REQUIRED
+```
+
+Measured traps, all of which cost time here:
+
+- `ninja -C build src/gui/update_translations` fails in 0.08 s with `unknown target`: on this
+  Ninja Multi-Config tree the configuration is part of the target name. The `:Release` variant runs
+  but prints **no** `Found … source text` summary, so anything you want to quote about extraction
+  counts has to come from the `:Debug` target.
+- **`en` is not a translated language.** It is absent from
+  `qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES es ja ko ru zh)` (root `CMakeLists.txt:29`),
+  so `translation_en.ts` is the source-language stub. lupdate prints `Updating …/translation_en.ts`
+  and `Found 893 source text(s) (893 new and 0 already existing)` and then leaves the 4-line,
+  0-entry file **byte-identical**. Do not "fix" it, and never read its `unfinished` count as debt.
+- lupdate sees what the *translation units* contain. A `tr()` in a file missing from
+  `AE_I18N_SOURCES`, or a `QT_TRANSLATE_NOOP` in a header nothing `#include`s, is invisible **with
+  no error at all** — the string simply never appears in a catalog. `src/ctrl/ExportTargetStrings.h`
+  is listed by name for exactly that reason (`src/gui/CMakeLists.txt:239-241`).
+- `scripts/run_suites.sh` gates `grep -c unfinished` = 0 and runs `check_tr_contexts.py` plus
+  `gen_export_targets_i18n.py --check` before any suite. `check_tr_contexts.py` proves only that a
+  context *can be asked for*; none of the three proves a string survives `.ts` → built `.qm` → the
+  context the application asks. That needs a real `QTranslator` over the built `.qm`: `lrelease`
+  and `lconvert` are not on `PATH` here and there is no PySide6, so a few lines of C++ against
+  `Qt6Core` (headers under `/usr/include/qt6`) is the cheap route.
+- The context is whatever the call site names — the QML file's `pragma Translator` for a QML
+  string, `QT_TRANSLATE_NOOP("ExportTargets", …)` for the destination table's. A lookup in the
+  wrong context returns the **English source without any error**, so a check has to assert the
+  translation differs from the source, and ask once in a deliberately wrong context to show the
+  lookup is actually context-keyed.
+
 ## Where the existing GUI tooling lives
 
 Extend these instead of writing new one-off scripts:

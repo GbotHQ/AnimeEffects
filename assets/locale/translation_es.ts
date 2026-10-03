@@ -24,157 +24,167 @@
         <translation>Fotogramas por segundo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="62"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="65"/>
         <source>Select palette path</source>
         <translation>Seleccionar ruta de paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="112"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="198"/>
         <source>Destination</source>
         <translation>Destino</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="147"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="233"/>
         <source>Change</source>
         <translation>Cambiar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="196"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="282"/>
         <source>Details</source>
         <translation>Detalles</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="322"/>
         <source>Output</source>
         <translation>Salida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="334"/>
         <source>Frames</source>
         <translation>Fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="370"/>
         <source>Add range</source>
         <translation>Añadir rango</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="380"/>
         <source>Resolution</source>
         <translation>Resolución</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
         <source>Width</source>
         <translation>Anchura</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="406"/>
         <source>Height</source>
         <translation>Altura</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="419"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
         <source>Reset to native</source>
         <translation>Restablecer al original</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="429"/>
         <source>Keep aspect ratio</source>
         <translation>Mantener la relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="436"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="443"/>
         <source>Frame rate</source>
         <translation>Velocidad de fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="462"/>
         <source>Encoding</source>
         <translation>Codificación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="475"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="477"/>
         <source>Format</source>
         <translation>Formato</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="496"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="500"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="638"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="642"/>
         <source>Codec</source>
         <translation>Códec</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="516"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="518"/>
         <source>Quality</source>
         <translation>Calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="545"/>
         <source>Image quality</source>
         <translation>Calidad de la imagen</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="549"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="696"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="732"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="550"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="673"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="706"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="734"/>
         <source>Reset to auto</source>
         <translation>Restablecer a automático</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="566"/>
         <source>Advanced</source>
         <translation>Avanzado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="667"/>
         <source>Quality override</source>
         <translation>Anulación de calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="687"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="697"/>
         <source>Bitrate</source>
         <translation>Tasa de bits</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="719"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="726"/>
+        <source>Size cap (MB)</source>
+        <translation>Límite de tamaño (MB)</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="799"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="804"/>
         <source>Export</source>
         <translation>Exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="58"/>
         <source>Expanded</source>
         <translation>Expandido</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="58"/>
         <source>Collapsed</source>
         <translation>Contraído</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="84"/>
         <source>Checked</source>
         <translation>Marcado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="84"/>
         <source>Unchecked</source>
         <translation>Desmarcado</translation>
     </message>
@@ -189,17 +199,17 @@
         <translation> · </translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="47"/>
         <source>On</source>
         <translation>Activado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="47"/>
         <source>Off</source>
         <translation>Desactivado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeTextField.qml" line="147"/>
+        <location filename="../../src/gui/qml/AeTextField.qml" line="123"/>
         <source>Clear</source>
         <translation>Limpiar</translation>
     </message>
@@ -1586,8 +1596,12 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
+        <source>Lossless quality always writes FFV1, which carries transparency. With transparency ON the other quality buckets use VP9, the lossy codec that keeps the alpha channel here (AV1 drops it silently and H.265 refuses it). With transparency OFF AV1 is used at every quality bucket — Best, Balanced and Smaller file alike; H.265 is only the fallback for a build with no usable AV1 encoder.</source>
+        <translation>La calidad Sin pérdida siempre escribe FFV1, que transporta transparencia. Con la transparencia ACTIVADA, los demás niveles de calidad usan VP9, el códec con pérdida que aquí conserva el canal alfa (AV1 lo descarta en silencio y H.265 lo rechaza). Con la transparencia DESACTIVADA se usa AV1 en todos los niveles de calidad, también en Mejor calidad, Equilibrado y Archivo más pequeño; H.265 es solo la opción de reserva para una compilación sin ningún codificador AV1 utilizable.</translation>
+    </message>
+    <message>
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
-        <translation>Con calidad Sin pérdida esto es FFV1, que transporta alfa (yuva420p); los demás niveles eligen H.265, que aquí no puede codificar alfa en absoluto.</translation>
+        <translation type="vanished">Con calidad Sin pérdida esto es FFV1, que transporta alfa (yuva420p); los demás niveles eligen H.265, que aquí no puede codificar alfa en absoluto.</translation>
     </message>
     <message>
         <source>FFV1 (lossless master)</source>
@@ -1606,17 +1620,17 @@
         <translation type="vanished">por software</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="182"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="217"/>
         <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
         <translation>%1. Este sitio vuelve a codificar las subidas, así que la calidad del original importa más que la compatibilidad</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="188"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="223"/>
         <source>%1. This plays your file directly, so decode compatibility matters most</source>
         <translation>%1. Aquí el archivo se reproduce directamente, así que la compatibilidad de decodificación importa por encima de todo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="193"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="228"/>
         <source>%1. A master copy, so fidelity matters most</source>
         <translation>%1. Una copia maestra, así que la fidelidad importa por encima de todo</translation>
     </message>
@@ -1625,72 +1639,72 @@
         <translation type="vanished">%1, unos %2 s aquí</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="213"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="269"/>
         <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
         <translation>Intención de calidad no aplicada: la tabla de destinos no declara &lt;bucket_positions&gt;, así que &apos;%1&apos; se quedó en su valor por defecto.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="228"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="284"/>
         <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
         <translation>&apos;%1&apos; es un códec con pérdida, así que Sin pérdida aquí significa su máxima calidad, no un archivo sin pérdida.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="298"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="354"/>
         <source>cannot open %1</source>
         <translation>no se puede abrir %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="319"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="375"/>
         <source>%1: missing &lt;export_targets&gt; root</source>
         <translation>%1: falta el elemento raíz &lt;export_targets&gt;</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="527"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="598"/>
         <source>no frames selected</source>
         <translation>no hay fotogramas seleccionados</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="538"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="609"/>
         <source>%1 frames from %2 separate ranges</source>
         <translation>%1 fotogramas de %2 rangos distintos</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="568"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="639"/>
         <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
         <translation>Tamaño forzado a %1x%2 (lo exige este destino); la ilustración queda %3.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="574"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="645"/>
         <source>cropped to fill it</source>
         <translation>recortada para rellenarlo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="575"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="646"/>
         <source>padded to fit it</source>
         <translation>ampliada con márgenes para encajarla</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="615"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="686"/>
         <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
         <translation>Velocidad de fotogramas reducida de %1 a %2 fps (límite del destino).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="627"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="698"/>
         <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
         <translation>Recortado de %1 a %2 fotogramas (límite de %3 s).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="639"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="710"/>
         <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
         <translation>Recortado de %1 a %2 fotogramas (límite del destino).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="648"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="719"/>
         <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
         <translation>AVISO: el destino necesita al menos %1 fotogramas pero solo hay %2, así que probablemente se rechace la subida.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="666"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="737"/>
         <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
         <translation>AVISO: el destino necesita al menos %1 s pero esta exportación dura %2 s, así que probablemente se rechace la subida. Seleccione un rango de fotogramas más largo.</translation>
     </message>
@@ -1711,128 +1725,129 @@
         <translation type="vanished">%1: nada de aquí es lo bastante rápido para este presupuesto (%2), así que esto es lo más rápido disponible</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="733"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="804"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="866"/>
         <source>no suitable encoder found in this build</source>
         <translation>no se encontró ningún codificador adecuado en esta compilación</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="746"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="947"/>
         <source>no destination selected</source>
         <translation>no hay destino seleccionado</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="750"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="951"/>
         <source>invalid source size</source>
         <translation>tamaño de origen no válido</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="762"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="963"/>
         <source>%1 is required by this destination.</source>
         <translation>Este destino requiere %1.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="775"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="976"/>
         <source>Transparency</source>
         <translation>transparencia</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="777"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="978"/>
         <source>Audio</source>
         <translation>audio</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="787"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="988"/>
         <source>no frames selected for export</source>
         <translation>no hay fotogramas seleccionados para exportar</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="827"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1028"/>
         <source>%1; the ranges play back to back and the frames between them are not exported.</source>
         <translation>%1; los rangos se reproducen seguidos y los fotogramas intermedios no se exportan.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="840"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1071"/>
         <source>no encoder available for this destination in this build</source>
         <translation>no hay ningún codificador disponible para este destino en esta compilación</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="874"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1107"/>
         <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
         <translation>AVISO: los límites de este destino NO ESTÁN VERIFICADOS; compruébelos antes de confiar en ellos.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="901"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1134"/>
         <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
         <translation>Una imagen fija (fotograma %1), escrita como %2. El rango de fotogramas de arriba no se aplica.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="908"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1141"/>
         <source>%1 frames written as numbered .%2 files.</source>
         <translation>%1 fotogramas escritos como archivos .%2 numerados.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="964"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1197"/>
         <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
         <translation>%1 requiere transparencia, pero &apos;%2&apos; no puede codificar un canal alfa en esta compilación (anuncia %3 y luego lo rechaza). Use un destino cuyo códec admita alfa: WebM/VP9, APNG o FFV1.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="973"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1206"/>
         <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
         <translation>%1: %2 no pudo codificar %3 y ningún respaldo funcionó (%4)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="980"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1213"/>
         <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
         <translation>Transparencia descartada: &apos;%1&apos; anuncia %2 pero aquí no puede codificarlo, así que se usa %3 en su lugar.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="986"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1219"/>
         <source>the encoder default</source>
         <translation>el valor por defecto del codificador</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1047"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1295"/>
         <source>No sound: %1 does not accept an audio track.</source>
         <translation>Sin sonido: %1 no acepta pista de audio.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1052"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1300"/>
         <source>WARNING: %1 expects sound but this project has no audio track.</source>
         <translation>AVISO: %1 espera audio pero este proyecto no tiene pista de audio.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1079"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1327"/>
         <source>no frames left</source>
         <translation>no quedan fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1117"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1365"/>
         <source>could not write %1</source>
         <translation>no se pudo escribir %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1125"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1373"/>
         <source>no files produced</source>
         <translation>no se produjo ningún archivo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1167"/>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1191"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1415"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1439"/>
         <source>no file produced</source>
         <translation>no se produjo ningún archivo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1225"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1473"/>
         <source>frames: the plan selected %1, but %2 were supplied</source>
         <translation>fotogramas: el plan seleccionó %1, pero se proporcionaron %2</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="535"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="606"/>
         <source>%1 frame</source>
         <translation>%1 fotograma</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="536"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="607"/>
         <source>%1 frames</source>
         <translation>%1 fotogramas</translation>
     </message>
@@ -1841,7 +1856,7 @@
         <translation type="vanished">los fotogramas no coinciden: el plan selecciona %1 pero se proporcionaron %2 (véase plan.selection.indices())</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1294"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1542"/>
         <source>canceled</source>
         <translation>cancelado</translation>
     </message>
@@ -2583,12 +2598,12 @@
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1357"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1401"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1467"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1505"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1552"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1575"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1606"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1409"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1526"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1576"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1599"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1630"/>
         <source>Export Error</source>
         <translation>Error al exportar</translation>
     </message>
@@ -2598,44 +2613,44 @@
         <translation>Destino de exportación desconocido: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1420"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1428"/>
         <source>File exists</source>
         <translation>El archivo ya existe</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1421"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1429"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>El archivo “%1” ya existe. ¿Desea sobrescribirlo?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1468"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1489"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 limita el tamaño del archivo, lo que obliga a codificarlo más de una vez, y eso necesita los %2 fotogramas en memoria (~%3 MB). Exporte menos fotogramas o elija un destino sin límite de tamaño.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1483"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1504"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>Ajustando por debajo del límite de %2 KB de %1...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1496"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1517"/>
         <source>Export Canceled</source>
         <translation>Exportación cancelada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1497"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1518"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>La exportación se detuvo mientras se ajustaba al límite de tamaño de %1. El archivo ya escrito es el último intento y puede superar el límite.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1506"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1527"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 limita el archivo a %2 KB y ni siquiera el ajuste más pequeño logró encajarlo (%3 KB).
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1514"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1535"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>Ajustado a %1 bytes en %2 intentos (%3x%4).</translation>
     </message>
@@ -2643,7 +2658,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="327"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -3274,37 +3289,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="309"/>
         <source>Where are you posting this?</source>
         <translation>¿Dónde va a publicar esto?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="313"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>Buscar: telegram, sticker, reels, ilustración, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="317"/>
         <source>Search destinations</source>
         <translation>Buscar destinos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="258"/>
         <source>%1 destinations</source>
         <translation>%1 destinos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="331"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>Mi plataforma no está en la lista (elijo el formato yo mismo)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="335"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>Todo lo anterior son destinos cuyas reglas conocemos. Este le permite indicar el formato y el códec usted mismo.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="321"/>
         <source>Use this destination</source>
         <translation>Usar este destino</translation>
     </message>
@@ -3356,17 +3371,17 @@
         <translation type="vanished">FPS</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="30"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="32"/>
         <source>Export parameters</source>
         <translation>Exportar parámetros</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="89"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="119"/>
         <source>Open Palette</source>
         <translation>Abrir Paleta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="90"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="120"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>Archivo de paleta FFmpeg (*.png)</translation>
     </message>
@@ -3387,37 +3402,37 @@
 <context>
     <name>gui::ExportViewModel</name>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="303"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="306"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>Mi plataforma no está en la lista (elijo el formato yo mismo)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="336"/>
         <source>Output:</source>
         <translation>Salida:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="334"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="337"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="347"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="343"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="346"/>
         <source>Frame rate:</source>
         <translation>Velocidad de fotogramas:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="349"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="352"/>
         <source>Format:</source>
         <translation>Formato:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="355"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="358"/>
         <source>%1 numbered %2 files</source>
         <translation>%1 archivos %2 numerados</translation>
     </message>
@@ -3426,120 +3441,120 @@
         <translation type="vanished">%1 en %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="375"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="378"/>
         <source>Audio:</source>
         <translation>Audio:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="379"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="394"/>
         <source>yes</source>
         <translation>sí</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="379"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="394"/>
         <source>no</source>
         <translation>no</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="383"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="386"/>
         <source>none in this project</source>
         <translation>no hay ninguno en este proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="385"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="388"/>
         <source>off in this dialog</source>
         <translation>está desactivado en este diálogo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="393"/>
         <source>Transparency:</source>
         <translation>Transparencia:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="400"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="403"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
         <translation>%1 no admite transparencia, así que esta exportación será opaca.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="408"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="411"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
         <translation>Un GIF se repite en bucle indefinidamente, así que la casilla Reproducir en bucle está fijada como activada.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="429"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="432"/>
         <source>PNG sequence</source>
         <translation>Secuencia PNG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="430"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="433"/>
         <source>JPEG sequence</source>
         <translation>Secuencia JPEG</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="619"/>
         <source>CRF</source>
         <translation>CRF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="845"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="619"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="848"/>
         <source>Quality</source>
         <translation>Calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Smaller file</source>
         <translation>Archivo más pequeño</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Balanced</source>
         <translation>Equilibrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Best quality</source>
         <translation>Mejor calidad</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Lossless</source>
         <translation>Sin pérdida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="841"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="844"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1159"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1208"/>
         <source>%1 sequence</source>
         <translation>Secuencia %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1161"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1210"/>
         <source>animated GIF</source>
         <translation>GIF animado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1235"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1288"/>
         <source>Export with transparency</source>
         <translation>Exportar con transparencia</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1236"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1289"/>
         <source>Loop animation</source>
         <translation>Reproducir en bucle</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1237"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1290"/>
         <source>Export with audio</source>
         <translation>Exportar con audio</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1238"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1291"/>
         <source>Custom palette</source>
         <translation>Paleta personalizada</translation>
     </message>
@@ -4526,27 +4541,27 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation>Guardar archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1684"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1708"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>Exportado %1 (%2 KB)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1690"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1718"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> (%1 de %2 KB permitidos para %3)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1695"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1723"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>; POR ENCIMA DEL LÍMITE, se rechazará</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1734"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1762"/>
         <source>All files (*)</source>
         <translation>Todos los archivos (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
         <source>%1 files (*.%2)</source>
         <translation>Archivos %1 (*.%2)</translation>
     </message>
@@ -4716,8 +4731,8 @@ Open it?</source>
         <translation type="vanished">Imagen etiquetada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1728"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1803"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1831"/>
         <source>Export Folder</source>
         <translation>Exportar carpeta</translation>
     </message>
@@ -4734,7 +4749,7 @@ Open it?</source>
         <translation type="vanished">Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1764"/>
         <source>Export File</source>
         <translation>Exportar archivo</translation>
     </message>

@@ -24,157 +24,167 @@
         <translation>フレーム毎秒</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="62"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="65"/>
         <source>Select palette path</source>
         <translation>パレットパスを選択する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="112"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="198"/>
         <source>Destination</source>
         <translation>出力先</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="147"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="233"/>
         <source>Change</source>
         <translation>変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="196"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="282"/>
         <source>Details</source>
         <translation>詳細</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="236"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="322"/>
         <source>Output</source>
         <translation>出力</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="248"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="334"/>
         <source>Frames</source>
         <translation>フレーム</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="284"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="370"/>
         <source>Add range</source>
         <translation>範囲を追加</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="294"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="380"/>
         <source>Resolution</source>
         <translation>解像度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="301"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
         <source>Width</source>
         <translation>幅</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="320"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="406"/>
         <source>Height</source>
         <translation>高さ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="333"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="359"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="419"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
         <source>Reset to native</source>
         <translation>元の値に戻す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="341"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="429"/>
         <source>Keep aspect ratio</source>
         <translation>アスペクト比を維持する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="348"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="355"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="436"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="443"/>
         <source>Frame rate</source>
         <translation>フレームレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="374"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="462"/>
         <source>Encoding</source>
         <translation>エンコード</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="387"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="389"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="475"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="477"/>
         <source>Format</source>
         <translation>形式</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="400"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="402"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="496"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="500"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="638"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="642"/>
         <source>Codec</source>
         <translation>コーデック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="413"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="415"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="516"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="518"/>
         <source>Quality</source>
         <translation>品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="435"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="442"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="545"/>
         <source>Image quality</source>
         <translation>画質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="446"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="567"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="549"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="696"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="732"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="447"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="544"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="577"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="550"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="673"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="706"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="734"/>
         <source>Reset to auto</source>
         <translation>自動に戻す</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="463"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="566"/>
         <source>Advanced</source>
         <translation>詳細設定</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="538"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="667"/>
         <source>Quality override</source>
         <translation>品質の上書き</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="558"/>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="568"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="687"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="697"/>
         <source>Bitrate</source>
         <translation>ビットレート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="607"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="719"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="726"/>
+        <source>Size cap (MB)</source>
+        <translation>サイズ上限（MB）</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="799"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportDialog.qml" line="612"/>
+        <location filename="../../src/gui/qml/ExportDialog.qml" line="804"/>
         <source>Export</source>
         <translation>エクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="58"/>
         <source>Expanded</source>
         <translation>展開済み</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeDisclosure.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeDisclosure.qml" line="58"/>
         <source>Collapsed</source>
         <translation>折りたたみ済み</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="84"/>
         <source>Checked</source>
         <translation>チェック済み</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeCheckBox.qml" line="25"/>
+        <location filename="../../src/gui/qml/AeCheckBox.qml" line="84"/>
         <source>Unchecked</source>
         <translation>未チェック</translation>
     </message>
@@ -189,17 +199,17 @@
         <translation> · </translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="47"/>
         <source>On</source>
         <translation>オン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeIconButton.qml" line="40"/>
+        <location filename="../../src/gui/qml/AeIconButton.qml" line="47"/>
         <source>Off</source>
         <translation>オフ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AeTextField.qml" line="147"/>
+        <location filename="../../src/gui/qml/AeTextField.qml" line="123"/>
         <source>Clear</source>
         <translation>クリア</translation>
     </message>
@@ -1586,8 +1596,12 @@
     </message>
     <message>
         <location filename="../../src/ctrl/ExportTargetStrings.h" line="170"/>
+        <source>Lossless quality always writes FFV1, which carries transparency. With transparency ON the other quality buckets use VP9, the lossy codec that keeps the alpha channel here (AV1 drops it silently and H.265 refuses it). With transparency OFF AV1 is used at every quality bucket — Best, Balanced and Smaller file alike; H.265 is only the fallback for a build with no usable AV1 encoder.</source>
+        <translation>ロスレス品質では常に FFV1 を書き出し、これは透明度を保持します。透明度がオンの場合、ほかの品質段階では VP9 を使います。これはここでアルファチャンネルを保持できる非可逆コーデックです（AV1 はアルファを黙って捨て、H.265 は受け付けません）。透明度がオフの場合は、どの品質段階でも AV1 を使います。最高品質、バランス、小さいファイルのいずれも同じです。H.265 は、使用できる AV1 エンコーダーがないビルドでのフォールバックにすぎません。</translation>
+    </message>
+    <message>
         <source>At Lossless quality this is FFV1, which carries alpha (yuva420p); the other buckets pick H.265, which cannot encode alpha here at all.</source>
-        <translation>ロスレス品質では FFV1 になり、これはアルファ（yuva420p）を保持します。ほかの品質段階では H.265 が選ばれますが、ここではアルファをまったくエンコードできません。</translation>
+        <translation type="vanished">ロスレス品質では FFV1 になり、これはアルファ（yuva420p）を保持します。ほかの品質段階では H.265 が選ばれますが、ここではアルファをまったくエンコードできません。</translation>
     </message>
     <message>
         <source>FFV1 (lossless master)</source>
@@ -1606,17 +1620,17 @@
         <translation type="vanished">ソフトウェア</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="182"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="217"/>
         <source>%1. This site re-encodes uploads, so source quality matters more than compatibility</source>
         <translation>%1。このサイトはアップロードを再エンコードするため、互換性よりも元の画質が優先されます</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="188"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="223"/>
         <source>%1. This plays your file directly, so decode compatibility matters most</source>
         <translation>%1。このファイルは直接再生されるため、デコードの互換性が最も重要です</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="193"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="228"/>
         <source>%1. A master copy, so fidelity matters most</source>
         <translation>%1。マスター保存用のため、忠実さが最も重要です</translation>
     </message>
@@ -1625,72 +1639,72 @@
         <translation type="vanished">%1、ここでは約 %2 秒</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="213"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="269"/>
         <source>Quality intent not applied: the destination table declares no &lt;bucket_positions&gt;, so &apos;%1&apos; was left at its own default.</source>
         <translation>品質の指定を適用できません: 出力先テーブルに &lt;bucket_positions&gt; の宣言がないため、&apos;%1&apos; は既定のままです。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="228"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="284"/>
         <source>&apos;%1&apos; is a lossy codec, so Lossless here means its highest quality, not a lossless file.</source>
         <translation>&apos;%1&apos; は非可逆コーデックのため、ここでの「ロスレス」は最高品質を意味し、可逆ファイルになるわけではありません。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="298"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="354"/>
         <source>cannot open %1</source>
         <translation>%1 を開けません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="319"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="375"/>
         <source>%1: missing &lt;export_targets&gt; root</source>
         <translation>%1: &lt;export_targets&gt; ルート要素がありません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="527"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="598"/>
         <source>no frames selected</source>
         <translation>フレームが選択されていません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="538"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="609"/>
         <source>%1 frames from %2 separate ranges</source>
         <translation>%2 個の離れた範囲から %1 フレーム</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="568"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="639"/>
         <source>Size forced to %1x%2 (required by this destination); the art is %3.</source>
         <translation>サイズは %1x%2 に固定されます（この出力先の要件）。元の絵は %3。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="574"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="645"/>
         <source>cropped to fill it</source>
         <translation>切り取って合わせます</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="575"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="646"/>
         <source>padded to fit it</source>
         <translation>余白を加えて合わせます</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="615"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="686"/>
         <source>Frame rate reduced %1 -&gt; %2 fps (destination limit).</source>
         <translation>フレームレートを %1 から %2 fps に下げました（出力先の上限）。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="627"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="698"/>
         <source>Trimmed %1 -&gt; %2 frames (%3s limit).</source>
         <translation>%1 フレームから %2 フレームに切り詰めました（%3 秒の上限）。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="639"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="710"/>
         <source>Trimmed %1 -&gt; %2 frames (destination limit).</source>
         <translation>%1 フレームから %2 フレームに切り詰めました（出力先の上限）。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="648"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="719"/>
         <source>WARNING: destination needs at least %1 frames but only %2 are available, so the upload will likely be rejected.</source>
         <translation>警告: この出力先は %1 フレーム以上が必要ですが %2 しかないため、アップロードは拒否される可能性が高いです。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="666"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="737"/>
         <source>WARNING: destination needs at least %1 s but this export is %2 s, so the upload will likely be rejected. Select a longer frame range.</source>
         <translation>警告: この出力先は %1 秒以上が必要ですが、このエクスポートは %2 秒のため、アップロードは拒否される可能性が高いです。フレーム範囲を長くしてください。</translation>
     </message>
@@ -1711,128 +1725,129 @@
         <translation type="vanished">%1: この時間の上限（%2）に間に合うものがないため、利用できる中で最速です</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="733"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="804"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="866"/>
         <source>no suitable encoder found in this build</source>
         <translation>このビルドに適したエンコーダーがありません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="746"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="947"/>
         <source>no destination selected</source>
         <translation>出力先が選択されていません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="750"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="951"/>
         <source>invalid source size</source>
         <translation>元のサイズが不正です</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="762"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="963"/>
         <source>%1 is required by this destination.</source>
         <translation>この出力先では %1 が必須です。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="775"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="976"/>
         <source>Transparency</source>
         <translation>透明度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="777"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="978"/>
         <source>Audio</source>
         <translation>音声</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="787"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="988"/>
         <source>no frames selected for export</source>
         <translation>エクスポートするフレームが選択されていません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="827"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1028"/>
         <source>%1; the ranges play back to back and the frames between them are not exported.</source>
         <translation>%1。範囲は連続して再生され、範囲の間のフレームはエクスポートされません。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="840"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1071"/>
         <source>no encoder available for this destination in this build</source>
         <translation>この出力先で使えるエンコーダーがこのビルドにありません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="874"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1107"/>
         <source>WARNING: this destination&apos;s limits are UNVERIFIED; re-check before relying on them.</source>
         <translation>警告: この出力先の上限は未確認です。当てにする前に再確認してください。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="901"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1134"/>
         <source>One still image (frame %1), written as %2. The frame range above does not apply.</source>
         <translation>静止画 1 枚（フレーム %1）を %2 として書き出します。上記のフレーム範囲は適用されません。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="908"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1141"/>
         <source>%1 frames written as numbered .%2 files.</source>
         <translation>%1 フレームを連番の .%2 ファイルとして書き出します。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="964"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1197"/>
         <source>%1 requires transparency, but &apos;%2&apos; cannot encode an alpha channel in this build (it advertises %3 and then refuses it). Use a destination whose codec carries alpha: WebM/VP9, APNG, or FFV1.</source>
         <translation>%1 は透明度を必要としますが、&apos;%2&apos; はこのビルドでアルファチャンネルをエンコードできません（%3 に対応すると表明しながら拒否します）。アルファを保持できるコーデックの出力先を使用してください: WebM/VP9、APNG、FFV1。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="973"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1206"/>
         <source>%1: %2 could not encode %3 and no fallback worked (%4)</source>
         <translation>%1: %2 は %3 をエンコードできず、代替も機能しませんでした（%4）</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="980"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1213"/>
         <source>Transparency dropped: &apos;%1&apos; advertises %2 but cannot encode it here, so %3 is used instead.</source>
         <translation>透明度を破棄しました: &apos;%1&apos; は %2 に対応すると表明していますが、ここではエンコードできないため、代わりに %3 を使用します。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="986"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1219"/>
         <source>the encoder default</source>
         <translation>エンコーダーの既定値</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1047"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1295"/>
         <source>No sound: %1 does not accept an audio track.</source>
         <translation>音声なし: %1 は音声トラックを受け付けません。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1052"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1300"/>
         <source>WARNING: %1 expects sound but this project has no audio track.</source>
         <translation>警告: %1 は音声を必要としますが、このプロジェクトに音声トラックがありません。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1079"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1327"/>
         <source>no frames left</source>
         <translation>フレームが残っていません</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1117"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1365"/>
         <source>could not write %1</source>
         <translation>%1 を書き出せませんでした</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1125"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1373"/>
         <source>no files produced</source>
         <translation>ファイルが 1 つも生成されませんでした</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1167"/>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1191"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1415"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1439"/>
         <source>no file produced</source>
         <translation>ファイルが生成されませんでした</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1225"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1473"/>
         <source>frames: the plan selected %1, but %2 were supplied</source>
         <translation>フレーム: プランは %1 を選択していますが、%2 が渡されました</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="535"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="606"/>
         <source>%1 frame</source>
         <translation>%1 フレーム</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="536"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="607"/>
         <source>%1 frames</source>
         <translation>%1 フレーム</translation>
     </message>
@@ -1841,7 +1856,7 @@
         <translation type="vanished">フレームの不一致: プランは %1 を選択していますが %2 が渡されました（render plan.selection.indices()）</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1294"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1542"/>
         <source>canceled</source>
         <translation>中止されました</translation>
     </message>
@@ -2583,12 +2598,12 @@
     </message>
     <message>
         <location filename="../../src/gui/MainWindow.cpp" line="1357"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1401"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1467"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1505"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1552"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1575"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1606"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1409"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1488"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1526"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1576"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1599"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1630"/>
         <source>Export Error</source>
         <translation>エクスポートエラー</translation>
     </message>
@@ -2598,44 +2613,44 @@
         <translation>不明な出力先: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1420"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1428"/>
         <source>File exists</source>
         <translation>ファイルが存在します</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1421"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1429"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>ファイル &quot;%1&quot; はすでに存在します。上書きしますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1468"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1489"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 はファイルサイズに上限を設けているため、エンコードを複数回行う必要があり、そのためには %2 フレームすべてをメモリに保持する必要があります（約 %3 MB）。フレーム数を減らすか、サイズ制限のない出力先を選んでください。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1483"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1504"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>%1 の %2 KB の上限に収まるよう調整中...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1496"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1517"/>
         <source>Export Canceled</source>
         <translation>エクスポート中止</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1497"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1518"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>%1 のサイズ上限に収める処理の途中でエクスポートが中止されました。すでに書き出されたファイルは最後の試行の結果であり、上限を超えている可能性があります。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1506"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1527"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 はファイルを %2 KB に制限していますが、最小の設定でも収まりませんでした（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1514"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1535"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>%1 バイトに収まりました（%2 回の試行、%3x%4）。</translation>
     </message>
@@ -2643,7 +2658,7 @@
 <context>
     <name>QPlatformTheme</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="322"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="327"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -3274,37 +3289,37 @@
 <context>
     <name>gui::DestinationPicker</name>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="304"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="309"/>
         <source>Where are you posting this?</source>
         <translation>どこに投稿しますか？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="308"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="313"/>
         <source>Search: telegram, sticker, reels, illustration, 微信...</source>
         <translation>検索: telegram, sticker, reels, illustration, 微信...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="312"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="317"/>
         <source>Search destinations</source>
         <translation>出力先を検索</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="253"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="258"/>
         <source>%1 destinations</source>
         <translation>%1 件の出力先</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="326"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="331"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="330"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="335"/>
         <source>Everything above is a destination we know the rules for. This one lets you state the format and codec yourself.</source>
         <translation>上に挙げたものはすべて、ルールが判明している出力先です。これは形式とコーデックを自分で指定できる選択肢です。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="316"/>
+        <location filename="../../src/gui/qml/DestinationPickerModel.cpp" line="321"/>
         <source>Use this destination</source>
         <translation>この出力先を使う</translation>
     </message>
@@ -3356,17 +3371,17 @@
         <translation type="vanished">FPS</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="30"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="32"/>
         <source>Export parameters</source>
         <translation>エクスポートパラメーター</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="89"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="119"/>
         <source>Open Palette</source>
         <translation>オープンパレット</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ExportDialog.cpp" line="90"/>
+        <location filename="../../src/gui/ExportDialog.cpp" line="120"/>
         <source>FFmpeg palette file (*.png)</source>
         <translation>FFmpegパレットファイル (*.png)</translation>
     </message>
@@ -3387,37 +3402,37 @@
 <context>
     <name>gui::ExportViewModel</name>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="303"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="306"/>
         <source>My platform isn&apos;t listed (I&apos;ll choose the format)</source>
         <translation>自分のプラットフォームが一覧にない（形式を自分で選ぶ）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="333"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="336"/>
         <source>Output:</source>
         <translation>出力:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="334"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="337"/>
         <source>%1 x %2, %3 fps</source>
         <translation>%1 x %2, %3 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="344"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="347"/>
         <source>%1 fps</source>
         <translation>%1 fps</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="343"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="346"/>
         <source>Frame rate:</source>
         <translation>フレームレート:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="349"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="352"/>
         <source>Format:</source>
         <translation>形式:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="355"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="358"/>
         <source>%1 numbered %2 files</source>
         <translation>%1 枚の %2 連番ファイル</translation>
     </message>
@@ -3426,120 +3441,120 @@
         <translation type="vanished">%2 の %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="375"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="378"/>
         <source>Audio:</source>
         <translation>音声:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="379"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="394"/>
         <source>yes</source>
         <translation>あり</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="376"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="391"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="379"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="394"/>
         <source>no</source>
         <translation>なし</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="383"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="386"/>
         <source>none in this project</source>
         <translation>このプロジェクトに音声がありません</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="385"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="388"/>
         <source>off in this dialog</source>
         <translation>このダイアログでオフにしています</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="390"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="393"/>
         <source>Transparency:</source>
         <translation>透明度:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="400"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="403"/>
         <source>%1 cannot carry transparency, so this export will be opaque.</source>
         <translation>%1 は透明度を保持できないため、このエクスポートは不透明になります。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="408"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="411"/>
         <source>A GIF loops forever, so the Loop animation box is fixed on.</source>
         <translation>GIF は永久にループするため、「ループ再生」は常にオンになります。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="429"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="432"/>
         <source>PNG sequence</source>
         <translation>PNG 連番</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="430"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="433"/>
         <source>JPEG sequence</source>
         <translation>JPEG 連番</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="619"/>
         <source>CRF</source>
         <translation>CRF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="616"/>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="845"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="619"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="848"/>
         <source>Quality</source>
         <translation>品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Smaller file</source>
         <translation>小さいファイル</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Balanced</source>
         <translation>バランス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Best quality</source>
         <translation>最高品質</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="797"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="800"/>
         <source>Lossless</source>
         <translation>ロスレス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="841"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="844"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1159"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1208"/>
         <source>%1 sequence</source>
         <translation>%1 連番</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1161"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1210"/>
         <source>animated GIF</source>
         <translation>アニメーションGIF</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1235"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1288"/>
         <source>Export with transparency</source>
         <translation>透明度付きエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1236"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1289"/>
         <source>Loop animation</source>
         <translation>ループ再生</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1237"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1290"/>
         <source>Export with audio</source>
         <translation>音声付きでエクスポート</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1238"/>
+        <location filename="../../src/gui/qml/ExportViewModel.cpp" line="1291"/>
         <source>Custom palette</source>
         <translation>カスタムパレット</translation>
     </message>
@@ -4526,27 +4541,27 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation>ファイルを保存する</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1684"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1708"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>%1 をエクスポートしました（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1690"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1718"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation>（%3 に許される %2 KB のうち %1）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1695"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1723"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>。上限を超えているため拒否されます</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1734"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1762"/>
         <source>All files (*)</source>
         <translation>すべてのファイル (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1735"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 ファイル (*.%2)</translation>
     </message>
@@ -4716,8 +4731,8 @@ Open it?</source>
         <translation type="vanished">タグ画像</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1728"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1803"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1756"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1831"/>
         <source>Export Folder</source>
         <translation>出力フォルダ</translation>
     </message>
@@ -4734,7 +4749,7 @@ Open it?</source>
         <translation type="vanished">出力エラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1736"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1764"/>
         <source>Export File</source>
         <translation>出力ファイル</translation>
     </message>

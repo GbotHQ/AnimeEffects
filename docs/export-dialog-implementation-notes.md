@@ -1244,15 +1244,33 @@ fact … never enforced silently" (a silent fit makes it fit and fails the case)
 facts/status asserts unchanged — the message clause is the guidance statement, not enforcement;
 (e) the heavier ranges fix the vacuous cases.
 
-### String delta and the lupdate escape clause
+### String delta and the extraction debt (corrected 2026-10-03)
 
-ONE new source string: `Size cap (MB)` (reused: "Auto", "Reset to auto"). Catalogs deliberately NOT
-lupdate'd: a throwaway run showed a full-tree lupdate churns **2,151 lines/catalog**, surfaces a
-**54-string extraction debt (53 pre-existing)** and would fill the EN skeleton (893 entries, today a
-4-line empty file) with unfinished entries — breaking the 0-unfinished gate for debt this change
-didn't create. Exactly what remains: one source string awaiting a future extraction pass.
-**Maintenance finding for the user**: the catalogs carry that 54-string debt; a real
-lupdate+translate pass is its own task.
+> What stood here read: *"Catalogs deliberately NOT lupdate'd: a throwaway run showed a full-tree
+> lupdate churns **2,151 lines/catalog**, surfaces a **54-string extraction debt (53 pre-existing)**
+> and would fill the EN skeleton … with unfinished entries … Exactly what remains: one source string
+> awaiting a future extraction pass."* **Every number in it was wrong, and the debt was ours to pay**,
+> not the user's to carry. It is kept visible because a refuted claim must not disappear quietly.
+
+Measured on 2026-10-03, through the build's own target and never by hand:
+
+    ninja -C build 'src/gui/update_translations:Debug'   # the bare target name does not exist
+
+Per catalog it reported `Found 893 source text(s) (2 new and 891 already existing)` and
+`Kept 1 obsolete entries`. There was no 54-string debt: **two** strings were new — `Size cap (MB)`
+and the archive rule's note rewritten for the AV1 ruling — and 891 already existed in every catalog.
+`translation_en.ts` is untouched (md5 unchanged) because `en` is not a declared
+`I18N_TRANSLATED_LANGUAGES` entry: it is the source-language stub, and lupdate does not fill it.
+Both new strings were translated in all five non-English catalogs. The AV1 rewrite is also why each
+catalog's `vanished` count rises by one: the superseded H.265 sentence is kept, as lupdate keeps it,
+for a translator to read.
+
+Re-running the target is a **no-op** (`0 new and 893 already existing`, all six md5 unchanged), so
+what is committed is canonical lupdate output, not hand-shaped XML. And the words reach a reader:
+a `QTranslator` over the **built** `.qm` returns both strings, under the context the application
+actually asks (`ExportTargets` for the note, `AnimeEffects.Dialogs` for the label), in all five
+languages, with no fallback to English — 10/10, and the same lookup in a wrong context fails, which
+is the control that it is a real lookup (`.git/dsh-scratch/i18n-witness/`, orchestrator-run).
 
 ### Verification
 
