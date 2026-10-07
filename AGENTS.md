@@ -380,11 +380,15 @@ hand-rolled gate on purpose: `srt_MoveMode` gates three independent commands (mo
 that must stay separately re-appliable, and `ffd_BrushMode`'s create branch uses `!commandRef`
 rather than the stack's gate.
 
-What blocks the other families today, measured:
+Family status, measured:
 
-- pose: draw and move hit a bone through `tests/pose_pull_crash --mode draw|move`; erase needed its
-  own hit rule (it has no `bone::Focuser`; the edit is a brush multiply) — that harness change is
-  part of the migration, not a new harness.
+- pose: **migrated** to `cmnd::Gesture` (TransBoneMode, DrawBoneMode, ErasePoseMode) and verified with
+  `tests/pose_pull_crash --mode draw|move|erase`: every mode reports a bone hit and pushes exactly one
+  command for the whole drag (measured under gdb: one `Stack::pushImpl` per gesture, before and after).
+  Erase needed its own hit rule in the harness — it has no `bone::Focuser`, its edit is a brush
+  multiply, and at a rest pose `eraseRate = 1 - eiPressure` is 0 so no value moves; the harness now
+  also requires a `TimeLineEvent` on the press, which draw and move cannot produce. The three pose
+  modes are the seam's reference implementation.
 - timeline: the gate (`TimeLineEditor::modifyMoveKeys:371`) runs only on a drag, and the existing
   timeline tests (`creation_select_keys`, `rightclick_transient_selection`) only click, so it is
   unreached.
