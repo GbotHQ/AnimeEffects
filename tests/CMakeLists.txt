@@ -35,6 +35,16 @@ add_executable(treeutil_delete_uaf treeutil_delete_uaf.cpp)
 target_include_directories(treeutil_delete_uaf PRIVATE ../src)
 target_link_libraries(treeutil_delete_uaf PRIVATE Qt6::Core)
 
+# Contract test for the cmnd::Gesture seam (src/cmnd/Gesture.h): the open edit that
+# owns one coalescing command. Pins the semantics every editor relies on -- the
+# builder runs inside the edit's macro, the gate (continues()) survives in-place
+# rewrites, undo/redo/clear close the edit, the grabbed listener executes once per
+# commit, and a gesture that is never committed pushes nothing. Headless: QtCore
+# only, no display, no assets. See cmnd_gesture.cpp.
+add_executable(cmnd_gesture cmnd_gesture.cpp)
+target_include_directories(cmnd_gesture PRIVATE ..)
+target_link_libraries(cmnd_gesture PRIVATE cmnd)
+
 # Round-trip project loader/saver harness (open -> serialize -> reload -> close).
 # Takes .anie paths on the command line; used to exercise real project files.
 #

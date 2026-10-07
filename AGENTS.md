@@ -359,12 +359,40 @@ scratch also pushes a key (`KeyOwner` + `cmnd::GrabNewObject`), and re-entrancy 
 two-way binds to the model *and* pushes a command (the export aspect lock; hence
 `ScopedUndoSuspender` in `ctrl/ScopedModifier.h`).
 
-If that seam is consolidated into a `cmnd::Gesture` (owning the gate, the macro, the listener
-and the key push), do it one family at a time and only where coverage exists first:
-`tests/pose_pull_crash --mode draw|move` drives the pose family's draw and move paths today
-(`--mode erase` is not reachable that way — it reports `hits=0`), and the bone, mesh, srt and
-timeline tools have no harness at all. A seam with a single consumer is the mistake
-`TreeUtil::deleteAll` already was.
+The engine half of the seam now exists: `cmnd::Gesture<tCommand>` (`src/cmnd/Gesture.h`) is the
+open edit — `begin(name, builder)` opens the macro, runs the builder with it, pushes and adopts
+the command it returns; `continues()` says whether that command is still the stack's modifiable
+one; `end()` closes the edit. `tests/cmnd_gesture.cpp` pins those semantics.
+
+The ctrl half was measured before writing it, and **declined**: the ritual is not one ritual. Of
+the 15 coalescing sites there are ~7 structural shapes and at least ten axes that vary — two
+listener designs (`bone::Notifier`/`mesh::Notifier` stateful-and-grabbed vs
+`TimeLineUtil::Notifier` configured-then-grabbed), a rewrite branch that sometimes re-notifies
+inline, sometimes through a separate `notifyAssign()` called from the paint path, and sometimes
+not at all; four key-push shapes (none, `if (owns()) pushOwnsKey`, a per-target loop,
+self-gating `pushOwning*Key`); three reset styles (press+release, press+clearState, lazy);
+`ffd_BrushMode` and `TimeLineEditor` use a different gate entirely. A single helper absorbing
+that would be a policy object — the duplication would move, not disappear.
+
+So: migrate per family, coverage first, with the recipe above (`Gesture` + the builder keeping the
+notifier wiring, the key push and the command construction byte-identical). Two sites also keep a
+hand-rolled gate on purpose: `srt_MoveMode` gates three independent commands (move/rotate/scale)
+that must stay separately re-appliable, and `ffd_BrushMode`'s create branch uses `!commandRef`
+rather than the stack's gate.
+
+What blocks the other families today, measured:
+
+- pose: draw and move hit a bone through `tests/pose_pull_crash --mode draw|move`; erase needed its
+  own hit rule (it has no `bone::Focuser`; the edit is a brush multiply) — that harness change is
+  part of the migration, not a new harness.
+- timeline: the gate (`TimeLineEditor::modifyMoveKeys:371`) runs only on a drag, and the existing
+  timeline tests (`creation_select_keys`, `rightclick_transient_selection`) only click, so it is
+  unreached.
+- bone: no harness. The hit rule would be `bone::Focuser` (same as pose draw/move), so a pose-style
+  harness that selects a BoneKey target is the cheapest way in.
+- mesh: no harness; needs a `mesh::MeshAccessor` over a real `MeshKey` and its own focuser.
+- srt: no harness; hit rule is `srt_Symbol::findFocus` around the object's SRT symbol.
+- ffd: no harness; its focuser is a GL transform-feedback task run through `DriverResources`.
 
 ## Where the existing GUI tooling lives
 
