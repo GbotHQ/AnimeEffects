@@ -337,4 +337,12 @@ Extend these instead of writing new one-off scripts:
 - `scripts/gui/run_probes.sh` and `scripts/gui/probe_*.sh` — the end-to-end checks; run one probe
   directly while iterating, the runner for the whole suite.
 - `tests/` — headless unit tests (`QT_QPA_PLATFORM=offscreen`), including `export_form` and
-  `destination_picker` for the export dialogs, and `picker_keyboard` for the key routing inside them.
+  `destination_picker` for the export dialogs, and `picker_keyboard` for the key routing inside them,
+  and `treeutil_delete_uaf` for the use-after-free write `util::TreeUtil::deleteAll` used to make in
+  the pose tool's "Pull bones" shadow tree (a `Node` subclasses the real template with an allocator
+  that poisons a block on delete and never returns it, so the invariant "nothing writes into a
+  retired node" is checked without a sanitizer; it is the gate for that fix).
+  `tests/pose_pull_crash` is the companion reproduction tool, not a gate: it needs a `.anie`
+  argument, drives the real `ctrl::Driver` with `PoseEditMode_Draw` and synthetic cursor frames, and
+  aborts on the pre-fix code with `free(): chunks in smallbin corrupted` from
+  `BoneDynamics::deleteAll`; run it under `xvfb-run` (it needs a GL context) — see its header comment.
