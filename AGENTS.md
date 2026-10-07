@@ -326,6 +326,46 @@ Measured traps, all of which cost time here:
   translation differs from the source, and ask once in a deliberately wrong context to show the
   lookup is actually context-keyed.
 
+## The editing model: one open edit, one command, no half-solved document states
+
+`cmnd` commands are value-replayable — `Base::undo/redo` must rebuild the document from the
+values the command carries (`src/cmnd/Stable.h`), with no help from the editor that created
+them. The invariant that follows, and the first thing to check before writing an editor:
+
+> **every state the document holds must be reproducible by replaying the stack.**
+
+What that forces, all of it visible here:
+
+- An iterative or multi-body solver may not mutate the document. The pose tool's "Pull bones"
+  solve runs 16 sub-steps whose intermediate poses mean nothing as document states, so it works
+  on a scratch copy (`ctrl::pose::BoneDynamics`, a shadow tree built for one drag event) and
+  commits a single `RotateBones` value command. Any value-based undo engine imposes this shape;
+  it is not a shortcoming of this one.
+- Coalescing is per *command*, not per *gesture*: a drag is one undo step because the editor
+  keeps the command it pushed and rewrites it while `Stack::isModifiable` still holds
+  (`cmnd/Stack.cpp:52/103/131/160/164`). That gate is re-implemented at 14 sites (grep
+  `isModifiable`), each repeating its own macro + notifier + optional key-push ritual.
+- Editors that need transient state *outside* the document hand-roll it, at two different
+  layers: ctrl tools build scratch (shadow tree, mesh mover, brush state); GUI editors build
+  drafts with their own session undo (`gui/prop/EasingPickWidget.h:190-194`,
+  `gui/qml/AnimationSettingViewModel.h:27-62` — "the popup owns its undo; the model gets one
+  step on close", pinned by `tests/anim_settings_undo.cpp`).
+
+Nothing in the engine represents "an open edit", which is why every editor re-derives this and
+why the bugs in this area are always in a *seam*, never in the model: scratch ownership and
+teardown (`TreeUtil::deleteAll`'s use-after-free write — the 2026-10-07 "Pull bones" crash),
+scratch pointers outliving their container (`BoneKey::deserialize`), key ownership while the
+scratch also pushes a key (`KeyOwner` + `cmnd::GrabNewObject`), and re-entrancy when a widget
+two-way binds to the model *and* pushes a command (the export aspect lock; hence
+`ScopedUndoSuspender` in `ctrl/ScopedModifier.h`).
+
+If that seam is consolidated into a `cmnd::Gesture` (owning the gate, the macro, the listener
+and the key push), do it one family at a time and only where coverage exists first:
+`tests/pose_pull_crash --mode draw|move` drives the pose family's draw and move paths today
+(`--mode erase` is not reachable that way — it reports `hits=0`), and the bone, mesh, srt and
+timeline tools have no harness at all. A seam with a single consumer is the mistake
+`TreeUtil::deleteAll` already was.
+
 ## Where the existing GUI tooling lives
 
 Extend these instead of writing new one-off scripts:
