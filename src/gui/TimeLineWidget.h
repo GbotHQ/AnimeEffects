@@ -117,6 +117,13 @@ private:
     int mScrollbarDragAnchorX;
     double mScrollbarDragRatio;
     bool mIsPanning;
+    // WHICH button started the pan. The pan is a gesture of one button, and
+    // only that button's release may end it: while a middle-drag pan is in
+    // flight the surface still forwards a left press to the editor's cursor
+    // (a marquee), so a release test of "panning && (Middle || Left)" swallows
+    // the LEFT release and leaves the editor stuck in State_EncloseKeys — the
+    // selection box then stays painted. Measured 2026-10-11.
+    Qt::MouseButton mPanButton;
     // The MoveCanvas key (space by default, configurable like the viewport's
     // pan) is held: left-drag pans instead of selecting/scrubbing. Mirrors
     // MainDisplayWidget's mMovingCanvasByKey.

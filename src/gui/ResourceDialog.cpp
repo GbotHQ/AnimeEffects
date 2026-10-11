@@ -64,6 +64,8 @@ void ResourceDialog::setProject(core::Project* aProject) {
     mTree->setProject(aProject);
 }
 
+void ResourceDialog::watchAllAssets() { mTree->watchAllTopItems(); }
+
 void ResourceDialog::updateResourcePath() {
     if (mProject) {
         mTree->updateTreeRootName(mProject->resourceHolder());

@@ -149,6 +149,31 @@ Six traps, all of which have cost real time here:
   >25 s under load, and a probe that slept 12 s failed 15/15 *while the application was healthy* —
   what it had found and was driving was a 200x71 splash screen. Poll for something that exists only
   once the project is loaded: `scripts/gui/_lib.sh` has `wait_ready`, which polls `ae wait "File"`.
+  (With an `.anie` on the command line the GUI satisfies it with its built-in debug project first —
+  see the next bullet.)
+- **A run of this app needs a memory ceiling, and one instance at a time is not optional.** Measured
+  2026-10-08 the hard way. `nene.anie` is a big project (15000x15000 canvas, ~112 image layers,
+  2.4 GB of image data decoded to RGBA): ONE instance on it climbs to **~10 GB resident in ~80 s and
+  then stays there** for minutes — the GUI and the headless `roundtrip` both do exactly that, so it is
+  a heavy project, not a leak. Nothing stopped it being run four times over: what took the owner's
+  46 GB machine down twice was a long-lived instance being tree-walked by `ae_ui.py`, the 24-test
+  suite, and a 13-probe sweep (every probe opens its own instance) alive at once — the instance found
+  holding **~38 GB resident / ~95 GB virtual**. `wait_ready` now starts `ae_memory_cap` for the app
+  (12 GB default, deliberately above the ~10 GB an honest load needs; `AE_MAX_RSS_KB` to raise it) so a
+  runaway dies instead of the machine. Because of that cost, `_lib.sh` picks the **smallest** `.anie` it can
+  find as the probe default rather than the first one the filesystem returns (pass a path or set
+  `AE_PROJECT` to test a specific project) — measured on a 425 KB project: ~9 s load and 449 MB resident,
+  against ~80 s and ~10 GB for `nene.anie`. One probe is the exception: `probe_capped` asserts that the
+  *natural* export lands over a destination's declared cap (that is how it tells fitted from unfitted),
+  which no sub-megabyte project here can show — measured 246 KB, 232 KB and 13 KB against WeChat
+  sticker's 500 KB cap — so `run_probes.sh` hands it the largest project (`AE_CAPPED_PROJECT` to
+  override) and everything else stays light. The rules that follow: one app instance at a time, never a
+  long-lived instance for a long session of a11y queries, never two probe/suite jobs at once.
+- **`wait_ready` does not mean the project you asked for has loaded.** The GUI loads its debug project
+  (`assets/sample.psd`) first and only then the `.anie` from argv, so the window and its File menu are
+  up while the argument project is still loading — measured: `nene.anie` needs ~80 s and ~10 GB, and a
+  probe driving the UI during that time is driving the *debug* project's document. Wait for something
+  the requested project provides (a layer name, a canvas size) when the probe's subject is its content.
 - **A QML item inside a `QQuickWidget` reports its rect in the *widget's* coordinates, not the
   screen's.** AT-SPI gave the export dialog's search field `x=14` while it actually sat at `x=75`,
   because the dialog window is at `x=61`. A drag aimed with the raw rect missed by exactly that
@@ -418,3 +443,80 @@ Extend these instead of writing new one-off scripts:
   argument, drives the real `ctrl::Driver` with `PoseEditMode_Draw` and synthetic cursor frames, and
   aborts on the pre-fix code with `free(): chunks in smallbin corrupted` from
   `BoneDynamics::deleteAll`; run it under `xvfb-run` (it needs a GL context) — see its header comment.
+
+## Traps for anything that searches, lays out or drives a migrated QML scene
+
+Every one of these cost real time on the General settings / Key bindings / Project settings ports
+and the viewport-background and timeline-marquee work (2026-10-11), every one is silent, and each
+looks like "the application is broken" when the application is fine.
+
+- **A `Repeater`'s delegates are NOT under the root's QObject tree.** They are parented into the
+  VISUAL tree (the `Row`/`RowLayout` that lays them out), so `root->findChildren<QObject*>()` — the
+  search every scene test here started with — returns none of them. Measured: the tab strip's
+  Repeater reported `count=4` while a QObject-only walk found zero of its four buttons, and the same
+  walk missed the theme group and the accent swatches. A test that walks only `findChildren` reports
+  them ABSENT while the dialog renders them perfectly. Walk `QQuickItem::childItems()` as well
+  (`tests/general_setting_form.cpp`'s `collectItems` is the helper).
+- **A zero-height item still PAINTS its children.** A delegate that hides a row with `height: 0`
+  (the idiom for "one list over every group's rows, show only this tab's") leaves the row's children
+  overflowing a zero-height parent, and they draw — measured on the running dialog, where the General
+  tab showed two rows of overlapping, unreadable text at the y the collapsed Timeline and Tools rows
+  sat at. `height: 0` is for the LAYOUT; `visible: false` is what removes it from the PAINT. (The
+  inverse trap is in the same family: a `visible: false` control is reported HIDDEN by the probes,
+  not absent, when its ancestors are showing — assert the state the design actually produces.)
+- **`ae_memory_cap` had to be in `_lib.sh`'s `export -f` list.** `wait_ready` calls it from inside
+  the `bash -c` body `xvfb-run` runs, and it was defined and never exported, so every probe printed
+  `environment: line 3: ae_memory_cap: command not found` and the resident-memory ceiling the file's
+  own comment block promises was applied to no probe at all. A function a child shell must call has
+  to be exported, like `ae_report` and `wait_ready` beside it.
+- **A `modal: true` popup overlay swallows the press that lands outside it — including the press on
+  the control's OWN field.** `AeComboBox` set `modal: true; dim: false` to copy the pre-port
+  control's scrim, and the cost was two reported defects: pressing the field's arrow did not close
+  the open list, and pressing a second combo only closed the first. `modal: false` is the fix and
+  needs no custom press handling — Qt's own `ComboBox` toggles correctly once the press reaches it
+  (verified by a mouse-level probe, `scripts/gui/probe_settings.sh`). What is NOT a defect, and
+  reads as one when two combos are stacked ~36px apart: an open list COVERS the fields below it, so
+  a press there lands on a list row and chooses it. Assert pass-through in the direction where the
+  list does not cover the target, or you will chase a geometry fact as a popup bug.
+- **An apostrophe inside a `bash -c '…'` probe body ends the body there.** The body is one
+  single-quoted string, so a comment like `# the application's route` closes it: everything after
+  runs in the OUTER script — which has the developer's real `DISPLAY` — and `bash -c` reports
+  `unexpected EOF while looking for matching '"'` while the probe appears to keep going. Measured
+  2026-10-11: `DISPLAY` went from the Xvfb's `:101` to `:0` mid-probe, the Xvfb died with its last
+  client, and only `ae_guard_display` stopped the clicks from landing on the live desktop. `bash -n`
+  does NOT catch it. After editing a body, grep it for `'` (the `'"$SHOTS"'` interpolation is the
+  only legitimate one).
+- **`ae set` writes through the Value interface, which a `QLineEdit` does not have.** `ae set
+  "HTML:" "#3366cc"` is refused ("no widget named … that holds a value") and the probe carries on,
+  so a colour chooser driven that way silently returns its original colour. The stock `QColorDialog`
+  offers a route a probe can actually use: press **Pick Screen Color**, then click the pixel whose
+  colour you want — measured 2026-10-11, the canvas repainted the picked colour and one undo put the
+  theme colour back (`scripts/gui/probe_projectsettings.sh`).
+- **The `.anie` minor version gates more than the field you are adding.** Patching a header to claim
+  a newer version on an older file makes the OBJECT TREE fail to load (`Failed to read object tree
+  block … failed to deserialize node`), because other structures are version-gated too. A fixture
+  that carries a new field has to be written by code that knows the whole format — the app, or
+  `tests/roundtrip_main.cpp` — never by editing bytes in an existing project.
+- **`run_probes.sh` globs `probe_*.sh`.** A new probe needs no registration; the only thing worth
+  adding there is a `PROBE_TIMEOUT` override if it needs more than the 900 s default.
+- **The export picker's search field does not answer `ae value`/`ae set` as a value-bearing control.**
+  Measured 2026-10-11 while building `probe_exportbg.sh`: `ae value "Search destinations"` prints
+  empty, `ae set "Search destinations" "discord"` left the list at 134 `list item` nodes (i.e. still
+  everything), and the same call with `"twitch"` left 0. So a probe that reaches a destination by
+  SEARCHING is not verifying what it thinks. Reach a row without the filter — the manual rows
+  ("Video", "Animated image", "Image sequence", "Archive file (highest quality)") are at the top of
+  the list — or `ae_press` the row (a real click at its centre lands inside it even when the name is
+  reported by two nested nodes, which is why `ae_activate "Twitch emote" … "list item"` fails with
+  "no accessibility action": the client picks the node that has none).
+- **A transient view that a drag repaints on every move must be taken down by an explicit repaint.**
+  `TimeLineEditor`'s marquee release cleared the state but asked for no view update, so the box's
+  pixels stayed on the surface until something unrelated repainted the timeline — the reported "the
+  box sometimes stays after I release". Clearing state and repainting are two different duties.
+- **`AeFieldLabel`'s lane is content-sized, not a fixed 104px.** The export form's short labels fit
+  104 and the settings dialog's long ones ("Language (needs restart)", "Global keybind delay (ms)",
+  "Time (in minutes) between autosaves") were ellipsized while the field beside them sat half empty.
+  `Layout.preferredWidth: Math.max(104, implicitWidth)` keeps the measured alignment of the short
+  forms and widens the whole column for a long label. Note that `closePolicy` on a `ComboBox`'s
+  popup is NOT yours to set: the C++ control re-applies `CloseOnEscape | CloseOnReleaseOutsideParent`
+  (17) after the `popup:` block runs, so a QML `closePolicy:` there is silently overwritten.
+

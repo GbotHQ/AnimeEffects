@@ -19,6 +19,9 @@ public:
 
     void setProject(core::Project* aProject);
     void updateResourcePath();
+    // Start monitoring every asset of the current project for on-disk changes.
+    // Used when a project is created with live linking on.
+    void watchAllAssets();
 
     bool hasValidNode() const;
     const NodeList& nodeList() const { return mNodeList; }

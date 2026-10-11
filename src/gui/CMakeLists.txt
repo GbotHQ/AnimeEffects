@@ -69,6 +69,15 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     # with everything it decides in the widget-free view model beside it.
     ExportDialog.cpp ExportDialog.h
     qml/ExportViewModel.cpp qml/ExportViewModel.h
+    # The new-project form: the same Qt Quick scene-in-a-QDialog shell, with its
+    # own widget-free view model beside it.
+    qml/NewProjectViewModel.cpp qml/NewProjectViewModel.h
+    # The three remaining forms ported to the same shell: project settings, key
+    # bindings and general settings, each with its own widget-free view model.
+    ProjectSettingDialog.cpp ProjectSettingDialog.h
+    qml/ProjectSettingViewModel.cpp qml/ProjectSettingViewModel.h
+    qml/KeyBindingViewModel.cpp qml/KeyBindingViewModel.h
+    qml/GeneralSettingViewModel.cpp qml/GeneralSettingViewModel.h
     # Extracted into the catalogs from here (see the i18n block below): the file is
     # GENERATED from assets/export/ExportTargets.txt by
     # scripts/i18n/gen_export_targets_i18n.py, and lupdate cannot read a data file.
@@ -145,6 +154,10 @@ qt_add_qml_module(${PROJECT_NAME}
         # dialog's own components live here beside the shared set rather than
         # behind a second import.
         qml/ExportDialog.qml
+        qml/NewProjectDialog.qml
+        qml/ProjectSettingDialog.qml
+        qml/KeyBindingDialog.qml
+        qml/GeneralSettingDialog.qml
         qml/AeSectionHeader.qml
         qml/AeFieldLabel.qml
         qml/AeDisclosure.qml

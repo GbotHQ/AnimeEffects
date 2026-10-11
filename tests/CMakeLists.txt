@@ -35,6 +35,66 @@ add_executable(treeutil_delete_uaf treeutil_delete_uaf.cpp)
 target_include_directories(treeutil_delete_uaf PRIVATE ../src)
 target_link_libraries(treeutil_delete_uaf PRIVATE Qt6::Core)
 
+# Regression test for the PackBits noop packet (util::PackBits::decode,
+# src/util/PackBits.cpp): a 0x80 header is one byte of "copy nothing" and has to
+# consume that byte, but the loop re-read it forever -- so a single 0x80 anywhere
+# in a project's image data hung the load on one core with no progress instead of
+# reporting a decode error. PackBits.cpp is compiled in directly, so, like
+# treeutil above, this needs no library beyond Qt6::Core. See packbits_decode.cpp.
+add_executable(packbits_decode packbits_decode.cpp ../src/util/PackBits.cpp)
+target_include_directories(packbits_decode PRIVATE ../src)
+target_link_libraries(packbits_decode PRIVATE Qt6::Core)
+
+# Regression test for the line length check in core::Deserializer::readImage: the
+# length comes from the file and nothing compared it with the per-line buffer
+# sized from the image width, so a damaged project made the loader copy an
+# arbitrary length into that block. Drives the real Deserializer over a crafted
+# stream and asserts the refusal (and, as a control, that a well-formed stream is
+# accepted). See readimage_line_length.cpp.
+add_executable(readimage_line_length readimage_line_length.cpp)
+target_include_directories(readimage_line_length PRIVATE ..)
+target_compile_definitions(readimage_line_length PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(readimage_line_length PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Regression test for the noop packet in the PSD importer's own PackBits reader
+# (img::PSDUtil::decodePlanePackBits): a 0x80 header was re-read forever, so a
+# damaged .psd hung the import instead of failing it. See psd_rle_noop.cpp.
+add_executable(psd_rle_noop psd_rle_noop.cpp)
+target_include_directories(psd_rle_noop PRIVATE ..)
+target_compile_definitions(psd_rle_noop PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(psd_rle_noop PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    gl img thr util pugixml
+)
+
+# Contract test for the picker's fuzzy search (src/gui/qml/FuzzyMatch.h): each rule
+# that must fire, the two that must not (rule 6's length gate and span guard), the
+# ordering between rules, and the rule that is deliberately absent -- no rule may
+# match a subsequence spanning several words, because " capped size limit" sits on
+# every capped haystack and a cross-word subsequence would stop the search narrowing.
+# The header is header-only, so, like treeutil above, this needs no library beyond
+# Qt6::Core. `..` is the repository root (the header lives under src/gui/qml).
+add_executable(fuzzy_match fuzzy_match.cpp)
+target_include_directories(fuzzy_match PRIVATE ..)
+target_link_libraries(fuzzy_match PRIVATE Qt6::Core)
+
 # Contract test for the cmnd::Gesture seam (src/cmnd/Gesture.h): the open edit that
 # owns one coalescing command. Pins the semantics every editor relies on -- the
 # builder runs inside the edit's macro, the gate (continues()) survives in-place
@@ -243,6 +303,104 @@ target_link_libraries(picker_keyboard PRIVATE
     media
 )
 
+# The new-project dialog, headless: the model's defaults and clamps, and the scene's
+# own wiring. The form used to be a QWidget/QFormLayout, so only a shown widget could
+# be driven; it is a Qt Quick scene now, and both halves of the contract are asked
+# without a window - the model directly, and the REAL NewProjectDialog.qml loaded and
+# clicked so the "Live link" checkbox is proven to write back (AeCheckBox records that
+# setting `checked` does not fire toggled(), so a click is the only honest driver).
+add_executable(new_project_form new_project_form.cpp
+    ../src/gui/qml/NewProjectViewModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(new_project_form PRIVATE .. ../src ../src/gui)
+target_compile_definitions(new_project_form PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(new_project_form PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
+# The project-settings dialog, headless: the model's defaults and clamps (canvas
+# dimensions bounded by the device buffer, fps floor, the frame range's
+# start <= end invariant) and the scene's own wiring. Same shape as
+# new_project_form: the model directly, and the REAL ProjectSettingDialog.qml
+# loaded so the fields are proven to write back.
+add_executable(project_setting_form project_setting_form.cpp
+    ../src/gui/qml/ProjectSettingViewModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp)
+target_include_directories(project_setting_form PRIVATE .. ../src ../src/gui)
+target_compile_definitions(project_setting_form PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(project_setting_form PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
+# The key-bindings dialog, headless: the model's capture rules (Delete/Backspace
+# clears, a modifier-free key after an existing chord becomes the sub-key, a valid
+# chord replaces, conflicts are reported both ways, reset-to-defaults restores),
+# and that a real key press through KeyBindingDialog.qml writes the row.
+# ctrl/KeyBinding.cpp is compiled in directly (the model is Core-only plus that
+# type, the way destination_picker compiles ExportTarget.cpp).
+add_executable(key_binding_form key_binding_form.cpp
+    ../src/gui/qml/KeyBindingViewModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/ctrl/KeyBinding.cpp)
+target_include_directories(key_binding_form PRIVATE .. ../src ../src/gui)
+target_compile_definitions(key_binding_form PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(key_binding_form PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
+# The general-settings dialog, headless: the model's defaults and that each edit
+# flips the matching has-changed predicate the shell reports to the menu bar, plus
+# the REAL GeneralSettingDialog.qml loaded so a control is proven to write back.
+add_executable(general_setting_form general_setting_form.cpp
+    ../src/gui/qml/GeneralSettingViewModel.cpp
+    ../src/gui/qml/QmlTheme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/MouseSetting.cpp)
+target_include_directories(general_setting_form PRIVATE .. ../src ../src/gui)
+target_compile_definitions(general_setting_form PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+    AE_QML_DIR="${CMAKE_SOURCE_DIR}/src/gui/qml"
+    AE_ICON_SRC="${CMAKE_SOURCE_DIR}/assets/icons"
+)
+target_link_libraries(general_setting_form PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    media
+)
+
 # The numeric fields' Escape contract (F34, decided 2026-09-30): Escape restores
 # the value from when THIS edit began - not the value the property happens to hold
 # at Escape time (the owner can re-sync it mid-edit) and not the session's opening
@@ -356,7 +514,7 @@ target_compile_definitions(form_layout PRIVATE
 add_dependencies(form_layout release_translations)
 target_link_libraries(form_layout PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml
-    Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Test
     media
 )
 
@@ -692,4 +850,80 @@ target_link_libraries(media_exporter_e2e PRIVATE
     Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
     media cmnd core ctrl gl img thr util pugixml
+)
+
+# Regression test for the encoder open-time fallback (src/ctrl/Exporter.cpp): a
+# hardware encoder that passes the small capability probe can still be refused at
+# the real resolution/option set, and the export must step down to the same family's
+# software encoder instead of aborting. The test makes nvenc fail device-independently
+# by handing it an option only libx264 knows, so it stays red on a box that has working
+# NVENC. See export_encoder_fallback.cpp.
+add_executable(export_encoder_fallback export_encoder_fallback.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc
+)
+target_include_directories(export_encoder_fallback PRIVATE ..)
+target_compile_definitions(export_encoder_fallback PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(export_encoder_fallback PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    media cmnd core ctrl gl img thr util pugixml
+)
+
+# Regression test for the PSD layer identity defects (src/img/PSDFormat.h,
+# PSDReader.cpp, Util.cpp, ResourceData, ResourceNode, core/ImageKey.cpp):
+# identity was the display name, the lazy loader captured a pointer into a
+# stack-owned PSDFormat, and JSON resolution took the LAST matching tree. Drives
+# the real reader and loader through a crafted PSD. See psd_layer_identity.cpp.
+add_executable(psd_layer_identity psd_layer_identity.cpp)
+target_include_directories(psd_layer_identity PRIVATE ..)
+target_compile_definitions(psd_layer_identity PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(psd_layer_identity PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Contract test for the PSD live-link safety rules (src/gui/res/res_ResourceUpdater.cpp,
+# src/gui/ResourceTreeWidget.cpp, src/core/ImageKeyUpdater.cpp, src/util/IDSolver.h):
+# a relink had to be transactional (the failure paths returned out of a ScopedMacro
+# whose destructor committed half a batch), forceReload compared the live tree with
+# itself and then freed it, a layer missing from the source was silently kept or
+# dropped, a name-colliding rename re-pointed one layer's content onto another's
+# live node, and the file watcher ignored which file changed while accumulating a
+# handler per watch cycle. Headless: QApplication, no GL. See psd_relink_safety.cpp.
+add_executable(psd_relink_safety psd_relink_safety.cpp
+    ../src/gui/ResourceTreeWidget.cpp
+    ../src/gui/ProjectHook.cpp
+    ../src/gui/ViaPoint.cpp
+    ../src/gui/EasyDialog.cpp
+    # The real ResourceDialog, not a stub: the test links its moc key functions,
+    # and it needs no MainMenuBar at link time (only the type name in a connect).
+    ../src/gui/ResourceDialog.cpp
+    ../src/gui/res/res_ResourceUpdater.cpp
+    ../src/gui/res/res_Item.cpp
+    ../src/gui/res/res_Notifier.cpp)
+target_include_directories(psd_relink_safety PRIVATE .. ../src ../src/gui)
+target_compile_definitions(psd_relink_safety PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(psd_relink_safety PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
 )

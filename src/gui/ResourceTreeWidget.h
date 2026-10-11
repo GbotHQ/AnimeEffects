@@ -29,6 +29,13 @@ public:
     void onReloadActionTriggered(bool aIsTriggered);
     void onWatchTriggered(bool aIsTriggered);
     void onWatchRemoveTriggered(bool aIsTriggered);
+    // Watch one asset by absolute path: add it to the global watcher and install
+    // that path's reload handler. The user-facing trigger resolves to this; it is
+    // public so a newly created project can be watched without a per-asset popup.
+    void addWatch(const QString& aAbsPath);
+    // Watch every top-level asset of this tree that exists on disk and is not
+    // already watched. Everything else is skipped silently.
+    void watchAllTopItems();
 
     util::Signaler<void(const NodeList&)> onNodeSelectionChanged;
 

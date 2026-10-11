@@ -114,6 +114,7 @@ TimeLineWidget::TimeLineWidget(
     mScrollbarDragAnchorX(0),
     mScrollbarDragRatio(0),
     mIsPanning(false),
+    mPanButton(Qt::NoButton),
     mPanByKey(false),
     mPanGrabPos(),
     mPanStartTransform(),
@@ -573,6 +574,7 @@ void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
         mPanGrabPos = aEvent->position().toPoint();
         mPanStartTransform = viewportTransform();
         mIsPanning = true;
+        mPanButton = aEvent->button();
         setCursor(Qt::ClosedHandCursor);
         aEvent->accept();
         return;
@@ -583,8 +585,12 @@ void TimeLineWidget::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void TimeLineWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
-    if (mIsPanning && (aEvent->button() == Qt::MiddleButton || aEvent->button() == Qt::LeftButton)) {
+    // Only the button that STARTED the pan ends it. The old test accepted
+    // either button, so a middle-drag pan in flight ate the release of a left
+    // button the editor had already turned into a marquee (see mPanButton).
+    if (mIsPanning && aEvent->button() == mPanButton) {
         mIsPanning = false;
+        mPanButton = Qt::NoButton;
         unsetCursor();
         aEvent->accept();
         return;

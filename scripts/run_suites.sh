@@ -46,7 +46,12 @@ for n in $targets; do
   [ -n "${SKIP[$n]:-}" ] && continue
   bin=build/tests/$CFG/$n
   if [ ! -x "$bin" ]; then echo "MISSING $n"; fail=$((fail+1)); failed="$failed $n(missing)"; continue; fi
-  if [ "$n" = media_exporter_e2e ]; then
+  # export_encoder_fallback renders too (a real export writes pixels), and takes
+  # the same optional project argument or its own fixture default. The same GL
+  # requirement puts psd_layer_identity here: it drives core::ImageKey's image
+  # tree, which needs a live context to build its textures.
+  if [ "$n" = media_exporter_e2e ] || [ "$n" = export_encoder_fallback ] ||
+     [ "$n" = psd_layer_identity ]; then
     # The end-to-end export harness needs a real GL context and a loaded project, so it
     # runs under Xvfb against the COMMITTED fixture (tests/fixtures/e2e_stage.png) rather
     # than being skipped for want of artwork on the machine. It used to be in the SKIP
