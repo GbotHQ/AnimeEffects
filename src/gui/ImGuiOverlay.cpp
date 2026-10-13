@@ -1717,6 +1717,26 @@ void ImGuiOverlay::drawKeyContextMenu(
         }
     }
 
+    // THE MIRROR IS CLOSED WHEN IMGUI HAS CLOSED THE POPUP - Escape, an entry, or a
+    // click outside all end it - and this is the ONLY other place it can be cleared
+    // (the other one lives in the branch that runs when the panel is HIDDEN). Nothing
+    // used to clear it while the panel stayed up, so after one menu the flag latched
+    // true for the rest of the session: the nav flag stayed on (ImGui claiming the
+    // keyboard) and, worse, mouseButton()/mouseMove() treat any event as the menu's
+    // while it is set, so every later press in the viewport was swallowed - neither
+    // the panel's nor the tools'. Measured 2026-10-14 by an exhaustive grep of the
+    // two assignment sites; a state the panel could not leave by itself.
+    //
+    // Checked BEFORE the block below, because the popup's own close runs inside
+    // NewFrame: on the frame Escape lands, IsPopupOpen is already false here, so the
+    // mirror clears and the menu draws nothing in the same frame. The repaint is
+    // asked for explicitly - the flag going false changes what the mouse paths do,
+    // and no queued input need remain for that to be worth a frame.
+    if (state.keyMenuOpen && !ImGui::IsPopupOpen(kKeyMenuId)) {
+        state.keyMenuOpen = false;
+        requestRepaint();
+    }
+
     if (state.keyMenuOpen) {
         // THE MENU OWNS THE KEYBOARD WHILE IT IS OPEN, so the keys it acts on
         // (Escape, the arrows, Enter) never reach the application's key commands.
