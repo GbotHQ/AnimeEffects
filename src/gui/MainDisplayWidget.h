@@ -7,6 +7,7 @@
 #include <QTabBar>
 #include <QReadWriteLock>
 #include <QColor>
+#include <QVariant>
 #include <QtMath>
 #include "util/LinkPointer.h"
 #include "gl/Global.h"
@@ -76,8 +77,19 @@ private:
     virtual void mouseMoveEvent(QMouseEvent* event);
     virtual void mousePressEvent(QMouseEvent* event);
     virtual void mouseReleaseEvent(QMouseEvent* event);
+    virtual void mouseDoubleClickEvent(QMouseEvent* event);
     virtual void wheelEvent(QWheelEvent* event);
     virtual void tabletEvent(QTabletEvent* event);
+    virtual void keyPressEvent(QKeyEvent* event);
+    virtual void keyReleaseEvent(QKeyEvent* event);
+    virtual void inputMethodEvent(QInputMethodEvent* event);
+    virtual QVariant inputMethodQuery(Qt::InputMethodQuery query) const;
+    virtual void focusInEvent(QFocusEvent* event);
+    virtual void focusOutEvent(QFocusEvent* event);
+    // DevicePixelRatioChange (the overlay rasterizes at the widget's ratio) and the
+    // touch events the overlay translates for ImGui. QWidget has no touchEvent()
+    // virtual in Qt 6, so those arrive here.
+    virtual bool event(QEvent* event);
 
     void updateCursor();
     QSize deviceSize() const { return this->size() * mDevicePixelRatio; }

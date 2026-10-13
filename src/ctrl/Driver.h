@@ -13,6 +13,7 @@
 #include "ctrl/BoneEditor.h"
 #include "ctrl/PoseEditor.h"
 #include "ctrl/MeshEditor.h"
+#include "ctrl/GraphEditor.h"
 #include "ctrl/GraphicStyle.h"
 #include "ctrl/DriverResources.h"
 #include "ctrl/UILogger.h"
@@ -36,6 +37,13 @@ public:
     void renderGL(const core::RenderInfo& aRenderInfo, core::ObjectNode* aGridTarget) const;
     void renderQt(const core::RenderInfo& aRenderInfo, QPainter& aPainter) const;
 
+    // The animation graph overlay. The Driver owns it for the same reason it owns
+    // the tools: the viewport's overlay pass and its cursor both live here.
+    void setGraphEditorVisible(bool aVisible);
+    void setGraphTargets(const QVector<core::ObjectNode*>& aTargets);
+    bool updateGraphWheel(const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, bool aZoomValue);
+    GraphEditor* graphEditor() { return mGraphEditor.data(); }
+
     void updateParam(const SRTParam& aParam);
     void updateParam(const FFDParam& aParam);
     void updateParam(const BoneParam& aParam);
@@ -53,6 +61,9 @@ private:
     ToolType mToolType;
     core::TimeKeyBlender mBlender;
     QScopedPointer<IEditor> mEditor;
+    // Unlike mEditor this is not owned by the tool: the graph is a HUD that
+    // outlives every tool switch, so it is created once and never reset.
+    QScopedPointer<GraphEditor> mGraphEditor;
     core::ObjectNode* mCurrentNode;
     int mOnUpdating;
     bool mRejectedTarget;

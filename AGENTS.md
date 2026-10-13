@@ -423,6 +423,185 @@ Family status, measured:
 - srt: no harness; hit rule is `srt_Symbol::findFocus` around the object's SRT symbol.
 - ffd: no harness; its focuser is a GL transform-feedback task run through `DriverResources`.
 
+## The animation graph overlay (Dear ImGui)
+
+The panel is a **fullscreen overlay drawn by Dear ImGui 1.92.7**, pinned by a
+`FetchContent` declaration in the root `CMakeLists.txt` behind
+`AE_ENABLE_IMGUI` (default ON). The sources are NOT in this repository: they are
+fetched into `build/_deps`. `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<an existing
+checkout>` makes the configure hermetic and fetches nothing (measured: same
+configure time as with the option OFF, no `_deps` created). One static library,
+`ae_imgui`, compiles ImGui's four core sources for the application and the tests.
+
+**Why not the hand-rolled overlay engine.** `ctrl::GLCorePaintEngine` has no
+path support (`drawPath()` is `{ (void)aPath; }`, `src/ctrl/Painter.cpp:127`) and
+no clipping, so the panel's geometry had to be cut by hand and a curve could not
+be stopped from stroking over the legend. ImGui clips with `PushClipRect` and
+drew the same content **2.2x cheaper** in a measured A/B (928x589 viewport, 8
+curves x 201 points + 72 keys + labels; painter 10.24 ms mean vs ImGui 4.70 ms).
+CAVEAT, measured on llvmpipe only: the painter path pays per *command*, so on a
+real GPU its absolute cost collapses and the ratio is not verified there. Note
+also, from the same measurement: removing the grid does not make the painter path
+cheaper (10.50 ms vs 10.24 ms) - the grid-free design saves coverage, not
+commands.
+
+**Where CJK comes from.** The hand-rolled engine never rasterizes text:
+`GLCorePaintEngine::drawTextItem` (`src/ctrl/Painter.cpp:199-218`) asks Qt for
+the string, draws it white into a texture, caches it **keyed by the string**
+(`gl::TextObject::getMapKey`) and blits it tinted by the brush. fontconfig
+fallback, FreeType, `.ttc`, CFF and variable fonts are all Qt's work. ImGui's
+default loader is stb_truetype, which handles TrueType `glyf` outlines only and
+**aborts** on the system's default CJK face (`NotoSansCJK-VF.ttc` →
+`imstb_truetype.h:1590: stbtt_FindGlyphIndex: Assertion '0' failed`). So the
+overlay installs its own loader through the public `ImFontAtlas::SetFontLoader`
+(`imgui.h:3688`): `gui::imgui_qt::installQtFontLoader` rasterizes through
+`QRawFont` (`glyphIndexesForChars`/`alphaMapForGlyph`/`advancesForGlyphIndexes`/
+`supportsCharacter`) and finds the CJK face with `QRawFont::fromFont(font,
+WritingSystem)` - no fontconfig call, no font-file path, no new dependency.
+1.92's dynamic atlas means only the glyphs actually drawn are rasterized, so a
+CJK layer name costs its own glyphs, not a 2500-glyph range.
+
+**Three facts the integration depends on** (measured, and each is a silent
+failure otherwise):
+- The CALLER must call `ImGui_ImplOpenGL3_NewFrame()` before `ImGui::NewFrame()`
+  - it creates the backend's device objects on the first frame. Skipping it makes
+  the first `RenderDrawData` segfault with every handle 0.
+- ImGui must draw AFTER `ctrl::PainterHandle::end()`, which flushes the queued
+  QPainter command batch. Drawing before it puts the panel under the overlay.
+- GL state read back before and after `RenderDrawData` comes out identical, but
+  the viewport is NOT restored, the scissor box is left set, and a temporary VAO
+  is created per draw.
+
+**The panel's design, as implemented** (`src/ctrl/GraphEditor.h` and
+`src/gui/GraphPanelModel.h` are the two durable specs):
+- fullscreen over the animation, **no background and no grid**: short tick marks
+  and labels only, so the artwork stays readable through the panel;
+- text carries a **halo**, which is what keeps it legible over arbitrary pixels;
+- **hit-only ownership**: the graph takes the pointer only on a curve, a key or a
+  handle (or while a drag is in flight), so the viewport tools keep working while
+  the panel covers everything. The WHEEL is the exception, and deliberately so:
+  while the graph is visible it zooms the graph; hiding the graph gives the wheel
+  back to the canvas;
+- a **sticky focus** marks one channel (a press that hits a curve sets it, a press
+  on empty space leaves it alone). The value axis follows the focus, and the fit
+  it implies is **pending**: it is applied when the gesture is over, never
+  mid-press - otherwise the key or handle the user just grabbed slides out from
+  under the pointer, and a drag would start from geometry the fit invalidated;
+- double-click on the plot fits both axes (`GraphEditor::fitAll`); the graph's
+  frame axis is its OWN `ctrl::time::Scaler` (by value in `graph::Scaler`), so
+  fitting it moves the graph's window and not the timeline's.
+
+**The units and their gates.** `gui::GraphPanelModel` is the panel's content as
+engine-neutral geometry (it makes no appearance decisions and mutates nothing);
+`gui::ImGuiInputBridge` is the complete Qt→ImGuiIO translation (mouse, keys,
+keypad, IME incl. the candidate-window caret, tablet, touch, DPR) and owns the
+rule the application must obey: **a rebindable command must not fire while
+`ImGuiInputBridge::keyboardCaptured()`** (= `io.WantCaptureKeyboard`);
+`gui::a11y` publishes the panel to the screen-reader tree through QAccessible
+(the ImGui content itself exposes nothing - a measured byte-identical AT-SPI dump
+with the overlay on and off). `tests/imgui_qt_font_loader`,
+`tests/imgui_input_bridge`, `tests/imgui_a11y` and `tests/graph_panel_model` are
+their headless gates; `scripts/run_suites.sh` discovers targets from
+`tests/CMakeLists.txt`, so registering one there is all that puts it on the gate.
+
+**Trap: the ambient platform theme breaks offscreen tests after they PASS.** With
+`QT_QPA_PLATFORMTHEME=cosmic` exported, `libcutecosmictheme.so`'s watcher thread
+calls back into Qt after teardown and the process can exit 134/139 having already
+printed its PASS (measured: 16 of 60 runs, with a pure-Qt control crashing 2 of
+30). `scripts/run_suites.sh` therefore drops that variable on its offscreen
+branch.
+
+**What this is verified on, and what is not.** Everything above was MEASURED on
+Linux/X11 under Xvfb, with Mesa **llvmpipe** - a software rasterizer, so the
+timings are pessimistic and the painter/ImGui ratio is not verified on a GPU.
+Also verified here and expected to hold elsewhere, because they do not depend on
+this platform: the GL3 backend and its loader shim (they call through the same
+`QOpenGLFunctions_4_0_Core` instance the rest of the renderer uses), the
+FetchContent declaration with its offline override, and the Qt-backed font loader
+- the most portable piece by construction, since `QRawFont::fromFont(font,
+WritingSystem)` is Qt's documented cross-platform way to ask for the face it would
+use for a script (no fontconfig call of ours). NOT verified anywhere: macOS and
+Windows builds, a real IME session on a compositor, and anything that needs a real
+compositor - the probe and the GL tests run under Xvfb, which is X11.
+
+**Which renderer, precisely** (measured): this machine HAS a GPU - an AMD Radeon
+R9 380 (radeonsi, 4.6 core) - and tests that create their own context DO get it
+(`tests/graph_panel_pixels` reports it, so the contrast-outline shader's pixels are
+GPU-verified, not software-verified). The APPLICATION under Xvfb does not: GLX
+there is llvmpipe (`Accelerated: no`), which is why every application-level timing
+here - the painter/ImGui A/B and the animation-load numbers - is software
+rendering. Timing the real thing needs a real session, and nothing here may drive
+the developer's own display, so those numbers stay llvmpipe-attributed and the GPU
+ratio is unclaimed.
+
+**Fractional DPI IS verified** (measured, not assumed): `imgui_qt_font_loader`,
+`imgui_a11y` and `graph_panel_model` all pass headlessly at `QT_SCALE_FACTOR` 1.0,
+1.25, 1.5 and 2.0, and the application draws the panel correctly at 1.25 and 1.5 -
+captured, with the ticks, labels and playhead landing where they should.
+
+**Trap: on a scaled session every AT-SPI-driven click misses.** QAccessible
+rectangles - Qt's own and this application's published ones - are in LOGICAL
+pixels, while `xdotool` moves the pointer in DEVICE pixels. Measured at
+`QT_SCALE_FACTOR=1.25`: the graph toggle reports `8 88 24 24`, byte-identical to its
+unscaled rect, so a probe that presses the reported centre lands 20% short and
+nothing happens - while the panel is perfectly fine and the application logs no
+warning. The probes are written for scale 1 and run under Xvfb that way; driving a
+scaled session needs the rect multiplied by the scale factor, and the same care
+for every measurement taken in pixels.
+
+**Two repaint lessons, both measured on the key menu.** Neither is visible in a
+single frame, which is why both were first reported as "the panel is broken".
+
+*An event the overlay consumes for its own popup needs a successor FRAME, and only
+the frame end can ask for one.* ImGui applies a queued press and the release that
+follows it on two different frames (`io.ConfigInputTrickleEventQueue` is ImGui's
+default), and ImGui's `Selectable` fires on the RELEASE - but a `requestRepaint()`
+from an event handler is a `QWidget::update()`, and Qt coalesces every update
+requested while a paint is pending into that one pending paint. So an event handler
+can only ever ask for the frame it is already in, never for the frame that applies
+what ImGui kept. The request therefore lives at the END of `paint()`: if ImGui still
+holds queued input (a non-empty `ImGuiContext::InputEventsQueue`), ask for the next
+frame. Measured before the fix: one click on a menu entry changed nothing at all -
+the popup's 29271 px stayed on screen and the easing did not move - because the
+release waited for a frame nobody had requested; clicking the entry TWICE worked,
+which is exactly how a defect hides from the test written for it. `press()` and
+`doubleClick()` do not need it (what they do is synchronous: the swatch toggle and
+`fitAll` act on the editor's own state), and `mouseMove()` does not either, since it
+already asks while the menu is open - that request *is* its frame.
+
+*A panel state change is not a canvas change, so the panel's own scalers need the
+repaint too.* The wheel over the visible graph changes `GraphEditor`'s scale;
+`MainDisplayWidget::wheelEvent` used to return straight after
+`Driver::updateGraphWheel` reported the take, and since nothing had changed on the
+canvas no frame was scheduled: the new frames-per-pixel stayed invisible until
+something unrelated repainted (the probe only saw its 798 px of panel change because
+it forced a repaint cycle, and that nudge was the tell). The take is reported
+*because* it is not a canvas action - and that is precisely the case that needs the
+request, mirroring the cursor path (`updateCursor` -> `updateRender`). Every other
+route measured does repaint already: a cursor pass, a key pushed from the timeline
+(2162 px with no nudge), the graph's own drag and easing edit, a tree selection
+change, and the visibility/channel toggles.
+
+**The key menu's keyboard route needed the Qt focus, which this widget does not
+have by default.** Keys reach the overlay through
+`MainDisplayWidget::keyPressEvent`, and that widget carries `QWidget`'s default
+`Qt::NoFocus` policy - it never sets one, so pressing in the viewport never makes
+it the focus object. Measured with the overlay instrumented and the probe driving
+the menu: **zero** key events arrived at `ImGuiOverlay::key()` in a whole run, and
+the popup stayed up through Escape. The overlay therefore takes the Qt focus while
+the menu is open and hands it back when the menu closes (only if it still holds
+it) - the same move this file already makes for a Dear ImGui text field. Without
+that step, a key handler that looks perfectly correct is never called at all.
+
+ImGui's own popup keyboard behaviour is gated on
+`ImGuiConfigFlags_NavEnableKeyboard`, which `NewFrame` reads per frame, so the flag
+is set only while the menu is open and cleared otherwise: Escape closes the menu,
+the arrows move its entry highlight and Return activates. That toggle is not
+cosmetic - left on, ImGui wants the keyboard for the whole viewport, which is the
+application's keys. With the menu closed they are untouched, and the probe asserts
+it on the document rather than on a return value (ctrl+Z undoes the pick the menu
+made; ctrl+Right still moves the playhead).
+
 ## Where the existing GUI tooling lives
 
 Extend these instead of writing new one-off scripts:
@@ -519,4 +698,126 @@ looks like "the application is broken" when the application is fine.
   forms and widens the whole column for a long label. Note that `closePolicy` on a `ComboBox`'s
   popup is NOT yours to set: the C++ control re-applies `CloseOnEscape | CloseOnReleaseOutsideParent`
   (17) after the `popup:` block runs, so a QML `closePolicy:` there is silently overwritten.
+
+## The viewport overlay's paint engine is a SUBSET, and its gaps are silent
+
+Anything drawn in the viewport overlay pass — the tool gizmos, and now the animation graph panel —
+goes through `ctrl::PainterHandle`, whose `GLCorePaintEngine` (in a `USE_GL_CORE_PROFILE` build) is a
+hand-written `QPaintEngine` over `gl::PrimitiveDrawer`. Four limits cost real time on 2026-10-12 while
+building the graph panel; all four fail with NO warning, so a renderer that looks correct can paint
+nothing:
+
+- **`GLCorePaintEngine::drawPath` is `{ (void)aPath; }`** (`src/ctrl/Painter.cpp:127`). `QPainterPath`,
+  `QPainter::fillPath` and `drawRoundedRect` (Qt routes it through a path) paint NOTHING. Measured: a
+  graph panel body drawn as a rounded rect and its curve polylines were invisible on screen while the
+  same code painted correctly into a raster `QImage`, which is the trap — a raster pixel test cannot
+  see this. Draw with `drawPoint`/`drawLine`/`drawPolyline`/`drawRect`/`drawEllipse`/`drawPolygon`/
+  `drawConvexPolygon`/`drawPixmap`/`drawImage`/`drawText` only.
+- **The engine declares no `QPaintEngine::Clip` capability** and its `updateState` reacts only to
+  brush, pen and render-hint changes, so **`QPainter::setClipRect` is not applied**. Enforce a
+  boundary geometrically (clip the segments yourself, intersect the rects).
+- **A texture/text draw is dropped unless a BRUSH is scheduled.** `drawTexture` queues its command
+  with `usePen = false`, and `gl::PrimitiveDrawer::pushDrawCommand` returns early for those while
+  `mScheduledState.hasBrush` is false. Measured: the graph's axis labels were drawn with a pen only
+  (the grid lines beside them need `Qt::NoBrush`), so every number was discarded. Set a brush before
+  `drawText` — and note the brush colour is also what TINTS the glyphs, because
+  `GLCorePaintEngine::drawTextItem` builds the text texture white and draws it through that colour
+  (`bone::NodeSelector` sets a brush for its labels, which is why those always worked).
+- **A core-profile context needs a bound VAO for every draw**, and `gl::PrimitiveDrawer` never binds
+  one. `gui::MainDisplayWidget::initializeGL` creates `mDefaultVAO` and every overlay draw depends on
+  it. Measured in a throwaway harness: `glDrawArrays` with no VAO bound is `GL_INVALID_OPERATION`,
+  and the engine's `GL_CHECK_ERROR()` turns any pending GL error into `Q_ASSERT(0)` — an immediate
+  abort in a Debug build, from a drawing call that looks fine.
+
+**The subset is pinned by `tests/overlay_engine_primitives.cpp`** (run it under `xvfb-run`; it is in
+the GL branch of `scripts/run_suites.sh`). It drives the real `ctrl::PainterHandle` into its OWN
+400x300 RGBA8 framebuffer, reads it back with `glReadPixels` and counts pixels per probe. Measured on
+llvmpipe (Mesa 26.2.2, GL 4.6 core): control 0, line 368, rect 4800, polyline 1177, ellipse 3156,
+convex polygon 3344, pixmap 3072, **path 0**, **text with a brush 294**, **text without a brush 0**.
+Two things are load-bearing for any harness of this kind and cost a previous attempt its life: bind a
+VAO (the note above) and read your own FBO — `QOpenGLWidget::grabFramebuffer()` re-enters Qt's render
+and invalidates the colour buffer, so a per-paint readback through it returned pixels for one probe
+and zero for the other seven.
+
+What that gate still does NOT cover is the application's own composition - that the panel and the
+gizmos reach the screen over the canvas - because a raster or FBO harness never runs the widget's
+real paint path. That is `scripts/gui/probe_graph_overlay.sh` (auto-discovered by `run_probes.sh`):
+it selects a layer, presses the graph toggle **by name**, and asserts with pixel diffs that the
+change lands inside the central widget (bounds derived from the `page tab` and `Properties` AT-SPI
+rectangles) and that toggling off restores the pixels exactly. Measured there: 18505 px changed, of
+which only 568 are the toggle's own highlight, and off-vs-off is 0 px. Two traps for anything like
+it: the View Settings buttons are icon-only, so every AT-SPI lookup returned the GROUP BOX's name
+until the toggle got its own `accessibleName`; and **normalise both screenshots to truecolor sRGB
+before `magick compare`** - comparing a grayscale capture against an sRGB one reports 0 differing
+pixels for images that differ by 1200, because the first image's colourspace seeds the metric.
+
+
+## The object tree, and where a project's keys hide
+
+**The tree's first `table cell` row is the top node, and its child layers stay invisible until the
+folder is expanded.** The only expander is the branch indicator: click `(rowX - 12, rowY + rowH/2)`
+using the row's own `ae extents "<row name>" "table cell"` rect - never a guessed coordinate. The
+indicator is a toggle, not an expander: a second click on it collapses the folder again (measured on
+`I_think_its_cursed_honestly.anie`: 1 row -> 4 rows (`animation`, `head`, `line`, `circle`) -> 1 row).
+A double-click on the row collapses it too, which is why every walk here uses single indicator clicks
+and never double-clicks a row. That same expansion is what makes a CHILD row's properties exist at
+all: with the TOP node selected the whole Properties board is empty, because
+`ObjectTreeWidget::findSelectingRepresentNode` (`src/gui/ObjectTreeWidget.cpp:229`) returns nullptr
+for the top node, the dock then calls `setTarget(nullptr)` and every panel hides.
+
+**Most small `.anie` files under `~/Downloads` are keyless at the top node.** Measured per node with
+the channel dump (`target=<node> maps <type>:<key count> ...`): `PBB.anie` (pizzaboyeoriginal),
+`miatest.anie` (mia), `valentine pagedoll` and `running through one_s head.anie` expose a top node
+whose graphable channel maps are ALL empty. Four do carry keys: `I_think_its_cursed_honestly.anie`
+(872 KB; the top node `animation` is also keyless, but the child layer `line` has 2 scale + 3 opacity
+keys), `animated pagedoll ych.anie` (1418 KB, 2 keys), `tart.anie` (1274 KB, 2) and
+`amongusych2.anie` (1598 KB, 5). Pass one as argument 1 (or `AE_PROJECT=...`) when a probe needs
+curve data, and remember that the same file then reports its curves only for the layer that is
+selected.
+
+**The add-key affordance is NOT the check box named `Create rotate key`.** That check box is
+`gui::tool::SRTPanel`'s Transform-tool option (`src/gui/tool/tool_SRTPanel.cpp:53`, "The
+transformation will create a rotate key regardless of its type"): it lives in the Tools dock
+`Transform` panel, reports `showing=False` with a `0x0` rect while the Toolbox is the active tool
+panel, and pressing it only sets `mParam.necessarilyRotate`. The knob that adds an EXPLICIT key at the
+cursor frame is a `prop::KeyKnocker` row (`src/gui/prop/prop_KeyKnocker.cpp`): a label named after the
+channel (`Move`, `Rotate`, `Scale`, `Depth`, `Opacity`, `HSV`, `Blur`, `FFD`, `Image`) plus an UNNAMED
+plus button, present only while the frame has no key for that channel (the row stands in for the panel
+header). Any click on the row runs the knocker - the title label forwards its click to the row. Three
+measured traps sit in front of it:
+
+- the Current Keys panel is hidden while the TOP node is selected (see above), so select a CHILD row
+  first;
+- the board is taller than the dock viewport, so the Current Keys rows start BELOW the fold: the
+  Rotate row was at y=394 while the board viewport ends at y=391, and a click there hits the log pane
+  and adds nothing (the key count stayed 0). The wheel does NOT move the board (8 notches at the dock
+  centre changed 0 px), but the panels above collapse through their own title labels
+  (`prop::HeaderButton` toggles on a click its title label forwards), and collapsing `Constants` and
+  `Default Keys` lifts the row into the viewport (measured: y 394 -> 318 -> 194);
+- `ae extents "Rotate"` does NOT find the knob: the View Settings strip toggle carries the group name
+  as its accessible name and `Rotate` as its DESCRIPTION, so a plain press activates a tool. Measured
+  on `I_think_its_cursed_honestly.anie`: that press changed only the rotated artwork (8243 px, region
+  `190x145+175+39`, entirely inside the central widget) and added NO key, because the graph panel
+  draws only explicit keys (`TimeLine::map(type)`). Ask by role instead - `ae extents "Rotate"
+  "label"` - and prefer a child-row select plus the collapse recipe.
+
+**Adding a key writes three places, and the graph panel needs a repaint to show it.** Measured on the
+keyed project, one knob press changed the whole screen by 17807 px over the region `698x365+0+26`:
+the Properties dock row becomes the channel rows (7525 px), the Animation panel lane gains the key
+(8432 px), and the project tab gains the modified marker. What the PLOT shows is 1790 px inside the
+central widget on that project and 460 px on the default one - a channel with ONE key is a key DOT
+plus the fit basis moving under it; the curve itself needs a second key. Two consequences for any
+probe of this: a whole-screen change can never be confined to the viewport once a real key is added
+(measure the plot inside the central widget instead), and the HUD does not redraw for a key added
+while it was already on screen - the central widget changed 0 px across the press and shows the key
+only after the panel is toggled off and on.
+
+**A last harness fact that cost time here: `ae_activate` on a `table cell` does not reliably select
+the row it names.** It does set the AT-SPI `SELECTED` state, but the reported cell rectangles are not
+the rows: measured, `head` reported `(40,221,81,22)` and `line` `(40,243,115,22)` while the tree
+widget itself is only 70 px wide at `(0,199)`, so the synthesized click lands beside the row - after
+"clicking" `line`, the selected rows were `animation` and `head`. Read the selection back (the AT-SPI
+`SELECTED` state per cell) and treat the graph target as the authority when a probe needs to know
+which layer it is driving.
+
 

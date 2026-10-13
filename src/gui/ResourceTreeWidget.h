@@ -36,6 +36,13 @@ public:
     // Watch every top-level asset of this tree that exists on disk and is not
     // already watched. Everything else is skipped silently.
     void watchAllTopItems();
+    // Remove every top-level asset that no layer renders from, and report how
+    // many went. An asset whose subtree still holds a live reference is left
+    // alone -- the object tree is the authority on "unused", but a reference it
+    // cannot see (a key in flight, say) must not be yanked either. Each removal
+    // is one undo step, exactly as the context menu's Delete is; the engine's
+    // macro cannot be nested, so they are not folded into one.
+    int removeUnusedAssets();
 
     util::Signaler<void(const NodeList&)> onNodeSelectionChanged;
 

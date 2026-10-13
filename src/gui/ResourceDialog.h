@@ -31,6 +31,7 @@ private:
     virtual void keyReleaseEvent(QKeyEvent* aEvent);
 
     void onAddResourceTriggered(bool);
+    void onDeleteUnusedTriggered(bool);
     ViaPoint& mViaPoint;
     util::LinkPointer<core::Project> mProject;
     ResourceTreeWidget* mTree;

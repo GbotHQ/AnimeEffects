@@ -12,6 +12,7 @@
 #include "ctrl/CmndName.h"
 #include "gui/res/res_ImageSetter.h"
 #include "gui/res/res_ResourceUpdater.h"
+#include "gui/ObjectTreeWidget.h"
 #include "gui/ResourceTreeWidget.h"
 #include "img/Util.h"
 #include <zip_file.h>
@@ -883,7 +884,9 @@ namespace gui::res {
     }
 
     //-------------------------------------------------------------------------------------------------
-    void ResourceUpdater::remove(QTreeWidget& aTree, Item& aTopItem) {
+    bool ResourceUpdater::remove(
+        QTreeWidget& aTree, Item& aTopItem, const QVector<core::ObjectNode*>& aReferencingObjects
+    ) {
         auto& holder = mProject.resourceHolder();
 
         img::ResourceNode& node = aTopItem.node();
@@ -895,12 +898,29 @@ namespace gui::res {
             img::ResourceNode::ConstIterator itr(&topNode);
             while (itr.hasNext()) {
                 if (itr.next()->isKeeped()) {
-                    QMessageBox::warning(
-                        nullptr, tr("Operation Error"), tr("Some layers are still referenced by objects.")
-                    );
-                    return;
+                    // A live reference the caller did not offer to delete: refuse
+                    // rather than pull an asset out from under the layers that
+                    // render from it.
+                    if (aReferencingObjects.isEmpty()) {
+                        QMessageBox::warning(
+                            nullptr, tr("Operation Error"), tr("Some layers are still referenced by objects.")
+                        );
+                        return false;
+                    }
+                    break;
                 }
             }
+        }
+
+        // The deletion of the referencing layers rides in this macro, so it needs
+        // the object tree's view. Without it the removals could not be replayed
+        // (their items would be orphaned), so refuse instead of corrupting.
+        ObjectTreeWidget* objTree = mViaPoint.objectTreeWidget();
+        if (!aReferencingObjects.isEmpty() && (!objTree || !objTree->canDeleteObjects(aReferencingObjects))) {
+            QMessageBox::warning(
+                nullptr, tr("Operation Error"), tr("Some layers are still referenced by objects.")
+            );
+            return false;
         }
 
         // find index
@@ -911,7 +931,7 @@ namespace gui::res {
             ++index;
         }
         if (index >= (int)holder.imageTrees().size())
-            return;
+            return false;
 
 
         // find gui index
@@ -935,9 +955,19 @@ namespace gui::res {
             notifier->event().setSingleTarget(node);
             macro.grabListener(notifier);
 
+            // Delete the layers that render from this asset in the same undo step.
+            // Appended BEFORE the asset's own removal so that, in the macro's
+            // forward order, the references are gone by the time the resource
+            // tree is taken out of the holder.
+            if (!aReferencingObjects.isEmpty()) {
+                objTree->pushDeleteObjects(aReferencingObjects, macro);
+            }
+
             stack.push(new TreeDeleter(holder, index));
             stack.push(new GUITreeDeleter(aTree, guiIndex));
         }
+
+        return true;
     }
 
 } // namespace gui::res

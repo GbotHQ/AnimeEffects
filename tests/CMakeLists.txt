@@ -181,6 +181,11 @@ target_link_libraries(creation_select_keys PRIVATE
 #       build/tests/Debug/pose_pull_crash <file.anie>
 # See pose_pull_crash.cpp.
 add_executable(pose_pull_crash pose_pull_crash.cpp
+    # ctrl::Driver owns ctrl::GraphEditor, whose renderQt() calls theme::Graph, and
+    # the ctrl library leaves that symbol unresolved (the same reason graph_drag
+    # and graph_render_pixels compile it). Without this the target links the graph
+    # editor's object and fails on theme::Graph::from / keyColor.
+    ../src/gui/theme/Graph.cpp
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
 target_include_directories(pose_pull_crash PRIVATE ..)
 target_compile_definitions(pose_pull_crash PRIVATE
@@ -922,6 +927,278 @@ target_compile_definitions(psd_relink_safety PRIVATE
     USE_GL_CORE_PROFILE
 )
 target_link_libraries(psd_relink_safety PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Contract test for the animation graph's value model: ctrl::graph::Channel,
+# ctrl::graph::Curve and ctrl::graph::Scaler (src/ctrl/graph). The sampler is
+# compared against the real core::TimeKeyBlender over a real core::TimeLine and
+# read out of the same core::TimeKeyExpans the renderer reads, so the graph can
+# only pass by drawing what playback evaluates. Headless: no widgets, no GL, no
+# .anie fixture, no extra source files (the one property that needs a GL
+# context, the image-offset staircase, reports itself as a skip). See
+# graph_curve.cpp.
+add_executable(graph_curve graph_curve.cpp)
+target_include_directories(graph_curve PRIVATE ..)
+target_compile_definitions(graph_curve PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(graph_curve PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# ---------------------------------------------------------------------------
+# The overlay's units (the Dear ImGui renderer of the viewport panel). They exist
+# because the pieces a screenshot cannot see need gates of their own: the font
+# stack, the Qt->ImGuiIO translation, the accessibility bridge and the panel
+# model. The first two link ae_imgui (declared in the root CMakeLists, behind
+# AE_ENABLE_IMGUI); the last two deliberately do not - the accessibility bridge is
+# pure QAccessible over a plain model, and the panel model is geometry. All four
+# are headless: offscreen, no GL context, no window.
+#
+# scripts/run_suites.sh discovers targets from this file, so registering one here
+# is all that puts it on the gate.
+# ---------------------------------------------------------------------------
+if(AE_ENABLE_IMGUI)
+    # The font loader: ImGui rasterizes through Qt (QRawFont), which is what makes
+    # CJK, .ttc, CFF and variable fonts work. Builds an atlas and reads glyph
+    # pixels - no GL. See src/gui/ImGuiQtFontLoader.h.
+    add_executable(imgui_qt_font_loader imgui_qt_font_loader.cpp
+        ../src/gui/ImGuiQtFontLoader.cpp)
+    target_include_directories(imgui_qt_font_loader PRIVATE .. ../src)
+    target_compile_definitions(imgui_qt_font_loader PRIVATE
+        AE_MAJOR_VERSION=1
+        AE_MINOR_VERSION=7
+        AE_MICRO_VERSION=1
+        USE_GL_CORE_PROFILE
+    )
+    target_link_libraries(imgui_qt_font_loader PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets
+        ae_imgui
+    )
+
+    # The input bridge: mouse/keys/wheel, IME (commit and pre-edit), tablet, touch,
+    # DPR, and the WantCapture consumption policy the application's key routing has
+    # to obey. No GL, no window.
+    add_executable(imgui_input_bridge imgui_input_bridge.cpp
+        ../src/gui/ImGuiInputBridge.cpp)
+    target_include_directories(imgui_input_bridge PRIVATE .. ../src)
+    target_compile_definitions(imgui_input_bridge PRIVATE
+        AE_MAJOR_VERSION=1
+        AE_MINOR_VERSION=7
+        AE_MICRO_VERSION=1
+        USE_GL_CORE_PROFILE
+    )
+    target_link_libraries(imgui_input_bridge PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets
+        ae_imgui
+    )
+
+    # The panel's PIXEL contract, and the replacement for graph_render_pixels (which
+    # pins the painter renderer the cutover deletes). It drives gui::drawPanel through
+    # a real ImGui frame into its own offscreen framebuffer and asserts the pixels the
+    # model's geometry promises - including the INVERSE assertion that a plot area
+    # holding no geometry is left untouched, which is what "no background, no grid"
+    # means in pixels. Needs a real GL context, so it runs under xvfb (the GL branch
+    # in scripts/run_suites.sh).
+    #
+    # There is no `gui` library to link against - the application target compiles
+    # these files itself - so the overlay's own units come along as sources.
+    # ImGuiSpikeGL.cpp must stay the first ImGui translation unit: its loader shim
+    # precedes the backend.
+    add_executable(graph_panel_pixels graph_panel_pixels.cpp
+        ../src/gui/ImGuiGLBackend.cpp
+        ../src/gui/ImGuiOverlay.cpp
+        ../src/gui/GraphPanelModel.cpp
+        ../src/gui/ImGuiInputBridge.cpp
+        ../src/gui/ImGuiA11y.cpp
+        ../src/gui/ImGuiQtFontLoader.cpp
+        ../src/gui/theme/Graph.cpp)
+    target_include_directories(graph_panel_pixels PRIVATE .. ../src)
+    target_compile_definitions(graph_panel_pixels PRIVATE
+        AE_MAJOR_VERSION=1
+        AE_MINOR_VERSION=7
+        AE_MICRO_VERSION=1
+        USE_GL_CORE_PROFILE
+        AE_ENABLE_IMGUI=1
+    )
+    target_link_libraries(graph_panel_pixels PRIVATE
+        Qt6::Core Qt6::Core5Compat Qt6::Widgets
+        Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+        Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+        cmnd core ctrl gl img thr util pugixml
+        ae_imgui
+    )
+endif()
+
+# The accessibility bridge for the overlay's framebuffer-drawn content. No ImGui
+# dependency at all: it publishes a plain item model through QAccessible, and the
+# live AT-SPI dump (scripts/gui/probe_graph_overlay.sh) is what finally checks it
+# against a screen reader's view. See ImGuiA11y.h.
+add_executable(imgui_a11y imgui_a11y.cpp
+    ../src/gui/ImGuiA11y.cpp)
+target_include_directories(imgui_a11y PRIVATE .. ../src)
+target_compile_definitions(imgui_a11y PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(imgui_a11y PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Widgets
+)
+
+# The panel model: what the overlay draws, as engine-neutral geometry computed from
+# ctrl::GraphEditor - and, crucially, asserted CONSISTENT with the editor's own
+# panelRect/scale, because a model that computed its own rects would silently
+# desync the pixels from the hit-test. Compiles theme::Graph for the same reason
+# graph_drag does. See graph_panel_model.cpp.
+add_executable(graph_panel_model graph_panel_model.cpp
+    ../src/gui/GraphPanelModel.cpp
+    ../src/gui/theme/Graph.cpp)
+target_include_directories(graph_panel_model PRIVATE ..)
+target_compile_definitions(graph_panel_model PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(graph_panel_model PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Contract test for the animation graph's EDIT path (ctrl::GraphEditor): one
+# handle drag must be exactly ONE undo step, and it must edit the grabbed key's
+# own util::Easing::Param. Drives the real editor with synthetic
+# core::AbstractCursor frames and proves the command count by undo/redo rather
+# than by inspection. Headless: offscreen, no GL, no .anie. Compiles the real
+# theme::Graph because GraphEditor names it and the ctrl library leaves that
+# symbol unresolved - the same reason the timeline tests compile
+# theme/TimeLine.cpp. See graph_drag.cpp.
+add_executable(graph_drag graph_drag.cpp
+    ../src/gui/theme/Graph.cpp)
+target_include_directories(graph_drag PRIVATE ..)
+target_compile_definitions(graph_drag PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(graph_drag PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# The panel's pixels used to be pinned here, by driving the raster QPainter
+# renderer (ctrl::graph::Renderer) into a QImage. That renderer is gone: the panel
+# is drawn by gui::drawPanel (Dear ImGui), and its pixel contract lives in
+# tests/graph_panel_pixels.cpp, which drives the real drawing through a GL frame and
+# asserts the same primitives - plus the inverse assertion that an area with no
+# geometry in it is untouched, which no test of the painter path could make.
+
+# The image-offset channel's step-hold, in the one environment where it can be
+# observed: constructing a core::ImageKey binds a GL buffer for its GridMesh, so
+# tests/graph_curve.cpp (headless, offscreen) has to report that section as a
+# skip. This test creates a context and asserts the staircase for real - the
+# offset holds the last preceding key's value across the whole span, with no
+# trace of the Custom easing the first key carries. Runs under xvfb.
+add_executable(graph_image_step graph_image_step.cpp)
+target_include_directories(graph_image_step PRIVATE ..)
+target_compile_definitions(graph_image_step PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(graph_image_step PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# GUARD test for the paint engine that draws every viewport overlay
+# (ctrl::PainterHandle -> GLCorePaintEngine in a USE_GL_CORE_PROFILE build). It
+# drives the real ctrl::PainterHandle into its OWN offscreen framebuffer and
+# counts pixels per probe, so the engine's ACTUAL primitive subset is pinned
+# rather than assumed: the primitives the gizmos and the graph panel rely on must
+# paint, and two silent traps must keep behaving as documented - a QPainterPath
+# paints nothing (drawPath is `{ (void)aPath; }`), and a text draw with no brush
+# scheduled paints nothing (pushDrawCommand drops usePen=false draws unless a
+# brush is scheduled). Both cost real defects on 2026-10-12; see the measured
+# notes in AGENTS.md. It reads its own FBO with glReadPixels, never
+# QOpenGLWidget::grabFramebuffer() (which re-enters Qt's render and invalidates
+# the buffer). Needs a real GL context, so it runs under xvfb (see the GL branch
+# in scripts/run_suites.sh). assets.qrc is embedded for the engine's shaders.
+add_executable(overlay_engine_primitives overlay_engine_primitives.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(overlay_engine_primitives PRIVATE ..)
+target_compile_definitions(overlay_engine_primitives PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(overlay_engine_primitives PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
+# Regression test for removing an asset that layers still use
+# (core::ObjectTree::findNodesUsingResource, gui::ObjectTreeWidget::pushDeleteObjects,
+# gui::res::ResourceUpdater::remove): the removal used to be refused outright when
+# any layer rendered from the asset. It now deletes those layers in the same undo
+# step, so the search must walk the asset's whole subtree, the resource must be
+# released before its tree is removed, and ONE undo must restore both the asset and
+# its layers IN ORDER. Builds the real object tree and asset tree and drives the
+# real removal; needs a GL context for core::LayerNode's default ImageKey, so it
+# runs under xvfb (cf. psd_layer_identity). See asset_remove_layers.cpp.
+add_executable(asset_remove_layers asset_remove_layers.cpp
+    ../src/gui/ObjectTreeWidget.cpp
+    ../src/gui/GUIResources.cpp
+    ../src/gui/AppStyle.cpp
+    ../src/gui/ProjectHook.cpp
+    ../src/gui/ViaPoint.cpp
+    ../src/gui/EasyDialog.cpp
+    ../src/gui/ResourceDialog.cpp
+    ../src/gui/ResourceTreeWidget.cpp
+    ../src/gui/res/res_ResourceUpdater.cpp
+    ../src/gui/res/res_Item.cpp
+    ../src/gui/res/res_Notifier.cpp
+    ../src/gui/obj/obj_Item.cpp
+    ../src/gui/obj/obj_InsertItem.cpp
+    ../src/gui/obj/obj_MoveItem.cpp
+    ../src/gui/obj/obj_Notifiers.cpp
+    ../src/gui/obj/obj_RemoveItem.cpp
+    ../src/gui/obj/obj_Util.cpp
+    ../src/gui/theme/Theme.cpp
+    ../src/gui/theme/Icons.cpp
+    ../src/gui/theme/TimeLine.cpp
+    ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
+target_include_directories(asset_remove_layers PRIVATE .. ../src ../src/gui)
+target_compile_definitions(asset_remove_layers PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(asset_remove_layers PRIVATE
     Qt6::Core Qt6::Core5Compat Qt6::Widgets
     Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
     Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia

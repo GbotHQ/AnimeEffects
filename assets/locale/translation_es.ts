@@ -167,7 +167,7 @@
     <message>
         <location filename="../../src/gui/qml/ExportDialog.qml" line="892"/>
         <location filename="../../src/gui/qml/NewProjectDialog.qml" line="363"/>
-        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="390"/>
+        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="397"/>
         <location filename="../../src/gui/qml/KeyBindingDialog.qml" line="292"/>
         <location filename="../../src/gui/qml/GeneralSettingDialog.qml" line="559"/>
         <source>Cancel</source>
@@ -306,20 +306,20 @@
     <message>
         <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="295"/>
         <source>Viewport background</source>
-        <translation>{'es': 'Fondo de la vista', 'ja': 'ビューポートの背景', 'ko': '뷰포트 배경', 'ru': 'Фон области просмотра', 'zh': '视口背景'}</translation>
+        <translation>Fondo de la vista</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="314"/>
+        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="321"/>
         <source>Choose…</source>
-        <translation>{'es': 'Elegir…', 'ja': '選択…', 'ko': '선택…', 'ru': 'Выбрать…', 'zh': '选择…'}</translation>
+        <translation>Elegir…</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="319"/>
+        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="326"/>
         <source>Use theme background</source>
-        <translation>{'es': 'Usar el fondo del tema', 'ja': 'テーマの背景を使用', 'ko': '테마 배경 사용', 'ru': 'Использовать фон темы', 'zh': '使用主题背景'}</translation>
+        <translation>Usar el fondo del tema</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="395"/>
+        <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="402"/>
         <location filename="../../src/gui/qml/GeneralSettingDialog.qml" line="564"/>
         <source>OK</source>
         <translation>Aceptar</translation>
@@ -353,7 +353,7 @@
     <message>
         <location filename="../../src/gui/qml/GeneralSettingDialog.qml" line="127"/>
         <source>QoL</source>
-        <translation>QoL</translation>
+        <translation>Calidad de vida</translation>
     </message>
     <message>
         <location filename="../../src/gui/qml/GeneralSettingDialog.qml" line="128"/>
@@ -528,7 +528,7 @@
     <message>
         <location filename="../../src/img/BlendMode.cpp" line="160"/>
         <source>Overlay</source>
-        <translation>Overlay</translation>
+        <translation>Superponer</translation>
     </message>
     <message>
         <location filename="../../src/img/BlendMode.cpp" line="162"/>
@@ -735,7 +735,7 @@
         <translation type="vanished">Mover clave</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="354"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="360"/>
         <source>Move keys</source>
         <translation>Mover claves</translation>
     </message>
@@ -744,17 +744,17 @@
         <translation type="vanished">Pegar clave del portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="669"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="675"/>
         <source>Paste clipboard keys</source>
         <translation>Pegar claves del portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="843"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="849"/>
         <source>Paste keys</source>
         <translation>Pegar claves</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="908"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="914"/>
         <source>Delete keys</source>
         <translation>Eliminar claves</translation>
     </message>
@@ -955,40 +955,40 @@
     <message>
         <location filename="../../src/gui/MainMenuBar.cpp" line="668"/>
         <source>Change the viewport background</source>
-        <translation>{'es': 'Cambiar el fondo de la vista', 'ja': 'ビューポートの背景を変更', 'ko': '뷰포트 배경 변경', 'ru': 'Изменить фон области просмотра', 'zh': '修改视口背景'}</translation>
+        <translation>Cambiar el fondo de la vista</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="399"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="492"/>
         <source>Rename object</source>
         <translation>Renombrar objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1056"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1149"/>
         <source>Create a layer</source>
         <translation>Crear una capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1180"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1273"/>
         <source>Duplicate base folder</source>
         <translation>Duplicar carpeta base</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1315"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1408"/>
         <source>Duplicate layer</source>
         <translation>Duplicar capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1494"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1587"/>
         <source>create a folder object</source>
         <translation>crear una carpeta de objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1544"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1637"/>
         <source>Delete object</source>
         <translation>Eliminar objeto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1678"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1771"/>
         <source>Move object</source>
         <translation>Mover objeto</translation>
     </message>
@@ -1007,17 +1007,17 @@
         <translation type="vanished">actualizar un indicador de recorte</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="258"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="259"/>
         <source>Add new asset</source>
         <translation>Añadir nuevo activo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="863"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="864"/>
         <source>Reload images</source>
         <translation>Recargar imágenes</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="931"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="951"/>
         <source>Delete images</source>
         <translation>Eliminar imágenes</translation>
     </message>
@@ -1035,6 +1035,21 @@
         <location filename="../../src/gui/TargetWidget.cpp" line="168"/>
         <source>Change animation settings</source>
         <translation>Cambiar configuración de animación</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1077"/>
+        <source>move a key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1162"/>
+        <source>change a key easing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1299"/>
+        <source>remove a key</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2154,35 +2169,35 @@
         <translation>no quedan fotogramas</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1512"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1520"/>
         <source>could not write %1</source>
         <translation>no se pudo escribir %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1520"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1528"/>
         <source>no files produced</source>
         <translation>no se produjo ningún archivo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1565"/>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1659"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1574"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1672"/>
         <source>no file produced</source>
         <translation>no se produjo ningún archivo</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1638"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1651"/>
         <source> (%1 could not be opened here; written with %2)</source>
         <translation> (%1 no se pudo abrir aquí; se escribió con %2)</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1646"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1659"/>
         <source>%1
 The %2 encoder could not be opened either (%3).</source>
         <translation>%1
 Tampoco se pudo abrir el codificador %2 (%3).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1693"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1706"/>
         <source>frames: the plan selected %1, but %2 were supplied</source>
         <translation>fotogramas: el plan seleccionó %1, pero se proporcionaron %2</translation>
     </message>
@@ -2201,7 +2216,7 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation type="vanished">los fotogramas no coinciden: el plan selecciona %1 pero se proporcionaron %2 (véase plan.selection.indices())</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/ExportTarget.cpp" line="1773"/>
+        <location filename="../../src/ctrl/ExportTarget.cpp" line="1786"/>
         <source>canceled</source>
         <translation>cancelado</translation>
     </message>
@@ -2401,22 +2416,22 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation>El contenedor &apos;%1&apos; no admite el codificador de vídeo %2.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="303"/>
-        <location filename="../../src/ctrl/Exporter.cpp" line="319"/>
-        <location filename="../../src/ctrl/Exporter.cpp" line="623"/>
-        <location filename="../../src/ctrl/Exporter.cpp" line="727"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="307"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="323"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="643"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="747"/>
         <source>Video encoder error.
 %1</source>
         <translation>Error del codificador de vídeo.
 %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="342"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="346"/>
         <source>The %1 encoder could not be opened here (%2); exported with the %3 encoder instead.</source>
         <translation>El codificador %1 no se pudo abrir aquí (%2); se exportó con el codificador %3 en su lugar.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="352"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="356"/>
         <source>Video encoder error.
 %1
 The %2 encoder could not be opened either (%3).</source>
@@ -2425,34 +2440,34 @@ The %2 encoder could not be opened either (%3).</source>
 Tampoco se pudo abrir el codificador %2 (%3).</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="385"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="389"/>
         <source>Finishing up</source>
         <translation>Finalizando</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="387"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="391"/>
         <source>Rendering</source>
         <translation>Renderizando</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="402"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="406"/>
         <source>Export was canceled.</source>
         <translation>La exportación se canceló.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="436"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="440"/>
         <source>Failed to initialize TextureDrawer</source>
         <translation>No se pudo inicializar TextureDrawer</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="665"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="685"/>
         <source>GIF encoder error.
 %1</source>
         <translation>Error del codificador de GIF.
 %1</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/Exporter.cpp" line="705"/>
+        <location filename="../../src/ctrl/Exporter.cpp" line="725"/>
         <source>Audio mixing error.
 %1</source>
         <translation>Error de mezcla de audio.
@@ -2606,6 +2621,29 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
     <message>
         <source>Timecode (HH:MM:SS:mmm)</source>
         <translation type="vanished">Código de tiempo (HH:MM:SS:mmm)</translation>
+    </message>
+</context>
+<context>
+    <name>GraphPanel</name>
+    <message>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="317"/>
+        <source>No keys on the selected layers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="318"/>
+        <source>Select a layer to show its curves</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="321"/>
+        <source>All channels of the selected layers are hidden</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="369"/>
+        <source>No room for the graph in this viewport</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2944,62 +2982,124 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation type="vanished">requiere %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1383"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1436"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1526"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1571"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1621"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1644"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1675"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1421"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1484"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1584"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1629"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1679"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1706"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1737"/>
         <source>Export Error</source>
         <translation>Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1384"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1422"/>
         <source>Unknown export destination: %1</source>
         <translation>Destino de exportación desconocido: %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1455"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1513"/>
         <source>File exists</source>
         <translation>El archivo ya existe</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1456"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1514"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>El archivo “%1” ya existe. ¿Desea sobrescribirlo?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1527"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1585"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1 limita el tamaño del archivo, lo que obliga a codificarlo más de una vez, y eso necesita los %2 fotogramas en memoria (~%3 MB). Exporte menos fotogramas o elija un destino sin límite de tamaño.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1545"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1603"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>Ajustando por debajo del límite de %2 KB de %1...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1558"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1616"/>
         <source>Export Canceled</source>
         <translation>Exportación cancelada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1559"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1617"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>La exportación se detuvo mientras se ajustaba al límite de tamaño de %1. El archivo ya escrito es el último intento y puede superar el límite.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1572"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1630"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1 limita el archivo a %2 KB y ni siquiera el ajuste más pequeño logró encajarlo (%3 KB).
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1580"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1638"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>Ajustado a %1 bytes en %2 intentos (%3x%4).</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="132"/>
+        <source>Y</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="132"/>
+        <source>X</source>
+        <translation type="unfinished">X</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="134"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="142"/>
+        <source>Angle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="136"/>
+        <source>Depth</source>
+        <translation type="unfinished">Profundidad</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="138"/>
+        <source>Opacity</source>
+        <translation type="unfinished">Opacidad</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="141"/>
+        <source>Radius Y</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="143"/>
+        <source>Radius X</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="147"/>
+        <source>Saturation</source>
+        <translation type="unfinished">Saturación</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="148"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="154"/>
+        <source>Value</source>
+        <translation type="unfinished">Valor : </translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="149"/>
+        <source>Hue</source>
+        <translation type="unfinished">Tono</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1020"/>
+        <source>The animation graph stopped moving: the dragged key changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1123"/>
+        <source>The animation graph stopped editing: the dragged key changed.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -4266,6 +4366,50 @@ Comprobar generación de paletas FFmpeg ...</translation>
     </message>
 </context>
 <context>
+    <name>gui::ImGuiOverlay</name>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="810"/>
+        <source>shown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="811"/>
+        <source>hidden</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="825"/>
+        <source>%n channel(s) shown</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="829"/>
+        <source>%1, focused: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="837"/>
+        <source>%1 (%n more channel(s) not listed: no room in the panel)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="860"/>
+        <source>Fit graph</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="861"/>
+        <source>double-click the plot</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>gui::ImageExportDialog</name>
     <message>
         <source>Prefix name</source>
@@ -4818,90 +4962,90 @@ Si olvidamos incluirte, avísanos o abre un PR.</translation>
         <translation type="vanished">Dock de herramienta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="585"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="623"/>
         <source>Theme changed</source>
         <translation>Tema cambiado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="587"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="625"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>Puede haber artefactos visuales después de cambiar de tema, le recomendamos reiniciar la aplicación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="808"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="846"/>
         <source> has been modified. Save changes?</source>
         <translation> ha sido modificado. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="810"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="848"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>Algunos proyectos han sido modificados. ¿Guardar cambios?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="818"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="856"/>
         <source>Save Changes</source>
         <translation>Guardar Cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="819"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="857"/>
         <source>Discard Changes</source>
         <translation>Descartar cambios</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="820"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="858"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="841"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="879"/>
         <source>Undone : </source>
         <translation>Deshacer: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="904"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="942"/>
         <source>Redone : </source>
-        <translation>Redone : </translation>
+        <translation>Rehacer: </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="956"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1016"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1045"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1114"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="994"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1054"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1083"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1152"/>
         <source>Loading Error</source>
         <translation>Error al cargar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="993"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1031"/>
         <source>Open File</source>
         <translation>Abrir archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1128"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
         <source>Save File</source>
         <translation>Guardar archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1753"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1815"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>Exportado %1 (%2 KB)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1763"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1825"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> (%1 de %2 KB permitidos para %3)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1768"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1830"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>; POR ENCIMA DEL LÍMITE, se rechazará</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1807"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1869"/>
         <source>All files (*)</source>
         <translation>Todos los archivos (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1808"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1870"/>
         <source>%1 files (*.%2)</source>
         <translation>Archivos %1 (*.%2)</translation>
     </message>
@@ -4960,27 +5104,27 @@ En la siguiente pantalla puedes indicarle a AnimeEffects que lo descargue e inst
         <translation type="vanished">FFmpeg no ha podido generar paletas. Por favor, solucione problemas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="160"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="161"/>
         <source>Animation</source>
         <translation>Animación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="173"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="177"/>
         <source>Properties</source>
         <translation>Propiedades</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="219"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="223"/>
         <source>Tools</source>
         <translation>Herramientas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1065"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1103"/>
         <source>Recover unsaved project?</source>
         <translation>¿Recuperar proyecto sin guardar?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1066"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1104"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -5071,8 +5215,8 @@ Open it?</source>
         <translation type="vanished">Imagen etiquetada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1801"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1876"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1863"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
         <source>Export Folder</source>
         <translation>Exportar carpeta</translation>
     </message>
@@ -5089,7 +5233,7 @@ Open it?</source>
         <translation type="vanished">Error al exportar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1809"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1871"/>
         <source>Export File</source>
         <translation>Exportar archivo</translation>
     </message>
@@ -5158,13 +5302,13 @@ Open it?</source>
 <context>
     <name>gui::ObjectTreeWidget</name>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="145"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="147"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="701"/>
         <source>Contract</source>
         <translation>Contrato</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="148"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="150"/>
         <source>Add missing assets</source>
         <translation>Añadir activos faltantes</translation>
     </message>
@@ -5173,47 +5317,47 @@ Open it?</source>
         <translation type="vanished">Añadir nuevo PSD</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="151"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="153"/>
         <source>Add new assets</source>
         <translation>Añadir nuevos activos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="154"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="156"/>
         <source>Rename</source>
         <translation>Renombrar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="157"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="159"/>
         <source>Paste from clipboard</source>
         <translation>Pegar desde portapapeles</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="160"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="162"/>
         <source>Create layer</source>
         <translation>Crear capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="163"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="165"/>
         <source>Duplicate node</source>
         <translation>Duplicar nodo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="166"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="168"/>
         <source>Add default keys</source>
         <translation>Añadir claves por defecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="169"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="171"/>
         <source>Create folder</source>
         <translation>Crear carpeta</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="172"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="174"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="608"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="701"/>
         <source>Enlarge</source>
         <translation>Ampliar</translation>
     </message>
@@ -5222,88 +5366,88 @@ Open it?</source>
         <translation type="vanished">Árbol de archivos no encontrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="730"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="823"/>
         <source>File tree not found</source>
         <translation>Árbol de archivos no encontrado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="772"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="865"/>
         <source>Add</source>
         <translation>Añadir</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="778"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="871"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="815"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="908"/>
         <source>No trees selected</source>
         <translation>Ningún árbol ha sido seleccionado</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="816"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="909"/>
         <source>Please select at least one tree.</source>
         <translation>Porfavor seleccione al menos un árbol</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="914"/>
         <source>Done</source>
         <translation>Hecho</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="821"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="914"/>
         <source>Tree addition was attempted, layers with duplicate names have been suppressed.</source>
         <translation>Adición de árbol fué intentada, capas con nombres duplicados han sido suprimidas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="916"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1009"/>
         <source>The requested FFD key mesh (at frame %1) has %2 vertices, but the parent mesh of the targeted node has %3 vertices, artifacts may be present.</source>
         <translation>La malla de la clave FFD solicitada (en el fotograma %1) tiene %2 vértices, pero la malla principal del nodo de destino tiene %3 vértices; pueden aparecer artefactos.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1035"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1042"/>
         <source>Successfully pasted </source>
         <translation>Pegado con éxito </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="942"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1035"/>
         <source> keys.</source>
         <translation> claves.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1037"/>
         <source> keys. The log is available below.</source>
         <translation> claves. El registro está disponible a continuación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="944"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1037"/>
         <source>Warnings present for </source>
         <translation>Advertencias en </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="949"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1042"/>
         <source> keys.
 </source>
         <translation> claves.
 </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="950"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1043"/>
         <source> error(s) have been detected.
 The log is available below.</source>
         <translation> error(es) han sido detectados.
 El registro está disponible a continuación.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="955"/>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="975"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1048"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1068"/>
         <source>Failed to paste key(s)</source>
         <translation>Error al pegar clave(s)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="958"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1051"/>
         <source>Clipboard does not contain valid JSON information or the timeline already has a key in the same frame.</source>
         <translation>El portapapeles no contiene información JSON válida o la línea de tiempo ya tiene una clave en el mismo fotograma.</translation>
     </message>
@@ -5312,7 +5456,7 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">El portapapeles no contiene información JSON válida o la línea de tiempo ya tiene una clave en el mismo fotograma.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="978"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1071"/>
         <source>Timeline has a key in the same frame.</source>
         <translation>La línea de tiempo tiene una clave en el mismo fotograma.</translation>
     </message>
@@ -5422,7 +5566,7 @@ El registro está disponible a continuación.</translation>
     <message>
         <location filename="../../src/gui/ProjectSettingDialog.cpp" line="164"/>
         <source>Viewport background</source>
-        <translation>{'es': 'Fondo de la vista', 'ja': 'ビューポートの背景', 'ko': '뷰포트 배경', 'ru': 'Фон области просмотра', 'zh': '视口背景'}</translation>
+        <translation>Fondo de la vista</translation>
     </message>
     <message>
         <source>Canvas size</source>
@@ -5486,19 +5630,30 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::ResourceDialog</name>
     <message>
-        <location filename="../../src/gui/ResourceDialog.cpp" line="16"/>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="17"/>
         <source>Project assets</source>
         <translation>Activos del proyecto</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ResourceDialog.cpp" line="22"/>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="23"/>
         <source>Add Assets</source>
         <translation>Añadir activos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ResourceDialog.cpp" line="82"/>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="25"/>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="104"/>
+        <source>Delete unused</source>
+        <translation>Eliminar activos sin usar</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="86"/>
         <source>Open Files</source>
         <translation>Abrir archivos</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceDialog.cpp" line="104"/>
+        <source>No unused assets to delete</source>
+        <translation>No hay activos sin usar que eliminar</translation>
     </message>
 </context>
 <context>
@@ -5583,6 +5738,26 @@ El registro está disponible a continuación.</translation>
         <location filename="../../src/gui/ResourceTreeWidget.cpp" line="450"/>
         <source>The file is not being currently monitored</source>
         <translation>El archivo no está siendo monitoreado actualmente</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceTreeWidget.cpp" line="513"/>
+        <source>Delete asset</source>
+        <translation>Eliminar activo</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceTreeWidget.cpp" line="514"/>
+        <source>Some layers use this asset.</source>
+        <translation>Algunas capas usan este activo.</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceTreeWidget.cpp" line="516"/>
+        <source>Delete the layer that uses it as well?</source>
+        <translation>¿Eliminar también la capa que lo usa?</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ResourceTreeWidget.cpp" line="517"/>
+        <source>Delete the %1 layers that use it as well?</source>
+        <translation>¿Eliminar también las %1 capas que lo usan?</translation>
     </message>
 </context>
 <context>
@@ -5801,6 +5976,12 @@ El registro está disponible a continuación.</translation>
         <location filename="../../src/gui/ToolWidget.cpp" line="157"/>
         <source>Flip canvas</source>
         <translation>Voltear lienzo</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ToolWidget.cpp" line="164"/>
+        <location filename="../../src/gui/ToolWidget.cpp" line="176"/>
+        <source>Show animation graph</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -6193,36 +6374,36 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::res::ResourceUpdater</name>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="292"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="293"/>
         <source>QImage Error</source>
         <translation>Error QImage</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="292"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="293"/>
         <source>Failed to load image file.</source>
         <translation>Error al cargar el archivo de imagen.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="302"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="303"/>
         <source>FileIO Error</source>
         <translation>Error de FileIO</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="302"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="303"/>
         <source>PSD file not found.</source>
         <translation>Archivo PSD no encontrado.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="311"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="312"/>
         <source>PSD parse error</source>
-        <translation>PSD parse error</translation>
+        <translation>Error de análisis de PSD</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="329"/>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="334"/>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="340"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="330"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="335"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="341"/>
         <source>ORA parse error</source>
-        <translation>ORA parse error</translation>
+        <translation>Error de análisis de ORA</translation>
     </message>
     <message>
         <source>Unable to find the mimetype of the solicited file.</source>
@@ -6233,7 +6414,7 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">El mimetype no es válido.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="340"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="341"/>
         <source>The file could not be read.</source>
         <translation>No se pudo leer el archivo.</translation>
     </message>
@@ -6246,94 +6427,96 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">¿Cómo quieres cargar este archivo ora ?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="329"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="330"/>
         <source>Unable to find the MIME type of the selected file.</source>
         <translation>No se puede encontrar el mimetype del archivo solicitado.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="334"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="335"/>
         <source>The MIME type is not valid.</source>
         <translation>El mimetype no es válido.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="346"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="347"/>
         <source>Select ORA type</source>
         <translation>Seleccionar tipo de ora</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="347"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="348"/>
         <source>How do you wish to load this ORA file?</source>
         <translation>¿Cómo quieres cargar este archivo ora ?</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="348"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="349"/>
         <source>Load layered</source>
         <translation>Cargar capas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="349"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="350"/>
         <source>Load merged</source>
         <translation>Carga fusionada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="350"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="351"/>
         <source>Cancel file load</source>
         <translation>Cancelar carga de archivo</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="593"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="594"/>
         <source>Relink: layer &quot;%1&quot; is not in the source file. It stays, because the project still renders from it; remove the layer in AnimeEffects to delete it.</source>
         <translation>Revinculación: la capa «%1» no está en el archivo de origen. Se conserva, porque el proyecto aún se renderiza desde ella; elimina la capa en AnimeEffects para borrarla.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="599"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="600"/>
         <source>This layer is not in the source file. The project keeps the last version it read.</source>
         <translation>Esta capa no está en el archivo de origen. El proyecto conserva la última versión que leyó.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="817"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="818"/>
         <source>Expected layer not found, if you wish to remove a layer or change its name, please do so from within AnimeEffects.</source>
         <translation>Capa esperada no encontrada, si desea eliminar una capa o cambiar su nombre, por favor hágalo desde AnimeEffects.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="820"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="821"/>
         <source>Import Error: Unable to find layer</source>
         <translation>Error de importación: no se puede encontrar la capa</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="785"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="786"/>
         <source>Failed to find a corresponding node.</source>
         <translation>No se pudo encontrar un nodo correspondiente.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="786"/>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="800"/>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="899"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="787"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="801"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="906"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="921"/>
         <source>Operation Error</source>
         <translation>Error de operación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="796"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="797"/>
         <source>Failed to identify nodes due to the following duplicates.</source>
         <translation>Error al identificar los nodos debido a los siguientes duplicados.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="833"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="834"/>
         <source>Relink: the source file renamed a layer onto a name the project already uses, which would put that layer&apos;s pixels on another layer:</source>
         <translation>Revinculación: el archivo de origen renombró una capa a un nombre que el proyecto ya usa, lo que pondría los píxeles de esa capa sobre otra capa:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="838"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="839"/>
         <source>Nothing was changed. Rename the layer inside AnimeEffects, then reload again.</source>
         <translation>No se cambió nada. Renombra la capa dentro de AnimeEffects y vuelve a recargar.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="849"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="850"/>
         <source>Relink: a layer of the source file could not be read, so nothing was changed.</source>
         <translation>Revinculación: no se pudo leer una capa del archivo de origen, así que no se cambió nada.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="899"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="906"/>
+        <location filename="../../src/gui/res/res_ResourceUpdater.cpp" line="921"/>
         <source>Some layers are still referenced by objects.</source>
         <translation>Algunos objetos todavía hacen referencia a algunas capas.</translation>
     </message>
@@ -6384,7 +6567,7 @@ El registro está disponible a continuación.</translation>
         <location filename="../../src/gui/tool/tool_BonePanel.cpp" line="59"/>
         <location filename="../../src/gui/tool/tool_BonePanel.cpp" line="74"/>
         <source>Radius</source>
-        <translation>Radius</translation>
+        <translation>Radio</translation>
     </message>
     <message>
         <location filename="../../src/gui/tool/tool_BonePanel.cpp" line="67"/>
@@ -6437,7 +6620,7 @@ El registro está disponible a continuación.</translation>
         <location filename="../../src/gui/tool/tool_FFDPanel.cpp" line="73"/>
         <location filename="../../src/gui/tool/tool_FFDPanel.cpp" line="106"/>
         <source>Radius</source>
-        <translation>Radius</translation>
+        <translation>Radio</translation>
     </message>
     <message>
         <location filename="../../src/gui/tool/tool_FFDPanel.cpp" line="81"/>
@@ -6542,7 +6725,7 @@ El registro está disponible a continuación.</translation>
     <message>
         <location filename="../../src/gui/tool/tool_PosePanel.cpp" line="53"/>
         <source>Radius</source>
-        <translation>Radius</translation>
+        <translation>Radio</translation>
     </message>
     <message>
         <location filename="../../src/gui/tool/tool_PosePanel.cpp" line="61"/>

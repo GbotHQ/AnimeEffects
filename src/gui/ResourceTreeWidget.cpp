@@ -451,6 +451,48 @@ void ResourceTreeWidget::onWatchRemoveTriggered(bool) {
     }
 }
 
+int ResourceTreeWidget::removeUnusedAssets() {
+    if (!mProject)
+        return 0;
+
+    // Collect before removing: each removal takes a top-level item out of the
+    // tree, and every item after it shifts down.
+    QList<res::Item*> unused;
+    for (int i = 0; i < this->topLevelItemCount(); ++i) {
+        res::Item* item = res::Item::cast(this->topLevelItem(i));
+        if (!item)
+            continue;
+
+        img::ResourceNode& topNode = util::TreeUtil::getTreeRoot(item->node());
+        if (!mProject->objectTree().findNodesUsingResource(topNode).isEmpty())
+            continue; // a layer renders from it
+
+        // A reference the object tree does not show still keeps the asset (an
+        // image key held while a paste is in flight, say). Skip it rather than
+        // let remove() answer with a warning box for every such asset.
+        bool keeped = false;
+        for (img::ResourceNode::ConstIterator itr(&topNode); itr.hasNext();) {
+            if (itr.next()->isKeeped()) {
+                keeped = true;
+                break;
+            }
+        }
+        if (keeped)
+            continue;
+
+        unused.push_back(item);
+    }
+
+    res::ResourceUpdater updater(mViaPoint, *mProject);
+    int removed = 0;
+    for (auto* item : unused) {
+        if (updater.remove(*this, *item)) {
+            ++removed;
+        }
+    }
+    return removed;
+}
+
 void ResourceTreeWidget::onDeleteActionTriggered(bool) {
     if (!mProject)
         return;
@@ -459,8 +501,29 @@ void ResourceTreeWidget::onDeleteActionTriggered(bool) {
     if (!item)
         return;
 
+    // The layers that render from this asset. The asset cannot go while they
+    // still reference it, so when there are any, tell the user and offer to take
+    // them with it rather than making them hunt the layers down by hand.
+    img::ResourceNode& topNode = util::TreeUtil::getTreeRoot(item->node());
+    QVector<core::ObjectNode*> references = mProject->objectTree().findNodesUsingResource(topNode);
+
+    if (!references.isEmpty()) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Delete asset"));
+        box.setText(tr("Some layers use this asset."));
+        box.setInformativeText(
+            references.size() == 1 ? tr("Delete the layer that uses it as well?")
+                                   : tr("Delete the %1 layers that use it as well?").arg(references.size())
+        );
+        box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        box.setDefaultButton(QMessageBox::No);
+        if (box.exec() != QMessageBox::Yes)
+            return;
+    }
+
     res::ResourceUpdater updater(mViaPoint, *mProject);
-    updater.remove(*this, *item);
+    updater.remove(*this, *item, references);
 }
 
 } // namespace gui

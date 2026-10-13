@@ -109,6 +109,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     res/res_ResourceUpdater.cpp res/res_ResourceUpdater.h
     theme/Theme.cpp theme/Theme.h
     theme/Colors.h
+    theme/Graph.cpp theme/Graph.h
     theme/Icons.cpp theme/Icons.h
     theme/TimeLine.cpp theme/TimeLine.h
     tool/tool_BonePanel.cpp tool/tool_BonePanel.h
@@ -201,6 +202,45 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # dropped the block, which only shows up when linking for Windows.
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE user32 dwmapi)
+endif()
+
+# ---------------------------------------------------------------------------
+# The Dear ImGui units of the viewport overlay (the animation graph panel).
+#
+# The dependency itself is declared ONCE in the root CMakeLists: the option
+# AE_ENABLE_IMGUI (default ON), the pinned FetchContent declaration and the shared
+# ae_imgui library that compiles ImGui's four core sources. The tests link that
+# same library, which is why neither the fetch nor the core sources live here.
+#
+# What each unit is: ImGuiOverlay draws the panel and takes its input;
+# GraphPanelModel is what it draws, as engine-neutral geometry (so the panel's
+# content is testable without GL); ImGuiInputBridge is the Qt->ImGuiIO translation
+# plus the WantCapture gate the application's key routing obeys;
+# ImGuiQtFontLoader makes ImGui rasterize through Qt (CJK, .ttc, CFF); ImGuiA11y
+# publishes the panel to the screen-reader tree, which ImGui itself cannot do.
+#
+# ImGuiGLBackend.cpp is the GL3 backend reached through a loader shim: it includes
+# gui/ImGuiGLBackend.h - the wrapper over gl::Global::functions() - ahead of the
+# backend, because 1.92 no longer includes IMGUI_IMPL_OPENGL_LOADER_CUSTOM itself.
+# Listing the backend as its own source too would define every
+# ImGui_ImplOpenGL3_* twice. (It was called ImGuiSpikeGL while it belonged to the
+# spike that measured the integration.)
+# ---------------------------------------------------------------------------
+if(AE_ENABLE_IMGUI)
+    target_sources(${PROJECT_NAME} PRIVATE
+        ImGuiOverlay.cpp ImGuiOverlay.h
+        ImGuiGLBackend.cpp ImGuiGLBackend.h
+        ImGuiInputBridge.cpp ImGuiInputBridge.h
+        ImGuiQtFontLoader.cpp ImGuiQtFontLoader.h
+        GraphPanelModel.cpp GraphPanelModel.h
+        ImGuiA11y.cpp ImGuiA11y.h
+    )
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${imgui_SOURCE_DIR}/backends
+    )
+    target_link_libraries(${PROJECT_NAME} PRIVATE ae_imgui)
+    # The one compile-time gate the overlay's hooks obey.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE AE_ENABLE_IMGUI=1)
 endif()
 
 # i18n (Qt LinguistTools, loaded in the root CMakeLists): regenerates the

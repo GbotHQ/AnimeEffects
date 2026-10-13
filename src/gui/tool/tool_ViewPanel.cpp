@@ -18,7 +18,7 @@ namespace tool {
         mGUIResources.onThemeChanged.connect(this, &ViewPanel::onThemeUpdated);
     }
 
-    void ViewPanel::addButton(
+    QPushButton* ViewPanel::addButton(
         const QString& aIconName, bool aCheckable, const QString& aToolTip, const PushDelegate& aDelegate
     ) {
         QPushButton* button = new QPushButton();
@@ -38,6 +38,8 @@ namespace tool {
         mLayout.addWidget(button);
 
         this->connect(button, &QPushButton::clicked, aDelegate);
+
+        return button;
     }
 
     int ViewPanel::updateGeometry(const QPoint& aPos, int aWidth) {

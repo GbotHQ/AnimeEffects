@@ -16,6 +16,7 @@
 #include "gui/DockSash.h"
 #include "gui/NewProjectDialog.h"
 #include "gui/ProjectHook.h"
+#include "gui/obj/obj_Item.h"
 #include "gui/menu/menu_ProgressReporter.h"
 #include "util/NetworkUtil.h"
 #include <set>
@@ -164,6 +165,9 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
 
         mTarget = new TargetWidget(mViaPoint, mGUIResources, dockWidget, QSize(256, 256));
         dockWidget->setWidget(mTarget);
+        // The asset removal path reaches the object tree through ViaPoint to
+        // delete the layers that reference a removed asset in ONE undo step.
+        mViaPoint.setObjectTreeWidget(&mTarget->objectTreeWidget());
     }
 
     // create property widget
@@ -266,6 +270,27 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         objTree.onSelectionChanged.connect(&driver, &DriverHolder::onSelectionChanged);
         objTree.onSelectionChanged.connect(mProperty, &PropertyWidget::onSelectionChanged);
         objTree.onSelectionChanged.connect(&timeLine, &TimeLineWidget::onSelectionChanged);
+
+        // The graph works on every selected layer, but the signal above only
+        // carries a representative node (null when the selection is empty or
+        // mixed), so collect the whole tree selection here.
+        objTree.onSelectionChanged.connect([this](core::ObjectNode*) {
+            QVector<core::ObjectNode*> nodes;
+            for (QTreeWidgetItem* item : mTarget->objectTreeWidget().selectedItems()) {
+                if (auto* objItem = gui::obj::Item::cast(item)) nodes.push_back(&objItem->node());
+            }
+            if (auto* drv = mDriverHolder->driver()) drv->setGraphTargets(nodes);
+        });
+
+        // A driver that already exists when the connections are made never saw
+        // the selection, so hand it the current one (possibly empty).
+        if (auto* drv = mDriverHolder->driver()) {
+            QVector<core::ObjectNode*> nodes;
+            for (QTreeWidgetItem* item : mTarget->objectTreeWidget().selectedItems()) {
+                if (auto* objItem = gui::obj::Item::cast(item)) nodes.push_back(&objItem->node());
+            }
+            drv->setGraphTargets(nodes);
+        }
 
         objTree.onTreeViewUpdated.connect(&timeLine, &TimeLineWidget::onTreeViewUpdated);
         objTree.onScrollUpdated.connect(&timeLine, &TimeLineWidget::onScrollUpdated);
@@ -530,6 +555,16 @@ void MainWindow::resetProjectRefs(core::Project* aProject) {
 
     mMainDisplay->setDriver(mDriverHolder->driver());
     mTool->setDriver(mDriverHolder->driver());
+
+    // The driver is created here (and later destroyed with the project), which
+    // is the first moment the tree selection can be handed to the graph.
+    if (auto* drv = mDriverHolder->driver()) {
+        QVector<core::ObjectNode*> nodes;
+        for (QTreeWidgetItem* item : mTarget->objectTreeWidget().selectedItems()) {
+            if (auto* objItem = gui::obj::Item::cast(item)) nodes.push_back(&objItem->node());
+        }
+        drv->setGraphTargets(nodes);
+    }
 
     // The viewport background follows the project that is now in front (its override,
     // or the theme colour when it has none) - a switch must not leave the previous
