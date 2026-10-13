@@ -278,7 +278,13 @@ ae_memory_cap() { # ae_memory_cap <pid> [limit_kb]
               break
           fi
           sleep 2
-      done ) >/dev/null 2>&1 &
+      done ) &
+    # The subshell's output is deliberately NOT discarded any more. It has exactly
+    # one message - the cap firing - and swallowing it is how a run that kills the
+    # application reads as "the application died for no reason": measured
+    # 2026-10-14, a probe lost its application AND its X server at the first
+    # accessibility query (the moment the accessible tree spikes) with no message
+    # anywhere, because both the kill and the report were silenced here.
 }
 
 # Wait until the MAIN WINDOW is up, by asking the accessibility tree, instead of
