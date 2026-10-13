@@ -2270,7 +2270,7 @@ PY
   echo "DEL_CELLS=\"$DEL_CELLS\""        >> $G
 
   kill $app 2>/dev/null; wait $app 2>/dev/null
-' 2>&1 | tail -4
+' 2>&1 | tee /tmp/probe_graph_overlay_body.log | tail -4
 
 if grep -q TIMEOUT /tmp/probe_graph_overlay_geom.txt 2>/dev/null; then
     check 1 "the application reached its main window"
