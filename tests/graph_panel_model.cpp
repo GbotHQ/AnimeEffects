@@ -1053,6 +1053,147 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
+    // 11. the ruler's reserved band, and the live box-select marquee. Both are two
+    // halves of one story the drawing layer cannot finish alone: the model RESERVES
+    // the space a frame number is allowed to occupy, and it publishes the marquee a
+    // drag is drawing. Neither is a rect the drawing layer may invent, so both are
+    // pinned here on the editor's own numbers.
+    {
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+        const gui::GraphPanelModel ruled = gui::buildGraphPanelModel(editor, viewport, palette);
+
+        // The tick length the panel draws (kAxisTickLength in
+        // src/gui/ImGuiOverlay.cpp, the drawing layer's half of the same convention
+        // the model documents as kFrameTickLength).
+        constexpr int kDrawnTickLength = 4;
+        int labels = 0;
+        int insidePlot = 0;
+        int clearOfTicks = 0;
+        for (const gui::PanelLabel& label : ruled.frameLabels) {
+            ++labels;
+            if (ruled.plot.contains(label.rect))
+                ++insidePlot;
+            if (label.rect.top() >= ruled.plot.top() + kDrawnTickLength)
+                ++clearOfTicks;
+        }
+        std::printf(
+            "[11] plot=(%d,%d %dx%d) frame_labels=%d inside_plot=%d clear_of_%dpx_tick_band=%d\n", ruled.plot.left(),
+            ruled.plot.top(), ruled.plot.width(), ruled.plot.height(), labels, insidePlot, kDrawnTickLength,
+            clearOfTicks
+        );
+        // The precondition of the pixel gate's assertion 16 (which measures the same
+        // rule on the drawn glyphs): the model has to carry labels at all, or the
+        // reservation is unobservable.
+        CHECK(labels > 0);
+        CHECK(insidePlot == labels);
+        CHECK(clearOfTicks == labels);
+
+        // No drag is live, so the marquee is EMPTY - which is the drawing layer's
+        // whole signal to draw nothing.
+        std::printf("[11] marquee with no drag live: (%d,%d %dx%d) empty=%d\n", ruled.marquee.left(),
+                    ruled.marquee.top(), ruled.marquee.width(), ruled.marquee.height(), int(ruled.marquee.isEmpty()));
+        CHECK(ruled.marquee.isEmpty());
+
+        // AND WITH ONE LIVE: a press on empty plot space (no key, no handle - the
+        // panel's own plot, far from every published key) that is dragged. The model
+        // must publish the EDITOR's rectangle, so the gesture and the rectangle on
+        // screen are one geometry rather than two derivations of one.
+        core::CameraInfo camera;
+        camera.setScreenSize(viewport);
+        core::AbstractCursor cursor;
+        const QPoint from(ruled.plot.center().x() + 80, ruled.plot.center().y() + 40);
+        const QPoint to(from.x() + 60, from.y() + 50);
+        CHECK(ruled.plot.contains(from) && ruled.plot.contains(to));
+        QMouseEvent press(QEvent::MouseButtonPress, from, from, from, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent move(QEvent::MouseMove, to, to, to, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        // The marquee is the editor's CTRL-press gesture (a plain press in the plot is
+        // left to the viewport tools - GraphEditor::ownsCursor's own routing), and the
+        // modifier is read from the editor, exactly as the widget feeds it.
+        editor.setModifiers(Qt::ControlModifier);
+        const bool pressed = cursor.setMousePress(&press, camera) && editor.updateCursor(camera, cursor);
+        editor.setModifiers(Qt::NoModifier);
+        const bool dragged = cursor.setMouseMove(&move, camera) && editor.updateCursor(camera, cursor);
+        const gui::GraphPanelModel draggedModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        const QRect published = draggedModel.marquee;
+        std::printf(
+            "[11] press=%d dragged=%d editor_marquee=(%d,%d %dx%d) model_marquee=(%d,%d %dx%d) equal=%d"
+            " inside_plot=%d\n",
+            int(pressed), int(dragged), editor.marqueeRect().left(), editor.marqueeRect().top(),
+            editor.marqueeRect().width(), editor.marqueeRect().height(), published.left(), published.top(),
+            published.width(), published.height(), int(published == editor.marqueeRect()),
+            int(ruled.plot.contains(published))
+        );
+        CHECK(pressed);
+        CHECK(dragged);
+        CHECK(!published.isEmpty());
+        CHECK(published == editor.marqueeRect());
+        CHECK(ruled.plot.contains(published));
+
+        // The release ends the gesture, and the model goes back to publishing nothing.
+        QMouseEvent release(
+            QEvent::MouseButtonRelease, to, to, to, Qt::LeftButton, Qt::NoButton, Qt::NoModifier
+        );
+        cursor.setMouseRelease(&release, camera);
+        editor.updateCursor(camera, cursor);
+        const gui::GraphPanelModel afterRelease = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(afterRelease.marquee.isEmpty());
+
+        // ---- AND THE OCCLUDED TOP: a widget floating above the viewport ----
+        // The project tab bar covers the panel's first rows, so the model is asked for
+        // the occluded height and must move the RULER BAND - and nothing else. The two
+        // halves are what this checks: the band (and the labels below it) moves down,
+        // and the interactive geometry (the plot, and with it every curve, key, handle
+        // and the playhead) does NOT, which is what keeps the drawn key the same key a
+        // press grabs.
+        const int kInset = 24;
+        const gui::GraphPanelModel occluded = gui::buildGraphPanelModel(editor, viewport, palette, kInset);
+        int bandLabels = 0;
+        int bandClearOfTicks = 0;
+        int valueLabelsBelowBand = 0;
+        for (const gui::PanelLabel& label : occluded.frameLabels) {
+            ++bandLabels;
+            if (label.rect.top() >= occluded.rulerBandTop + 4) {
+                ++bandClearOfTicks;
+            }
+        }
+        for (const gui::PanelLabel& label : occluded.valueLabels) {
+            if (label.rect.top() >= occluded.rulerBandTop) {
+                ++valueLabelsBelowBand;
+            }
+        }
+        std::printf(
+            "[11] occluded_top inset=%d rulerBandTop=%d (plot.top()=%d) plot_moved=%d frame_labels=%d"
+            " clear_of_tick_band=%d value_labels=%d below_band=%d ruler_vtx_unaffected=%d\n",
+            kInset, occluded.rulerBandTop, ruled.plot.top(), int(occluded.plot != ruled.plot), bandLabels,
+            bandClearOfTicks, isz(occluded.valueLabels), valueLabelsBelowBand,
+            int(occluded.curves.size() == ruled.curves.size())
+        );
+        CHECK(occluded.rulerBandTop == ruled.plot.top() + kInset);
+        CHECK(occluded.plot == ruled.plot);          // the interactive geometry stays put
+        CHECK(occluded.panel == ruled.panel);
+        CHECK(occluded.curves.size() == ruled.curves.size());
+        CHECK(occluded.playheadX == ruled.playheadX);
+        CHECK(bandLabels > 0);
+        CHECK(bandClearOfTicks == bandLabels);
+        CHECK(valueLabelsBelowBand == isz(occluded.valueLabels));
+
+        // An inset that swallows the plot leaves no band to draw in, and then there is
+        // nothing to label - the model says so by publishing no frame label rather than
+        // by placing one under the widget.
+        const gui::GraphPanelModel swallowed =
+            gui::buildGraphPanelModel(editor, viewport, palette, ruled.plot.height() + 40);
+        std::printf(
+            "[11] occluded_all inset=%d rulerBandTop=%d plot.bottom()+1=%d frame_labels=%d value_labels=%d\n",
+            ruled.plot.height() + 40, swallowed.rulerBandTop, ruled.plot.bottom() + 1,
+            isz(swallowed.frameLabels), isz(swallowed.valueLabels)
+        );
+        CHECK(swallowed.rulerBandTop == ruled.plot.bottom() + 1);
+        CHECK(swallowed.frameLabels.isEmpty());
+        CHECK(swallowed.plot == ruled.plot);
+    }
+
+    // -------------------------------------------------------------------------
     // read-only probe: a build must not move the editor or the document
     {
         editor.setProject(&project);

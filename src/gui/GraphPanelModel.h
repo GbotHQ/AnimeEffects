@@ -113,7 +113,9 @@ struct PanelCurve {
     // consumer must not be trusted to reconstruct for itself.
     QVector<core::Frame> keyFrames;
     QVector<PanelHandle> handles; // the Custom segments' tangent handles, in segment order
-    QColor color;            // == legend[legendIndex].color
+    QColor color;            // == legend[legendIndex].color; the drawing layer paints
+                             // this curve's stroke, its key markers' FILL and its legend
+                             // swatch in it, so a channel is one colour everywhere
     int legendIndex = -1;    // the row this curve belongs to
 };
 
@@ -141,10 +143,29 @@ struct PanelLabel {
 //              QRect(panel.left() + kMargin, plot.top(), kAxisLabelWidth,
 //              plot.height()). It never overlaps the plot.
 //
+// THE OCCLUDED TOP (rulerBandTop)
+//   A widget may float ABOVE the viewport and cover the panel's first rows - the
+//   project tab bar does, in the application's own layout - and the panel draws no
+//   background, so anything under it is simply lost. buildGraphPanelModel therefore
+//   takes the occluded height (aTopInset, logical pixels, 0 when nothing covers the
+//   panel) and publishes rulerBandTop: the y where the panel's TOP CONTENT may
+//   begin, i.e. plot.top() normally and the occluded line when the inset reaches
+//   past it (clamped to the plot's bottom, so a viewport whose whole top is covered
+//   simply has no room for a ruler band).
+//   WHAT MOVES AND WHAT DOES NOT. The RULER BAND moves: the tick marks are drawn
+//   down from rulerBandTop (not from plot.top()) and every frame label's box starts
+//   below it, and a value label whose own row would fall under the occluded band is
+//   nudged down to it - all of that is non-interactive ink, and it is the ink the
+//   user cannot see otherwise. The PLOT does not move: it is ctrl::GraphEditor's own
+//   rect (the editor's hit-test geometry, and the rect the editor's scaler is pinned
+//   to), so `plot`, the curves, the keys, the handles, the playhead and the marquee
+//   stay exactly where the editor acts on them. Moving them here would put the drawn
+//   key a tab bar's height away from the key a press grabs.
+//
 // THE AXES (no grid, no rules)
 //   frameTickX: the x of every frame the ladder classifies (time::Scaler's
 //               TickLevel != None) inside the plot, ascending. The drawing layer
-//               draws a SHORT mark down from plot.top() at each - 4px is the
+//               draws a SHORT mark down from rulerBandTop at each - 4px is the
 //               convention (kFrameTickLength) - and nothing else.
 //   valueTickY: the y of the value axis' own ticks, i.e. of the labels below.
 //               A SHORT mark rightwards from plot.left() at each.
@@ -158,6 +179,14 @@ struct PanelLabel {
 //               A label is dropped when it would come closer than kFrameLabelGap
 //               (8px) to the previous label's right edge - a rule stated on the
 //               boxes, not on their centres, so it holds for any font.
+//               THE BOX'S TOP EDGE IS THE ROOM A NUMBER HAS: it sits at
+//               plot.top() + kFrameTickLength + 1, i.e. under the tick band, and a
+//               drawing layer must never put a glyph ABOVE its box's top edge - a
+//               font taller than the box is clamped into it (drawLabel in
+//               src/gui/ImGuiOverlay.cpp). That pair is what keeps the top row of
+//               numbers off the plot's top edge and out of the plot clip; the model
+//               measures the box with the default UI font and cannot know the
+//               drawing layer's, so the obligation is split rather than assumed.
 //   valueLabels: the window's max / midpoint / min, formatted 'g' with four
 //               significant digits (the deleted painter renderer's valueText(),
 //               kept as the model's own format; two equal strings are
@@ -251,6 +280,18 @@ struct PanelLabel {
 //   even when the plot is empty, because a playhead is a property of the
 //   document and not of the geometry.
 //
+// MARQUEE
+//   marquee == the editor's own box-select rectangle (GraphEditor::marqueeRect()),
+//   or an EMPTY rect while no marquee drag is in flight - which is the model's
+//   whole signal, since the editor publishes an empty rect whenever no drag is
+//   live (a press and release with no movement included). It is the gesture's own
+//   geometry, in the same viewport pixels as `plot`, and it is NOT clipped here:
+//   the editor already clips it to the plot, and the drawing layer's plot clip
+//   covers it whichever way the rectangle runs. The model draws nothing for it (it
+//   publishes no ink of its own anywhere); what it adds is the identity of the
+//   rectangle, so the gesture the editor is performing and the rectangle on screen
+//   are one geometry.
+//
 // zeroY
 //   The y of value 0 while the value window contains it, else -1. Published so
 //   the drawing layer can place a zero rule without re-deriving the axis; the
@@ -281,12 +322,20 @@ struct GraphPanelModel {
     QRect panel;
     QRect plot;
     QRect valueColumn;
+    // Where the panel's top content may begin: plot.top() unless a widget floating
+    // above the viewport covers part of it (see THE OCCLUDED TOP above). Always
+    // >= plot.top() and never past the plot's bottom edge.
+    int rulerBandTop = -1;
     QVector<int> frameTickX;
     QVector<int> valueTickY;
     QVector<PanelLabel> frameLabels;
     QVector<PanelLabel> valueLabels;
     int zeroY = -1;
     int playheadX = -1;
+    // The live box-select rectangle, or an empty rect while no marquee drag is in
+    // flight (see the MARQUEE note above). The drawing layer paints it inside the
+    // plot clip; nothing is drawn for an empty rect.
+    QRect marquee;
     QVector<PanelCurve> curves;
     QVector<PanelLegendRow> legend;
     QString emptyState;
@@ -294,8 +343,13 @@ struct GraphPanelModel {
 };
 
 // Builds the model. aViewport is the whole viewport the panel is pinned over;
-// aTheme is the palette the curves and swatches take their colours from.
-GraphPanelModel buildGraphPanelModel(ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme);
+// aTheme is the palette the curves and swatches take their colours from; aTopInset is
+// how many LOGICAL pixels of that viewport's top a widget floating above it covers (0
+// when nothing does), which moves the ruler band and nothing else - see THE OCCLUDED
+// TOP above.
+GraphPanelModel buildGraphPanelModel(
+    ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0
+);
 
 } // namespace gui
 

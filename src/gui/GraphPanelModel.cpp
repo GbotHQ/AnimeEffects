@@ -69,9 +69,11 @@ void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
     const core::Frame first = aScale.frameAt(plot.left());
     const core::Frame last = aScale.frameAt(plot.right());
     const int textHeight = aMetrics.height();
-    // The box sits below the tick marks, inside the plot's top edge. Without
-    // room for a whole text line under the marks there is nothing to label.
-    const int labelTop = plot.top() + kFrameTickLength + 1;
+    // The box sits below the tick marks, below the band the panel's top may use (see
+    // THE OCCLUDED TOP in the header: a widget floating above the viewport moves the
+    // band down, and the numbers with it). Without room for a whole text line under
+    // the marks there is nothing to label.
+    const int labelTop = aModel.rulerBandTop + kFrameTickLength + 1;
     const bool roomForText = (labelTop + textHeight - 1) <= plot.bottom();
 
     bool anyLabel = false;
@@ -128,8 +130,15 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
         aModel.zeroY = aScale.pixelY(0.f);
 
     const int textHeight = aMetrics.height();
-    if (column.height() < textHeight)
-        return; // a column shorter than one text line has no room for a label
+    // The column the numbers may be placed in: the value column, with its bottom
+    // shortened by one text line so a number centred on a value can still fit. The
+    // occluded band moves the top of that window down (see THE OCCLUDED TOP), and when
+    // the band has reached past the bottom there is no room for a number at all - the
+    // same answer as a column shorter than a text line.
+    const int columnTop = std::max(column.top(), aModel.rulerBandTop);
+    const int columnBottom = column.bottom() - textHeight + 1;
+    if (column.height() < textHeight || columnBottom < columnTop)
+        return;
 
     const float values[3] = {aScale.valueMax(), 0.5f * (aScale.valueMin() + aScale.valueMax()), aScale.valueMin()};
     QString shown;
@@ -141,9 +150,11 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
 
         // The number is centred on its value and clamped into the column: the
         // extreme values sit on the plot's edges, where half a text height would
-        // spill past the panel.
+        // spill past the panel. The column starts at the plot's top edge, so the
+        // topmost number is also clamped below the occluded band (the widget floating
+        // above the viewport covers the value column too - see THE OCCLUDED TOP).
         const int y = aScale.pixelY(value);
-        const int top = std::clamp(y - textHeight / 2, column.top(), column.bottom() - textHeight + 1);
+        const int top = std::clamp(y - textHeight / 2, columnTop, columnBottom);
 
         aModel.valueTickY.append(y);
         gui::PanelLabel label;
@@ -339,7 +350,9 @@ namespace gui {
     }
 
     //-------------------------------------------------------------------------------------------------
-    GraphPanelModel buildGraphPanelModel(ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme) {
+    GraphPanelModel buildGraphPanelModel(
+        ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset
+    ) {
         GraphPanelModel model;
 
         // The panel rect is the editor's own, whatever it is: the fullscreen
@@ -351,6 +364,11 @@ namespace gui {
         scale.setRect(model.panel);
 
         model.plot = scale.plotRect();
+        // The band the panel's top content may use: the plot's own top, moved down by
+        // the occluded inset (see THE OCCLUDED TOP in the header). A negative inset is
+        // no inset at all, and the result never leaves the plot.
+        const int inset = std::max(0, aTopInset);
+        model.rulerBandTop = std::min(model.plot.top() + inset, model.plot.bottom() + 1);
         model.valueColumn = QRect(
             model.panel.left() + ctrl::graph::Scaler::kMargin, model.plot.top(), ctrl::graph::Scaler::kAxisLabelWidth,
             model.plot.height()
@@ -364,9 +382,18 @@ namespace gui {
         if (playhead.get() >= 0)
             model.playheadX = scale.pixelX(playhead);
 
+        // The live box-select rectangle, straight from the gesture that owns it: the
+        // editor publishes an EMPTY rect while no drag is in flight (and for a press
+        // with no movement), which is exactly "draw nothing". Normalised and clipped
+        // to the plot by the editor, so this is a copy of one geometry rather than a
+        // second derivation of it.
+        model.marquee = aEditor.marqueeRect();
+
         if (model.plot.isEmpty()) {
-            // Nothing to lay an axis on. The panel, the playhead and the reason
-            // are still published: an empty panel must say why it is empty.
+            // Nothing to lay an axis on. The panel, the band, the playhead, the marquee
+            // (the editor's own rect, empty unless a drag is live) and the reason are
+            // still published: an empty panel must say why it is empty.
+            model.rulerBandTop = model.plot.bottom() + 1;
             model.emptyState =
                 graphPanelTr(QT_TRANSLATE_NOOP("GraphPanel", "No room for the graph in this viewport"));
             return model;

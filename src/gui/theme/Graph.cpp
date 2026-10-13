@@ -51,11 +51,28 @@ void Graph::assignFrom(const Colors& aColors) {
     // selection read as.
     mCurve = aColors.accentBright;
 
-    // Key dots: content-colored fill in a floor-colored ring, so a dot stays
-    // visible on top of any curve hue; the selected dot is the brand edge.
-    mKeyFill = aColors.text;
+    // Key markers: the channel's own hue as the fill (the drawing layer paints
+    // curve.color, which is keyColor(type)) inside a floor-coloured ring, so a key
+    // stays visible on top of any curve hue - including its own. The selected key is
+    // the brand edge, fill and ring alike.
     mKeyEdge = aColors.base;
     mSelected = aColors.accentBright;
+
+    // The marquee: the timeline's own box-select colours (accentBright at 24 for the
+    // body, 230 for the edge).
+    mMarqueeFill = aColors.accentBright;
+    mMarqueeFill.setAlpha(24);
+    mMarqueeEdge = aColors.accentBright;
+    mMarqueeEdge.setAlpha(230);
+
+    // The menu: the app's own context menu, token for token (see the header).
+    mMenuBody = aColors.floaterBody;
+    mMenuEdge = aColors.floaterEdge;
+    mMenuText = aColors.text;
+    mMenuTextDisabled = aColors.textDisabled;
+    mMenuHover = aColors.accentHover;
+    mMenuHoverText = aColors.accentText;
+    mMenuSeparator = aColors.hairline;
 
     // Tangent handles: raised like the widgets they emulate, edged with the
     // popup border tone, stems muted so they never outread the curve itself.

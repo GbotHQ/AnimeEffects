@@ -460,6 +460,25 @@ void MainDisplayWidget::paintEvent(QPaintEvent* aEvent) {
     // meaningful).
     if (gImGuiOverlay && gImGuiOverlay->isReady()) {
         ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+        // HOW MUCH OF THE TOP A FLOATING WIDGET COVERS. The project tab bar is drawn
+        // ON TOP of the viewport's first rows, and the panel draws fullscreen
+        // underneath it: without telling the panel, the ruler numbers land behind the
+        // tabs and read as "the X axis numbers are clipped at the top" (measured
+        // 2026-10-13 - the label box itself was already correct).
+        //
+        // Logical pixels, because the overlay's own coordinate system is logical
+        // (io.DisplaySize / io.DisplayFramebufferScale) and the rects it publishes to
+        // the accessibility layer are logical too. Recomputed on EVERY frame: the tab
+        // bar can appear, disappear or resize without this widget's own pixels
+        // changing, and the overlay asks for its own repaint when the value differs.
+        // A tab bar positioned above this widget (rather than over it) maps to a
+        // negative y and clamps to no inset at all.
+        int topInset = 0;
+        if (mProjectTabBar && mProjectTabBar->isVisible()) {
+            const QPoint tabBottom = mProjectTabBar->mapTo(this, QPoint(0, mProjectTabBar->height()));
+            topInset = qBound(0, tabBottom.y(), height());
+        }
+        gImGuiOverlay->setTopInset(topInset);
         gImGuiOverlay->paint(
             *this, editor, mProject ? &*mProject : nullptr, editor && editor->isVisible()
         );

@@ -1,5 +1,6 @@
 #include "gui/ImGuiOverlay.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <memory>
@@ -57,14 +58,44 @@ namespace {
 // backend would otherwise default to on desktop.
 const char* kGlslVersion = "#version 400 core";
 
-// The curve stroke width: 1.5px AA'd is the thinnest width that still holds a
-// distinct hue on the panel.
-constexpr float kCurveWidth = 1.5f;
+// The curve stroke width.
+//
+// WHY AN INTEGER, AND WHY 2.0. ImGui antialiases a polyline by one of two paths and
+// the WIDTH decides which (imgui_draw.cpp, ImDrawList::AddPolyline): a width with a
+// zero fractional part uses the baked LINE TEXTURE (one continuous quad strip whose
+// edges the GPU's bilinear filter turns into a 1px ramp), while any fractional width
+// falls back to the GEOMETRY path - a per-segment quad with a half-thickness core and
+// a 1px fringe each side, joined by averaged normals. The two target the same
+// integral width, so the difference is not weight, it is SHAPE: the geometry path
+// emits 4 vertices per point and 18 indices per segment and its joins overlap (each
+// segment's fringe is blended over its neighbour's), while the texture path emits 2
+// and 6 and the stroke is ONE strip.
+//
+// MEASURED on the pixel gate's own slope-0.5 segment (AE_PANEL_CROPS, /tmp crops
+// before 1.5 against after 2.0): ink per column 1.71 -> 2.21 (a 1.5px stroke against
+// a 2px one, both constant to 3 decimals across 41 columns, so neither staircase is a
+// width wobble), and the full model's vertex/segment budget 4 vtx/point and
+// 18 idx/segment -> 2 and 6, which is the texture path itself: the draw list carries
+// ImDrawListFlags_AntiAliasedLinesUseTex (0xF includes it) and 2.0 satisfies its
+// zero-fraction requirement, so the stroke is one strip rather than a chain of quads.
+//
+// The 1.5 it replaces was the widest width that stayed "thin" while being in the
+// worst spot for ImGui's AA: frac != 0, so a 0.25px core under a 1px ramp on each
+// side - a stroke with the least opaque centre of any width. 2.0 keeps the panel's
+// weight class (the curve is read at its full 2px on the plot, and the 1.5px it had
+// before cost 1.71px of ink per column at slope 0.5 against 2.21 now) and buys the
+// single-strip geometry.
+constexpr float kCurveWidth = 2.0f;
 
 // Length of the short axis marks. The model publishes positions and leaves the
 // length to the drawing layer; 4 is the convention its own KFrameTickLength
 // documents (and the room it reserves above a frame number).
 constexpr int kAxisTickLength = 4;
+
+// The box-select marquee's corner radius, in pixels: the timeline's own box
+// (ctrl/time/Renderer.cpp draws a 6px rounded rect) so the two views' selection
+// gestures are the same shape.
+constexpr float kMarqueeRounding = 6.0f;
 
 // The label halo: the same glyphs drawn at the eight compass offsets of radius 1
 // and radius 2, so the ring reaches 2px past the glyph ink in every direction.
@@ -121,6 +152,15 @@ QString trText(const char* aSource, int aPlural = -1) {
 
 ImU32 toImU32(const QColor& aColor) {
     return IM_COL32(aColor.red(), aColor.green(), aColor.blue(), aColor.alpha());
+}
+
+// The same colour in the currency ImGuiStyle stores: straight 0..1 channels, alpha
+// included, so a palette token travels into the style without a second copy of what
+// its alpha means.
+ImVec4 toImVec4(const QColor& aColor) {
+    return ImVec4(
+        float(aColor.redF()), float(aColor.greenF()), float(aColor.blueF()), float(aColor.alphaF())
+    );
 }
 
 // The colour as it should be painted under a strength factor. Emphasis and
@@ -189,6 +229,15 @@ enum class LabelAlign { Left, Centre, Right };
 // One label inside the box the model decided, at the alignment the model
 // documented for it, with the halo. The box is the model's; only the placement
 // inside it is the drawing layer's.
+//
+// THE GLYPHS ARE CLAMPED INTO THE BOX. The model measures its boxes with the
+// default UI font (it has no painter) and this layer draws with the widget's, so
+// the two line heights are not the same number; a layer font taller than the box
+// would put half its overflow ABOVE the box's top edge - and for a frame number
+// that is above the plot's top edge, i.e. inside the plot clip, which is how the
+// top row of ruler numbers came out with their caps cut off. Centring therefore
+// takes the larger of "centred" and "flush with the box's top": an over-tall font
+// hangs into the box's own interior (where there is room) instead of out of it.
 void drawLabel(
     ImDrawList& aDrawList, ImFont* aFont, float aFontSize, const QRect& aBox, const QString& aText, LabelAlign aAlign,
     ImU32 aColor, ImU32 aHalo
@@ -203,7 +252,7 @@ void drawLabel(
         x += (float(aBox.width()) - size.x) * 0.5f;
     else if (aAlign == LabelAlign::Right)
         x = float(aBox.left() + aBox.width()) - size.x;
-    const float y = float(aBox.top()) + (float(aBox.height()) - size.y) * 0.5f;
+    const float y = float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
     addHaloedText(aDrawList, aFont, aFontSize, ImVec2(x, y), aColor, aHalo, utf8.constData());
 }
 
@@ -238,11 +287,15 @@ const char* kKeyMenuId = "##ae_graph_key_menu";
 // follows the font so text is never clipped, and every row has it, so "which
 // entry is at this pixel" is a function of the popup's top edge and its height
 // alone - no style number has to be known to the caller that only sees pixels.
+//
+// The popup's WINDOW padding and a row's inner padding are NOT here: they are
+// theme::Graph::menuPadX/menuPadY and menuItemPadX, applied to this popup from the
+// theme in drawKeyContextMenu (and to ImGui's style by applyPanelStyle), so the
+// menu's own metrics have one home. The row height, the column gap and the
+// separator stay here: they are this layout's arithmetic, not a palette or a metric
+// the rest of the application has an opinion about.
 constexpr float kMenuRowHeight = 18.0f;
-constexpr float kMenuPadX = 6.0f;
-constexpr float kMenuPadY = 4.0f;
 constexpr float kMenuColumnGap = 4.0f;
-constexpr float kMenuInnerPad = 6.0f;
 constexpr int kMenuColumns = 2;
 // The hairline between the easing entries and the delete entry. It is an ITEM of
 // the popup, so the popup's own auto-height counts it; it is not an entry, so the
@@ -651,6 +704,49 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 } // namespace outline
 
 //-------------------------------------------------------------------------------------------------
+// The panel's ImGui style (declared and described in the header).
+void applyPanelStyle(const theme::Graph& aTheme) {
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    // THE POPUP SURFACE: the application's own context menu, which gui::AppStyle
+    // draws as a rounded floater (radius 8) filled with floaterBody behind a 1px
+    // floaterEdge - the same tokens, in the same roles.
+    style.Colors[ImGuiCol_PopupBg] = toImVec4(aTheme.menuBody());
+    style.Colors[ImGuiCol_Border] = toImVec4(aTheme.menuEdge());
+    style.PopupBorderSize = 1.0f;
+    style.PopupRounding = aTheme.menuRounding();
+
+    // TEXT, and the disabled tone a menu entry would use.
+    style.Colors[ImGuiCol_Text] = toImVec4(aTheme.menuText());
+    style.Colors[ImGuiCol_TextDisabled] = toImVec4(aTheme.menuTextDisabled());
+
+    // THE ITEM HIGHLIGHT is drawn by the menu itself, not by ImGui: a QMenu's
+    // selected row is a ROUNDED pill (radius 4), and ImGui's own Selectable fill is a
+    // square rect with no rounding knob (imgui_widgets.cpp, RenderFrame(..., false,
+    // 0.0f)). Its three colours are therefore switched off here so the two cannot
+    // both paint, and drawKeyContextMenu draws the themed pill.
+    style.Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // The KEYBOARD's own highlight is ImGui's and cannot be replaced (the nav pass
+    // draws it around the item it will activate): the menu's hover fill, so an
+    // arrow-keyed entry reads exactly like a hovered one. It is a square rect -
+    // ImGui's nav cursor is drawn with NoRounding, so this is the one piece of the
+    // app's menu look the popup can only approximate.
+    style.Colors[ImGuiCol_NavCursor] = toImVec4(aTheme.menuHover());
+    style.Colors[ImGuiCol_Separator] = toImVec4(aTheme.menuSeparator());
+
+    // LAYOUT: the popup's own padding and its zero item spacing, which its fixed
+    // row arithmetic is built on (see the class comment - the app-level probe reads
+    // entry positions off the popup's own pixels, so these are numbers it depends
+    // on). SelectableTextAlign centres a row's label vertically, the way a QMenu
+    // row's text is centred in its 24px pill.
+    style.WindowPadding = ImVec2(aTheme.menuPadX(), aTheme.menuPadY());
+    style.ItemSpacing = ImVec2(0.0f, 0.0f);
+    style.SelectableTextAlign = ImVec2(0.0f, 0.5f);
+}
+
+//-------------------------------------------------------------------------------------------------
 // The one legend label geometry - declared to the gate as well (see the header),
 // so a pixel gate can assert the no-room rule on the geometry the hit-test uses.
 QRect legendLabelRect(const PanelLegendRow& aRow, ImFont* aFont, float aFontSize) {
@@ -698,9 +794,14 @@ void drawPanel(
     // clobbered.
     const ImDrawListFlags savedLineFlags = aDrawList.Flags;
     aDrawList.Flags = savedLineFlags & ~ImDrawListFlags_AntiAliasedLines;
+    // ...down from the RULER BAND's top, not from the plot's: a widget floating above
+    // the viewport moves the whole band (the marks and the numbers under them) below
+    // itself, and the marks are its top edge (see THE OCCLUDED TOP in
+    // GraphPanelModel.h). The band is inside the plot by construction.
+    const float bandTop = float(aModel.rulerBandTop);
     for (int x : aModel.frameTickX) {
         const float fx = float(x);
-        aDrawList.AddLine(ImVec2(fx, float(plot.top())), ImVec2(fx, float(plot.top() + kAxisTickLength)), tick, 1.0f);
+        aDrawList.AddLine(ImVec2(fx, bandTop), ImVec2(fx, bandTop + float(kAxisTickLength)), tick, 1.0f);
     }
     for (int y : aModel.valueTickY) {
         const float fy = float(y);
@@ -745,14 +846,17 @@ void drawPanel(
     }
 
     // The key squares, from the model's rects: the editor's hit-test geometry, so a
-    // click lands where the key is drawn. The painter's own idiom - a filled square
-    // in the key fill with a contrasting hairline edge - and the editor's selection
-    // turns both into the selected token.
+    // click lands where the key is drawn. A key is filled with ITS CHANNEL'S OWN
+    // COLOUR (PanelCurve::color, i.e. theme::Graph::keyColor(channel.type()) - the
+    // same colour its curve is stroked in and its legend swatch filled with), inside
+    // the palette's floor-coloured ring, which is what keeps a key visible on top of
+    // the curve that carries it (a same-hue key on a same-hue stroke would otherwise
+    // disappear into it). The editor's selection turns both into the selected token.
     const ImU32 selectedKey = toImU32(aTheme.selected());
     for (const PanelCurve& curve : aModel.curves) {
         const bool focused = aFocus.valid && aFocus.node == curve.node && aFocus.channel == curve.channel;
         const float strength = (aFocus.valid && !focused) ? kUnfocusedAlpha : 1.0f;
-        const ImU32 fill = toImU32Strength(aTheme.keyFill(), strength);
+        const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
         for (const QRect& key : curve.keys) {
             const bool selected = isKeySelected(aFocus, curve.channel.type(), key);
@@ -770,13 +874,37 @@ void drawPanel(
     // the highlight names exactly the handle a grab would take. The handles are
     // inside the plot clip (pushed above), so a stem that leaves the plot is cut at
     // the edge rather than painting over the panel's chrome.
+    //
+    // THEY ARE DRAWN FOR THE FOCUSED CHANNEL, and that is a COST decision with a
+    // measured number behind it (the application-level performance diagnosis, on this
+    // build and this machine): a key costs ~68 vertices with its tangent handles drawn
+    // and ~16 without - the handles are the delta, 2 stems, 2 filled dots and 2
+    // circles - at ~50ns of Debug-build CPU per vertex, which is 2.6ms/frame at 600
+    // keys, 32ms at 8000 and 165ms at 40000, paid on every viewport repaint while the
+    // panel is up. Drawing them for the focused channel alone measured 4.2x fewer
+    // vertices and 4.4x less frame time in that diagnosis.
+    //
+    // WHAT THAT COSTS, stated rather than implied: a handle on a curve the user has
+    // NOT focused is not on screen, so a pointer hovering it draws no highlight -
+    // and a press there still GRABS it, because the editor's hit-test is its own
+    // geometry and a handle press focuses that channel first (GraphEditor::
+    // updateCursor), so the handle is drawn - and highlighted - from that frame on.
+    // With NO focus at all every curve draws its handles, so nothing is hidden
+    // before the user has said which channel they are working on (and the pixel
+    // gate's own passes, which hand drawPanel an invalid focus, keep measuring the
+    // full geometry).
     {
         const ImVec2 mouse = ImGui::GetIO().MousePos;
+        const auto drawsHandles = [&aFocus](const PanelCurve& aCurve) {
+            return !aFocus.valid || (aFocus.node == aCurve.node && aFocus.channel == aCurve.channel);
+        };
         int nearestCurve = -1;
         int nearestHandle = -1;
         double nearestDistance = double(ctrl::graph::kHandleHitRadius);
         for (int c = 0; c < aModel.curves.size(); ++c) {
             const PanelCurve& curve = aModel.curves.at(c);
+            if (!drawsHandles(curve))
+                continue;
             for (int h = 0; h < curve.handles.size(); ++h) {
                 const QPointF& dot = curve.handles.at(h).dot;
                 const double distance = std::hypot(double(mouse.x) - dot.x(), double(mouse.y) - dot.y());
@@ -794,6 +922,8 @@ void drawPanel(
         const ImU32 handleSelected = toImU32(aTheme.selected());
         for (int c = 0; c < aModel.curves.size(); ++c) {
             const PanelCurve& curve = aModel.curves.at(c);
+            if (!drawsHandles(curve))
+                continue;
             for (int h = 0; h < curve.handles.size(); ++h) {
                 const PanelHandle& handle = curve.handles.at(h);
                 const bool highlighted = c == nearestCurve && h == nearestHandle;
@@ -806,14 +936,38 @@ void drawPanel(
         }
     }
 
+    // The live box-select marquee, when a drag is in flight. It is the timeline's
+    // own gesture and is drawn with the timeline's own colours
+    // (theme::Graph::marqueeEdge()/marqueeFill(), ctrl/time/time_Renderer.cpp's
+    // renderSelectionRange): a rounded (6px) accent body at low alpha under a 1px
+    // accent edge. ImGui's draw list has no dashed stroke, so the edge is solid -
+    // the one thing about the timeline's box that cannot be reproduced here.
+    // It is drawn INSIDE the plot clip (pushed above), and the playhead goes on top
+    // of it, so a drag never paints over the axes or the value column.
+    if (!aModel.marquee.isEmpty()) {
+        const ImVec2 min = rectMin(aModel.marquee);
+        const ImVec2 max = rectMax(aModel.marquee);
+        aDrawList.AddRectFilled(min, max, toImU32(aTheme.marqueeFill()), kMarqueeRounding);
+        aDrawList.AddRect(min, max, toImU32(aTheme.marqueeEdge()), kMarqueeRounding, ImDrawFlags_None, 1.0f);
+    }
+
     // The playhead: the document's own frame, 1px, the same hairline rule as the
     // axes. It is the one mark on the panel that is not part of the curve data.
+    //
+    // It covers the plot's rows EXACTLY. The model's playheadX is a pixel column and
+    // the panel's playhead spans plot.top()..plot.bottom(), but ImGui's non-AA 1px
+    // path is half-open: it shifts the endpoints by half a pixel and loses the first
+    // row, so a line passed as (top, bottom+1) inks rows top+1..bottom and leaves the
+    // plot's first row empty. The half-pixel inset below is what makes the drawn
+    // column cover the rows the model names - measured by the gate's playhead
+    // assertion (tests/graph_panel_pixels.cpp), which walks every row of the span.
     if (aModel.playheadX >= 0) {
         const ImDrawListFlags savedPlayheadFlags = aDrawList.Flags;
         aDrawList.Flags = savedPlayheadFlags & ~ImDrawListFlags_AntiAliasedLines;
         const float px = float(aModel.playheadX);
         aDrawList.AddLine(
-            ImVec2(px, float(plot.top())), ImVec2(px, float(plot.bottom() + 1)), toImU32(aTheme.selected()), 1.0f
+            ImVec2(px, float(plot.top()) - 0.5f), ImVec2(px, float(plot.bottom()) + 0.5f),
+            toImU32(aTheme.selected()), 1.0f
         );
         aDrawList.Flags = savedPlayheadFlags;
     }
@@ -896,9 +1050,37 @@ struct ImGuiOverlay::State {
     // needs them, released in shutdown().
     OutlineTargets outline;
 
+    // How much of the viewport's top a widget floating above it covers, in logical
+    // pixels (setTopInset). Read when the frame builds its model.
+    int topInset = 0;
+
     // io.DeltaTime, from the real interval between frames.
     QElapsedTimer frameTimer;
     bool frameTimerStarted = false;
+
+    // The widget framebuffer's pixel size, CACHED. Asking for it is a chain of GL
+    // queries (framebufferPixels: the bound framebuffer, the attachment's type and
+    // name, then the renderbuffer's or the texture's size), measured at ~10 queries
+    // and 0.10-0.13ms per frame - work whose answer changes only when the widget does.
+    // The attachment is qRound(logical size * device pixel ratio) (see
+    // framebufferPixels), so the two numbers below are the whole key: anything that can
+    // change the answer changes one of them, and a new GL context drops the cache in
+    // shutdown() (the widget's own framebuffer is recreated with it).
+    QSize pixelsCache;
+    QSize pixelsCacheLogical;
+    double pixelsCacheDpr = 0.0;
+
+    // The widget framebuffer's pixel size, from the cache when the widget has not
+    // changed (see the fields above). aFramebuffer is only read when the cache is
+    // stale, so a steady frame costs no GL query at all.
+    QSize cachedFramebufferPixels(GLuint aFramebuffer, const QSize& aLogical, double aDpr) {
+        if (pixelsCache.isEmpty() || pixelsCacheLogical != aLogical || pixelsCacheDpr != aDpr) {
+            pixelsCache = framebufferPixels(aFramebuffer);
+            pixelsCacheLogical = aLogical;
+            pixelsCacheDpr = aDpr;
+        }
+        return pixelsCache;
+    }
 };
 
 namespace {
@@ -994,6 +1176,11 @@ void ImGuiOverlay::shutdown() {
     // before the context goes, and drop the frame state with it (the editor pointer
     // and the geometry are answers about a panel that no longer exists).
     mState->bridge.reset();
+    // The framebuffer cache goes with the context: the widget's own framebuffer is
+    // recreated when the context is.
+    mState->pixelsCache = QSize();
+    mState->pixelsCacheLogical = QSize();
+    mState->pixelsCacheDpr = 0.0;
     mState->model = GraphPanelModel();
     mState->editor = nullptr;
     mState->font = nullptr;
@@ -1042,6 +1229,11 @@ bool ImGuiOverlay::init(QOpenGLWidget& aWidget) {
     // (MainDisplayWidget) stays the only thing that does.
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     ImGui::StyleColorsDark();
+    // ...then the panel's own style over it (see applyPanelStyle): ImGui's dark
+    // defaults define everything the panel does not, and every colour the panel's
+    // popup DOES use comes from the palette. Applied again on every frame, so this
+    // call only matters for a frame drawn before the first paint().
+    applyPanelStyle(theme::Graph::from(theme::Colors::current()));
 
     // The atlas through the Qt/QRawFont loader: the application font at the widget
     // font's own pixel size, plus the writing-system fallbacks Qt resolves for it,
@@ -1168,21 +1360,30 @@ void ImGuiOverlay::paint(
         }
     }
 
+    // THE PANEL'S STYLE, from THIS frame's palette (see applyPanelStyle). It is
+    // re-derived every frame rather than cached because the app changes palette at
+    // runtime (a settings change, a different accent): theme::Colors::current() is
+    // the live answer, the panel's own colours are already rebuilt from it below,
+    // and the style is a handful of struct writes - there is nothing to invalidate
+    // and no signal to miss. It has to happen BEFORE NewFrame, which reads the style
+    // (the nav cursor and the popup's window flags are set up there).
+    const theme::Graph palette = theme::Graph::from(theme::Colors::current());
+    applyPanelStyle(palette);
+
     ImGui::NewFrame();
 
     // The model of this frame, and nothing else: the panel's geometry never comes
     // from a rect computed here.
     GraphPanelModel model;
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-    const theme::Graph palette = theme::Graph::from(theme::Colors::current());
     const bool panelDrawn = aVisible && aEditor && drawList;
     if (panelDrawn) {
-        model = buildGraphPanelModel(*aEditor, viewport, palette);
+        model = buildGraphPanelModel(*aEditor, viewport, palette, state.topInset);
         drawPanel(*drawList, model, palette, buildFocus(*aEditor, model));
         // The key context menu, on the geometry just drawn (see the class comment).
         // Drawn after the panel, which goes into the BACKGROUND draw list, so the
         // popup - a window - covers it.
-        drawKeyContextMenu(*aEditor, model);
+        drawKeyContextMenu(*aEditor, model, palette);
         state.font = drawListFont(*drawList);
         state.fontSize = drawListFontSize(*drawList);
     } else {
@@ -1220,7 +1421,7 @@ void ImGuiOverlay::paint(
     // targets, in which case the panel is drawn straight into the widget
     // framebuffer, i.e. precisely the frame this pass was added to.
     const GLuint widgetFbo = GLuint(aWidget.defaultFramebufferObject());
-    const QSize pixels = panelDrawn ? framebufferPixels(widgetFbo) : QSize();
+    const QSize pixels = panelDrawn ? state.cachedFramebufferPixels(widgetFbo, viewport, dpr) : QSize();
     bool composited = false;
     if (!pixels.isEmpty() && outline::init() && state.outline.ensure(pixels)) {
         OutlineTargets& targets = state.outline;
@@ -1351,6 +1552,26 @@ bool ImGuiOverlay::touch(const QTouchEvent& aEvent) {
     return mState && mState->bridge ? mState->bridge->handleTouch(aEvent) : false;
 }
 
+void ImGuiOverlay::setTopInset(int aLogicalPixels) {
+    if (!mState)
+        return;
+
+    const int inset = ImMax(0, aLogicalPixels);
+    if (inset == mState->topInset)
+        return; // the caller sets it every frame: a steady inset is not an event
+
+    mState->topInset = inset;
+    // A CHANGE is a frame the widget may not otherwise ask for: the call comes from
+    // the widget's own paintEvent, but the widget above the viewport can appear,
+    // disappear or change height without the viewport's pixels changing at all, and
+    // without this the band would move only on the next unrelated repaint.
+    requestRepaint();
+}
+
+int ImGuiOverlay::topInset() const {
+    return mState ? mState->topInset : 0;
+}
+
 void ImGuiOverlay::focus(bool aFocused) {
     if (mState && mState->bridge)
         mState->bridge->handleFocus(aFocused);
@@ -1403,8 +1624,11 @@ bool ImGuiOverlay::press(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
         if (!row.node || row.swatch.isEmpty())
             continue;
         if (legendLabelRect(row, mState->font, mState->fontSize).contains(aPos)) {
-            // Focusing a channel fits the value axis to it (GraphEditor's own rule);
-            // it is the one place the panel lets a click choose what the axis follows.
+            // Focusing a channel: the one place the panel lets a click choose which
+            // curve is emphasised (every other curve is dimmed while a focus exists).
+            // It does NOT move the value window - focusing is not a fit; the fit
+            // gestures are GraphEditor::fitAll (the plot's double-click) and the
+            // editor's own axis fits.
             aEditor.setFocusedChannel(*row.node, row.channel);
             return true;
         }
@@ -1436,7 +1660,9 @@ bool ImGuiOverlay::doubleClick(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
 }
 
 //-------------------------------------------------------------------------------------------------
-void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel) {
+void ImGuiOverlay::drawKeyContextMenu(
+    ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel, const theme::Graph& aTheme
+) {
     if (!mState)
         return;
     State& state = *mState;
@@ -1529,13 +1755,17 @@ void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPan
 
         // One width for every entry, from the widest label the popup will draw
         // (the delete entry included, because it spans the whole width), so a row
-        // is a rectangle a caller can find from the popup's own edges alone.
+        // is a rectangle a caller can find from the popup's own edges alone. The
+        // inset is the theme's own row padding.
+        const float itemPadX = aTheme.menuItemPadX();
         float columnWidth = 0.0f;
         for (const util::Easing::Type type : types) {
             const QByteArray text = util::Easing::getTypeName(type).toUtf8();
             columnWidth = ImMax(columnWidth, ImGui::CalcTextSize(text.constData()).x);
         }
-        columnWidth = ImMax(columnWidth + 2.0f * kMenuInnerPad, ImGui::CalcTextSize(deleteLabel.constData()).x + 2.0f * kMenuInnerPad);
+        columnWidth = ImMax(
+            columnWidth + 2.0f * itemPadX, ImGui::CalcTextSize(deleteLabel.constData()).x + 2.0f * itemPadX
+        );
 
         const float contentWidth = kMenuColumns * columnWidth + (kMenuColumns - 1) * kMenuColumnGap;
         const float contentHeight = rows * rowHeight + kMenuSeparatorHeight;
@@ -1549,7 +1779,8 @@ void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPan
         // has no such constraint; this one does).
         const float border = ImGui::GetStyle().WindowBorderSize;
         const ImVec2 popupSize(
-            contentWidth + 2.0f * kMenuPadX + 2.0f * border, contentHeight + 2.0f * kMenuPadY + 2.0f * border
+            contentWidth + 2.0f * aTheme.menuPadX() + 2.0f * border,
+            contentHeight + 2.0f * aTheme.menuPadY() + 2.0f * border
         );
         const float anchorX = float(state.keyMenuAnchor.x());
         const float anchorY = float(state.keyMenuAnchor.y());
@@ -1558,15 +1789,23 @@ void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPan
                                                                    : ImMax(0.0f, io.DisplaySize.y - popupSize.y);
 
         // The fixed layout the header documents: no item spacing (a row is then
-        // exactly rowHeight tall) and this popup's own padding. Pushed around the
-        // window, so they cover the popup's whole content.
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kMenuPadX, kMenuPadY));
+        // exactly rowHeight tall) and this popup's own padding (the theme's - see
+        // applyPanelStyle, which puts the same pair into the style; pushed here as
+        // well so the layout holds even on a frame whose style has not been applied).
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(aTheme.menuPadX(), aTheme.menuPadY()));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
         if (ImGui::BeginPopup(kKeyMenuId)) {
             // The content origin, padding included: every entry is placed
             // relative to it, which is what makes the layout above exact.
             const ImVec2 origin = ImGui::GetCursorPos();
+
+            // The row under the pointer is the app's own menu pill (see the entry loop
+            // below); these are its two colours, resolved once for the whole popup.
+            const ImU32 pill = toImU32(aTheme.menuHover());
+            const ImVec4 textHover = toImVec4(aTheme.menuHoverText());
+            const bool windowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+            const ImVec2 mouse = io.MousePos;
 
             for (int r = 0; r < easingRows; ++r) {
                 for (int c = 0; c < kMenuColumns; ++c) {
@@ -1581,9 +1820,32 @@ void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPan
                     ImGui::SetCursorPos(ImVec2(
                         origin.x + c * (columnWidth + kMenuColumnGap), origin.y + r * rowHeight
                     ));
-                    if (ImGui::Selectable(
-                            label.constData(), false, ImGuiSelectableFlags_None, ImVec2(columnWidth, rowHeight)
-                        )) {
+                    // THE APP'S MENU ROW. ImGui's Selectable would fill the row with a
+                    // SQUARE rect in ImGuiCol_HeaderHovered; a QMenu's selected row is a
+                    // ROUNDED pill in accentHover with accentText on it (gui/AppStyle.cpp
+                    // CE_MenuItem). The pill is therefore drawn here - under the label,
+                    // which the Selectable draws - and the hovered label's colour is
+                    // switched to the on-accent text; the style's Header colours are off
+                    // (applyPanelStyle), so nothing else fills the row. The hover test is
+                    // the entry's own rectangle against io.MousePos, which is the same
+                    // rectangle ImGui tests: the entries tile the popup with no gap (the
+                    // layout above), so the two cannot disagree.
+                    const ImVec2 entryMin = ImGui::GetCursorScreenPos();
+                    const ImVec2 entryMax(entryMin.x + columnWidth, entryMin.y + rowHeight);
+                    const bool entryHovered = windowHovered && mouse.x >= entryMin.x && mouse.x < entryMax.x
+                                              && mouse.y >= entryMin.y && mouse.y < entryMax.y;
+                    if (entryHovered) {
+                        ImGui::GetWindowDrawList()->AddRectFilled(
+                            entryMin, entryMax, pill, aTheme.menuItemRounding()
+                        );
+                        ImGui::PushStyleColor(ImGuiCol_Text, textHover);
+                    }
+                    const bool chosen = ImGui::Selectable(
+                        label.constData(), false, ImGuiSelectableFlags_None, ImVec2(columnWidth, rowHeight)
+                    );
+                    if (entryHovered)
+                        ImGui::PopStyleColor();
+                    if (chosen) {
                         // The editor's own action: the graph's whole selection,
                         // ONE undo step, on the timeline's notifier and event.
                         aEditor.setSelectedKeysEasing(type);
@@ -1598,9 +1860,22 @@ void ImGuiOverlay::drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPan
             ImGui::SetCursorPos(ImVec2(origin.x, origin.y + easingRows * rowHeight));
             ImGui::Separator();
             ImGui::SetCursorPos(ImVec2(origin.x, origin.y + easingRows * rowHeight + kMenuSeparatorHeight));
-            if (ImGui::Selectable(
-                    deleteLabel.constData(), false, ImGuiSelectableFlags_None, ImVec2(contentWidth, rowHeight)
-                )) {
+            // The delete row is an entry like any other and gets the same pill and the
+            // same on-accent text; it spans the popup's whole content width.
+            const ImVec2 deleteMin = ImGui::GetCursorScreenPos();
+            const ImVec2 deleteMax(deleteMin.x + contentWidth, deleteMin.y + rowHeight);
+            const bool deleteHovered = windowHovered && mouse.x >= deleteMin.x && mouse.x < deleteMax.x
+                                       && mouse.y >= deleteMin.y && mouse.y < deleteMax.y;
+            if (deleteHovered) {
+                ImGui::GetWindowDrawList()->AddRectFilled(deleteMin, deleteMax, pill, aTheme.menuItemRounding());
+                ImGui::PushStyleColor(ImGuiCol_Text, textHover);
+            }
+            const bool deleteChosen = ImGui::Selectable(
+                deleteLabel.constData(), false, ImGuiSelectableFlags_None, ImVec2(contentWidth, rowHeight)
+            );
+            if (deleteHovered)
+                ImGui::PopStyleColor();
+            if (deleteChosen) {
                 // The panel's own remove action, the same call a key press plus
                 // the Delete key reaches in the timeline: it removes exactly the
                 // key the panel's selection names - which the right-click that

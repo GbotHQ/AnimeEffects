@@ -602,6 +602,95 @@ application's keys. With the menu closed they are untouched, and the probe asser
 it on the document rather than on a return value (ctrl+Z undoes the pick the menu
 made; ctrl+Right still moves the playhead).
 
+**Three gesture rules the panel learned from being driven by hand** (2026-10-13). Each
+was a report of "this is missing/backwards" that turned out to be a design decision
+worth writing down.
+
+*The panel is a fullscreen overlay, so every press it claims is a press the tools
+LOSE.* Its plot covers most of the viewport, and the viewport's own handles live
+there, so a PLAIN left press in the plot has to stay the tools' - the graph takes a
+plot press only with **Ctrl**, and then the curve's band decides which of its two
+meanings it gets: on a band it inserts the key the curve already passes through, off
+every band it opens the marquee. Claiming plain presses there instead stops every
+tool gesture while the panel is up; that is a constraint, not a preference. Alt is
+not available as the modifier either: the compositor grabs Alt+drag to move windows,
+and the application binds `Alt+E`, `Alt+Q`, `Alt+1`, `Alt+3`.
+
+*The wheel zooms BOTH axes about the cursor* (Shift narrows it to the frame axis,
+Ctrl to the value axis), and its DIRECTION matches the canvas and the timeline - a
+positive Qt angle delta zooms OUT, at 1.1 per notch. Making the axes agree meant
+flipping the value axis, whose old sense was opposite the frame axis beside it and
+opposite the canvas below it; two axes that zoom in opposite directions cannot be
+made into one gesture that keeps its shape.
+
+*Selecting never moves the view.* Focusing a channel is emphasis only. The value
+window fits when the SHOWN SET changes (panel opened, targets changed, a channel
+hidden - without that the panel opens blank) and on the explicit routes (double
+click, the accessibility fit action). A click that refits the window is a defect: it
+was one until this was fixed, and it reads as "clicking a curve zooms it".
+
+**The panel's frame cost is its own vertex count, and an idle frame rate is what
+proves where the cost is not** (measured 2026-10-13 on the R9 380 at 1400x860,
+through the shipped `drawPanel` and the shipped pass, on the user's own report of
+"sluggish whenever the panel is enabled"):
+
+- A key costs **~68 vertices with its tangent handles drawn**, ~16 without, at ~50 ns
+  of CPU per vertex in a **Debug** build - i.e. 2.6 ms per frame at 600 keys, **32 ms
+  at 8,000** and 165 ms at 40,000, paid on every viewport repaint while the panel is
+  up. Handles are now drawn for the FOCUSED channel only (measured 4.2x fewer
+  vertices, 4.4x less frame time), and `framebufferPixels()` - which was ~10 GL
+  queries per frame - is cached (0.10-0.13 ms).
+- FALSIFIED, all of it measured, so nobody re-chases these: there is **no
+  self-driving repaint loop** (0 paints/s and 0.00 % of a core at IDLE with the panel
+  ON, on llvmpipe and on radeonsi); the **accessibility publish** is ~10 us/frame; the
+  **outline pass** is 0.20 ms of GPU at 1400x860 (GL timer queries) and only looks
+  catastrophic on software GL (11.83 ms llvmpipe, 30.77 ms at 2560x1440).
+- Two lessons for the next performance report: measure the IDLE frame rate with the
+  panel OFF and ON first - that number separates "a repaint loop" from "an expensive
+  frame" - and never quote a Debug-build number as if it were the application's. The
+  application the user drives is a Debug binary unless someone builds Release.
+
+**ImGui's antialiasing is two paths, and a FRACTIONAL stroke width picks the bad
+one** (measured 2026-10-13). The curve ink was `AddPolyline(..., 1.5f)`: the draw
+list already carried `ImDrawListFlags_AntiAliasedLinesUseTex` (flags 0xF), but 1.5
+has a fractional part, and that is what keeps a polyline OFF ImGui's texture-AA path
+and ON the geometry path - a 0.25px opaque core under a 1px ramp on each side, built
+from per-segment quads joined by averaged normals. At `kCurveWidth = 2.0f` the same
+stroke takes the texture path, and the pixel gate's own numbers say so exactly: 304
+vtx / 804 idx -> 286 / 720, the 4->2 vertices per point and 18->6 indices per segment
+of that path; the per-column profile goes from (0.58,1.00,0.13) to (0.83,1.00,0.38),
+i.e. a full-pixel opaque core; ink per column 1.71 -> 2.21, constant to three decimals
+over 41 columns. So "the graph is jagged" is NOT multisampling (measured separately:
+the curve row is pixel-identical with the widget's 4x MSAA on and off) and NOT the
+fringe scale (setting `_FringeScale` to the stroke width measured a 0.85 peak with no
+opaque core - softer, not sharper). It is that one fractional number. A 1px LINE has
+the same trap from the other end: ImGui's non-AA path is half-open, so the playhead
+lost its first row until it was drawn from `top()-0.5` to `bottom()+0.5`.
+
+**The panel's top must know what floats over the viewport.** The project tab bar is
+drawn ON TOP of the viewport's first ~20 logical pixels, and a fullscreen panel draws
+underneath it: the ruler numbers landed behind the tabs, which reads exactly like "the
+X axis numbers are clipped at the top" while the label box itself is perfectly
+correct - so the fix is not in the label layout. `MainDisplayWidget::paintEvent` now
+hands the overlay `setTopInset()` on every frame (the tab bar's bottom edge in the
+widget's own coordinates, in LOGICAL pixels, clamped to 0 when the bar sits above the
+widget rather than over it), and the model moves only the ruler band - the ticks, the
+frame numbers and any value label that would fall under it. It moves NOT the plot, the
+curves, the keys or the hit-test geometry: those are the editor's own rect
+(`GraphEditor::panelRect`), and drawing them anywhere else would put the key a user
+sees a tab bar's height away from the key a press grabs.
+
+**The key menu's style is derived from the application palette, not hand-set**:
+`theme::Graph` carries the menu tokens (body, edge, text, textDisabled, hover,
+hoverText, separator, radii 8/4, paddings) taken from the app's own QMenu decisions in
+`AppStyle`; `gui::applyPanelStyle` copies them into `ImGuiStyle`, and `paint()`
+re-applies them from `theme::Colors::current()` before every NewFrame - so a runtime
+accent or light/dark change tracks with no signal and no cache (pinned by re-deriving
+the style from a second palette). The rounded hover pill is drawn by hand, because
+ImGui's Selectable fill is a square with no rounding knob. Not expressible, and
+approximated: Qt's font-relative paddings, item-pill rounding on ImGui's own nav
+cursor, and the app's 8px separator inset.
+
 ## Where the existing GUI tooling lives
 
 Extend these instead of writing new one-off scripts:

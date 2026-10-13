@@ -90,9 +90,37 @@ void drawPanel(
 // exposed so a pixel gate can assert the no-room rule on the geometry itself.
 QRect legendLabelRect(const PanelLegendRow& aRow, ImFont* aFont, float aFontSize);
 
+// Derives the ImGui style the panel's one POPUP is drawn with - the key context
+// menu (drawKeyContextMenu) - from the panel's theme tokens, and applies it to the
+// current ImGui context's style. This is the ONE place where the application's
+// palette meets ImGuiStyle:
+//
+//   * the surface, its 1px edge and its radius are theme::Graph::menuBody/Edge/
+//     Rounding, i.e. the same rounded floater gui::AppStyle draws a QMenu as;
+//   * the text, the disabled text, the row's hover pill, the text on that pill and
+//     the separator line are the app's own menu tokens;
+//   * the font is NOT set here: the popup draws with the context's current font,
+//     which is the atlas built from the WIDGET's font through gui::imgui_qt
+//     (ImGuiOverlay::init), i.e. the face and size the application's own menus use.
+//
+// It is a pure function of the theme, so the caller applies it again whenever the
+// palette could have changed: ImGuiOverlay::paint calls it once per frame from
+// theme::Graph::from(theme::Colors::current()), which is what makes a runtime accent
+// or light/dark change reach the popup with no signal and no cached copy (the frame
+// already re-derives the panel's colours the same way). tests/graph_panel_pixels.cpp
+// pins the mapping itself.
+//
+// WHAT IT CANNOT EXPRESS, and what is approximated: ImGui's Selectable highlight is
+// a square rect (no rounding knob), so the item pill is drawn by the menu itself and
+// the style's three Header colours are switched off - except the nav cursor, which
+// ImGui draws around the keyboard-focused entry and which is therefore the one square
+// highlight left; and Qt's font-relative menu paddings (0.3em panel, 0.23em/1.3em
+// item) have no ImGui equivalent, so the popup uses its own fixed paddings
+// (theme::Graph::menuPadX/menuPadY/menuItemPadX).
+void applyPanelStyle(const theme::Graph& aTheme);
+
 // Whether drawPanel draws the LABEL HALO: the same glyphs 16 more times, at the
 // eight compass offsets of radius 1 and radius 2, in theme::Graph::halo().
-//
 // SHIPPED OFF. The halo is unconditional - it prints an opaque panel-toned smear
 // around every label, including the labels sitting on artwork that never needed
 // one - and it costs 17 glyph passes for a single line of text. The contrast
@@ -248,6 +276,23 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 //     readable over arbitrary artwork, at the cost of an opaque panel-toned ring
 //     around every label - including over artwork that needed none - which is what
 //     the outline pass replaced. The code is kept so the two can be compared.
+//   * curve stroke. kCurveWidth (2.0) with ImGui's antialiasing on - the width is a
+//     whole number ON PURPOSE, because that is what puts the stroke on ImGui's
+//     texture-AA path (one quad strip, 2 vertices per point) instead of its
+//     per-segment geometry path (4 per point), and a stroke's opaque core is only
+//     width-1 px wide on that path: 1.5px left a 0.5px core under a 1px ramp, the
+//     least opaque stroke ImGui can draw. See the constant's own comment.
+//   * key markers. A key square is FILLED WITH ITS CHANNEL'S COLOUR
+//     (PanelCurve::color == theme::Graph::keyColor(channel.type()), the colour its
+//     curve is stroked in and its legend swatch filled with) inside
+//     theme::Graph::keyEdge() - a floor-toned ring, which is what keeps a key
+//     visible on top of the curve that carries it. The editor's selection turns both
+//     into theme::Graph::selected().
+//   * the box-select marquee. PanelCurve... see GraphPanelModel::marquee: a rounded
+//     (6px) body in theme::Graph::marqueeFill() under a 1px theme::Graph::marqueeEdge()
+//     edge - the timeline's own box-select colours (ctrl/time/time_Renderer.cpp), so
+//     the gesture reads the same in both views. ImGui's draw list has no dashed
+//     stroke, so the edge is solid where the timeline's is dashed.
 //   * emphasis. While a focus exists, the focused channel's curve and its key
 //     squares are drawn at full colour and every other curve at 45% alpha
 //     (kUnfocusedAlpha). With no focus every curve is full.
@@ -364,6 +409,17 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 // without touching the document, the arrows move the highlight, Enter activates the
 // highlighted entry, and no key of that sequence reaches the application.
 //
+// THE POPUP'S APPEARANCE IS THE APPLICATION'S OWN CONTEXT MENU'S, and it is derived
+// rather than written: gui::applyPanelStyle copies the menu tokens
+// (theme::Graph::menuBody/menuEdge/menuText/menuTextDisabled/menuHover/menuHoverText/
+// menuSeparator and the radii and paddings beside them) into ImGui's style, and paint()
+// re-applies it every frame from theme::Colors::current(), so a runtime accent or
+// light/dark change reaches the popup with no signal. Qt's font-relative menu paddings
+// (0.3em panel, 0.23em/1.3em item) have no ImGui equivalent and the popup's own
+// paddings are used instead; ImGui's item highlight cannot be rounded, so the menu
+// draws the app's 4px pill itself and only its KEYBOARD highlight (the nav cursor) is
+// left as ImGui's square rect. Both are stated at applyPanelStyle.
+//
 // The popup's geometry is fixed rather than ImGui's default, and that is a
 // contract this class keeps with its callers: zero ItemSpacing, a compact row
 // height, and one row per entry, so the row under a given pixel is a function of
@@ -411,6 +467,18 @@ public:
     void focus(bool aFocused);
     void dprChanged(qreal aDpr);
 
+    // HOW MUCH OF THE VIEWPORT'S TOP ANOTHER WIDGET COVERS, in LOGICAL pixels: 0 when
+    // nothing floats over the panel (the caller's own state, so it is set every frame
+    // it can change - the project tab bar's visibility and height change without a
+    // resize). The panel's own ink is what the inset moves: the ruler band (the tick
+    // marks and the frame numbers, and a value label whose row would fall under it)
+    // starts below it, so nothing of the panel is lost under the widget. What it does
+    // NOT move is the panel's INTERACTIVE geometry - the plot, the curves, the keys,
+    // the handles, the playhead and the marquee stay exactly where ctrl::GraphEditor
+    // hit-tests them - because the drawn control has to be the clickable control; see
+    // THE OCCLUDED TOP in GraphPanelModel.h, which is where the split is stated.
+    void setTopInset(int aLogicalPixels);
+
     // The widget's inputMethodQuery() override forwards here; see
     // ImGuiInputBridge::inputMethodQuery for what Qt asks and why.
     QVariant inputMethodQuery(Qt::InputMethodQuery aQuery) const;
@@ -445,13 +513,19 @@ private:
     // was just drawn, which is the panel's rule for every other control too (see
     // the class comment for what it opens on, what it offers and why its layout
     // is fixed).
-    void drawKeyContextMenu(ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel);
+    void drawKeyContextMenu(
+        ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel, const theme::Graph& aTheme
+    );
     // Runs the action an accessible item advertises, i.e. the one the pointer
     // performs on the same control.
     void onAccessibilityAction(int aId);
     // Asks the widget for a repaint. The widget asks itself after its own
     // interaction; this is for the paths that fire outside an event handler.
     void requestRepaint();
+    // The inset setTopInset() recorded, in the currency the model takes (logical
+    // pixels). Read per frame, so a setter call between frames is picked up by the
+    // next one.
+    int topInset() const;
 
     struct State;
     QScopedPointer<State> mState;
