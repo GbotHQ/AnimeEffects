@@ -465,6 +465,16 @@ source "$SCRIPT_DIR/_lib.sh" "$@"
 
 rm -f /tmp/probe_graph_overlay_geom.txt
 
+# SCRATCH ON THE REPOSITORY FILESYSTEM, NOT THE QUOTA-ED tmpfs. /tmp on this machine is
+# a tmpfs with a 19 GB per-user quota, and this probe's own runs have filled it: a 20 GB
+# /tmp produced "Disk quota exceeded" mid-run (measured 2026-10-14), which is a failure
+# of the filesystem, not of the panel, and it surfaces as a mysteriously dead run.
+# Everything that honours TMPDIR - ImageMagick above all, which this probe calls for
+# every pixel comparison - now writes beside the repository, and the directory goes away
+# with the script.
+export TMPDIR="$(mktemp -d "$AE_PROBE_DIR/build/tmp-probe-XXXXXX")"
+trap 'rm -rf "$TMPDIR"' EXIT
+
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   cd "$AE_PROBE_DIR"
   "$APP" "$PROJ" >/tmp/probe_graph_overlay.log 2>&1 &
