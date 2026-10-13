@@ -181,6 +181,10 @@ std::string hex(const QColor& aColor) { return aColor.name(QColor::HexRgb).toStd
 constexpr int kViewW = 400;
 constexpr int kViewH = 320;
 
+// The id the popup assertion opens: its own, so it cannot collide with the panel's key
+// menu (which this file never opens - it has no editor).
+const char* kGatePopupId = "##gate_panel_style_popup";
+
 const QRect kPanel(0, 0, 400, 300);
 const QRect kPlot(90, 30, 290, 240);        // x 90..379, y 30..269
 const QRect kValueColumn(6, 30, 78, 240);   // x 6..83, clear of the plot
@@ -1870,6 +1874,128 @@ bool checkHandleFocus(
     return true;
 }
 
+// 22: THE POPUP ITSELF PAINTS. The style above is only the popup's appearance; this
+// drives one, in the SAME order the key menu does (OpenPopup, SetNextWindowPos,
+// PushStyleVar(WindowPadding/ItemSpacing), BeginPopup, one Selectable per row,
+// EndPopup), with gui::applyPanelStyle applied first - so a style value, a flag or a
+// position that made the popup invisible would fail here, in one frame, instead of in
+// the application. The rows are the gate's own (the menu's layout and its behaviour are
+// the application-level probe's business); what is pinned is that a popup opened
+// through the panel's style paints its body in theme::Graph::menuBody() and its rows.
+struct PopupRendered {
+    QImage image;
+    int vtx = 0;
+    int idx = 0;
+};
+
+PopupRendered renderSyntheticPopup(const theme::Graph& aTheme, bool aWithPopup, bool aOpenIt) {
+    auto& funcs = gl::Global::functions();
+    gFbo->bind();
+    funcs.glDisable(GL_SCISSOR_TEST);
+    funcs.glScissor(0, 0, kViewW, kViewH);
+    funcs.glViewport(0, 0, kViewW, kViewH);
+    funcs.glClearColor(kClear.redF(), kClear.greenF(), kClear.blueF(), 1.0f);
+    funcs.glClear(GL_COLOR_BUFFER_BIT);
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(float(kViewW), float(kViewH));
+    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX); // no hover: the body and the rows are what is read
+
+    gui::applyPanelStyle(aTheme);
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui::NewFrame();
+
+    if (aWithPopup) {
+        // The menu's own two-frame shape: the popup is OPENED on one frame and drawn on
+        // the next (a popup window is auto-resized from its content, which ImGui can
+        // only do once the content has been measured - so a first frame legitimately
+        // paints nothing, and the overlay's own requestRepaint() is what buys the
+        // second one in the application). aOpenIt is false on the second frame.
+        if (aOpenIt) {
+            ImGui::OpenPopup(kGatePopupId);
+        }
+        ImGui::SetNextWindowPos(ImVec2(150.0f, 80.0f), ImGuiCond_Always);
+        // The menu's own layout contract, from the theme (see applyPanelStyle).
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(aTheme.menuPadX(), aTheme.menuPadY()));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+        if (ImGui::BeginPopup(kGatePopupId)) {
+            for (int row = 0; row < 3; ++row) {
+                ImGui::Selectable(row == 0 ? "Linear" : (row == 1 ? "Sine" : "Delete key"), false,
+                                  ImGuiSelectableFlags_None, ImVec2(120.0f, 18.0f));
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopStyleVar(2);
+    }
+
+    ImGui::Render();
+    ImDrawData* drawData = ImGui::GetDrawData();
+    PopupRendered out;
+    out.vtx = drawData->TotalVtxCount;
+    out.idx = drawData->TotalIdxCount;
+    ImGui_ImplOpenGL3_RenderDrawData(drawData);
+    out.image = readFboTopDown();
+    gFbo->release();
+    std::printf("MEASURED popup_pass with_popup=%d vtx=%d idx=%d\n", int(aWithPopup), out.vtx, out.idx);
+    return out;
+}
+
+bool checkPopupPaints(const theme::Graph& aTheme) {
+    // Two frames per case: the popup is opened on the first and drawn on the second
+    // (see renderSyntheticPopup); the control runs the same two frames with no popup.
+    const PopupRendered controlOpen = renderSyntheticPopup(aTheme, false, false);
+    const PopupRendered control = renderSyntheticPopup(aTheme, false, false);
+    const PopupRendered shownOpen = renderSyntheticPopup(aTheme, true, true);
+    const PopupRendered shown = renderSyntheticPopup(aTheme, true, false);
+    (void)controlOpen;
+    (void)shownOpen;
+
+    const int controlInk = inkCount(control.image, QRect(0, 0, kViewW, kViewH));
+    std::printf("MEASURED popup_control ink_pixels=%d of %d vtx=%d\n", controlInk, kViewW * kViewH, control.vtx);
+    REQUIRE(controlInk == 0 && control.vtx == 0, "the popup control frame painted something: %d pixels, %d vertices",
+            controlInk, control.vtx);
+
+    // A generous box around the anchor: the popup's own size follows its rows (there is
+    // no title bar and no autosize floor), so the assertion is "it painted here", not
+    // "its rectangle is exactly this".
+    const QRect where(140, 70, 200, 80);
+    const int ink = inkCount(shown.image, where);
+    const QPoint body(160, 92);
+    const QColor bodyPixel = pixelAt(shown.image, body.x(), body.y());
+    std::printf(
+        "MEASURED popup_painted anchor=(150,80) box=(%d,%d %dx%d) ink_pixels=%d body=(%d,%d) rgb=%s menuBody=%s"
+        " d=%d vtx=%d\n",
+        where.left(), where.top(), where.width(), where.height(), ink, body.x(), body.y(), hex(bodyPixel).c_str(),
+        hex(aTheme.menuBody()).c_str(), colourDistance(bodyPixel, aTheme.menuBody()), shown.vtx
+    );
+    REQUIRE(ink > 200, "the popup painted %d pixels in its own box: a popup opened through the panel's style is"
+                       " not being drawn", ink);
+    REQUIRE(
+        colourDistance(bodyPixel, aTheme.menuBody()) <= kFillTol,
+        "the popup's body rgb=%s is not theme::Graph::menuBody() rgb=%s (distance %d > %d): the style is not what"
+        " the popup is drawn with",
+        hex(bodyPixel).c_str(), hex(aTheme.menuBody()).c_str(), colourDistance(bodyPixel, aTheme.menuBody()), kFillTol
+    );
+    // ...and the rows' text is on it (the ink inside the body is the labels, not the fill
+    // alone): the popup's own box, less the body's uniform fill.
+    int textInk = 0;
+    for (int y = where.top(); y <= where.bottom(); ++y) {
+        for (int x = where.left(); x <= where.right(); ++x) {
+            const QColor c = pixelAt(shown.image, x, y);
+            if (clearDistance(c) > kInkMin && colourDistance(c, aTheme.menuBody()) > kFillTol) {
+                ++textInk;
+            }
+        }
+    }
+    std::printf("MEASURED popup_text ink_pixels=%d outside the body fill\n", textInk);
+    REQUIRE(textInk > 20, "the popup painted no rows on its body: %d pixels differ from theme::Graph::menuBody()",
+            textInk);
+    return true;
+}
+
 //-------------------------------------------------------------------------------------------------
 // THE CONTRAST OUTLINE AND COMPOSITE PASS (gui::outline, src/gui/ImGuiOverlay.cpp).
 //
@@ -2666,6 +2792,10 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the panel's ImGui style\n");
         return 1;
     }
+    if (!checkPopupPaints(palette)) {
+        std::printf("FAILED: a popup opened through the panel's style\n");
+        return 1;
+    }
     if (!checkOutlineRing(outlineHarness)) {
         std::printf("FAILED: contrast outline ring\n");
         return 1;
@@ -2690,6 +2820,6 @@ int main(int argc, char** argv) {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
 
-    std::printf("OK: the graph panel's pixel contract holds (21 assertions, 10 panel passes + 5 outline passes)\n");
+    std::printf("OK: the graph panel's pixel contract holds (22 assertions, 10 panel passes + 2 popup frames + 5 outline passes)\n");
     return 0;
 }

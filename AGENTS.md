@@ -691,6 +691,21 @@ ImGui's Selectable fill is a square with no rounding knob. Not expressible, and
 approximated: Qt's font-relative paddings, item-pill rounding on ImGui's own nav
 cursor, and the app's 8px separator inset.
 
+**A themed popup changes FEWER pixels than a default-styled one, so a fraction cannot
+be the test** (measured 2026-10-13). The probe's menu search judged a candidate point
+by requiring 60% of the popup's expected rectangle to change. That held while the
+popup was ImGui's default panel against artwork - and it rejected every candidate on
+the first run after the popup's body became the application's own surface colour
+(`theme::Graph::menuBody()` through `gui::applyPanelStyle`): the real menu changes
+17165 px = 58.6%, so a probe failed while the product was working perfectly. The
+replacement is a SHAPE rule - bigger than 60x60, inside the viewport, at least 3000
+pixels changed - shared by the scan and the anchor search. The general form: when a
+pixel test's bar is a fraction of something the THEME controls, the theme can move the
+bar out from under it. (The same run also corrected a wrong attribution I had made
+from a single state: the key really was at the fit centre in the probe's flow, because
+the phase activates the published "Fit graph" action first - so a measurement taken in
+one state is not a measurement of the gate's state.)
+
 ## Where the existing GUI tooling lives
 
 Extend these instead of writing new one-off scripts:
