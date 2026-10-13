@@ -41,6 +41,19 @@ public:
     // stored integer, because that is what playback blends into.
     float value(const core::TimeKey& aKey) const;
 
+    // Writes aValue back into the one component this channel names, on the
+    // key's OWN Data (so every component the graph does not draw is carried
+    // through), through the same setter the timeline's own value edits use - so
+    // the key type's own clamp still applies. The exact inverse of value(): a
+    // write followed by a read answers aValue for every component except HSV's,
+    // which stores an int and answers its truncation. False for a hand-made
+    // channel naming no real component, which then writes nothing.
+    //
+    // This is the graph's one value WRITE, next to its one value READ above:
+    // both switches live in this file, so a component can never be read and
+    // written through different fields.
+    bool writeValue(core::TimeKey& aKey, float aValue) const;
+
     // True when playback interpolates between this channel's keys. False for a
     // step-held channel (the image offset): the graph draws those as steps,
     // because a curve there would not be what plays.

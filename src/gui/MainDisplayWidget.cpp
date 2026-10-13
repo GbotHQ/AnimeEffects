@@ -46,6 +46,21 @@ ctrl::GraphEditor* graphEditorOrNull(ctrl::Driver* aDriver) {
 }
 #endif
 
+namespace {
+// Whether the animation graph panel is UP. Independent of the ImGui build flag:
+// the editor exists either way, and ctrl::GraphEditor::setVisible is the state the
+// Driver's cursor routing reads, so this is the same answer the graph itself gives.
+//
+// What it decides is the MIDDLE button: while the panel is up the middle drag pans
+// the panel's window, so this widget must NOT also hand it to ctrl::CanvasMover -
+// the graph's own cursor path (ctrl::GraphEditor::updateCursor) is what pans, and
+// two owners of one drag would move two cameras at once.
+bool graphPanelShown(ctrl::Driver* aDriver) {
+    ctrl::GraphEditor* editor = aDriver ? aDriver->graphEditor() : nullptr;
+    return editor && editor->isVisible();
+}
+}
+
 //-------------------------------------------------------------------------------------------------
 MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     QOpenGLWidget(aParent),
@@ -491,6 +506,14 @@ void MainDisplayWidget::mouseMoveEvent(QMouseEvent* aEvent) {
         gImGuiOverlay->mouseMove(*aEvent);
 #endif
     if (mRenderInfo) {
+        // The panel's own gestures read the modifier state from here: neither
+        // core::AbstractCursor nor the editor's updateCursor carries modifiers, so
+        // the widget hands them over before it routes the event (see
+        // ctrl::Driver::setGraphModifiers). Every move re-reads them, which is what
+        // lets Shift constrain a key drag that is already in flight.
+        if (mDriver) {
+            mDriver->setGraphModifiers(aEvent->modifiers());
+        }
         if (mAbstractCursor.setMouseMove(aEvent, mRenderInfo->camera)) {
             updateCursor();
             // if (!mUsingTablet) qDebug() << "move" << aEvent->pos();
@@ -530,11 +553,20 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
     }
 #endif
     if (mRenderInfo) {
+        if (mDriver) {
+            mDriver->setGraphModifiers(aEvent->modifiers());
+        }
         if (mAbstractCursor.setMousePress(aEvent, mRenderInfo->camera)) {
             updateCursor();
             // if (!mUsingTablet) qDebug() << "press";
 
-            if (mViaPoint.mouseSetting().middleMouseMoveCanvas && aEvent->button() == Qt::MouseButton::MiddleButton) {
+            // The MIDDLE drag belongs to the animation graph panel while the panel
+            // is up: the graph pans its own window (ctrl::GraphEditor::updateCursor
+            // handles the middle button through the cursor this press just fed),
+            // and this widget must not also start moving the canvas camera - two
+            // owners of one drag would move two views at once.
+            if (mViaPoint.mouseSetting().middleMouseMoveCanvas &&
+                aEvent->button() == Qt::MouseButton::MiddleButton && !graphPanelShown(mDriver)) {
                 mMovingCanvasByMiddleMouseButton = true;
                 mCanvasMover.setDragAndMove(
                     mMovingCanvasByKey || mMovingCanvasByTool || mMovingCanvasByMiddleMouseButton
@@ -561,11 +593,17 @@ void MainDisplayWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
         gImGuiOverlay->mouseButton(*aEvent);
 #endif
     if (mRenderInfo) {
+        if (mDriver) {
+            mDriver->setGraphModifiers(aEvent->modifiers());
+        }
         if (mAbstractCursor.setMouseRelease(aEvent, mRenderInfo->camera)) {
             updateCursor();
             // if (!mUsingTablet) qDebug() << "release";
 
             if (aEvent->button() == Qt::MouseButton::MiddleButton) {
+                // A canvas middle pan this widget began ends here; a middle drag
+                // the GRAPH took never set this flag (see mousePressEvent), so this
+                // is a no-op for it and its own endPan() runs on the cursor path.
                 mMovingCanvasByMiddleMouseButton = false;
                 mCanvasMover.setDragAndMove(
                     mMovingCanvasByKey || mMovingCanvasByTool || mMovingCanvasByMiddleMouseButton
@@ -587,24 +625,28 @@ void MainDisplayWidget::wheelEvent(QWheelEvent* aEvent) {
         gImGuiOverlay->wheel(*aEvent);
 #endif
     // the graph owns the wheel while the cursor is over its HUD
-    if (mDriver && mRenderInfo &&
-        mDriver->updateGraphWheel(
-            mRenderInfo->camera, aEvent->position().toPoint(), aEvent->angleDelta().y(),
-            (aEvent->modifiers() & Qt::ShiftModifier) != 0
-        )) {
-        // The graph took the wheel, so its zoom changed - a PANEL state, not a canvas
-        // one, which is why the graph reports the take instead of letting the viewport
-        // scale the artwork. Nothing below this return runs for that case, and the
-        // panel is drawn in paintEvent, so without a request here the widget has no
-        // reason to paint: the new frames-per-pixel would stay invisible until
-        // something unrelated asked for a frame.
-        //
-        // This is the same request the cursor path makes: updateCursor(), below, calls
-        // updateRender() when the Driver answers that the graph needs a repaint. The
-        // canvas wheel below paints itself for the same reason, through the
-        // CanvasMover's own true.
-        updateRender();
-        return;
+    if (mDriver && mRenderInfo) {
+        // The modifier state goes with it: the wheel zooms BOTH axes by default
+        // and one axis under Shift (the frame) or Ctrl (the value), so the graph
+        // needs the same modifiers the cursor path gets.
+        mDriver->setGraphModifiers(aEvent->modifiers());
+        if (mDriver->updateGraphWheel(
+                mRenderInfo->camera, aEvent->position().toPoint(), aEvent->angleDelta().y(), aEvent->modifiers()
+            )) {
+            // The graph took the wheel, so its zoom changed - a PANEL state, not a canvas
+            // one, which is why the graph reports the take instead of letting the viewport
+            // scale the artwork. Nothing below this return runs for that case, and the
+            // panel is drawn in paintEvent, so without a request here the widget has no
+            // reason to paint: the new frames-per-pixel would stay invisible until
+            // something unrelated asked for a frame.
+            //
+            // This is the same request the cursor path makes: updateCursor(), below, calls
+            // updateRender() when the Driver answers that the graph needs a repaint. The
+            // canvas wheel below paints itself for the same reason, through the
+            // CanvasMover's own true.
+            updateRender();
+            return;
+        }
     }
 
     if (mCanvasMover.updateByWheel(
@@ -623,6 +665,9 @@ void MainDisplayWidget::tabletEvent(QTabletEvent* aEvent) {
         gImGuiOverlay->tablet(*aEvent);
 #endif
     if (mRenderInfo) {
+        if (mDriver) {
+            mDriver->setGraphModifiers(aEvent->modifiers());
+        }
         if (mAbstractCursor.setTabletEvent(aEvent, mRenderInfo->camera)) {
             updateCursor();
         }

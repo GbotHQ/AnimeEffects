@@ -212,11 +212,17 @@ void Driver::setGraphTargets(const QVector<core::ObjectNode*>& aTargets) {
     mGraphEditor->setTargets(aTargets);
 }
 
-bool Driver::updateGraphWheel(const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, bool aZoomValue) {
+void Driver::setGraphModifiers(Qt::KeyboardModifiers aModifiers) {
+    mGraphEditor->setModifiers(aModifiers);
+}
+
+bool Driver::updateGraphWheel(
+    const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+) {
     // A hidden graph never swallows the wheel: reporting true here would stop
     // the viewport from zooming the canvas while nothing on screen reacted.
     if (mGraphEditor->isVisible()) {
-        return mGraphEditor->updateWheel(aCamera, aPos, aWheelDelta, aZoomValue);
+        return mGraphEditor->updateWheel(aCamera, aPos, aWheelDelta, aModifiers);
     }
 
     return false;

@@ -22,45 +22,60 @@
 // uses, and no formula is re-stated here that the implementation could then
 // change underneath it.
 //
-// The panel is FULLSCREEN, so it does not own the cursor by rectangle: it owns
-// it only when the pointer is on something it can act on (a key or a tangent
-// handle), or while a drag is in flight. Both halves are pinned below: a press
-// on empty space inside the viewport is nobody's edit, and an in-flight drag
-// keeps the cursor even at a point with no item under it (which is also what
-// proves the grab below is a real one rather than a press that missed).
+// The panel is FULLSCREEN, so it does not own the whole viewport: ownership is
+// narrowed to the PLOT rect - the data area the curves are drawn in - for a
+// CTRL-PRESS (the insert on a curve's band, the marquee off every band) and for
+// the MIDDLE button (a pan), plus the point under a key or handle wherever it is, plus
+// every point while a gesture is in flight. Both halves are pinned below: a press
+// outside the plot and a plain HOVER inside it are nobody's edit, and an in-flight
+// drag keeps the cursor even at a point with no item under it (which is also what
+// proves the grab in section 4 is a real one rather than a press that missed).
 //
 // The value axis is pinned here too, because the drag pixels would otherwise
 // hide the defect: the window has to be FITTED to the shown curves on the paths
 // the application uses - the panel is toggled on and the layer selected with no
 // cursor event ever reaching the panel - or a channel whose values are 0..90
-// draws its whole curve and its keys outside the plot, an empty panel. The fit
-// is keyed to the SET of shown (layer, channel) pairs (and narrowed to the
-// STICKY-FOCUSED channel when there is one), so the other half is pinned as
-// well: a manual window (the wheel's own path) survives any number of cursor
-// passes, and only a change of shown curves refits. (The paint path is no longer
-// a writer here at all: GraphEditor::renderQt was deleted with the ImGui
-// cutover and the panel is drawn from gui::GraphPanelModel, whose own gate pins
-// that building it writes nothing back.)
+// draws its whole curve and its keys outside the plot, an empty panel. The fit is
+// keyed to the SET of shown (layer, channel) pairs and to nothing else: a manual
+// window (the wheel's own path) survives any number of cursor passes, only a
+// change of shown curves refits, and the STICKY FOCUS does NOT refit at all - a
+// click that zoomed the view was the reported defect (section 14). (The paint
+// path is no longer a writer here at all: GraphEditor::renderQt was deleted with
+// the ImGui cutover and the panel is drawn from gui::GraphPanelModel, whose own
+// gate pins that building it writes nothing back.)
 //
-// The panel's three KEY EDITS are pinned the same way, at the end of this file
-// (sections 16-18), on one layer of their own:
+// The panel's SELECTION is pinned at the end of the file too: a plain press
+// replaces the selection with one key, Shift-press extends it, Ctrl-press toggles
+// one key, and a MARQUEE - a Ctrl-press in the plot off every curve's band,
+// dragged and released - replaces it with every key inside the dragged
+// rectangle (adding, under Shift),
+// with the rectangle published live by marqueeRect().
 //
-//   * INSERT: a press on a curve's BAND (a point on no key and no handle, within
-//     GraphEditor::kCurveBandRadius of the value the curve evaluates at the
-//     point's frame) writes the key the curve already passes through - the value
-//     is the curve's own sample there, so no sampled value moves AT THAT FRAME -
-//     and the band is a point the panel OWNS, which is what lets the press reach
-//     the editor at all (the Driver routes by ownsCursor). A press on a key, a
-//     point off the band and a point outside the plot insert nothing and push
-//     nothing.
-//   * MOVE: a press on a KEY arms a move and a horizontal drag changes its FRAME
-//     through the repository's own ctrl::TimeLineUtil::MoveFrameOfKey; the value
-//     and the easing never move, a destination another key owns is refused (and
-//     leaves no entry of its own), and the whole gesture is ONE undo step.
-//   * REMOVE: acts on the key the panel's selection names (the key a press last
-//     hit) through TimeLine::createRemover; ONE undo step, and the undo restores
-//     the SAME key object with its value and easing. With no key selected, or a
-//     selection naming a frame with no key, nothing is pushed.
+// The panel's three KEY EDITS are pinned the same way (sections 16-18), on one
+// layer of their own:
+//
+//   * INSERT: a CTRL-press on a curve's BAND (a point on no key and no handle,
+//     within GraphEditor::kCurveBandRadius of the value the curve evaluates at
+//     the point's frame) writes the key the curve already passes through - the
+//     value is the curve's own sample there, so no sampled value moves AT THAT
+//     FRAME. The modifier decides which of the graph's two plot gestures a press
+//     gets - and keeps the TOOLS alive: with Ctrl held the press is the graph's and
+//     the band chooses between inserting and marqueeing; without Ctrl the press
+//     belongs to the viewport tools, exactly as it did before the marquee existed
+//     (Blender's f-curve editor uses the same Ctrl-click). A Ctrl-press on a key
+//     toggles it in the selection, and a press outside the plot is the tools' as
+//     well - none of them insert and none of them push.
+//   * MOVE: a press on a KEY arms a move and a drag changes BOTH its frame and its
+//     value (Shift pins it to the dominant axis of the gesture), through the
+//     repository's own ctrl::TimeLineUtil::MoveFrameOfKey for the frame and
+//     ctrl::TimeLineUtil::AssignKeyValue for the value, side by side in ONE macro;
+//     the easing never moves, a destination another key owns refuses the whole
+//     step (and leaves no entry of its own), and the whole gesture is ONE undo
+//     step.
+//   * REMOVE: acts on every key the panel's selection names through
+//     TimeLine::createRemover; ONE undo step, and the undo restores the SAME key
+//     objects with their values and easings. With no key selected, or a selection
+//     naming only frames with no key, nothing is pushed.
 //   * EASING (section 19): setSelectedKeysEasing() changes the easing TYPE of
 //     every key the selection names, on the timeline's own route - the command,
 //     the notifier and the event the timeline's "Change key(s) easing to" action
@@ -68,7 +83,12 @@
 //     playback never reads (the step-held image offset) and a request for the
 //     type the key already has all push NOTHING.
 //
-// Every one of the three goes through the same TimeLineUtil notifier +
+// The WHEEL is pinned in section 0b: it zooms BOTH axes about the cursor, and
+// Shift narrows it to the frame axis while Ctrl narrows it to the value axis. The
+// MIDDLE button is pinned in section 21: while the panel is up it pans the graph's
+// window (both axes, a pure pixel offset), never the canvas camera.
+//
+// Every one of the edits goes through the same TimeLineUtil notifier +
 // ScopedMacro route the handle drag uses, so undo/redo and the timeline's event
 // currency are the same for all of them - which is what the stack probes below
 // measure: after each gesture, the FIRST undo must be that gesture.
@@ -108,6 +128,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
+#include <initializer_list>
 
 #include "XCAssert.h"
 #include "cmnd/Stack.h"
@@ -214,12 +236,18 @@ QPoint currentHandlePixel(ctrl::GraphEditor& aEditor, core::ObjectNode& aNode, i
 // cursor consumes the QMouseEvent, then the editor is handed that cursor. The
 // return is updateCursor's own answer - true when the graph wants a repaint,
 // which is the same as "the panel took this event".
+//
+// Every helper takes the modifier state as an argument and feeds it to the editor
+// BEFORE the cursor, the way the widget does (core::AbstractCursor carries no
+// modifiers, so the panel reads them from ctrl::GraphEditor::setModifiers). The
+// default is "no modifier", which is what the plain gestures use.
 bool sendPress(
     ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor,
-    const QPoint& aPos
+    const QPoint& aPos, Qt::KeyboardModifiers aModifiers = Qt::NoModifier
 ) {
+    aEditor.setModifiers(aModifiers);
     QMouseEvent event(
-        QEvent::MouseButtonPress, aPos, aPos, aPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+        QEvent::MouseButtonPress, aPos, aPos, aPos, Qt::LeftButton, Qt::LeftButton, aModifiers
     );
     if (!aCursor.setMousePress(&event, aCamera))
         return false;
@@ -228,9 +256,10 @@ bool sendPress(
 
 bool sendMove(
     ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor,
-    const QPoint& aPos
+    const QPoint& aPos, Qt::KeyboardModifiers aModifiers = Qt::NoModifier
 ) {
-    QMouseEvent event(QEvent::MouseMove, aPos, aPos, aPos, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    aEditor.setModifiers(aModifiers);
+    QMouseEvent event(QEvent::MouseMove, aPos, aPos, aPos, Qt::NoButton, Qt::LeftButton, aModifiers);
     if (!aCursor.setMouseMove(&event, aCamera))
         return false;
     return aEditor.updateCursor(aCamera, aCursor);
@@ -238,9 +267,43 @@ bool sendMove(
 
 bool sendRelease(
     ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor,
-    const QPoint& aPos
+    const QPoint& aPos, Qt::KeyboardModifiers aModifiers = Qt::NoModifier
 ) {
-    QMouseEvent event(QEvent::MouseButtonRelease, aPos, aPos, aPos, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    aEditor.setModifiers(aModifiers);
+    QMouseEvent event(QEvent::MouseButtonRelease, aPos, aPos, aPos, Qt::LeftButton, Qt::NoButton, aModifiers);
+    if (!aCursor.setMouseRelease(&event, aCamera))
+        return false;
+    return aEditor.updateCursor(aCamera, aCursor);
+}
+
+// The MIDDLE button, through the same three steps: the panel's own pan gesture
+// (GraphEditor::updateCursor's middle branch), which is why a middle drag must be
+// delivered with the button held - core::AbstractCursor::isPressedMiddle is what
+// says the drag is one.
+bool sendMiddlePress(
+    ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor, const QPoint& aPos
+) {
+    QMouseEvent event(
+        QEvent::MouseButtonPress, aPos, aPos, aPos, Qt::MiddleButton, Qt::MiddleButton, Qt::NoModifier
+    );
+    if (!aCursor.setMousePress(&event, aCamera))
+        return false;
+    return aEditor.updateCursor(aCamera, aCursor);
+}
+
+bool sendMiddleMove(
+    ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor, const QPoint& aPos
+) {
+    QMouseEvent event(QEvent::MouseMove, aPos, aPos, aPos, Qt::NoButton, Qt::MiddleButton, Qt::NoModifier);
+    if (!aCursor.setMouseMove(&event, aCamera))
+        return false;
+    return aEditor.updateCursor(aCamera, aCursor);
+}
+
+bool sendMiddleRelease(
+    ctrl::GraphEditor& aEditor, const core::CameraInfo& aCamera, core::AbstractCursor& aCursor, const QPoint& aPos
+) {
+    QMouseEvent event(QEvent::MouseButtonRelease, aPos, aPos, aPos, Qt::MiddleButton, Qt::NoButton, Qt::NoModifier);
     if (!aCursor.setMouseRelease(&event, aCamera))
         return false;
     return aEditor.updateCursor(aCamera, aCursor);
@@ -392,9 +455,10 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().valueMax() == 5.0f);
 
     const QPoint kProbe(5, 5);
-    // The fullscreen panel covers the whole viewport, so this point is INSIDE
-    // its rect - and still not the panel's: with hit-only ownership a point that
-    // is on no key and no handle is passed through to the viewport tools.
+    // The fullscreen panel covers the whole viewport, so this point is INSIDE its
+    // rect - and still not the panel's: it is OUTSIDE the plot (the label column
+    // and the margin are not data), and ownership is plot-based for presses. A
+    // hover there is nobody's, and a press there passes through to the tools.
     CHECK(panel.contains(kProbe));
     core::AbstractCursor probe;
     sendMove(editor, camera, probe, kProbe);
@@ -404,12 +468,70 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().valueMin() == -5.0f);
     CHECK(editor.scale().valueMax() == 5.0f);
 
-    // The wheel's path too, since that is where a user really moves the window:
-    // one notch of VALUE zoom over the panel, then the same cursor pass.
-    // Identity is the honest assertion here - nothing is supposed to write the
-    // window, so nothing may round it either.
+    // The wheel's path too, since that is where a user really moves the window.
+    // The PLAIN wheel zooms BOTH axes about the cursor - the reported defect was
+    // that one wheel moved one axis - and the modifier forms narrow it to one:
+    // Shift the frame axis, Ctrl the value axis. Both are asserted on the MAPPING
+    // the two axes produce (pixels between two frames; the value span), because a
+    // zoom that changed the stored numbers without moving the pixels would prove
+    // nothing.
     const QPoint kWheelPoint = panel.center();
-    CHECK(editor.updateWheel(camera, kWheelPoint, 120, true)); // one notch, taken by the panel
+    const int beforeFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const float beforeValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+    CHECK(beforeFrameSpan > 0);
+    CHECK(beforeValueSpan > 0.0f);
+
+    // A NEGATIVE notch (the wheel rotated toward the user) is the zoom IN, and it
+    // is the direction the panel has headroom in: the frame axis' ladder starts at
+    // 2 px/frame, so a zoom-out notch would already be at its floor and prove
+    // nothing.
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::NoModifier)); // one notch: closer
+    const int afterFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const float afterValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+    // The application's own wheel direction (ctrl::CanvasMover and
+    // ctrl::TimeLineEditor both zoom OUT on a positive angleDelta, so a negative
+    // one is the zoom IN) on BOTH axes.
+    CHECK(afterFrameSpan > beforeFrameSpan);   // the FRAME axis zoomed in...
+    CHECK(afterValueSpan < beforeValueSpan);   // ...and so did the VALUE axis
+
+    // Shift: the frame axis alone. The value window must be BIT-identical - not
+    // merely "about the same" - or the modifier is not narrowing anything.
+    const float beforeShiftMin = editor.scale().valueMin();
+    const float beforeShiftMax = editor.scale().valueMax();
+    const int beforeShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier));
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) > beforeShiftSpan);
+    CHECK(editor.scale().valueMin() == beforeShiftMin);
+    CHECK(editor.scale().valueMax() == beforeShiftMax);
+    const int afterShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+
+    // Ctrl: the value axis alone, and the frame axis untouched this time.
+    const int beforeCtrlSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const float beforeCtrlValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier));
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == beforeCtrlSpan);
+    CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeCtrlValueSpan);
+    const float afterCtrlValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+
+    // A notch the OTHER way is the inverse zoom, on the same two axes: the wheel
+    // is symmetric, so a wheel-away notch undoes what a wheel-toward notch did.
+    // (The frame axis is a ladder of integer pixels-per-frame, so "the inverse" is
+    // asserted as "the span shrank", not as "the same number came back".)
+    const int beforeOutFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const float beforeOutValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+    CHECK(editor.updateWheel(camera, kWheelPoint, 120, Qt::NoModifier));
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) < beforeOutFrameSpan);
+    CHECK(editor.scale().valueMax() - editor.scale().valueMin() > beforeOutValueSpan);
+
+    std::printf(
+        "[W] wheel: frame px(0..24) %d -> %d (both axes, one notch)  value span %.4f -> %.4f  "
+        "shift-only frame px(0..24) %d with value span %.4f (unchanged)  ctrl-only value span %.4f -> %.4f\n",
+        beforeFrameSpan, afterFrameSpan, beforeValueSpan, afterValueSpan, afterShiftSpan,
+        beforeShiftMax - beforeShiftMin, beforeCtrlValueSpan, afterCtrlValueSpan
+    );
+
+    // The window the wheel left, against the cursor pass that follows: nothing is
+    // supposed to write it, so nothing may round it either.
     const float wheeledMin = editor.scale().valueMin();
     const float wheeledMax = editor.scale().valueMax();
     CHECK(wheeledMax > wheeledMin); // a notch that moved nothing would prove nothing
@@ -418,6 +540,17 @@ int main(int argc, char** argv) {
     CHECK(!sendRelease(editor, camera, probe, kProbe));
     CHECK(editor.scale().valueMin() == wheeledMin);
     CHECK(editor.scale().valueMax() == wheeledMax);
+
+    // The wheel really moved the FRAME window about the cursor (that is the half
+    // of it that is not about the value axis), and the sections below measure
+    // pixels against it - so it is restored to the shown keys here, explicitly.
+    // Without this the frame origin the three zoom-ins left behind puts the keys
+    // off the left edge of the plot, and every later pixel assertion would be
+    // about a key nobody can see.
+    editor.fitFrameAxis();
+    CHECK(editor.scale().plotRect().contains(
+        QPoint(editor.scale().pixelX(core::Frame(0)), editor.scale().pixelY(0.0f))
+    ));
 
     // --- 0c: a change of the shown curves DOES refit - that is what the fit is
     // for. Dropping the selection and taking the layer back is a new basis even
@@ -686,17 +819,18 @@ int main(int argc, char** argv) {
     CHECK(redoneSecond);
     CHECK(key0->data().easing() == second);
 
-    // --- 9: HIT-ONLY ownership. The panel is fullscreen, so owning "inside the
-    // rect" would be owning everything. It owns a point only when the hit-test
-    // finds an item there, or while a drag is in flight (that half is pinned in
-    // section 4, where a point with no item under it stays the graph's because
-    // the button is down).
+    // --- 9: PLOT-BASED ownership for presses, hit-based otherwise. The panel
+    // covers the whole viewport, so owning "inside the fullscreen rect" would be
+    // owning everything. What it owns is: a CTRL-PRESS inside the PLOT (the insert
+    // on a band, the marquee off one), the point under a key or handle, the middle
+    // button, and everything while a gesture is in flight.
     {
-        // A point inside the viewport (and so inside the fullscreen panel) that
-        // is on no key and no handle: not the graph's.
+        // A plain HOVER inside the plot, on no key and no handle: not the graph's,
+        // so the viewport tools keep their hover feedback.
         core::AbstractCursor hover;
         const QPoint kEmptyInView(700, 550);
         CHECK(panel.contains(kEmptyInView));
+        CHECK(editor.scale().plotRect().contains(kEmptyInView)); // inside the PLOT: a press would be the panel's
         sendMove(editor, camera, hover, kEmptyInView);
         CHECK(!editor.ownsCursor(camera, hover));
 
@@ -705,29 +839,38 @@ int main(int argc, char** argv) {
         const QRect key1Rect = ctrl::graph::keyRect(editor.scale(), core::Frame(24), 90.0f);
         sendMove(editor, camera, hover, key1Rect.center());
         CHECK(editor.ownsCursor(camera, hover));
+
+        // ...and a point OUTSIDE the plot is nobody's even for a press, which is
+        // what keeps the label column and the margins usable by the tools.
+        core::AbstractCursor chrome;
+        const QPoint kChrome(20, 300);
+        CHECK(panel.contains(kChrome));
+        CHECK(!editor.scale().plotRect().contains(kChrome));
+        QMouseEvent chromePress(
+            QEvent::MouseButtonPress, kChrome, kChrome, kChrome, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier
+        );
+        CHECK(chrome.setMousePress(&chromePress, camera));
+        CHECK(!editor.ownsCursor(camera, chrome)); // a press outside the plot is the tools'
     }
 
-    // --- 10: the press routing, and the fit's TIMING. A press that HITS a key
-    // both selects it and focuses its channel; a press on EMPTY space does
-    // NEITHER and is passed through. Flipping the `hitCurve && validItem` routing
-    // would break one half of this either way.
+    // --- 10: the press routing, and the fit that is NOT there. A press that HITS
+    // a key both selects it and focuses its channel; a press on EMPTY plot space
+    // begins a MARQUEE (see section 20) and leaves the focus alone. Flipping the
+    // `hitCurve && validItem` routing would break one half of this either way.
     //
-    // The timing half is the invariant a defect would hide: a press focuses (and
-    // arms a move) BEFORE the gesture is interpreted, so the focus's fit is
-    // PENDING and must not move the geometry under that press - the key's own
-    // rect has to be byte-identical immediately before the press and immediately
-    // before its release.
+    // The window half is the invariant the reported defect was about: focusing a
+    // channel used to REFIT the value axis, so merely clicking a curve zoomed the
+    // view. The focus now moves no window at all, so the hand-set window below is
+    // byte-identical before the press, before its release, and after it.
     {
-        // Start from "no focus" so the press below is a REAL focus change: the
-        // case where an immediate fit would move the key the press just selected.
+        // Start from "no focus" so the press below is a REAL focus change - the
+        // case that used to refit.
         editor.clearFocus();
         core::AbstractCursor settle;
-        sendMove(editor, camera, settle, QPoint(700, 550)); // pays the clearFocus fit
+        sendMove(editor, camera, settle, QPoint(700, 550));
         CHECK(!editor.hasFocus());
 
-        // A hand-set window, so the pending fit is OBSERVABLE: if the press
-        // refitted, the release would be interpreted against the data window
-        // instead of this one.
+        // A hand-set window, so a refit would be impossible to miss.
         editor.scale().setValueWindow(-1000.0f, 1000.0f);
 
         // The key's rect as the user sees it, immediately before the press.
@@ -749,39 +892,51 @@ int main(int argc, char** argv) {
         CHECK(editor.focusedNode() == &node);
         CHECK(editor.focusedChannel() == Channel(core::TimeKeyType_Rotate, 0));
 
-        // The invariant the timing rule buys: the geometry the user pressed on is
-        // UNCHANGED when the release arrives, and the panel still owns that point.
+        // The geometry the user pressed on is UNCHANGED when the release arrives
+        // (no window moved under the pointer), and the panel still owns the point.
         const QRect beforeRelease = ctrl::graph::keyRect(editor.scale(), core::Frame(24), 90.0f);
         CHECK(beforeRelease == beforePress);          // the key did NOT slide under the pointer
         CHECK(editor.ownsCursor(camera, hitCur));     // so the release is still the panel's
         CHECK(sendRelease(editor, camera, hitCur, beforeRelease.center())); // closes the armed move
 
-        // The gesture is over, so the pending fit has landed: the window answers
-        // the channel the press focused, not the window that was hand-set.
-        CHECK(editor.scale().valueMin() > -1000.0f);
-        CHECK(editor.scale().valueMin() <= 0.0f);
-        CHECK(editor.scale().valueMax() >= 90.0f);
-        CHECK(editor.scale().valueMax() < 1000.0f);
+        // NO FIT. The window the user set is still the window - the focus is
+        // emphasis, and a click is not a fit request.
+        CHECK(editor.scale().valueMin() == -1000.0f);
+        CHECK(editor.scale().valueMax() == 1000.0f);
 
-        // Empty space: the cursor is passed through, the press is delivered but
-        // inserts nothing (no curve band out there) and arms nothing - so the
-        // release closes no drag and is NOT consumed - and neither the selection
-        // nor the (sticky) focus changes.
+        // Empty plot space, PLAIN press: the press is the VIEWPORT TOOLS', so the
+        // graph does nothing with it - no marquee, and the selection stands. That
+        // is what the Ctrl gate buys: the tools keep their presses inside the plot
+        // even though the panel covers it.
         const QPoint kEmpty(700, 550);
         core::AbstractCursor emptyCur;
         sendMove(editor, camera, emptyCur, kEmpty);
         CHECK(panel.contains(kEmpty));                 // inside the fullscreen panel...
-        CHECK(!editor.ownsCursor(camera, emptyCur));   // ...but on nothing: passed through
-        CHECK(sendPress(editor, camera, emptyCur, kEmpty));
-        CHECK(!sendRelease(editor, camera, emptyCur, kEmpty)); // armed nothing: closes no drag
+        CHECK(!editor.ownsCursor(camera, emptyCur));   // ...a hover owns nothing...
+        sendPress(editor, camera, emptyCur, kEmpty);   // a plain press in the plot
+        CHECK(!editor.hasMarquee());                   // opens no marquee...
+        sendRelease(editor, camera, emptyCur, kEmpty);
+        // The same point WITH Ctrl is the graph's: the press opens a MARQUEE, and
+        // one that never moved selects nothing - which is the "clear the
+        // selection" gesture. The sticky FOCUS is untouched by it (empty space is
+        // not a command to drop what the user was working on). The modifier goes
+        // THROUGH the helper: the helper is what sets it on the editor.
+        CHECK(sendPress(editor, camera, emptyCur, kEmpty, Qt::ControlModifier)); // the Ctrl-press is the panel's
+        CHECK(editor.hasMarquee());                    // it began the marquee...
+        CHECK(editor.marqueeRect().isEmpty());         // ...with nothing dragged yet
+        CHECK(sendRelease(editor, camera, emptyCur, kEmpty));
+        CHECK(!editor.hasMarquee());
+        CHECK(!editor.ownsCursor(camera, emptyCur));   // and the gesture is closed
 
         core::TimeLineEvent selAfter;
-        CHECK(editor.retrieveSelection(selAfter));
-        CHECK(selAfter.targets().size() == 1);
-        CHECK(selAfter.targets()[0].pos.index() == 24); // the selection is untouched
-        CHECK(editor.hasFocus());                       // and so is the focus
+        CHECK(!editor.retrieveSelection(selAfter)); // the click deselected
+        CHECK(editor.hasFocus());                   // but the focus is untouched
         CHECK(editor.focusedNode() == &node);
         CHECK(editor.focusedChannel() == Channel(core::TimeKeyType_Rotate, 0));
+
+        // ...and it moved no window either: the same byte-identical hand-set one.
+        CHECK(editor.scale().valueMin() == -1000.0f);
+        CHECK(editor.scale().valueMax() == 1000.0f);
     }
 
     // --- 11: the key hit-radius BOUNDARY. The hit-test compares against
@@ -872,9 +1027,11 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies (see section 12)
     }
 
-    // --- 14: FOCUS DRIVES THE FIT. Two shown channels at disjoint value ranges:
-    // with no focus the window is their union; pressing a key of one of them
-    // makes it the focused channel and the window narrows to that channel alone.
+    // --- 14: the FOCUS IS EMPHASIS, NOT A FIT. Two shown channels at disjoint
+    // value ranges: with no focus the window is their UNION, and pressing a key of
+    // one of them focuses that channel - but the WINDOW DOES NOT MOVE. The
+    // narrowing fit this section used to pin is exactly the defect the user
+    // reported ("clicking a curve seems to zoom it in"): a click must not zoom.
     //
     // nodeA and nodeB are declared at FUNCTION scope, outside this section's
     // block, because section 15 keeps using them: a target must outlive every
@@ -902,6 +1059,11 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().valueMin() <= 0.0f);         // the union covers A...
         CHECK(editor.scale().valueMax() >= 1100.0f);      // ...and B
 
+        // The window as the user has it, SNAPSHOTTED: it must survive everything
+        // below. (Fitted, so it is a real window and not a collapsed one.)
+        const float unionMin = editor.scale().valueMin();
+        const float unionMax = editor.scale().valueMax();
+
         // Press B's key at frame 0 (value 1000): the hit focuses channel B.
         const QRect bKeyRect = ctrl::graph::keyRect(editor.scale(), core::Frame(0), 1000.0f);
         core::AbstractCursor bCur;
@@ -914,11 +1076,44 @@ int main(int argc, char** argv) {
         CHECK(editor.focusedNode() == &nodeB);
         CHECK(editor.focusedChannel() == Channel(core::TimeKeyType_Rotate, 0));
 
-        // Both bounds: the window covers B's range and NOTHING of A's (A tops out
-        // at 90, so a window whose floor is above 90 excludes every A value).
-        CHECK(editor.scale().valueMin() <= 1000.0f);
+        // THE POINT OF THE SECTION: the focus changed and the window did NOT, so
+        // the union of BOTH channels is still on screen. (An immediate fit would
+        // have narrowed it to B and dropped every A value off the axis, which is
+        // what the old section asserted - deliberately, and wrongly.)
+        CHECK(editor.scale().valueMin() == unionMin);
+        CHECK(editor.scale().valueMax() == unionMax);
+        CHECK(editor.scale().valueMin() <= 0.0f);  // A is still on the axis...
+        CHECK(editor.scale().valueMax() >= 1100.0f); // ...and so is B
+
+        // ...and CLEARING the focus moves no window either. Both directions of the
+        // focus are pinned, so a refit reintroduced on either side fails here.
+        editor.clearFocus();
+        CHECK(!editor.hasFocus());
+        CHECK(editor.scale().valueMin() == unionMin);
+        CHECK(editor.scale().valueMax() == unionMax);
+
+        // The explicit fit still does what it says, so "no side effect" is not
+        // "the fit was removed": fitValueAxis() puts the axis back on the union
+        // (and here the union IS the window, so the window is unchanged), while
+        // fitAll() is the double-click gesture.
+        editor.fitValueAxis();
+        CHECK(editor.scale().valueMin() <= 0.0f);
         CHECK(editor.scale().valueMax() >= 1100.0f);
-        CHECK(editor.scale().valueMin() > 90.0f);
+        editor.fitAll();
+        CHECK(editor.scale().valueMin() <= 0.0f);
+        CHECK(editor.scale().valueMax() >= 1100.0f);
+
+        // A hand-set window survives the fit path that follows it too, as long as
+        // the shown SET does not change.
+        editor.scale().setValueWindow(-7.0f, 7.0f);
+        core::AbstractCursor idle;
+        sendMove(editor, camera, idle, QPoint(700, 550));
+        CHECK(editor.scale().valueMin() == -7.0f);
+        CHECK(editor.scale().valueMax() == 7.0f);
+        sendPress(editor, camera, idle, QPoint(700, 550));
+        sendRelease(editor, camera, idle, QPoint(700, 550));
+        CHECK(editor.scale().valueMin() == -7.0f);
+        CHECK(editor.scale().valueMax() == 7.0f);
     }
 
     // --- 15: the FRAME-axis fit. fitAll() fits both axes; afterwards every shown
@@ -966,9 +1161,12 @@ int main(int argc, char** argv) {
         const QPoint kNoTargets(700, 550);
         core::AbstractCursor idle;
         sendMove(editor, camera, idle, kNoTargets); // a cursor pass: safe
+        CHECK(!editor.ownsCursor(camera, idle)); // a hover owns nothing
+        CHECK(sendPress(editor, camera, idle, kNoTargets, Qt::ControlModifier)); // the Ctrl-press is the panel's...
+        CHECK(editor.hasMarquee());                            // ...it began a marquee over no curves
+        CHECK(sendRelease(editor, camera, idle, kNoTargets));  // and the release closes it
+        CHECK(!editor.hasMarquee());
         CHECK(!editor.ownsCursor(camera, idle));
-        CHECK(sendPress(editor, camera, idle, kNoTargets));    // nothing to hit, nothing to insert
-        CHECK(!sendRelease(editor, camera, idle, kNoTargets)); // and nothing was armed
 
         CHECK(editor.curves().isEmpty());
     }
@@ -976,28 +1174,30 @@ int main(int argc, char** argv) {
     // --- 16-18: the three key edits - INSERT, MOVE and REMOVE - on one fresh
     // layer, so every assertion below is about one gesture and one undo step.
     //
-    // INSERT: a press on a curve's BAND - a point on no key and no handle, whose
-    // frame the curve covers and whose value is within GraphEditor::kCurveBandRadius
-    // of the value the curve evaluates at that frame - inserts the key the curve
-    // already passes through. The value written is the curve's own sample at that
-    // frame, so no sampled value moves AT THAT FRAME, and the key's payload (the
-    // easing it carries, which is the split segment's own) comes from the
-    // document as well. The panel OWNS the band, which is what makes the press
-    // reach the editor at all: the Driver routes by ownsCursor, and a band point
-    // is on no key and no handle. The insert is refused - nothing pushed, the
-    // document untouched - on an occupied frame (the key there is the more
-    // specific target of the same point, and TimeLine::createPusher would
-    // REPLACE it), off the band, and outside the plot.
+    // INSERT: a CTRL-press on a curve's BAND - a point on no key and no handle,
+    // whose frame the curve covers and whose value is within
+    // GraphEditor::kCurveBandRadius of the value the curve evaluates at that frame
+    // - inserts the key the curve already passes through. The value written is the
+    // curve's own sample at that frame, so no sampled value moves AT THAT FRAME,
+    // and the key's payload (the easing it carries, which is the split segment's
+    // own) comes from the document as well. The MODIFIER is what keeps the insert
+    // from eating the marquee: a PLAIN press on the band begins a marquee like any
+    // other empty plot space, so a rubber band dragged across a curve never writes
+    // a key nobody asked for. The insert is refused - nothing pushed, the document
+    // untouched - on an occupied frame (the key there is the more specific target
+    // of the same point, and TimeLine::createPusher would REPLACE it), off the
+    // band, and outside the plot.
     //
-    // MOVE: pressing a KEY (not a handle) arms a move; a horizontal drag moves
-    // its FRAME through the repository's own TimeLineUtil::MoveFrameOfKey, the
-    // whole gesture is ONE undo step, a destination another key owns is refused,
-    // and the key's value and easing never change.
+    // MOVE: pressing a KEY (not a handle) arms a move; a drag moves BOTH its FRAME
+    // (through the repository's own TimeLineUtil::MoveFrameOfKey) and its VALUE
+    // (through TimeLineUtil::AssignKeyValue), the whole gesture is ONE undo step, a
+    // destination another key owns refuses the step, the easing never changes, and
+    // Shift pins the gesture to the dominant axis.
     //
-    // REMOVE: acts on the key the panel's selection names (the key a press last
-    // hit) through TimeLine::createRemover, ONE undo step whose undo restores the
-    // SAME key object with its value and easing; with no key selected, or with a
-    // selection naming a frame that holds no key, it pushes nothing.
+    // REMOVE: acts on every key the panel's selection names through
+    // TimeLine::createRemover, ONE undo step whose undo restores the SAME key
+    // objects with their values and easings; with no key selected, or with a
+    // selection naming only frames that hold no key, it pushes nothing.
     {
         core::TestNode editNode;
         const util::Easing::Param kEditEasing = customEasing();
@@ -1048,8 +1248,13 @@ int main(int argc, char** argv) {
         stack.undo(&undoneOccupied);
         CHECK(!undoneOccupied); // and that press+release pushed nothing at all
 
-        // 16b: a point OFF the band is not the panel's and inserts nothing. The
-        // band is a real radius, not "anywhere on the fullscreen panel".
+        // 16b: a point OFF the band, inside the plot, inserts nothing - the band is
+        // a real radius, not "anywhere in the plot" - and a CTRL-press there is the
+        // MARQUEE's, not the insert's: ONE modifier, two meanings, decided by what
+        // is under the pointer. A PLAIN press at the same point is neither (it
+        // belongs to the viewport tools), which is asserted first. A press that
+        // never moves drags no rectangle, so nothing falls inside it and the
+        // marquee DESELECTS.
         const QPoint aboveBand(
             editor.scale().pixelX(addFrame),
             editor.scale().pixelY(atEmptyFrame) - (ctrl::GraphEditor::kCurveBandRadius + 2)
@@ -1057,26 +1262,45 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().plotRect().contains(aboveBand));
         core::AbstractCursor offBandCur;
         sendMove(editor, camera, offBandCur, aboveBand);
-        CHECK(!editor.ownsCursor(camera, offBandCur));
-        CHECK(sendPress(editor, camera, offBandCur, aboveBand));    // delivered, but not an insert
-        CHECK(!sendRelease(editor, camera, offBandCur, aboveBand)); // and it closed no drag
-        CHECK(editCurve.keys().size() == 2);
+        CHECK(!editor.ownsCursor(camera, offBandCur)); // a hover owns nothing
+        sendPress(editor, camera, offBandCur, aboveBand); // a PLAIN press here is the tools'...
+        CHECK(!editor.hasMarquee());                      // ...so the graph opens nothing, and
+        CHECK(!sendRelease(editor, camera, offBandCur, aboveBand)); // the release is not consumed either
+        CHECK(sendPress(editor, camera, offBandCur, aboveBand, Qt::ControlModifier)); // the CTRL-press is the panel's
+        CHECK(editor.hasMarquee());                              // ...and it began a marquee
+        CHECK(editor.marqueeRect().isEmpty());                   // nothing dragged: nothing to select
+        CHECK(sendRelease(editor, camera, offBandCur, aboveBand)); // the release consumes it
+        CHECK(!editor.hasMarquee());
+        CHECK(editCurve.keys().size() == 2); // and nothing was inserted
+        core::TimeLineEvent selOffBand;
+        CHECK(!editor.retrieveSelection(selOffBand)); // the empty marquee deselected
         bool undoneOffBand = true;
         stack.undo(&undoneOffBand);
         CHECK(!undoneOffBand);
 
-        // 16c: the band press inserts the key the curve already passes through.
+        // 16c: the CTRL-press on the band inserts the key the curve already passes
+        // through.
         const QPoint inBand(editor.scale().pixelX(addFrame), editor.scale().pixelY(atEmptyFrame));
         CHECK(editor.scale().plotRect().contains(inBand));
         sendMove(editor, camera, editCur, inBand);
-        CHECK(editor.ownsCursor(camera, editCur)); // the band IS the panel's: the press can reach it
-        CHECK(sendPress(editor, camera, editCur, inBand));
+        CHECK(!editor.ownsCursor(camera, editCur)); // the band is not owned on a HOVER...
+        CHECK(sendPress(editor, camera, editCur, inBand, Qt::ControlModifier)); // ...but the Ctrl-press is
         // The insert armed NOTHING - it is a press action, not a gesture - so this
-        // release closes no drag and is not consumed, exactly like the off-band
-        // one above. (A press on a KEY does arm a move, which is why the key-press
-        // releases elsewhere in this file are consumed; the band is the other
-        // case.)
+        // release closes no drag and is not consumed. (A press on a KEY does arm a
+        // move, which is why the key-press releases elsewhere in this file are
+        // consumed; the band is the other case.)
         CHECK(!sendRelease(editor, camera, editCur, inBand));
+
+        // The insert's own API refuses the same two points the press routing does,
+        // stated beside the successful one: a point ON a key (the key is the more
+        // specific target, and replacing it is a different edit with a different
+        // undo story) and a point outside the plot (no band out there). Neither
+        // pushes anything, and the document is untouched.
+        const QPoint onKey24(editor.scale().pixelX(core::Frame(24)), editor.scale().pixelY(90.0f));
+        CHECK(!editor.insertKeyAt(camera, onKey24));
+        CHECK(!editor.insertKeyAt(camera, QPoint(5, 5)));
+        CHECK(editLine->timeKey(core::TimeKeyType_Rotate, 24) == r1);
+        CHECK(editCurve.keys().size() == 3);
 
         CHECK(editLine->hasTimeKey(core::TimeKeyType_Rotate, addFrame.get()));
         CHECK(editCurve.keys().size() == 3);
@@ -1167,8 +1391,12 @@ int main(int argc, char** argv) {
         CHECK(editCurve.keys().size() == 3);
         CHECK(editCurve.keys()[1]->frame() == 20); // the moved key, in frame order
         CHECK(editLine->timeKey(core::TimeKeyType_Rotate, 20) == insertedKey); // the SAME key object
-        CHECK(inserted->rotate() == atEmptyFrame);       // the move changes the frame only...
-        CHECK(inserted->data().easing() == kEditEasing); // ...never the value or the easing
+        // This drag is purely HORIZONTAL (every move keeps the press row), so the
+        // value axis' delta is exactly zero and the key's value and easing are
+        // untouched - which is what the 2-axis rule means at dy == 0. The value
+        // axis is exercised on its own in section 21.
+        CHECK(inserted->rotate() == atEmptyFrame);       // no vertical movement: the value is untouched
+        CHECK(inserted->data().easing() == kEditEasing); // ...and so is the easing
         CHECK(r0->rotate() == 0.0f && r1->rotate() == 90.0f);
         CHECK(r1->data().easing() == kR1Easing);
 
@@ -1511,7 +1739,372 @@ int main(int argc, char** argv) {
         editor.setTargets({});
     }
 
-    // --- 20: the switch's OTHER direction - the half the show at the top of this
+    // --- 20: the SELECTION: one key by a plain press, extending, toggling, and a
+    // MARQUEE over empty plot space. The graph's selection is the timeline's own
+    // currency (a core::TimeLineEvent with one target per key), so a multi-key
+    // selection is expressible and every one of these is observable through
+    // retrieveSelection().
+    {
+        core::TestNode selNode;
+        for (int i = 0; i < 4; ++i) {
+            core::RotateKey* key = new core::RotateKey();
+            key->setRotate(static_cast<float>(i) * 10.0f); // values 0, 10, 20, 30
+            setup.push(selNode.timeLine()->createPusher(core::TimeKeyType_Rotate, i * 10, key));
+        }
+        CHECK(selNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 4);
+
+        editor.setTargets({ &selNode });
+        editor.scale().setRect(panel);
+        editor.clearSelection();
+        project.commandStack().clear(); // no edit below may push anything
+
+        // The four keys' pixels, from the editor's own live scale.
+        const Scaler& selScale = editor.scale();
+        const QPoint k0(selScale.pixelX(core::Frame(0)), selScale.pixelY(0.0f));
+        const QPoint k1(selScale.pixelX(core::Frame(10)), selScale.pixelY(10.0f));
+        const QPoint k2(selScale.pixelX(core::Frame(20)), selScale.pixelY(20.0f));
+        const QPoint k3(selScale.pixelX(core::Frame(30)), selScale.pixelY(30.0f));
+        for (const QPoint& pixel : { k0, k1, k2, k3 }) {
+            CHECK(selScale.plotRect().contains(pixel));
+        }
+
+        core::AbstractCursor selCur;
+        auto selectedFrames = [&editor]() {
+            core::TimeLineEvent event;
+            QVector<int> frames;
+            if (editor.retrieveSelection(event)) {
+                for (const core::TimeLineEvent::Target& target : event.targets()) {
+                    frames.append(target.pos.index());
+                }
+            }
+            std::sort(frames.begin(), frames.end());
+            return frames;
+        };
+        auto framesAre = [&selectedFrames](std::initializer_list<int> aExpected) {
+            const QVector<int> expected(aExpected);
+            const QVector<int> actual = selectedFrames();
+            return actual == expected;
+        };
+
+        // A plain press REPLACES the selection with the one key it hit.
+        CHECK(sendPress(editor, camera, selCur, k2));
+        CHECK(sendRelease(editor, camera, selCur, k2));
+        CHECK(framesAre({ 20 }));
+
+        // Shift-press EXTENDS. Pressing the same key again adds nothing (there is
+        // one entry per key, not one per click).
+        CHECK(sendPress(editor, camera, selCur, k0, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, selCur, k0, Qt::ShiftModifier));
+        CHECK(framesAre({ 0, 20 }));
+        CHECK(sendPress(editor, camera, selCur, k0, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, selCur, k0, Qt::ShiftModifier));
+        CHECK(framesAre({ 0, 20 })); // no duplicate
+
+        // Ctrl-press TOGGLES: in when out, out when in.
+        CHECK(sendPress(editor, camera, selCur, k1, Qt::ControlModifier));
+        CHECK(sendRelease(editor, camera, selCur, k1, Qt::ControlModifier));
+        CHECK(framesAre({ 0, 10, 20 }));
+        CHECK(sendPress(editor, camera, selCur, k1, Qt::ControlModifier));
+        CHECK(sendRelease(editor, camera, selCur, k1, Qt::ControlModifier));
+        CHECK(framesAre({ 0, 20 }));
+
+        // A plain press on a key replaces again (the modifiers are the ONLY thing
+        // that makes a key press anything but a replace).
+        CHECK(sendPress(editor, camera, selCur, k3));
+        CHECK(sendRelease(editor, camera, selCur, k3));
+        CHECK(framesAre({ 30 }));
+
+        // THE MARQUEE. A CTRL-press on empty plot space at the plot's bottom-left
+        // corner (no key, and - the curve only being stroked between its first and
+        // last key - on no band either), dragged up and right to frame 15 /
+        // value 15 and released: every key whose DRAWN square is inside the
+        // rectangle is selected, which here is the keys at frames 0 and 10. The
+        // modifier is what keeps a PLAIN press in the plot for the viewport tools
+        // (see the ownership note at the top, and section 16b).
+        const QPoint marqueeOrigin(selScale.plotRect().left() + 2, selScale.plotRect().bottom() - 2);
+        const QPoint marqueeEnd(selScale.pixelX(core::Frame(15)), selScale.pixelY(15.0f));
+        CHECK(selScale.plotRect().contains(marqueeOrigin));
+        CHECK(selScale.plotRect().contains(marqueeEnd));
+
+        CHECK(sendPress(editor, camera, selCur, marqueeOrigin, Qt::ControlModifier));
+        CHECK(framesAre({ 30 })); // the press alone changes nothing...
+        CHECK(editor.hasMarquee()); // ...it only opens the rectangle
+        CHECK(editor.marqueeRect().isEmpty()); // with nothing dragged yet
+        CHECK(sendMove(editor, camera, selCur, marqueeEnd));
+        // The LIVE rectangle: normalized (press at the bottom-left, pointer up and
+        // right) and clipped to the plot, so it is the box the user sees.
+        CHECK(!editor.marqueeRect().isEmpty());
+        CHECK(editor.marqueeRect().contains(k0));
+        CHECK(editor.marqueeRect().contains(k1));
+        CHECK(!editor.marqueeRect().contains(k2)); // frame 20 is past the box's right edge
+        CHECK(sendRelease(editor, camera, selCur, marqueeEnd));
+        CHECK(!editor.hasMarquee());
+        CHECK(framesAre({ 0, 10 })); // the marquee REPLACED the selection
+        const int marqueeCount = selectedFrames().size();
+
+        // A SHIFT-marquee ADDS to the selection instead of replacing it: the same
+        // kind of box, dragged over the key at frame 20, or-ed with what is
+        // already selected. The origin sits on empty space (frame 15's row is far
+        // below its curve) and the box is closed before frame 30's key.
+        const QPoint addOrigin(selScale.pixelX(core::Frame(15)), selScale.pixelY(5.0f));
+        const QPoint addEnd(selScale.pixelX(core::Frame(25)), selScale.plotRect().top() + 2);
+        CHECK(selScale.plotRect().contains(addOrigin));
+        CHECK(selScale.plotRect().contains(addEnd));
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier | Qt::ControlModifier));
+        CHECK(sendMove(editor, camera, selCur, addEnd, Qt::ShiftModifier));
+        CHECK(editor.marqueeRect().contains(k2)); // the box is over the frame-20 key
+        CHECK(!editor.marqueeRect().contains(k1)); // and not over the frame-10 one
+        CHECK(sendRelease(editor, camera, selCur, addEnd, Qt::ShiftModifier));
+        CHECK(framesAre({ 0, 10, 20 })); // added, not replaced
+        const int shiftMarqueeCount = selectedFrames().size();
+
+        // A Ctrl-marquee that selects nothing replaces with nothing - the "clear
+        // the selection" gesture - while a Ctrl-Shift-marquee that selects nothing
+        // leaves the selection alone.
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ControlModifier));
+        CHECK(sendRelease(editor, camera, selCur, addOrigin));
+        CHECK(selectedFrames().isEmpty());
+        CHECK(sendPress(editor, camera, selCur, k1));
+        CHECK(sendRelease(editor, camera, selCur, k1));
+        CHECK(framesAre({ 10 }));
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier | Qt::ControlModifier));
+        CHECK(sendRelease(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
+        CHECK(framesAre({ 10 })); // still there: a Shift-marquee adds, so an empty one changes nothing
+
+        std::printf(
+            "[S] selection: marquee box (%d,%d)-(%d,%d) over empty plot selects %d keys; a shift-marquee "
+            "over the frame-20 key makes %d\n",
+            marqueeOrigin.x(), marqueeOrigin.y(), marqueeEnd.x(), marqueeEnd.y(), marqueeCount, shiftMarqueeCount
+        );
+
+        // NOTHING ABOVE IS AN EDIT: four presses, four marquees and every modifier
+        // combination pushed no command at all.
+        bool undoneAfterSelection = true;
+        CHECK(stack.undo(&undoneAfterSelection).isEmpty());
+        CHECK(!undoneAfterSelection);
+
+        // REMOVE is multi-key too: two keys selected, ONE undo step that takes both
+        // off, and one undo that brings both back with their own values.
+        CHECK(sendPress(editor, camera, selCur, k0));
+        CHECK(sendRelease(editor, camera, selCur, k0));
+        CHECK(sendPress(editor, camera, selCur, k1, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, selCur, k1, Qt::ShiftModifier));
+        CHECK(framesAre({ 0, 10 }));
+        CHECK(editor.removeSelectedKey());
+        CHECK(!selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(!selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 10));
+        CHECK(selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20));
+        CHECK(selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 30));
+        core::TimeLineEvent afterRemove;
+        CHECK(!editor.retrieveSelection(afterRemove)); // the selection went with the keys
+        bool undoneTwo = false;
+        CHECK(!stack.undo(&undoneTwo).isEmpty()); // ONE entry for both keys
+        CHECK(undoneTwo);
+        CHECK(selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(selNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 10));
+        CHECK(static_cast<core::RotateKey*>(selNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 0))->rotate() == 0.0f);
+        CHECK(static_cast<core::RotateKey*>(selNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 10))->rotate() == 10.0f);
+        bool undoneTwoAgain = true;
+        CHECK(stack.undo(&undoneTwoAgain).isEmpty()); // and nothing sits behind it
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 21: the 2-AXIS key move, and Shift's axis snap. A key drag follows the
+    // pointer in BOTH axes - its frame by the pointer's frame delta and its value
+    // by the pointer's value delta - and the whole gesture is ONE undo step, so
+    // ONE undo must restore both the frame AND the value.
+    {
+        core::TestNode dragNode;
+        core::RotateKey* d0 = new core::RotateKey();
+        d0->setRotate(0.0f);
+        setup.push(dragNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, d0));
+        core::RotateKey* d1 = new core::RotateKey();
+        d1->setRotate(90.0f);
+        setup.push(dragNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 24, d1));
+        const util::Easing::Param kD0Easing = d0->data().easing();
+
+        editor.setTargets({ &dragNode });
+        editor.scale().setRect(panel);
+        project.commandStack().clear();
+
+        const Scaler& dragMoveScale = editor.scale();
+        const QPoint from0(dragMoveScale.pixelX(core::Frame(0)), dragMoveScale.pixelY(0.0f));
+        CHECK(ctrl::graph::keyRect(dragMoveScale, core::Frame(0), 0.0f).contains(from0));
+
+        // The destination: frame 5, and the value the pointer's ROW means. The
+        // expectation is computed through the SAME live scale the editor drags
+        // through, so the assertion is about "the key went where the pointer
+        // pointed", not about a formula copied out of the implementation.
+        const int toX = dragMoveScale.pixelX(core::Frame(5));
+        const int toY = dragMoveScale.pixelY(30.0f);
+        const float expectedValue = 0.0f + (dragMoveScale.valueAt(toY) - dragMoveScale.valueAt(from0.y()));
+        CHECK(expectedValue > 20.0f && expectedValue < 40.0f); // a real value move, not a rounding
+
+        core::AbstractCursor dragCur;
+        CHECK(sendPress(editor, camera, dragCur, from0));
+        CHECK(sendMove(editor, camera, dragCur, QPoint(toX, toY)));
+        CHECK(sendRelease(editor, camera, dragCur, QPoint(toX, toY)));
+
+        CHECK(!dragNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(dragNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 5));
+        CHECK(dragNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 5) == d0); // the SAME key object
+        CHECK(d0->frame() == 5);              // the FRAME followed the pointer...
+        CHECK(d0->rotate() == expectedValue); // ...and so did the VALUE
+        CHECK(d0->data().easing() == kD0Easing); // the easing never moves
+
+        // ONE undo restores BOTH axes; a second finds nothing behind it.
+        bool undoneBoth = false;
+        CHECK(!stack.undo(&undoneBoth).isEmpty());
+        CHECK(undoneBoth);
+        CHECK(dragNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(!dragNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 5));
+        CHECK(d0->rotate() == 0.0f); // the value came back too
+        bool undoneBothAgain = true;
+        CHECK(stack.undo(&undoneBothAgain).isEmpty());
+        CHECK(!undoneBothAgain);
+        bool redoneBoth = false;
+        CHECK(!stack.redo(&redoneBoth).isEmpty());
+        CHECK(redoneBoth);
+        CHECK(d0->frame() == 5);
+        CHECK(d0->rotate() == expectedValue);
+
+        // SHIFT: the DOMINANT axis only. A drag that is overwhelmingly horizontal
+        // moves the frame and leaves the value BIT-identical (not merely close).
+        const QPoint from5(dragMoveScale.pixelX(core::Frame(5)), dragMoveScale.pixelY(expectedValue));
+        const float beforeValue = d0->rotate();
+        const QPoint mostlyRight(dragMoveScale.pixelX(core::Frame(12)), from5.y() + 3);
+        CHECK(sendPress(editor, camera, dragCur, from5, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, dragCur, mostlyRight, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, dragCur, mostlyRight, Qt::ShiftModifier));
+        CHECK(d0->frame() == 12);            // the dominant axis moved
+        CHECK(d0->rotate() == beforeValue);  // the other one did not
+
+        // ...and a drag that is overwhelmingly vertical moves the value and leaves
+        // the FRAME exactly where it was.
+        const QPoint from12(dragMoveScale.pixelX(core::Frame(12)), dragMoveScale.pixelY(beforeValue));
+        const float beforeDownValue = d0->rotate();
+        const QPoint mostlyDown(from12.x() + 3, dragMoveScale.pixelY(beforeValue - 25.0f));
+        CHECK(sendPress(editor, camera, dragCur, from12, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, dragCur, mostlyDown, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, dragCur, mostlyDown, Qt::ShiftModifier));
+        CHECK(d0->frame() == 12);                        // the frame is pinned
+        CHECK(d0->rotate() < beforeDownValue);           // and the value followed the pointer down
+        CHECK(d0->rotate() == beforeDownValue + (dragMoveScale.valueAt(mostlyDown.y())
+                                                - dragMoveScale.valueAt(from12.y())));
+        const float afterVerticalValue = d0->rotate();
+
+        // A drag that crosses NO axis (no frame boundary, no value row) pushes
+        // nothing at all: the history still holds exactly the three real gestures
+        // above, so three undos exhaust it and a fourth finds nothing - which is
+        // the observable form of "the empty press wrote no history entry".
+        const QPoint still(dragMoveScale.pixelX(core::Frame(12)), dragMoveScale.pixelY(d0->rotate()));
+        CHECK(sendPress(editor, camera, dragCur, still));
+        CHECK(!sendMove(editor, camera, dragCur, still)); // nothing moved: nothing to rewrite
+        CHECK(sendRelease(editor, camera, dragCur, still));
+        for (int i = 0; i < 3; ++i) {
+            bool undoneReal = false;
+            CHECK(!stack.undo(&undoneReal).isEmpty()); // rewind one of the three real gestures
+            CHECK(undoneReal);
+        }
+        bool undoneFourth = true;
+        CHECK(stack.undo(&undoneFourth).isEmpty()); // and nothing behind them
+        CHECK(!undoneFourth);
+
+        std::printf(
+            "[M] 2-axis drag: frame 0 -> 5 and value 0 -> %.4f in ONE undo step; shift-horizontal moved "
+            "frame 5 -> 12 with the value bit-identical (%.4f); shift-vertical pinned the frame at 12 and "
+            "moved the value %.4f -> %.4f\n",
+            expectedValue, beforeValue, beforeDownValue, afterVerticalValue
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 22: the MIDDLE button pans the GRAPH. While the panel is up the middle
+    // drag moves the panel's window on both axes and never the canvas camera
+    // (ctrl::MainDisplayWidget does not hand a middle drag to ctrl::CanvasMover
+    // while this panel is visible). A pan is a pure pixel offset: the window
+    // SPAN is untouched, so a pan cannot zoom.
+    {
+        core::TestNode panNode;
+        core::RotateKey* p0 = new core::RotateKey();
+        p0->setRotate(0.0f);
+        setup.push(panNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, p0));
+        core::RotateKey* p1 = new core::RotateKey();
+        p1->setRotate(90.0f);
+        setup.push(panNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 24, p1));
+
+        editor.setTargets({ &panNode });
+        editor.scale().setRect(panel);
+        project.commandStack().clear();
+
+        const Scaler& panScale = editor.scale();
+        const QPoint panStart = panScale.plotRect().center();
+        const QPoint panDelta(40, 25);
+
+        const int beforeFramePixel = panScale.pixelX(core::Frame(0));
+        const float beforePanMin = panScale.valueMin();
+        const float beforePanMax = panScale.valueMax();
+
+        // The middle press is the panel's even on a point with no item under it,
+        // and even OUTSIDE the plot: while the panel is up the whole viewport's
+        // middle button is the graph's.
+        core::AbstractCursor panCur;
+        QMouseEvent outsideMiddlePress(
+            QEvent::MouseButtonPress, QPoint(5, 5), QPoint(5, 5), QPoint(5, 5), Qt::MiddleButton, Qt::MiddleButton,
+            Qt::NoModifier
+        );
+        CHECK(panCur.setMousePress(&outsideMiddlePress, camera));
+        CHECK(editor.ownsCursor(camera, panCur));
+        CHECK(panCur.setMouseRelease(&outsideMiddlePress, camera)); // drop it again (no pan ran)
+
+        CHECK(sendMiddlePress(editor, camera, panCur, panStart));
+        CHECK(editor.isPanning());
+        CHECK(editor.ownsCursor(camera, panCur)); // the gesture owns the cursor wherever it goes
+        CHECK(sendMiddleMove(editor, camera, panCur, panStart + panDelta));
+        CHECK(sendMiddleRelease(editor, camera, panCur, panStart + panDelta));
+        CHECK(!editor.isPanning());
+
+        // The frame axis moved by EXACTLY the pointer's own x delta (panFrame adds
+        // a pixel offset), and the value window by the rows it shifted: the span is
+        // untouched, so this was a pan and not a zoom.
+        CHECK(panScale.pixelX(core::Frame(0)) == beforeFramePixel + panDelta.x());
+        const float afterSpan = panScale.valueMax() - panScale.valueMin();
+        const float beforeSpan = beforePanMax - beforePanMin;
+        CHECK(std::fabs(afterSpan - beforeSpan) < beforeSpan * 1e-5f); // the span survived
+        CHECK(panScale.valueMin() > beforePanMin); // dragging DOWN reveals higher values
+        CHECK(!editor.hasFocus());                 // a pan selects nothing...
+
+        // ...and it is not an EDIT: no command, no notification, no changed key.
+        CHECK(p0->rotate() == 0.0f);
+        CHECK(p1->rotate() == 90.0f);
+        bool undoneAfterPan = true;
+        CHECK(stack.undo(&undoneAfterPan).isEmpty());
+        CHECK(!undoneAfterPan);
+
+        // The pan is NOT a fit either: a cursor pass after it leaves the panned
+        // window exactly where the pan left it.
+        const float pannedMin = panScale.valueMin();
+        const float pannedMax = panScale.valueMax();
+        const int pannedFramePixel = panScale.pixelX(core::Frame(0));
+        core::AbstractCursor idleAfterPan;
+        sendMove(editor, camera, idleAfterPan, panScale.plotRect().center());
+        CHECK(editor.scale().valueMin() == pannedMin);
+        CHECK(editor.scale().valueMax() == pannedMax);
+        CHECK(editor.scale().pixelX(core::Frame(0)) == pannedFramePixel);
+
+        std::printf(
+            "[P] middle-button pan: (%d,%d) px moved frame px(0) %d -> %d (exactly the x delta) and the "
+            "value window %+.4f..%+.4f -> %+.4f..%+.4f (span %.6f vs %.6f, a pan and not a zoom); no command pushed\n",
+            panDelta.x(), panDelta.y(), beforeFramePixel, pannedFramePixel, beforePanMin, beforePanMax,
+            pannedMin, pannedMax, beforePanMax - beforePanMin, pannedMax - pannedMin
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 23: the switch's OTHER direction - the half the show at the top of this
     // file cannot cover - and it sits last so nothing above or below runs against
     // a panel that was hidden out from under it. Hiding is what hands the pointer
     // and the wheel back to the canvas (the Driver consults isVisible() before it
@@ -1527,17 +2120,21 @@ int main(int argc, char** argv) {
     std::printf(
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
         "at the pixel it points to; the value axis is fitted to the shown curves where the panel is "
-        "opened or re-selected, and a manual or wheeled window survives every cursor pass; "
-        "the fullscreen panel owns the cursor only on a key, a handle or a curve's insert band (or "
-        "mid-drag), a press on empty space leaves the selection and the sticky focus alone, the "
-        "focused channel drives the fit, and fitAll() also fits the frame axis to the shown keys; "
-        "and the three key edits are one undo step each through the timeline's own route: a press on "
-        "the band inserts the key the curve already passes through (no sampled value moves at that "
-        "frame), a press on a key plus a horizontal drag moves its frame and refuses an occupied "
-        "destination, and removeSelectedKey() removes exactly the selected key and restores the same "
-        "key object on undo; and setSelectedKeysEasing() changes the easing type of the selected "
-        "key(s) as ONE undo step on that same route, pushing nothing for an empty or stale selection, "
-        "for the step-held image channel or for the type a key already has\n"
+        "opened or re-selected, and a manual, wheeled or panned window survives every cursor pass; "
+        "the fullscreen panel owns the cursor on a key, a handle, a CTRL-PRESS inside the plot (the "
+        "insert on a curve's band, the marquee off every band) and the middle button (a pan), or "
+        "mid-gesture - a PLAIN press in the plot stays the viewport tools'; the selection "
+        "takes one key by a plain press, extends on Shift, toggles on Ctrl and replaces on a "
+        "Ctrl-marquee over empty plot space; the focus moves NO window (a click does not zoom); the "
+        "wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value); and the three key edits "
+        "are one undo step each through the timeline's own route: a Ctrl-press on the band inserts "
+        "the key the curve already passes through (no sampled value moves at that frame), a press "
+        "on a key plus a 2-axis drag moves its frame AND its value (Shift pins the dominant axis) "
+        "and refuses an occupied destination, and removeSelectedKey() removes every selected key "
+        "and restores the same key objects on undo; and setSelectedKeysEasing() changes the easing "
+        "type of the selected key(s) as ONE undo step on that same route, pushing nothing for an "
+        "empty or stale selection, for the step-held image channel or for the type a key already "
+        "has\n"
     );
     return 0;
 }

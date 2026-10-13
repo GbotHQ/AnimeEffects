@@ -116,6 +116,90 @@ float Channel::value(const core::TimeKey& aKey) const {
     }
 }
 
+bool Channel::writeValue(core::TimeKey& aKey, float aValue) const {
+    // The same guard as value(): a Channel is a plain copyable value, so a
+    // hand-made one naming no real component must write nothing rather than
+    // index a component that does not exist.
+    if (mComponent < 0 || componentCount(mType) <= mComponent) {
+        return false;
+    }
+
+    // Each write mirrors value()'s read of the SAME field through the key's own
+    // setter, so the type's own clamp (a Move value's +-10000, opacity's 0..1, an
+    // HSV component's integer range) still applies and the key's payload - the
+    // components the graph does not draw - is left alone. The cast is valid for
+    // the caller's pairing of a channel with a key of its own type.
+    switch (mType) {
+    case core::TimeKeyType_Move: {
+        core::MoveKey& key = static_cast<core::MoveKey&>(aKey);
+        QVector2D pos = key.data().pos();
+        if (mComponent == 0) {
+            pos.setX(aValue);
+        } else {
+            pos.setY(aValue);
+        }
+        key.data().setPos(pos);
+        return true;
+    }
+    case core::TimeKeyType_Rotate: {
+        static_cast<core::RotateKey&>(aKey).data().setRotate(aValue);
+        return true;
+    }
+    case core::TimeKeyType_Scale: {
+        core::ScaleKey& key = static_cast<core::ScaleKey&>(aKey);
+        QVector2D scale = key.data().scale();
+        if (mComponent == 0) {
+            scale.setX(aValue);
+        } else {
+            scale.setY(aValue);
+        }
+        key.data().setScale(scale);
+        return true;
+    }
+    case core::TimeKeyType_Depth: {
+        static_cast<core::DepthKey&>(aKey).data().setDepth(aValue);
+        return true;
+    }
+    case core::TimeKeyType_Opa: {
+        static_cast<core::OpaKey&>(aKey).data().setOpacity(aValue);
+        return true;
+    }
+    case core::TimeKeyType_Blur: {
+        core::BlurKey& key = static_cast<core::BlurKey&>(aKey);
+        switch (mComponent) {
+        case 0: key.data().setBlurX(aValue); return true;
+        case 1: key.data().setBlurY(aValue); return true;
+        default: key.data().setAngleDeg(aValue); return true;
+        }
+    }
+    case core::TimeKeyType_HSV: {
+        // The stored channel is an int, so the write goes through the int
+        // setter and the value read back is the truncation - exactly what an
+        // insert seeds (see GraphEditor::pushSeededKey) and what playback blends.
+        core::HSVKey::Data& data = static_cast<core::HSVKey&>(aKey).data();
+        const int value = static_cast<int>(aValue);
+        switch (mComponent) {
+        case 0: data.setHue(value); return true;
+        case 1: data.setSaturation(value); return true;
+        default: data.setValue(value); return true;
+        }
+    }
+    case core::TimeKeyType_Image: {
+        core::ImageKey& key = static_cast<core::ImageKey&>(aKey);
+        QVector2D offset = key.data().imageOffset();
+        if (mComponent == 0) {
+            offset.setX(aValue);
+        } else {
+            offset.setY(aValue);
+        }
+        key.data().setImageOffset(offset);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 bool Channel::isInterpolated() const {
     // The image offset is the one graphable value playback does not blend:
     // blendImageKey step-holds the last preceding key, so a curve there would

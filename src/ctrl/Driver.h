@@ -41,7 +41,14 @@ public:
     // the tools: the viewport's overlay pass and its cursor both live here.
     void setGraphEditorVisible(bool aVisible);
     void setGraphTargets(const QVector<core::ObjectNode*>& aTargets);
-    bool updateGraphWheel(const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, bool aZoomValue);
+    // The modifier state the panel's own gestures read. The widget feeds it in
+    // before it routes a cursor or wheel event, because neither
+    // core::AbstractCursor nor the panel's own updateCursor signature carries
+    // modifiers (see GraphEditor::setModifiers for what each one means).
+    void setGraphModifiers(Qt::KeyboardModifiers aModifiers);
+    bool updateGraphWheel(
+        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+    );
     GraphEditor* graphEditor() { return mGraphEditor.data(); }
 
     void updateParam(const SRTParam& aParam);

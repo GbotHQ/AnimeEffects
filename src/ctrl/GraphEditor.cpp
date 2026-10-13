@@ -33,9 +33,11 @@ namespace {
 // ceiling) went with it.
 
 // The value axis' wheel sensitivity: one physical notch (Qt's 120 units of
-// angleDelta) scales the window by 1.1, which is the canvas mover's own
-// per-notch zoom factor - so the wheel feels the same over the panel and over
-// the viewport, and a wheel up always means "closer".
+// angleDelta) scales the window by 1.1, which is the canvas mover's and the
+// timeline scaler's own per-notch zoom factor - so the wheel feels the same over
+// the panel and over the viewport. The DIRECTION is theirs too: a notch Qt
+// reports as positive zooms OUT (see GraphEditor::updateWheel), which is why the
+// value zoom negates the delta before it reaches this factor.
 constexpr double kValueZoomPerNotch = 1.1;
 constexpr double kWheelNotch = 120.0;
 
@@ -107,23 +109,33 @@ namespace ctrl {
         mSelection(),
         mScale(),
         mVisible(false),
+        mModifiers(Qt::NoModifier),
         mFocusNode(nullptr),
         mFocusChannel(),
-        mFocusFitPending(false),
         mValueBasis(),
         mDragging(false),
         mKeyMoveArmed(false),
+        mMarqueeArmed(false),
+        mPanning(false),
         mDragKey(),
         mDragItem(-1),
         mDragSegment(-1),
         mDragHandle(-1),
         mGesture(aProject.commandStack()),
+        mMarqueeOrigin(),
+        mMarqueeCurrent(),
+        mAddToSelection(false),
+        mPanPointer(),
         mMoveLine(nullptr),
         mMoveNode(nullptr),
         mMoveType(core::TimeKeyType_TERM),
+        mMoveComponent(0),
         mMoveFrame(),
         mMovePointerFrame(),
+        mMovePressPos(),
+        mMoveBaseValue(0.0f),
         mMoveCommand(nullptr),
+        mValueCommand(nullptr),
         mAxisFps(0) {
         // The graph starts HIDDEN. The Driver routes every cursor and wheel
         // event to the tools while isVisible() is false, so a panel nobody asked
@@ -163,12 +175,6 @@ namespace ctrl {
             syncFrameAxis();
         }
 
-        // The pending focus fit (if any) belonged to the old document too: the
-        // next sync here refits from scratch if the shown set changed, and a fit
-        // left pending across a document swap is a fit against data that no
-        // longer exists.
-        mFocusFitPending = false;
-
         // A different document is different data: the remembered basis, and any
         // focus pointing into the old document, belong to it. setProject cleared
         // the targets above, so the next sync either has nothing to fit (window
@@ -205,10 +211,6 @@ namespace ctrl {
             // channels are kept, so showing the panel again restores it as it
             // was.
             endDrag();
-            // Nothing is in flight now, so a fit the focus still owes may land,
-            // or the panel would come back showing the window of a channel it is
-            // focused away from.
-            applyPendingFocusFit();
         } else {
             // Becoming visible SHOWS the data, and the application toggles the
             // panel on without a cursor event ever reaching it - so the fit
@@ -276,8 +278,6 @@ namespace ctrl {
         // it instead of repeating the fit - which would also overrule a window a
         // caller set right after fitting.
         mValueBasis = basisOf(entries);
-        // This fit already covers whatever focus was pending, so nothing is owed.
-        mFocusFitPending = false;
     }
 
     void GraphEditor::fitFrameAxis() {
@@ -313,14 +313,11 @@ namespace ctrl {
 
     void GraphEditor::fitAll() {
         // Both axes at once, which is what the panel's double-click does. The
-        // value side goes through the same applyValueFit the cursor path uses, so
-        // a focused channel still wins; the frame side covers every shown key.
+        // value side is the union of every shown curve; the frame side covers
+        // every shown key.
         const QVector<Entry> entries = buildEntries();
         applyValueFit(entries);
         mValueBasis = basisOf(entries);
-        // fitAll is an explicit user fit: it satisfies the focus's own fit, so
-        // nothing stays pending behind it.
-        mFocusFitPending = false;
         fitFrameAxis();
     }
 
@@ -353,19 +350,6 @@ namespace ctrl {
 
         mValueBasis = basis;
         applyValueFit(entries);
-        // The basis refit already covers whatever focus was pending (the focus
-        // is either shown - and fitted - or was pruned just above), so nothing is
-        // owed. A sync that early-returns leaves the flag alone, which is what
-        // keeps a still-owed focus fit owed until the gesture that raised it
-        // ends.
-        mFocusFitPending = false;
-    }
-
-    void GraphEditor::applyPendingFocusFit() {
-        if (!mFocusFitPending)
-            return;
-        mFocusFitPending = false;
-        applyValueFit(buildEntries());
     }
 
     bool GraphEditor::focusIsShown(const QVector<Entry>& aItems) const {
@@ -387,30 +371,14 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     void GraphEditor::applyValueFit(const QVector<Entry>& aItems) {
-        // Focus narrowing. When a channel is focused and is one of the shown
-        // entries, the window is fitted to THAT channel alone; otherwise (no
-        // focus, or a focus the shown set no longer holds) it is the union of
-        // every shown curve, as it always was. This is what makes the focus
-        // drive the fit: the value axis answers "what am I working on", not
-        // "what is on screen".
-        bool focusNarrow = false;
-        if (mFocusNode) {
-            for (const Entry& entry : aItems) {
-                if (entry.node == mFocusNode && entry.channel == mFocusChannel) {
-                    focusNarrow = true;
-                    break;
-                }
-            }
-        }
-
+        // The union of EVERY shown curve. The focus deliberately does not narrow
+        // this: it is emphasis only (see DELIBERATE FIT in the header), and a
+        // window that answered a click would move the key the click was on.
         bool any = false;
         float lo = 0.0f;
         float hi = 0.0f;
 
         for (const Entry& entry : aItems) {
-            if (focusNarrow && !(entry.node == mFocusNode && entry.channel == mFocusChannel))
-                continue; // focused: only the focused channel's values matter
-
             const graph::Curve& curve = entry.curve;
 
             const QVector<const core::TimeKey*> keys = curve.keys();
@@ -455,34 +423,48 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     bool GraphEditor::ownsCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) const {
-        // A drag keeps the cursor even when the pointer is nowhere near an item:
-        // the button is still down on a handle this editor is moving, and the
-        // release that ends it (and every move in between) may land anywhere in
-        // the viewport.
+        // A gesture keeps the cursor even when the pointer is nowhere near an
+        // item: the button is still down on something this editor is moving, and
+        // the release that ends it (and every move in between) may land anywhere
+        // in the viewport.
         if (mDragging)
             return true;
 
-        // HIT-ONLY ownership. The panel is fullscreen, so a rect test would be
-        // true everywhere and the graph would swallow every event the viewport
-        // tools need; what the graph may take is exactly the pointer that is on
-        // something it can act on - a key or a tangent handle, i.e. a point on a
-        // curve. The hit-test runs on a LOCAL copy of the scale pinned to the
-        // current panel rect, so this stays const and never mutates the live
-        // view.
         graph::Scaler scale = mScale;
         scale.setRect(currentPanelRect(aCamera));
 
         const QVector<Entry> entries = buildEntries();
         const QPoint point = aCursor.screenPoint();
+
+        // The MIDDLE button is the panel's while it is up: the middle drag pans
+        // the graph, not the canvas camera (see updateCursor). Tested before the
+        // hits so a middle press is the pan even when it lands on a key.
+        if (aCursor.eventButton() == core::AbstractCursor::Button_Middle
+            && (aCursor.emitsPressedEvent() || aCursor.isPressedMiddle())
+            && currentPanelRect(aCamera).contains(point)) {
+            return true;
+        }
+
+        // A key or a tangent handle: the pointer on something the graph can act
+        // on, wherever it is (a handle may sit outside the plot). The hit-test
+        // runs on a LOCAL copy of the scale pinned to the current panel rect, so
+        // this stays const and never mutates the live view.
         const Hit hit = hitTest(entries, scale, point);
         if (hit.hitCurve && 0 <= hit.item && hit.item < entries.size())
             return true;
 
-        // The insert gesture's own hit area. A band point is on no key and no
-        // handle, so without this the press that inserts could never reach this
-        // class: the Driver routes cursor events by this test and by nothing
-        // else, and the panel would show an affordance it cannot act on.
-        return curveBandItem(entries, scale, point) >= 0;
+        // A Ctrl-PRESS inside the plot is where this editor's own plot gestures
+        // begin: on a curve's band it inserts a key, off every band it opens the
+        // MARQUEE. The modifier is load-bearing - a PLAIN press in the plot is
+        // not claimed at all, so it reaches the viewport tools exactly as it did
+        // before the marquee existed, which matters because the plot covers most
+        // of the canvas and the tools' handles live there. Only presses are
+        // claimed: a plain hover and everything outside the plot pass through.
+        if (aCursor.emitsLeftPressedEvent() && scale.plotRect().contains(point)
+            && mModifiers.testFlag(Qt::ControlModifier))
+            return true;
+
+        return false;
     }
 
     bool GraphEditor::updateCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) {
@@ -498,6 +480,37 @@ namespace ctrl {
         // pass after a wheel zoom) leaves the user's window exactly as it is.
         syncValueAxis();
 
+        const QPoint point = aCursor.screenPoint();
+
+        // --- the MIDDLE button: pan the GRAPH, not the canvas camera ---
+        // The panel is up, so it is the panel's window the user is working in and
+        // the middle drag moves it. ctrl::MainDisplayWidget no longer hands a
+        // middle drag to ctrl::CanvasMover while this panel is visible, so the
+        // two can never pan at once.
+        if (aCursor.eventType() == core::AbstractCursor::Event_Press
+            && aCursor.eventButton() == core::AbstractCursor::Button_Middle) {
+            endDrag();
+            if (currentPanelRect(aCamera).contains(point)) {
+                beginPan(point);
+            }
+            return true;
+        }
+        if (aCursor.eventType() == core::AbstractCursor::Event_Move && aCursor.isPressedMiddle()) {
+            if (mPanning) {
+                updatePan(point);
+                return true;
+            }
+            return false; // a middle drag this editor did not begin (it began hidden)
+        }
+        if (aCursor.eventType() == core::AbstractCursor::Event_Release
+            && aCursor.eventButton() == core::AbstractCursor::Button_Middle) {
+            if (mPanning) {
+                endPan();
+                return true;
+            }
+            return false;
+        }
+
         if (aCursor.emitsLeftPressedEvent()) {
             // A press closes whatever edit was open. BOTH kinds, which is why
             // this is endDrag() and not just mGesture.end(): a gesture still
@@ -509,11 +522,12 @@ namespace ctrl {
             endDrag();
 
             const QVector<Entry> entries = buildEntries();
-            const QPoint point = aCursor.screenPoint();
             const Hit hit = hitTest(entries, mScale, point);
             const bool validItem = 0 <= hit.item && hit.item < entries.size();
+            const bool inPlot = mScale.plotRect().contains(point);
 
-            // The two branches are exactly "did the hit-test find something":
+            // The branches are exactly the graph's press meanings - a handle, a
+            // key, the Ctrl-insert on a band, and the marquee - and
             // `&& validItem` is the routing decision the whole ownership model
             // rests on, so it must not be relaxed to `||` (a hit with an invalid
             // item would index past entries and grab a handle that is not there).
@@ -526,26 +540,43 @@ namespace ctrl {
                 // Selecting the key IS the whole update: the graph keeps its own
                 // selection (the two views can show different layers), and it is
                 // held in the timeline's currency so no second type is needed.
-                // The same hit also makes this entry the focused channel, which
-                // is what the value axis follows.
-                selectKey(*entries[hit.item].node, entries[hit.item].channel, hit.keyFrame);
-                setFocusedChannel(*entries[hit.item].node, entries[hit.item].channel);
-                // ...and ARMS the move: a horizontal drag from this press changes
-                // the key's frame. Nothing is committed by the press itself, so a
+                // The modifier chooses between replacing, extending and toggling.
+                const graph::Channel channel = entries[hit.item].channel;
+                if (mModifiers.testFlag(Qt::ShiftModifier)) {
+                    // Shift EXTENDS: an entry that is already there is left alone
+                    // (extending is not toggling).
+                    modifySelection(*entries[hit.item].node, channel, hit.keyFrame, true);
+                } else if (mModifiers.testFlag(Qt::ControlModifier)) {
+                    // Ctrl TOGGLES: in when the key is out, out when it is in.
+                    const bool in = selectionIndexOf(*entries[hit.item].node, channel, hit.keyFrame) >= 0;
+                    modifySelection(*entries[hit.item].node, channel, hit.keyFrame, !in);
+                } else {
+                    selectKey(*entries[hit.item].node, channel, hit.keyFrame);
+                }
+                // The same hit makes this entry the focused channel, which is
+                // what the panel emphasises.
+                setFocusedChannel(*entries[hit.item].node, channel);
+                // ...and ARMS the move: a drag from this press changes the key's
+                // frame and value. Nothing is committed by the press itself, so a
                 // click that only selects leaves the history untouched.
                 beginKeyMove(hit, entries, point);
-            } else {
-                // Nothing under the pointer. The one thing a press can still mean
-                // on the panel is the insert gesture: a point on a curve's band
-                // (which is why ownsCursor owns it) with no key and no handle
-                // there inserts the key the curve already passes through. Off the
-                // band this does nothing at all, so a press on empty space leaves
-                // the selection and the sticky focus exactly as they were.
-                insertKeyAt(aCamera, point);
+            } else if (mModifiers.testFlag(Qt::ControlModifier) && inPlot) {
+                // ONE modifier, two disjoint meanings, decided by what is under
+                // the pointer: on a curve's band the Ctrl-press INSERTS the key
+                // that curve already passes through (see insertKeyAt's ADD note),
+                // and off every band it opens the MARQUEE. They cannot collide: a
+                // point on a band that carries a key is caught by the key branch
+                // above, where Ctrl means "toggle it in the selection".
+                // insertKeyAt answers whether it inserted, so this needs no second
+                // band test. The rectangle is applied on the RELEASE, so a
+                // Ctrl-click that never moves opens an empty one and deselects.
+                if (!insertKeyAt(aCamera, point))
+                    beginMarquee(point);
             }
-            // The press is reported as consumed either way (the panel wants its
-            // repaint), but ownsCursor is false off the items and the band, so
-            // the Driver passes it through and the viewport tools act on it too.
+            // The press is reported as consumed (the panel wants its repaint),
+            // but ownsCursor claims only a Ctrl-press in the plot, a key or a
+            // handle - so the Driver passes every other press through and the
+            // viewport tools act on it.
             return true;
         }
 
@@ -553,46 +584,46 @@ namespace ctrl {
             if (!mDragging)
                 return false; // a press that took nothing leaves the drag to nobody
 
-            // The button is still down, so any fit the press's focus owes stays
-            // PENDING: the window must not move under the pointer that is holding
-            // the gesture open.
+            if (mMarqueeArmed) {
+                // The marquee is a live rectangle: every move re-draws it.
+                updateMarquee(point);
+                return true;
+            }
+
             if (mKeyMoveArmed) {
                 // A key move answers with whether it moved the key: the caller
                 // only has a repaint to make when the document changed, and a
                 // refused step (an occupied frame) changed nothing.
-                return updateKeyMove(aCursor.screenPoint());
+                return updateKeyMove(point);
             }
 
-            updateDrag(aCursor.screenPoint());
+            updateDrag(point);
             return true;
         }
 
         if (aCursor.emitsLeftReleasedEvent()) {
-            if (mDragging) {
-                endDrag();
-                // The gesture is over and has been interpreted against the
-                // geometry the user actually saw, so this is the first moment the
-                // fit the press's focus owes may land.
-                applyPendingFocusFit();
+            if (mMarqueeArmed) {
+                // The last pointer position decides the rectangle, then it is
+                // applied to the selection.
+                updateMarquee(point);
+                endMarquee();
                 return true;
             }
-            // A release that closed no drag - a press that armed nothing, an
-            // insert or a press on empty space - is still the END of the gesture
-            // the press began, so the pending fit lands here for the same reason.
-            applyPendingFocusFit();
+            if (mDragging) {
+                endDrag();
+                return true;
+            }
             return false;
         }
 
         // A plain move with no button down, or an event this editor takes no
-        // action on: outside any gesture, so whatever the focus still owes is
-        // paid here.
-        applyPendingFocusFit();
+        // action on.
         return false;
     }
 
     //-------------------------------------------------------------------------------------------------
     bool GraphEditor::updateWheel(
-        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, bool aZoomValue
+        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
     ) {
         // The panel owns the wheel inside its rect and nowhere else. The rect is
         // now the whole viewport (the panel is fullscreen), so the wheel over the
@@ -610,18 +641,185 @@ namespace ctrl {
         // harmless only because of that. The wheel is the user's own movement of
         // the window, and this path is where it is made.
 
-        if (aZoomValue) {
+        // BOTH axes by default, so a curve keeps its shape while zooming and the
+        // point under the cursor stays under it (each axis anchors on the
+        // cursor's own coordinate). A modifier narrows the zoom to one axis:
+        // Shift is the frame axis (horizontal), Ctrl the value axis (vertical).
+        //
+        // DIRECTION: matching the rest of the application. A wheel notch that Qt
+        // reports as positive (the wheel rotated away from the user) makes
+        // ctrl::CanvasMover and ctrl::TimeLineEditor zoom OUT, and both do it per
+        // 1.1 of scale - so the panel does the same on both axes, and one wheel
+        // feels the same over the panel and over the viewport. (The value axis
+        // used to zoom IN on that notch, i.e. opposite both the frame axis beside
+        // it and the canvas below it; the two axes have to agree for a uniform
+        // zoom to mean anything.)
+        const bool frameOnly = aModifiers.testFlag(Qt::ShiftModifier);
+        const bool valueOnly = aModifiers.testFlag(Qt::ControlModifier);
+
+        if (!frameOnly) {
             // The value axis about the cursor's row, so the number under the
-            // cursor stays there.
-            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(aWheelDelta)), aPos.y());
-        } else {
+            // cursor stays there. The negated delta is what turns "Qt's notch
+            // direction" into "a notch up means further away", the canvas's own
+            // sense.
+            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-aWheelDelta)), aPos.y());
+        }
+        if (!valueOnly) {
             // The frame axis delegates its ladder and its anchoring rule to the
-            // timeline's scaler.
+            // timeline's scaler, about the cursor's column; it already reads the
+            // raw delta in the application's own sense.
             mScale.updateFrameZoom(aWheelDelta, aPos.x());
         }
-        // Taken even when the axis was already clamped at its floor or ceiling:
-        // the pointer is over the panel, so the canvas must not also zoom.
+        // Taken even when the axes were already clamped at their floor or
+        // ceiling: the pointer is over the panel, so the canvas must not also
+        // zoom.
         return true;
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    void GraphEditor::setModifiers(Qt::KeyboardModifiers aModifiers) { mModifiers = aModifiers; }
+
+    //-------------------------------------------------------------------------------------------------
+    int GraphEditor::selectionIndexOf(
+        const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame
+    ) const {
+        // The triple the timeline names a key by, compared the way selectKey
+        // writes it: the node by pointer identity (never dereferenced here) plus
+        // the type and the frame.
+        const QVector<core::TimeLineEvent::Target>& targets = mSelection.targets();
+        for (int i = 0; i < targets.size(); ++i) {
+            const core::TimeLineEvent::Target& target = targets[i];
+            if (target.node == &aNode && target.pos.type() == aChannel.type()
+                && target.pos.index() == aFrame.get()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    void GraphEditor::modifySelection(
+        core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd
+    ) {
+        const int at = selectionIndexOf(aNode, aChannel, aFrame);
+        if (aAdd) {
+            // Extend: adding a key already in the selection changes nothing (it
+            // is already there, and a duplicate would make removeSelectedKey
+            // remove it twice).
+            if (at < 0) {
+                mSelection.pushTarget(aNode, aChannel.type(), aFrame.get());
+            }
+        } else if (at >= 0) {
+            // Toggle out. indexOf found a LIVE entry, so removing it cannot
+            // leave a hole.
+            mSelection.targets().remove(at);
+        }
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    void GraphEditor::beginMarquee(const QPoint& aPos) {
+        // A marquee is a pointer gesture, so it takes the cursor and clears the
+        // other kinds - exactly like beginDrag and beginKeyMove.
+        mDragging = true;
+        mMarqueeArmed = true;
+        mKeyMoveArmed = false;
+        mMarqueeOrigin = aPos;
+        mMarqueeCurrent = aPos;
+        // The Shift state is recorded AT THE PRESS: whether the marquee adds to
+        // the selection or replaces it is decided by the gesture the user began,
+        // not by what a modifier happens to be doing at the release.
+        mAddToSelection = mModifiers.testFlag(Qt::ShiftModifier);
+        mDragKey = nullptr;
+        mDragItem = -1;
+        mDragSegment = -1;
+        mDragHandle = -1;
+    }
+
+    void GraphEditor::updateMarquee(const QPoint& aPos) { mMarqueeCurrent = aPos; }
+
+    QRect GraphEditor::marqueeRect() const {
+        // Empty while no marquee drag is in flight, and empty for a press that
+        // never moved: QRect(topLeft, bottomRight) would give a 1x1 box for equal
+        // corners, which is a rectangle no user drew and - since a key's square
+        // is centred on its own pixel - one that could select the very key whose
+        // centre it covers. "Nothing was dragged" has to be "nothing is selected".
+        if (!mMarqueeArmed || mMarqueeOrigin == mMarqueeCurrent) {
+            return QRect();
+        }
+        // Normalized (a drag up-left is as valid as down-right) and clipped to
+        // the plot, whose rectangle is the only place the panel draws data - so
+        // the box a user sees is the box that selects.
+        return QRect(mMarqueeOrigin, mMarqueeCurrent).normalized().intersected(mScale.plotRect());
+    }
+
+    void GraphEditor::endMarquee() {
+        // The rectangle is read BEFORE the flags are cleared, since marqueeRect()
+        // is what says whether a drag happened at all.
+        const QRect box = marqueeRect();
+        mMarqueeArmed = false;
+        mDragging = false;
+        mMarqueeOrigin = QPoint();
+        mMarqueeCurrent = QPoint();
+
+        if (!mAddToSelection) {
+            clearSelection();
+        }
+        if (box.isEmpty()) {
+            return; // a click that never dragged deselects and selects nothing
+        }
+
+        // Every key whose DRAWN square's centre falls inside the box, through the
+        // same graph::keyRect the hit-test and the drawing layer read, so the key
+        // a user sees inside the rectangle is the key that is selected. A key
+        // already in the selection (a Shift-marquee overlapping a previous one) is
+        // not added twice.
+        const graph::Scaler& scale = mScale;
+        for (const Entry& entry : buildEntries()) {
+            for (const core::TimeKey* key : entry.curve.keys()) {
+                const core::Frame frame(key->frame());
+                const QRect rect = graph::keyRect(scale, frame, entry.curve.valueOf(*key));
+                if (!box.contains(rect.center())) {
+                    continue;
+                }
+                if (selectionIndexOf(*entry.node, entry.channel, frame) < 0) {
+                    mSelection.pushTarget(*entry.node, entry.channel.type(), frame.get());
+                }
+            }
+        }
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    void GraphEditor::beginPan(const QPoint& aPos) {
+        mDragging = true;
+        mPanning = true;
+        mKeyMoveArmed = false;
+        mMarqueeArmed = false;
+        mDragKey = nullptr;
+        mDragItem = -1;
+        mDragSegment = -1;
+        mDragHandle = -1;
+        // A pan is incremental from wherever the pointer is, so there is no
+        // press-time origin to keep - only the last position.
+        mPanPointer = aPos;
+    }
+
+    void GraphEditor::updatePan(const QPoint& aPos) {
+        const QPoint delta = aPos - mPanPointer;
+        mPanPointer = aPos;
+        if (delta.isNull()) {
+            return;
+        }
+        // Both axes, as a plain pixel offset: the frame axis moves horizontally
+        // and the value axis vertically, and each keeps the OTHER axis' state
+        // (panFrame touches the frame origin only, panValue the value window
+        // only), so a diagonal drag moves the content diagonally without
+        // changing either zoom.
+        mScale.panFrame(delta.x());
+        mScale.panValue(delta.y());
+    }
+
+    void GraphEditor::endPan() {
+        mPanning = false;
+        mDragging = false;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -814,9 +1012,9 @@ namespace ctrl {
 
         // The inserted key is the panel's current key now: the press landed on its
         // curve, so it also focuses that channel, exactly as a press on a key
-        // does. (A real change of focus moves the value window - the focus's own
-        // documented contract, not an insert side effect: re-focusing the channel
-        // that is already focused is a no-op and refits nothing.)
+        // does. Neither the focus nor the selection moves a WINDOW (see DELIBERATE
+        // FIT in the header), so an insert press cannot move the band under its own
+        // release either.
         selectKey(*entry.node, entry.channel, frame);
         setFocusedChannel(*entry.node, entry.channel);
         return true;
@@ -957,7 +1155,9 @@ namespace ctrl {
         // Playback reads the segment's easing from its `from` key, for the whole
         // span, so both of the segment's handles edit that one key's param.
         mDragging = true;
-        mKeyMoveArmed = false; // this is a handle drag: the two kinds never coexist
+        mKeyMoveArmed = false; // this is a handle drag: the kinds never coexist
+        mMarqueeArmed = false;
+        mPanning = false;
         mDragItem = aHit.item;
         mDragSegment = aHit.segment;
         mDragHandle = aHit.handle;
@@ -974,14 +1174,22 @@ namespace ctrl {
             return;
 
         const Entry& entry = aItems[aHit.item];
+        core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
+        const core::TimeKey* key = line ? line->timeKey(entry.channel.type(), aHit.keyFrame.get()) : nullptr;
+        if (!key)
+            return; // the key the hit-test named is gone already: nothing to hold
 
         // The key the press hit, in the timeline's own currency - the layer that
         // owns the map, the node the event will name, the key type and the frame
         // the key is at. Held as those four things rather than as aHit.item, so
         // the move follows the key it grabbed and not the position of an entry
-        // list that a re-selection could rebuild differently.
+        // list that a re-selection could rebuild differently. The COMPONENT is
+        // held with them: it is which field of the key's Data the value half of
+        // the gesture writes.
         mDragging = true;   // the panel keeps the cursor while the key is held
         mKeyMoveArmed = true;
+        mMarqueeArmed = false;
+        mPanning = false;
         mDragItem = aHit.item;
         mDragKey = nullptr; // no handle: this drag moves the key, not its easing
         mDragSegment = -1;
@@ -989,14 +1197,22 @@ namespace ctrl {
         mMoveLine = entry.line;
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
+        mMoveComponent = entry.channel.component();
         mMoveFrame = aHit.keyFrame;
-        // Where the pointer was: the key follows the pointer's frame DELTA, so a
-        // press up to the key radius off the key's centre does not make the key
-        // jump by that offset on the first move.
+        // Where the pointer was, in PIXELS: both axes follow the pointer's own
+        // delta from here, so a press up to the key radius off the key's centre
+        // does not make the key jump by that offset on the first move. The value
+        // is read through the same live scale, so the two conversions always
+        // agree about the row the pointer is on.
         mMovePointerFrame = mScale.frameAt(aPressPos.x());
-        // No command yet: the first ACCEPTED move is what commits, so a press that
-        // never crosses a frame boundary leaves the history untouched.
+        mMovePressPos = aPressPos;
+        // The key's own value at the press: the drag's value delta is added to
+        // THIS, so the gesture is one absolute function of the pointer.
+        mMoveBaseValue = entry.curve.valueOf(*key);
+        // No command yet: the first ACCEPTED step is what commits, so a press
+        // that never moves leaves the history untouched.
         mMoveCommand = nullptr;
+        mValueCommand = nullptr;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1015,7 +1231,8 @@ namespace ctrl {
         // move would write a key that is not there. MoveFrameOfKey's own
         // validation would refuse every step, leaving the drag silently dead under
         // the cursor - so close the edit and say why.
-        if (!line->hasTimeKey(mMoveType, mMoveFrame.get())) {
+        core::TimeKey* key = line->timeKey(mMoveType, mMoveFrame.get());
+        if (!key) {
             mLogger.pushLog(
                 QObject::tr("The animation graph stopped moving: the dragged key changed."), UILogType_Info
             );
@@ -1023,12 +1240,34 @@ namespace ctrl {
             return false;
         }
 
-        // Only x is read, so a vertical drag moves nothing by construction: a move
-        // is a FRAME edit, and a key VALUE edit is a design of its own.
+        // The SHIFT axis snap: the pointer's own pixel displacement from the
+        // press decides which axis is dominant, and the other one is pinned. The
+        // displacement is a gesture-wide quantity (not a per-step one), so the
+        // chosen axis does not flicker while the pointer wiggles: a drag that is
+        // overwhelmingly horizontal does not smear a stray pixel of vertical
+        // movement into the value.
+        const int dx = aPos.x() - mMovePressPos.x();
+        const int dy = aPos.y() - mMovePressPos.y();
+        const bool snap = mModifiers.testFlag(Qt::ShiftModifier);
+        const bool frameAllowed = !snap || (dx < 0 ? -dx : dx) >= (dy < 0 ? -dy : dy);
+        const bool valueAllowed = !snap || (dy < 0 ? -dy : dy) > (dx < 0 ? -dx : dx);
+
+        // The FRAME delta from the last ACCEPTED frame: a refused step leaves
+        // mMovePointerFrame where it was, so the next accepted step is measured
+        // from the last accepted place.
         const core::Frame pointerFrame = mScale.frameAt(aPos.x());
-        const int step = pointerFrame.get() - mMovePointerFrame.get();
-        if (step == 0)
-            return false; // no frame boundary crossed: nothing to rewrite, nothing to open
+        const int step = frameAllowed ? pointerFrame.get() - mMovePointerFrame.get() : 0;
+
+        // The VALUE: the pointer's delta from the row it went down on, added to
+        // the key's own value at the press. Both rows go through the SAME live
+        // scale, so this is an absolute function of the pointer and cannot
+        // accumulate the key's own clamp.
+        const float valueDelta = valueAllowed ? mScale.valueAt(aPos.y()) - mScale.valueAt(mMovePressPos.y()) : 0.0f;
+        const float nextValue = mMoveBaseValue + valueDelta;
+        const bool valueMoves = (nextValue != graph::Channel(mMoveType, mMoveComponent).value(*key));
+
+        if (!valueMoves && step == 0)
+            return false; // the pointer has not moved the key: nothing to rewrite, nothing to open
 
         // The frame range is playback's business, not the keying system's: keys
         // may live anywhere, so the move is asked with the widest range there is
@@ -1036,47 +1275,76 @@ namespace ctrl {
         const util::Range frameRange(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
 
         if (mMoveCommand && mProject->commandStack().isModifiable(mMoveCommand)) {
-            // The command this gesture already pushed: REWRITE it, which is what
-            // makes the whole drag one undo step. modifyMove refuses a destination
-            // another key of the type owns, and a refusal leaves the command
-            // exactly as it was (no move, no mMove, no notification).
-            core::TimeLineEvent modEvent;
+            // The commands this gesture already pushed: REWRITE them, which is
+            // what makes the whole drag one undo step. modifyMove refuses a
+            // destination another key of the type owns, and a refusal leaves both
+            // commands exactly as they were (no move, no mMove, no notification).
             int clampedStep = step;
-            if (!mMoveCommand->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
-                return false;
+            core::TimeLineEvent modEvent;
+            bool frameMoved = false;
+            if (step != 0) {
+                if (!mMoveCommand->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
+                    return false; // the frame is occupied: the WHOLE step is refused
+                frameMoved = true;
+            }
+
+            if (valueMoves) {
+                mValueCommand->modifyValue(nextValue);
+            }
+
+            // ONE notification per step, as the timeline emits one per gesture
+            // step: the frame event when the frame moved (it names where the key
+            // came from and where it went, the structural half), and the value
+            // event otherwise - the same two events the timeline uses for its own
+            // frame moves and value edits. Nothing in the application tells the two
+            // apart (the object tree and the timeline editor only act on the
+            // push/remove/copy types), so the second call a both-axes step would
+            // otherwise make is work with no reader.
+            if (frameMoved) {
+                mProject->onTimeLineModified(modEvent, false);
+            } else {
+                core::TimeLineEvent valueEvent;
+                valueEvent.setType(core::TimeLineEvent::Type_ChangeKeyValue);
+                valueEvent.pushTarget(*mMoveNode, mMoveType, mMoveFrame.get());
+                mProject->onTimeLineModified(valueEvent, false);
+            }
 
             mMoveFrame = core::Frame(mMoveFrame.get() + clampedStep);
             mMovePointerFrame = core::Frame(mMovePointerFrame.get() + clampedStep);
-
-            // The rewrite goes straight through the stack, so the notification the
-            // first commit pushed has to be sent again here - the same event the
-            // timeline emits for keys whose frames moved.
-            mProject->onTimeLineModified(modEvent, false);
             return true;
         }
 
-        // The gesture's first accepted move, or its first after an undo dropped
+        // The gesture's first accepted step, or its first after an undo dropped
         // the stack's modifiable link.
         //
-        // The command is built and VALIDATED before the macro is opened: a
+        // Both commands are built and VALIDATED before the macro is opened: a
         // not-yet-pushed MoveFrameOfKey only records where it would move to (its
-        // own mCurrent == 0 path), so a REFUSED move can be dropped right here -
-        // no command on the stack, no notification, no empty history entry.
+        // own mCurrent == 0 path), so a REFUSED step can be dropped right here -
+        // no commands on the stack, no notification, no empty history entry. Both
+        // are always pushed, exactly once per gesture, so a later step that moves
+        // the axis this one did not can still rewrite the command that owns it -
+        // the one that was inert on this step simply stays inert.
+        int clampedStep = step;
         core::TimeLineEvent source;
-        source.setType(core::TimeLineEvent::Type_MoveKey);
+        source.setType(step != 0 ? core::TimeLineEvent::Type_MoveKey : core::TimeLineEvent::Type_ChangeKeyValue);
         source.pushTarget(*mMoveNode, mMoveType, mMoveFrame.get());
 
-        std::unique_ptr<TimeLineUtil::MoveFrameOfKey> command(new TimeLineUtil::MoveFrameOfKey(source));
-        core::TimeLineEvent modEvent;
-        int clampedStep = step;
-        if (!command->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
-            return false;
+        std::unique_ptr<TimeLineUtil::MoveFrameOfKey> frameCommand(new TimeLineUtil::MoveFrameOfKey(source));
+        if (step != 0) {
+            core::TimeLineEvent modEvent;
+            if (!frameCommand->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
+                return false;
+        }
+        std::unique_ptr<TimeLineUtil::AssignKeyValue> valueCommand(
+            new TimeLineUtil::AssignKeyValue(*key, mMoveType, mMoveComponent, nextValue)
+        );
 
-        TimeLineUtil::MoveFrameOfKey* pushed = command.release();
+        TimeLineUtil::MoveFrameOfKey* pushedFrame = frameCommand.release();
+        TimeLineUtil::AssignKeyValue* pushedValue = valueCommand.release();
         {
             cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("move a key"));
 
-            // The notifier carries the move's ORIGINAL target, exactly like the
+            // The notifier carries the step's ORIGINAL target, exactly like the
             // timeline's beginMoveKeys: what reaches the application names where
             // the key came from, and the macro's close is what fires it for this
             // first commit (the later rewrites notify by hand, above).
@@ -1084,10 +1352,15 @@ namespace ctrl {
             notifier->event() = source;
             macro.grabListener(notifier);
 
-            mProject->commandStack().push(pushed);
+            // The value command is pushed FIRST, so the FRAME command is the
+            // stack's modifiable one: isModifiable(mMoveCommand) is the single
+            // gate for rewriting either half of the gesture.
+            mProject->commandStack().push(pushedValue);
+            mProject->commandStack().push(pushedFrame);
         }
 
-        mMoveCommand = pushed;
+        mMoveCommand = pushedFrame;
+        mValueCommand = pushedValue;
         mMoveFrame = core::Frame(mMoveFrame.get() + clampedStep);
         mMovePointerFrame = core::Frame(mMovePointerFrame.get() + clampedStep);
         return true;
@@ -1171,35 +1444,42 @@ namespace ctrl {
     }
 
     void GraphEditor::endDrag() {
-        // The command is already on the stack with its last value, so closing the
-        // edit is all a release has to do: Gesture::end() makes the next drag open
-        // a fresh command instead of coalescing into this one, and a gesture that
-        // never committed pushes nothing at all.
-        //
-        // NOTE: this does NOT pay a pending focus fit. The press branch runs it
-        // before it has interpreted the press, and the whole point of the pending
-        // flag is that the window must not move under a press or a gesture; the
-        // callers that ARE a gesture's end (the release handling, a hide) call
-        // applyPendingFocusFit() themselves, after the event has been read.
+        // Every command is already on the stack with its last value, so closing
+        // the edit is all a release has to do: Gesture::end() makes the next drag
+        // open a fresh command instead of coalescing into this one, and a gesture
+        // that never committed pushes nothing at all.
         mGesture.end();
         mDragging = false;
         mKeyMoveArmed = false;
+        mMarqueeArmed = false;
+        mPanning = false;
         mDragKey = nullptr;
         mDragItem = -1;
         mDragSegment = -1;
         mDragHandle = -1;
 
-        // The key move's command stays on the stack (it IS the gesture's one undo
-        // step, whatever it was last asked to do); this drops the handle to it, so
-        // no later press can rewrite a command that belongs to a finished
-        // gesture. The armed key goes with it: nothing may move until a new press
-        // arms one.
+        // The marquee's box goes with it: a gesture that ends without applying it
+        // (a hide, or a press that closed it) must not leave a rectangle behind
+        // for the drawing layer to find.
+        mMarqueeOrigin = QPoint();
+        mMarqueeCurrent = QPoint();
+        mAddToSelection = false;
+
+        // The key move's commands stay on the stack (they ARE the gesture's one
+        // undo step, whatever they were last asked to do); this drops the handles
+        // to them, so no later press can rewrite commands that belong to a
+        // finished gesture. The armed key goes with them: nothing may move until
+        // a new press arms one.
         mMoveCommand = nullptr;
+        mValueCommand = nullptr;
         mMoveLine = nullptr;
         mMoveNode = nullptr;
         mMoveType = core::TimeKeyType_TERM;
+        mMoveComponent = 0;
         mMoveFrame = core::Frame();
         mMovePointerFrame = core::Frame();
+        mMovePressPos = QPoint();
+        mMoveBaseValue = 0.0f;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1262,56 +1542,61 @@ namespace ctrl {
         if (!mProject)
             return false;
 
-        // The panel's current key is its selection, which is one target by
-        // construction (selectKey). Anything else - no selection, or a hand-made
-        // one with several targets - is not a key the panel can name, so nothing
-        // happens rather than something approximate.
-        if (mSelection.targets().size() != 1)
-            return false;
-        // The panel's current key, as a mutable target: the remover factory needs
-        // the owning TimeLine to build its command against, and TimeKeyPos hands
-        // out a non-const line only from a non-const pos.
-        core::TimeLineEvent::Target& target = mSelection.targets().first();
-        if (!target.node)
-            return false;
+        // WHAT CAN BE REMOVED, collected BEFORE the macro is opened. cmnd::Stack
+        // appends a macro even when it holds no command and counts it as an edit,
+        // so an action that opened the macro and then found nothing to remove
+        // would leave an empty undo step behind.
+        //
+        // The key must be there to be removed. TimeLine::createRemover with
+        // nothing at the frame builds an EMPTY command, and a selection can
+        // outlive the keys it names (an undo, or another view's edit), so a stale
+        // target is skipped here rather than pushed against.
+        QVector<int> removals;
+        for (int i = 0; i < mSelection.targets().size(); ++i) {
+            const core::TimeLineEvent::Target& target = mSelection.targets().at(i);
+            if (!target.node || target.pos.isNull())
+                continue;
+            const core::TimeLine* line = target.pos.line();
+            if (!line)
+                continue;
+            if (!line->hasTimeKey(target.pos.type(), target.pos.index()))
+                continue;
+            removals.append(i);
+        }
 
-        core::TimeLine* line = target.pos.line();
-        if (!line)
-            return false;
-
-        // The key must be there to be removed. This is the same guard the ADD
-        // side needs for the opposite reason: TimeLine::createRemover with
-        // nothing at the frame builds an EMPTY command, and an empty command on
-        // the stack is an undo step that undoes nothing.
-        if (!line->hasTimeKey(target.pos.type(), target.pos.index())) {
-            // A selection naming a frame that holds no key is stale (an undo, or
-            // another view's edit) - drop it rather than keep naming a key that
-            // is not in the document.
+        if (removals.isEmpty()) {
+            // Nothing the selection names is in the document: drop it rather than
+            // keep naming keys that are not there.
             clearSelection();
             return false;
         }
 
         {
             // The timeline's own delete route (TimeLineEditor::deleteCheckedKeys):
-            // one notifier carrying the Type_RemoveKey event, one
-            // ScopedMacro("Delete keys")-shaped macro, and the remover factory
-            // that owns the map removal.
+            // ONE notifier carrying the Type_RemoveKey event and ONE macro, so a
+            // whole multi-key selection is ONE undo step.
             cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("remove a key"));
 
             auto* notifier = new TimeLineUtil::Notifier(*mProject);
             notifier->event().setType(core::TimeLineEvent::Type_RemoveKey);
-            notifier->event().pushTarget(*target.node, target.pos.type(), target.pos.index());
             macro.grabListener(notifier);
 
-            mProject->commandStack().push(
-                line->createRemover(target.pos.type(), target.pos.index(), true)
-            );
+            for (int index : removals) {
+                // The mutable target: the remover factory needs the owning
+                // TimeLine, and TimeKeyPos hands that out non-const only from a
+                // non-const pos.
+                core::TimeLineEvent::Target& target = mSelection.targets()[index];
+                core::TimeLine* line = target.pos.line();
+                notifier->event().pushTarget(*target.node, target.pos.type(), target.pos.index());
+                mProject->commandStack().push(
+                    line->createRemover(target.pos.type(), target.pos.index(), true)
+                );
+            }
         }
 
-        // The key is gone, so the panel's current key goes with it: keeping the
-        // selection would name a key no longer in the document (and the next
-        // remove would refuse it - the guard above - rather than remove a
-        // neighbour by accident).
+        // The keys are gone, so the selection goes with them: keeping it would
+        // name keys no longer in the document (and the next remove would skip
+        // them - the guard above - rather than remove neighbours by accident).
         clearSelection();
         return true;
     }
@@ -1413,39 +1698,29 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     void GraphEditor::setFocusedChannel(core::ObjectNode& aNode, const graph::Channel& aChannel) {
-        // Re-focusing the channel that is already focused is a NO-OP: the value
-        // axis is the user's, and grabbing a handle on the focused channel must
-        // not snap a window the user zoomed back onto the data. Only a real change
-        // of focus refits.
+        // Re-focusing the channel that is already focused is a NO-OP: not for the
+        // window's sake any more (nothing here moves a window), but because a
+        // redundant assignment is work with no observable effect.
         if (mFocusNode == &aNode && mFocusChannel == aChannel)
             return;
 
         mFocusNode = &aNode;
         mFocusChannel = aChannel;
 
-        // The focus drives the fit, but the fit is PENDING (see the policy note in
-        // the header): this runs from a PRESS, and a press may go on to arm a
-        // handle drag or a key move. Refitting here would move the very key or
-        // handle the press just grabbed, and the gesture would then run against
-        // geometry the fit had already invalidated. applyPendingFocusFit() pays
-        // this once the gesture is over. The shown-curve basis is untouched, so a
-        // later cursor pass with the same shown curves cannot refit over it.
-        mFocusFitPending = true;
+        // NOTHING ELSE. The focus is emphasis and a report of what the panel is
+        // working on; it does not touch the value window, the shown-curve basis or
+        // anything else the user owns. See DELIBERATE FIT in the header - a click
+        // that zoomed the view was the defect this replaced.
     }
 
     void GraphEditor::clearFocus() {
         if (!mFocusNode)
-            return; // already clear: nothing to drop and nothing to refit
+            return; // already clear: nothing to drop
 
         mFocusNode = nullptr;
         mFocusChannel = graph::Channel();
-
-        // No focus means the union of the shown curves again (or, when nothing
-        // shown has a key, the window the user set - applyValueFit's own guard).
-        // Pending for the same reason setFocusedChannel's fit is: clearFocus can
-        // be reached from a press's own path, and the window must not move under
-        // that press.
-        mFocusFitPending = true;
+        // No window moves here either: dropping the emphasis changes what is
+        // painted brightly, not what the axes show.
     }
 
     //-------------------------------------------------------------------------------------------------
