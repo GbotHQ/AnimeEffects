@@ -308,7 +308,16 @@ namespace ctrl {
         if (!any)
             return;
 
-        mScale.fitFrameAxis(lo, hi);
+        // A MARGIN, so the content is never drawn flush against the axis. A fitted
+        // range that ENDS on a key puts that key's chip at the plot's edge, where the
+        // plot's clip halves it and a press at its own centre misses it - measured
+        // 2026-10-14 on a single Rotate key at frame 0, drawn clamped against the left
+        // edge. A tenth of the span on each side, and at least one frame, keeps the
+        // keys inside the plot the way a graph editor should; the explicit fits get
+        // the same courtesy, and the scaler still clamps to the project's frame range.
+        const int span = int(hi.get()) - int(lo.get());
+        const int margin = std::max(1, span / 10);
+        mScale.fitFrameAxis(core::Frame(int(lo.get()) - margin), core::Frame(int(hi.get()) + margin));
     }
 
     void GraphEditor::fitAll() {
@@ -350,6 +359,14 @@ namespace ctrl {
 
         mValueBasis = basis;
         applyValueFit(entries);
+        // AND THE FRAME AXIS WITH IT, for the same reason and at the same moment. The
+        // frame window is fitted nowhere else, so a channel whose first key sits at
+        // frame 0 drew that key flush against the plot's left edge - its chip clamped
+        // by the axis and unclickable at its own centre (measured 2026-10-14, the
+        // pinned project's single Rotate key). fitFrameAxis pads what it fits, so the
+        // content is never flush; the policy is unchanged - the fit still follows the
+        // SHOWN CURVES and the user still owns a window they have wheeled or panned.
+        fitFrameAxis();
     }
 
     bool GraphEditor::focusIsShown(const QVector<Entry>& aItems) const {
