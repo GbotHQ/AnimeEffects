@@ -22,12 +22,14 @@ class QTabletEvent;
 class QTouchEvent;
 class QWheelEvent;
 
+struct ImDrawCmd;
 struct ImDrawList;
 struct ImFont;
 struct ImGuiContext;
 
 namespace core {
 class Project;
+class TimeLineEvent;
 }
 
 namespace theme {
@@ -46,11 +48,11 @@ struct PanelFocus {
 
     // One key the editor's selection carries, in the currency the drawing needs:
     // the key TYPE names the curve it belongs to and the pixel X is where that
-    // key's square is centred. PanelCurve::keys publishes key RECTS without their
-    // frames, and ctrl::graph::keyRect centres a square exactly on the mapped
-    // point, so this is the whole identity a key square can be matched by. The
-    // caller maps the selection through the editor's own scaler, with the model's
-    // panel.
+    // key's MARKER is centred. PanelCurve::keyDots publishes those centres (and
+    // PanelCurve::keyFrames their frames), and ctrl::graph::keyDot is the same
+    // mapping the editor's hit-test measures from, so the pixel X is the whole
+    // identity a key marker can be matched by. The caller maps the selection
+    // through the editor's own scaler, with the model's panel.
     struct SelectedKey {
         core::TimeKeyType type = core::TimeKeyType_TERM;
         int x = 0;
@@ -59,9 +61,11 @@ struct PanelFocus {
 };
 
 // Draws the panel into aDrawList: the short ticks, the labels with their halo,
-// the zero rule, the curves (clipped to the plot), the key squares, the Custom
-// tangent handles (the grabbed one highlighted from io.MousePos), the playhead,
-// the legend swatches and labels, and the empty state. It keeps no state - which
+// the zero rule, the curves (clipped to the plot), the key markers (a filled
+// dot of radius ctrl::graph::kKeyDotRadius about each key's centre, ringed in
+// theme::Graph::keyEdge()), the Custom tangent handles (the grabbed one
+// highlighted from io.MousePos), the playhead, the legend swatches and labels,
+// and the empty state. It keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
 // but the handle highlight DOES read ImGui::GetIO().MousePos, so a caller must
@@ -90,35 +94,6 @@ void drawPanel(
 // exposed so a pixel gate can assert the no-room rule on the geometry itself.
 QRect legendLabelRect(const PanelLegendRow& aRow, ImFont* aFont, float aFontSize);
 
-// Derives the ImGui style the panel's one POPUP is drawn with - the key context
-// menu (drawKeyContextMenu) - from the panel's theme tokens, and applies it to the
-// current ImGui context's style. This is the ONE place where the application's
-// palette meets ImGuiStyle:
-//
-//   * the surface, its 1px edge and its radius are theme::Graph::menuBody/Edge/
-//     Rounding, i.e. the same rounded floater gui::AppStyle draws a QMenu as;
-//   * the text, the disabled text, the row's hover pill, the text on that pill and
-//     the separator line are the app's own menu tokens;
-//   * the font is NOT set here: the popup draws with the context's current font,
-//     which is the atlas built from the WIDGET's font through gui::imgui_qt
-//     (ImGuiOverlay::init), i.e. the face and size the application's own menus use.
-//
-// It is a pure function of the theme, so the caller applies it again whenever the
-// palette could have changed: ImGuiOverlay::paint calls it once per frame from
-// theme::Graph::from(theme::Colors::current()), which is what makes a runtime accent
-// or light/dark change reach the popup with no signal and no cached copy (the frame
-// already re-derives the panel's colours the same way). tests/graph_panel_pixels.cpp
-// pins the mapping itself.
-//
-// WHAT IT CANNOT EXPRESS, and what is approximated: ImGui's Selectable highlight is
-// a square rect (no rounding knob), so the item pill is drawn by the menu itself and
-// the style's three Header colours are switched off - except the nav cursor, which
-// ImGui draws around the keyboard-focused entry and which is therefore the one square
-// highlight left; and Qt's font-relative menu paddings (0.3em panel, 0.23em/1.3em
-// item) have no ImGui equivalent, so the popup uses its own fixed paddings
-// (theme::Graph::menuPadX/menuPadY/menuItemPadX).
-void applyPanelStyle(const theme::Graph& aTheme);
-
 // Whether drawPanel draws the LABEL HALO: the same glyphs 16 more times, at the
 // eight compass offsets of radius 1 and radius 2, in theme::Graph::halo().
 // SHIPPED OFF. The halo is unconditional - it prints an opaque panel-toned smear
@@ -129,6 +104,28 @@ void applyPanelStyle(const theme::Graph& aTheme);
 // colour rather than a panel tone. The halo's code is kept and this flag is the
 // only thing that switches it off, so the two can still be compared.
 constexpr bool kDrawTextHalo = false;
+
+// The gutter a VALUE label keeps from the right edge of its box, when the box has
+// that much room to spare (see drawLabel's right-alignment): the top value label and
+// the plot's first frame number otherwise land 7px apart on the same rows and read as
+// the single string "10" - measured in the design-review capture (the value label '1'
+// at x 208..215 and the frame label '0' at x 223..231 of a 1440x900 shot).
+//
+// WHY 8. The timeline answers this exact defect with its own margin:
+// src/gui/TimeRuler.cpp's kNumberMargin = 8 ("Number labels never come closer than
+// this gap: without a margin, adjacent numbers ... read as one"). The panel takes the
+// application's own number for the same problem, and 8px on top of the model's own
+// ctrl::graph::Scaler::kAxisLabelPad (4px) and the frame number's inset leaves the two
+// numbers ~15px apart - more than two 7px digits of clear gutter.
+//
+// IT IS A MAXIMUM, NOT A SHIFT: the pull is limited to the box's spare width, so a
+// label that fills its box keeps the position the model's measured column gave it and
+// the gutter can never push a number out of the column.
+//
+// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp asserts
+// the drawn gutter against THIS number, so the bar and the drawing cannot drift (the
+// same reason kDrawTextHalo lives here).
+constexpr int kValueLabelGap = 8;
 
 // The contrast outline and composite: ONE full-screen pass that rings panel ink
 // whose own colour is too close to the artwork underneath it, and then composites
@@ -162,11 +159,25 @@ constexpr bool kDrawTextHalo = false;
 // is ringed only on the side that needs it.
 namespace outline {
 
-// WCAG's minimum contrast ratio for large text and UI components - 3:1. The ratio
-// is only that number in LINEAR light, so luma() linearises the sRGB channels
-// first (see the fragment shader). This is a starting point, not a law: it is the
-// one number that decides how eager the ring is.
-constexpr float kMinContrast = 3.0f;
+// The ratio below which the ring is drawn. The shader rings ink whose contrast
+// against the backdrop is BELOW this number, so a HIGHER constant rings MORE: it
+// is the "the ink would otherwise have been lost" line, not a target for the ink.
+//
+// WHY 2.0 AND NOT 3.0 (the value this shipped with). 3.0 is WCAG's minimum for
+// large text and UI components, and read as a ring TRIGGER it is far too eager:
+// the panel's ink is theme::Colors::text, and in linear light white ink reaches
+// 3:1 against any backdrop darker than grey 149/255 - i.e. the ring was drawn over
+// almost every mid-tone in the artwork, which is the "the ring shows up
+// everywhere" report. 2.0 draws it only where the ink is genuinely near-invisible:
+// white ink rings over a backdrop brighter than grey 183/255, and every darker
+// backdrop is left alone. The relation is measured in the gate
+// (tests/graph_panel_pixels.cpp, the outline block): a grey-130 stroke over the
+// bright 200 patch is 2.30:1, untouched at 2.0 and ringed at 3.0 - the pair that
+// pins this number rather than merely accepting it.
+//
+// The ratio is only that number in LINEAR light, so luma() linearises the sRGB
+// channels first (see the fragment shader).
+constexpr float kMinContrast = 2.0f;
 
 // The shipped ring: the four taps one pixel away. The alternative measured here is
 // 2, which adds a second ring at +/-2px and takes maxA over all eight taps - the
@@ -204,6 +215,113 @@ void copyBackdrop(GLuint aSourceFbo, GLuint aDestinationFbo, const QSize& aPixel
 void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const Params& aParams);
 
 } // namespace outline
+
+// The CURVE INK: the channel polylines, stroked by a coverage pass of our own
+// instead of by the draw list's own ImDrawList::AddPolyline - and the tangent HANDLE STEMS,
+// which are 1px lines with fractional ends and the one 1px family in the panel whose ink can
+// sit off the line it means.
+//
+// WHY NOT AddPolyline. ImGui antialiases a polyline by building the fringe into the
+// GEOMETRY: each segment is a quad whose edge vertices carry a partial alpha, so how
+// thick the stroke looks is a property of its vertices - and a horizontal run and a
+// steep diagonal of the same nominal width then disagree. This pass measures the
+// coverage PER FRAGMENT, from the distance to the segment's own centreline, so the
+// width is a property of the SHAPE. It is the technique of Chan & Durand, "Rendering
+// Antialiased Lines on the GPU" (2005) and the treatment in Rougier, "Shader-Based
+// Antialiased, Dashed, Stroked Polylines", JCGT 2(2) 2013 (whose body distance is the
+// absolute perpendicular coordinate and whose filter radius is a parameter) - the same
+// family Vello/piet-gpu draw strokes with.
+//
+// WHY THE STEMS ARE HERE TOO. A handle stem is one pixel wide and its ends are fractional
+// (PanelHandle::base/dot are QPointF), and ImGui's AddLine shifts its geometry by (+0.5,+0.5)
+// (the 1px rasterization convention in imgui_draw.cpp) - which is a pure translation, but the
+// coverage that matters is measured PERPENDICULAR to the line, so on a stem at a diagonal the
+// ink lands up to 0.71px off the line the model asked for (the (0.5,0.5) shift's component
+// along the stem's own normal is 0.699 for the gate's fixture). MEASURED on that fixture, at
+// three stations along it, through one method for both strokes: +0.68, +0.75 and +0.76px for
+// AddLine, against -0.01, -0.00 and +0.01px for this pass. The pass measures the
+// distance to the segment that was asked for, so the offset goes away; the stem is already
+// antialiased today (drawPanel does NOT turn the draw list's line AA off for it), so its
+// crispness is unchanged - only its position.
+//
+// The integer-positioned chrome (the frame and value ticks, the zero rule and the playhead) does
+// NOT come through here, and that is a measured decision rather than an omission: those three
+// are drawn with the line AA explicitly OFF (the timeline's hairline rule), every one of them is
+// positioned by an INTEGER column, and at an integer column the hard-edged line is exact - one
+// column at full coverage, on the column the model named. A 1px stroke through this pass on a
+// pixel boundary puts half its ink in each of two columns, i.e. it would trade one crisp column
+// for two grey ones. tests/graph_panel_pixels.cpp pins both halves of that (its assertion 27),
+// so the decision fails loudly if someone makes it by accident.
+//
+// HOW IT DRAWS. One quad per segment, expanded on every side to
+// halfWidth + filter, so a segment's capsule already has its round join and cap and
+// no join geometry is needed; each vertex carries the segment's own two endpoints.
+// The fragment computes the distance to the SEGMENT (never to its infinite line) and
+// turns it into a coverage with a one-device-pixel box filter, so the 50% crossing
+// sits exactly on the nominal edge. Below one device pixel the stroke keeps the 1px
+// footprint with its alpha scaled down rather than vanishing.
+//
+// NO DOUBLE-DARKENING AT THE JOINS. Neighbouring segments' quads overlap by the
+// filter's own width, and compositing them one after another would blend the overlap
+// twice - which is worse than it sounds, because an unfocused curve is drawn at 45%
+// alpha and even a FULLY covered overlap composites darker than the stroke's own body.
+// So the coverage is accumulated with glBlendEquation(GL_MAX) into a scratch texture
+// (the union of the capsules, which IS the round-joined stroke) and composited once
+// into the frame with the ImGui backend's own source-over function, in the
+// premultiplied convention the contrast outline pass documents.
+//
+// WHERE IT SITS IN THE FRAME. The curves belong between the ticks and the key
+// markers, and the ImGui backend renders a whole draw list in one call, so the pass is
+// inserted INTO the draw list: drawPanel puts one ImDrawList::AddCallback per curve,
+// carrying that curve's polyline, colour and strength in the callback's own COPIED
+// data, and the callback draws into whichever framebuffer is bound (the overlay's
+// coverage framebuffer in the application, the harness's own in the pixel gate) using
+// the backend's own ortho matrix - so a curve lands on exactly the pixels AddPolyline
+// would have inked.
+//
+// IT IS A GUEST IN THE FRAME and puts back every binding it changes: the ImGui backend
+// keeps its program, its vertex array and its array buffer bound across commands and
+// uploads the next draw list's vertices with them.
+//
+// WITHOUT init() - a context that refuses the programs, or a caller that never built
+// the pass - drawPanel keeps the old AddPolyline path: a panel drawn with the fringe
+// stroke beats a panel with no curves at all. The pixel gate drives both, which is
+// what makes the two stroke geometries comparable in one run.
+namespace stroke {
+
+// The stroke's nominal width in LOGICAL pixels - gui::kCurveWidth, the number both
+// paths stroke with. Declared here because tests/graph_panel_pixels.cpp asserts the
+// measured width against it, the same reason gui::kValueLabelGap lives in the header.
+constexpr float kWidthPx = 2.0f;
+
+// The coverage filter's width in DEVICE pixels: the box filter the fragment turns the
+// distance to the centreline into a coverage with. Rougier's r, and 1 is both the
+// paper's usual value and this shipment, so the ramp spans the pixel either side of the
+// nominal edge. Read only by the pass; named here so the gate can say what it measured
+// against.
+constexpr float kFilterPx = 1.0f;
+
+// Builds the pass's programs, its vertex array and its coverage scratch on the CURRENT
+// GL context. Idempotent (safe to call per frame) and false when the context cannot
+// compile the programs - drawPanel then strokes with ImDrawList::AddPolyline.
+bool init();
+// Releases the programs, the vertex array and the scratch, with a context current.
+void shutdown();
+// Whether init() has built the pass, i.e. whether drawPanel will insert it. The gate
+// uses this to render the SAME model through both stroke geometries in one run.
+bool isReady();
+
+// The draw-list callback drawPanel inserts where a curve's ink belongs (an
+// ImDrawCallback, one per curve). Public for the same reason drawPanel and
+// outline::composite are: the pixel gate has to be able to drive it directly, which is
+// how it is checked for leaving the frame's GL state exactly as it found it. It draws
+// only what the ImDrawCmd it is handed carries - the curve's polyline, colour and
+// strength, in the callback data ImGui copied for it - and it reads the projection
+// from the frame's own ImDrawData, so it must be called while that frame is current.
+// It returns without drawing when there is no frame to project against.
+void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
+
+} // namespace stroke
 
 // The shipping viewport overlay: the animation graph panel drawn with Dear ImGui
 // in the widget's own GL pass.
@@ -248,20 +366,6 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 // ctrl::GraphEditor, exactly as they did when the panel was painted with
 // QPainter.
 //
-// FRAME TIMING, and the one thing a frame owes the NEXT one. ImGui does not
-// necessarily apply everything it was handed in the frame that was drawn: a press
-// and the release that follow one another are applied on TWO frames
-// (io.ConfigInputTrickleEventQueue, ImGui's own default - the split is what keeps
-// the pair from flattening into "no click"), and an ImGui Selectable fires on the
-// RELEASE, i.e. on the second of those frames. So a frame that still holds input
-// for ImGui ends by asking for its successor (imguiHasQueuedInput), which is a
-// request no EVENT handler can make: a requestRepaint() from one is a
-// QWidget::update() like the widget's own update() for a press this class
-// consumed, and Qt coalesces everything requested while a paint is already pending
-// into that one pending paint. Without it a single click on a menu entry stays in
-// ImGui's queue until some unrelated repaint happens to run - the popup's own entry
-// not responding to one click.
-//
 // APPEARANCE (the decisions GraphPanelModel deliberately does not make):
 //   * contrast outline. The pass below rings panel ink whose own colour is too
 //     close to the artwork behind it, in theme::Graph::outline(). It is why the
@@ -276,25 +380,32 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 //     readable over arbitrary artwork, at the cost of an opaque panel-toned ring
 //     around every label - including over artwork that needed none - which is what
 //     the outline pass replaced. The code is kept so the two can be compared.
-//   * curve stroke. kCurveWidth (2.0) with ImGui's antialiasing on - the width is a
-//     whole number ON PURPOSE, because that is what puts the stroke on ImGui's
-//     texture-AA path (one quad strip, 2 vertices per point) instead of its
-//     per-segment geometry path (4 per point), and a stroke's opaque core is only
-//     width-1 px wide on that path: 1.5px left a 0.5px core under a 1px ramp, the
-//     least opaque stroke ImGui can draw. See the constant's own comment.
-//   * key markers. A key square is FILLED WITH ITS CHANNEL'S COLOUR
-//     (PanelCurve::color == theme::Graph::keyColor(channel.type()), the colour its
-//     curve is stroked in and its legend swatch filled with) inside
-//     theme::Graph::keyEdge() - a floor-toned ring, which is what keeps a key
-//     visible on top of the curve that carries it. The editor's selection turns both
-//     into theme::Graph::selected().
+//   * curve stroke. kCurveWidth (2.0) - the panel's own width - drawn by gui::stroke
+//     below: one quad per segment, the coverage measured per fragment from the distance
+//     to the segment's own centreline, the segments' capsules unified with GL_MAX so a
+//     join cannot be blended twice. With that pass unavailable (a context that refuses
+//     its programs) the stroke falls back to ImDrawList::AddPolyline, where the whole
+//     number still matters for a different reason: it is what puts ImGui on its
+//     texture-AA path (one quad strip, 2 vertices per point) instead of its per-segment
+//     geometry path (4 per point). See kCurveWidth's own comment and gui::stroke.
+//   * key markers. A key is a DOT - a circle of radius ctrl::graph::kKeyDotRadius
+//     (3.75px, the timeline's own key-body radius) at PanelCurve::keyDots, FILLED
+//     WITH ITS CHANNEL'S COLOUR (PanelCurve::color ==
+//     theme::Graph::keyColor(channel.type()), the colour its curve is stroked in
+//     and its legend swatch filled with) inside theme::Graph::keyEdge() - a
+//     floor-toned ring, which is what keeps a key visible on top of the curve that
+//     carries it. The editor's selection turns both into theme::Graph::selected().
+//     The marker is deliberately NOT the size of the pick area: the editor grabs a
+//     key within ctrl::graph::kKeyHitRadius (10px) of its centre and the model's
+//     `keys` rect is that rule's square form, so the ink is small and the target is
+//     generous - the timeline's own rule for a small element.
 //   * the box-select marquee. PanelCurve... see GraphPanelModel::marquee: a rounded
 //     (6px) body in theme::Graph::marqueeFill() under a 1px theme::Graph::marqueeEdge()
 //     edge - the timeline's own box-select colours (ctrl/time/time_Renderer.cpp), so
 //     the gesture reads the same in both views. ImGui's draw list has no dashed
 //     stroke, so the edge is solid where the timeline's is dashed.
 //   * emphasis. While a focus exists, the focused channel's curve and its key
-//     squares are drawn at full colour and every other curve at 45% alpha
+//     markers are drawn at full colour and every other curve at 45% alpha
 //     (kUnfocusedAlpha). With no focus every curve is full.
 //   * tangent handles. Each PanelHandle is a stem (theme::Graph::handleLine())
 //     from its base to its dot, then the dot itself (theme::Graph::handleFill()
@@ -321,113 +432,68 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 // QCoreApplication::translate with the "gui::ImGuiOverlay" context (the class is
 // not a QObject, so there is no tr() member), and the panel's own reasons for
 // being empty come from the model, which states them as plain English literals.
-// Two deliberate exceptions, neither of them a second convention:
-//   * the menu's EASING entries take their labels from util::Easing::getTypeName,
-//     which resolves through the "EasingName" context - the same call, and
-//     therefore the same strings and catalog entries, the timeline's own easing
-//     menu uses (TimeLineEditorWidget builds its entries from that function too);
-//   * the menu's "Delete key" entry is asked for in the TIMELINE's context
-//     ("TimeLineEditorWidget"), because the string is the timeline's own word for
-//     that action: one English literal, one catalog entry, one translation. A
-//     second copy under this file's context would let the two menus drift apart
-//     in a translation while looking identical in English.
-// Inventing a second set of easing names or a second delete wording here is what
-// those two avoid.
+// THE MENU'S STRINGS ARE NOT THIS CLASS'S AT ALL: the menu IS the timeline's own
+// (mSelectEasing, built from util::Easing::getTypeName through the "EasingName"
+// context), so a translator has one set of easing names for both views by
+// construction - the class that draws the menu is the class that built it, and
+// this file cannot drift from it. The one string this class adds for the menu is
+// the accessible ACTION that opens it (see publishAccessibility).
 //
-// THE KEY CONTEXT MENU. A right-click ON A KEY opens a popup at the pointer
-// offering the timeline's easing choices and "Delete key"; nothing else on the
-// panel is a right-click target, so a right-click that hits no key opens nothing
-// and is consumed by nothing (the graph itself takes no right-button action - it
-// is ctrl::Driver's cursor test that decides whether the press is the panel's at
-// all).
+// THE KEY MENU IS THE APPLICATION'S OWN QMENU. A right-click within
+// ctrl::graph::kKeyHitRadius of a key's CENTRE selects that key exactly as a press
+// on it would and then opens the TIMELINE's easing menu through
+// gui::MainDisplayWidget::showGraphKeyMenu - the one menu the timeline's own key
+// gesture builds (TimeLineEditorWidget::mSelectEasing, from util::Easing's display
+// table), so there is no second list of easings, no second wording and no second
+// edit path to keep in step. Nothing else on the panel is a right-click target: a
+// right-click that hits no key opens nothing and consumes nothing (the graph itself
+// takes no right-button action - it is ctrl::Driver's cursor test that decides
+// whether a press is the panel's at all).
 //
-//   * the key under the pointer is found the way the panel is HIT-TESTED and
-//     DRAWN: the model's own key rectangles, which are ctrl::graph::keyRect
-//     clipped to the plot. No rect is computed here, so a menu can never open on
-//     a key the editor's hit-test (which reads the same function through the same
-//     scaler) would not have found. The rects carry no frame, which is why the
-//     model publishes PanelCurve::keyFrames beside them - the frame is what names
-//     the key the menu acts on.
+//   * THE HIT IS THE EDITOR'S OWN RULE, not the drawn shape and not the model's
+//     key RECT. ctrl::GraphEditor::hitTest grabs a key within
+//     ctrl::graph::kKeyHitRadius (10px) of its centre, and this asks the same
+//     question of the same centre: PanelCurve::keyDots, which is
+//     ctrl::graph::keyDot through the model's own scaler. The rect form
+//     (PanelCurve::keys, a 10x10 square) is HIT geometry for a marquee, and the
+//     marker is drawn at kKeyDotRadius (3.75px), so neither is the rule here - the
+//     generous circle around the centre is, and it is the same one a left press
+//     grabs through.
+//   * the frame the hit names comes from PanelCurve::keyFrames, published beside
+//     the dots for exactly this: (node, channel type, frame) is the timeline's own
+//     name for a key.
 //   * the right-click also makes that key the panel's SELECTION, which is the
 //     timeline's own behaviour: its key menu calls selectKeysAt() with the
 //     right-click point and then acts on the result. So the menu's wording
-//     ("key(s)") and its effect agree: the menu acts on the selection, and the
-//     key it was opened on is in it. The selection is not restored on dismissal,
-//     exactly as the timeline leaves the key it lent its selection to.
-//   * the chosen easing goes through the editor's own action
-//     (ctrl::GraphEditor::setSelectedKeysEasing): ONE undo step, on the
-//     timeline's notifier and event currency, so the timeline's menu and this one
-//     cannot disagree about the document.
+//     ("key(s)") and its effect agree: the menu acts on the selection, and the key
+//     it was opened on is in it. The selection is not restored on dismissal, exactly
+//     as the timeline leaves the key it lent its selection to.
+//   * the chosen easing goes through the timeline's own action, on the timeline's
+//     notifier and event currency, so the two menus cannot disagree about the
+//     document - and the keyboard (Escape, the arrows, Enter) is the QMenu's, not
+//     this overlay's: nothing here gates ImGui's navigation, takes the Qt focus, or
+//     claims the keyboard, so the application's own key commands work exactly as
+//     they did before the menu existed, menu open or not.
 //
-// ImGui draws the popup, so - unlike the legend rows and the state line, which
-// this class publishes itself - THE MENU IS NOT IN THE ACCESSIBLE TREE, and a
-// screen reader cannot address an entry by name. That is consistent with the rest
-// of the application (the repository's own QMenus, the object tree's row menu
-// included, are not exposed either: measured in the application-level probe), so
-// it is recorded here rather than worked around. What the accessibility layer
-// says INSTEAD is the state the menu changes: the summary line names the selected
-// key and the easing it carries (see publishAccessibility), so the one thing a
-// screen-reader user cannot reach is still reported.
+// WHERE IT IS OPENED FROM. The widget forwards every button to mouseButton(), which
+// is the only place this class sees a right press; press() is the LEFT press path
+// and the widget only offers it the left button. The menu itself is a native window
+// (QMenu::popup, not exec(): the caller is inside a press handler and a nested event
+// loop there could re-enter the code asking for the menu), so the overlay does not
+// draw it and cannot measure it.
 //
-// THE MENU'S KEYBOARD, and why it is gated rather than simply enabled.
-// io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard is what ImGui gates its own
-// popup keyboard behaviour on: ImGui::NavUpdateCancelRequest closes the front popup
-// on Escape, and the arrows move the popup's own entry highlight (its own rectangle,
-// drawn by ImGui in theme colours) which Enter then activates - the same three things
-// a QMenu gives the timeline's key menu. The flag is NOT set for the whole session,
-// because this overlay covers the whole viewport: with it set, ImGui claims the
-// keyboard for the panel (io.NavActive -> io.WantCaptureKeyboard), and the
-// application's own key commands (gui::KeyCommandMap: ctrl+Z, Delete, ctrl+Right, ...)
-// would stop reaching MainWindow for as long as the panel is on screen.
-//
-// So it is set EXACTLY while the key context menu is open, in ImGuiOverlay::paint
-// immediately before ImGui::NewFrame, from the popup's last known open state - the
-// one place a flag ImGui reads during NewFrame can be changed in time. That is a
-// per-menu toggle rather than a per-frame one in effect: the flag is already past
-// the point where it could affect the frame that opens the popup, and it is cleared
-// on the first frame after the popup closes. While the menu is open the class also
-// asks for the keyboard explicitly (ImGui::SetNextFrameWantCaptureKeyboard, every
-// frame it is up), so the widget consumes every key the menu could act on rather
-// than letting it reach the application's key map, and ImGuiOverlay::key asks for
-// the repaint the popup's own keyboard answer needs - the same thing mouseMove and
-// mouseButton already do for the pointer's.
-//
-// AND WHILE IT IS OPEN THE WIDGET TAKES THE QT FOCUS, without which none of that
-// arrives: keys reach this class through MainDisplayWidget::keyPressEvent, and the
-// widget carries QWidget's default Qt::NoFocus policy (it never sets one), so a
-// press in the viewport does not make it the focus object and the keys go to
-// whichever widget last had the focus. MEASURED with this class instrumented and
-// its own application probe driving the menu: zero key events reached it in a whole
-// run and the popup stayed up through Escape. The focus it takes is handed back
-// when the menu closes (and only if this class still holds it), which is the
-// hand-back the ImGui TEXT FIELD path below does not need because a field's focus
-// is the user's own doing; taking it here is the same move that path makes.
-//
-// Net effect, and it is the contract the application-level probe checks: with the
-// menu closed the overlay claims nothing and every application key command works
-// exactly as it did before this menu existed; with the menu open Escape closes it
-// without touching the document, the arrows move the highlight, Enter activates the
-// highlighted entry, and no key of that sequence reaches the application.
-//
-// THE POPUP'S APPEARANCE IS THE APPLICATION'S OWN CONTEXT MENU'S, and it is derived
-// rather than written: gui::applyPanelStyle copies the menu tokens
-// (theme::Graph::menuBody/menuEdge/menuText/menuTextDisabled/menuHover/menuHoverText/
-// menuSeparator and the radii and paddings beside them) into ImGui's style, and paint()
-// re-applies it every frame from theme::Colors::current(), so a runtime accent or
-// light/dark change reaches the popup with no signal. Qt's font-relative menu paddings
-// (0.3em panel, 0.23em/1.3em item) have no ImGui equivalent and the popup's own
-// paddings are used instead; ImGui's item highlight cannot be rounded, so the menu
-// draws the app's 4px pill itself and only its KEYBOARD highlight (the nav cursor) is
-// left as ImGui's square rect. Both are stated at applyPanelStyle.
-//
-// The popup's geometry is fixed rather than ImGui's default, and that is a
-// contract this class keeps with its callers: zero ItemSpacing, a compact row
-// height, and one row per entry, so the row under a given pixel is a function of
-// the popup's top edge and its height alone. It exists because the popup is
-// confined to the VIEWPORT - an ImGui window, not a separate native menu window
-// like Qt's - so it has to fit in a small one; the entries are laid out in two
-// columns for the same reason, and the popup is placed to fit rather than at the
-// pointer when the pointer's row of the viewport cannot hold it.
+// AND THE ACCESSIBILITY LAYER KEEPS ITS ROUTE TO IT. The menu is a QMenu and is
+// therefore NOT in the accessible tree - like the repository's own QMenus, the
+// object tree's row menu included (measured in the application-level probe). What
+// the tree says instead is the state the menu changes: the summary line names the
+// selected key and the easing it carries (see publishAccessibility). On top of
+// that, when the selection names exactly one key the class publishes ONE more
+// action - a button on the key's own marker - and activating it calls the SAME
+// route the pointer does (showGraphKeyMenu with the key's position in this widget),
+// so the menu is reachable without a pointer. Its rect is the region the pointer's
+// gesture works in (the key's centre grown by ctrl::graph::kKeyHitRadius), which is
+// the same "a click where this item says it is does what this item does" rule the
+// fit action follows.
 class ImGuiOverlay {
 public:
     ImGuiOverlay();
@@ -441,9 +507,14 @@ public:
     // initializeGL, with that context current). Returns false and leaves nothing
     // behind - no context, no backend, no atlas, no accessibility factory - when
     // the backend refuses. The atlas is built through
-    // gui::imgui_qt::installQtFontLoader at the widget font's pixel size; when
-    // that loader cannot be installed the overlay still runs, on ImGui's own
-    // default font, because a panel drawn in the wrong face beats no panel.
+    // gui::imgui_qt::installQtFontLoader at the pixel size
+    // gui::imgui_qt::panelFontPixelSize derives from the widget's font - the size
+    // Qt RASTERIZES that face at, which is what the timeline's own numbers use (the
+    // font's LINE height is 1.298x that and drew every panel numeral ~30% too
+    // large); when the font states no size at all the panel falls back to
+    // kFallbackFontPixelSize, and when the loader cannot be installed the overlay
+    // still runs, on ImGui's own default font, because a panel drawn in the wrong
+    // face beats no panel.
     bool init(QOpenGLWidget& aWidget);
     bool isReady() const { return mReady; }
 
@@ -487,12 +558,10 @@ public:
     bool imeWantsTextInput() const;
 
     // ---- the overlay's own interaction ----
-    // A press on a legend swatch toggles that channel's visibility, a press on a
-    // legend label focuses that channel, and - while the KEY CONTEXT MENU is open
-    // (see the class comment) - a press belongs to the menu, so this consumes it
-    // and returns true without touching the graph. aPos is in widget-logical
-    // pixels, the space the model's rects are in. Returns true when it acted (the
-    // widget then must not route the press to the viewport tools, and repaints).
+    // A press on a legend swatch toggles that channel's visibility and a press on
+    // a legend label focuses that channel. aPos is in widget-logical pixels, the
+    // space the model's rects are in. Returns true when it acted (the widget then
+    // must not route the press to the viewport tools, and repaints).
     bool press(ctrl::GraphEditor& aEditor, const QPoint& aPos);
 
     // A double-click on the plot: fits both axes. Returns true when it acted.
@@ -506,16 +575,24 @@ private:
     void shutdown();
 
     // Publishes the frame just drawn to Qt's accessibility layer: one item per
-    // legend swatch, one line of state, one fit action.
+    // legend swatch, one line of state, one fit action and - while the selection
+    // names one key - the key menu's own action.
     void publishAccessibility();
-    // The key context menu, called from the frame with the model of THIS frame -
-    // the geometry a right-click is tested against is therefore the geometry that
-    // was just drawn, which is the panel's rule for every other control too (see
-    // the class comment for what it opens on, what it offers and why its layout
-    // is fixed).
-    void drawKeyContextMenu(
-        ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel, const theme::Graph& aTheme
-    );
+    // The application's own key menu, at aPos in widget-logical pixels: the key
+    // under the pointer by the EDITOR's distance rule (ctrl::graph::kKeyHitRadius
+    // about the key's centre, PanelCurve::keyDots), selected exactly as a press on
+    // it would select it, then gui::MainDisplayWidget::showGraphKeyMenu with the
+    // selection. Does nothing when no key is that close or when the panel is
+    // hidden. Returns true when a key was hit, i.e. when the right-click was this
+    // class's (the menu itself belongs to the widget, which may have no timeline to
+    // show one from - see showGraphKeyMenu).
+    bool openKeyMenuAt(const QPoint& aPos);
+    // The drawn marker of the one key aTargets names, in widget-logical pixels -
+    // the same (node, channel type, frame) triple looked up in the model's own
+    // geometry that openKeyMenuAt() finds by distance. False when the selection
+    // names no single key the model carries (a key outside the plot's window, or
+    // on a hidden channel).
+    bool selectedKeyDot(const core::TimeLineEvent& aTargets, QPoint& aDot) const;
     // Runs the action an accessible item advertises, i.e. the one the pointer
     // performs on the same control.
     void onAccessibilityAction(int aId);

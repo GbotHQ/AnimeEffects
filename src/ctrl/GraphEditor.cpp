@@ -106,9 +106,17 @@ namespace ctrl {
         mLogger(aLogger),
         mTargets(),
         mHiddenChannels(),
-        mSelection(),
+        mOwnSelection(),
+        mSelection(&mOwnSelection),
         mScale(),
         mVisible(false),
+        mFrameWindowShared(false),
+        mFrameWindow(),
+        mAppliedFrameWindow(),
+        mAppliedPlotWidth(0), // nothing mapped yet: the first sync always maps
+        mAppliedFramePpf(0),
+        mScrollFrames(),
+        mZoomFrames(),
         mModifiers(Qt::NoModifier),
         mFocusNode(nullptr),
         mFocusChannel(),
@@ -266,6 +274,87 @@ namespace ctrl {
     }
 
     //-------------------------------------------------------------------------------------------------
+    // The shared frame window (see the header). The timeline hands in the frames
+    // it is showing; this maps them onto the panel's plot.
+    void GraphEditor::setFrameWindow(const util::Range& aFrames) {
+        mFrameWindowShared = true;
+        mFrameWindow = aFrames;
+        syncFrameWindow();
+    }
+
+    void GraphEditor::setFrameGestureDelegates(FrameScrollFunc aScrollFrames, FrameZoomFunc aZoomFrames) {
+        mScrollFrames = aScrollFrames;
+        mZoomFrames = aZoomFrames;
+    }
+
+    void GraphEditor::clearFrameAxis() {
+        mFrameWindowShared = false;
+        mFrameWindow = util::Range();
+        mAppliedFrameWindow = util::Range();
+        mAppliedPlotWidth = 0; // nothing mapped: a later attach maps afresh
+        mAppliedFramePpf = 0;
+        mScrollFrames = nullptr;
+        mZoomFrames = nullptr;
+    }
+
+    void GraphEditor::syncFrameWindow() {
+        if (!mFrameWindowShared)
+            return;
+
+        const QRect plot = mScale.plotRect();
+        if (plot.width() <= 0)
+            return; // no plot to map into (an unlaid-out scale): keep the window
+
+        // Already mapped for this range, this plot and this rung: the write below
+        // is not a fixed point (see the members), so it must not run twice on the
+        // same inputs.
+        const int plotWidth = plot.width();
+        const int currentPpf = mScale.frameScale().pixelsPerFrame();
+        if (mFrameWindow == mAppliedFrameWindow && plotWidth == mAppliedPlotWidth
+            && currentPpf == mAppliedFramePpf) {
+            return;
+        }
+
+        // The window is [lo, hi] in frames; a span of at least one frame, so a
+        // degenerate timeline viewport (a one-frame window) still has a positive
+        // divisor and does not ask the ladder for infinite pixels per frame.
+        const double lo = static_cast<double>(mFrameWindow.min());
+        const double hi = static_cast<double>(mFrameWindow.max());
+        const double span = std::max(1.0, hi - lo);
+
+        // The rung: the largest zoom the ladder has that still fits the pushed span
+        // in the plot's INSET width (kFrameWindowMargin held at each end, see the
+        // header), which is graph::Scaler::fitFrameAxis's rule with that margin in
+        // place of its pad. The inset is not decoration: the origin below is written
+        // through the scaler's integer pixel origin, so an end can land a pixel
+        // closer to its edge than this arithmetic asks - and a key AT the window's
+        // first or last frame must be drawn and picked WHOLE, not half clipped by the
+        // plot's edge. update() is the only way to address the rung (whole notches of
+        // 120) and clamps to the ladder's own floor and ceiling, so a range too wide
+        // for 1 px/frame is shown as much of it as fits - the same limit the fit has.
+        constexpr int kWheelNotch = 120;
+        const int wanted = std::max(1, (plotWidth - 2 * kFrameWindowMargin) / static_cast<int>(span));
+        mScale.frameScale().update((currentPpf - wanted) * kWheelNotch);
+
+        // The origin: frame `lo` at plotRect().left() + kFrameWindowMargin, so the
+        // plot shows exactly [lo, hi] inset by that margin at both ends (to the pixel
+        // the mapping rounds to) and neither end's key is clipped. mFrameOffset - the
+        // content pixel of frame 0, relative to the plot's left edge - is written
+        // through panFrame, one of the only two writers of it (the other is an
+        // anchored zoom): pixelX(0) reads it back as plot.left() + round(offset), so
+        // the delta is derived from the same mapping the drawing layer uses.
+        const double ppf = static_cast<double>(mScale.frameScale().pixelsPerFrame());
+        const int currentOrigin = mScale.pixelX(core::Frame(0)) - plot.left();
+        mScale.panFrame(
+            static_cast<int>(std::lround(kFrameWindowMargin - ppf * lo)) - currentOrigin
+        );
+
+        mAppliedFrameWindow = mFrameWindow;
+        mAppliedPlotWidth = plotWidth;
+        mAppliedFramePpf = mScale.frameScale().pixelsPerFrame();
+    }
+
+    //-------------------------------------------------------------------------------------------------
     // The value axis' fit. The window is where the user's data is, and the only
     // other writer is the wheel: with no fit the axis keeps its seed 0..1, so a
     // channel whose values are 0..90 (a rotate curve) maps its whole curve and
@@ -281,6 +370,14 @@ namespace ctrl {
     }
 
     void GraphEditor::fitFrameAxis() {
+        // The frame window is the TIMELINE's while one owns it (see
+        // setFrameWindow): fitting it here would be this panel deciding alone
+        // which frames are on screen, which is exactly the disagreement the
+        // shared window prevents. Nothing else changes - the value fit beside it
+        // still runs.
+        if (mFrameWindowShared)
+            return;
+
         // The frame window follows the shown key FRAMES, the same way the value
         // window follows the shown key values. Collected here rather than inside
         // graph::Scaler because "which frames are shown" is this class' question;
@@ -366,6 +463,8 @@ namespace ctrl {
         // pinned project's single Rotate key). fitFrameAxis pads what it fits, so the
         // content is never flush; the policy is unchanged - the fit still follows the
         // SHOWN CURVES and the user still owns a window they have wheeled or panned.
+        // With a timeline attached the call is the no-op fitFrameAxis documents: the
+        // frames on screen are then the timeline's, not this fit's.
         fitFrameAxis();
     }
 
@@ -470,15 +569,15 @@ namespace ctrl {
         if (hit.hitCurve && 0 <= hit.item && hit.item < entries.size())
             return true;
 
-        // A Ctrl-PRESS inside the plot is where this editor's own plot gestures
-        // begin: on a curve's band it inserts a key, off every band it opens the
-        // MARQUEE. The modifier is load-bearing - a PLAIN press in the plot is
-        // not claimed at all, so it reaches the viewport tools exactly as it did
-        // before the marquee existed, which matters because the plot covers most
-        // of the canvas and the tools' handles live there. Only presses are
-        // claimed: a plain hover and everything outside the plot pass through.
-        if (aCursor.emitsLeftPressedEvent() && scale.plotRect().contains(point)
-            && mModifiers.testFlag(Qt::ControlModifier))
+        // A LEFT PRESS inside the plot is where this editor's own plot gestures
+        // begin: on a key it selects (and arms the move), on a curve's band with
+        // Ctrl it inserts a key, and anywhere else it opens the MARQUEE. The plot
+        // is most of the fullscreen panel, so this IS the panel taking those
+        // presses from the viewport tools while it is up - the deliberate cost of
+        // a rubber band that can start anywhere in the data area, see the
+        // ownership note in the header. Only presses are claimed: a plain hover
+        // and everything outside the plot pass through.
+        if (aCursor.emitsLeftPressedEvent() && scale.plotRect().contains(point))
             return true;
 
         return false;
@@ -490,6 +589,12 @@ namespace ctrl {
         // drawing on one geometry.
         mScale.setRect(currentPanelRect(aCamera));
         syncFrameAxis();
+        // The panel rect this pass just wrote is what the shared frame window is
+        // mapped into, so the timeline's frames are re-mapped onto it here: a
+        // resize (or the first pass after the window was pushed) would otherwise
+        // show a window that no longer matches the plot it is drawn in. A no-op
+        // while the frame axis is the panel's own.
+        syncFrameWindow();
         // A channel appearing in (or leaving) buildEntries() is a change of the
         // shown curves, so the window is fitted again here - BEFORE the hit-test
         // below, so the pixels tested and the pixels painted agree. A cursor pass
@@ -577,23 +682,25 @@ namespace ctrl {
                 // frame and value. Nothing is committed by the press itself, so a
                 // click that only selects leaves the history untouched.
                 beginKeyMove(hit, entries, point);
-            } else if (mModifiers.testFlag(Qt::ControlModifier) && inPlot) {
-                // ONE modifier, two disjoint meanings, decided by what is under
-                // the pointer: on a curve's band the Ctrl-press INSERTS the key
-                // that curve already passes through (see insertKeyAt's ADD note),
-                // and off every band it opens the MARQUEE. They cannot collide: a
-                // point on a band that carries a key is caught by the key branch
-                // above, where Ctrl means "toggle it in the selection".
-                // insertKeyAt answers whether it inserted, so this needs no second
-                // band test. The rectangle is applied on the RELEASE, so a
-                // Ctrl-click that never moves opens an empty one and deselects.
-                if (!insertKeyAt(aCamera, point))
+            } else if (inPlot) {
+                // ONE plot, two gestures, decided by what is under the pointer:
+                // a CTRL-press on a curve's band INSERTS the key that curve
+                // already passes through (see insertKeyAt's ADD note), and
+                // everything else - a plain press on the band included, and a
+                // Ctrl-press off every band - opens the MARQUEE. They cannot
+                // collide: a point on a band that carries a key is caught by the
+                // key branch above, where Ctrl means "toggle it in the
+                // selection". insertKeyAt answers whether it inserted, so this
+                // needs no second band test. The rectangle is applied on the
+                // RELEASE, so a press that never moves opens an empty one and
+                // deselects.
+                if (!(mModifiers.testFlag(Qt::ControlModifier) && insertKeyAt(aCamera, point)))
                     beginMarquee(point);
             }
             // The press is reported as consumed (the panel wants its repaint),
-            // but ownsCursor claims only a Ctrl-press in the plot, a key or a
-            // handle - so the Driver passes every other press through and the
-            // viewport tools act on it.
+            // but ownsCursor claims only a press in the plot, a key or a handle -
+            // so the Driver passes every other press through and the viewport
+            // tools act on it.
             return true;
         }
 
@@ -653,6 +760,7 @@ namespace ctrl {
 
         mScale.setRect(panel);
         syncFrameAxis();
+        syncFrameWindow();
         // Deliberately NO syncValueAxis() here: the wheel changes no curve, so
         // there is no basis change to refit for - and running the sync would be
         // harmless only because of that. The wheel is the user's own movement of
@@ -684,8 +792,18 @@ namespace ctrl {
         if (!valueOnly) {
             // The frame axis delegates its ladder and its anchoring rule to the
             // timeline's scaler, about the cursor's column; it already reads the
-            // raw delta in the application's own sense.
-            mScale.updateFrameZoom(aWheelDelta, aPos.x());
+            // raw delta in the application's own sense. WHILE A TIMELINE OWNS THE
+            // FRAME AXIS the notch is handed to the TIMELINE instead - the frames
+            // on screen are its window, so a zoom that moved only this panel would
+            // leave the two views showing different frames. The panel's X then
+            // moves only when the timeline pushes its new window back (see the
+            // shared-frame-window note in the header).
+            if (mFrameWindowShared) {
+                if (mZoomFrames)
+                    mZoomFrames(aWheelDelta, mScale.frameAt(aPos.x()));
+            } else {
+                mScale.updateFrameZoom(aWheelDelta, aPos.x());
+            }
         }
         // Taken even when the axes were already clamped at their floor or
         // ceiling: the pointer is over the panel, so the canvas must not also
@@ -697,15 +815,24 @@ namespace ctrl {
     void GraphEditor::setModifiers(Qt::KeyboardModifiers aModifiers) { mModifiers = aModifiers; }
 
     //-------------------------------------------------------------------------------------------------
+    void GraphEditor::setSelectionSource(time::Selection* aSelection) {
+        // The pointer a caller attaches is somebody else's live set (the
+        // timeline's). Attaching the set that is already attached is a no-op -
+        // and re-attaching the private instance is how a caller detaches.
+        mSelection = aSelection ? aSelection : &mOwnSelection;
+    }
+
+    //-------------------------------------------------------------------------------------------------
     int GraphEditor::selectionIndexOf(
         const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame
     ) const {
         // The triple the timeline names a key by, compared the way selectKey
         // writes it: the node by pointer identity (never dereferenced here) plus
-        // the type and the frame.
-        const QVector<core::TimeLineEvent::Target>& targets = mSelection.targets();
-        for (int i = 0; i < targets.size(); ++i) {
-            const core::TimeLineEvent::Target& target = targets[i];
+        // the type and the frame. Read through the shared selection, so this
+        // answers for the timeline's set as well as for the private fallback.
+        const QVector<time::Selection::Item>& items = mSelection->items();
+        for (int i = 0; i < items.size(); ++i) {
+            const core::TimeLineEvent::Target& target = items[i].target;
             if (target.node == &aNode && target.pos.type() == aChannel.type()
                 && target.pos.index() == aFrame.get()) {
                 return i;
@@ -717,18 +844,18 @@ namespace ctrl {
     void GraphEditor::modifySelection(
         core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd
     ) {
-        const int at = selectionIndexOf(aNode, aChannel, aFrame);
+        // ONE key, named the timeline's way: the event is the selection's own
+        // currency, so add/subtract below are the set's own operations (and they
+        // rebuild the keys' focus, which is what the timeline highlights). The
+        // "already there" / "not there" cases are the set's rules, not this
+        // method's: Selection::add ignores an entry it has, subtract ignores one
+        // it has not.
+        core::TimeLineEvent one;
+        one.pushTarget(aNode, aChannel.type(), aFrame.get());
         if (aAdd) {
-            // Extend: adding a key already in the selection changes nothing (it
-            // is already there, and a duplicate would make removeSelectedKey
-            // remove it twice).
-            if (at < 0) {
-                mSelection.pushTarget(aNode, aChannel.type(), aFrame.get());
-            }
-        } else if (at >= 0) {
-            // Toggle out. indexOf found a LIVE entry, so removing it cannot
-            // leave a hole.
-            mSelection.targets().remove(at);
+            mSelection->add(one);
+        } else {
+            mSelection->subtract(one);
         }
     }
 
@@ -786,22 +913,23 @@ namespace ctrl {
 
         // Every key whose DRAWN square's centre falls inside the box, through the
         // same graph::keyRect the hit-test and the drawing layer read, so the key
-        // a user sees inside the rectangle is the key that is selected. A key
-        // already in the selection (a Shift-marquee overlapping a previous one) is
-        // not added twice.
+        // a user sees inside the rectangle is the key that is selected. Collected
+        // into ONE event and added in one call: Selection::add is a union, so a
+        // key already in the selection (a Shift-marquee overlapping a previous
+        // one, or the same key met twice) is not added twice - the set owns that
+        // rule, so this does not repeat it.
         const graph::Scaler& scale = mScale;
+        core::TimeLineEvent hits;
         for (const Entry& entry : buildEntries()) {
             for (const core::TimeKey* key : entry.curve.keys()) {
                 const core::Frame frame(key->frame());
                 const QRect rect = graph::keyRect(scale, frame, entry.curve.valueOf(*key));
-                if (!box.contains(rect.center())) {
-                    continue;
-                }
-                if (selectionIndexOf(*entry.node, entry.channel, frame) < 0) {
-                    mSelection.pushTarget(*entry.node, entry.channel.type(), frame.get());
+                if (box.contains(rect.center())) {
+                    hits.pushTarget(*entry.node, entry.channel.type(), frame.get());
                 }
             }
         }
+        mSelection->add(hits);
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -830,7 +958,19 @@ namespace ctrl {
         // (panFrame touches the frame origin only, panValue the value window
         // only), so a diagonal drag moves the content diagonally without
         // changing either zoom.
-        mScale.panFrame(delta.x());
+        //
+        // The HORIZONTAL half is the timeline's while it owns the frame axis: the
+        // pointer's pixel delta is converted to FRAMES on this panel's ladder and
+        // handed over, which is the timeline's own unit - its pixels-per-frame is
+        // its own, and the shared quantity is the window (see the header). The
+        // sign is the pan's: dragging right moves the content right, which shows
+        // EARLIER frames, so the frame delta is the negative of the pixel delta.
+        if (mFrameWindowShared) {
+            if (mScrollFrames && delta.x() != 0)
+                mScrollFrames(-static_cast<double>(delta.x()) / framesPerPixel());
+        } else {
+            mScale.panFrame(delta.x());
+        }
         mScale.panValue(delta.y());
     }
 
@@ -1531,27 +1671,29 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     bool GraphEditor::retrieveSelection(core::TimeLineEvent& aOut) const {
-        // The graph's selection IS a TimeLineEvent, so it is handed out in the
-        // timeline's currency rather than translated into a second type. The type
-        // stays as it was set (Type_TERM when the selection is the graph's own):
+        // The selection is handed out in the timeline's currency rather than
+        // translated into a second type, because it IS the timeline's set: the
+        // targets go into the caller's event through the set's own assign(). The
+        // type stays as it was set (Type_TERM when the selection came from here):
         // picking a key is not a document change, and inventing one of the change
         // types here would make a consumer act on a value that did not move.
-        for (const core::TimeLineEvent::Target& target : mSelection.targets()) {
-            aOut.pushTarget(*target.node, target.pos);
+        if (mSelection->empty()) {
+            return false;
         }
-        return !mSelection.targets().isEmpty();
+        mSelection->assign(aOut);
+        return true;
     }
 
-    void GraphEditor::clearSelection() {
-        mSelection = core::TimeLineEvent();
-    }
+    void GraphEditor::clearSelection() { mSelection->clear(); }
 
     void GraphEditor::selectKey(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame) {
         // One key, one target: the graph selects a key, not a range, and it is
         // addressed by the same (line, type, frame) triple the timeline's own keys
-        // are.
-        mSelection = core::TimeLineEvent();
-        mSelection.pushTarget(aNode, aChannel.type(), aFrame.get());
+        // are. set() is the whole-selection replace, so this drops whatever was
+        // there - in the timeline's set too, which is the point of sharing it.
+        core::TimeLineEvent one;
+        one.pushTarget(aNode, aChannel.type(), aFrame.get());
+        mSelection->set(one);
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1568,9 +1710,17 @@ namespace ctrl {
         // nothing at the frame builds an EMPTY command, and a selection can
         // outlive the keys it names (an undo, or another view's edit), so a stale
         // target is skipped here rather than pushed against.
+        //
+        // The selection is read as ONE snapshot in the timeline's own currency:
+        // the shared set may be the timeline's, and its items are not this
+        // method's to walk while the document is being edited (a removal below
+        // notifies, and the notification can refresh the set under us).
+        core::TimeLineEvent selection;
+        mSelection->assign(selection);
+
         QVector<int> removals;
-        for (int i = 0; i < mSelection.targets().size(); ++i) {
-            const core::TimeLineEvent::Target& target = mSelection.targets().at(i);
+        for (int i = 0; i < selection.targets().size(); ++i) {
+            const core::TimeLineEvent::Target& target = selection.targets().at(i);
             if (!target.node || target.pos.isNull())
                 continue;
             const core::TimeLine* line = target.pos.line();
@@ -1602,7 +1752,7 @@ namespace ctrl {
                 // The mutable target: the remover factory needs the owning
                 // TimeLine, and TimeKeyPos hands that out non-const only from a
                 // non-const pos.
-                core::TimeLineEvent::Target& target = mSelection.targets()[index];
+                core::TimeLineEvent::Target& target = selection.targets()[index];
                 core::TimeLine* line = target.pos.line();
                 notifier->event().pushTarget(*target.node, target.pos.type(), target.pos.index());
                 mProject->commandStack().push(
@@ -1636,7 +1786,13 @@ namespace ctrl {
         };
         QVector<Edit> edits;
 
-        for (core::TimeLineEvent::Target& target : mSelection.targets()) {
+        // The selection as ONE snapshot in the timeline's own currency, for the
+        // same reason removeSelectedKey takes one: it may be the timeline's set,
+        // and the edits below notify.
+        core::TimeLineEvent selection;
+        mSelection->assign(selection);
+
+        for (core::TimeLineEvent::Target& target : selection.targets()) {
             // The mutable target: the action writes the keys through the map the
             // TimeLinePos names, and it is TimeKeyPos::line()'s non-const overload
             // that hands out a writable map.

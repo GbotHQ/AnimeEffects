@@ -23,13 +23,14 @@
 // change underneath it.
 //
 // The panel is FULLSCREEN, so it does not own the whole viewport: ownership is
-// narrowed to the PLOT rect - the data area the curves are drawn in - for a
-// CTRL-PRESS (the insert on a curve's band, the marquee off every band) and for
-// the MIDDLE button (a pan), plus the point under a key or handle wherever it is, plus
-// every point while a gesture is in flight. Both halves are pinned below: a press
-// outside the plot and a plain HOVER inside it are nobody's edit, and an in-flight
-// drag keeps the cursor even at a point with no item under it (which is also what
-// proves the grab in section 4 is a real one rather than a press that missed).
+// narrowed to the PLOT rect - the data area the curves are drawn in - for a LEFT
+// PRESS (a key selects and drags, Ctrl on a curve's band inserts, anything else
+// marquees) and for the MIDDLE button (a pan), plus the point under a key or
+// handle wherever it is, plus every point while a gesture is in flight. Both
+// halves are pinned below: a press outside the plot and a plain HOVER inside it
+// are nobody's edit, and an in-flight drag keeps the cursor even at a point with
+// no item under it (which is also what proves the grab in section 4 is a real one
+// rather than a press that missed).
 //
 // The value axis is pinned here too, because the drag pixels would otherwise
 // hide the defect: the window has to be FITTED to the shown curves on the paths
@@ -46,9 +47,9 @@
 //
 // The panel's SELECTION is pinned at the end of the file too: a plain press
 // replaces the selection with one key, Shift-press extends it, Ctrl-press toggles
-// one key, and a MARQUEE - a Ctrl-press in the plot off every curve's band,
-// dragged and released - replaces it with every key inside the dragged
-// rectangle (adding, under Shift),
+// one key, and a MARQUEE - a PLAIN press in the plot (Ctrl on a curve's band
+// inserts instead), dragged and released - replaces it with every key inside the
+// dragged rectangle (adding, under Shift),
 // with the rectangle published live by marqueeRect().
 //
 // The panel's three KEY EDITS are pinned the same way (sections 16-18), on one
@@ -59,12 +60,11 @@
 //     the point's frame) writes the key the curve already passes through - the
 //     value is the curve's own sample there, so no sampled value moves AT THAT
 //     FRAME. The modifier decides which of the graph's two plot gestures a press
-//     gets - and keeps the TOOLS alive: with Ctrl held the press is the graph's and
-//     the band chooses between inserting and marqueeing; without Ctrl the press
-//     belongs to the viewport tools, exactly as it did before the marquee existed
-//     (Blender's f-curve editor uses the same Ctrl-click). A Ctrl-press on a key
-//     toggles it in the selection, and a press outside the plot is the tools' as
-//     well - none of them insert and none of them push.
+//     gets: with Ctrl on a curve's band it inserts, and every other press in the
+//     plot - a PLAIN press on the band included, and a Ctrl-press off every band
+//     - opens the MARQUEE (Blender's f-curve editor uses the same Ctrl-click). A
+//     Ctrl-press on a key toggles it in the selection, and a press outside the
+//     plot is neither - none of them insert and none of them push.
 //   * MOVE: a press on a KEY arms a move and a drag changes BOTH its frame and its
 //     value (Shift pins it to the dominant axis of the gesture), through the
 //     repository's own ctrl::TimeLineUtil::MoveFrameOfKey for the frame and
@@ -87,6 +87,18 @@
 // Shift narrows it to the frame axis while Ctrl narrows it to the value axis. The
 // MIDDLE button is pinned in section 21: while the panel is up it pans the graph's
 // window (both axes, a pure pixel offset), never the canvas camera.
+//
+// THE TIMELINE SEAM is pinned in section 23, on a real ctrl::TimeLineEditor:
+// the panel's selection is the TIMELINE's own live set (setSelectionSource), so a
+// key selected here is reported by the timeline's retrieveSelectionTargets and the
+// other way round - one instance, asserted by pointer identity as well as by the
+// round trip; and the panel's FRAME axis, while a window has been pushed in
+// (setFrameWindow), is that window: the panel does not fit, zoom or pan it itself
+// (the wheel's frame half and a middle-drag pan go to the delegates), and every
+// path that used to refit X on its own - a setTargets, a cursor pass, a fitAll -
+// leaves the pushed window exactly where it was. Sections 0-22 run with NO
+// timeline attached, which is the other half of that contract: there the panel
+// still owns its frame axis and fits, zooms and pans it exactly as it always did.
 //
 // Every one of the edits goes through the same TimeLineUtil notifier +
 // ScopedMacro route the handle drag uses, so undo/redo and the timeline's event
@@ -144,6 +156,7 @@
 #include "core/TimeKeyType.h"
 #include "core/TimeLine.h"
 #include "ctrl/GraphEditor.h"
+#include "ctrl/TimeLineEditor.h"
 #include "ctrl/UILogger.h"
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/graph/graph_Curve.h"
@@ -165,6 +178,22 @@ bool gui::obj::Item::isTopNode() const { return false; }
 std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshImpl(core::ObjectNode&, int) {
     return { nullptr, nullptr };
 }
+
+// Section 23 drives a REAL ctrl::TimeLineEditor (the panel's selection source is
+// the timeline's own live set, so the round trip has to go through the real
+// thing). Pulling that object in pulls ctrl::time::Renderer with it - the editor's
+// render() builds one - and the renderer's track painter reads these five colours
+// from gui/theme/TimeLine, whose .cpp this target does not link (it links `ctrl`,
+// not `gui`). This test never renders a timeline, so the values are inert: the
+// same reason the two stubs above exist. The alternative - adding
+// src/gui/theme/TimeLine.cpp to this target - is a tests/CMakeLists.txt change,
+// which is another unit's file.
+#include "gui/theme/TimeLine.h"
+QColor theme::TimeLine::trackColor() const { return QColor(); }
+QColor theme::TimeLine::trackEdgeColor() const { return QColor(); }
+QColor theme::TimeLine::trackTextColor() const { return QColor(); }
+QColor theme::TimeLine::trackSelectColor() const { return QColor(); }
+QColor theme::TimeLine::trackSeperatorColor() const { return QColor(); }
 
 namespace {
 
@@ -821,9 +850,10 @@ int main(int argc, char** argv) {
 
     // --- 9: PLOT-BASED ownership for presses, hit-based otherwise. The panel
     // covers the whole viewport, so owning "inside the fullscreen rect" would be
-    // owning everything. What it owns is: a CTRL-PRESS inside the PLOT (the insert
-    // on a band, the marquee off one), the point under a key or handle, the middle
-    // button, and everything while a gesture is in flight.
+    // owning everything. What it owns is: a LEFT PRESS inside the PLOT (a key
+    // selects and drags, Ctrl on a curve's band inserts, anything else marquees),
+    // the point under a key or handle, the middle button, and everything while a
+    // gesture is in flight.
     {
         // A plain HOVER inside the plot, on no key and no handle: not the graph's,
         // so the viewport tools keep their hover feedback.
@@ -904,20 +934,25 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().valueMin() == -1000.0f);
         CHECK(editor.scale().valueMax() == 1000.0f);
 
-        // Empty plot space, PLAIN press: the press is the VIEWPORT TOOLS', so the
-        // graph does nothing with it - no marquee, and the selection stands. That
-        // is what the Ctrl gate buys: the tools keep their presses inside the plot
-        // even though the panel covers it.
+        // Empty plot space, PLAIN press: the press is the PANEL's - a plain press
+        // in the plot is where the marquee begins - so it owns the cursor and
+        // opens the rectangle. Nothing is written by the press itself; the
+        // rectangle is applied on the release.
         const QPoint kEmpty(700, 550);
         core::AbstractCursor emptyCur;
         sendMove(editor, camera, emptyCur, kEmpty);
         CHECK(panel.contains(kEmpty));                 // inside the fullscreen panel...
         CHECK(!editor.ownsCursor(camera, emptyCur));   // ...a hover owns nothing...
-        sendPress(editor, camera, emptyCur, kEmpty);   // a plain press in the plot
-        CHECK(!editor.hasMarquee());                   // opens no marquee...
-        sendRelease(editor, camera, emptyCur, kEmpty);
-        // The same point WITH Ctrl is the graph's: the press opens a MARQUEE, and
-        // one that never moved selects nothing - which is the "clear the
+        CHECK(sendPress(editor, camera, emptyCur, kEmpty)); // a plain press in the plot
+        CHECK(editor.hasMarquee());                    // opens the marquee...
+        CHECK(editor.marqueeRect().isEmpty());         // ...with nothing dragged yet
+        CHECK(editor.ownsCursor(camera, emptyCur));    // and the panel owns the point
+        CHECK(sendRelease(editor, camera, emptyCur, kEmpty)); // the release consumes it
+        CHECK(!editor.hasMarquee());
+        CHECK(!editor.ownsCursor(camera, emptyCur));   // and the gesture is closed
+        // The same point WITH Ctrl is the graph's too - off every band, Ctrl keeps
+        // its marquee meaning (only a band turns it into the insert) - and the
+        // marquee that never moved selects nothing, which is the "clear the
         // selection" gesture. The sticky FOCUS is untouched by it (empty space is
         // not a command to drop what the user was working on). The modifier goes
         // THROUGH the helper: the helper is what sets it on the editor.
@@ -1249,12 +1284,11 @@ int main(int argc, char** argv) {
         CHECK(!undoneOccupied); // and that press+release pushed nothing at all
 
         // 16b: a point OFF the band, inside the plot, inserts nothing - the band is
-        // a real radius, not "anywhere in the plot" - and a CTRL-press there is the
-        // MARQUEE's, not the insert's: ONE modifier, two meanings, decided by what
-        // is under the pointer. A PLAIN press at the same point is neither (it
-        // belongs to the viewport tools), which is asserted first. A press that
-        // never moves drags no rectangle, so nothing falls inside it and the
-        // marquee DESELECTS.
+        // a real radius, not "anywhere in the plot". A PLAIN press there is the
+        // MARQUEE's (a plain plot press marquees anywhere off a band) and a
+        // CTRL-press there is the marquee's too: the modifier only means "insert"
+        // ON a band. A press that never moves drags no rectangle, so nothing falls
+        // inside it and the marquee DESELECTS.
         const QPoint aboveBand(
             editor.scale().pixelX(addFrame),
             editor.scale().pixelY(atEmptyFrame) - (ctrl::GraphEditor::kCurveBandRadius + 2)
@@ -1263,10 +1297,12 @@ int main(int argc, char** argv) {
         core::AbstractCursor offBandCur;
         sendMove(editor, camera, offBandCur, aboveBand);
         CHECK(!editor.ownsCursor(camera, offBandCur)); // a hover owns nothing
-        sendPress(editor, camera, offBandCur, aboveBand); // a PLAIN press here is the tools'...
-        CHECK(!editor.hasMarquee());                      // ...so the graph opens nothing, and
-        CHECK(!sendRelease(editor, camera, offBandCur, aboveBand)); // the release is not consumed either
-        CHECK(sendPress(editor, camera, offBandCur, aboveBand, Qt::ControlModifier)); // the CTRL-press is the panel's
+        CHECK(sendPress(editor, camera, offBandCur, aboveBand)); // a PLAIN press here is the panel's...
+        CHECK(editor.hasMarquee());                              // ...so the graph begins a marquee
+        CHECK(editor.ownsCursor(camera, offBandCur));            // and owns the point
+        CHECK(sendRelease(editor, camera, offBandCur, aboveBand)); // which the release closes
+        CHECK(!editor.hasMarquee());
+        CHECK(sendPress(editor, camera, offBandCur, aboveBand, Qt::ControlModifier)); // the CTRL-press is the panel's too
         CHECK(editor.hasMarquee());                              // ...and it began a marquee
         CHECK(editor.marqueeRect().isEmpty());                   // nothing dragged: nothing to select
         CHECK(sendRelease(editor, camera, offBandCur, aboveBand)); // the release consumes it
@@ -1814,19 +1850,21 @@ int main(int argc, char** argv) {
         CHECK(sendRelease(editor, camera, selCur, k3));
         CHECK(framesAre({ 30 }));
 
-        // THE MARQUEE. A CTRL-press on empty plot space at the plot's bottom-left
+        // THE MARQUEE. A PLAIN press on empty plot space at the plot's bottom-left
         // corner (no key, and - the curve only being stroked between its first and
         // last key - on no band either), dragged up and right to frame 15 /
         // value 15 and released: every key whose DRAWN square is inside the
-        // rectangle is selected, which here is the keys at frames 0 and 10. The
-        // modifier is what keeps a PLAIN press in the plot for the viewport tools
-        // (see the ownership note at the top, and section 16b).
+        // rectangle is selected, which here is the keys at frames 0 and 10. A
+        // plain press is what starts it (the Ctrl the marquee used to require is
+        // now the INSERT's alone, see the ownership note at the top and section
+        // 16b); the owner check below is the press's own proof.
         const QPoint marqueeOrigin(selScale.plotRect().left() + 2, selScale.plotRect().bottom() - 2);
         const QPoint marqueeEnd(selScale.pixelX(core::Frame(15)), selScale.pixelY(15.0f));
         CHECK(selScale.plotRect().contains(marqueeOrigin));
         CHECK(selScale.plotRect().contains(marqueeEnd));
 
-        CHECK(sendPress(editor, camera, selCur, marqueeOrigin, Qt::ControlModifier));
+        CHECK(sendPress(editor, camera, selCur, marqueeOrigin));
+        CHECK(editor.ownsCursor(camera, selCur)); // the plain press in the plot is the panel's
         CHECK(framesAre({ 30 })); // the press alone changes nothing...
         CHECK(editor.hasMarquee()); // ...it only opens the rectangle
         CHECK(editor.marqueeRect().isEmpty()); // with nothing dragged yet
@@ -1850,7 +1888,7 @@ int main(int argc, char** argv) {
         const QPoint addEnd(selScale.pixelX(core::Frame(25)), selScale.plotRect().top() + 2);
         CHECK(selScale.plotRect().contains(addOrigin));
         CHECK(selScale.plotRect().contains(addEnd));
-        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier | Qt::ControlModifier));
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
         CHECK(sendMove(editor, camera, selCur, addEnd, Qt::ShiftModifier));
         CHECK(editor.marqueeRect().contains(k2)); // the box is over the frame-20 key
         CHECK(!editor.marqueeRect().contains(k1)); // and not over the frame-10 one
@@ -1858,16 +1896,16 @@ int main(int argc, char** argv) {
         CHECK(framesAre({ 0, 10, 20 })); // added, not replaced
         const int shiftMarqueeCount = selectedFrames().size();
 
-        // A Ctrl-marquee that selects nothing replaces with nothing - the "clear
-        // the selection" gesture - while a Ctrl-Shift-marquee that selects nothing
-        // leaves the selection alone.
-        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ControlModifier));
+        // A marquee that selects nothing replaces with nothing - the "clear the
+        // selection" gesture - while a Shift-marquee that selects nothing leaves
+        // the selection alone.
+        CHECK(sendPress(editor, camera, selCur, addOrigin));
         CHECK(sendRelease(editor, camera, selCur, addOrigin));
         CHECK(selectedFrames().isEmpty());
         CHECK(sendPress(editor, camera, selCur, k1));
         CHECK(sendRelease(editor, camera, selCur, k1));
         CHECK(framesAre({ 10 }));
-        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier | Qt::ControlModifier));
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
         CHECK(sendRelease(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
         CHECK(framesAre({ 10 })); // still there: a Shift-marquee adds, so an empty one changes nothing
 
@@ -2044,6 +2082,8 @@ int main(int argc, char** argv) {
         const QPoint panDelta(40, 25);
 
         const int beforeFramePixel = panScale.pixelX(core::Frame(0));
+        const double beforeLeftEdge = panScale.frameAtPixel(static_cast<double>(panScale.plotRect().left()));
+        const int beforePpf = panScale.frameScale().pixelsPerFrame();
         const float beforePanMin = panScale.valueMin();
         const float beforePanMax = panScale.valueMax();
 
@@ -2069,7 +2109,19 @@ int main(int argc, char** argv) {
         // The frame axis moved by EXACTLY the pointer's own x delta (panFrame adds
         // a pixel offset), and the value window by the rows it shifted: the span is
         // untouched, so this was a pan and not a zoom.
-        CHECK(panScale.pixelX(core::Frame(0)) == beforeFramePixel + panDelta.x());
+        //
+        // Read PLOT-RELATIVE, because this very pan can move the plot: the value
+        // labels are MEASURED (graph::Scaler::axisLabelWidth), so panning the value
+        // window onto wider numbers widens the label column and moves
+        // plotRect().left() with it - an absolute pixel comparison would then be
+        // part pan and part label column (measured: this pan moved plot.left() by
+        // 1px, so px(0) moved 41 where the pan owes 40). What the pan owes is the
+        // WINDOW: the frame at the plot's left edge moves by the pointer's x delta
+        // worth of frames, and the rung does not change.
+        const double panPpf = static_cast<double>(panScale.frameScale().pixelsPerFrame());
+        const double leftEdgeAfter = panScale.frameAtPixel(static_cast<double>(panScale.plotRect().left()));
+        CHECK(std::fabs((leftEdgeAfter - beforeLeftEdge) * panPpf + panDelta.x()) < 1e-6);
+        CHECK(panScale.frameScale().pixelsPerFrame() == beforePpf);
         const float afterSpan = panScale.valueMax() - panScale.valueMin();
         const float beforeSpan = beforePanMax - beforePanMin;
         CHECK(std::fabs(afterSpan - beforeSpan) < beforeSpan * 1e-5f); // the span survived
@@ -2095,16 +2147,402 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().pixelX(core::Frame(0)) == pannedFramePixel);
 
         std::printf(
-            "[P] middle-button pan: (%d,%d) px moved frame px(0) %d -> %d (exactly the x delta) and the "
+            "[P] middle-button pan: (%d,%d) px moved the frame WINDOW by the x delta (frame at the plot's "
+            "left edge %.4f -> %.4f at %d px/frame; absolute px(0) %d -> %d, the rest of that being the "
+            "measured label column) and the "
             "value window %+.4f..%+.4f -> %+.4f..%+.4f (span %.6f vs %.6f, a pan and not a zoom); no command pushed\n",
-            panDelta.x(), panDelta.y(), beforeFramePixel, pannedFramePixel, beforePanMin, beforePanMax,
-            pannedMin, pannedMax, beforePanMax - beforePanMin, pannedMax - pannedMin
+            panDelta.x(), panDelta.y(), beforeLeftEdge, leftEdgeAfter, beforePpf, beforeFramePixel,
+            pannedFramePixel, beforePanMin, beforePanMax, pannedMin, pannedMax, beforePanMax - beforePanMin,
+            pannedMax - pannedMin
         );
 
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 23: the switch's OTHER direction - the half the show at the top of this
+    // --- 23: THE TIMELINE SEAM - ONE selection and ONE frame window, on a real
+    // ctrl::TimeLineEditor.
+    //
+    // The panel is a SECOND VIEW of the timeline, not a tool beside it, and this
+    // section pins both halves of what that means in ctrl:
+    //
+    //   * SELECTION: GraphEditor::setSelectionSource points the panel at the
+    //     timeline's OWN live set (ctrl::TimeLineEditor::selection()), so a key
+    //     selected in the panel is reported by the timeline's own accessor
+    //     (retrieveSelectionTargets), carries the focus the timeline's renderer
+    //     highlights (TimeKey::isFocused, which time_Renderer reads), and a
+    //     selection made through the timeline's own path is what the panel reads.
+    //     The round trip is asserted in BOTH directions, and so is the instance
+    //     identity - two sets that must agree are two sets that eventually do not.
+    //   * FRAME WINDOW: setFrameWindow pushes the frames the timeline is showing
+    //     (TimeLineWidget::visibleFrameRange) in as VALUES, and while it is set the
+    //     panel does not fit, zoom or pan its own X; the wheel's frame half and a
+    //     middle-drag pan go to the delegates, which the application wires to the
+    //     timeline's own scrollFramesBy/zoomFramesAbout. Nothing the timeline shows
+    //     is ever hidden by the panel (the pushed range stays inside the plot).
+    //
+    // The timeline is a REAL ctrl::TimeLineEditor: the seam's whole point is that
+    // the panel writes the set the timeline highlights and shows the window the
+    // timeline is looking at, so a stand-in would only prove two stand-ins agree.
+    // Sections 0-22 run with NO timeline attached, which is the other half of the
+    // contract: there the panel owns its frame axis and its selection, and fits,
+    // zooms and pans X exactly as it always has.
+    {
+        ctrl::TimeLineEditor timeline;
+        timeline.setProject(&project);
+        timeline.setFrameRange(util::Range(1, 60));
+
+        core::TestNode seamNode;
+        core::RotateKey* s0 = new core::RotateKey();
+        s0->setRotate(0.0f);
+        setup.push(seamNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 2, s0));
+        core::RotateKey* s1 = new core::RotateKey();
+        s1->setRotate(90.0f);
+        setup.push(seamNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 6, s1));
+        core::TimeLine* seamLine = seamNode.timeLine();
+        const Channel seamChannel(core::TimeKeyType_Rotate, 0);
+        CHECK(seamLine->map(core::TimeKeyType_Rotate).size() == 2);
+
+        editor.setTargets({ &seamNode });
+        editor.scale().setRect(panel);
+        project.commandStack().clear();
+
+        // --- (a) ATTACH: the panel's selection IS the timeline's live set. ---
+        editor.setSelectionSource(&timeline.selection());
+        CHECK(&editor.selection() == &timeline.selection()); // ONE instance, not two
+
+        // --- (b) PANEL -> TIMELINE. A plain press on a key in the panel... ---
+        const QPoint s0Pixel(editor.scale().pixelX(core::Frame(2)), editor.scale().pixelY(0.0f));
+        CHECK(editor.scale().plotRect().contains(s0Pixel)); // the precondition of the press
+        core::AbstractCursor seamCur;
+        sendMove(editor, camera, seamCur, s0Pixel);
+        CHECK(editor.ownsCursor(camera, seamCur));
+        CHECK(sendPress(editor, camera, seamCur, s0Pixel));
+        CHECK(sendRelease(editor, camera, seamCur, s0Pixel)); // closes the armed move (no move: no command)
+        core::TimeLineEvent selected;
+        CHECK(editor.retrieveSelection(selected));
+        CHECK(selected.targets().size() == 1);
+        CHECK(selected.targets()[0].node == &seamNode);
+        CHECK(selected.targets()[0].pos.index() == 2);
+
+        // ...is what the TIMELINE reports as its own selection: the panel wrote the
+        // very set the timeline's accessor hands out, so a consumer on the timeline
+        // side sees exactly the keys the panel selected.
+        core::TimeLineEvent fromTimeline;
+        CHECK(timeline.retrieveSelectionTargets(fromTimeline));
+        CHECK(fromTimeline.targets().size() == 1);
+        CHECK(fromTimeline.targets()[0].node == &seamNode);
+        CHECK(fromTimeline.targets()[0].pos.type() == core::TimeKeyType_Rotate);
+        CHECK(fromTimeline.targets()[0].pos.index() == 2);
+        // ...and the HIGHLIGHT the timeline's renderer reads is that same write: the
+        // key the panel selected carries the focus time::Selection rebuilt for it
+        // (time_Renderer's key body reads exactly TimeKey::isFocused), and the other
+        // key does not.
+        CHECK(seamLine->timeKey(core::TimeKeyType_Rotate, 2)->isFocused());
+        CHECK(!seamLine->timeKey(core::TimeKeyType_Rotate, 6)->isFocused());
+
+        // --- (c) TIMELINE -> PANEL. A selection the timeline makes through its own
+        // public path (the "creation selects its output" rule) is what the panel
+        // reads and acts on, and the panel's own mutators write the same set. ---
+        core::TimeLineEvent created;
+        created.setType(core::TimeLineEvent::Type_PushKey);
+        created.pushTarget(seamNode, core::TimeKeyType_Rotate, 6);
+        timeline.selectCreatedKeys(created);
+        core::TimeLineEvent panelSees;
+        CHECK(editor.retrieveSelection(panelSees));
+        CHECK(panelSees.targets().size() == 1);
+        CHECK(panelSees.targets()[0].pos.index() == 6);
+        CHECK(seamLine->timeKey(core::TimeKeyType_Rotate, 6)->isFocused());
+        CHECK(!seamLine->timeKey(core::TimeKeyType_Rotate, 2)->isFocused());
+        editor.modifySelection(seamNode, seamChannel, core::Frame(2), true); // Shift-extend, in the panel
+        fromTimeline = core::TimeLineEvent();
+        CHECK(timeline.retrieveSelectionTargets(fromTimeline));
+        CHECK(fromTimeline.targets().size() == 2); // the timeline's set grew with it
+
+        // DETACHED, the panel is its own again: a write there is no longer the
+        // timeline's selection.
+        editor.setSelectionSource(nullptr);
+        CHECK(&editor.selection() != &timeline.selection());
+        editor.clearSelection();
+        fromTimeline = core::TimeLineEvent();
+        CHECK(timeline.retrieveSelectionTargets(fromTimeline)); // the timeline's set is untouched
+        CHECK(fromTimeline.targets().size() == 2);
+        editor.setSelectionSource(&timeline.selection()); // re-attach for the window half
+
+        // --- (d) THE SHARED FRAME WINDOW. The gui pushes the timeline's visible
+        // range (TimeLineWidget::visibleFrameRange) as VALUES; the panel maps it onto
+        // its own plot with the timeline's own ladder and never writes its own X
+        // again. 100 frames is wider than most rungs of that ladder, so the plot's
+        // rung is the largest that fits rather than the ceiling - which the assertion
+        // below pins, so a change to that rule fails loudly instead of passing on a
+        // clamped axis. ---
+        const util::Range pushed(50, 150);
+        editor.setFrameWindow(pushed);
+        CHECK(editor.hasTimelineFrameAxis());
+
+        const QRect sharedPlot = editor.scale().plotRect();
+        CHECK(sharedPlot.width() > 2 * ctrl::GraphEditor::kFrameWindowMargin);
+        const int sharedPpf = editor.scale().frameScale().pixelsPerFrame();
+        CHECK(
+            sharedPpf
+            == std::max(
+                   1, (sharedPlot.width() - 2 * ctrl::GraphEditor::kFrameWindowMargin) / pushed.diff()
+               )
+        );
+        // The pushed range's LEFT frame is at the plot's left edge PLUS the window's
+        // edge margin - exactly, to the pixel the mapping rounds to (the origin is
+        // written through the scaler's own integer pixel origin, panFrame, which is
+        // the only writer the graph's frame axis offers besides an anchored zoom)...
+        CHECK(
+            std::abs(
+                editor.scale().pixelX(core::Frame(pushed.min()))
+                - (sharedPlot.left() + ctrl::GraphEditor::kFrameWindowMargin)
+            ) <= 1
+        );
+        // ...and the WHOLE pushed range is inside the plot, so the panel never hides a
+        // frame the timeline is showing. (Its plot may be wider than the ladder can
+        // fill with that range: the frames past the end are then extra ink on the
+        // right, which is the one direction a view may safely be wider.)
+        CHECK(
+            editor.scale().pixelX(core::Frame(pushed.min()))
+            >= sharedPlot.left() + ctrl::GraphEditor::kFrameWindowMargin - 1
+        );
+        CHECK(editor.scale().pixelX(core::Frame(pushed.max())) <= sharedPlot.right());
+        CHECK(editor.scale().frameAt(sharedPlot.left()) <= pushed.min() + 1);
+        CHECK(editor.scale().frameAt(sharedPlot.right()) >= pushed.max());
+
+        // NOTHING REFITS X WHILE THE TIMELINE OWNS IT: a cursor pass, a change of the
+        // shown curves (which IS the value fit's trigger), the panel's own
+        // double-click fit, the value wheel and the value pan all leave the pushed
+        // window exactly where the timeline put it.
+        //
+        // The measure is the FRAME AT THE PLOT'S LEFT EDGE, not a pixel: the value
+        // labels are measured (graph::Scaler::axisLabelWidth), so a change of the
+        // VALUE window can move plotRect().left() - and a pixel comparison would
+        // then be about the label column, not about X. "The frame the plot starts
+        // at" is the same number either way, and a refit, a zoom or a self-pan would
+        // move it by frames, not by the pixel the origin write rounds to.
+        auto leftEdgeFrame = [&editor]() {
+            const QRect livePlot = editor.scale().plotRect();
+            return editor.scale().frameAtPixel(static_cast<double>(livePlot.left()));
+        };
+        const double windowLeftFrame = leftEdgeFrame();
+        // The baseline is the mapping's own consequence: the pushed window starts
+        // kFrameWindowMargin pixels inside the plot, so the plot's left edge shows
+        // that margin's sliver of EARLIER frames - (windowLeftFrame - lo) * ppf ==
+        // -margin. Asserted as a relation rather than as "== lo", because that is
+        // what the margin means, and it fails loudly if the margin is ever dropped
+        // again (the value would then be 0, not -margin).
+        CHECK(
+            std::abs(
+                (windowLeftFrame - pushed.min()) * static_cast<double>(sharedPpf)
+                + ctrl::GraphEditor::kFrameWindowMargin
+            ) <= 1.5
+        );
+
+        core::AbstractCursor idleSeam;
+        sendMove(editor, camera, idleSeam, sharedPlot.center());
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+        editor.setTargets({});
+        editor.setTargets({ &seamNode });
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+        editor.fitAll();
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+
+        // --- (d2) THE WINDOW'S END MARGIN: a key at the window's FIRST and at its
+        // LAST frame is drawn and picked WHOLE. This is the defect the shared window
+        // reintroduced: the frame-fit margin that used to keep the content off the
+        // axis applied while the panel owned X, and the timeline's own window puts its
+        // first frame at the plot's left edge - where the marker was half clipped by
+        // the plot's clip rect and unclickable at its own centre (measured on the
+        // captured project's single key at frame 0). The window is mapped INSET by
+        // GraphEditor::kFrameWindowMargin at both ends now, and BOTH ends are asserted
+        // here: fully inside the plot for the drawn marker and for the hit square the
+        // drawing and the hit-test share, and reachable at its own centre.
+        //
+        // The window pushed here has a key at EACH of its ends, and its span is chosen
+        // from the live plot so both ends really land near their edge (see the
+        // preconditions below): a short window is clamped by the ladder's ceiling and
+        // would leave the last frame hundreds of pixels inside the plot, where the
+        // assertion could not tell a margin from no margin.
+        core::TestNode endNode;
+        const int endSpan =
+            std::max(2, (sharedPlot.width() - 2 * ctrl::GraphEditor::kFrameWindowMargin) / 8);
+        core::RotateKey* e0 = new core::RotateKey();
+        e0->setRotate(0.0f);
+        setup.push(endNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, e0));
+        core::RotateKey* e1 = new core::RotateKey();
+        e1->setRotate(90.0f);
+        setup.push(endNode.timeLine()->createPusher(core::TimeKeyType_Rotate, endSpan, e1));
+
+        editor.setTargets({ &endNode });
+        editor.setFrameWindow(util::Range(0, endSpan));
+        {
+            const QRect endPlot = editor.scale().plotRect();
+            CHECK(endPlot.width() == sharedPlot.width()); // the plot did not move under this
+            CHECK(editor.scale().frameScale().pixelsPerFrame() >= 8); // the rung the span asks for
+            for (const int frame : { 0, endSpan }) {
+                const float value = frame == 0 ? 0.0f : 90.0f;
+                const QRect rect = ctrl::graph::keyRect(editor.scale(), core::Frame(frame), value);
+                const QPoint centre = QRectF(rect).center().toPoint();
+                const bool isFirst = frame == 0;
+
+                // THE PRECONDITION that makes this a test of the margin: THIS end
+                // really is near its own edge (inside a margin and a bit), so a mapping
+                // that dropped the margin would put it flush - or outside - and the
+                // other end is far away, which is what says the window really spans the
+                // plot instead of sitting in a corner of it.
+                const int insetFromOwnEdge =
+                    isFirst ? centre.x() - endPlot.left() : endPlot.right() - centre.x();
+                const int insetFromFarEdge =
+                    isFirst ? endPlot.right() - centre.x() : centre.x() - endPlot.left();
+                CHECK(insetFromOwnEdge <= 2 * ctrl::GraphEditor::kFrameWindowMargin);
+                CHECK(insetFromFarEdge > 2 * ctrl::GraphEditor::kFrameWindowMargin);
+
+                // FULLY inside the plot, for the marker that is DRAWN (its own radius)
+                // and for the square the hit-test tests...
+                CHECK(centre.x() - ctrl::graph::kKeyDotRadius >= endPlot.left());
+                CHECK(centre.x() + ctrl::graph::kKeyDotRadius <= endPlot.right());
+                CHECK(centre.x() - ctrl::graph::kKeyRadius >= endPlot.left());
+                CHECK(centre.x() + ctrl::graph::kKeyRadius <= endPlot.right());
+                // ...and inside it vertically too, so "fully inside" means the rect and
+                // not only its x.
+                CHECK(endPlot.contains(rect));
+
+                // REACHABLE AT ITS OWN CENTRE: the panel's own hit rule answers yes
+                // there, and a press there selects THAT key (a handle would begin a
+                // drag and change no selection) - so the end key is a real target and
+                // not just ink.
+                core::AbstractCursor endCur;
+                sendMove(editor, camera, endCur, centre);
+                CHECK(editor.ownsCursor(camera, endCur));
+                CHECK(sendPress(editor, camera, endCur, centre));
+                CHECK(sendRelease(editor, camera, endCur, centre));
+                core::TimeLineEvent endPicked;
+                CHECK(editor.retrieveSelection(endPicked));
+                CHECK(endPicked.targets().size() == 1);
+                CHECK(endPicked.targets()[0].node == &endNode);
+                CHECK(endPicked.targets()[0].pos.index() == frame);
+
+                std::printf(
+                    "[E] window end (%s frame %d): centre x %d, plot %d..%d, marker radius %.2f -> "
+                    "insets %d / %d px\n",
+                    isFirst ? "first" : "last", frame, centre.x(), endPlot.left(), endPlot.right(),
+                    ctrl::graph::kKeyDotRadius, centre.x() - endPlot.left(), endPlot.right() - centre.x()
+                );
+            }
+        }
+
+        // Those two presses wrote the shared selection (they are presses in the panel),
+        // so put the section's own two keys back before the rest of it reads the
+        // selection - and put the target and the window the gesture half below works on
+        // back too.
+        editor.setTargets({ &seamNode });
+        editor.setFrameWindow(pushed);
+        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+        {
+            core::TimeLineEvent both;
+            both.pushTarget(seamNode, core::TimeKeyType_Rotate, 2);
+            both.pushTarget(seamNode, core::TimeKeyType_Rotate, 6);
+            timeline.selectCreatedKeys(both);
+        }
+
+        // --- (e) THE HORIZONTAL GESTURES GO TO THE TIMELINE. ---
+        double scrolledFrames = 0.0;
+        int zoomedDelta = 0;
+        int zoomedAnchor = 0;
+        int zoomCalls = 0;
+        editor.setFrameGestureDelegates(
+            [&scrolledFrames](double aDelta) { scrolledFrames += aDelta; },
+            [&zoomedDelta, &zoomedAnchor, &zoomCalls](int aDelta, core::Frame aAnchor) {
+                zoomedDelta = aDelta;
+                zoomedAnchor = aAnchor.get();
+                ++zoomCalls;
+            }
+        );
+
+        // Shift = the frame axis alone: the notch is the TIMELINE's, about the frame
+        // under the panel's cursor, and the panel's own X does not move under it.
+        const int anchorFrameAtCursor = editor.scale().frameAt(sharedPlot.center().x()).get();
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier));
+        CHECK(zoomCalls == 1);
+        CHECK(zoomedDelta == -120);
+        CHECK(zoomedAnchor == anchorFrameAtCursor); // the frame the panel's cursor is over
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X stayed put
+
+        // The plain wheel zooms BOTH axes: the frame half still goes to the timeline,
+        // while the VALUE half - the axis the timeline does not show - is the panel's
+        // own and really moves.
+        const float beforeSeamValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier));
+        CHECK(zoomCalls == 2);
+        CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeSeamValueSpan);
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+
+        // Ctrl = the value axis alone: the frame delegate hears nothing at all.
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier));
+        CHECK(zoomCalls == 2);
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+
+        // The MIDDLE drag: its horizontal half becomes a FRAME delta handed to the
+        // timeline (dragging right reveals EARLIER frames, so the delta is negative
+        // and its size is the pixel delta over the panel's own rung - frames are the
+        // one unit both views share), and its vertical half stays the panel's.
+        const float beforeSeamPanMin = editor.scale().valueMin();
+        const float beforeSeamPanMax = editor.scale().valueMax();
+        const QPoint seamPanStart = sharedPlot.center();
+        const QPoint seamPanDelta(40, 25);
+        core::AbstractCursor seamPanCur;
+        CHECK(sendMiddlePress(editor, camera, seamPanCur, seamPanStart));
+        CHECK(sendMiddleMove(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
+        CHECK(sendMiddleRelease(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
+        CHECK(zoomCalls == 2); // a pan is not a zoom
+        CHECK(std::fabs(scrolledFrames + 40.0 / static_cast<double>(sharedPpf)) < 1e-9);
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X still did not move
+        const float afterSeamPanSpan = editor.scale().valueMax() - editor.scale().valueMin();
+        const float beforeSeamPanSpan = beforeSeamPanMax - beforeSeamPanMin;
+        CHECK(std::fabs(afterSeamPanSpan - beforeSeamPanSpan) < beforeSeamPanSpan * 1e-5f); // a pan, not a zoom
+        CHECK(editor.scale().valueMin() > beforeSeamPanMin); // dragging DOWN reveals higher values
+
+        std::printf(
+            "[T] timeline seam: the panel writes the timeline's own selection (1 key selected in the panel "
+            "is 1 in the timeline, focused), a pushed window of %d..%d maps onto the panel's plot at %d px/frame "
+            "(plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a wheel notch and a 40px "
+            "middle-drag pan both reach the delegates and leave the panel's own X exactly where the timeline put "
+            "it, while a Ctrl wheel moves only the value axis\n",
+            pushed.min(), pushed.max(), sharedPpf, sharedPlot.width(), sharedPlot.height()
+        );
+
+        // --- (f) DETACHED, the panel owns its frame axis again: the same fit and the
+        // same wheel write it, which is the behaviour sections 0-22 pin with no
+        // timeline at all. ---
+        editor.clearFrameAxis();
+        CHECK(!editor.hasTimelineFrameAxis());
+        editor.fitAll();
+        const QRect ownPlot = editor.scale().plotRect();
+        CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.left())) <= 2.0);   // the shown keys came back
+        CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.right())) >= 6.0);
+        const int ownPpfBefore = editor.scale().frameScale().pixelsPerFrame();
+        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier)); // a notch AWAY from the ceiling
+        CHECK(editor.scale().frameScale().pixelsPerFrame() < ownPpfBefore); // the panel's OWN frame axis moved
+        CHECK(zoomCalls == 2);                                              // and the delegate heard nothing
+
+        // The shared end must go before the timeline it points at does: a dangling
+        // selection source is the one thing this seam can get catastrophically wrong.
+        editor.setTargets({}); // drop the target before its owner dies
+        editor.setSelectionSource(nullptr);
+        editor.clearFrameAxis();
+        CHECK(&editor.selection() != &timeline.selection());
+
+        // The timeline's own selection outlived the panel's attachment - it is the
+        // timeline's data, and the panel was only ever a second view of it.
+        fromTimeline = core::TimeLineEvent();
+        CHECK(timeline.retrieveSelectionTargets(fromTimeline));
+        CHECK(fromTimeline.targets().size() == 2);
+    }
+
+    // --- 24: the switch's OTHER direction - the half the show at the top of this
     // file cannot cover - and it sits last so nothing above or below runs against
     // a panel that was hidden out from under it. Hiding is what hands the pointer
     // and the wheel back to the canvas (the Driver consults isVisible() before it
@@ -2121,20 +2559,22 @@ int main(int argc, char** argv) {
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
         "at the pixel it points to; the value axis is fitted to the shown curves where the panel is "
         "opened or re-selected, and a manual, wheeled or panned window survives every cursor pass; "
-        "the fullscreen panel owns the cursor on a key, a handle, a CTRL-PRESS inside the plot (the "
-        "insert on a curve's band, the marquee off every band) and the middle button (a pan), or "
-        "mid-gesture - a PLAIN press in the plot stays the viewport tools'; the selection "
-        "takes one key by a plain press, extends on Shift, toggles on Ctrl and replaces on a "
-        "Ctrl-marquee over empty plot space; the focus moves NO window (a click does not zoom); the "
-        "wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value); and the three key edits "
-        "are one undo step each through the timeline's own route: a Ctrl-press on the band inserts "
-        "the key the curve already passes through (no sampled value moves at that frame), a press "
-        "on a key plus a 2-axis drag moves its frame AND its value (Shift pins the dominant axis) "
-        "and refuses an occupied destination, and removeSelectedKey() removes every selected key "
-        "and restores the same key objects on undo; and setSelectedKeysEasing() changes the easing "
-        "type of the selected key(s) as ONE undo step on that same route, pushing nothing for an "
-        "empty or stale selection, for the step-held image channel or for the type a key already "
-        "has\n"
+        "the fullscreen panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
+        "selects and drags, Ctrl on a curve's band inserts, everything else marquees) and the middle "
+        "button (a pan), or mid-gesture - a press outside the plot, and every hover, stays the "
+        "viewport tools'; the selection takes one key by a plain press, extends on Shift, toggles on "
+        "Ctrl and replaces on a marquee over empty plot space; the focus moves NO window (a click "
+        "does not zoom); the wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value); the "
+        "three key edits are one undo step each through the timeline's own route: a Ctrl-press on the "
+        "band inserts the key the curve already passes through (no sampled value moves at that "
+        "frame), a press on a key plus a 2-axis drag moves its frame AND its value (Shift pins the "
+        "dominant axis) and refuses an occupied destination, and removeSelectedKey() removes every "
+        "selected key and restores the same key objects on undo; setSelectedKeysEasing() changes the "
+        "easing type of the selected key(s) as ONE undo step on that same route, pushing nothing for "
+        "an empty or stale selection, for the step-held image channel or for the type a key already "
+        "has; and with a timeline attached the panel shares its selection (one instance, both "
+        "directions) and its frame window (pushed as values, its own X written by nothing else, the "
+        "wheel's frame half and the middle-drag pan delegated to the timeline)\n"
     );
     return 0;
 }

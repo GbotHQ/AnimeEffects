@@ -33,9 +33,37 @@ void Graph::assignFrom(const Colors& aColors) {
     mGridMajor = aColors.hairline;
 
     // Value axis: the hover separator is the one line tone that stays legible
-    // over the artwork the panel floats on; labels use the muted text.
+    // over the artwork the panel floats on.
+    //
+    // The labels read at FULL text strength - the token the timeline draws its own
+    // ruler numbers in (theme::TimeLine::headerContentColor() == Colors::text), so
+    // the panel's numbers and the ruler's numbers are the same ink. textMuted, the
+    // token this used to be, is the too-dim grey the user reported: the halo that
+    // would have backed these glyphs ships OFF (gui::kDrawTextHalo), so they sit on
+    // arbitrary artwork like the rest of the panel's ink, and a mid grey is the one
+    // tone that vanishes over mid-grey artwork. The contrast outline pass can only
+    // RING such ink (black at kMinContrast = 3:1, gui::outline::kMinContrast), it
+    // cannot brighten the glyph - so the fix is the ink, not the ring.
+    //
+    // WCAG contrast (relative luminance, sRGB linearised) of the two candidates,
+    // computed from this palette's Tailwind cells:
+    //
+    //                                  light            dark
+    //     text  vs halo/base       17.18 : 1       16.44 / 13.88 : 1
+    //     text  vs recessed        16.44 : 1       16.44 : 1
+    //     text  vs raised          14.23 : 1        9.51 : 1
+    //     textMuted vs halo/base    4.54 : 1        7.11 /  6.00 : 1
+    //     textMuted vs mid-grey    1.20 : 1        1.57 : 1   (artwork, no halo)
+    //     text      vs mid-grey    4.54 : 1        3.62 : 1   (artwork, no halo)
+    //
+    // (light halo == base == neutral-50 #fafafa, dark halo neutral-950 #171717 over
+    // base neutral-800 #262626; mid-grey is #808080, the worst case for both
+    // palettes' greys.) text clears the application's own 3:1 threshold
+    // (gui::outline::kMinContrast) on every surface by 3x or more, and by 5x on the
+    // halo; textMuted meets it on the halo but falls to 1.20:1 - below the threshold,
+    // so the outline pass rings it - where the label actually lands, on the artwork.
     mAxisLine = aColors.hairlineHover;
-    mAxisText = aColors.textMuted;
+    mAxisText = aColors.text;
 
     // Label halo: the palette's opaque floater body. The panel paints no
     // background of its own (see GraphPanelModel's header), so the halo is the

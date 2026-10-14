@@ -803,6 +803,132 @@ looks like "the application is broken" when the application is fine.
   popup is NOT yours to set: the C++ control re-applies `CloseOnEscape | CloseOnReleaseOutsideParent`
   (17) after the `popup:` block runs, so a QML `closePolicy:` there is silently overwritten.
 
+## The animation-graph panel is a second view of the timeline (2026-10-14)
+
+The round that made the panel behave like a tool of this application rather than one floating over it.
+Every line below was measured; the cells marked MEASURED carry the number that decided the change.
+
+**One selection, shared.** `ctrl::GraphEditor` used to keep its own `core::TimeLineEvent`. It now holds a
+`time::Selection*` (`setSelectionSource`), and every selection method goes through that one pointer - the
+panel owns an instance only while no timeline is attached (the unit tests' path). `ctrl::TimeLineEditor::selection()`
+is the live set, and `Selection::rebuildFocus()` is what makes the TIMELINE renderer highlight those keys
+(`TimeKey::isFocus`, read by `ctrl::time::Renderer`). Wiring, all values/delegates so no `ctrl/` -> `gui/`
+include appears: `MainWindow` -> `MainDisplayWidget::setTimeLineWidget` -> `syncGraphPanelSharedState()`,
+which runs on `setDriver` (the driver and its `GraphEditor` are created per project) and on every timeline
+view-range change.
+
+**The marquee is a PLAIN drag.** The Ctrl gate existed to keep the viewport tools' presses alive inside the
+fullscreen plot; the timeline's convention won. Ctrl+press on a curve's band is still the insert. `graph_drag`'s
+own summary line states the rule: *"a LEFT PRESS inside the plot (a key selects and drags, Ctrl on a curve's
+band inserts, everything else marquees)"*.
+
+**The X axis is the timeline's.** The panel's frame window is PUSHED IN (`GraphEditor::setFrameWindow`) from
+`gui::TimeLineWidget::visibleFrameRange()`; while shared, `fitFrameAxis()` is a no-op and the wheel's frame
+half and a middle-drag's horizontal half are DELEGATED (`scrollFramesBy` / `zoomFramesAbout`), so the two views
+cannot disagree about frames. Unattached, the panel keeps its own X (that is the path `graph_drag`'s sections
+0-22 exercise). Two consequences paid for here:
+
+- **`GraphEditor::kFrameWindowMargin = 8`.** Pushing the timeline's window in put frame `min` back on
+  `plot.left()`, and a key there was drawn half-clipped and picked off-centre - MEASURED in a 6x crop of a real
+  capture: the marker showed only a half-disc, and because a selected key is drawn in `theme::Graph::selected()`,
+  the same violet as the playhead, it read as nothing at all. 8 = the hit square's `+-kKeyRadius` (5) plus 2px
+  of integer-origin/rounding slack, +1. The timeline solves the same problem with `kTimeLineMargin = 24`.
+- Nothing is hidden by the inset: `ppf*span <= plotWidth - 2M`, so the whole pushed range stays inside the plot.
+
+**Visuals and hit geometry are separate - the timeline's own lesson, applied.** `ctrl::graph::kKeyDotRadius`
+(= 3.75, the timeline's own `ctrl::keyRadius` from `time_Renderer.h`) is what is DRAWN; the pick is
+`kKeyHitRadius` (10) in `GraphEditor::hitTest`, and the right-click menu now uses that same 10px rule instead
+of testing the drawn rect. `kKeyRadius`/`keyRect` are documented as HIT geometry only, and `PanelCurve::keyDots`
+publishes the circles. MEASURED before: the panel painted a 10px square, 1.33x the timeline's key body across
+and 2.3x its area.
+
+**The key menu is the application's own `QMenu`.** `gui::TimeLineEditorWidget::showKeyContextMenu(targets, globalPos)`
+- the same `mSelectEasing` menu the timeline's right-click builds - reached from the panel as
+`ImGuiOverlay::openKeyMenuAt` -> `MainDisplayWidget::showGraphKeyMenu`. The ImGui popup, its
+`ImGuiConfigFlags_NavEnableKeyboard` toggle, `SetNextFrameWantCaptureKeyboard` and the Qt focus take/hand-back
+are DELETED (grep returns 0). An ImGui popup can never look like a `QMenu`, and its keyboard capture was also
+what broke typing into the dock after the menu had been used ("phase 4b"): that defect is gone with it. Two
+consequences worth knowing: a Qt menu is MODAL (the app's Delete/Undo cannot reach the timeline while it is
+open), and it is a top-level window, so its pixels are NOT in the application window's screenshot -
+`probe_graph_overlay.sh`'s old menu phase scanned for them and had to be re-derived.
+
+**The numerals were 1.298x too large.** `fontPixelSize()` used `QFontMetricsF(widget.font()).height()` - the
+LINE height, 15.578125px - as the atlas's pixel size, while Qt rasterizes the same face at 12px (pointSize 9
+at 96dpi). `imgui_qt::panelFontPixelSize(font, logicalDpi)` (pointSizeF*dpi/72, or `pixelSize`, 0 when the
+font states neither) is the fix; the timeline sets no font at all, so its ruler numbers are the app font's own
+12px. Digits measured EQUAL in advance at every size probed (7.187500 at 12px for all ten), so no `tnum`
+request is needed - the bundled face already has tabular digits. The label colour moved from `textMuted` to
+`Colors::text`, the token the timeline's ruler uses: `textMuted` falls BELOW `outline::kMinContrast` exactly
+where the labels land over mid-grey artwork (1.20:1) and can then only be ringed black, never brightened.
+
+**The label column is FORMAT-derived, never window-derived.** `Scaler::axisLabelWidth()` measures the widest
+label the `'g'/4` format can emit (62px: `-3.403e+38`, `-0.0009999`; a float-range sweep agrees), adds the box
+inset and the text gap, and clamps into [46, 96] - a 68px column. It must NOT be measured from the labels
+currently visible: doing that made `plot.left()` move with the value window, MEASURED as a 40px middle-drag pan
+moving `pixelX(frame 0)` by 41 instead of 40. The application's precedent is the timeline's own:
+`TimeRuler.cpp:103` reserves `numberWidth = 6` per character rather than measuring.
+
+**The curve stroke is a coverage pass, and the interesting part is what it did NOT change.** `gui::stroke`
+draws each segment as a quad expanded to halfWidth+filter+1px and computes coverage per fragment from the
+distance to the segment's centreline (Chan & Durand 2005; Rougier, *Shader-Based Antialiased, Dashed, Stroked
+Polylines*, JCGT 2(2) 2013, `jcgt.org/published/0002/02/08`) - the family Vello implements. MEASURED, and this
+corrects a claim that had been taken for granted here: ImGui's own texture-AA polyline is ALREADY area-exact
+and angle-independent at 2px (integrated perpendicular width spread 0.053px across four angles, identical
+before and after; the whole frame differs in 27 pixels, 25 of them caps). What the pass actually fixes:
+
+- the JOIN SHOULDER: the fringe stroke puts 21% more ink at a corner than one capsule can explain (+0.093
+  excess against a 0.357 bound, versus +0.000 for the pass). This is the assertion a geometry/fringe
+  implementation cannot pass.
+- the END CAP: a round cap is 0.793 coverage where the fringe stroke ends square and paints nothing.
+- SUB-PIXEL WIDTHS: below one device pixel the stroke keeps a 1px footprint with its alpha scaled instead of
+  thinning away.
+- DPR: the filter is one DEVICE pixel (`uPxScale`), where ImGui's fringe is one LOGICAL pixel by construction
+  (`InitialFringeScale = 1.0f`, imgui.cpp's own FIXME-DPI).
+- the TANGENT HANDLE STEM: `AddLine` shifts its geometry by (+0.5,+0.5), MEASURED 0.68-0.76px off-position
+  along the stem's own normal with 0.90-1.10px of ink per px of stem; through the pass it is +-0.01px and 0.95.
+
+Overlap is accumulated with `GL_MAX` into a framebuffer-sized scratch and composited once per curve in the
+overlay FBO's premultiplied convention, so a join cannot double-darken a dimmed (`kUnfocusedAlpha`) curve.
+
+**The 1px chrome is deliberately NOT anti-aliased, and that is pinned.** The playhead, the frame and value
+ticks and the zero rule are INTEGER positions in the model (`frameTickX`/`valueTickY`/`zeroY`/`playheadX` are
+`int`), so they land exactly on a column at full coverage with zero neighbours; routing them through the
+coverage pass splits a boundary line 0.500/0.500 into two grey columns. The gate asserts both, so the
+"obvious" AA fix cannot be applied later by mistake. A fractional playhead would be a MODEL decision
+(GraphPanelModel quantizes the frame to a whole column), not a renderer one.
+
+**`outline::kMinContrast` reads INVERTED:** the shader rings where contrast is BELOW the constant, so a higher
+number rings MORE. It is 2.0f now (was 3.0f) because the user's report was the opposite of what the name
+suggests - the ring was showing up everywhere.
+
+## When a `bash -c '...'` probe dies silently, count the ARGV words (measured 2026-10-14)
+
+Every run of `scripts/gui/probe_graph_overlay.sh` died ~37 s in with 0 PASS and no geometry file, and the
+application's own log ended:
+
+```
+The X11 connection broke (error 1). Did the X11 server die?
+clearing main window
+```
+
+That reads as an X problem and is not one. Xvfb was killed by `xvfb-run`'s OWN teardown, after the probe body
+had already exited `rc=0` at its first comment: the body is ONE single-quoted `bash -c '<body>'` argument, and
+commit `acfbffa6` had added two apostrophes inside a comment (`# THE FIELD'S OWN ...`). The apostrophe ENDS
+that string, the shell splits the rest into ordinary words, `bash -c` is handed THIRTEEN arguments and runs
+only the first - 12355 of 101808 bytes. `bash -n` passes on that file.
+
+The diagnostics that actually work, both cheap:
+
+```bash
+tr '\0' ' ' < /proc/<body-pid>/cmdline      # ARGV-ELEMS 15, ARGV-LEN 90997 -- the body was 12355 bytes
+# and a quoting walk over the source (same model the shell uses) measuring where word 0 ends
+```
+
+After the fix (`34ca0faf`) one full run completes: **111 PASS / 23 FAIL / 0 STALE in 25m56s**, the geometry
+file appears 100.5 s in, and Xvfb lives 1540 s. So: when such a probe dies silently, read the APP's log for the
+X11 line and then count the argv words - do not go hunting the X server. (The 23 remaining FAILs are all the
+key-menu phase, which is written against the ImGui popup that no longer exists.)
+
 ## The viewport overlay's paint engine is a SUBSET, and its gaps are silent
 
 Anything drawn in the viewport overlay pass — the tool gizmos, and now the animation graph panel —

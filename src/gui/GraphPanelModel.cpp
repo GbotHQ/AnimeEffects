@@ -20,9 +20,10 @@ namespace {
 // convention (ctrl/graph/graph_Renderer.cpp, removed in the ImGui cutover), and
 // they are stated here because the model is now their one home - the renderer
 // kept them private to its translation unit. The constants the rest of the code
-// shares are read from their own homes instead: Scaler::kMargin and
-// Scaler::kAxisLabelWidth from the scaler, ctrl::graph::kKeyRadius from
-// graph_Geometry.h.
+// shares are read from their own homes instead: Scaler::kMargin, the label
+// column's own size rule (Scaler::axisLabelWidth(), measured - see THE LABEL
+// COLUMN in graph_Scaler.h) and Scaler::kAxisLabelPad from the scaler,
+// ctrl::graph::kKeyRadius and kKeyDotRadius from graph_Geometry.h.
 //
 // The short tick marks replaced the renderer's full grid lines. Their length is
 // the drawing layer's business (the model publishes positions); 4px is the
@@ -36,9 +37,6 @@ constexpr int kFrameLabelGap = 8;
 // Horizontal padding of a text box around its glyphs, the renderer's own
 // `horizontalAdvance(text) + 4`.
 constexpr int kLabelPad = 2;
-// The value column's right inset, the renderer's kAxisLabelPad: a right-aligned
-// number must not touch the curves it names.
-constexpr int kAxisLabelPad = 4;
 // The legend swatch is a key square: side 2 * ctrl::graph::kKeyRadius.
 constexpr int kLegendSwatchSide = 2 * ctrl::graph::kKeyRadius;
 // The legend's insets from the plot's bottom-left corner: the left gap and the
@@ -55,9 +53,9 @@ constexpr int kLegendRowPad = 2;
 constexpr int kMinSamplesPerSegment = 2;
 constexpr int kMaxSamplesPerSegment = 256;
 
-// A readable value label - 'g' with four significant digits (a narrow window
-// keeps its digits, a large value loses its trailing zeros).
-QString valueText(float aValue) { return QString::number(static_cast<double>(aValue), 'g', 4); }
+// The value axis' number format, and the value labels' texts, are
+// ctrl::graph::Scaler::valueAxisText: the label and the column's WIDTH are
+// measured off the SAME strings, so the format must not be restated here.
 
 // The frame axis: the ladder's own ticks, and a number on the majors.
 //
@@ -120,8 +118,19 @@ void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
 // column, each on the pixel its value maps to. Two of the three rounding to the
 // same string would draw one number on top of itself, so the duplicate is
 // dropped (the model's own rule).
+//
+// The column's width is the scaler's stable reserve for the FORMAT
+// (Scaler::axisLabelWidth - the widest label 'g'/4 can write, measured once per
+// font), so the numbers fit by construction while the column itself never moves
+// when the window does; a number that still does not fit the box - reachable
+// only once the column has hit its ceiling, which this format's widest label
+// (62px at the UI font) cannot reach - is DROPPED rather than published
+// overflowing, the same way the frame axis drops a number wider than the plot.
+// Its tick is still published: the axis HAS a tick at that value whatever can be
+// written beside it.
 void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics) {
     const QRect& column = aModel.valueColumn;
+    constexpr int kAxisLabelPad = ctrl::graph::Scaler::kAxisLabelPad;
 
     // The baseline exists only while 0 is inside the window: a line drawn for an
     // out-of-window zero would sit on (or outside) the plot edge and read as a
@@ -143,7 +152,7 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
     const float values[3] = {aScale.valueMax(), 0.5f * (aScale.valueMin() + aScale.valueMax()), aScale.valueMin()};
     QString shown;
     for (const float value : values) {
-        const QString text = valueText(value);
+        const QString text = ctrl::graph::Scaler::valueAxisText(value);
         if (text == shown)
             continue;
         shown = text;
@@ -157,9 +166,20 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
         const int top = std::clamp(y - textHeight / 2, columnTop, columnBottom);
 
         aModel.valueTickY.append(y);
+
+        // The box the drawing layer right-aligns the text in. The column was
+        // MEASURED from these very strings, so this holds for every label the
+        // value axis can write at the UI font; the guard is the honest floor
+        // under a wider font (the column's own ceiling, see graph_Scaler.h) and
+        // is the frame axis' rule: a number that cannot fit is not drawn
+        // half-way off the panel.
+        const int boxWidth = column.width() - kAxisLabelPad;
+        if (aMetrics.horizontalAdvance(text) > boxWidth)
+            continue;
+
         gui::PanelLabel label;
         label.text = text;
-        label.rect = QRect(column.left(), top, column.width() - kAxisLabelPad, textHeight);
+        label.rect = QRect(column.left(), top, boxWidth, textHeight);
         aModel.valueLabels.append(label);
     }
 }
@@ -265,18 +285,29 @@ void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale
             out.points.append(QPointF(aScale.pixelXOfFrame(sample.x()), double(aScale.pixelY(float(sample.y())))));
         }
 
-        // ctrl::graph::keyRect is the editor's hit-test geometry too: one
-        // rectangle, so a click lands where the key is drawn. A key straddling
-        // the plot's edge is cut rather than skipped - the drawing layer clips a
-        // key over the panel's chrome.
+        // ctrl::graph::keyRect is the editor's HIT-TEST geometry: one rectangle,
+        // so a marquee or a right-click lands on the key the editor agrees on. A
+        // key straddling the plot's edge is cut rather than skipped - the drawing
+        // layer clips a key over the panel's chrome.
+        //
+        // The DOT is the other half: keyDot() is the key marker's own centre and
+        // the drawing layer paints a circle of radius kKeyDotRadius about it
+        // (ctrl/graph/graph_Geometry.h's VISUAL/HIT split). It is published
+        // rather than derived from the rect on purpose - the rect above is CUT
+        // at the plot's edge, so its centre is not the key's centre for a key on
+        // the border, and a dot reconstructed from it would sit off the key. Same
+        // order and same length as `keys` and `keyFrames`: a key that publishes
+        // no rect (one entirely outside the plot) publishes no dot either.
         for (const core::TimeKey* key : curve.keys()) {
             if (!key)
                 continue;
-            const QRect rect =
-                ctrl::graph::keyRect(aScale, core::Frame(key->frame()), curve.valueOf(*key)).intersected(aModel.plot);
+            const core::Frame frame(key->frame());
+            const float value = curve.valueOf(*key);
+            const QRect rect = ctrl::graph::keyRect(aScale, frame, value).intersected(aModel.plot);
             if (!rect.isEmpty()) {
                 out.keys.append(rect);
-                out.keyFrames.append(core::Frame(key->frame()));
+                out.keyFrames.append(frame);
+                out.keyDots.append(ctrl::graph::keyDot(aScale, frame, value));
             }
         }
 
@@ -369,8 +400,13 @@ namespace gui {
         // no inset at all, and the result never leaves the plot.
         const int inset = std::max(0, aTopInset);
         model.rulerBandTop = std::min(model.plot.top() + inset, model.plot.bottom() + 1);
+        // The column's width is the scaler's STABLE reserve for the value format
+        // (see THE LABEL COLUMN in graph_Scaler.h) - the width the plot was
+        // already inset by - so the column and the plot are one geometry, a
+        // number can never need more room than the column has, and a gesture that
+        // changes which label is widest cannot move either one.
         model.valueColumn = QRect(
-            model.panel.left() + ctrl::graph::Scaler::kMargin, model.plot.top(), ctrl::graph::Scaler::kAxisLabelWidth,
+            model.panel.left() + ctrl::graph::Scaler::kMargin, model.plot.top(), scale.axisLabelWidth(),
             model.plot.height()
         );
 

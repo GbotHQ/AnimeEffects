@@ -398,6 +398,20 @@ bool qtFontBakedLoadGlyph(ImFontAtlas* aAtlas, ImFontConfig* aSrc, ImFontBaked* 
 
     const float reciprocalDensity = 1.0f / bakedData->rasterDensity;
 
+    // NO OpenType feature is requested here, and none is needed: the application face's
+    // digit glyphs have EQUAL advance widths at every size this loader rasterizes at, so
+    // number strings cannot shift layout. [measured on Geist-Regular.ttf through
+    // QRawFont::advancesForGlyphIndexes over '0'..'9' - which is the call below -
+    // identical to 6 decimals for all ten at pixel size 12 (7.187500), 13 (7.796875),
+    // 14 (8.390625), the line height 15.578 (9.343750) and at double each of those as
+    // the density-2 raster the atlas uses (14.390625, 15.593750, 16.796875, 18.687500);
+    // QFontMetricsF::horizontalAdvance agrees (7.187500 for each digit at 12px), and
+    // boundingRect("0123456789") is 72px wide - 10 x 7.1875 = 71.875, rounded up by
+    // the integer QRect.] If a future face ever needed tabular
+    // figures, the request cannot go here: this loader rasterizes a QRawFont, which has
+    // no per-feature API, so it would have to be QFont::setFeature(QFont::Tag("tnum"), 1)
+    // on the QFont the source's face is resolved from (src->FontSrcInit()).
+
     QPointF advance;
     if (!bakedData->rawFont.advancesForGlyphIndexes(&glyphIndex, &advance, 1))
         return false;
@@ -523,6 +537,27 @@ void restoreAtlasAfterRefusedInstall(ImFontAtlas& aAtlas, const ImFontLoader* aP
 const char* loaderName()
 {
     return qtFontLoader()->Name;
+}
+
+float panelFontPixelSize(const QFont& aFont, qreal aLogicalDpi)
+{
+    // An explicit pixel size is already the rasterization size, so it is taken
+    // verbatim - Qt's font engine does the same (a 12/13/17/20px font resolves to
+    // 12/13/17/20px [measured]).
+    if (aFont.pixelSize() > 0)
+        return float(aFont.pixelSize());
+
+    // A point-sized font: points are 1/72 inch, so the pixel size is the point size
+    // scaled by the DPI over 72, rounded to the nearest whole pixel - the rounding Qt
+    // itself applies [measured: see the table in the header, where qRound agrees with
+    // QRawFont::fromFont().pixelSize() for all seven probed point sizes].
+    const qreal pointSize = aFont.pointSizeF();
+    if (pointSize > 0.0 && aLogicalDpi > 0.0)
+        return float(qRound(pointSize * aLogicalDpi / 72.0));
+
+    // Neither a pixel nor a usable point size: no answer, and the caller owns its
+    // fallback (see the header).
+    return 0.0f;
 }
 
 int installQtFontLoader(ImFontAtlas& aAtlas, const QFont& aAppFont, float aPixelSize, int aDpr)

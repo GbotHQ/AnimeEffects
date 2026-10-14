@@ -101,9 +101,18 @@ struct PanelCurve {
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
     QVector<QPointF> points; // (frame, value) mapped to panel pixels, in frame order
-    QVector<QRect> keys;     // the key squares, each clipped to the plot
+    QVector<QRect> keys;     // the key HIT squares, each clipped to the plot
+    // The VISUAL of each key in `keys`: the centre of the marker its drawing
+    // layer paints - a circle of radius ctrl::graph::kKeyDotRadius (see the
+    // VISUAL/HIT split in ctrl/graph/graph_Geometry.h). Same order and same
+    // length as `keys` and `keyFrames`, and published rather than recomputed
+    // from the rect because the rect is CUT at the plot's edge: its centre is
+    // not the key's centre for a key on the border, so a marker reconstructed
+    // from the rect would sit off its key. A key that publishes no rect (one
+    // entirely outside the plot) publishes no dot either.
+    QVector<QPointF> keyDots;
     // The FRAME of each rect in `keys`, same order and same length: a rect is
-    // where a key is drawn, which is all a hit-test needs, but an action needs to
+    // where a key is HIT, which is all a hit-test needs, but an action needs to
     // NAME the key - and the triple (node, channel, frame) is the timeline's own
     // name for one. Parallel to `keys` (a) rather than a member of it because the
     // rects are the editor's shared geometry (ctrl::graph::keyRect) and a pair
@@ -136,12 +145,20 @@ struct PanelLabel {
 //              function returns is the panel.
 //   plot    == the editor's own scaler, given `panel`, i.e.
 //              ctrl::graph::Scaler::plotRect() = panel minus kMargin on all
-//              sides and minus kAxisLabelWidth on the left. Empty on a viewport
-//              too small for that inset; see emptyState.
+//              sides and minus the MEASURED label column on the left
+//              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth). Empty
+//              on a viewport too small for that inset; see emptyState.
 //   valueColumn == the left column the value numbers sit in, the deleted painter
 //              renderer's layout, kept as the panel's convention:
-//              QRect(panel.left() + kMargin, plot.top(), kAxisLabelWidth,
-//              plot.height()). It never overlaps the plot.
+//              QRect(panel.left() + kMargin, plot.top(), scale.axisLabelWidth(),
+//              plot.height()). Its width is the scaler's STABLE reserve for the
+//              value format - the widest label that format can write, measured
+//              once per font, NOT the widest label this window shows (see THE
+//              LABEL COLUMN in ctrl/graph/graph_Scaler.h: the column insets the
+//              plot, so a window-dependent width would move the plot's left edge
+//              - and every frame coordinate - whenever a gesture changed the
+//              numbers). It is the same width the plot was inset by, so the
+//              column and the plot are one geometry. It never overlaps the plot.
 //
 // THE OCCLUDED TOP (rulerBandTop)
 //   A widget may float ABOVE the viewport and cover the panel's first rows - the
@@ -167,8 +184,13 @@ struct PanelLabel {
 //               TickLevel != None) inside the plot, ascending. The drawing layer
 //               draws a SHORT mark down from rulerBandTop at each - 4px is the
 //               convention (kFrameTickLength) - and nothing else.
-//   valueTickY: the y of the value axis' own ticks, i.e. of the labels below.
-//               A SHORT mark rightwards from plot.left() at each.
+//   valueTickY: the y of the value axis' own ticks, one per window value (max,
+//               midpoint, min), in that order. A SHORT mark rightwards from
+//               plot.left() at each. A value whose NUMBER the column could not
+//               fit still gets its tick - the axis has a tick there whatever can
+//               be written beside it, the frame axis' own rule - so a tick can
+//               outnumber the valueLabels below (only past the column's ceiling,
+//               unreachable at the UI font; see graph_Scaler.h).
 //   The model publishes POSITIONS (ints), never spans: a full-height or
 //   full-width line cannot be expressed in this structure at all, which is the
 //   mechanical form of "no grid".
@@ -189,15 +211,32 @@ struct PanelLabel {
 //               drawing layer's, so the obligation is split rather than assumed.
 //   valueLabels: the window's max / midpoint / min, formatted 'g' with four
 //               significant digits (the deleted painter renderer's valueText(),
-//               kept as the model's own format; two equal strings are
+//               now ctrl::graph::Scaler::valueAxisText - the SAME function the
+//               column's width is measured from; two equal strings are
 //               deduplicated). The box is the value column,
-//               kAxisLabelPad (4px) narrower on the right, vertically centred on
-//               the value's own pixel and clamped into the column - the drawing
-//               layer right-aligns the text in it.
+//               ctrl::graph::Scaler::kAxisLabelPad (4px) narrower on the right,
+//               vertically centred on the value's own pixel and clamped into the
+//               column - the drawing layer right-aligns the text in it.
+//               THE COLUMN IS SIZED FOR THE WHOLE FORMAT, not for this window's
+//               three strings: its width is the scaler's stable reserve (the
+//               widest label 'g'/4 can write, plus the box's inset and a small
+//               gap - Scaler::axisLabelWidth()), so every published box is at
+//               least as wide as the text it carries, no number can spill past
+//               the panel's own left margin, and NO gesture can move the column
+//               (or the plot's left edge) by changing which label is widest.
+//               That last part is why the reserve is format-derived: a
+//               window-measured column moved the plot by a pixel on a 40px pan
+//               (measured). A number that still would not fit (only past the
+//               column's ceiling, which the format's widest label cannot reach
+//               at the UI font) is DROPPED, not published overflowing, exactly as
+//               the frame axis drops a number wider than the plot; its
+//               valueTickY entry is still published.
 //   The boxes are measured with the default UI font (QFontMetrics(QFont())):
 //   the model has no painter, and the rects are advisory geometry, not a text
 //   layout. A drawing layer with its own font puts the glyphs in the box it was
-//   handed.
+//   handed. The column is measured with that same font (it is the scaler that
+//   measures it), so the split obligation is still "put the glyphs in the box",
+//   not "make them fit".
 //
 // CURVES
 //   One PanelCurve per VISIBLE channel of every target that has keys - the same
@@ -220,25 +259,36 @@ struct PanelLabel {
 //   own values (the user's zoom). CLIPPING IS THE CONSUMER'S OBLIGATION: a
 //   drawing layer MUST clip the polyline to `plot` before stroking it (the
 //   shipping overlay pushes a clip rect to the plot). A consumer that cannot
-//   clip MUST NOT consume `points`. The keys, by contrast, ARE clipped:
+//   clip MUST NOT consume `points`. The key RECTS, by contrast, ARE clipped:
 //   ctrl::graph::keyRect(scale, frame, valueOf(key)) clipped to the plot,
 //   empties dropped - one geometry with the editor's hit-test. Nothing in
 //   `points` is dropped or cut, so a curve's own samples can be reproduced from
 //   them exactly.
-//   keys: the key squares, from ctrl::graph::keyRect - the editor's own
-//   hit-test rectangle, clipped to the plot, empties dropped.
-//   keyFrames: the frame of each of those squares, same order, same length - the
-//   half of a key's identity a rect cannot carry, so a consumer that HITS a key
-//   can name the key it hit (node, channel and frame are the timeline's own
-//   triple). Published beside `keys` rather than reconstructed by the consumer:
-//   an empty rect is dropped, so an index into `keys` is not an index into the
-//   curve's key list.
+//   keys: the key HIT squares, from ctrl::graph::keyRect - the editor's own
+//   hit-test rectangle (and the panel's right-click menu's), clipped to the
+//   plot, empties dropped. They are HIT geometry: the drawn marker is the
+//   circle `keyDots` names (the VISUAL/HIT split in graph_Geometry.h), so a
+//   consumer must not size its ink from these rects.
+//   keyDots: the marker centre of each of those keys, from
+//   ctrl::graph::keyDot - a circle of radius ctrl::graph::kKeyDotRadius (3.75px,
+//   the timeline's own key-body radius ctrl::keyRadius) is drawn about it. Same
+//   order and length as `keys` and `keyFrames`. Published because the hit rect
+//   is cut at the plot's edge while the marker stays on the key: the rect's own
+//   centre is the wrong centre for a key on the border.
+//   keyFrames: the frame of each of those keys, same order, same length - the
+//   half of a key's identity a point or a rect cannot carry, so a consumer that
+//   HITS a key can name the key it hit (node, channel and frame are the
+//   timeline's own triple). Published beside `keys` rather than reconstructed by
+//   the consumer: an empty rect is dropped, so an index into `keys` is not an
+//   index into the curve's key list.
 //   handles: one PanelHandle pair per Custom segment of the curve, in segment
 //   order (segment 0's two handles, then segment 1's, ...). base is the key the
 //   handle belongs to, mapped through the scaler; dot is
 //   ctrl::graph::handlePoint(scale, segment, index) - the SAME mapping the
 //   editor's hit-test grabs through, so a grab at the dot is the drag the editor
-//   performs. radius is ctrl::graph::kHandleRadius (the dot's drawn radius).
+//   performs. radius is ctrl::graph::kHandleRadius (the dot's drawn radius); the
+//   grab radius is the larger ctrl::graph::kHandleHitRadius, and the two are
+//   deliberately different (the same visual/hit split as a key's).
 //   A pair is published whether or not it lies inside the plot: the drawing
 //   layer clips (the overlay's plot clip covers the handles like everything
 //   else), and a handle the user can grab off the plot's edge must still be
@@ -252,7 +302,9 @@ struct PanelLabel {
 //   order - the same order as the curves. Layout: the swatches are stacked
 //   top-to-bottom in legend order in the plot's bottom-left corner, the last row
 //   ending kLegendBottomGap (3px) above plot.bottom(), each swatch
-//   kLegendSwatchSide (10px - the side of a key square, 2 * graph::kKeyRadius)
+//   kLegendSwatchSide (10px - the side of the key HIT square,
+//   2 * graph::kKeyRadius; a square colour chip, not the round key marker,
+//   which is kKeyDotRadius across)
 //   and left-aligned kLegendLeftGap (6px) inside the plot, clear of the value
 //   column. The model publishes the swatch and not a row rect: the row is where
 //   its swatch is, and the label is drawn beside it for as long as the drawing

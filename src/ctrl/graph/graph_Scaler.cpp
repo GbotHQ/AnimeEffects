@@ -1,7 +1,10 @@
 #include "ctrl/graph/graph_Scaler.h"
 
+#include <QFont>
+#include <QFontMetrics>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 // A window whose span falls below this fraction of the value it shows has no
@@ -14,26 +17,99 @@ constexpr double kMinRelativeSpan = 1e-6;
 // the rung by handing update() a whole number of notches, and it has no other
 // way to address the rung - update() is the only public writer of it.
 constexpr int kWheelNotch = 120;
+
+// The values whose 'g'/4 forms are the WIDEST the value format can write - one
+// candidate per shape it can emit, both signs where the sign changes the width.
+// The format is 'g' with four significant digits, so a label is at most 10
+// characters: sign + "d.ddd" + 'e' + sign + 2 digits, or sign + "0." + 3 zeros +
+// 4 digits. These are the two 10-character shapes (plus the round-number forms
+// that fill the exponent), and the max over them is the reserve's basis - a
+// property of the FORMAT, so it does not move when the value window does (see
+// THE LABEL COLUMN in the header). Each is stated with the text it produces at
+// this font, measured:
+//     -3.40282e+38 -> "-3.403e+38" 62px   (exponent shape, widest)
+//     -0.0009999   -> "-0.0009999" 62px   (plain shape, widest)
+//      1.4013e-45  -> "1.401e-45"  55px
+//     -1.4013e-45  -> "-1.401e-45" 59px
+//      12345.6     -> "1.235e+04"  58px
+//      100000      -> "1e+05"      34px
+//     -1234        -> "-1234"      31px
+// A sweep of the whole float range finds 62px as the true widest, so these
+// candidates are that sweep's winners; a font whose glyph advances differ more
+// than this set can express is still covered - the model drops a label that does
+// not fit its box rather than overflowing it (graph_Scaler.h's ceiling).
+constexpr float kValueLabelExtremes[] = {
+    -std::numeric_limits<float>::max(), // "-3.403e+38": exponent shape, sign + 'e' + '+' (the widest)
+    -0.0009999f,                        // "-0.0009999": plain shape, sign + "0." + 3 zeros + 4 digits
+    -std::numeric_limits<float>::denorm_min(), // "-1.401e-45": exponent shape with a negative exponent
+    std::numeric_limits<float>::max(),         // "3.403e+38"
+    std::numeric_limits<float>::denorm_min(),  // "1.401e-45"
+    12345.6f,                                  // "1.235e+04" - the shape a mid-size value takes
+    100000.0f,                                 // "1e+05"
+    -100000.0f,                                // "-1e+05"
+    -1234.0f,                                  // "-1234" - the widest plain integer form
+};
 } // namespace
 
 namespace ctrl {
 namespace graph {
 
     //-------------------------------------------------------------------------------------------------
+    QString Scaler::valueAxisText(float aValue) {
+        // 'g' with four significant digits: a narrow window keeps its digits, a
+        // large value loses its trailing zeros. The column's width is measured
+        // off these strings, so this and the labels must stay one function.
+        return QString::number(static_cast<double>(aValue), 'g', 4);
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    int Scaler::measureAxisLabelWidth() const {
+        // The default UI font, exactly as the model's label boxes are measured
+        // (GraphPanelModel.cpp: QFontMetrics{QFont()}). The model has no painter
+        // by design, so both halves of the panel agree on this font.
+        const QFontMetrics metrics{QFont()};
+
+        // The widest label the format can WRITE - not the widest one this window
+        // happens to show: the column insets the plot, and the plot must not move
+        // when the numbers do (THE LABEL COLUMN in the header). kValueLabelExtremes
+        // is one candidate per shape the format can emit; the header lists the
+        // measured widths and the float-range sweep behind them.
+        int widest = 0;
+        for (const float value : kValueLabelExtremes)
+            widest = std::max(widest, metrics.horizontalAdvance(valueAxisText(value)));
+
+        // The box's right inset plus a left gap, clamped into the column's floor
+        // and ceiling - see THE LABEL COLUMN in the header for both bounds, the
+        // measured text widths they come from, and why the width lives on the
+        // scaler at all (plotRect() is the editor's geometry too).
+        return std::clamp(widest + kAxisLabelPad + kAxisLabelTextPad, kAxisLabelWidth, kMaxAxisLabelWidth);
+    }
+
+    int Scaler::axisLabelWidth() const {
+        if (mMeasuredAxisLabelWidth < 0)
+            mMeasuredAxisLabelWidth = measureAxisLabelWidth();
+        return mMeasuredAxisLabelWidth;
+    }
+
+    //-------------------------------------------------------------------------------------------------
     // The value window is seeded non-degenerate (0..1): every mapping in the
     // class assumes a positive span, and the setters below are what keep that
     // true.
-    Scaler::Scaler(): mFrameScale(), mRect(), mFrameOffset(0.0), mValueMin(0.0f), mValueMax(1.0f) {}
+    Scaler::Scaler():
+        mFrameScale(), mRect(), mFrameOffset(0.0), mValueMin(0.0f), mValueMax(1.0f), mMeasuredAxisLabelWidth(-1) {}
 
     //-------------------------------------------------------------------------------------------------
     void Scaler::setRect(const QRect& aRect) { mRect = aRect; }
 
     QRect Scaler::plotRect() const {
         // The label column is a left-only inset: it is where the value numbers
-        // sit, so the curves start to its right. The frame offset is NOT baked
-        // in here - it lives on the frame mapping, so this stays a pure
-        // function of the panel geometry.
-        return mRect.adjusted(kMargin + kAxisLabelWidth, kMargin, -kMargin, -kMargin);
+        // sit, so the curves start to its right. Its width is MEASURED from the
+        // labels this window will draw (axisLabelWidth(), memoized) rather than
+        // reserved at a fixed 46px, so a number can never be cut off by the
+        // column while the plot keeps as much as the labels leave it. The frame
+        // offset is NOT baked in here - it lives on the frame mapping, so this
+        // stays a pure function of the panel geometry and the value window.
+        return mRect.adjusted(kMargin + axisLabelWidth(), kMargin, -kMargin, -kMargin);
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -135,6 +211,10 @@ namespace graph {
             return;
         mValueMin = lo;
         mValueMax = hi;
+        // The reserve does NOT depend on the window (THE LABEL COLUMN in the
+        // header), so this drop is not what keeps the column stable - it is the
+        // cheapest moment to re-read the application font.
+        invalidateAxisLabelWidth();
     }
 
     void Scaler::fitValueWindow(float aMin, float aMax) {
@@ -207,6 +287,9 @@ namespace graph {
             return false; // the window overflowed its storage: leave the axis alone
         mValueMin = static_cast<float>(lo);
         mValueMax = static_cast<float>(hi);
+        // The reserve is window-independent (THE LABEL COLUMN in the header);
+        // the memo is dropped only to re-read the application font.
+        invalidateAxisLabelWidth();
         return true;
     }
 

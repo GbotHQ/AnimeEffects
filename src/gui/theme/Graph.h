@@ -31,7 +31,12 @@ public:
 
     QColor gridMajor() const { return mGridMajor; }  // the frame ticks (the panel has no grid)
     QColor axisLine() const { return mAxisLine; }    // value-axis base line
-    QColor axisText() const { return mAxisText; }    // value and frame labels
+    // Value and frame labels. The FULL text token - the ink the timeline draws its own
+    // ruler numbers in - not a muted one: these glyphs are the only panel content the
+    // halo does not back (it ships off), so they sit on arbitrary artwork and a mid grey
+    // is what disappears there. assignFrom() carries the measured WCAG ratios for the
+    // choice, against this palette's halo and against mid-grey artwork.
+    QColor axisText() const { return mAxisText; }
     // Label halo: the glyphs drawn once behind every label so the text stays
     // readable over arbitrary artwork. The panel has no background of its own
     // (see GraphPanelModel's header), so the halo is the panel tone the text

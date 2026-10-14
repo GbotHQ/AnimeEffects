@@ -297,6 +297,15 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         timeLine.onVerticalScrollRequested.connect(
             [&objTree](int aValue) { objTree.verticalScrollBar()->setValue(aValue); });
 
+        // The animation graph panel is a SECOND VIEW of this timeline: it shows the
+        // timeline's own visible frame window and writes the timeline's own live key
+        // selection (see MainDisplayWidget::setTimeLineWidget and
+        // syncGraphPanelSharedState). Handed over here, once, because the timeline
+        // widget outlives every project while the graph editor does not - it lives in
+        // the driver, which is created and destroyed per project, so
+        // MainDisplayWidget::setDriver re-hands the new editor this same state.
+        disp.setTimeLineWidget(&timeLine);
+
         timeLine.onFrameUpdated.connect(&driver, &DriverHolder::onFrameUpdated);
         timeLine.onFrameUpdated.connect(&prop, &PropertyWidget::onFrameUpdated);
         timeLine.onPlayBackStateChanged.connect(&prop, &PropertyWidget::onPlayBackStateChanged);

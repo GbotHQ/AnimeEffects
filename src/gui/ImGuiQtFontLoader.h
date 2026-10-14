@@ -1,6 +1,8 @@
 #ifndef GUI_IMGUIQTFONTLOADER_H
 #define GUI_IMGUIQTFONTLOADER_H
 
+#include <QtGlobal> // qreal
+
 class QFont;
 
 struct ImFontAtlas;
@@ -76,6 +78,58 @@ int installQtFontLoader(ImFontAtlas& aAtlas, const QFont& aAppFont, float aPixel
 // The loader's Name, which is what ImFontAtlas::FontLoaderName reports once
 // installed. Never null.
 const char* loaderName();
+
+// The pixel size to hand installQtFontLoader() so the overlay's text is drawn at the
+// size the APPLICATION itself draws that font at - the timeline's ruler numbers are
+// the reference. Call it beside the install:
+//
+//     const float pixelSize = imgui_qt::panelFontPixelSize(aWidget.font(), aWidget.logicalDpiY());
+//     imgui_qt::installQtFontLoader(*io.Fonts, aWidget.font(), pixelSize, 1);
+//
+// WHY IT IS NOT QFontMetricsF::height(), which is what the panel asked for before.
+// Qt's layout unit is the font's LINE height - QFontMetricsF::height() is
+// ascent + descent + leading - and the application font (Geist, 9pt) resolves to a
+// 15.578125 px line height over a face Qt RASTERIZES at 12 px, i.e. the line height is
+// 1.298x the glyph size. Asking the atlas for the line height therefore drew every
+// panel numeral ~30% larger than the timeline draws the same font, which is the
+// "bigger than the timeline's numbers" complaint. [measured at 96 dpi: ascent
+// 12.046875 + descent 3.53125 = 15.578125 == QFontMetricsF::height(), leading 0, and
+// QRawFont::fromFont(QApplication::font()).pixelSize() == 12]
+//
+// THE EXPRESSION, measured against Qt's own answer. Qt resolves a point-sized font
+// against the screen's logical DPI and rounds to the nearest whole pixel, and takes an
+// explicitly pixel-sized font verbatim:
+//
+//     pixels = aFont.pixelSize() > 0 ? aFont.pixelSize()
+//                                    : qRound(aFont.pointSizeF() * aLogicalDpi / 72.0)
+//
+// [measured at 96 dpi, comparing QRawFont::fromFont(font).pixelSize() - the size the
+// face is really rasterized at - with the expressions above:
+//   pointSizeF 8    -> 11  (product 10.667; qFloor says 10, qCeil 11)
+//   pointSizeF 9    -> 12  (product 12.0)
+//   pointSizeF 9.5  -> 13  (product 12.667; qFloor says 12)
+//   pointSizeF 10   -> 13  (product 13.333; qCeil says 14)
+//   pointSizeF 11   -> 15  (product 14.667; qFloor says 14)
+//   pointSizeF 11.7 -> 16  (product 15.6;   qFloor says 15)
+//   pointSizeF 13   -> 17  (product 17.333; qCeil says 18)
+//   pixelSize 12/13/17/20 -> 12/13/17/20
+// qRound agrees with Qt on all seven point sizes; qFloor and qCeil each disagree on
+// three. High-DPI scaling does NOT change the answer: at devicePixelRatio 1.5 Qt keeps
+// logicalDotsPerInch at 96 and the logical pixel size at 12 [measured], which is what
+// the loader's RasterizerDensity/io.DisplayFramebufferScale path expects.]
+//
+// WHAT IT IS NOT. ctrl::TimeLineEditor::kNumberHeight (14) is the height of the BOX the
+// ruler draws a number into, not a font size: the glyphs in it come from the widget
+// font at its own resolved 12 px [src/gui/TimeRuler.cpp sets no font, so the painter
+// uses the widget's]. Matching the timeline means matching Qt's resolved pixel size,
+// not 14 - and 14 is also not a size the application font was ever rasterized at.
+//
+// aLogicalDpi is the DPI the caller's paint device reports (QWidget::logicalDpiY()).
+// Returns 0 when the font states neither a pixel nor a point size, or the DPI is not
+// positive: the caller owns its fallback, because only it knows at which size drawing
+// is still legible. installQtFontLoader() refuses a non-positive size, so a 0 here
+// adds no source and leaves the atlas untouched.
+float panelFontPixelSize(const QFont& aFont, qreal aLogicalDpi);
 
 } // namespace imgui_qt
 } // namespace gui

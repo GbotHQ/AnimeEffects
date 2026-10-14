@@ -12,6 +12,7 @@
 #include "core/ClippingFrame.h"
 #include "gui/MainDisplayWidget.h"
 #include "gui/ProjectHook.h"
+#include "gui/TimeLineWidget.h"
 #include "gui/ViaPoint.h"
 #include "gui/ProjectTabBar.h"
 #include "gui/KeyCommandMap.h"
@@ -59,6 +60,17 @@ bool graphPanelShown(ctrl::Driver* aDriver) {
     ctrl::GraphEditor* editor = aDriver ? aDriver->graphEditor() : nullptr;
     return editor && editor->isVisible();
 }
+
+// Whether the animation graph panel TAKES this press. That is the panel's own
+// question - ownsCursor is what ctrl::Driver consults before it routes a cursor
+// event, and isVisible() is the gate the Driver applies first - asked here so the
+// canvas mover can tell a drag the panel is running from one it is not. The
+// cursor must already have been fed the press (the panel's own routing reads the
+// cursor's event state).
+bool graphPanelTakesPress(ctrl::Driver* aDriver, const core::AbstractCursor& aCursor, const core::CameraInfo& aCamera) {
+    ctrl::GraphEditor* editor = aDriver ? aDriver->graphEditor() : nullptr;
+    return editor && editor->isVisible() && editor->ownsCursor(aCamera, aCursor);
+}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -80,6 +92,8 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mAbstractCursor(),
     mDriver(),
     mProjectTabBar(),
+    mTimeLine(),
+    mTimeLineRangeSlot(),
     mViewportBackground(),
     mUsingTablet(false),
     mViewSetting(),
@@ -87,6 +101,7 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mMovingCanvasByTool(false),
     mMovingCanvasByKey(false),
     mMovingCanvasByMiddleMouseButton(false),
+    mGraphTookLeftPress(false),
     mDevicePixelRatio(1.0) {
 #ifdef AE_ENABLE_IMGUI
     // FIRST, before anything this widget does can raise an accessibility event:
@@ -116,11 +131,11 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
                     [=]() {
                         mAbstractCursor.suspendEvent([=]() { updateCursor(); });
                         mMovingCanvasByKey = true;
-                        mCanvasMover.setDragAndMove(mMovingCanvasByKey || mMovingCanvasByTool);
+                        applyCanvasMoverDragMode();
                     },
                     [=]() {
                         mMovingCanvasByKey = false;
-                        mCanvasMover.setDragAndMove(mMovingCanvasByKey || mMovingCanvasByTool);
+                        applyCanvasMoverDragMode();
                         mAbstractCursor.resumeEvent();
                     }
                 );
@@ -225,6 +240,82 @@ void MainDisplayWidget::setDriver(ctrl::Driver* aDriver) {
     if (mDriver) {
         mDriver->setGraphEditorVisible(mViewSetting.showGraphEditor);
     }
+
+    // The driver owns the graph editor (and is created per project), so a NEW
+    // driver is a new panel with no shared state: hand it the timeline's selection
+    // and frame window here, which is also the moment a project's timeline is set
+    // up (MainWindow::resetProjectRefs sets the timeline before it sets the
+    // driver).
+    syncGraphPanelSharedState();
+}
+
+void MainDisplayWidget::setTimeLineWidget(TimeLineWidget* aTimeLine) {
+    if (mTimeLine == aTimeLine)
+        return;
+
+    if (mTimeLine) {
+        mTimeLine->onViewRangeChanged.disconnect(mTimeLineRangeSlot);
+    }
+
+    mTimeLine = aTimeLine;
+
+    if (mTimeLine) {
+        mTimeLineRangeSlot =
+            mTimeLine->onViewRangeChanged.connect(this, &MainDisplayWidget::syncGraphPanelSharedState);
+    }
+
+    syncGraphPanelSharedState();
+}
+
+void MainDisplayWidget::syncGraphPanelSharedState() {
+    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+    if (!editor)
+        return; // no panel yet (no driver, so no editor): nothing to hand it to
+
+    ctrl::TimeLineEditor* timelineEditor = mTimeLine ? mTimeLine->editor() : nullptr;
+    if (!mTimeLine || !timelineEditor) {
+        // No timeline attached: the panel owns its frame axis and its selection
+        // (its own private instance of the same set), which is the state the unit
+        // tests drive it in.
+        editor->clearFrameAxis();
+        editor->setSelectionSource(nullptr);
+        return;
+    }
+
+    // ONE selection: the panel writes the timeline's live set, which is what the
+    // timeline renders its highlights from and what its own gestures (and its
+    // Delete key, its easing menu) read - so a key selected in either view is
+    // selected and highlighted in both.
+    editor->setSelectionSource(&timelineEditor->selection());
+
+    // ONE frame window, pushed as VALUES: the frames the timeline is showing.
+    // The panel maps them onto its own plot; it never fits, zooms or pans its own
+    // X while this is in force, and the two gestures below send the horizontal
+    // half of a wheel or a pan back HERE, so the panel scrolls and zooms the
+    // timeline instead of drifting beside it. A sub-pixel pan therefore moves the
+    // timeline, its new window comes back through onViewRangeChanged -> this
+    // method, and the panel's X follows: one window, one owner.
+    editor->setFrameGestureDelegates(
+        [this](double aFrameDelta) {
+            if (mTimeLine)
+                mTimeLine->scrollFramesBy(aFrameDelta);
+        },
+        [this](int aWheelDelta, core::Frame aAnchorFrame) {
+            if (mTimeLine)
+                mTimeLine->zoomFramesAbout(aWheelDelta, aAnchorFrame);
+        }
+    );
+    editor->setFrameWindow(mTimeLine->visibleFrameRange());
+
+    // The panel draws that window, so its own frame is now stale.
+    this->updateRender();
+}
+
+void MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos) {
+    if (!mTimeLine)
+        return; // no timeline to show a menu from (and no document to act on)
+
+    mTimeLine->showKeyContextMenu(aTargets, this->mapToGlobal(aWidgetPos));
 }
 
 void MainDisplayWidget::resetCamera() {
@@ -514,6 +605,18 @@ void MainDisplayWidget::resizeGL(int w, int h) {
     GL_CHECK_ERROR();
 }
 
+void MainDisplayWidget::applyCanvasMoverDragMode() {
+    // ONE OWNER PER DRAG, written once. The first three flags are the gestures the
+    // user is making (the Cursor tool, the MoveCanvas key, a middle press this
+    // widget began); mGraphTookLeftPress is the animation graph panel having taken
+    // the left drag that is in flight. While it has, the canvas camera does not move
+    // with that drag - the same separation graphPanelShown() keeps for the middle
+    // button - and folding the whole expression into one place is what stops a tool
+    // change or a key press mid-drag from re-enabling a pan the panel is running.
+    const bool dragging = mMovingCanvasByKey || mMovingCanvasByTool || mMovingCanvasByMiddleMouseButton;
+    mCanvasMover.setDragAndMove(dragging && !mGraphTookLeftPress);
+}
+
 void MainDisplayWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 #ifdef AE_ENABLE_IMGUI
     // Every move is fed through, including the ones the overlay does not care about:
@@ -587,9 +690,20 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
             if (mViaPoint.mouseSetting().middleMouseMoveCanvas &&
                 aEvent->button() == Qt::MouseButton::MiddleButton && !graphPanelShown(mDriver)) {
                 mMovingCanvasByMiddleMouseButton = true;
-                mCanvasMover.setDragAndMove(
-                    mMovingCanvasByKey || mMovingCanvasByTool || mMovingCanvasByMiddleMouseButton
-                );
+                applyCanvasMoverDragMode();
+            }
+
+            // The LEFT drag belongs to the animation graph panel when the panel
+            // takes the press: a plain press in its plot starts a marquee (or grabs
+            // a key) through the panel's own cursor path, and the Cursor tool or the
+            // MoveCanvas key would otherwise have this widget's CanvasMover pan the
+            // canvas with the very same drag. The panel is asked (ownsCursor, what
+            // ctrl::Driver routes with) rather than this widget re-deriving the
+            // panel's plot geometry.
+            if (aEvent->button() == Qt::MouseButton::LeftButton
+                && graphPanelTakesPress(mDriver, mAbstractCursor, mRenderInfo->camera)) {
+                mGraphTookLeftPress = true;
+                applyCanvasMoverDragMode();
             }
 
             // A canvas grab shows the closed hand; the resting pan cursor
@@ -619,14 +733,20 @@ void MainDisplayWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
             updateCursor();
             // if (!mUsingTablet) qDebug() << "release";
 
+            if (aEvent->button() == Qt::MouseButton::LeftButton && mGraphTookLeftPress) {
+                // The panel's drag is over (its own release ran above, in
+                // updateCursor): the canvas mover goes back to what the tool and the
+                // MoveCanvas key say, so the next drag pans the canvas if it should.
+                mGraphTookLeftPress = false;
+                applyCanvasMoverDragMode();
+            }
+
             if (aEvent->button() == Qt::MouseButton::MiddleButton) {
                 // A canvas middle pan this widget began ends here; a middle drag
                 // the GRAPH took never set this flag (see mousePressEvent), so this
                 // is a no-op for it and its own endPan() runs on the cursor path.
                 mMovingCanvasByMiddleMouseButton = false;
-                mCanvasMover.setDragAndMove(
-                    mMovingCanvasByKey || mMovingCanvasByTool || mMovingCanvasByMiddleMouseButton
-                );
+                applyCanvasMoverDragMode();
             }
 
             // back to the resting cursor once every button is up (a
@@ -848,11 +968,11 @@ void MainDisplayWidget::onToolChanged(ctrl::ToolType aType) {
     if (aType == ctrl::ToolType_Cursor) {
         this->setCursor(Qt::OpenHandCursor);
         mMovingCanvasByTool = true;
-        mCanvasMover.setDragAndMove(mMovingCanvasByKey || mMovingCanvasByTool);
+        applyCanvasMoverDragMode();
     } else {
         this->setCursor(Qt::ArrowCursor);
         mMovingCanvasByTool = false;
-        mCanvasMover.setDragAndMove(mMovingCanvasByKey || mMovingCanvasByTool);
+        applyCanvasMoverDragMode();
     }
 }
 
@@ -892,6 +1012,16 @@ void MainDisplayWidget::updateCursor() {
     if (mDriver) {
         XC_PTR_ASSERT(mRenderInfo);
         if (mDriver->updateCursor(mAbstractCursor, mRenderInfo->camera)) {
+            // The panel changed something: its selection, its focus, its window,
+            // or the document under a drag. The TIMELINE draws the same selection
+            // (they share one set) and reads the same document, and nothing else
+            // would ask it to paint while the pointer is over the viewport - so a
+            // key selected here would keep an unhighlighted square there, and a
+            // key the panel drags would be drawn at its old frame. One repaint
+            // request, coalesced by Qt with any other.
+            if (mTimeLine) {
+                mTimeLine->update();
+            }
             updateRender();
         }
     }

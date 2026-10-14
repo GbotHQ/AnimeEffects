@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstring>
 #include <memory>
+#include <vector>
 
-#include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFont>
-#include <QFontMetricsF>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -19,6 +19,7 @@
 #include <QTabletEvent>
 #include <QVector2D>
 #include <QVector3D>
+#include <QVector4D>
 #include <QTouchEvent>
 #include <QVarLengthArray>
 #include <QWheelEvent>
@@ -42,10 +43,15 @@
 #include "gl/Framebuffer.h"
 #include "gl/Global.h"
 #include "gl/Texture.h"
+#include "gl/Vector2.h"
 #include "gl/VertexArrayObject.h"
 #include "gui/ImGuiA11y.h"
 #include "gui/ImGuiInputBridge.h"
 #include "gui/ImGuiQtFontLoader.h"
+// The overlay's key menu is the WIDGET's (MainDisplayWidget::showGraphKeyMenu), so
+// this file names the class it lives in. One direction only - MainDisplayWidget.cpp
+// includes this header, and its own header includes neither this one nor ImGui.
+#include "gui/MainDisplayWidget.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 
@@ -58,34 +64,25 @@ namespace {
 // backend would otherwise default to on desktop.
 const char* kGlslVersion = "#version 400 core";
 
-// The curve stroke width.
+// The curve stroke width, in LOGICAL pixels - the one number the shipping coverage
+// pass (gui::stroke) and the AddPolyline fallback below both stroke with.
 //
-// WHY AN INTEGER, AND WHY 2.0. ImGui antialiases a polyline by one of two paths and
-// the WIDTH decides which (imgui_draw.cpp, ImDrawList::AddPolyline): a width with a
-// zero fractional part uses the baked LINE TEXTURE (one continuous quad strip whose
-// edges the GPU's bilinear filter turns into a 1px ramp), while any fractional width
-// falls back to the GEOMETRY path - a per-segment quad with a half-thickness core and
-// a 1px fringe each side, joined by averaged normals. The two target the same
-// integral width, so the difference is not weight, it is SHAPE: the geometry path
-// emits 4 vertices per point and 18 indices per segment and its joins overlap (each
-// segment's fringe is blended over its neighbour's), while the texture path emits 2
-// and 6 and the stroke is ONE strip.
+// WHY 2.0. The curve is read at its full 2px on the plot, and the 1.5px it had before
+// that cost 1.71px of ink per column on the pixel gate's own slope-0.5 segment against
+// 2.21 (AE_PANEL_CROPS, measured across 41 columns, both constant to 3 decimals) - so
+// the weight class is 2.0 on a real measurement, not on taste.
 //
-// MEASURED on the pixel gate's own slope-0.5 segment (AE_PANEL_CROPS, /tmp crops
-// before 1.5 against after 2.0): ink per column 1.71 -> 2.21 (a 1.5px stroke against
-// a 2px one, both constant to 3 decimals across 41 columns, so neither staircase is a
-// width wobble), and the full model's vertex/segment budget 4 vtx/point and
-// 18 idx/segment -> 2 and 6, which is the texture path itself: the draw list carries
-// ImDrawListFlags_AntiAliasedLinesUseTex (0xF includes it) and 2.0 satisfies its
-// zero-fraction requirement, so the stroke is one strip rather than a chain of quads.
-//
-// The 1.5 it replaces was the widest width that stayed "thin" while being in the
-// worst spot for ImGui's AA: frac != 0, so a 0.25px core under a 1px ramp on each
-// side - a stroke with the least opaque centre of any width. 2.0 keeps the panel's
-// weight class (the curve is read at its full 2px on the plot, and the 1.5px it had
-// before cost 1.71px of ink per column at slope 0.5 against 2.21 now) and buys the
-// single-strip geometry.
-constexpr float kCurveWidth = 2.0f;
+// WHAT IT IS FOR THE FALLBACK, where a whole number still matters: ImGui antialiases a
+// polyline by one of two paths and the WIDTH decides which (imgui_draw.cpp,
+// ImDrawList::AddPolyline). A width with a zero fractional part uses the baked LINE
+// TEXTURE - one continuous quad strip whose edges the GPU's bilinear filter turns into
+// a ramp, 2 vertices and 6 indices per point - while any fractional width falls back to
+// the GEOMETRY path, 4 vertices and 18 indices per point whose joins overlap (each
+// segment's fringe is blended over its neighbour's). 2.0 keeps the fallback on the
+// cheap path; the SHIPPING path is gui::stroke, which builds its own geometry and
+// measures the coverage per fragment, and it is what makes the stroke's width stop
+// depending on the angle (see tests/graph_panel_pixels.cpp's angle assertion).
+constexpr float kCurveWidth = stroke::kWidthPx;
 
 // Length of the short axis marks. The model publishes positions and leaves the
 // length to the drawing layer; 4 is the convention its own KFrameTickLength
@@ -118,15 +115,19 @@ constexpr float kHiddenAlpha = 0.35f;
 // the swatch, so a row reads as one line.
 constexpr int kLegendLabelGap = 6;
 
-// The text size used when the widget font cannot be measured (a non-positive
-// line height). 13 is ImGui's own default font size, which keeps the panel
-// legible instead of empty.
+// The text size used when the widget's font states no size at all (neither a pixel
+// nor a usable point size: gui::imgui_qt::panelFontPixelSize returns 0). 13 is
+// ImGui's own default font size, which keeps the panel legible instead of empty.
 constexpr float kFallbackFontPixelSize = 13.0f;
 
 // The accessibility ids that are not a legend row index. Legend rows are the ids
-// 0..n-1, so the two fixed items are negative - one namespace, no collision.
+// 0..n-1, so the fixed items are negative - one namespace, no collision.
 constexpr int kSummaryItemId = -1;
 constexpr int kFitItemId = -2;
+// The key menu's own action (see the class comment): published only while the
+// selection names exactly one key, and it opens the application's own easing menu
+// at that key's marker.
+constexpr int kKeyMenuItemId = -3;
 
 // lupdate's context for everything this file says to the user: the class is not a
 // QObject, so there is no tr() member for it to find.
@@ -152,15 +153,6 @@ QString trText(const char* aSource, int aPlural = -1) {
 
 ImU32 toImU32(const QColor& aColor) {
     return IM_COL32(aColor.red(), aColor.green(), aColor.blue(), aColor.alpha());
-}
-
-// The same colour in the currency ImGuiStyle stores: straight 0..1 channels, alpha
-// included, so a palette token travels into the style without a second copy of what
-// its alpha means.
-ImVec4 toImVec4(const QColor& aColor) {
-    return ImVec4(
-        float(aColor.redF()), float(aColor.greenF()), float(aColor.blueF()), float(aColor.alphaF())
-    );
 }
 
 // The colour as it should be painted under a strength factor. Emphasis and
@@ -240,7 +232,7 @@ enum class LabelAlign { Left, Centre, Right };
 // hangs into the box's own interior (where there is room) instead of out of it.
 void drawLabel(
     ImDrawList& aDrawList, ImFont* aFont, float aFontSize, const QRect& aBox, const QString& aText, LabelAlign aAlign,
-    ImU32 aColor, ImU32 aHalo
+    ImU32 aColor, ImU32 aHalo, int aRightGapPx = 0
 ) {
     if (!aFont || aText.isEmpty() || aBox.isEmpty())
         return;
@@ -248,74 +240,36 @@ void drawLabel(
     const QByteArray utf8 = aText.toUtf8();
     const ImVec2 size = measureText(aFont, aFontSize, utf8.constData());
     float x = float(aBox.left());
-    if (aAlign == LabelAlign::Centre)
+    if (aAlign == LabelAlign::Centre) {
         x += (float(aBox.width()) - size.x) * 0.5f;
-    else if (aAlign == LabelAlign::Right)
-        x = float(aBox.left() + aBox.width()) - size.x;
+    } else if (aAlign == LabelAlign::Right) {
+        // THE RIGHT GAP IS TAKEN FROM THE BOX'S OWN SPARE WIDTH (see
+        // kValueLabelGap): a label that fills its box is left exactly where
+        // right-alignment puts it, so the gap can never push a number out of the
+        // column the model measured for it. What is left over - a label wider than
+        // its box, which the measured column cannot produce but a wider drawing font
+        // can - is the caller's clip to hold back.
+        const float spare = ImMax(0.0f, float(aBox.width()) - size.x);
+        x = float(aBox.left() + aBox.width()) - size.x - ImMin(float(aRightGapPx), spare);
+    }
     const float y = float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
     addHaloedText(aDrawList, aFont, aFontSize, ImVec2(x, y), aColor, aHalo, utf8.constData());
 }
 
-// Whether a key square is one the editor's selection carries. The model publishes
-// key RECTS without their frames and ctrl::graph::keyRect centres a square exactly
-// on the mapped point, so the frame's pixel is the whole identity available here.
-bool isKeySelected(const PanelFocus& aFocus, core::TimeKeyType aType, const QRect& aKey) {
-    if (aFocus.selectedKeys.isEmpty() || aKey.isEmpty())
+// Whether a key MARKER is one the editor's selection carries. The model publishes
+// the marker centres without their frames (PanelCurve::keyDots) and the focus's
+// own SelectedKey carries the same pixel from ctrl::graph::keyDot through the
+// same scaler, so the marker's x is the whole identity available here.
+bool isKeySelected(const PanelFocus& aFocus, core::TimeKeyType aType, const QPointF& aDot) {
+    if (aFocus.selectedKeys.isEmpty())
         return false;
 
-    const int x = aKey.center().x();
+    const int x = int(aDot.x());
     for (const PanelFocus::SelectedKey& key : aFocus.selectedKeys) {
         if (key.type == aType && key.x == x)
             return true;
     }
     return false;
-}
-
-// ---- the key context menu ----
-//
-// ONE popup, and its id is the whole of its state: ImGui owns whether it is open,
-// and this name is how the frame asks (OpenPopup/BeginPopup) and how an event
-// handler outside the frame learns it (the class keeps its own copy of the
-// answer, because GetID needs a current window and there is none between frames).
-const char* kKeyMenuId = "##ae_graph_key_menu";
-
-// The popup's FIXED layout, and the contract the application-level probe's
-// coordinate route is built on: the popup is an ImGui window, so unlike a Qt
-// QMenu it is confined to the viewport and cannot grow a native window of its
-// own; it is laid out with one compact row per entry, no item spacing, and
-// enough columns that the whole list fits a small viewport. The row height
-// follows the font so text is never clipped, and every row has it, so "which
-// entry is at this pixel" is a function of the popup's top edge and its height
-// alone - no style number has to be known to the caller that only sees pixels.
-//
-// The popup's WINDOW padding and a row's inner padding are NOT here: they are
-// theme::Graph::menuPadX/menuPadY and menuItemPadX, applied to this popup from the
-// theme in drawKeyContextMenu (and to ImGui's style by applyPanelStyle), so the
-// menu's own metrics have one home. The row height, the column gap and the
-// separator stay here: they are this layout's arithmetic, not a palette or a metric
-// the rest of the application has an opinion about.
-constexpr float kMenuRowHeight = 18.0f;
-constexpr float kMenuColumnGap = 4.0f;
-constexpr int kMenuColumns = 2;
-// The hairline between the easing entries and the delete entry. It is an ITEM of
-// the popup, so the popup's own auto-height counts it; it is not an entry, so the
-// row arithmetic above does not.
-constexpr float kMenuSeparatorHeight = 1.0f;
-
-// The easing entries the menu offers: the timeline's own list in the shared
-// display order (util::Easing::displayCount/typeAtDisplayIndex), with Custom
-// skipped - a Custom easing is shaped by dragging the panel's tangent handles or
-// by the timeline's shape picker, not by choosing a name from a list, which is
-// exactly why the timeline's menu skips it too.
-QVector<util::Easing::Type> keyMenuEasingTypes() {
-    QVector<util::Easing::Type> types;
-    for (int i = 0; i < util::Easing::displayCount(); ++i) {
-        const util::Easing::Type type = util::Easing::typeAtDisplayIndex(i);
-        if (type == util::Easing::Type_Custom)
-            continue;
-        types.append(type);
-    }
-    return types;
 }
 
 } // namespace
@@ -704,47 +658,569 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 } // namespace outline
 
 //-------------------------------------------------------------------------------------------------
-// The panel's ImGui style (declared and described in the header).
-void applyPanelStyle(const theme::Graph& aTheme) {
-    ImGuiStyle& style = ImGui::GetStyle();
+// The coverage stroke: the panel's curve ink. gui::stroke in the header says why it is a
+// pass of its own rather than ImDrawList::AddPolyline, what the coverage function is, and
+// where in the frame its callback sits. What follows is that pass's machinery.
+namespace {
 
-    // THE POPUP SURFACE: the application's own context menu, which gui::AppStyle
-    // draws as a rounded floater (radius 8) filled with floaterBody behind a 1px
-    // floaterEdge - the same tokens, in the same roles.
-    style.Colors[ImGuiCol_PopupBg] = toImVec4(aTheme.menuBody());
-    style.Colors[ImGuiCol_Border] = toImVec4(aTheme.menuEdge());
-    style.PopupBorderSize = 1.0f;
-    style.PopupRounding = aTheme.menuRounding();
+// The per-segment program. Every vertex carries the quad's own corner AND the segment's
+// two endpoints, so the fragment can measure the distance to the SEGMENT rather than to
+// the quad.
+//
+// THE PROJECTION IS THE BACKEND'S OWN ORTHO, term for term
+// (ImGui_ImplOpenGL3_SetupRenderState): it is diagonal plus a translation, so its four
+// numbers are all the vertex shader needs, and using the same numbers rather than
+// rebuilding a matrix here is what makes a curve land on exactly the pixel ImGui's own
+// geometry would have inked.
+const char* kStrokeVertexSource =
+    "#version 400 core\n"
+    "layout(location = 0) in vec2 aPos;\n"
+    "layout(location = 1) in vec2 aP0;\n"
+    "layout(location = 2) in vec2 aP1;\n"
+    "uniform vec4 uOrtho;\n"
+    "out vec2 vPos;\n"
+    "out vec2 vP0;\n"
+    "out vec2 vP1;\n"
+    "void main() {\n"
+    "    vPos = aPos;\n"
+    "    vP0 = aP0;\n"
+    "    vP1 = aP1;\n"
+    "    gl_Position = vec4(aPos.x * uOrtho.x + uOrtho.z, aPos.y * uOrtho.y + uOrtho.w, 0.0, 1.0);\n"
+    "}\n";
 
-    // TEXT, and the disabled tone a menu entry would use.
-    style.Colors[ImGuiCol_Text] = toImVec4(aTheme.menuText());
-    style.Colors[ImGuiCol_TextDisabled] = toImVec4(aTheme.menuTextDisabled());
+const char* kStrokeFragmentSource =
+    "#version 400 core\n"
+    "in vec2 vPos;\n"
+    "in vec2 vP0;\n"
+    "in vec2 vP1;\n"
+    "uniform float uPxScale;\n"
+    "uniform float uHalfWidth;\n"
+    "uniform float uFilter;\n"
+    "uniform vec3 uInk;\n"
+    "uniform float uAlpha;\n"
+    "uniform int uMode;\n"
+    "out vec4 FragColor;\n"
+    "\n"
+    "void main() {\n"
+    "    // The distance to the SEGMENT, never to its infinite line: the clamp on h is what\n"
+    "    // gives each segment its own round join and cap with no extra geometry at all.\n"
+    "    vec2 ba = vP1 - vP0;\n"
+    "    vec2 pa = vPos - vP0;\n"
+    "    float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);\n"
+    "    // In DEVICE pixels, which is the currency the filter and the stroke's weight are\n"
+    "    // in (the nominal width is a logical one, so a 2x screen gets a 2x stroke).\n"
+    "    float d = length(pa - ba * h) * uPxScale;\n"
+    "\n"
+    "    // The box filter: a pixel's coverage of a half-plane edge is the length of the\n"
+    "    // filter's span that lies inside the stroke over the span's own width, so the 50%\n"
+    "    // crossing lands exactly on the nominal edge at any sub-pixel phase.\n"
+    "    float r = 0.5 * uFilter;\n"
+    "    // A stroke narrower than the filter keeps the filter's footprint (1 device px) and\n"
+    "    // scales its ALPHA instead of thinning away - Rougier's sub-pixel rule.\n"
+    "    float body = max(uHalfWidth, r);\n"
+    "    float cov = clamp((body + r - d) / uFilter, 0.0, 1.0) * min(1.0, uHalfWidth / r);\n"
+    "\n"
+    "    // 0: the coverage alone, accumulated with GL_MAX, so overlapping segments take the\n"
+    "    // UNION of their capsules instead of blending twice. 1: the ink straight into the\n"
+    "    // frame - the path taken when the scratch target could not be created, where a\n"
+    "    // join that overlaps itself beats a missing curve.\n"
+    "    FragColor = (uMode == 0) ? vec4(cov) : vec4(uInk, cov * uAlpha);\n"
+    "}\n";
 
-    // THE ITEM HIGHLIGHT is drawn by the menu itself, not by ImGui: a QMenu's
-    // selected row is a ROUNDED pill (radius 4), and ImGui's own Selectable fill is a
-    // square rect with no rounding knob (imgui_widgets.cpp, RenderFrame(..., false,
-    // 0.0f)). Its three colours are therefore switched off here so the two cannot
-    // both paint, and drawKeyContextMenu draws the themed pill.
-    style.Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    // The KEYBOARD's own highlight is ImGui's and cannot be replaced (the nav pass
-    // draws it around the item it will activate): the menu's hover fill, so an
-    // arrow-keyed entry reads exactly like a hovered one. It is a square rect -
-    // ImGui's nav cursor is drawn with NoRounding, so this is the one piece of the
-    // app's menu look the popup can only approximate.
-    style.Colors[ImGuiCol_NavCursor] = toImVec4(aTheme.menuHover());
-    style.Colors[ImGuiCol_Separator] = toImVec4(aTheme.menuSeparator());
+// The composite: one full-screen triangle that turns the accumulated coverage back into
+// the panel's own premultiplied ink. No attributes at all (gl_VertexID carries the
+// corner), which is why it needs no vertex buffer.
+const char* kStrokeCompositeVertexSource =
+    "#version 400 core\n"
+    "void main() {\n"
+    "    vec2 corner = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+    "    gl_Position = vec4(corner * 2.0 - 1.0, 0.0, 1.0);\n"
+    "}\n";
 
-    // LAYOUT: the popup's own padding and its zero item spacing, which its fixed
-    // row arithmetic is built on (see the class comment - the app-level probe reads
-    // entry positions off the popup's own pixels, so these are numbers it depends
-    // on). SelectableTextAlign centres a row's label vertically, the way a QMenu
-    // row's text is centred in its 24px pill.
-    style.WindowPadding = ImVec2(aTheme.menuPadX(), aTheme.menuPadY());
-    style.ItemSpacing = ImVec2(0.0f, 0.0f);
-    style.SelectableTextAlign = ImVec2(0.0f, 0.5f);
+const char* kStrokeCompositeFragmentSource =
+    "#version 400 core\n"
+    "uniform sampler2D uCoverage;\n"
+    "uniform vec2 uSize;\n"
+    "uniform vec3 uInk;\n"
+    "uniform float uAlpha;\n"
+    "out vec4 FragColor;\n"
+    "void main() {\n"
+    "    // gl_FragCoord's centre is the texel centre of the same pixel of an equally sized\n"
+    "    // attachment, so this reads the coverage 1:1 with no filtering of its own.\n"
+    "    float cov = texture(uCoverage, gl_FragCoord.xy / uSize).a;\n"
+    "    // The backend's own source-over (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,\n"
+    "    // GL_ONE_MINUS_SRC_ALPHA) makes this the PREMULTIPLIED ink the contrast outline\n"
+    "    // pass reads back - the convention the overlay's framebuffer holds.\n"
+    "    FragColor = vec4(uInk, cov * uAlpha);\n"
+    "}\n";
+
+// The callback data ImGui copies for ONE curve (ImDrawList::AddCallback's userdata_size
+// path), so the geometry lives inside the draw list and nothing outlives the call. 24
+// bytes of header keeps every blob a multiple of 8, which is what keeps the float pairs
+// that follow it aligned inside ImGui's own byte buffer.
+struct CurveInkBlob {
+    int pointCount;   // >= 2
+    float red;
+    float green;
+    float blue;
+    float alpha;      // the ink's strength: 1.0, or kUnfocusedAlpha
+    float halfWidth;  // the stroke's half width, in LOGICAL px: the curve's kCurveWidth/2,
+                      // a handle stem's 0.5. Both are the same stroke otherwise, which is
+                      // why there is one record and not two.
+};
+static_assert(sizeof(CurveInkBlob) == 24, "the blob's alignment rule");
+
+// The pass's GL objects, held as a RAW OWNED POINTER for the same reason outline's are:
+// every destructor here calls GL, and a namespace-scope object is destroyed by exit(),
+// by which time this context is long gone (a measured segfault inside glDelete*). They
+// are destroyed exactly once, by stroke::shutdown(), while a context is current.
+struct StrokePass {
+    gl::EasyShaderProgram segments;
+    gl::EasyShaderProgram composite;
+    std::unique_ptr<gl::VertexArrayObject> vao;
+
+    int orthoLocation = -1;
+    int pxScaleLocation = -1;
+    int halfWidthLocation = -1;
+    int filterLocation = -1;
+    int inkLocation = -1;
+    int alphaLocation = -1;
+    int modeLocation = -1;
+
+    int coverageLocation = -1;
+    int sizeLocation = -1;
+    int compositeInkLocation = -1;
+    int compositeAlphaLocation = -1;
+
+    // The coverage scratch: the union of one curve's capsules, at the framebuffer's own
+    // pixel size. Rebuilt only when that size changes.
+    QSize pixels;
+    std::unique_ptr<gl::Texture> coverageTexture;
+    std::unique_ptr<gl::Framebuffer> coverageFbo;
+
+    // The vertices of the curve being drawn, kept so a frame that draws the same curves
+    // does not reallocate three vectors per curve.
+    std::vector<gl::Vector2> positions;
+    std::vector<gl::Vector2> starts;
+    std::vector<gl::Vector2> ends;
+
+    // False when the driver refuses either object; the caller then draws the ink
+    // straight into the frame rather than losing it.
+    bool ensureCoverage(const QSize& aPixels) {
+        if (pixels == aPixels && coverageFbo)
+            return true;
+        pixels = QSize();
+        coverageFbo.reset();
+        coverageTexture.reset();
+        coverageTexture.reset(new gl::Texture());
+        coverageTexture->create(aPixels);
+        coverageTexture->setFilter(GL_NEAREST);
+        coverageTexture->setWrap(GL_CLAMP_TO_EDGE);
+        coverageFbo.reset(new gl::Framebuffer());
+        coverageFbo->setColorAttachment(0, coverageTexture->id());
+        if (!coverageFbo->isComplete()) {
+            coverageFbo.reset();
+            coverageTexture.reset();
+            return false;
+        }
+        pixels = aPixels;
+        return true;
+    }
+};
+
+StrokePass* gStroke = nullptr;
+
+// Every piece of GL state the callback changes, so it can be put back exactly as it was
+// found. This is not a courtesy: the ImGui backend keeps its shader program, its vertex
+// array and its ARRAY BUFFER bound across a draw list's commands, and uploads the NEXT
+// draw list's vertices with whatever array buffer is bound when it gets there.
+struct GuestState {
+    GLint program = 0;
+    GLint vao = 0;
+    GLint arrayBuffer = 0;
+    GLint activeTexture = 0;
+    GLint texture0 = 0;
+    GLint drawFbo = 0;
+    GLint readFbo = 0;
+    GLint viewport[4] = {0, 0, 0, 0};
+    GLint scissorBox[4] = {0, 0, 0, 0};
+    GLint blendEquationRgb = 0;
+    GLint blendEquationAlpha = 0;
+    GLint blendSrcRgb = 0;
+    GLint blendDstRgb = 0;
+    GLint blendSrcAlpha = 0;
+    GLint blendDstAlpha = 0;
+    GLboolean blend = GL_FALSE;
+    GLboolean scissor = GL_FALSE;
+    GLboolean dither = GL_FALSE;
+
+    void save(gl::Global::Functions& aGgl) {
+        aGgl.glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+        aGgl.glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+        aGgl.glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &arrayBuffer);
+        aGgl.glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+        aGgl.glActiveTexture(GL_TEXTURE0);
+        aGgl.glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture0);
+        aGgl.glActiveTexture(GLenum(activeTexture));
+        aGgl.glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFbo);
+        aGgl.glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFbo);
+        aGgl.glGetIntegerv(GL_VIEWPORT, viewport);
+        aGgl.glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
+        aGgl.glGetIntegerv(GL_BLEND_EQUATION_RGB, &blendEquationRgb);
+        aGgl.glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &blendEquationAlpha);
+        aGgl.glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRgb);
+        aGgl.glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRgb);
+        aGgl.glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
+        aGgl.glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
+        blend = aGgl.glIsEnabled(GL_BLEND);
+        scissor = aGgl.glIsEnabled(GL_SCISSOR_TEST);
+        dither = aGgl.glIsEnabled(GL_DITHER);
+    }
+
+    void restore(gl::Global::Functions& aGgl) const {
+        aGgl.glBlendEquationSeparate(GLenum(blendEquationRgb), GLenum(blendEquationAlpha));
+        aGgl.glBlendFuncSeparate(
+            GLenum(blendSrcRgb), GLenum(blendDstRgb), GLenum(blendSrcAlpha), GLenum(blendDstAlpha)
+        );
+        if (blend)
+            aGgl.glEnable(GL_BLEND);
+        else
+            aGgl.glDisable(GL_BLEND);
+        if (dither)
+            aGgl.glEnable(GL_DITHER);
+        else
+            aGgl.glDisable(GL_DITHER);
+        if (scissor)
+            aGgl.glEnable(GL_SCISSOR_TEST);
+        else
+            aGgl.glDisable(GL_SCISSOR_TEST);
+        aGgl.glScissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
+        aGgl.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        aGgl.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, GLuint(drawFbo));
+        aGgl.glBindFramebuffer(GL_READ_FRAMEBUFFER, GLuint(readFbo));
+        aGgl.glBindVertexArray(GLuint(vao));
+        aGgl.glBindBuffer(GL_ARRAY_BUFFER, GLuint(arrayBuffer));
+        aGgl.glActiveTexture(GL_TEXTURE0);
+        aGgl.glBindTexture(GL_TEXTURE_2D, GLuint(texture0));
+        aGgl.glActiveTexture(GLenum(activeTexture));
+        aGgl.glUseProgram(GLuint(program));
+    }
+};
+
+// The device-pixel rect a clip rect covers, in the coordinates glScissor takes (y counted
+// from the BOTTOM), computed with the backend's own arithmetic and its own truncations -
+// so the pass clips on exactly the pixels ImGui clips its own commands on.
+QRect scissorRect(const ImVec4& aClipRect, const ImVec2& aDisplayPos, const ImVec2& aScale, int aFramebufferHeight) {
+    const ImVec2 clipMin((aClipRect.x - aDisplayPos.x) * aScale.x, (aClipRect.y - aDisplayPos.y) * aScale.y);
+    const ImVec2 clipMax((aClipRect.z - aDisplayPos.x) * aScale.x, (aClipRect.w - aDisplayPos.y) * aScale.y);
+    if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y)
+        return QRect();
+    return QRect(
+        int(clipMin.x), int(float(aFramebufferHeight) - clipMax.y), int(clipMax.x - clipMin.x),
+        int(clipMax.y - clipMin.y)
+    );
 }
+
+// The device-pixel rect one curve's ink can reach (its own bounding box, grown by the
+// stroke's whole footprint), in the same coordinates.
+QRect curveInkRect(const CurveInkBlob* aInk, const ImDrawData* aDrawData, int aFramebufferHeight) {
+    const float scale = aDrawData->FramebufferScale.x > 0.0f ? float(aDrawData->FramebufferScale.x) : 1.0f;
+    // Half the stroke (its own, not the curve's: this rect is asked for both the curves and
+    // the handle stems), the filter's own half width (in logical units), and a pixel of
+    // slack - the same reach the quads themselves are built with.
+    const float reach = aInk->halfWidth + (0.5f * stroke::kFilterPx + 1.0f) / scale;
+
+    const float* coords = reinterpret_cast<const float*>(reinterpret_cast<const uchar*>(aInk) + sizeof(*aInk));
+    float minX = FLT_MAX;
+    float minY = FLT_MAX;
+    float maxX = -FLT_MAX;
+    float maxY = -FLT_MAX;
+    for (int i = 0; i < aInk->pointCount; ++i) {
+        minX = std::min(minX, coords[2 * i]);
+        maxX = std::max(maxX, coords[2 * i]);
+        minY = std::min(minY, coords[2 * i + 1]);
+        maxY = std::max(maxY, coords[2 * i + 1]);
+    }
+    if (minX > maxX)
+        return QRect();
+
+    const ImVec2 offset = aDrawData->DisplayPos;
+    const ImVec2 sc = aDrawData->FramebufferScale;
+    const int left = int(std::floor((minX - reach - offset.x) * sc.x));
+    const int right = int(std::ceil((maxX + reach - offset.x) * sc.x));
+    const int top = int(std::floor((minY - reach - offset.y) * sc.y));
+    const int bottom = int(std::ceil((maxY + reach - offset.y) * sc.y));
+    return QRect(left, aFramebufferHeight - bottom, right - left, bottom - top);
+}
+
+// One polyline's place in the draw list: the geometry and the ink travel in the callback's
+// own copied data, so this keeps no state of its own and the panel stays a pure function of
+// its model. One callback PER POLYLINE is what keeps the pass in the draw list's own order -
+// over the ticks and the labels, under the key markers (a curve), and between the markers
+// and their own dots (a handle stem).
+void addInkCallback(
+    ImDrawList& aDrawList, const QVector<QPointF>& aPoints, const QColor& aColour, float aStrength,
+    float aHalfWidth
+) {
+    if (aPoints.size() < 2)
+        return;
+
+    QVarLengthArray<uchar, 2048> blob(int(sizeof(CurveInkBlob) + aPoints.size() * 2 * sizeof(GLfloat)));
+    CurveInkBlob header;
+    header.pointCount = int(aPoints.size());
+    header.red = GLfloat(aColour.redF());
+    header.green = GLfloat(aColour.greenF());
+    header.blue = GLfloat(aColour.blueF());
+    header.alpha = aStrength;
+    header.halfWidth = aHalfWidth;
+    std::memcpy(blob.data(), &header, sizeof(header));
+    GLfloat* coords = reinterpret_cast<GLfloat*>(blob.data() + sizeof(CurveInkBlob));
+    for (int i = 0; i < aPoints.size(); ++i) {
+        coords[2 * i] = GLfloat(aPoints.at(i).x());
+        coords[2 * i + 1] = GLfloat(aPoints.at(i).y());
+    }
+    // ImGui COPIES this into the draw list, so nothing here has to outlive the call.
+    aDrawList.AddCallback(stroke::drawListCallback, blob.data(), size_t(blob.size()));
+}
+
+} // namespace
+
+namespace stroke {
+
+bool init() {
+    if (gStroke)
+        return true;
+
+    std::unique_ptr<StrokePass> pass(new StrokePass());
+    const bool segmentsLinked = pass->segments.setVertexSource(QString::fromLatin1(kStrokeVertexSource))
+        && pass->segments.setFragmentSource(QString::fromLatin1(kStrokeFragmentSource)) && pass->segments.link();
+    const bool compositeLinked = pass->composite.setVertexSource(QString::fromLatin1(kStrokeCompositeVertexSource))
+        && pass->composite.setFragmentSource(QString::fromLatin1(kStrokeCompositeFragmentSource))
+        && pass->composite.link();
+    if (!segmentsLinked || !compositeLinked) {
+        // Not fatal: drawPanel strokes with ImDrawList::AddPolyline instead, i.e. exactly
+        // the ink this pass was added to replace.
+        XC_DEBUG_REPORT(
+            "the coverage stroke pass did not build: %s", qPrintable(pass->segments.log() + pass->composite.log())
+        );
+        return false;
+    }
+
+    pass->vao.reset(new gl::VertexArrayObject());
+    pass->orthoLocation = pass->segments.uniformLocation("uOrtho");
+    pass->pxScaleLocation = pass->segments.uniformLocation("uPxScale");
+    pass->halfWidthLocation = pass->segments.uniformLocation("uHalfWidth");
+    pass->filterLocation = pass->segments.uniformLocation("uFilter");
+    pass->inkLocation = pass->segments.uniformLocation("uInk");
+    pass->alphaLocation = pass->segments.uniformLocation("uAlpha");
+    pass->modeLocation = pass->segments.uniformLocation("uMode");
+    pass->coverageLocation = pass->composite.uniformLocation("uCoverage");
+    pass->sizeLocation = pass->composite.uniformLocation("uSize");
+    pass->compositeInkLocation = pass->composite.uniformLocation("uInk");
+    pass->compositeAlphaLocation = pass->composite.uniformLocation("uAlpha");
+
+    // Released by shutdown(), never by exit(): see gStroke above.
+    gStroke = pass.release();
+    return true;
+}
+
+void shutdown() {
+    delete gStroke;
+    gStroke = nullptr;
+}
+
+bool isReady() { return gStroke != nullptr; }
+
+void drawListCallback(const ImDrawList*, const ImDrawCmd* aCommand) {
+    if (!gStroke || !aCommand || !aCommand->UserCallbackData)
+        return;
+    const CurveInkBlob* ink = static_cast<const CurveInkBlob*>(aCommand->UserCallbackData);
+    // A callback is per curve and the data is the blob addCurveInkCallback built; the
+    // size ImGui recorded beside it is what makes a corrupt or truncated blob (never one
+    // of ours) a no-op rather than a wild read.
+    if (ink->pointCount < 2 || aCommand->UserCallbackDataSize < int(sizeof(*ink)))
+        return;
+
+    // The frame's OWN projection, clip and scale: the draw data is what the backend
+    // renders from, so a curve lands where the backend's own commands land.
+    ImDrawData* drawData = ImGui::GetDrawData();
+    if (!drawData)
+        return; // driven outside a frame: there is nothing to project against
+    const int fbWidth = int(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+    const int fbHeight = int(drawData->DisplaySize.y * drawData->FramebufferScale.y);
+    if (fbWidth <= 0 || fbHeight <= 0)
+        return;
+
+    // Where this curve may draw: the panel's own clip (the plot), its own ink's bounds,
+    // and only where the two meet.
+    const QRect clip = scissorRect(aCommand->ClipRect, drawData->DisplayPos, drawData->FramebufferScale, fbHeight);
+    const QRect area = clip.intersected(curveInkRect(ink, drawData, fbHeight));
+    if (area.isEmpty())
+        return;
+
+    gl::Global::Functions& ggl = gl::Global::functions();
+    StrokePass& pass = *gStroke;
+
+    // The stroke's own numbers, both in DEVICE pixels: the filter is one of those by
+    // definition, and the nominal width is a logical one that a scaled framebuffer
+    // multiplies (so a 2x screen gets a 2x stroke and a one-device-pixel ramp).
+    const float pxScale = drawData->FramebufferScale.x > 0.0f ? float(drawData->FramebufferScale.x) : 1.0f;
+    const float halfWidth = ink->halfWidth * pxScale;
+    const float reach = ink->halfWidth + (0.5f * kFilterPx + 1.0f) / pxScale;
+
+    // The quads: one per segment, expanded on EVERY side to halfWidth + filter, so the
+    // capsule's round cap and join are inside the geometry already. All four corners
+    // carry the segment's own endpoints - that is what the fragment measures against.
+    const float* coords = reinterpret_cast<const float*>(reinterpret_cast<const uchar*>(ink) + sizeof(*ink));
+    std::vector<gl::Vector2>& positions = pass.positions;
+    std::vector<gl::Vector2>& starts = pass.starts;
+    std::vector<gl::Vector2>& ends = pass.ends;
+    positions.clear();
+    starts.clear();
+    ends.clear();
+    for (int i = 0; i + 1 < ink->pointCount; ++i) {
+        const float ax = coords[2 * i];
+        const float ay = coords[2 * i + 1];
+        const float bx = coords[2 * i + 2];
+        const float by = coords[2 * i + 3];
+        const float dx = bx - ax;
+        const float dy = by - ay;
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (!(length > 0.0f))
+            continue; // a repeated sample: no direction, nothing to stroke
+        const float ex = dx / length * reach;
+        const float ey = dy / length * reach;
+        const float fx = -dy / length * reach;
+        const float fy = dx / length * reach;
+        const gl::Vector2 corners[4] = {
+            gl::Vector2::make(ax - ex + fx, ay - ey + fy),
+            gl::Vector2::make(ax - ex - fx, ay - ey - fy),
+            gl::Vector2::make(bx + ex - fx, by + ey - fy),
+            gl::Vector2::make(bx + ex + fx, by + ey + fy),
+        };
+        // The corners alternate sides of the segment (c0/c3 on one, c1/c2 on the other), so
+        // the two triangles have to share ONE diagonal: the pairing that shares the other
+        // one (c2,c1,c3) crosses it instead, and the quad's middle is painted twice while a
+        // wedge of it is painted not at all - measured as a hole in the ink, which is why
+        // this is the order it is.
+        const int order[6] = {0, 1, 2, 0, 2, 3};
+        for (int v = 0; v < 6; ++v) {
+            positions.push_back(corners[order[v]]);
+            starts.push_back(gl::Vector2::make(ax, ay));
+            ends.push_back(gl::Vector2::make(bx, by));
+        }
+    }
+    if (positions.empty())
+        return;
+
+    GuestState guest;
+    guest.save(ggl);
+
+    // The IMGUI ORTHO, term for term (SetupRenderState): clip.x = x * sx + tx and
+    // clip.y = y * sy + ty, with the matrix's own diagonal and translation.
+    const float left = drawData->DisplayPos.x;
+    const float right = drawData->DisplayPos.x + drawData->DisplaySize.x;
+    const float top = drawData->DisplayPos.y;
+    const float bottom = drawData->DisplayPos.y + drawData->DisplaySize.y;
+    const QVector4D ortho(
+        GLfloat(2.0f / (right - left)), GLfloat(2.0f / (top - bottom)), GLfloat((right + left) / (left - right)),
+        GLfloat((top + bottom) / (bottom - top))
+    );
+
+    // The scratch has to exist before anything is drawn into it; when the driver refuses
+    // it (never measured, but cheap to survive) the ink goes straight into the frame.
+    //
+    // A SINGLE SEGMENT needs no scratch at all, and that is not a shortcut: with one segment
+    // there is no second capsule to overlap, so the union IS that segment's capsule and the
+    // direct path's source-over is bit-for-bit the same composite the accumulate path would
+    // produce. It is worth saying because a two-point polyline is the common case: every
+    // tangent handle stem, and every channel whose plot window holds one key pair.
+    const bool accumulate = ink->pointCount > 2 && pass.ensureCoverage(QSize(fbWidth, fbHeight));
+
+    // Dithering perturbs an 8-bit write by a bit, which is exactly the size of a ramp
+    // step: the coverage pass writes real coverage, so it is turned off for the pass and
+    // put back afterwards (the contrast outline pass does the same, for its own reason).
+    ggl.glDisable(GL_DITHER);
+    ggl.glDisable(GL_CULL_FACE);
+    ggl.glDisable(GL_DEPTH_TEST);
+    ggl.glEnable(GL_SCISSOR_TEST);
+    ggl.glScissor(area.left(), area.top(), area.width(), area.height());
+    ggl.glEnable(GL_BLEND);
+
+    if (accumulate) {
+        // 1. THE UNION OF THE CAPSULES, in the scratch. GL_MAX is the whole point: two
+        // overlapping segments must contribute the LARGER coverage, not the sum of two
+        // source-over blends (which would darken every join, and darken a dimmed curve's
+        // join even where both segments are fully covered).
+        pass.coverageFbo->bind();
+        ggl.glViewport(0, 0, pass.pixels.width(), pass.pixels.height());
+        ggl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        ggl.glClear(GL_COLOR_BUFFER_BIT);
+        ggl.glBlendEquation(GL_MAX);
+        ggl.glBlendFunc(GL_ONE, GL_ONE);
+
+        pass.vao->bind();
+        pass.segments.bind();
+        pass.segments.setUniformValue(pass.orthoLocation, ortho);
+        pass.segments.setUniformValue(pass.pxScaleLocation, pxScale);
+        pass.segments.setUniformValue(pass.halfWidthLocation, GLfloat(halfWidth));
+        pass.segments.setUniformValue(pass.filterLocation, GLfloat(kFilterPx));
+        pass.segments.setUniformValue(pass.modeLocation, GLint(0));
+        pass.segments.setAttributeArray(0, positions.data(), int(positions.size()));
+        pass.segments.setAttributeArray(1, starts.data(), int(starts.size()));
+        pass.segments.setAttributeArray(2, ends.data(), int(ends.size()));
+        ggl.glDrawArrays(GL_TRIANGLES, 0, GLsizei(positions.size()));
+        pass.segments.release();
+
+        // 2. ONE composite of that union into the frame, with the ImGui backend's own
+        // source-over, so the ink lands in the premultiplied convention the overlay's
+        // framebuffer holds and the contrast outline pass reads back.
+        ggl.glBindFramebuffer(GL_FRAMEBUFFER, GLuint(guest.drawFbo));
+        ggl.glViewport(0, 0, fbWidth, fbHeight);
+        ggl.glBlendEquation(GL_FUNC_ADD);
+        ggl.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        ggl.glActiveTexture(GL_TEXTURE0);
+        ggl.glBindTexture(GL_TEXTURE_2D, pass.coverageTexture->id());
+
+        pass.vao->bind();
+        pass.composite.bind();
+        pass.composite.setUniformValue(pass.coverageLocation, GLint(0));
+        pass.composite.setUniformValue(pass.sizeLocation, QVector2D(GLfloat(fbWidth), GLfloat(fbHeight)));
+        pass.composite.setUniformValue(
+            pass.compositeInkLocation, QVector3D(ink->red, ink->green, ink->blue)
+        );
+        pass.composite.setUniformValue(pass.compositeAlphaLocation, ink->alpha);
+        ggl.glDrawArrays(GL_TRIANGLES, 0, 3);
+        pass.composite.release();
+    } else {
+        // No scratch: the ink goes straight into the frame at the coverage the fragment
+        // measured. A join overlaps itself on this path - the one thing this pass exists
+        // to avoid - but the curve is on screen, which is what matters here.
+        ggl.glViewport(0, 0, fbWidth, fbHeight);
+        ggl.glBlendEquation(GL_FUNC_ADD);
+        ggl.glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+        pass.vao->bind();
+        pass.segments.bind();
+        pass.segments.setUniformValue(pass.orthoLocation, ortho);
+        pass.segments.setUniformValue(pass.pxScaleLocation, pxScale);
+        pass.segments.setUniformValue(pass.halfWidthLocation, GLfloat(halfWidth));
+        pass.segments.setUniformValue(pass.filterLocation, GLfloat(kFilterPx));
+        pass.segments.setUniformValue(pass.modeLocation, GLint(1));
+        pass.segments.setUniformValue(pass.inkLocation, QVector3D(ink->red, ink->green, ink->blue));
+        pass.segments.setUniformValue(pass.alphaLocation, ink->alpha);
+        pass.segments.setAttributeArray(0, positions.data(), int(positions.size()));
+        pass.segments.setAttributeArray(1, starts.data(), int(starts.size()));
+        pass.segments.setAttributeArray(2, ends.data(), int(ends.size()));
+        ggl.glDrawArrays(GL_TRIANGLES, 0, GLsizei(positions.size()));
+        pass.segments.release();
+    }
+
+    guest.restore(ggl);
+    GL_CHECK_ERROR();
+}
+
+} // namespace stroke
 
 //-------------------------------------------------------------------------------------------------
 // The one legend label geometry - declared to the gate as well (see the header),
@@ -826,12 +1302,25 @@ void drawPanel(
 
     // The curves. Clipped to the plot (above); the focused one at full colour,
     // every other one dimmed while a focus exists.
+    //
+    // THE SHIPPING STROKE IS gui::stroke's (see the header): one draw-list callback per
+    // curve, carrying the polyline, the colour and the strength, so the ink is measured
+    // PER FRAGMENT and its width stops depending on the angle - and so the pass sits in
+    // the draw list's own order, over the ticks and under the key markers below. With the
+    // pass unavailable (init() refused, or a caller that never built it) this is the
+    // ImDrawList::AddPolyline path, which is exactly what the panel shipped before: a
+    // panel drawn with the fringe stroke beats a panel with no curves.
     for (const PanelCurve& curve : aModel.curves) {
         if (curve.points.size() < 2)
             continue; // identity and colour but no geometry: the keys are outside the window
 
         const bool focused = aFocus.valid && aFocus.node == curve.node && aFocus.channel == curve.channel;
         const float strength = (aFocus.valid && !focused) ? kUnfocusedAlpha : 1.0f;
+
+        if (stroke::isReady()) {
+            addInkCallback(aDrawList, curve.points, curve.color, strength, kCurveWidth * 0.5f);
+            continue;
+        }
 
         // A stack buffer, so the common curve converts without touching the heap.
         QVarLengthArray<ImVec2, 256> points(int(curve.points.size()));
@@ -845,25 +1334,33 @@ void drawPanel(
         );
     }
 
-    // The key squares, from the model's rects: the editor's hit-test geometry, so a
-    // click lands where the key is drawn. A key is filled with ITS CHANNEL'S OWN
-    // COLOUR (PanelCurve::color, i.e. theme::Graph::keyColor(channel.type()) - the
-    // same colour its curve is stroked in and its legend swatch filled with), inside
-    // the palette's floor-coloured ring, which is what keeps a key visible on top of
-    // the curve that carries it (a same-hue key on a same-hue stroke would otherwise
+    // The key MARKERS, from the model's own centres (PanelCurve::keyDots): a DOT
+    // of radius ctrl::graph::kKeyDotRadius - the timeline's own key-body radius
+    // (ctrl::keyRadius, 3.75px) - filled with ITS CHANNEL'S OWN COLOUR
+    // (PanelCurve::color, i.e. theme::Graph::keyColor(channel.type()) - the same
+    // colour its curve is stroked in and its legend swatch filled with), inside the
+    // palette's floor-coloured ring, which is what keeps a key visible on top of the
+    // curve that carries it (a same-hue key on a same-hue stroke would otherwise
     // disappear into it). The editor's selection turns both into the selected token.
+    //
+    // THE MARKER IS NOT THE PICK AREA, and that is the timeline's own rule for a
+    // small element ("hit testing and visuals are two separate things"): the editor
+    // grabs a key within ctrl::graph::kKeyHitRadius (10px) of this centre, and the
+    // model's `keys` rect is that rule's square form, so a 10px square used to be
+    // drawn where a 7.5px dot belongs - 2.3x the timeline's key area. The ink here
+    // is the marker; the hit stays where the editor's hit-test puts it.
+    const float dotRadius = float(ctrl::graph::kKeyDotRadius);
     const ImU32 selectedKey = toImU32(aTheme.selected());
     for (const PanelCurve& curve : aModel.curves) {
         const bool focused = aFocus.valid && aFocus.node == curve.node && aFocus.channel == curve.channel;
         const float strength = (aFocus.valid && !focused) ? kUnfocusedAlpha : 1.0f;
         const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
-        for (const QRect& key : curve.keys) {
-            const bool selected = isKeySelected(aFocus, curve.channel.type(), key);
-            const ImVec2 min = rectMin(key);
-            const ImVec2 max = rectMax(key);
-            aDrawList.AddRectFilled(min, max, selected ? selectedKey : fill);
-            aDrawList.AddRect(min, max, selected ? selectedKey : edge, 0.0f, ImDrawFlags_None, 1.0f);
+        for (const QPointF& dot : curve.keyDots) {
+            const bool selected = isKeySelected(aFocus, curve.channel.type(), dot);
+            const ImVec2 centre(float(dot.x()), float(dot.y()));
+            aDrawList.AddCircleFilled(centre, dotRadius, selected ? selectedKey : fill);
+            aDrawList.AddCircle(centre, dotRadius, selected ? selectedKey : edge, 0, 1.0f);
         }
     }
 
@@ -929,7 +1426,23 @@ void drawPanel(
                 const bool highlighted = c == nearestCurve && h == nearestHandle;
                 const ImVec2 base(float(handle.base.x()), float(handle.base.y()));
                 const ImVec2 dot(float(handle.dot.x()), float(handle.dot.y()));
-                aDrawList.AddLine(base, dot, handleLine, 1.0f);
+                // THE STEM IS A 1px LINE WITH FRACTIONAL ENDS, and it goes through the same
+                // coverage pass the curves do - measured first, because it is the one 1px
+                // line in the panel whose position can be wrong: ImGui's own AddLine shifts
+                // its geometry by (+0.5,+0.5) (imgui_draw.cpp, the 1px rasterization
+                // convention), which for a stem at this slope moves the ink up to 0.71px
+                // PERPENDICULAR to the line it is supposed to draw - measured on the gate's
+                // own fractional stem at +0.68/+0.75/+0.76px along its length, against
+                // -0.01/-0.00/+0.01px for this pass. The pass has
+                // no such offset: its coverage is the distance to the segment the model
+                // asked for. The stem is already antialiased today (the draw list's
+                // AntiAliasedLines flag is not turned off here), so nothing about its
+                // crispness changes; only where its ink sits.
+                if (stroke::isReady()) {
+                    addInkCallback(aDrawList, QVector<QPointF>{handle.base, handle.dot}, handleLine, 1.0f, 0.5f);
+                } else {
+                    aDrawList.AddLine(base, dot, handleLine, 1.0f);
+                }
                 aDrawList.AddCircleFilled(dot, float(handle.radius), highlighted ? handleSelected : handleFill);
                 aDrawList.AddCircle(dot, float(handle.radius), highlighted ? handleSelected : handleEdge, 0, 1.0f);
             }
@@ -1003,8 +1516,23 @@ void drawPanel(
     // The value numbers live in the column LEFT of the plot, so they are drawn after
     // the clip: the model already clamped each box into the column, and a label must
     // not be cut off by an edge it was deliberately kept clear of.
+    //
+    // TWO THINGS HAPPEN HERE, and they are different obligations:
+    //   * the GUTTER (kValueLabelGap). A right-aligned number keeps that much space
+    //     from the box's right edge whenever the box can spare it, so the top value
+    //     label and the plot's first frame number do not read as one string - the
+    //     measured defect, and the timeline's own kNumberMargin for it.
+    //   * the GUARD. The whole pass is clipped to the PANEL, so a label wider than
+    //     its box (the model's column is measured so that it cannot be, but a
+    //     drawing font wider than the model's can make one) is cut at the panel's
+    //     edge instead of painting outside the panel - the one place in this
+    //     function whose ink is outside every other clip.
+    aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
     for (const PanelLabel& label : aModel.valueLabels)
-        drawLabel(aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo);
+        drawLabel(
+            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo, kValueLabelGap
+        );
+    aDrawList.PopClipRect();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1026,24 +1554,6 @@ struct ImGuiOverlay::State {
     // long as the context.
     ImFont* font = nullptr;
     float fontSize = 0.0f;
-
-    // Whether the KEY CONTEXT MENU was open at the end of the last frame (see
-    // drawKeyContextMenu). ImGui owns the popup itself; this is the copy an event
-    // handler can read between frames, where ImGui's own open state cannot be
-    // queried (GetID needs a current window). It is also what keeps a press from
-    // reaching the graph while the menu is up, and what the frame turns the
-    // keyboard over to ImGui for (see paint).
-    bool keyMenuOpen = false;
-    // The keyboard focus this class took for the menu, and the widget that had it,
-    // so the frame can hand it back when the menu closes (see paint). Only ever set
-    // while keyMenuOpen is true, and the pointer is cleared with the hand-back.
-    QPointer<QWidget> focusBeforeMenu;
-    bool tookFocusForMenu = false;
-    // Where the right-click that opened it was, in widget-logical pixels. Kept
-    // rather than re-read from io.MousePos, which follows the pointer: the popup
-    // is placed from this anchor every frame, so a menu that is open does not slide
-    // around under the pointer that is aiming at one of its entries.
-    QPoint keyMenuAnchor;
 
     // The contrast outline pass's own targets (see gui::outline): the backdrop copy
     // and the panel's coverage framebuffer. Built lazily on the frame that first
@@ -1085,14 +1595,6 @@ struct ImGuiOverlay::State {
 
 namespace {
 
-// The application font's line height in pixels: what a text line laid out by Qt in
-// this widget would occupy, and the size the atlas is asked for.
-float fontPixelSize(QOpenGLWidget& aWidget) {
-    const QFontMetricsF metrics(aWidget.font());
-    const float height = float(metrics.height());
-    return (height > 0.0f) ? height : kFallbackFontPixelSize;
-}
-
 // The frame delta ImGui animates with, clamped so a stall (a load, an attached
 // debugger) cannot make an animation jump and a burst of repaints cannot make it
 // crawl. The first frame has no interval to measure, so it gets 60Hz.
@@ -1105,24 +1607,6 @@ float nextDeltaTime(QElapsedTimer& aTimer, bool& aStarted) {
     const qint64 nanoseconds = aTimer.nsecsElapsed();
     aTimer.restart();
     return float(qBound(qint64(1000000), nanoseconds, qint64(100000000))) / 1.0e9f;
-}
-
-// Whether ImGui still holds input it will only APPLY on a later frame, which is the
-// only thing that decides whether this frame needs a successor.
-//
-// ImGui applies a queued press and the release that follows it on TWO frames rather
-// than one: io.ConfigInputTrickleEventQueue (ImGui's own default, and what keeps a
-// press and its release from flattening into "no click" in a single frame) stops
-// UpdateInputEvents() at the first event of the next kind, so a frame that was
-// handed both a press and its release applies the press and leaves the release
-// queued. Nothing published says so: io.MouseDown is the state ImGui has APPLIED,
-// and the waiting list above it is not readable through the public API. The queue
-// therefore comes out of imgui_internal.h, the way the draw list's font does (see
-// the include at the top of this file) - one fact drawn from ImGui's own frame
-// bookkeeping, because it is the fact this question is about.
-bool imguiHasQueuedInput() {
-    ImGuiContext* context = ImGui::GetCurrentContext();
-    return context && context->InputEventsQueue.Size > 0;
 }
 
 // The editor's sticky focus plus its selection, in the currency drawPanel uses.
@@ -1139,11 +1623,12 @@ PanelFocus buildFocus(ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel)
     if (!aEditor.retrieveSelection(selection))
         return focus;
 
-    // A selected key has to be found among the model's key RECTS, which carry no
-    // frame. ctrl::graph::keyRect centres a square exactly on the mapped point, so
-    // the frame's pixel x is what identifies it - and it is the editor's own scaler
-    // with the MODEL's panel, i.e. the same mapping the model copied, so the two
-    // agree by construction rather than by coincidence.
+    // A selected key has to be found among the model's key MARKER centres
+    // (PanelCurve::keyDots), which carry no frame. ctrl::graph::keyDot puts the
+    // centre exactly on the mapped point, so the frame's pixel x is what identifies
+    // it - and it is the editor's own scaler with the MODEL's panel, i.e. the same
+    // mapping the model copied, so the two agree by construction rather than by
+    // coincidence.
     ctrl::graph::Scaler scale = aEditor.scale();
     scale.setRect(aModel.panel);
     for (const core::TimeLineEvent::Target& target : selection.targets()) {
@@ -1197,8 +1682,10 @@ void ImGuiOverlay::shutdown() {
     const bool madeCurrent = widget && widget->context() && widget->context()->isValid();
     if (madeCurrent)
         widget->makeCurrent();
-    // The outline pass's program, quad and two textures are context objects too.
+    // The outline pass's program, quad and two textures are context objects too, and so
+    // are the curve stroke's programs and its coverage scratch.
     mState->outline.release();
+    stroke::shutdown();
     outline::shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui::DestroyContext();
@@ -1228,17 +1715,24 @@ bool ImGuiOverlay::init(QOpenGLWidget& aWidget) {
     // The overlay never changes the cursor itself; the viewport's cursor policy
     // (MainDisplayWidget) stays the only thing that does.
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-    ImGui::StyleColorsDark();
-    // ...then the panel's own style over it (see applyPanelStyle): ImGui's dark
-    // defaults define everything the panel does not, and every colour the panel's
-    // popup DOES use comes from the palette. Applied again on every frame, so this
-    // call only matters for a frame drawn before the first paint().
-    applyPanelStyle(theme::Graph::from(theme::Colors::current()));
+    // ImGui's style is left at the context's own default (ImGui::CreateContext
+    // calls StyleColorsDark itself): the panel draws every colour it uses from the
+    // palette into its own draw list, and the key menu is the application's QMenu,
+    // so nothing this class draws reads ImGuiStyle at all.
 
-    // The atlas through the Qt/QRawFont loader: the application font at the widget
-    // font's own pixel size, plus the writing-system fallbacks Qt resolves for it,
-    // so CJK, `.ttc` and variable faces rasterize with the face the rest of the
-    // application draws with.
+    // The atlas through the Qt/QRawFont loader: the application font at the size Qt
+    // RASTERIZES it at, plus the writing-system fallbacks Qt resolves for it, so CJK,
+    // `.ttc` and variable faces rasterize with the face the rest of the application
+    // draws with.
+    //
+    // THE SIZE IS panelFontPixelSize, NOT THE FONT'S LINE HEIGHT. The panel drew
+    // every numeral ~30% larger than the timeline draws the same font, because
+    // QFontMetricsF::height() is the LINE height (ascent + descent + leading:
+    // 15.578125px for this application's Geist 9pt at 96dpi) while Qt rasterizes the
+    // face at 12px - the size panelFontPixelSize derives, and the size the
+    // timeline's own ruler numbers use. See gui/ImGuiQtFontLoader.h for the
+    // measurement; 0 means the font stated no size, and the panel keeps its own
+    // fallback rather than an atlas with no size at all.
     //
     // The loader's last argument is NOT the widget's device pixel ratio. It is
     // ImFontConfig::RasterizerDensity, and on the dynamic-atlas path (which the GL3
@@ -1249,7 +1743,8 @@ bool ImGuiOverlay::init(QOpenGLWidget& aWidget) {
     // imgui_draw.cpp rasterizes at Size * baked->RasterizerDensity *
     // src->RasterizerDensity). Passing the ratio here would square it: 4x the linear
     // raster, and 16x the atlas area per glyph, for a 2x screen.
-    const float pixelSize = fontPixelSize(aWidget);
+    const float statedSize = imgui_qt::panelFontPixelSize(aWidget.font(), aWidget.logicalDpiY());
+    const float pixelSize = (statedSize > 0.0f) ? statedSize : kFallbackFontPixelSize;
     if (imgui_qt::installQtFontLoader(*io.Fonts, aWidget.font(), pixelSize, 1) == 0) {
         // No Qt-rasterized source: the bundled face could not be read, or Qt has no
         // face for any writing system. ImGui installs its own default font when the
@@ -1300,77 +1795,21 @@ void ImGuiOverlay::paint(
     // index buffer bound.
     ImGui_ImplOpenGL3_NewFrame();
 
-    // THE KEYBOARD BELONGS TO IMGUI ONLY WHILE THE KEY CONTEXT MENU IS OPEN (see
-    // the class comment). io.ConfigFlags is read by ImGui::NewFrame's own
-    // navigation update, so the toggle has to be made here, immediately before it,
-    // and it is made from the popup's LAST KNOWN open state - which is exactly what
-    // "while the menu is open" means for a flag that can only take effect on the
-    // next frame (the frame that OPENS the popup is already past that point).
-    //
-    // WHY IT IS NOT ENABLED FOR THE WHOLE SESSION. This overlay covers the whole
-    // viewport, so a globally enabled ImGuiConfigFlags_NavEnableKeyboard makes
-    // ImGui claim the keyboard for the panel (io.NavActive -> io.WantCaptureKeyboard,
-    // io.ConfigNavCaptureKeyboard defaults to true) and the application's own key
-    // commands - ctrl+Z, Delete, ctrl+Right and the rest of gui::KeyCommandMap -
-    // would stop reaching MainWindow while the panel is on screen. With the flag off
-    // the overlay claims nothing and every key reaches the application exactly as it
-    // did before this menu existed, which is the property the application-level probe
-    // asserts with the menu closed.
-    //
-    // WHILE IT IS OPEN the flag is what ImGui gates its own popup keyboard behaviour
-    // on: ImGui::NavUpdateCancelRequest closes the front popup on Escape, and the
-    // arrows move the popup's own entry highlight (ImGui::NavUpdateCreateMoveRequest),
-    // which Enter then activates. None of the three exists without it.
-    if (state.keyMenuOpen) {
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-        // AND THE KEYS HAVE TO REACH THIS OVERLAY FOR ANY OF THAT TO MEAN
-        // ANYTHING. They reach it through MainDisplayWidget::keyPressEvent, and the
-        // widget is a plain QOpenGLWidget carrying QWidget's default focus policy
-        // (Qt::NoFocus - it never sets one): Qt focuses a widget on a click only
-        // when its policy allows it, so a press in the viewport does NOT make the
-        // widget the focus object and every key goes to whatever widget last had
-        // the focus (which is where the application's own key commands come from).
-        // MEASURED, with this class instrumented and the application probe driving
-        // the menu: ZERO key events reached ImGuiOverlay::key() in a whole run, and
-        // the popup stayed up through Escape. So the menu takes the keyboard while
-        // it is open - the same thing this file already does for a Dear ImGui TEXT
-        // FIELD (see the IME block at the end of this function: the widget takes
-        // focus so Qt asks it), and for the same reason: a part of this overlay
-        // needs the keyboard. The widget that had it is remembered and handed back
-        // when the menu closes, so a popup never leaves the keyboard somewhere else.
-        if (!aWidget.hasFocus()) {
-            if (!state.tookFocusForMenu) {
-                state.focusBeforeMenu = QApplication::focusWidget();
-                state.tookFocusForMenu = true;
-            }
-            aWidget.setFocus(Qt::OtherFocusReason);
-        }
-    } else {
-        io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
-
-        // Hand the keyboard back, but only if this class still holds it: a click on
-        // another widget while the menu was up is that widget's focus and must not
-        // be overruled here.
-        if (state.tookFocusForMenu) {
-            state.tookFocusForMenu = false;
-            if (state.focusBeforeMenu && aWidget.hasFocus())
-                state.focusBeforeMenu->setFocus(Qt::OtherFocusReason);
-            state.focusBeforeMenu.clear();
-        }
-    }
-
-    // THE PANEL'S STYLE, from THIS frame's palette (see applyPanelStyle). It is
+    // THE PALETTE of THIS frame, which is what the panel is drawn from. It is
     // re-derived every frame rather than cached because the app changes palette at
     // runtime (a settings change, a different accent): theme::Colors::current() is
-    // the live answer, the panel's own colours are already rebuilt from it below,
-    // and the style is a handful of struct writes - there is nothing to invalidate
-    // and no signal to miss. It has to happen BEFORE NewFrame, which reads the style
-    // (the nav cursor and the popup's window flags are set up there).
+    // the live answer and the panel's colours are rebuilt from it below, so there is
+    // nothing to invalidate and no signal to miss.
     const theme::Graph palette = theme::Graph::from(theme::Colors::current());
-    applyPanelStyle(palette);
 
     ImGui::NewFrame();
+
+    // The curve ink's own pass, built on the current context the first time this runs and
+    // kept for the life of that context (idempotent, so the call per frame costs a null
+    // check). It is called HERE because drawPanel is what decides which stroke to use, and
+    // it refuses quietly: a driver that cannot compile the programs leaves the panel on its
+    // AddPolyline path rather than with no curves at all (see gui::stroke).
+    stroke::init();
 
     // The model of this frame, and nothing else: the panel's geometry never comes
     // from a rect computed here.
@@ -1380,22 +1819,11 @@ void ImGuiOverlay::paint(
     if (panelDrawn) {
         model = buildGraphPanelModel(*aEditor, viewport, palette, state.topInset);
         drawPanel(*drawList, model, palette, buildFocus(*aEditor, model));
-        // The key context menu, on the geometry just drawn (see the class comment).
-        // Drawn after the panel, which goes into the BACKGROUND draw list, so the
-        // popup - a window - covers it.
-        drawKeyContextMenu(*aEditor, model, palette);
         state.font = drawListFont(*drawList);
         state.fontSize = drawListFontSize(*drawList);
     } else {
         // Hidden: no draw command at all, and no geometry left behind for a press
-        // to hit. The key menu goes with the panel it belongs to - and it is
-        // CLOSED rather than dropped, or it would sit in ImGui's open-popup stack
-        // for the rest of the session, where it keeps io.WantCaptureMouse latched
-        // and can never be drawn or dismissed again.
-        if (state.keyMenuOpen) {
-            state.keyMenuOpen = false;
-            ImGui::ClosePopupToLevel(0, true);
-        }
+        // to hit.
         state.font = nullptr;
         state.fontSize = 0.0f;
     }
@@ -1470,54 +1898,23 @@ void ImGuiOverlay::paint(
         aWidget.setFocus(Qt::OtherFocusReason);
 
     publishAccessibility();
-
-    // THE FRAME THAT FOLLOWS, when ImGui still holds input for it (see
-    // imguiHasQueuedInput). ImGui applies a queued press and its release on two
-    // frames, and a popup entry is one of the things it acts on only on the second
-    // of them: an ImGui Selectable fires on the RELEASE, in the frame that applies
-    // it. THIS frame is the one that carried the press, so it cannot be that second
-    // frame, and the request belongs here rather than at the event: an event
-    // handler's requestRepaint() is a QWidget::update(), like the widget's own
-    // update() for a press the overlay consumed (MainDisplayWidget::mousePressEvent)
-    // - the paint already pending absorbs both, and the frame that must apply the
-    // trickled event is precisely that one's successor. Without this the release
-    // sits in ImGui's queue until some unrelated repaint happens to run, which is a
-    // menu entry that does not respond to a single click.
-    if (imguiHasQueuedInput())
-        requestRepaint();
 }
 
 //-------------------------------------------------------------------------------------------------
 bool ImGuiOverlay::mouseMove(const QMouseEvent& aEvent) {
-    const bool captured = mState && mState->bridge ? mState->bridge->handleMouseMove(aEvent) : false;
-    // The key menu is drawn by ImGui, so its hover highlight is a frame's answer:
-    // without a repaint per move the entry under the pointer would only be
-    // repainted when something else asked for a frame. (The widget's own cursor
-    // path does not repaint for a plain move over the panel - the graph has no
-    // hover state of its own.)
-    if (mState && mState->keyMenuOpen)
-        requestRepaint();
-    return captured;
+    return mState && mState->bridge ? mState->bridge->handleMouseMove(aEvent) : false;
 }
 
 bool ImGuiOverlay::mouseButton(const QMouseEvent& aEvent) {
     const bool captured = mState && mState->bridge ? mState->bridge->handleMouseButton(aEvent) : false;
-    // The menu needs a FRAME, and the widget does not always produce one: a
-    // right-click is nobody's cursor action (the graph takes no right-button
-    // action, and the Driver's routing returns false for it), so without this the
-    // popup would not be drawn until some unrelated repaint. The release is here
-    // too because ImGui's queued input is TRICKLED - a press and a release that
-    // arrive together are split across two frames (io.ConfigInputTrickleEventQueue)
-    // - and while the menu is open the release is the half that fires the entry, so
-    // it is worth a frame of its own as much as the press is.
-    //
-    // This is the frame the EVENT gets. The frame that applies what ImGui had to
-    // leave in its queue is the successor THIS frame asks for when it ends (see
-    // imguiHasQueuedInput, at the end of paint()): one update() cannot stand in for
-    // both, because Qt coalesces everything requested while a paint is already
-    // pending into that one pending paint.
-    if (aEvent.button() == Qt::RightButton || (mState && mState->keyMenuOpen))
-        requestRepaint();
+
+    // THE KEY MENU'S GESTURE, and the only place this class sees a right press: the
+    // widget forwards EVERY button here (mousePressEvent's first step) and offers
+    // press() the left one only, so a right-click on a key has to be taken here.
+    // The menu itself is the application's own QMenu (see the class comment) and
+    // QMenu::popup() returns immediately, so nothing here blocks the press.
+    if (aEvent.type() == QEvent::MouseButtonPress && aEvent.button() == Qt::RightButton)
+        openKeyMenuAt(aEvent.position().toPoint());
     return captured;
 }
 
@@ -1526,18 +1923,10 @@ bool ImGuiOverlay::wheel(const QWheelEvent& aEvent) {
 }
 
 bool ImGuiOverlay::key(const QKeyEvent& aEvent) {
-    const bool captured = mState && mState->bridge ? mState->bridge->handleKey(aEvent) : false;
-    // The popup is drawn by ImGui, so every key it acts on is a frame's answer: the
-    // Escape that closes it (ImGui::NavUpdateCancelRequest, inside NewFrame) and the
-    // arrows that move its highlight are applied between frames, and without a
-    // request here the menu would keep its pixels - and its open state - until some
-    // unrelated repaint happened to run. The same reason the move path above asks
-    // while the menu is open, and the request is unconditional there for the same
-    // reason it is unconditional here: the menu is the only keyboard consumer this
-    // class has, so while it is up every key is a candidate for it.
-    if (mState && mState->keyMenuOpen)
-        requestRepaint();
-    return captured;
+    // The application's own key commands are untouched: with the menu a QMenu, this
+    // overlay consumes no key of its own, and the bridge's answer is the whole
+    // routing rule (see ImGuiInputBridge::keyboardCaptured).
+    return mState && mState->bridge ? mState->bridge->handleKey(aEvent) : false;
 }
 
 bool ImGuiOverlay::inputMethod(const QInputMethodEvent& aEvent) {
@@ -1595,15 +1984,6 @@ bool ImGuiOverlay::press(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
     if (!mReady || !mState || !mState->editor)
         return false; // hidden: nothing is on screen to hit
 
-    // THE KEY MENU FIRST. While it is open the pointer is the menu's: ImGui owns
-    // the popup and decides what a press means inside it (an entry, or a dismissal
-    // when it lands outside) from the stream it was fed, so the graph must not
-    // also act on the same press - a left click on "Delete key" would otherwise
-    // delete a legend row, or insert a key under the menu, through the widget's
-    // next step.
-    if (mState->keyMenuOpen)
-        return true;
-
     // The last frame's own geometry. A swatch takes precedence over a label, and
     // the label's box is the one legendLabelRect measured for the drawn glyphs. A row
     // with no room is skipped in both passes: it has no swatch on screen and - see
@@ -1660,261 +2040,106 @@ bool ImGuiOverlay::doubleClick(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
 }
 
 //-------------------------------------------------------------------------------------------------
-void ImGuiOverlay::drawKeyContextMenu(
-    ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel, const theme::Graph& aTheme
-) {
-    if (!mState)
-        return;
-    State& state = *mState;
-    ImGuiIO& io = ImGui::GetIO();
+bool ImGuiOverlay::openKeyMenuAt(const QPoint& aPos) {
+    if (!mReady || !mState || !mState->editor)
+        return false; // hidden: nothing is on screen to hit
 
-    // THE RIGHT-CLICK. A key is the only target, and the test is the MODEL's own
-    // rectangles - the ones ctrl::graph::keyRect produced for the frame just
-    // drawn, through the same geometry the editor's own hit-test reads - so a menu
-    // can never open on a key the editor would not have found. A point on no key
-    // opens nothing and consumes nothing: this class takes no other right-button
-    // action, and neither does the graph, so the click stays what it was before
-    // this menu existed.
-    if (!state.keyMenuOpen && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && ImGui::IsMousePosValid(&io.MousePos)) {
-        const QPoint pos(int(io.MousePos.x), int(io.MousePos.y));
-        core::ObjectNode* node = nullptr;
-        ctrl::graph::Channel channel;
-        core::Frame frame;
+    ctrl::GraphEditor& editor = *mState->editor;
+    const GraphPanelModel& model = mState->model;
 
-        for (const PanelCurve& curve : aModel.curves) {
-            // keyFrames is published beside keys and has the same length (see
-            // GraphPanelModel.h); a model that carries one without the other is
-            // not one buildGraphPanelModel makes, and it is not one this class can
-            // name a key from either, so it is skipped rather than guessed at.
-            if (curve.keyFrames.size() != curve.keys.size())
-                continue;
-            for (int i = 0; i < curve.keys.size(); ++i) {
-                if (!curve.keys.at(i).contains(pos))
-                    continue;
+    // THE KEY UNDER THE POINTER, by the EDITOR'S OWN RULE: the nearest key whose
+    // centre is within ctrl::graph::kKeyHitRadius - the same distance, and the same
+    // `<=`, ctrl::GraphEditor::hitTest grabs a key with. The centre is the model's
+    // PanelCurve::keyDots (ctrl::graph::keyDot through the model's own scaler), not
+    // the key's HIT rect and not the drawn marker: the rect is that rule's square
+    // form (so it would be both too small at the diagonals and unrelated to the ink),
+    // and the marker is the ink, which is deliberately smaller than the target.
+    //
+    // A handle is not considered: the panel's right-click has no handle action, and
+    // the editor's own handle grab is the LEFT press's, which still goes through
+    // ctrl::GraphEditor. So a right-click near a handle that is also near a key opens
+    // the key's menu - there is no second, quieter gesture for a handle to take.
+    core::ObjectNode* node = nullptr;
+    ctrl::graph::Channel channel;
+    core::Frame frame;
+    double nearest = double(ctrl::graph::kKeyHitRadius);
+    for (const PanelCurve& curve : model.curves) {
+        // keyFrames is published beside keyDots and has the same length (see
+        // GraphPanelModel.h); a model that carries one without the other is not one
+        // buildGraphPanelModel makes, and it is not one this class can name a key
+        // from either, so it is skipped rather than guessed at.
+        if (curve.keyFrames.size() != curve.keyDots.size())
+            continue;
+        for (int i = 0; i < curve.keyDots.size(); ++i) {
+            const QPointF& dot = curve.keyDots.at(i);
+            const double distance = std::hypot(double(aPos.x()) - dot.x(), double(aPos.y()) - dot.y());
+            if (distance <= nearest) {
+                nearest = distance;
                 node = curve.node;
                 channel = curve.channel;
                 frame = curve.keyFrames.at(i);
-                break;
             }
-            if (node)
-                break;
-        }
-
-        if (node) {
-            // The right-click makes that key the panel's SELECTION, which is the
-            // timeline's own behaviour with its key menu (selectKeysAt with the
-            // click point, then the menu acts on the result): the menu acts on the
-            // selection, so the key it was opened on has to be in it. Selecting is
-            // also what a press on a key does, so a right-click here is not a
-            // second, quieter way to move the panel's current key.
-            aEditor.selectKey(*node, channel, frame);
-            state.keyMenuAnchor = pos;
-            ImGui::OpenPopup(kKeyMenuId);
-            state.keyMenuOpen = true;
-            // The menu covers part of the panel and the selection just changed
-            // under it, so this frame is already stale: ask for the next one.
-            requestRepaint();
         }
     }
+    if (!node)
+        return false; // no key that close: this is not the panel's right-click
 
-    // THE MIRROR IS CLOSED WHEN IMGUI HAS CLOSED THE POPUP - Escape, an entry, or a
-    // click outside all end it - and this is the ONLY other place it can be cleared
-    // (the other one lives in the branch that runs when the panel is HIDDEN). Nothing
-    // used to clear it while the panel stayed up, so after one menu the flag latched
-    // true for the rest of the session: the nav flag stayed on (ImGui claiming the
-    // keyboard) and, worse, mouseButton()/mouseMove() treat any event as the menu's
-    // while it is set, so every later press in the viewport was swallowed - neither
-    // the panel's nor the tools'. Measured 2026-10-14 by an exhaustive grep of the
-    // two assignment sites; a state the panel could not leave by itself.
-    //
-    // Checked BEFORE the block below, because the popup's own close runs inside
-    // NewFrame: on the frame Escape lands, IsPopupOpen is already false here, so the
-    // mirror clears and the menu draws nothing in the same frame. The repaint is
-    // asked for explicitly - the flag going false changes what the mouse paths do,
-    // and no queued input need remain for that to be worth a frame.
-    if (state.keyMenuOpen && !ImGui::IsPopupOpen(kKeyMenuId)) {
-        state.keyMenuOpen = false;
-        requestRepaint();
-    }
+    // The right-click makes that key the panel's SELECTION, which is the timeline's
+    // own behaviour with its key menu (selectKeysAt with the click point, then the
+    // menu acts on the result): the menu acts on the selection, so the key it was
+    // opened on has to be in it. Selecting is also what a press on a key does, so a
+    // right-click here is not a second, quieter way to move the panel's current key.
+    editor.selectKey(*node, channel, frame);
 
-    if (state.keyMenuOpen) {
-        // THE MENU OWNS THE KEYBOARD WHILE IT IS OPEN, so the keys it acts on
-        // (Escape, the arrows, Enter) never reach the application's key commands.
-        // The widget consumes a key exactly when ImGuiInputBridge::keyboardCaptured()
-        // answers true, i.e. when io.WantCaptureKeyboard was set - and that flag is
-        // ImGui's own answer, which this makes deterministic rather than a
-        // consequence of which window ImGui happens to have focused: with the flag
-        // above, io.NavActive would usually set it too (io.ConfigNavCaptureKeyboard
-        // defaults to true), but "usually" is not what a key route should rest on.
-        //
-        // Called EVERY frame the popup is open, because that is what the API means:
-        // it sets the value NewFrame will publish NEXT frame and clears it again at
-        // the end of that frame (imgui.cpp, SetNextFrameWantCaptureKeyboard and the
-        // WantCaptureKeyboardNextFrame reset in NewFrame). It is the same
-        // "force capture keyboard when your widget is being hovered" the header
-        // documents, with "hovered" being "this popup is up". The one-frame lag is
-        // harmless here: the popup can only open on a mouse event, so no key of this
-        // menu's can be lost to it.
-        ImGui::SetNextFrameWantCaptureKeyboard(true);
+    // ...and the menu is the TIMELINE'S OWN, handed the selection and this widget's
+    // position (see the class comment): one menu, one list of easings, one edit path
+    // for both views.
+    core::TimeLineEvent selection;
+    if (!editor.retrieveSelection(selection) || selection.targets().isEmpty())
+        return false;
 
-        const QVector<util::Easing::Type> types = keyMenuEasingTypes();
-        const int easingRows = (types.size() + kMenuColumns - 1) / kMenuColumns;
-        const int rows = easingRows + 1; // the easing grid, then the delete entry
-        const float rowHeight = ImMax(kMenuRowHeight, ImGui::GetTextLineHeight());
+    // The widget the overlay lives in owns the menu: it is the object that owns the
+    // timeline, and it is the one that can map the panel's own pixels to a screen
+    // position (MainDisplayWidget::showGraphKeyMenu). The cast is a static_cast and
+    // not a qobject_cast ON PURPOSE: qobject_cast would need the widget class's
+    // staticMetaObject at link time, and the pixel gate compiles this file with no
+    // widget translation unit at all (tests/CMakeLists.txt: "there is no gui library
+    // to link against"). MainDisplayWidget is this class's ONE construction site, so
+    // the widget it holds is one whenever there is a widget at all; a gate that drives
+    // this class owns none, and the selection above is then the whole of the gesture's
+    // effect.
+    if (mState->widget)
+        static_cast<MainDisplayWidget*>(mState->widget.data())->showGraphKeyMenu(selection, aPos);
 
-        // The delete entry is the one user-visible string this menu creates, and
-        // it is the timeline's own: the same literal, asked for in the SAME
-        // context the timeline asks in, so a translator has one "Delete key" and
-        // not two. (The class comment states this exception to the file's own
-        // context rule.)
-        const QByteArray deleteLabel =
-            QCoreApplication::translate(
-                "TimeLineEditorWidget", QT_TRANSLATE_NOOP("TimeLineEditorWidget", "Delete key")
-            )
-                .toUtf8();
+    // The selection just changed under the panel's ink (the key turns
+    // theme::Graph::selected()), so this frame is already stale.
+    requestRepaint();
+    return true;
+}
 
-        // One width for every entry, from the widest label the popup will draw
-        // (the delete entry included, because it spans the whole width), so a row
-        // is a rectangle a caller can find from the popup's own edges alone. The
-        // inset is the theme's own row padding.
-        const float itemPadX = aTheme.menuItemPadX();
-        float columnWidth = 0.0f;
-        for (const util::Easing::Type type : types) {
-            const QByteArray text = util::Easing::getTypeName(type).toUtf8();
-            columnWidth = ImMax(columnWidth, ImGui::CalcTextSize(text.constData()).x);
+//-------------------------------------------------------------------------------------------------
+bool ImGuiOverlay::selectedKeyDot(const core::TimeLineEvent& aTargets, QPoint& aDot) const {
+    if (!mState || aTargets.targets().size() != 1)
+        return false;
+
+    // The triple the target carries IS a key's identity - (node, key type, frame) -
+    // and PanelCurve publishes the other half of it (keyFrames, keyDots) beside each
+    // other, so the marker is found rather than re-derived: a consumer that recomputed
+    // the pixel would be a second copy of the scaler's arithmetic.
+    const core::TimeLineEvent::Target& target = aTargets.targets().first();
+    if (!target.node || target.pos.isNull())
+        return false;
+    for (const PanelCurve& curve : mState->model.curves) {
+        if (curve.node != target.node || curve.channel.type() != target.pos.type())
+            continue;
+        for (int i = 0; i < curve.keyFrames.size() && i < curve.keyDots.size(); ++i) {
+            if (curve.keyFrames.at(i).get() != target.pos.index())
+                continue;
+            aDot = QPoint(int(curve.keyDots.at(i).x()), int(curve.keyDots.at(i).y()));
+            return true;
         }
-        columnWidth = ImMax(
-            columnWidth + 2.0f * itemPadX, ImGui::CalcTextSize(deleteLabel.constData()).x + 2.0f * itemPadX
-        );
-
-        const float contentWidth = kMenuColumns * columnWidth + (kMenuColumns - 1) * kMenuColumnGap;
-        const float contentHeight = rows * rowHeight + kMenuSeparatorHeight;
-
-        // WHERE. At the anchor the right-click recorded - ImGui's own
-        // context-menu convention, and what "opens a popup at the pointer" means -
-        // unless the viewport cannot hold the popup below it, in which case it is
-        // placed so the WHOLE menu fits: a popup is an ImGui window and cannot
-        // leave the viewport, so a menu hanging off the bottom edge would be
-        // entries nobody can reach (a Qt menu, with a native window of its own,
-        // has no such constraint; this one does).
-        const float border = ImGui::GetStyle().WindowBorderSize;
-        const ImVec2 popupSize(
-            contentWidth + 2.0f * aTheme.menuPadX() + 2.0f * border,
-            contentHeight + 2.0f * aTheme.menuPadY() + 2.0f * border
-        );
-        const float anchorX = float(state.keyMenuAnchor.x());
-        const float anchorY = float(state.keyMenuAnchor.y());
-        const float x = ImClamp(anchorX, 0.0f, ImMax(0.0f, io.DisplaySize.x - popupSize.x));
-        const float y = (anchorY + popupSize.y <= io.DisplaySize.y) ? anchorY
-                                                                   : ImMax(0.0f, io.DisplaySize.y - popupSize.y);
-
-        // The fixed layout the header documents: no item spacing (a row is then
-        // exactly rowHeight tall) and this popup's own padding (the theme's - see
-        // applyPanelStyle, which puts the same pair into the style; pushed here as
-        // well so the layout holds even on a frame whose style has not been applied).
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(aTheme.menuPadX(), aTheme.menuPadY()));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
-        if (ImGui::BeginPopup(kKeyMenuId)) {
-            // The content origin, padding included: every entry is placed
-            // relative to it, which is what makes the layout above exact.
-            const ImVec2 origin = ImGui::GetCursorPos();
-
-            // The row under the pointer is the app's own menu pill (see the entry loop
-            // below); these are its two colours, resolved once for the whole popup.
-            const ImU32 pill = toImU32(aTheme.menuHover());
-            const ImVec4 textHover = toImVec4(aTheme.menuHoverText());
-            const bool windowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-            const ImVec2 mouse = io.MousePos;
-
-            for (int r = 0; r < easingRows; ++r) {
-                for (int c = 0; c < kMenuColumns; ++c) {
-                    const int index = r * kMenuColumns + c;
-                    if (index >= types.size())
-                        break;
-                    const util::Easing::Type type = types.at(index);
-                    // The label is the timeline's own easing name - util::Easing
-                    // ::getTypeName, i.e. the "EasingName" context, the very call
-                    // TimeLineEditorWidget's easing menu builds its entries from.
-                    const QByteArray label = util::Easing::getTypeName(type).toUtf8();
-                    ImGui::SetCursorPos(ImVec2(
-                        origin.x + c * (columnWidth + kMenuColumnGap), origin.y + r * rowHeight
-                    ));
-                    // THE APP'S MENU ROW. ImGui's Selectable would fill the row with a
-                    // SQUARE rect in ImGuiCol_HeaderHovered; a QMenu's selected row is a
-                    // ROUNDED pill in accentHover with accentText on it (gui/AppStyle.cpp
-                    // CE_MenuItem). The pill is therefore drawn here - under the label,
-                    // which the Selectable draws - and the hovered label's colour is
-                    // switched to the on-accent text; the style's Header colours are off
-                    // (applyPanelStyle), so nothing else fills the row. The hover test is
-                    // the entry's own rectangle against io.MousePos, which is the same
-                    // rectangle ImGui tests: the entries tile the popup with no gap (the
-                    // layout above), so the two cannot disagree.
-                    const ImVec2 entryMin = ImGui::GetCursorScreenPos();
-                    const ImVec2 entryMax(entryMin.x + columnWidth, entryMin.y + rowHeight);
-                    const bool entryHovered = windowHovered && mouse.x >= entryMin.x && mouse.x < entryMax.x
-                                              && mouse.y >= entryMin.y && mouse.y < entryMax.y;
-                    if (entryHovered) {
-                        ImGui::GetWindowDrawList()->AddRectFilled(
-                            entryMin, entryMax, pill, aTheme.menuItemRounding()
-                        );
-                        ImGui::PushStyleColor(ImGuiCol_Text, textHover);
-                    }
-                    const bool chosen = ImGui::Selectable(
-                        label.constData(), false, ImGuiSelectableFlags_None, ImVec2(columnWidth, rowHeight)
-                    );
-                    if (entryHovered)
-                        ImGui::PopStyleColor();
-                    if (chosen) {
-                        // The editor's own action: the graph's whole selection,
-                        // ONE undo step, on the timeline's notifier and event.
-                        aEditor.setSelectedKeysEasing(type);
-                        ImGui::CloseCurrentPopup();
-                        requestRepaint(); // the frame was built before the edit
-                    }
-                }
-            }
-
-            // The hairline is an ITEM of the popup (so its auto-height counts it)
-            // but not an entry (so the row arithmetic above does not).
-            ImGui::SetCursorPos(ImVec2(origin.x, origin.y + easingRows * rowHeight));
-            ImGui::Separator();
-            ImGui::SetCursorPos(ImVec2(origin.x, origin.y + easingRows * rowHeight + kMenuSeparatorHeight));
-            // The delete row is an entry like any other and gets the same pill and the
-            // same on-accent text; it spans the popup's whole content width.
-            const ImVec2 deleteMin = ImGui::GetCursorScreenPos();
-            const ImVec2 deleteMax(deleteMin.x + contentWidth, deleteMin.y + rowHeight);
-            const bool deleteHovered = windowHovered && mouse.x >= deleteMin.x && mouse.x < deleteMax.x
-                                       && mouse.y >= deleteMin.y && mouse.y < deleteMax.y;
-            if (deleteHovered) {
-                ImGui::GetWindowDrawList()->AddRectFilled(deleteMin, deleteMax, pill, aTheme.menuItemRounding());
-                ImGui::PushStyleColor(ImGuiCol_Text, textHover);
-            }
-            const bool deleteChosen = ImGui::Selectable(
-                deleteLabel.constData(), false, ImGuiSelectableFlags_None, ImVec2(contentWidth, rowHeight)
-            );
-            if (deleteHovered)
-                ImGui::PopStyleColor();
-            if (deleteChosen) {
-                // The panel's own remove action, the same call a key press plus
-                // the Delete key reaches in the timeline: it removes exactly the
-                // key the panel's selection names - which the right-click that
-                // opened this menu just set.
-                aEditor.removeSelectedKey();
-                ImGui::CloseCurrentPopup();
-                requestRepaint();
-            }
-            ImGui::EndPopup();
-        }
-        ImGui::PopStyleVar(2);
     }
-
-    // ImGui owns the answer, and it is read here rather than guessed at: an entry
-    // chosen, a click outside and the panel going away all end with the popup
-    // closed. The class keeps this copy because a press arrives BETWEEN frames,
-    // where ImGui's own open state cannot be asked for (GetID needs a current
-    // window).
-    state.keyMenuOpen = ImGui::IsPopupOpen(kKeyMenuId, ImGuiPopupFlags_None);
+    return false;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1978,28 +2203,32 @@ void ImGuiOverlay::publishAccessibility() {
     }
 
     // THE SELECTED KEY, when the graph's selection names one: which key it is and
-    // which easing it carries. The key context menu acts on that selection, and
-    // the menu is an ImGui popup - it is not in this tree, like the repository's
-    // own QMenus (see the class comment) - so this line is how the state the menu
-    // changes stays readable: choose an easing from it and the panel says so. The
-    // easing name is the timeline's own (util::Easing::getTypeName, the
-    // "EasingName" context), so the two agree in every translation.
-    {
-        core::TimeLineEvent selection;
-        if (editor->retrieveSelection(selection) && selection.targets().size() == 1) {
-            const core::TimeLineEvent::Target& target = selection.targets().first();
-            const core::TimeLine* line = target.pos.line();
-            const core::TimeKey* key = line ? line->timeKey(target.pos.type(), target.pos.index()) : nullptr;
-            const util::Easing::Param* easing =
-                key ? ctrl::graph::Curve::easingOf(*key, target.pos.type()) : nullptr;
-            if (easing) {
-                const QString keyLabel = core::TimeLine::getTimeKeyName(target.pos.type()) + QStringLiteral(" ")
-                    + util::Easing::getTypeName(easing->type);
-                summary = QCoreApplication::translate(
-                              kTranslationContext, QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "%1, selected key: %2")
-                )
-                              .arg(summary, keyLabel);
-            }
+    // which easing it carries. The key menu acts on that selection, and the menu is
+    // a QMenu - it is not in this tree, like the repository's own QMenus (see the
+    // class comment) - so this line is how the state the menu changes stays
+    // readable: choose an easing from it and the panel says so. The easing name is
+    // the timeline's own (util::Easing::getTypeName, the "EasingName" context), so
+    // the two agree in every translation.
+    //
+    // AND THE MENU'S OWN ACTION IS PUBLISHED from the same selection, one item
+    // below: a menu a screen reader cannot address still needs a route to OPEN it.
+    core::TimeLineEvent selection;
+    QPoint selectedDot;
+    const bool oneSelectedKey =
+        editor->retrieveSelection(selection) && selectedKeyDot(selection, selectedDot);
+    if (oneSelectedKey) {
+        const core::TimeLineEvent::Target& target = selection.targets().first();
+        const core::TimeLine* line = target.pos.line();
+        const core::TimeKey* key = line ? line->timeKey(target.pos.type(), target.pos.index()) : nullptr;
+        const util::Easing::Param* easing =
+            key ? ctrl::graph::Curve::easingOf(*key, target.pos.type()) : nullptr;
+        if (easing) {
+            const QString keyLabel = core::TimeLine::getTimeKeyName(target.pos.type()) + QStringLiteral(" ")
+                + util::Easing::getTypeName(easing->type);
+            summary = QCoreApplication::translate(
+                          kTranslationContext, QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "%1, selected key: %2")
+            )
+                          .arg(summary, keyLabel);
         }
     }
 
@@ -2037,6 +2266,27 @@ void ImGuiOverlay::publishAccessibility() {
     fitItem.rect = model.plot.isEmpty() ? model.panel : model.plot;
     published.items.append(fitItem);
 
+    // The key menu's action, while the selection names one key the panel draws. Its
+    // rectangle is the region the POINTER's gesture works in - the key's centre
+    // grown by ctrl::graph::kKeyHitRadius, the distance the right-click is tested
+    // against - so a click where this item says it is does what this item does, the
+    // same rule the fit action follows. Nothing is published when no key is
+    // selected, or when the selected key is not in the drawn model (outside the
+    // plot's window, or on a hidden channel): an item whose action had no key to
+    // open a menu on would be a control that does nothing.
+    if (oneSelectedKey) {
+        a11y::Item menuItem;
+        menuItem.role = a11y::Item::PushButton;
+        menuItem.id = kKeyMenuItemId;
+        menuItem.name = trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "Key menu"));
+        menuItem.value = trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "right-click the key"));
+        menuItem.rect = QRect(selectedDot, selectedDot).adjusted(
+            -ctrl::graph::kKeyHitRadius, -ctrl::graph::kKeyHitRadius, ctrl::graph::kKeyHitRadius,
+            ctrl::graph::kKeyHitRadius
+        );
+        published.items.append(menuItem);
+    }
+
     a11y::sync(published);
 }
 
@@ -2048,6 +2298,22 @@ void ImGuiOverlay::onAccessibilityAction(int aId) {
     if (aId == kFitItemId) {
         editor.fitAll();
         requestRepaint();
+        return;
+    }
+
+    // The key menu: THE SAME ROUTE THE POINTER TAKES, at the same widget position -
+    // the menu is the application's own and it is anchored where the key is drawn,
+    // so an assistive activation puts it exactly where a right-click on that key
+    // would (MainDisplayWidget::showGraphKeyMenu). The selection is the one
+    // publishAccessibility published the item from, re-read here because a frame may
+    // have passed since.
+    if (aId == kKeyMenuItemId) {
+        core::TimeLineEvent selection;
+        QPoint dot;
+        if (!editor.retrieveSelection(selection) || !selectedKeyDot(selection, dot))
+            return; // the selection moved on: nothing to open the menu on
+        if (mState->widget)
+            static_cast<MainDisplayWidget*>(mState->widget.data())->showGraphKeyMenu(selection, dot);
         return;
     }
 

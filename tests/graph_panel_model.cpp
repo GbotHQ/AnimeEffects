@@ -42,13 +42,30 @@
 //     with base/dot/radius exactly the shared geometry the editor's hit-test
 //     grabs through (ctrl::graph::handlePoint) - and none on a curve with no
 //     Custom segment
+//  11 the reserved ruler band and the live marquee
+//  12 the label column is a STABLE, FORMAT-DERIVED reserve: its width is the
+//     widest label the value format can write (plus the box inset and text gap,
+//     clamped into the scaler's floor and ceiling), so it is the SAME width for
+//     every value window at several viewports - the plot rect stays
+//     byte-identical across six windows, across a value-axis wheel step and a
+//     value pan, and a 40px FRAME pan moves a frame's pixel by exactly 40 - while
+//     every published label's box is still at least as wide as its own measured
+//     text (checked with a wide value, 12345.6 -> "1.235e+04", a small negative
+//     and the float extremes)
+//  13 the key DOT is the marker's own geometry: circles of radius
+//     ctrl::graph::kKeyDotRadius (== the TIMELINE's ctrl::keyRadius) centred on
+//     each key, published beside the key rects, with the hit radius a separate,
+//     larger constant
 // plus a read-only probe: building a model must not move the editor's scaler,
 // its targets, the project's dirty flag or the document's keys.
 //
 // Headless: QApplication (translations + the font database the label metrics
 // need), no widgets, no GL, no .anie fixture.
 #include <QApplication>
+#include <QFont>
+#include <QFontMetrics>
 #include <QPointF>
+#include <QRectF>
 #include <QString>
 #include <QVector2D>
 #include <algorithm>
@@ -75,6 +92,11 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+// The timeline's own key marker (ctrl::keyRadius = 3.0 * ctrl::radiiFactor), the
+// constant the panel's key dot is derived from - block [13] pins the two
+// together instead of trusting a comment. Header-only: the constants are
+// constexpr, so nothing from the timeline's renderer is linked.
+#include "ctrl/time/time_Renderer.h"
 #include "gui/GraphPanelModel.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
@@ -209,11 +231,40 @@ QString channelText(const ctrl::graph::Channel& aChannel) {
 }
 
 // The value axis' number format, the renderer's own valueText(): 'g' with four
-// significant digits. The model restates it (the renderer keeps it private to its
-// translation unit), so the test restates it too - as the renderer's documented
-// convention, which is what the published label text has to match.
+// significant digits. The model reads it from ctrl::graph::Scaler::valueAxisText
+// (the function the column's width is measured from), so the test restates it
+// here as the documented convention the published label text has to match.
 QString valueTextOf(float aValue) {
     return QString::number(double(aValue), 'g', 4);
+}
+
+// The label column's reserve, restated from THE LABEL COLUMN in graph_Scaler.h:
+// the widest label the value FORMAT can write - one candidate per shape 'g'/4
+// can emit, both signs - plus the box's right inset and the text gap, clamped
+// into the column's floor and ceiling. It is a function of the format and the
+// font ALONE: it deliberately does not take a value window, because a reserve
+// that read one would move the plot's left edge whenever a gesture changed which
+// label is widest. Stated here so a column that stopped measuring (or that
+// measured the window again) fails block [12].
+int reserveAxisLabelWidth(const QFontMetrics& aMetrics) {
+    const float extremes[] = {
+        -std::numeric_limits<float>::max(),        // "-3.403e+38", the exponent form's widest
+        -0.0009999f,                               // "-0.0009999", the plain form's widest
+        -std::numeric_limits<float>::denorm_min(), // "-1.401e-45"
+        std::numeric_limits<float>::max(),         // "3.403e+38"
+        std::numeric_limits<float>::denorm_min(),  // "1.401e-45"
+        12345.6f,                                  // "1.235e+04"
+        100000.0f,                                 // "1e+05"
+        -100000.0f,                                // "-1e+05"
+        -1234.0f,                                  // "-1234"
+    };
+    int widest = 0;
+    for (const float value : extremes)
+        widest = std::max(widest, aMetrics.horizontalAdvance(valueTextOf(value)));
+    return std::clamp(
+        widest + ctrl::graph::Scaler::kAxisLabelPad + ctrl::graph::Scaler::kAxisLabelTextPad,
+        ctrl::graph::Scaler::kAxisLabelWidth, ctrl::graph::Scaler::kMaxAxisLabelWidth
+    );
 }
 
 // Every rect the model publishes, so "no grid" can be checked mechanically.
@@ -343,7 +394,15 @@ int main(int argc, char** argv) {
         CHECK(model.panel.contains(model.plot));
         CHECK(model.valueColumn.right() < model.plot.left());
         CHECK(!model.valueColumn.intersects(model.plot));
-        CHECK(model.plot.left() == model.panel.left() + ctrl::graph::Scaler::kMargin + ctrl::graph::Scaler::kAxisLabelWidth);
+        // The plot is inset by the MEASURED label column (graph_Scaler.h's THE
+        // LABEL COLUMN), so this is the old statement with the measurement in
+        // place of the fixed reserve - and the reserve is now its floor. The
+        // oracle scaler is the test's own copy of the editor's axes, so the two
+        // independent derivations of the column have to agree.
+        CHECK(model.plot.left() == model.panel.left() + ctrl::graph::Scaler::kMargin + model.valueColumn.width());
+        CHECK(model.valueColumn.width() == scale.axisLabelWidth());
+        CHECK(ctrl::graph::Scaler::kAxisLabelWidth <= model.valueColumn.width());
+        CHECK(model.valueColumn.width() <= ctrl::graph::Scaler::kMaxAxisLabelWidth);
         CHECK(model.plot.height() == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin);
 
         // The small viewport, same invariants. What happens to the plot at this
@@ -781,8 +840,13 @@ int main(int argc, char** argv) {
 
         // A plot narrower than the legend's own left inset (6px) plus a swatch has
         // no room for a swatch at all: every row is left empty rather than published
-        // in the margin, and the legend still lists every row.
-        const QSize tooNarrow(64, 200);
+        // in the margin, and the legend still lists every row. The viewport has to
+        // leave a NON-EMPTY plot first: the label column's reserve is now the value
+        // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
+        // than the old 46), so the plot starts 22px further right and this fixture
+        // grew by exactly that much (64 -> 80) to keep the same premise - a plot
+        // that exists and is narrower than 16px.
+        const QSize tooNarrow(80, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
         int narrowPublished = 0;
         for (const gui::PanelLegendRow& row : narrowModel.legend) {
@@ -1191,6 +1255,287 @@ int main(int argc, char** argv) {
         CHECK(swallowed.rulerBandTop == ruled.plot.bottom() + 1);
         CHECK(swallowed.frameLabels.isEmpty());
         CHECK(swallowed.plot == ruled.plot);
+    }
+
+    // -------------------------------------------------------------------------
+    // 12. THE LABEL COLUMN IS A STABLE, FORMAT-DERIVED RESERVE, AND NO GESTURE
+    // MOVES IT. Two things have to hold at once:
+    //   (a) the column is a function of the value FORMAT and the UI font, not of
+    //       the values currently visible - so it is the SAME width for every
+    //       window, and the plot's left edge (and every frame coordinate in the
+    //       panel) stays put while the user pans, wheels or adds a key. This is
+    //       the defect the first version of this rule had: a reserve measured
+    //       from the visible labels moved plot.left by 1px on a 40px pan, so the
+    //       frame coordinate moved 41px instead of 40 (measured on this tree).
+    //   (b) it still COVERS the labels: it is the widest label 'g'/4 can write,
+    //       so no published label exceeds its box, and the format's own sweep
+    //       (62px at the UI font) sits inside the ceiling, which is a
+    //       panel-protection bound rather than a clipping rule.
+    // The reserve rule itself is restated by reserveAxisLabelWidth() above - the
+    // test's own format and font metrics, never the model's own numbers.
+    {
+        const QFontMetrics metrics{QFont()};
+        const float savedMin = editor.scale().valueMin();
+        const float savedMax = editor.scale().valueMax();
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+
+        const int reserve = reserveAxisLabelWidth(metrics);
+
+        struct Window {
+            const char* what;
+            float lo;
+            float hi;
+        };
+        const Window windows[] = {
+            { "the seed window", 0.0f, 1.0f },
+            { "a wide value, 12345.6", 0.0f, 12345.6f },
+            { "a small negative, -1234", -1234.0f, 0.0f },
+            { "both float extremes", -std::numeric_limits<float>::max(), std::numeric_limits<float>::max() },
+            { "a mid-size window", 1000.0f, 2000.0f },
+            { "a narrow window", 0.4f, 0.6f },
+        };
+        const QSize viewports[] = { QSize(1280, 720), QSize(800, 480), QSize(320, 200) };
+
+        int wrongReserve = 0;     // a column that is not the format's reserve
+        int movedPlot = 0;        // a plot rect that changed with the window
+        int movedColumn = 0;      // a column that changed with the window
+        int tooNarrowBox = 0;     // a label box narrower than its own measured text
+        int tooNarrowColumn = 0;  // a column that cannot hold a label plus its right inset
+        int labels = 0;
+
+        for (const QSize& vp : viewports) {
+            // One reference geometry per viewport: the plot depends on the
+            // viewport, but it must NOT depend on the value window.
+            QRect plotRef;
+            QRect columnRef;
+            bool haveRef = false;
+
+            for (const Window& window : windows) {
+                editor.scale().setValueWindow(window.lo, window.hi);
+                const gui::GraphPanelModel measuredModel = gui::buildGraphPanelModel(editor, vp, palette);
+                if (!haveRef) {
+                    plotRef = measuredModel.plot;
+                    columnRef = measuredModel.valueColumn;
+                    haveRef = true;
+                }
+
+                if (measuredModel.valueColumn.width() != reserve)
+                    ++wrongReserve;
+                if (measuredModel.plot != plotRef)
+                    ++movedPlot;
+                if (measuredModel.valueColumn != columnRef)
+                    ++movedColumn;
+
+                int widestShown = 0;
+                QString widestShownText;
+                for (const gui::PanelLabel& label : measuredModel.valueLabels) {
+                    const int advance = metrics.horizontalAdvance(label.text);
+                    ++labels;
+                    if (advance > widestShown) {
+                        widestShown = advance;
+                        widestShownText = label.text;
+                    }
+                    if (label.rect.width() < advance)
+                        ++tooNarrowBox;
+                    if (measuredModel.valueColumn.width() < advance + ctrl::graph::Scaler::kAxisLabelPad)
+                        ++tooNarrowColumn;
+                }
+                std::printf(
+                    "[12] viewport %4dx%-4d  window %-24s [%g, %g]  column=%3d reserve=%3d  widest label "
+                    "\"%s\"=%2dpx box=%2dpx  plot=(%d,%d %dx%d)\n",
+                    vp.width(), vp.height(), window.what, double(window.lo), double(window.hi),
+                    measuredModel.valueColumn.width(), reserve, qUtf8Printable(widestShownText), widestShown,
+                    measuredModel.valueLabels.isEmpty() ? -1 : measuredModel.valueLabels.first().rect.width(),
+                    measuredModel.plot.x(), measuredModel.plot.y(), measuredModel.plot.width(),
+                    measuredModel.plot.height()
+                );
+            }
+        }
+        editor.scale().setValueWindow(savedMin, savedMax); // as the editor was found
+
+        std::printf(
+            "[12] labels=%d  boxes narrower than their text=%d  columns too narrow for a label+inset=%d  "
+            "columns != the format's reserve (%d)=%d  plots moved by a window change=%d  columns moved=%d\n",
+            labels, tooNarrowBox, tooNarrowColumn, reserve, wrongReserve, movedPlot, movedColumn
+        );
+        CHECK(labels > 0);
+        CHECK(wrongReserve == 0);
+        CHECK(movedPlot == 0);
+        CHECK(movedColumn == 0);
+        CHECK(tooNarrowBox == 0);
+        CHECK(tooNarrowColumn == 0);
+
+        // ---- THE GESTURES A USER ACTUALLY MAKES, on the editor's own scaler ----
+        // A wheel step on the value axis and a value PAN both change the value
+        // window (that is what they are for) and must leave the panel's chrome
+        // exactly where it was: the plot rect byte-identical to the reference.
+        // The column is what makes that possible - a window-measured reserve made
+        // the plot's left edge follow the numbers.
+        const QSize vp = viewports[0];
+        const gui::GraphPanelModel reference = gui::buildGraphPanelModel(editor, vp, palette);
+        const QRect plotRef = reference.plot;
+        const QRect columnRef = reference.valueColumn;
+
+        const int anchorY = plotRef.center().y();
+        const bool zoomed = editor.scale().updateValueZoom(1.25f, anchorY);
+        const gui::GraphPanelModel afterZoom = gui::buildGraphPanelModel(editor, vp, palette);
+        editor.scale().panValue(40);
+        const gui::GraphPanelModel afterPan = gui::buildGraphPanelModel(editor, vp, palette);
+        editor.scale().setValueWindow(savedMin, savedMax);
+
+        // ...and a FRAME pan moves a frame's pixel by EXACTLY the pan delta: no
+        // pixel of it may be eaten by a column that re-measured on the way.
+        const int framePixelBefore = editor.scale().pixelX(core::Frame(0));
+        editor.scale().panFrame(40);
+        const int framePixelAfter = editor.scale().pixelX(core::Frame(0));
+        editor.scale().panFrame(-40);
+        const gui::GraphPanelModel afterFramePan = gui::buildGraphPanelModel(editor, vp, palette);
+
+        std::printf(
+            "[12] wheel step (anchor y=%d) applied=%d  pan 40px:  plot before=(%d,%d %dx%d) after_zoom=(%d,%d %dx%d) "
+            "after_pan=(%d,%d %dx%d)  column before=%d after_zoom=%d after_pan=%d  px(0) frame pan: %d -> %d "
+            "(delta %d, expected 40)\n",
+            anchorY, int(zoomed), plotRef.x(), plotRef.y(), plotRef.width(), plotRef.height(), afterZoom.plot.x(),
+            afterZoom.plot.y(), afterZoom.plot.width(), afterZoom.plot.height(), afterPan.plot.x(), afterPan.plot.y(),
+            afterPan.plot.width(), afterPan.plot.height(), columnRef.width(), afterZoom.valueColumn.width(),
+            afterPan.valueColumn.width(), framePixelBefore, framePixelAfter, framePixelAfter - framePixelBefore
+        );
+        CHECK(zoomed); // the fixture's premise: there was a window left to zoom
+        CHECK(afterZoom.plot == plotRef);
+        CHECK(afterPan.plot == plotRef);
+        CHECK(afterFramePan.plot == plotRef);
+        CHECK(afterZoom.valueColumn == columnRef);
+        CHECK(afterPan.valueColumn == columnRef);
+        CHECK(framePixelAfter - framePixelBefore == 40);
+        CHECK(editor.scale().pixelX(core::Frame(0)) == framePixelBefore); // panned back
+
+        // The reserve is inside the ceiling and covers the format's widest label:
+        // the clamp is panel protection, NOT a rule that clips numbers, and this
+        // is the number that keeps it one.
+        int widestExtreme = 0;
+        QString widestText;
+        const float extremes[] = {
+            -std::numeric_limits<float>::max(),
+            -0.0009999f,
+            -std::numeric_limits<float>::denorm_min(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::denorm_min(),
+            12345.6f,
+            100000.0f,
+            -100000.0f,
+            -1234.0f,
+        };
+        for (const float value : extremes) {
+            const QString text = valueTextOf(value);
+            const int advance = metrics.horizontalAdvance(text);
+            if (advance > widestExtreme) {
+                widestExtreme = advance;
+                widestText = text;
+            }
+        }
+        std::printf(
+            "[12] reserve=%d = widest 'g'/4 label \"%s\" %dpx + inset %d + gap %d  ceiling=%d (cleared by %d)  "
+            "floor=%d\n",
+            reserve, qUtf8Printable(widestText), widestExtreme, ctrl::graph::Scaler::kAxisLabelPad,
+            ctrl::graph::Scaler::kAxisLabelTextPad, ctrl::graph::Scaler::kMaxAxisLabelWidth,
+            ctrl::graph::Scaler::kMaxAxisLabelWidth - reserve, ctrl::graph::Scaler::kAxisLabelWidth
+        );
+        CHECK(widestExtreme > 0);
+        CHECK(reserve >= widestExtreme + ctrl::graph::Scaler::kAxisLabelPad);
+        CHECK(reserve <= ctrl::graph::Scaler::kMaxAxisLabelWidth);
+        // The reserve IS the measurement: pinning the column to the old 46px
+        // reserve leaves 42px of box for a 62px label - this fails then.
+        CHECK(ctrl::graph::Scaler::kAxisLabelWidth < reserve);
+    }
+
+    // -------------------------------------------------------------------------
+    // 13. THE KEY MARKER IS A CIRCLE, AND THE HIT GEOMETRY IS A SEPARATE, LARGER
+    // THING. The drawn marker is a circle of radius ctrl::graph::kKeyDotRadius
+    // centred on the key's mapped point - and that radius is the APPLICATION'S
+    // OWN key marker, the timeline's (ctrl::keyRadius = 3.0 * ctrl::radiiFactor =
+    // 3.75px, src/ctrl/time/time_Renderer.h, the radius drawKeys() paints a key
+    // body with). The rects in `keys` stay: they are the editor's hit geometry,
+    // a different size on purpose.
+    {
+        // The tie to the timeline, as a compile-time identity rather than a
+        // comment: this fails to build if either side moves.
+        static_assert(
+            ctrl::graph::kKeyDotRadius == ctrl::keyRadius,
+            "the panel's key marker radius must be the timeline's own key-body radius "
+            "(ctrl::keyRadius = 3.0 * ctrl::radiiFactor, src/ctrl/time/time_Renderer.h)"
+        );
+        CHECK(ctrl::graph::kKeyDotRadius < double(ctrl::graph::kKeyHitRadius)); // drawn small, grabbed large
+        CHECK(ctrl::graph::kHandleRadius < ctrl::graph::kHandleHitRadius);      // ...for a handle too
+        CHECK(ctrl::graph::kKeyDotRadius < double(ctrl::graph::kKeyRadius));    // the marker is not the hit square
+
+        const gui::GraphPanelModel dotted = gui::buildGraphPanelModel(editor, viewport, palette);
+        // A fresh copy of the editor's own axes: earlier blocks moved the value
+        // window and the targets, and the key mapping under test is the CURRENT
+        // one (block [10] refreshes its oracle for the same reason).
+        ctrl::graph::Scaler oracle = editor.scale();
+        oracle.setRect(panel);
+        int keys = 0;
+        int dots = 0;
+        int badCounts = 0;
+        int badCentres = 0;
+        int offHitCentre = 0;
+        int outsideOwnRect = 0;
+        for (const gui::PanelCurve& curve : dotted.curves) {
+            if (curve.keyDots.size() != curve.keys.size() || curve.keyDots.size() != curve.keyFrames.size())
+                ++badCounts;
+
+            const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
+            int published = 0;
+            for (const core::TimeKey* key : source.keys()) {
+                const core::Frame frame(key->frame());
+                const float value = source.valueOf(*key);
+                const QRect hit = ctrl::graph::keyRect(oracle, frame, value);
+                if (hit.intersected(dotted.plot).isEmpty())
+                    continue; // entirely outside the plot: no rect published, so no dot
+                if (published >= curve.keyDots.size()) {
+                    ++badCounts;
+                    break;
+                }
+
+                const QPointF dot = curve.keyDots.at(published);
+                ++dots;
+                // The dot is the key's mapped centre, derived from the scaler
+                // rather than from the model's own call to keyDot().
+                if (dot != QPointF(oracle.pixelX(frame), oracle.pixelY(value)))
+                    ++badCentres;
+                // ...and it is concentric with the HIT square: QRectF's centre is
+                // the geometric one (left + width/2), so an uncut rect's centre is
+                // exactly the key's point.
+                if (QRectF(hit).center() != dot)
+                    ++offHitCentre;
+                if (curve.keys.at(published) == hit) {
+                    // The rect is uncut, so the marker it belongs to must sit
+                    // inside the geometry the editor picks with - a click on the
+                    // dot's own pixel lands on that key.
+                    if (!curve.keys.at(published).contains(dot.toPoint()))
+                        ++outsideOwnRect;
+                }
+                ++published;
+            }
+            if (published != curve.keyDots.size())
+                ++badCounts;
+            keys += curve.keys.size();
+        }
+
+        std::printf(
+            "[13] key rects=%d  key dots=%d  radius counts mismatched=%d  dots off the key's own pixel=%d  "
+            "dots not concentric with the hit square=%d  uncut dots outside their own square=%d  "
+            "kKeyDotRadius=%.2f (timeline ctrl::keyRadius=%.2f)  kKeyHitRadius=%d  kKeyRadius=%d\n",
+            keys, dots, badCounts, badCentres, offHitCentre, outsideOwnRect, ctrl::graph::kKeyDotRadius,
+            ctrl::keyRadius, ctrl::graph::kKeyHitRadius, ctrl::graph::kKeyRadius
+        );
+        CHECK(keys > 0);
+        CHECK(dots == keys);
+        CHECK(badCounts == 0);
+        CHECK(badCentres == 0);
+        CHECK(offHitCentre == 0);
+        CHECK(outsideOwnRect == 0);
     }
 
     // -------------------------------------------------------------------------

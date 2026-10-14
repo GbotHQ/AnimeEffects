@@ -951,8 +951,19 @@ int sectionScaler() {
 
     Scaler scaler;
     scaler.setRect(QRect(0, 0, 600, 400));
-    // margin 4 plus the 46px label column on the left, margin 4 all round.
-    CHECK(scaler.plotRect() == QRect(50, 4, 546, 392));
+    // The left column is the scaler's OWN format-derived reserve, not a constant:
+    // margin 4, then axisLabelWidth()'s column, then the plot, then the margin again.
+    // Written as the rule rather than the number it happens to come to for the font
+    // in force, so this pins the inset arithmetic and not a magic 46.
+    CHECK(scaler.axisLabelWidth() >= Scaler::kAxisLabelWidth); // never below the floor
+    CHECK(scaler.axisLabelWidth() <= Scaler::kMaxAxisLabelWidth); // never past the ceiling
+    CHECK(
+        scaler.plotRect()
+        == QRect(
+            Scaler::kMargin + scaler.axisLabelWidth(), Scaler::kMargin,
+            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth(), 400 - 2 * Scaler::kMargin
+        )
+    );
     CHECK(scaler.rect() == QRect(0, 0, 600, 400));
     // The value window is seeded non-degenerate: every mapping divides by its
     // span.
