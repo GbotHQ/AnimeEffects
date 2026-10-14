@@ -555,6 +555,25 @@ public:
     // The VERTICAL axis is untouched by all of this: value fit, zoom and pan stay
     // this panel's, exactly as before.
     void setFrameWindow(const util::Range& aFrames);
+    // Re-derives the shared window's mapping for a panel covering aViewportSize
+    // (viewport pixels, the same size the drawing layer builds its model with), and
+    // does nothing while no timeline owns the frame axis.
+    //
+    // WHY THIS EXISTS, and it is load-bearing: setFrameWindow is pushed by the gui
+    // the moment the timeline's view or the driver changes - which can be BEFORE the
+    // viewport has been laid out, so the panel's plot rect is still degenerate and
+    // the mapping has no width to choose a rung from (measured in the running
+    // application: the first pushes arrive with a plot of width -79). The editor's
+    // own rect is otherwise written only on the cursor path, which the panel reaches
+    // only when it OWNS an event - so a panel nobody has touched yet would keep the
+    // frame axis it was born with and never become a view of the timeline at all.
+    // The gui therefore calls this from the path that is about to DRAW the panel,
+    // where the geometry is finally known; a resize re-derives it the same way (the
+    // rung depends on the plot's width).
+    //
+    // Cheap and idempotent: it writes the rect, then returns at once when the range,
+    // the width and the rung are the ones already applied (see mAppliedFrameWindow).
+    void syncFrameWindowFor(const QSize& aViewportSize);
     // The two horizontal gestures, in the timeline's units: a pan by aFrameDelta
     // FRAMES (positive reveals LATER frames, i.e. the content moves left) and a
     // wheel notch about the frame the panel's cursor is over (aWheelDelta is Qt's

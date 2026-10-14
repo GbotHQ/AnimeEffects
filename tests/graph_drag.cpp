@@ -2268,6 +2268,37 @@ int main(int argc, char** argv) {
         CHECK(fromTimeline.targets().size() == 2);
         editor.setSelectionSource(&timeline.selection()); // re-attach for the window half
 
+        // --- (d0) THE PUSH IS NOT THE MAPPING, and that split is load-bearing: the gui
+        // pushes the window the moment the timeline's view or the driver changes,
+        // which in the running application is BEFORE the viewport has been laid out -
+        // so the panel's plot rect is still degenerate and the mapping has no width to
+        // choose a rung from (MEASURED in the running app: the first pushes arrive with
+        // a plot of width -79). The editor's own rect is otherwise written only on the
+        // cursor path, which the panel reaches only when it OWNS an event - so a window
+        // pushed early would never be applied at all and the panel would keep the frame
+        // axis it was born with. syncFrameWindowFor() is the second step, called from
+        // the path that is about to DRAW the panel. Both steps are pinned here, in the
+        // application's own order.
+        editor.setFrameWindow(util::Range(50, 150));
+        const int beforeDegeneratePush = editor.scale().pixelX(core::Frame(0));
+        editor.scale().setRect(QRect()); // the viewport has no layout yet
+        editor.setFrameWindow(util::Range(50, 150));
+        CHECK(editor.hasTimelineFrameAxis());          // the window is REMEMBERED...
+        CHECK(editor.scale().plotRect().width() <= 0); // ...but there is nothing to map into
+        CHECK(editor.scale().pixelX(core::Frame(0)) == beforeDegeneratePush); // so nothing moved
+
+        // ...and the gui derives it for the geometry the panel will be drawn with, which
+        // is the same size the drawing layer builds its model with.
+        editor.syncFrameWindowFor(panel.size());
+        CHECK(editor.scale().plotRect().width() > 0);
+        CHECK(editor.scale().pixelX(core::Frame(50)) >= editor.scale().plotRect().left());
+        CHECK(
+            std::abs(
+                editor.scale().pixelX(core::Frame(50))
+                - (editor.scale().plotRect().left() + ctrl::GraphEditor::kFrameWindowMargin)
+            ) <= 1
+        );
+
         // --- (d) THE SHARED FRAME WINDOW. The gui pushes the timeline's visible
         // range (TimeLineWidget::visibleFrameRange) as VALUES; the panel maps it onto
         // its own plot with the timeline's own ladder and never writes its own X

@@ -537,6 +537,23 @@ void MainDisplayWidget::paintEvent(QPaintEvent* aEvent) {
     // we must call end function
     mPainterHandle->end();
 
+    // The panel's frame window is re-derived for THIS frame's geometry, before any
+    // renderer builds a model from it: the push that names the window can arrive
+    // before the viewport has a size (measured in the running application: the first
+    // pushes see a plot of width -79), and the mapping's rung depends on the plot's
+    // width, so a resize must re-derive it too. This is the moment the geometry is
+    // finally known - and it is a WRITE the drawing layer then reads, not a repaint
+    // request: the frame being painted is the one it applies to. Outside the
+    // overlay's own #ifdef, because the shared frame window is the editor's state and
+    // the panel is drawn from it whichever renderer is compiled in (see
+    // ctrl::GraphEditor::syncFrameWindowFor; the call is cheap and idempotent).
+    if (ctrl::GraphEditor* graphEditor = mDriver ? mDriver->graphEditor() : nullptr) {
+        // this->size() is the size the overlay builds its model with
+        // (ImGuiOverlay::paint: aWidget.size()), so the panel is drawn with exactly
+        // the geometry its frame window was derived for.
+        graphEditor->syncFrameWindowFor(this->size());
+    }
+
 #ifdef AE_ENABLE_IMGUI
     // The ImGui overlay draws AFTER the QPainter pass, in the same framebuffer and
     // the same GL context, and that order is load-bearing:

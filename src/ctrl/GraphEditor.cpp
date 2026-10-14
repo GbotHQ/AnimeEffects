@@ -287,6 +287,18 @@ namespace ctrl {
         mZoomFrames = aZoomFrames;
     }
 
+    void GraphEditor::syncFrameWindowFor(const QSize& aViewportSize) {
+        if (!mFrameWindowShared)
+            return; // the frame axis is the panel's own: nothing to derive
+
+        // The same rect the cursor path writes (a pure function of the viewport), so
+        // the geometry the panel is DRAWN with and the geometry it is PICKED through
+        // are one, and the mapping below is derived from the rect the drawing layer
+        // will copy.
+        mScale.setRect(panelRect(aViewportSize));
+        syncFrameWindow();
+    }
+
     void GraphEditor::clearFrameAxis() {
         mFrameWindowShared = false;
         mFrameWindow = util::Range();
