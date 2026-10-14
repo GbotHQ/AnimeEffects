@@ -472,10 +472,47 @@ rm -f /tmp/probe_graph_overlay_geom.txt
 # Everything that honours TMPDIR - ImageMagick above all, which this probe calls for
 # every pixel comparison - now writes beside the repository, and the directory goes away
 # with the script.
-export TMPDIR="$(mktemp -d "$AE_PROBE_DIR/build/tmp-probe-XXXXXX")"
+#
+# AND IT MUST BE A DIRECTORY THAT EXISTS: the first version of this used
+# "$AE_PROBE_DIR/build/tmp-probe-XXXXXX", and $AE_PROBE_DIR is a bare `mktemp -d` with no
+# `build` in it, so the mktemp FAILED ("no such file or directory"), TMPDIR came out EMPTY,
+# every scratch consumer fell back to /tmp - the quota-ed tmpfs this block exists to avoid -
+# and the trap removed nothing. Measured 2026-10-14 on the run that still died at 37 s.
+# $ROOT/build is the repository's own build tree: it exists whenever the binary this probe
+# needs exists, and it is on the same 23 GB filesystem, so no quota can reach it.
+export TMPDIR="$(mktemp -d "$ROOT/build/tmp-probe-XXXXXX")"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
+# THE BODY GOES IN ON STDIN, NOT AS A `bash -c '<body>'` ARGUMENT. THIS IS NOT STYLE.
+#
+# MEASURED 2026-10-14, the failure this replaces: the body used to be one single-quoted
+# argument, and an APOSTROPHE in any of those comments - the body is 1800 lines and its
+# comments are full of them - ENDS that quoted string. The shell then went on splitting
+# what followed into ordinary words, so `bash -c` was handed THIRTEEN arguments: it ran the
+# first 12355 bytes of the 101876-byte body as the script and turned the remaining 89453
+# bytes into positional parameters that nothing ever read. The body therefore died at the end
+# of that comment, which is 37 s in (wait_ready had just returned), writing NOTHING:
+#   * no /tmp/probe_graph_overlay_geom.txt (the body's first write is its geometry one),
+#   * an empty /tmp/probe_graph_overlay_body.log (nothing had failed, so nothing was said),
+#   * Xvfb killed by xvfb-run's own teardown and the application logging "The X11 connection
+#     broke (error 1). Did the X11 server die?" - which is what sent this investigation after
+#     an X server that was never the problem.
+# The two apostrophes that did it were in the comment "THE FIELD'S OWN ... a spin box's
+# Value" at the top of angle_value(); the git-era snapshot /tmp/probe_graph_overlay.sh.good
+# (Oct 13) has a body of ONE 79243-byte word and runs, so this was a comment-only regression.
+#
+# A QUOTED heredoc cannot suffer this: `<<'AE_PROBE_BODY_END'` is verbatim, apostrophes and
+# `$` and backticks included, and its length is bounded by nothing (a single ARGUMENT is
+# limited to MAX_ARG_STRLEN = 128 KB, which this body was within ~40 KB of). The terminator
+# must be a line that appears NOWHERE in the body; keep it that way.
+#
+# Two consequences to hold on to when editing the body:
+#   * `$SHOTS`, `$ROOT`, `$APP` and `$PROJ` are EXPORTED, so the body expands them itself -
+#     the `"$SHOTS/x.png"` dance the body used to need is gone (it existed only because
+#     the OUTER shell expanded it). Write `"$SHOTS/x.png"` there now.
+#   * the body is fed on stdin, so a bare `read` in it would eat the script; every `read`
+#     in the body is redirected (`<<<` / `done < <(...)`), and a new one must be too.
+xvfb-run -a --server-args="-screen 0 1440x900x24" bash -s 2>&1 <<'AE_PROBE_BODY_END' | tee /tmp/probe_graph_overlay_body.log | tail -4
   cd "$AE_PROBE_DIR"
   "$APP" "$PROJ" >/tmp/probe_graph_overlay.log 2>&1 &
   app=$!
@@ -903,11 +940,11 @@ PY
   # Nothing is selected at startup, so this is the one moment the panel can be asked for
   # its "no target" sentence: ObjectTreeWidget has no current row until one is clicked.
   park
-  import -window root "'"$SHOTS"'/graph_probe_01_off_empty.png"
+  import -window root "$SHOTS/graph_probe_01_off_empty.png"
 
   ae_press "Show animation graph" "the graph toggle is pressable by name"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_02_on_empty.png"
+  import -window root "$SHOTS/graph_probe_02_on_empty.png"
   EMPTY_LINE=$(ae extents "Select a layer to show its curves" "label")
   NOKEYS_LINE=$(ae extents "No keys on the selected layers" "label")
   echo "EMPTY_LINE=\"$EMPTY_LINE\""   >> $G
@@ -915,7 +952,7 @@ PY
 
   ae_press "Show animation graph" "the graph toggle is pressable a second time"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_03_off_empty.png"
+  import -window root "$SHOTS/graph_probe_03_off_empty.png"
 
   # ---- THE TOP ROW SELECTED: THE PLAIN PANEL, AND THE OFF/ON/OFF TRIPLE ----
   if [ -n "$ROW" ]; then
@@ -924,16 +961,16 @@ PY
       check 1 "the object tree answered with a first row to select (no table cell in ae dump after 60s)"
   fi
   park
-  import -window root "'"$SHOTS"'/graph_probe_04_off_top.png"
+  import -window root "$SHOTS/graph_probe_04_off_top.png"
 
   ae_press "Show animation graph" "the graph toggle is pressable a third time"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_05_on_top.png"
+  import -window root "$SHOTS/graph_probe_05_on_top.png"
   echo "TOP_LINE=\"$(ae extents "No keys on the selected layers" "label")\"" >> $G
 
   ae_press "Show animation graph" "the graph toggle is pressable a fourth time"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_06_off_top.png"
+  import -window root "$SHOTS/graph_probe_06_off_top.png"
 
   # ---- PHASE 5: THE WHEEL - THE GRAPHS WHILE IT IS VISIBLE, THE CANVASS WHEN IT IS NOT ----
   # WHAT THIS PROVES, AND WHY NOTHING ELSE CAN. ctrl::Driver::updateGraphWheel hands the
@@ -1021,19 +1058,19 @@ PY
   # while zooming in cannot be.
   ae_press "Show animation graph" "the graph toggle is pressable (the wheel phase, on)"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_20_wheel_on_a.png"
-  import -window root "'"$SHOTS"'/graph_probe_21_wheel_on_b.png"
-  wheel_here "'"$SHOTS"'/graph_probe_22_wheel_on_after.png" up
+  import -window root "$SHOTS/graph_probe_20_wheel_on_a.png"
+  import -window root "$SHOTS/graph_probe_21_wheel_on_b.png"
+  wheel_here "$SHOTS/graph_probe_22_wheel_on_after.png" up
   wheel_restore
 
   # (ii) THE GRAPH HIDDEN: same point, same notches, the other owner.
   ae_press "Show animation graph" "the graph toggle is pressable (the wheel phase, off)"
   sleep 1.2; park
-  import -window root "'"$SHOTS"'/graph_probe_23_wheel_off_a.png"
-  import -window root "'"$SHOTS"'/graph_probe_24_wheel_off_b.png"
+  import -window root "$SHOTS/graph_probe_23_wheel_off_a.png"
+  import -window root "$SHOTS/graph_probe_24_wheel_off_b.png"
   WHEEL_HIDDEN_FIT=$(ae extents "Fit graph")
   echo "WHEEL_HIDDEN_FIT=\"$WHEEL_HIDDEN_FIT\"" >> $G
-  wheel_here "'"$SHOTS"'/graph_probe_25_wheel_off_after.png" up
+  wheel_here "$SHOTS/graph_probe_25_wheel_off_after.png" up
   wheel_restore
 
   # ---- (iii) THE RING OVER BRIGHT ARTWORK: ONE CAPTURE FOR THE EYE, NOT FOR THE GATE ----
@@ -1243,8 +1280,8 @@ PY
   # READ THE PANEL TWICE, WITH NOTHING IN BETWEEN: no toggle, no forced paint. The pair is
   # still expected to be exactly 0 px, which is the control that makes the press below the
   # only difference between it and the keyed capture.
-  import -window root "'"$SHOTS"'/graph_probe_07_on_control.png"
-  import -window root "'"$SHOTS"'/graph_probe_08_on_control.png"
+  import -window root "$SHOTS/graph_probe_07_on_control.png"
+  import -window root "$SHOTS/graph_probe_08_on_control.png"
 
   # THE PRESS: the centre of the row rect AT-SPI reports for the knob.
   if [ -n "$KNOB" ]; then
@@ -1260,7 +1297,7 @@ PY
   # notifier (core::Project::onTimeLineModified), and the DriverHolder slot on that signal
   # asks the viewport for the frame (DriverHolder::onTimeKeyUpdated -> onVisualUpdated ->
   # MainDisplayWidget::onVisualUpdated), so the panel own pixels move without a nudge.
-  import -window root "'"$SHOTS"'/graph_probe_09_after_key.png"
+  import -window root "$SHOTS/graph_probe_09_after_key.png"
   echo "ANGLE=\"$ANGLE\""               >> $G
   echo "ANGLE_VALUE=\"$ANGLE_VALUE\""   >> $G
   echo "LEGEND_ROWS=\"$(legend list | tr "\n" ";")\"" >> $G
@@ -1275,10 +1312,10 @@ PY
   LEGEND_NAME=$(legend list | head -1 | cut -f1)
   LEGEND_EXT=$(ae extents "$LEGEND_NAME" "check box")
   LEGEND_OFF=$(legend toggle "$LEGEND_NAME")
-  import -window root "'"$SHOTS"'/graph_probe_10_legend_hidden.png"
+  import -window root "$SHOTS/graph_probe_10_legend_hidden.png"
   ALLHIDDEN=$(ae extents "All channels of the selected layers are hidden" "label")
   LEGEND_ON=$(legend toggle "$LEGEND_NAME")
-  import -window root "'"$SHOTS"'/graph_probe_11_legend_shown.png"
+  import -window root "$SHOTS/graph_probe_11_legend_shown.png"
   ALLHIDDEN_BACK=$(ae extents "All channels of the selected layers are hidden" "label")
   echo "LEGEND_NAME=\"$LEGEND_NAME\""   >> $G
   echo "LEGEND_EXT=\"$LEGEND_EXT\""     >> $G
@@ -1543,9 +1580,9 @@ PY
           sleep 0.4
           xdotool click 3
           sleep 1.3
-          import -window root "'"$SHOTS"'/graph_probe_41_key_scan.png"
-          CHANGED=$(magick compare -metric AE /tmp/probe_menu_scan_ctl.png "'"$SHOTS"'/graph_probe_41_key_scan.png" null: 2>&1 | awk "{print \$1+0}")
-          magick compare -compose src /tmp/probe_menu_scan_ctl.png "'"$SHOTS"'/graph_probe_41_key_scan.png" /tmp/probe_menu_scan_diff.png 2>/dev/null
+          import -window root "$SHOTS/graph_probe_41_key_scan.png"
+          CHANGED=$(magick compare -metric AE /tmp/probe_menu_scan_ctl.png "$SHOTS/graph_probe_41_key_scan.png" null: 2>&1 | awk "{print \$1+0}")
+          magick compare -compose src /tmp/probe_menu_scan_ctl.png "$SHOTS/graph_probe_41_key_scan.png" /tmp/probe_menu_scan_diff.png 2>/dev/null
           SBB=$(magick identify -format "%@" /tmp/probe_menu_scan_diff.png 2>/dev/null)
           read -r SW SH SBX SBY <<< "$(printf "%s" "${SBB:-0x0+0+0}" | tr "x+" "  ")"
           echo "# menu scan $(date +%T): sample $MX,$MY changed=${CHANGED:-0} region=${SBB:-unreadable}" >> $G
@@ -1645,8 +1682,8 @@ PY
 
   # The control pair, straight off the state the scan left: nothing changed between them, so
   # nothing is forced and the pair is expected to be 0 px.
-  import -window root "'"$SHOTS"'/graph_probe_12_menu_control_a.png"
-  import -window root "'"$SHOTS"'/graph_probe_13_menu_control_b.png"
+  import -window root "$SHOTS/graph_probe_12_menu_control_a.png"
+  import -window root "$SHOTS/graph_probe_13_menu_control_b.png"
 
   # ---- THE MENUS ANCHOR: SEARCHED, AND EVERY CANDIDATE CONFIRMED BY THE POPUPS-OWN
   # PIXELS ----
@@ -1759,21 +1796,21 @@ PY
       # on, so a menu that did NOT consume it would say so in the state line.
       xdotool key --clearmodifiers Delete
       sleep 1.4
-      import -window root "'"$SHOTS"'/graph_probe_32_menu_delete.png"
+      import -window root "$SHOTS/graph_probe_32_menu_delete.png"
       MENU_DEL_LINE=$(summary_line)
       # ESCAPE, with the pointer where the menu was opened and nothing else moved: the two
       # captures the diff is taken from below differ by the popup and nothing else, and the
       # document must be untouched by it (the line must not move).
       xdotool key --clearmodifiers Escape
       sleep 1.4
-      import -window root "'"$SHOTS"'/graph_probe_33_menu_escape.png"
+      import -window root "$SHOTS/graph_probe_33_menu_escape.png"
       MENU_ESCAPE_LINE=$(summary_line)
   fi
   # AND THE MENU IS STILL USABLE: reopened at the same anchor for the CLICK below, which is
   # the existing route of this phase and stays its route. The anchor has to be on the drawn
   # square again - it is, since Escape changed nothing and the editor selection is where the
   # phase left it - so the search costs exactly one attempt.
-  if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu ${MENU_ANCHOR} "'"$SHOTS"'/graph_probe_34_menu_reopen.png"; then
+  if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu ${MENU_ANCHOR} "$SHOTS/graph_probe_34_menu_reopen.png"; then
       MENU_CLICK_BBOX="$MENU_BBOX"
   fi
 
@@ -1853,7 +1890,7 @@ PY
   # Nothing forced here either: the frame that applies the queued press and its release is
   # the successor frame the overlay own paint asked for while ImGui still held input (see
   # imguiHasQueuedInput), and click_entry has already waited for it above.
-  import -window root "'"$SHOTS"'/graph_probe_15_menu_after.png"
+  import -window root "$SHOTS/graph_probe_15_menu_after.png"
   MENU_AFTER=$(summary_line)
   MENU_DOCK_AFTER=$(ae dump 2>/dev/null | grep -i "easing" | tr "\n" ";" | head -c 200)
 
@@ -1880,9 +1917,9 @@ PY
       sleep 1.4
       park
   fi
-  import -window root "'"$SHOTS"'/graph_probe_16_menu_nokey.png"
+  import -window root "$SHOTS/graph_probe_16_menu_nokey.png"
   MENU_NOKEY_LINE=$(summary_line)
-  magick compare -compose src "'"$SHOTS"'/graph_probe_15_menu_after.png" "'"$SHOTS"'/graph_probe_16_menu_nokey.png" /tmp/probe_menu_nokey_diff.png 2>/dev/null
+  magick compare -compose src "$SHOTS/graph_probe_15_menu_after.png" "$SHOTS/graph_probe_16_menu_nokey.png" /tmp/probe_menu_nokey_diff.png 2>/dev/null
   MENU_EMPTY_BBOX=$(magick identify -format "%@" /tmp/probe_menu_nokey_diff.png 2>/dev/null)
 
   # ---- THE HIGHLIGHT, THE ARROWS AND ENTER ----
@@ -1896,10 +1933,10 @@ PY
   # applies a queued press and its release on two frames (the trickle the click above is
   # about), and the overlay own frame asks for its successor while ImGui still holds one, so
   # no step here needs a second press or a forced paint.
-  if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu ${MENU_ANCHOR} "'"$SHOTS"'/graph_probe_35_menu_kb_open.png"; then
+  if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu ${MENU_ANCHOR} "$SHOTS/graph_probe_35_menu_kb_open.png"; then
       xdotool key --clearmodifiers Down
       sleep 1.4
-      import -window root "'"$SHOTS"'/graph_probe_36_menu_down.png"
+      import -window root "$SHOTS/graph_probe_36_menu_down.png"
       # Up returns the highlight to the first entry, so the Right below starts from it - the
       # same starting point the measured harness had.
       xdotool key --clearmodifiers Up
@@ -1911,7 +1948,7 @@ PY
       # The pointer is LEFT WHERE IT IS: the capture below is diffed against the one above
       # it, and a park in between would change the pixels for a reason that has nothing to
       # do with the popup.
-      import -window root "'"$SHOTS"'/graph_probe_37_menu_kb_after.png"
+      import -window root "$SHOTS/graph_probe_37_menu_kb_after.png"
       MENU_KB_LINE=$(summary_line)
   fi
 
@@ -1926,7 +1963,7 @@ PY
   # re-shapes).
   xdotool key --clearmodifiers ctrl+z
   sleep 1.6
-  import -window root "'"$SHOTS"'/graph_probe_38_appkey_undo.png"
+  import -window root "$SHOTS/graph_probe_38_appkey_undo.png"
   MENU_APPKEY_LINE=$(summary_line)
 
   echo "MENU_FIT=\"$MENU_FIT\""                 >> $G
@@ -2095,7 +2132,7 @@ PY
   # Straight after the typed edit: the angle write goes through the dock own key accessor,
   # which notifies through ctrl::TimeLineUtil::Notifier (prop_KeyAccessor.cpp) and so reaches
   # the viewport repaint on the same signal a timeline key push does. Nothing forced.
-  import -window root "'"$SHOTS"'/graph_probe_26_curve_sine.png"
+  import -window root "$SHOTS/graph_probe_26_curve_sine.png"
 
   # THE MENU AGAIN, ON THE SAME KEY, CHANGING THE EASING - and this time a segment is
   # drawn, so the change is in the panel own OWN pixels rather than in a line only a screen
@@ -2110,14 +2147,14 @@ PY
   MENU2_ENTRY=""
   if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu $MKX2 $MKY2; then
       MENU2_BBOX="$MENU_BBOX"
-      cp "'"$SHOTS"'/graph_probe_14_menu_open.png" "'"$SHOTS"'/graph_probe_27_menu_linear_open.png"
+      cp "$SHOTS/graph_probe_14_menu_open.png" "$SHOTS/graph_probe_27_menu_linear_open.png"
   fi
   read -r M2W M2H M2X M2Y <<< "$(printf "%s" "${MENU2_BBOX:-0x0+0+0}" | tr "x+" "  ")"
   if [ "${M2W:-0}" -gt 0 ]; then
       MENU2_ENTRY=$(click_entry "$M2W $M2H $M2X $M2Y" 1 0)
   fi
   # Menus closed by the overlay own successor frame, as in phase 4 - nothing forced.
-  import -window root "'"$SHOTS"'/graph_probe_28_curve_linear.png"
+  import -window root "$SHOTS/graph_probe_28_curve_linear.png"
   MENU2_LINE=$(summary_line)
 
   # AND THE SAME EASING A SECOND TIME: re-picking what the key already carries must move
@@ -2127,13 +2164,13 @@ PY
   MENU3_ENTRY=""
   if [ -n "${MENU_ANCHOR:-}" ] && open_key_menu $MKX2 $MKY2; then
       MENU3_BBOX="$MENU_BBOX"
-      cp "'"$SHOTS"'/graph_probe_14_menu_open.png" "'"$SHOTS"'/graph_probe_29_menu_linear_again_open.png"
+      cp "$SHOTS/graph_probe_14_menu_open.png" "$SHOTS/graph_probe_29_menu_linear_again_open.png"
   fi
   read -r M3W M3H M3X M3Y <<< "$(printf "%s" "${MENU3_BBOX:-0x0+0+0}" | tr "x+" "  ")"
   if [ "${M3W:-0}" -gt 0 ]; then
       MENU3_ENTRY=$(click_entry "$M3W $M3H $M3X $M3Y" 1 0)
   fi
-  import -window root "'"$SHOTS"'/graph_probe_30_curve_linear_again.png"
+  import -window root "$SHOTS/graph_probe_30_curve_linear_again.png"
   MENU3_LINE=$(summary_line)
 
   echo "phase 4b: the angle of the key was [${ANGLE_KEY:-unreadable}], the knob row at the next frame [${KNOB_2ND:-none}], the seeded value after [${KNOB_2ND_PRESSES:-?}] press(es) [${ANGLE_2ND_SEEDED:-unreadable}], the field own rect [${ANGLE_2ND_RECT:-none}], typed [${NEWDEG:-none}], read back [${ANGLE_2ND_WRITTEN:-unreadable}], the knob row after the press [${KNOB_2ND_AFTER:-none}]; the menu own own rect [${MENU2_BBOX:-none}] and the entry clicked [${MENU2_ENTRY:-none}], the state line [${MENU2_LINE:-none}]; picking it again: rect [${MENU3_BBOX:-none}], entry [${MENU3_ENTRY:-none}], line [${MENU3_LINE:-none}]"
@@ -2215,8 +2252,8 @@ PY
   #     fall back - both of which are asserted below.
   # The pre-deletion control pair, with nothing forced between them: the panel is drawing
   # the state the deletion is about to change, and the pair is expected to be 0 px.
-  import -window root "'"$SHOTS"'/graph_probe_17_pre_delete_a.png"
-  import -window root "'"$SHOTS"'/graph_probe_18_pre_delete_b.png"
+  import -window root "$SHOTS/graph_probe_17_pre_delete_a.png"
+  import -window root "$SHOTS/graph_probe_18_pre_delete_b.png"
 
   # The layer to delete is the one the LEGEND named - the label of the model itself,
   # "<layer> : <channel>" - addressed as the `table cell` the tree publishes for it. That
@@ -2263,7 +2300,7 @@ PY
   # No forced paint: deleting the row changes the tree selection, and the tree own
   # selection signal asks the viewport for a frame (DriverHolder::onSelectionChanged ->
   # onVisualUpdated, plus the setGraphTargets call MainWindow makes on the same signal).
-  import -window root "'"$SHOTS"'/graph_probe_19_after_delete.png"
+  import -window root "$SHOTS/graph_probe_19_after_delete.png"
 
   echo "DEL_LAYER=\"$LAYER\""             >> $G
   echo "AE_PID=\"$app\""                   >> $G
@@ -2280,7 +2317,19 @@ PY
   echo "DEL_CELLS=\"$DEL_CELLS\""        >> $G
 
   kill $app 2>/dev/null; wait $app 2>/dev/null
-' 2>&1 | tee /tmp/probe_graph_overlay_body.log | tail -4
+AE_PROBE_BODY_END
+
+# THE BODY'S OWN FIRST WRITE IS ITS WORD ON WHETHER THE BODY RAN AT ALL, and the two cases
+# are different failures that used to share one message. An ABSENT file means the body never
+# reached its geometry write - it died early, its output is in the body log, and nothing here
+# can be said about the panel. A file that is there but empty of FRAME/PROP/ANIM is the panel
+# (or the AT-SPI tree) reporting no usable rectangle. Measured 2026-10-14: the absent case
+# printed only "the overlay bounds came back non-empty from AT-SPI ()" and sent a whole
+# investigation looking for an X server fault.
+if [ ! -e /tmp/probe_graph_overlay_geom.txt ]; then
+    check 1 "the probe body ran to its first geometry write (nothing wrote /tmp/probe_graph_overlay_geom.txt; the body's own output is in /tmp/probe_graph_overlay_body.log)"
+    summary probe_graph_overlay
+fi
 
 if grep -q TIMEOUT /tmp/probe_graph_overlay_geom.txt 2>/dev/null; then
     check 1 "the application reached its main window"
