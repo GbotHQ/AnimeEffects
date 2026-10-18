@@ -2270,7 +2270,7 @@ bool panelContextReady() { return gPanelContextHolders > 0 && ImGui::GetCurrentC
 
 ImDrawData* runPanelFrame(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,
-    PanelFrameState& aState
+    PanelFrameState& aState, const QPoint& aPointer
 ) {
     if (!panelContextReady())
         return nullptr;
@@ -2308,6 +2308,17 @@ ImDrawData* runPanelFrame(
     const theme::Graph palette = theme::Graph::from(theme::Colors::current());
 
     ImGui::NewFrame();
+
+    // THE POINTER IS THE HOST'S, NOT ImGui's QUEUED INPUT (see the header). This host
+    // paints when it is asked to, not once per input event, and Dear ImGui trickles its
+    // event queue across NewFrame() calls - so the position the queue hands this frame can
+    // be behind the pointer the host itself has tracked. Measured in the docked host: the
+    // key-move readout was drawn a whole drag behind the pointer, at the press position
+    // (its box at the press + kReadoutGapPx while the pointer had moved 60px), in the very
+    // frame whose model carried the gesture's final deltas. ImGui's own NewFrame() has
+    // already run, so this write is what the drawing layer (and nothing else: the panel
+    // owns no ImGui window) reads as io.MousePos for the frame.
+    io.MousePos = ImVec2(float(aPointer.x()), float(aPointer.y()));
 
     // The curve ink's own pass, built on the current context the first time this runs and
     // kept for the life of that context (idempotent, so the call per frame costs a null

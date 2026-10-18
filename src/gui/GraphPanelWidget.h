@@ -239,6 +239,13 @@ private:
     // The Qt mouse stream in the editor's own currency (ctrl::GraphEditor reads
     // screenPoint()), fed from this page's events and pinned to panelCamera().
     core::AbstractCursor mCursor;
+    // THE POINTER, as this host last received it in an event: this widget's logical
+    // pixels, which is the space the model's rects and the draw list are in. The frame
+    // driver is handed this rather than reading io.MousePos, because this page paints
+    // when it is asked to and Dear ImGui trickles its input queue across frames, so its
+    // position can lag the pointer (see runPanelFrame - the measured readout defect).
+    // Starts outside the panel so no hover is painted before the pointer arrives.
+    QPoint mPointer;
     bool mReady;
 };
 

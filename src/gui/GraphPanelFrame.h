@@ -453,12 +453,23 @@ bool panelContextReady();
 // the note at the top of this section). False from that re-creation - a context that
 // cannot host the backend - and the function returns null.
 //
+// aPointer is the HOST's pointer, in the host's logical pixels - the same space as every
+// rect in the model and in the draw list. The panel paints when its host asks for a frame
+// (a docked page gets one when something it draws changed, not at the input event rate),
+// and Dear ImGui trickles its input queue across NewFrame() calls, so io.MousePos can lag
+// the pointer that the host itself is tracking - measured: in the docked host a key-move
+// readout was drawn a whole drag behind the pointer, at the press position, in the same
+// frame whose model carried the final deltas. The pointer is therefore passed in from the
+// host that sees every event, and the frame makes it the io.MousePos the drawing layer
+// reads (the panel has no ImGui window, so nothing else in the frame reads it). A host
+// without a pointer passes a point outside the panel and nothing hovers.
+//
 // The frame's vertices are NOT drawn here. The returned draw data is rendered into the
 // host's own framebuffer - the dock's page with ImGui_ImplOpenGL3_RenderDrawData and
 // nothing else. Null when no context is up, i.e. when the host must draw nothing.
 ImDrawData* runPanelFrame(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,
-    PanelFrameState& aState
+    PanelFrameState& aState, const QPoint& aPointer
 );
 
 // THE PANEL'S ACCESSIBILITY PUBLICATION.

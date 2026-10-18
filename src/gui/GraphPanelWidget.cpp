@@ -38,6 +38,7 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     mBridge(),
     mFrame(),
     mCursor(),
+    mPointer(-1, -1),
     mReady(false) {
     this->setObjectName(QStringLiteral("GraphPanelWidget"));
     // THE PANEL CAN OWN THE KEYBOARD. It has two keys of its own (Ctrl+A and Escape,
@@ -173,7 +174,7 @@ void GraphPanelWidget::paintGL() {
     // (the tab names it and its header belongs to the dock, not to this widget), so the
     // ruler band sits at the plot's own top here.
     ImDrawData* drawData = runPanelFrame(
-        *this, GraphPanelHost::Dock, editor, editor != nullptr, mFrame
+        *this, GraphPanelHost::Dock, editor, editor != nullptr, mFrame, mPointer
     );
 
     // ...into THIS widget's framebuffer, which QOpenGLWidget has bound and whose viewport
@@ -266,6 +267,9 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
     // derives where the pointer is from this stream, and it has to know that before a
     // press can be attributed to anything (see ImGuiInputBridge's class comment). The
     // move itself is never swallowed by the panel - it has no ImGui window to hover.
+    // The pointer is recorded HERE, from the event stream this host already reads: the
+    // frame is handed it instead of ImGui's trickled io.MousePos (see mPointer).
+    mPointer = aEvent->position().toPoint();
     if (mBridge)
         mBridge->handleMouseMove(*aEvent);
 
@@ -286,6 +290,7 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 }
 
 void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
+    mPointer = aEvent->position().toPoint();
     if (mBridge)
         mBridge->handleMouseButton(*aEvent);
 
@@ -323,6 +328,7 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
 }
 
 void GraphPanelWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
+    mPointer = aEvent->position().toPoint();
     // The release must reach ImGui even for a press the panel acted on, or ImGui would
     // keep the button latched.
     if (mBridge)
@@ -397,6 +403,7 @@ void GraphPanelWidget::tabletEvent(QTabletEvent* aEvent) {
     // A pen is a pointer to ImGui, and the accept() below is what keeps Qt from also
     // synthesizing a mouse event for a tablet event the bridge consumed (see
     // ImGuiInputBridge::handleTablet).
+    mPointer = aEvent->position().toPoint();
     const bool consumed = mBridge && mBridge->handleTablet(*aEvent);
 
     ctrl::GraphEditor* editor = graphEditor();
