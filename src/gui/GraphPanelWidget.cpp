@@ -10,9 +10,8 @@
 #include <QWheelEvent>
 
 // The GL3 backend is named directly for one call: the frame's vertices go into THIS
-// widget's framebuffer with the renderer's own entry point (the same one the overlay's
-// composite ends in). It is the shared backend the ImGuiOverlay.{h,cpp} frame driver
-// brought up; nothing here initializes it.
+// widget's framebuffer with the renderer's own entry point. It is the backend the
+// gui/GraphPanelFrame.{h,cpp} frame driver brought up; nothing here initializes it.
 #include "backends/imgui_impl_opengl3.h"
 
 #include "core/Frame.h"
@@ -41,6 +40,15 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     mCursor(),
     mReady(false) {
     this->setObjectName(QStringLiteral("GraphPanelWidget"));
+    // THE PANEL CAN OWN THE KEYBOARD. It has two keys of its own (Ctrl+A and Escape,
+    // see panelKeyAction) and they are the panel's only while the panel is the focus
+    // widget, so a press inside it has to make it one: without a focus policy Qt gives
+    // a click focus to nobody (QWidget's default is Qt::NoFocus), the panel never sees
+    // a key press (the widget has held focus only for an ImGui text field so far, see
+    // paintGL), and the two actions are unreachable by construction. Qt::StrongFocus is
+    // what the timeline page beside it uses (TimeLineWidget), so the dock's two pages
+    // take the keyboard the same way.
+    this->setFocusPolicy(Qt::StrongFocus);
     // The panel's own hover states need moves with no button down: the hovered curve
     // gets its chip, and the tangent handle nearest the pointer is the one drawn
     // highlighted (both read ImGui::GetIO().MousePos, which this widget's bridge feeds
@@ -54,13 +62,10 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     // publication (gui::publishPanelAccessibility, from this host's first frame) would
     // find nothing to take over. It needs no GL context and no model.
     a11y::installFactoryOnly(*this);
-    // AND THIS HOST IS THE PANEL'S PUBLISHER, declared in the same breath and for the
-    // same reason: the a11y installation is one per process and its factory answers for
-    // one widget, so the announcement has to be made before anything can ask Qt about
-    // either host's widget - see gui::declarePanelDockHost. Its own install lands on the
-    // installation this line's predecessor just made (one installation, one interface,
-    // one id).
-    declarePanelDockHost(*this);
+    // AND THAT IS THE WHOLE INSTALLATION: this widget is the panel's only host, so
+    // there is no second widget that could take the factory (and no hand-over to get
+    // wrong). The action callback arrives with the first frame (see
+    // publishAccessibility).
 
     // The floor colour and the panel's palette are read per frame from
     // theme::Colors::current(), so a theme change needs no cached state - only a frame,
@@ -198,14 +203,11 @@ void GraphPanelWidget::hideEvent(QHideEvent* aEvent) {
 
     // Another page of the dock is current: the panel is not on screen, and the ONE
     // accessibility publication has to say so rather than leave the tree showing the last
-    // frame of a hidden tab. The installation stays with this host (see
-    // gui::publishPanelAccessibility: it is taken once and not handed back), so this
-    // empties it. A host that was never shown publishes nothing at all - the shared
+    // frame of a hidden tab - the installation is this widget's for the process, so this
+    // empties it. A host that was never shown publishes nothing at all: the shared
     // function tells the two apart.
     PanelFrameState offScreen;
-    publishPanelAccessibility(
-        *this, GraphPanelHost::Dock, offScreen, &GraphPanelWidget::accessibilityAction, this
-    );
+    publishPanelAccessibility(*this, offScreen, &GraphPanelWidget::accessibilityAction, this);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -411,9 +413,78 @@ void GraphPanelWidget::keyPressEvent(QKeyEvent* aEvent) {
         aEvent->accept();
         return;
     }
+
+    // THE PANEL'S OWN TWO KEYS, for a press that got this far unconsumed. Consumed
+    // exactly when the panel acted on it (see panelKeyAction): a Ctrl+A or an Escape
+    // that changed nothing is not this widget's to swallow.
+    if (panelKeyAction(*aEvent)) {
+        aEvent->accept();
+        return;
+    }
+
     // Otherwise the event is ignored, i.e. it propagates to the main window's key map,
     // which is where the application's key routing has always been.
     QOpenGLWidget::keyPressEvent(aEvent);
+}
+
+bool GraphPanelWidget::panelKeyAction(const QKeyEvent& aEvent) {
+    // WHO HAS THE KEYBOARD, in two conditions that are about the keyboard rather than
+    // about the key. Together they are the answer to "is this press the panel's?":
+    // the two actions edit the panel's own selection, so they belong to the panel only
+    // while the panel is what the user is looking at AND nothing ahead of it took the
+    // press.
+    //
+    // 1. THIS WIDGET MUST BE THE FOCUS WIDGET. Ctrl+A here is the panel's Ctrl+A, not
+    //    a global shortcut: while some other widget owns the keyboard (the object
+    //    tree, the timeline, a property field) its Ctrl+A and its Escape are that
+    //    widget's business, and a key this panel did not consume must reach
+    //    gui::MainWindow's key map exactly as it always has. hasFocus() is also what
+    //    keeps a press that ARRIVED here by propagation honest: Qt sends a key up the
+    //    parent chain only after the focus widget ignored it, so a forwarded press
+    //    (from a future child widget of this host) would otherwise act on the panel
+    //    while the user's focus is elsewhere.
+    // 2. DEAR IMGUI MUST NOT HAVE TAKEN IT. keyboardCaptured() is
+    //    io.WantCaptureKeyboard off the ONE shared context - the flag
+    //    gui::KeyCommandInvoker gates the application's commands on, and the flag the
+    //    bridge's own handleKey() above answers with. It is asked again here rather
+    //    than inferred from that call because this host may have NO bridge while the
+    //    other host has one: with no ImGui context at all (no GL, or initializeGL
+    //    never ran) mBridge is null and handleKey() is skipped, while an active ImGui
+    //    text field in the viewport's host still owns the keys - the rule is about the
+    //    context, not about this host's hold on it.
+    //
+    // AND NOTHING IS NEEDED FOR A QMENU OR THE TIMELINE'S EASING PICKER, which is the
+    // other half of "Escape belongs to whoever consumed it": both are Qt popups that
+    // hold the keyboard while they are up, and the popup takes the key ON THE WINDOW'S
+    // OWN ROUTING - a path QApplication::sendEvent (and every test that injects a
+    // QKeyEvent) does not enter. Measured against Qt 6.11 for this binding: with a QMenu
+    // popped up, an Escape delivered through the window closed the menu and the focused
+    // widget's handler was NOT called, while the very same widget kept hasFocus() true
+    // throughout. So the first condition cannot stand in for this one - a popup really
+    // does leave this widget the focus widget - and the popup case is decided by Qt's
+    // delivery, before this function is reached. That is also why aEvent.isAccepted() is
+    // not consulted: an event something else consumed is never delivered here, and a
+    // delivered key event arrives ACCEPTED by Qt's own default (QEvent's m_accept), the
+    // flag QWidget::keyPressEvent is what clears.
+    if (!this->hasFocus())
+        return false;
+    if (ImGuiInputBridge::keyboardCaptured())
+        return false;
+
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!editor)
+        return false; // no project on screen: the panel has no selection to edit
+
+    // THE TWO BINDINGS, with the application's own rule for what a binding is
+    // (ctrl::KeyBinding::matchesExactlyWith): the key and the modifiers exactly -
+    // Ctrl+A is not Ctrl+Shift+A, and a bare Escape is not Escape-with-a-modifier.
+    // Both actions ANSWER whether they changed the selection, and that answer is what
+    // this returns: the panel consumes the press it acted on and leaves the rest.
+    if (aEvent.key() == Qt::Key_A && aEvent.modifiers() == Qt::ControlModifier)
+        return editor->selectAllMarkers();
+    if (aEvent.key() == Qt::Key_Escape && aEvent.modifiers() == Qt::NoModifier)
+        return editor->clearSelection();
+    return false;
 }
 
 void GraphPanelWidget::keyReleaseEvent(QKeyEvent* aEvent) {
@@ -546,7 +617,7 @@ bool GraphPanelWidget::openKeyMenuAt(const QPoint& aPos) {
         return false; // no panel on screen: nothing to hit
 
     // THE KEY UNDER THE POINTER, by the editor's own rule - the one hit test both hosts
-    // of the panel ask (panelKeyAt, in gui/ImGuiOverlay.h). A handle is not considered:
+    // of the panel ask (panelKeyAt, in gui/GraphPanelFrame.h). A handle is not considered:
     // the panel's right-click has no handle action, and the editor's own handle grab is
     // the LEFT press's.
     core::ObjectNode* node = nullptr;
@@ -587,9 +658,7 @@ MainDisplayWidget* GraphPanelWidget::appDisplay() const {
 
 //-------------------------------------------------------------------------------------------------
 void GraphPanelWidget::publishAccessibility() {
-    publishPanelAccessibility(
-        *this, GraphPanelHost::Dock, mFrame, &GraphPanelWidget::accessibilityAction, this
-    );
+    publishPanelAccessibility(*this, mFrame, &GraphPanelWidget::accessibilityAction, this);
 }
 
 void GraphPanelWidget::accessibilityAction(void* aUser, int aId) {

@@ -423,7 +423,7 @@ void buildCurves(
     const QFontMetrics& aMetrics
 ) {
     // The drawing layer inks a curve's tangent handles ONLY for the FOCUSED channel
-    // (ImGuiOverlay's drawsHandles: with no focus it draws every curve's; with one it
+    // (GraphPanelFrame's drawsHandles: with no focus it draws every curve's; with one it
     // draws that curve's alone), so a pair built for any other row is work nobody
     // reads - and half of it is the expensive kind: an Auto segment's pair is DERIVED
     // by Curve::ghostHandles from the key's neighbours. The rows already carry the

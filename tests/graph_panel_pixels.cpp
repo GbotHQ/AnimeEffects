@@ -1,6 +1,6 @@
 // The animation graph panel's PIXEL CONTRACT.
 //
-// This is the pixel gate of the ImGui panel (gui::drawPanel, src/gui/ImGuiOverlay.cpp)
+// This is the pixel gate of the ImGui panel (gui::drawPanel, src/gui/GraphPanelFrame.cpp)
 // and the successor of tests/graph_render_pixels.cpp, which pinned the RASTER
 // painter renderer (ctrl::graph::Renderer into a QImage). That renderer is deleted
 // in the cutover, and the panel must not lose its pixel gate with it: this file
@@ -42,7 +42,7 @@
 //     theme::Graph::halo() than to theme::Graph::axisText(), so it is the halo and
 //     not a glyph; with it off - which is what ships - nothing is painted outside
 //     the glyph box at all, which is the same statement from the other side. The
-//     flag is read from src/gui/ImGuiOverlay.h, so this file cannot drift from the
+//     flag is read from src/gui/GraphPanelFrame.h, so this file cannot drift from the
 //     panel's own configuration.
 //   6 the empty state: the reason is drawn, and the rest of the plot stays clean.
 //   7 the plot clip: a curve that leaves the value window in y paints NOTHING
@@ -245,7 +245,7 @@
 #include "imgui_impl_opengl3.h"
 
 // ImDrawListSharedData, i.e. the frame's font and font size that gui::drawPanel
-// reads off the draw list itself (src/gui/ImGuiOverlay.cpp does the same). The
+// reads off the draw list itself (src/gui/GraphPanelFrame.cpp does the same). The
 // label geometry below has to be measured with THE SAME font the glyphs are
 // rasterized with, or "outside the glyph box" would be a statement about a box
 // nobody drew.
@@ -261,7 +261,7 @@
 #include "gl/VertexArrayObject.h"
 
 #include "gui/GraphPanelModel.h"
-#include "gui/ImGuiOverlay.h"
+#include "gui/GraphPanelFrame.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 #include "ctrl/graph/graph_Geometry.h"
@@ -284,11 +284,11 @@ bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfi
 // (showGraphChannelMenu - the panel's one control opens the application's own QMenu).
 // There is no gui library to link and this
 // target's source list carries no widget (see the target's own comment), so the TWO
-// symbols the overlay references are stubbed here - the same move the
-// AudioPlaybackWidget stub above makes, and for the same reason: the gate drives
-// gui::drawPanel and gui::outline directly, never a widget and never an ImGuiOverlay,
-// so the stubs are never called. A signature change in the real methods fails this
-// target's LINK rather than passing quietly.
+// symbols MainDisplayWidget's menu routes declare are stubbed here - the same move the
+// AudioPlaybackWidget stub above makes. The gate drives gui::drawPanel, gui::outline and
+// the frame driver directly and calls neither of them (the frame driver stopped naming
+// the widget when the overlay host was removed), so the stubs are there to keep a future
+// reference from failing this target's LINK quietly.
 #include "gui/MainDisplayWidget.h"
 void gui::MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent&, const QPoint&) {}
 void gui::MainDisplayWidget::showGraphChannelMenu(const QVector<gui::PanelChannelRow>&, const QPoint&) {}
@@ -443,7 +443,7 @@ int rectGap(const QRect& a, const QRect& b) {
 
 // The glyph box drawLabel's own placement produces: the same font, the same
 // alignment, the same CLAMPED vertical centring and the same right-gap rule as
-// src/gui/ImGuiOverlay.cpp's drawLabel() (the glyphs are centred in the box, never
+// src/gui/GraphPanelFrame.cpp's drawLabel() (the glyphs are centred in the box, never
 // above its top edge; a right-aligned label is pulled left by up to aRightGapPx,
 // never by more than the box's spare width).
 // Rebuilding it here is what lets the halo assertion say "this pixel is OUTSIDE the
@@ -795,9 +795,9 @@ struct Rendered {
 };
 
 // One whole frame through the real backend, into this file's own framebuffer.
-// The order is the one gui::ImGuiOverlay::paint() uses and it is load-bearing in
-// 1.92: ImGui_ImplOpenGL3_NewFrame() (the caller's duty, it creates the backend's
-// device objects) BEFORE ImGui::NewFrame().
+// The order is the one gui::runPanelFrame() uses (the dock host's frame) and it is
+// load-bearing in 1.92: ImGui_ImplOpenGL3_NewFrame() (the caller's duty, it creates the
+// backend's device objects) BEFORE ImGui::NewFrame().
 Rendered renderPass(
     const gui::GraphPanelModel& aModel, const theme::Graph& aTheme, const gui::PanelFocus& aFocus,
     const char* aName, const ImVec2& aMouse = ImVec2(-FLT_MAX, -FLT_MAX), float aFontSize = 0.0f,
@@ -1364,7 +1364,7 @@ bool checkKeys(
     const QColor colourA = aTheme.keyColor(aModel.curves.at(0).channel.type());
     const QColor colourB = aTheme.keyColor(aModel.curves.at(1).channel.type());
     // THE KEYFRAME HIGHLIGHT, as this layer reads it: theme::Graph::axisText(), the
-    // palette's own brightest panel ink (see the marker rule in ImGuiOverlay.cpp for why
+    // palette's own brightest panel ink (see the marker rule in GraphPanelFrame.cpp for why
     // the mock's literal white is not used).
     const QColor highlight = aTheme.axisText();
     REQUIRE(
@@ -1914,7 +1914,7 @@ bool checkDragReadout(const Rendered& aDrawn, const Rendered& aStill, const ImVe
 // the INVERSE: nothing is painted outside the glyph box. The haloed assertions
 // below it are kept whole for the flag-on run - and which of the two runs is the
 // shipped one is a property of the flag itself (gui::kDrawTextHalo, declared in
-// src/gui/ImGuiOverlay.h), so this file cannot drift from the panel.
+// src/gui/GraphPanelFrame.h), so this file cannot drift from the panel.
 bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the model must carry a frame label");
     const gui::PanelLabel& label = aModel.frameLabels.at(0);
@@ -2044,7 +2044,7 @@ bool checkRulerReserve(
     );
 
     // The drawing layer's own tick length: the model documents 4px and the panel
-    // draws exactly that (kAxisTickLength in src/gui/ImGuiOverlay.cpp, where the
+    // draws exactly that (kAxisTickLength in src/gui/GraphPanelFrame.cpp, where the
     // model's kFrameTickLength is the model's half of the same convention).
     constexpr int kDrawnTickLength = 4;
     int checked = 0;
@@ -2171,7 +2171,7 @@ bool checkRulerReserve(
 // empty-state models' case below (they carry no channel rows either, so the real model
 // publishes no words for one).
 bool checkChannelsButton(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
-    // The drawing layer's own tone (ImGuiOverlay.cpp's kChannelsButtonAlpha). It is
+    // The drawing layer's own tone (GraphPanelFrame.cpp's kChannelsButtonAlpha). It is
     // file-static there, so it is restated here with its home named - the same move
     // kDrawnTickLength below makes.
     constexpr float kButtonToneAlpha = 0.55f;
@@ -2245,7 +2245,7 @@ bool checkChips(
     const Rendered& aRendered, const Rendered& aFirstSelected, const Rendered& aSecondSelected,
     const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
 ) {
-    constexpr float kChipToneAlpha = 0.82f; // ImGuiOverlay.cpp's kChipBackdropAlpha
+    constexpr float kChipToneAlpha = 0.82f; // GraphPanelFrame.cpp's kChipBackdropAlpha
 
     REQUIRE(aRendered.font != nullptr, "the draw list carried no font: a chip's text cannot be described");
     REQUIRE(aModel.curves.size() == 2, "precondition: the chip pair needs the full model's two curves");
@@ -2322,7 +2322,7 @@ bool checkChips(
     return true;
 }
 
-// One capsule's own coverage at a distance, in the pass's OWN arithmetic (src/gui/ImGuiOverlay.h's
+// One capsule's own coverage at a distance, in the pass's OWN arithmetic (src/gui/GraphPanelFrame.h's
 // HOW IT DRAWS: a one-DEVICE-PIXEL box filter about the nominal edge, so the 50% crossing sits
 // exactly on it), with the filter from the pass's own constant and halfWidth the stroke's drawn
 // width / 2. It is DEFINED HERE because the hull assertion below is its first reader; assertion 27
@@ -3297,7 +3297,7 @@ bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aMo
 }
 
 //-------------------------------------------------------------------------------------------------
-// THE CONTRAST OUTLINE AND COMPOSITE PASS (gui::outline, src/gui/ImGuiOverlay.cpp).
+// THE CONTRAST OUTLINE AND COMPOSITE PASS (gui::outline, src/gui/GraphPanelFrame.cpp).
 //
 // WHAT IS DRIVEN. The pass itself, with two textures this file authors by hand: the
 // OVERLAY (the panel as the ImGui backend leaves it - rgb PREMULTIPLIED by the
@@ -4227,7 +4227,7 @@ std::vector<double> columnInk(const Rendered& aRendered, const InkProbe& aProbe,
 // demonstration that the old one was wrong here.
 //
 // THE EMPHASIS: every pass this group is handed is drawn with an EMPTY selection, i.e. every
-// curve at the design's dimmed strength (kUnselectedAlpha, ImGuiOverlay.cpp), so both metrics
+// curve at the design's dimmed strength (kUnselectedAlpha, GraphPanelFrame.cpp), so both metrics
 // are stated strength-free: `integrated` is compared as a SPREAD across the runs (a constant
 // strength scales every run's area by the same factor), and the whole-pixel count thresholds
 // at HALF THE STROKE'S OWN BODY LEVEL, measured here - a fixed 0.5 would count nothing while
@@ -4238,7 +4238,7 @@ bool checkStrokeAngle(const Rendered& aAfter, const Rendered& aBefore, const the
     const InkProbe probe = InkProbe::make(aTheme.keyColor(kTypeA));
     // The stroke's own body level, MEASURED off the grid-aligned run instead of assumed: every
     // pass here is drawn with an EMPTY selection, so every curve is at the design's dimmed
-    // strength (kUnselectedAlpha, ImGuiOverlay.cpp). The whole-pixel metric below counts
+    // strength (kUnselectedAlpha, GraphPanelFrame.cpp). The whole-pixel metric below counts
     // pixels against a fraction of THIS level, so it cannot degrade to zero under the dimming.
     double body = 0.0;
     for (int x = 120; x <= 250; ++x)
@@ -4353,7 +4353,7 @@ bool checkStrokeAngle(const Rendered& aAfter, const Rendered& aBefore, const the
 // implementation, and asserting a ramp there would assert the wrong thing.
 //
 // BOTH EMPHASIS STATES, because what the pass writes is the STROKE'S STRENGTH times its own
-// coverage (ImGuiOverlay.cpp's curveStrength), and the profile therefore scales with the
+// coverage (GraphPanelFrame.cpp's curveStrength), and the profile therefore scales with the
 // strength without changing shape:
 //   * `aAfter`/`aBefore` are the ink model as the file renders it everywhere else - an EMPTY
 //     selection, i.e. every curve at the design's dimmed strength (kUnselectedAlpha);
@@ -4369,7 +4369,7 @@ bool checkStrokeEdges(
 ) {
     REQUIRE(gui::stroke::isReady(), "precondition: the coverage pass must be built for this assertion");
 
-    // ImGuiOverlay.cpp's kUnselectedAlpha, file-static there: the strength every curve takes
+    // GraphPanelFrame.cpp's kUnselectedAlpha, file-static there: the strength every curve takes
     // while no channel owns a selected key.
     constexpr double kDimmedStrength = 0.45;
 
@@ -4424,7 +4424,7 @@ bool checkStrokeEdges(
                 REQUIRE(
                     std::abs(body - kDimmedStrength) <= 0.02,
                     "column %d: the dimmed stroke's body is %.3f, not the design's dimmed strength %.2f"
-                    " (kUnselectedAlpha in ImGuiOverlay.cpp)",
+                    " (kUnselectedAlpha in GraphPanelFrame.cpp)",
                     column, body, kDimmedStrength
                 );
             }
@@ -4610,7 +4610,7 @@ bool checkStrokePosition(const Rendered& aAfter, const Rendered& aBefore, const 
 
     // The stroke's own body level, MEASURED off the fully covered horizontal run instead of
     // assumed: the emphasis gives a curve that owns no selected key the design's dimmed
-    // strength (kUnselectedAlpha, ImGuiOverlay.cpp), and every pass here is drawn with an
+    // strength (kUnselectedAlpha, GraphPanelFrame.cpp), and every pass here is drawn with an
     // empty selection - so every bar below is stated against this level, not against a
     // full-strength 1.0.
     double body = 0.0;

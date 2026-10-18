@@ -646,7 +646,7 @@ int main(int argc, char** argv) {
         // entry - or a tier for the wrong tick, or a count that does not match the
         // positions - fails here. The tier is what the drawing layer turns into the
         // mark's alpha (0.85 major / 0.60 intermediate / 0.20 minor, the timeline's
-        // table, applied in ImGuiOverlay.cpp): a model that published no tier, or one
+        // table, applied in GraphPanelFrame.cpp): a model that published no tier, or one
         // per something else, is the bug this catches.
         int notATier = 0;
         int tierHistogram[4] = {0, 0, 0, 0};
@@ -1555,7 +1555,7 @@ int main(int argc, char** argv) {
         const gui::GraphPanelModel ruled = gui::buildGraphPanelModel(editor, viewport, palette);
 
         // The tick length the panel draws (kAxisTickLength in
-        // src/gui/ImGuiOverlay.cpp, the drawing layer's half of the same convention
+        // src/gui/GraphPanelFrame.cpp, the drawing layer's half of the same convention
         // the model documents as kFrameTickLength).
         constexpr int kDrawnTickLength = 4;
         int labels = 0;

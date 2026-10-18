@@ -48,9 +48,9 @@
 # the application's own constants (ctrl::TimeLineEditor::kHeaderHeight 22, kNumberTop 1,
 # kNumberHeight 14). The theme's colours are measured off the running window (the rail, the
 # lane, the marker, the surface), never restated from the palette. Widgets are addressed by
-# name (ae_ui.py), and the row menu that adds the keys is driven the way
-# probe_graph_overlay.sh drives it: the popup is a top-level window that did not exist
-# before, focused by xdotool, its entries reached with Up.
+# name (ae_ui.py), and the row menu that adds the keys is driven the way this suite's own
+# graph probes drive the same kind of menu: the popup is a top-level window that did not
+# exist before, focused by xdotool, its entries reached with Up.
 #
 # WHICH PROJECT THIS NEEDS. Any .anie with at least TWO object rows: the rail and the tint
 # are asserted on one row against the other, and the KEYS are created by the probe itself
@@ -332,9 +332,9 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   say "phase: keys"
   # ---- 2. the keys, and then the ring ----
-  # Add default keys through the OBJECT TREE own row menu, driven the way
-  # probe_graph_overlay.sh drives it: a right click inside the cell opens a top-level popup
-  # at the click point; the popup is focused by window id; two UPs reach "Add default keys"
+  # Add default keys through the OBJECT TREE own row menu, driven the way this suite's own
+  # graph probes drive the same kind of menu: a right click inside the cell opens a top-level
+  # popup at the click point; the popup is focused by window id; two UPs reach "Add default keys"
   # (the last entry is Delete and the separator above it is skipped) and Return presses it.
   #
   # EVERY ROW IS TRIED IN TURN, because the action does nothing at all on a FOLDER your

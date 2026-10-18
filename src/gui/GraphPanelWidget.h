@@ -8,7 +8,7 @@
 
 #include "core/AbstractCursor.h"
 #include "core/CameraInfo.h"
-#include "gui/ImGuiOverlay.h"
+#include "gui/GraphPanelFrame.h"
 #include "util/SlotId.h"
 
 class QHideEvent;
@@ -32,14 +32,15 @@ class GUIResources;
 class ImGuiInputBridge;
 class MainDisplayWidget;
 
-// THE PANEL'S SECOND HOST: the animation graph panel drawn in the TIMELINE DOCK, as
-// the Graph tab's page (design section 5). It is a QOpenGLWidget because the panel is
+// THE PANEL'S HOST: the animation graph panel drawn in the TIMELINE DOCK, as the
+// Graph tab's page (design section 5). It is a QOpenGLWidget because the panel is
 // drawn with Dear ImGui into a GL framebuffer, and it is a HOST and not a renderer:
-// the frame it runs is the SHARED one - gui::runPanelFrame (the io setup, the
-// backend's NewFrame, gui::buildGraphPanelModel, gui::drawPanel) plus
-// gui::publishPanelAccessibility - the same two calls gui::ImGuiOverlay makes, and the
-// ImGui context, GL3 backend and font atlas are the same objects (see the frame driver
-// in gui/ImGuiOverlay.h). Nothing about the panel is re-implemented here.
+// the frame it runs is gui::runPanelFrame (the io setup, the backend's NewFrame,
+// gui::buildGraphPanelModel, gui::drawPanel) plus gui::publishPanelAccessibility, and
+// the ImGui context, GL3 backend and font atlas are that file's (see the frame driver
+// in gui/GraphPanelFrame.h). Nothing about the panel is re-implemented here. It is the
+// ONLY host - the viewport overlay that used to draw the panel over the artwork is
+// gone.
 //
 // WHAT IT DRAWS, AND WHAT ELSE IS ON ITS FLOOR. The panel draws no background of its
 // own ("the panel must leave the artwork showing through") - and here there is no
@@ -75,11 +76,23 @@ class MainDisplayWidget;
 // (the channel list and the timeline's easing picker) are the application's own QMenus,
 // which live in gui::MainDisplayWidget - see appDisplay() below.
 //
+// THE PANEL'S TWO KEYS. Ctrl+A selects every marker of the shown channels and Escape
+// clears the selection - ctrl::GraphEditor::selectAllMarkers / clearSelection, the
+// keyboard form of the panel's own marquee rule (see GraphEditor.h). Both are WIDGET
+// bindings, not application shortcuts: the panel consumes a press only while IT is the
+// focus widget (Qt::StrongFocus, so a press inside it makes it the focus widget) and
+// only when it acted, and every key it does not consume still propagates to
+// gui::MainWindow's key map - the one place the application's own commands fire. The
+// full rule (and each condition's reason) is on panelKeyAction().
+//
 // ACCESSIBILITY. The panel has ONE publication for the process (gui::a11y keeps one
-// installation); this host takes it on its first frame on screen and publishes its own
-// model through the shared publisher from then on (see
-// gui::publishPanelAccessibility). While the Graph tab is not on screen it publishes
-// the empty model, so the tree never shows a panel that is not there.
+// installation) and this is its only host: the factory is installed for this widget in
+// the CONSTRUCTOR (a11y::installFactoryOnly - the half that has to run before anything
+// can ask Qt for the widget's interface), the first frame on screen hands the shared
+// publisher the action callback (a repeat install for the same widget: one interface,
+// one id), and every frame after that publishes the model that was just drawn. While
+// the Graph tab is not on screen the empty model is published, so the tree never shows
+// a panel that is not there.
 //
 // INTERFACE. This class is constructed by the dock (gui::TargetWidget) with the
 // application's GUIResources and its parent, is handed the live ctrl::Driver when a
@@ -142,6 +155,15 @@ private:
     // The editor's cursor pass for the cursor's current state, when the editor owns it.
     // Repaints when the editor reports that something changed.
     void routeCursor();
+    // The panel's two keyboard actions, for a key press that has reached this widget
+    // unconsumed: Ctrl+A selects every marker of the shown channels
+    // (ctrl::GraphEditor::selectAllMarkers) and Escape clears the selection
+    // (ctrl::GraphEditor::clearSelection). Returns whether the panel ACTED, and the
+    // caller consumes the event exactly then - a press that changed nothing is left to
+    // propagate to the application's own key routing, as every unconsumed key here
+    // always was. The conditions (this widget is the focus widget; Dear ImGui has not
+    // taken the keyboard) are stated at the definition.
+    bool panelKeyAction(const QKeyEvent& aEvent);
 
     // The panel's ONE control (the "N channels" button the model lays out in the ruler
     // band) under aPos, in this widget's logical pixels: opens the application's channel

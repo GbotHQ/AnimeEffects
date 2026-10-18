@@ -5,7 +5,7 @@ namespace gui {
 
 class MainViewSetting {
 public:
-    MainViewSetting(): showLayerMesh(), cutImagesByTheFrame(), rotateViewACW(), resetRotateView(), rotateViewCW(), flipCanvas(), showGraphEditor(false) {}
+    MainViewSetting(): showLayerMesh(), cutImagesByTheFrame(), rotateViewACW(), resetRotateView(), rotateViewCW(), flipCanvas() {}
 
     bool showLayerMesh;
     bool cutImagesByTheFrame;
@@ -13,7 +13,6 @@ public:
     bool resetRotateView;
     bool rotateViewCW;
     bool flipCanvas;
-    bool showGraphEditor;
 };
 
 } // namespace gui

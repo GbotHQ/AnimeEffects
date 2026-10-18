@@ -57,6 +57,15 @@ two, which is what "this colour, within the antialiasing" means in practice).
       How many pixels of the ANNULUS r0..r1 about (cx,cy) are within tol of the colour:
       "n". r0 is exclusive and r1 inclusive, so a 1px ring can be asked for without
       touching the marker it surrounds.
+  neutral <raw> <w> <h> <x> <y> <bw> <bh> <br> <bg> <bb> <thr> <chroma> [<tol> <er> <eg> <eb>]...
+      The NEUTRAL ink of a box: every pixel farther than thr from (br,bg,bb) whose own
+      channels span no more than chroma, minus any excluded colour (the same
+      [<tol> <er> <eg> <eb>] groups `far` takes). Prints the line `far` prints: the count,
+      then the one farthest from the floor with its position, colour and distance. The
+      panel's TEXT ink is what this is for: the readout and the labels are neutral, and a
+      chromatic curve crossing their box is not text and must not be counted as any. A
+      single channel spread is the whole test, because a key-type hue is saturated and an
+      antialiased glyph pixel of a neutral ink is not.
   far <raw> <w> <h> <x> <y> <bw> <bh> <br> <bg> <bb> <thr> [<tol> <er> <eg> <eb>]...
       The INK of a box: every pixel farther than thr from (br,bg,bb) and NOT within tol of
       any excluded colour (the last four arguments, read as often as they are given).
@@ -264,18 +273,23 @@ def main():
         print(n)
         return
 
-    if mode in ("far", "rows", "cols", "inkcols"):
+    if mode in ("far", "neutral", "rows", "cols", "inkcols"):
         raw = a[1]
         w, h = int(a[2]), int(a[3])
         data = load(raw, w, h)
 
-        if mode == "far":
+        if mode in ("far", "neutral"):
             x, y, bw, bh = (int(v) for v in a[4:8])
             base = (int(a[8]), int(a[9]), int(a[10]))
             thr = float(a[11])
+            # `neutral` carries the channel spread bound before the exclusions, and `far`
+            # carries no bound at all: one walk, two tests.
+            chroma = int(a[12]) if mode == "neutral" else None
+            first = 13 if mode == "neutral" else 12
             # [<tol> <er> <eg> <eb>]...: the tolerance first, then the colour it excludes
-            excl = [(float(a[12 + 4 * i]), (int(a[13 + 4 * i]), int(a[14 + 4 * i]), int(a[15 + 4 * i])))
-                    for i in range((len(a) - 12) // 4)]
+            excl = [(float(a[first + 4 * i]), (int(a[first + 1 + 4 * i]), int(a[first + 2 + 4 * i]),
+                                               int(a[first + 3 + 4 * i])))
+                    for i in range((len(a) - first) // 4)]
             n, best, bp = 0, -1.0, None
             for yy in range(y, y + bh):
                 for xx in range(x, x + bw):
@@ -284,6 +298,8 @@ def main():
                     c = pixel(data, w, xx, yy)
                     d = dist(c, base)
                     if d <= thr:
+                        continue
+                    if chroma is not None and max(c) - min(c) > chroma:
                         continue
                     if any(dist(c, ec) <= etol for etol, ec in excl):
                         continue

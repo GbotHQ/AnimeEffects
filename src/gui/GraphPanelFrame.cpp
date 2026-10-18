@@ -1,4 +1,4 @@
-#include "gui/ImGuiOverlay.h"
+#include "gui/GraphPanelFrame.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -11,19 +11,13 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFont>
-#include <QInputMethodEvent>
-#include <QKeyEvent>
-#include <QMouseEvent>
 #include <QOpenGLContext>
 #include <QOpenGLWidget>
 #include <QPointer>
-#include <QTabletEvent>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
-#include <QTouchEvent>
 #include <QVarLengthArray>
-#include <QWheelEvent>
 
 #include "imgui.h"
 // The draw list's own font lives in ImDrawListSharedData, which imgui.h only
@@ -47,12 +41,7 @@
 #include "gl/Vector2.h"
 #include "gl/VertexArrayObject.h"
 #include "gui/ImGuiA11y.h"
-#include "gui/ImGuiInputBridge.h"
 #include "gui/ImGuiQtFontLoader.h"
-// The overlay's key menu is the WIDGET's (MainDisplayWidget::showGraphKeyMenu), so
-// this file names the class it lives in. One direction only - MainDisplayWidget.cpp
-// includes this header, and its own header includes neither this one nor ImGui.
-#include "gui/MainDisplayWidget.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 
@@ -205,6 +194,12 @@ constexpr float kFallbackFontPixelSize = 13.0f;
 
 // lupdate's context for everything this file says to the user: the class is not a
 // QObject, so there is no tr() member for it to find.
+//
+// THE NAME IS FROZEN AT "gui::ImGuiOverlay" even though the class that named it is gone
+// (the panel's one host is gui::GraphPanelWidget now). It is a CATALOG key, not a
+// description: assets/locale/translation_*.ts already carry every panel string under it,
+// so renaming it here would silently ship English in five languages until the catalogs
+// are re-extracted and re-translated - a translation change, which is not this unit's.
 const char* kTranslationContext = "gui::ImGuiOverlay";
 
 // The runtime half of the translation pair. The class is not a QObject, so it asks
@@ -551,135 +546,42 @@ struct OutlinePass {
 
 OutlinePass* gOutline = nullptr;
 
-// The pixel size of a framebuffer's colour attachment. The backdrop copy is a
-// BLIT, which requires the source and the destination rectangles to be the same
-// size and inside their framebuffers, so the size has to be the widget
-// framebuffer's OWN - and that is not a number this file may re-derive: measured
-// on this machine (Qt 6.11, 401x321 logical at QT_SCALE_FACTOR=1.5),
-// QOpenGLWidget's framebuffer is 602x482, i.e. qRound(w * dpr), while truncating
-// gives 601x481 and would leave a one-pixel seam at fractional ratios. The size
-// is asked of the attachment instead: QOpenGLWidget's is a multisampled
-// RENDERBUFFER (measured: samples=4, GL_RENDERBUFFER), which is also what makes
-// the source of the blit a resolve. Zero when there is nothing to ask.
-QSize framebufferPixels(GLuint aFramebuffer) {
-    gl::Global::Functions& ggl = gl::Global::functions();
-
-    GLint previousRead = 0;
-    GLint previousDraw = 0;
-    ggl.glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousRead);
-    ggl.glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDraw);
-    ggl.glBindFramebuffer(GL_FRAMEBUFFER, aFramebuffer);
-
-    QSize size;
-    GLint type = 0;
-    GLint name = 0;
-    ggl.glGetFramebufferAttachmentParameteriv(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type
-    );
-    ggl.glGetFramebufferAttachmentParameteriv(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &name
-    );
-    if (type == GL_RENDERBUFFER) {
-        GLint width = 0;
-        GLint height = 0;
-        ggl.glBindRenderbuffer(GL_RENDERBUFFER, GLuint(name));
-        ggl.glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
-        ggl.glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
-        size = QSize(width, height);
-    } else if (type == GL_TEXTURE) {
-        // A single-sample texture attachment has its size at mip level 0.
-        GLint width = 0;
-        GLint height = 0;
-        ggl.glBindTexture(GL_TEXTURE_2D, GLuint(name));
-        ggl.glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-        ggl.glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-        ggl.glBindTexture(GL_TEXTURE_2D, 0);
-        size = QSize(width, height);
-    }
-
-    ggl.glBindFramebuffer(GL_READ_FRAMEBUFFER, GLuint(previousRead));
-    ggl.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, GLuint(previousDraw));
-    return size;
-}
-
-// The contrast outline pass's two targets, both at the widget framebuffer's own
-// pixel size: the BACKDROP (the pixels the panel would sit on - a copy) and the
-// panel's own COVERAGE render. Rebuilt only when that size changes (a resize, or
-// a device-pixel-ratio change).
-struct OutlineTargets {
-    QSize pixels;
-    std::unique_ptr<gl::Texture> backdropTexture;
-    std::unique_ptr<gl::Framebuffer> backdropFbo;
-    std::unique_ptr<gl::Texture> overlayTexture;
-    std::unique_ptr<gl::Framebuffer> overlayFbo;
-
-    // The GL objects go while a context is current: called before a rebuild and
-    // from the overlay's teardown.
-    void release() {
-        pixels = QSize();
-        backdropFbo.reset();
-        backdropTexture.reset();
-        overlayFbo.reset();
-        overlayTexture.reset();
-    }
-
-    // False when the driver refuses one of the four objects; the caller then draws
-    // the panel without the pass rather than drawing nothing.
-    bool ensure(const QSize& aPixels) {
-        if (pixels == aPixels && overlayFbo)
-            return true;
-        release();
-
-        backdropTexture.reset(new gl::Texture());
-        backdropTexture->create(aPixels);
-        // Both textures are sampled at the texel centre 1:1, and the taps must not
-        // WRAP: with the default REPEAT, a tap one pixel left of the first column
-        // would read the ink at the right edge of the screen.
-        backdropTexture->setFilter(GL_NEAREST);
-        backdropTexture->setWrap(GL_CLAMP_TO_EDGE);
-        backdropFbo.reset(new gl::Framebuffer());
-        backdropFbo->setColorAttachment(0, backdropTexture->id());
-
-        overlayTexture.reset(new gl::Texture());
-        overlayTexture->create(aPixels);
-        overlayTexture->setFilter(GL_NEAREST);
-        overlayTexture->setWrap(GL_CLAMP_TO_EDGE);
-        overlayFbo.reset(new gl::Framebuffer());
-        overlayFbo->setColorAttachment(0, overlayTexture->id());
-
-        if (!backdropFbo->isComplete() || !overlayFbo->isComplete()) {
-            release();
-            return false;
-        }
-        pixels = aPixels;
-        return true;
-    }
-};
-
 } // namespace
 
 namespace outline {
 
+// Builds the pass's program and its array object, on the CURRENT GL context and FOR that
+// context: the program, its uniform locations and the VAO are all context objects, and a
+// VAO name in particular is not shared between contexts even when they share buffers and
+// textures (see the frame driver's own note on the panel's GL objects). Idempotent (safe
+// to call per frame) and false when the context cannot compile the program - the caller
+// must then draw without the ring rather than draw nothing.
 bool init() {
     if (gOutline)
         return true;
 
     std::unique_ptr<OutlinePass> pass(new OutlinePass());
-    if (!pass->shader.setVertexSource(QString::fromLatin1(kOutlineVertexSource))
-        || !pass->shader.setFragmentSource(QString::fromLatin1(kOutlineFragmentSource))
-        || !pass->shader.link()) {
-        // Not fatal: the caller draws the panel into the widget framebuffer
-        // directly, i.e. exactly the frame this pass was added to.
+    // ONE program: the vertex stage derives the full-screen triangle from gl_VertexID
+    // (no attribute, no vertex buffer), so only the fragment stage's six uniforms have
+    // to be resolved here.
+    const bool linked = pass->shader.setVertexSource(QString::fromLatin1(kOutlineVertexSource))
+        && pass->shader.setFragmentSource(QString::fromLatin1(kOutlineFragmentSource)) && pass->shader.link();
+    if (!linked) {
         XC_DEBUG_REPORT("the contrast outline pass did not build: %s", qPrintable(pass->shader.log()));
         return false;
     }
-    pass->quad.reset(new gl::VertexArrayObject());
+
     pass->overlayLocation = pass->shader.uniformLocation("uOverlay");
     pass->backdropLocation = pass->shader.uniformLocation("uBackdrop");
     pass->texelLocation = pass->shader.uniformLocation("uTexel");
     pass->minContrastLocation = pass->shader.uniformLocation("uMinContrast");
     pass->colourLocation = pass->shader.uniformLocation("uOutlineColour");
     pass->ringLocation = pass->shader.uniformLocation("uRingRadiusPx");
+    // The array object the pass binds around its one draw. It carries no attribute - the
+    // positions come from gl_VertexID - but a core profile refuses to draw with NO array
+    // object bound, and the binding it makes is saved and put back by composite() (which
+    // documents why: the application's painter pass needs its own default VAO left bound).
+    pass->quad.reset(new gl::VertexArrayObject());
 
     // Released by shutdown(), never by exit(): see gOutline above.
     gOutline = pass.release();
@@ -1965,51 +1867,6 @@ void drawPanel(
     }
 }
 
-//-------------------------------------------------------------------------------------------------
-struct ImGuiOverlay::State {
-    // The widget the host was attached to, so teardown can make its context current
-    // before releasing what belongs to it (its outline targets, and its hold on the
-    // shared context).
-    QPointer<QOpenGLWidget> widget;
-    // The Qt -> ImGuiIO translation. Destroyed before the shared context goes.
-    QScopedPointer<ImGuiInputBridge> bridge;
-
-    // The frame this host drew last: the model and the editor the pixels came from,
-    // the palette they were drawn with, this host's occluded-top inset and its
-    // io.DeltaTime clock (see gui::PanelFrameState). The widget's own hits - the
-    // channel button, a double-click on the plot - are tested against THIS geometry,
-    // so the clickable control is exactly the drawn control.
-    PanelFrameState frame;
-
-    // The contrast outline pass's own targets (see gui::outline): the backdrop copy
-    // and the panel's coverage framebuffer. Built lazily on the frame that first
-    // needs them, released in shutdown().
-    OutlineTargets outline;
-
-    // The widget framebuffer's pixel size, CACHED. Asking for it is a chain of GL
-    // queries (framebufferPixels: the bound framebuffer, the attachment's type and
-    // name, then the renderbuffer's or the texture's size), measured at ~10 queries
-    // and 0.10-0.13ms per frame - work whose answer changes only when the widget does.
-    // The attachment is qRound(logical size * device pixel ratio) (see
-    // framebufferPixels), so the two numbers below are the whole key: anything that can
-    // change the answer changes one of them, and a new GL context drops the cache in
-    // shutdown() (the widget's own framebuffer is recreated with it).
-    QSize pixelsCache;
-    QSize pixelsCacheLogical;
-    double pixelsCacheDpr = 0.0;
-
-    // The widget framebuffer's pixel size, from the cache when the widget has not
-    // changed (see the fields above). aFramebuffer is only read when the cache is
-    // stale, so a steady frame costs no GL query at all.
-    QSize cachedFramebufferPixels(GLuint aFramebuffer, const QSize& aLogical, double aDpr) {
-        if (pixelsCache.isEmpty() || pixelsCacheLogical != aLogical || pixelsCacheDpr != aDpr) {
-            pixelsCache = framebufferPixels(aFramebuffer);
-            pixelsCacheLogical = aLogical;
-            pixelsCacheDpr = aDpr;
-        }
-        return pixelsCache;
-    }
-};
 
 namespace {
 
@@ -2251,41 +2108,25 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
     return published;
 }
 
-// ---- the shared context's own state (see acquirePanelContext) ----
+// ---- the panel's GL objects and the context they belong to (see acquirePanelContext) ----
+// How many hosts hold the panel's context: the dock's Graph tab is the only one today,
+// and this counter is what lets a second host attach without a second ImGui context if
+// one ever returns (see the header).
 int gPanelContextHolders = 0;
-// The context the shared objects were built on (the first host's). Kept for one
-// question: whether a LATER host's context is in the same sharing group, which is the
-// contract the whole design rests on.
+// THE CONTEXT THE PANEL'S GL OBJECTS WERE CREATED AGAINST, and the guard the panel has
+// instead of a second backend. Sharing is NOT enough for these objects: Qt's sharable
+// context group gives buffers, textures, shaders and programs, but NOT vertex-array
+// objects - a VAO name created in one context is GL_INVALID_OPERATION in another on a
+// core profile (measured: a second host of the panel bound the stroke pass's VAO in its
+// own context and the very next GL_CHECK_ERROR() aborted on 1282 in a Debug build).
+// So the ImGui context, its backend's device objects and both GL passes are re-created
+// whenever a frame arrives with a context other than this one - see
+// rebindPanelObjects() below, which runPanelFrame calls before it touches anything GL.
 QPointer<QOpenGLContext> gPanelOwnerContext;
 
-} // namespace
-
-bool acquirePanelContext(QOpenGLWidget& aHost) {
-    if (gPanelContextHolders > 0) {
-        // Already up - by the OTHER host, most likely. Its context, backend and atlas
-        // are the ones a window's widgets share (see the header), so there is nothing
-        // to build; the count is the whole of what "acquire" means after the first.
-        //
-        // THE ONE SHAPE THAT BREAKS IT IS WORTH SAYING OUT LOUD: if this host's context
-        // is not in the first host's sharing group - two widgets in different windows, or
-        // a widget given a format of its own - then the backend's program, buffers and
-        // atlas are NOT reachable from it, and the frame would draw with handles that
-        // mean nothing here. There is no fallback to take (a second context would be a
-        // second backend, which is exactly what this design refuses), so the diagnosis is
-        // the whole of the fix. Once per host initialization.
-        if (gPanelOwnerContext && aHost.context()
-            && !QOpenGLContext::areSharing(gPanelOwnerContext, aHost.context())) {
-            qWarning(
-                "gui: the panel's two hosts do not share an OpenGL context group; the "
-                "docked page will draw with the other host's backend objects. Put both "
-                "QOpenGLWidgets in one top-level window and request one format for the "
-                "process (QSurfaceFormat::setDefaultFormat)."
-            );
-        }
-        ++gPanelContextHolders;
-        return ImGui::GetCurrentContext() != nullptr;
-    }
-
+// Creates the ImGui context, its GL3 backend and the font atlas on aHost's CURRENT
+// context, and records that context as the one the objects belong to.
+bool createPanelContextOn(QOpenGLWidget& aHost) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -2293,12 +2134,12 @@ bool acquirePanelContext(QOpenGLWidget& aHost) {
     // No runtime files, ever: no imgui.ini beside the application and no ImGui log.
     io.IniFilename = nullptr;
     io.LogFilename = nullptr;
-    // The overlay never changes the cursor itself; the viewport's cursor policy
+    // The panel never changes the cursor itself; the viewport's cursor policy
     // (MainDisplayWidget) stays the only thing that does.
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     // ImGui's style is left at the context's own default (ImGui::CreateContext
     // calls StyleColorsDark itself): the panel draws every colour it uses from the
-    // palette into its own draw list, and the key menu is the application's QMenu,
+    // palette into its own draw list, and the menus are the application's QMenus,
     // so nothing the frame draws reads ImGuiStyle at all.
 
     // The atlas through the Qt/QRawFont loader: the application font at the size Qt
@@ -2325,9 +2166,8 @@ bool acquirePanelContext(QOpenGLWidget& aHost) {
     // src->RasterizerDensity). Passing the ratio here would square it: 4x the linear
     // raster, and 16x the atlas area per glyph, for a 2x screen.
     //
-    // THE FONT IS WHICHEVER HOST GOT HERE FIRST, and that is the application's own face
-    // either way (neither host sets a font of its own), so the one atlas both hosts
-    // draw with is the face the timeline draws its own numbers in.
+    // The face is aHost's own font, which is the application's face (the dock's page
+    // sets none of its own), so the panel draws the text the timeline draws.
     const float statedSize = imgui_qt::panelFontPixelSize(aHost.font(), aHost.logicalDpiY());
     const float pixelSize = (statedSize > 0.0f) ? statedSize : kFallbackFontPixelSize;
     if (imgui_qt::installQtFontLoader(*io.Fonts, aHost.font(), pixelSize, 1) == 0) {
@@ -2345,9 +2185,63 @@ bool acquirePanelContext(QOpenGLWidget& aHost) {
         return false;
     }
 
-    // The context the shared objects now belong to: the one a later host is compared
-    // against (see the top of this function).
     gPanelOwnerContext = aHost.context();
+    return true;
+}
+
+// Drops every GL object the panel owns - the two passes and the ImGui context with its
+// backend and atlas - on the context that is CURRENT. The caller guarantees one: this is
+// only ever called from a paint/initialize path, or from a teardown that made the host's
+// context current first.
+void destroyPanelObjects() {
+    stroke::shutdown();
+    outline::shutdown();
+    if (ImGui::GetCurrentContext()) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui::DestroyContext();
+    }
+    gPanelOwnerContext.clear();
+}
+
+// THE PER-CONTEXT GUARD: if the panel's objects belong to another context than the one
+// the frame is about to be drawn on, drop them and build them again HERE (see
+// gPanelOwnerContext for the measured failure this replaces). Idempotent, and a no-op on
+// every frame of a single host, because a host's context does not change under it.
+bool rebindPanelObjects(QOpenGLWidget& aHost) {
+    if (gPanelContextHolders <= 0 || gPanelOwnerContext == aHost.context())
+        return true;
+
+    if (gPanelOwnerContext) {
+        // A real change of context (or a second host on its own context). Said out loud
+        // because it means the objects are being built twice in one session - correct,
+        // but worth a line in a log when a host is added. A failed creation below leaves
+        // gPanelOwnerContext null, so the retry on the next frame does not repeat this.
+        qWarning(
+            "gui: the panel is being drawn with a different OpenGL context than the one its ImGui "
+            "context, backend and GL passes were created on; re-creating them on this context "
+            "(vertex-array objects are not shared between contexts, even in one window)."
+        );
+        destroyPanelObjects();
+    }
+    return createPanelContextOn(aHost);
+}
+
+} // namespace
+
+bool acquirePanelContext(QOpenGLWidget& aHost) {
+    if (gPanelContextHolders > 0) {
+        // Already up. The objects belong to a context; a host that acquires on a different
+        // one gets them re-created on ITS context (rebindPanelObjects), and the frame path
+        // makes the same check per frame - so this is belt and braces rather than the only
+        // guard.
+        if (!rebindPanelObjects(aHost))
+            return false;
+        ++gPanelContextHolders;
+        return true;
+    }
+
+    if (!createPanelContextOn(aHost))
+        return false;
     ++gPanelContextHolders;
     return true;
 }
@@ -2357,22 +2251,17 @@ void releasePanelContext(QOpenGLWidget& aHost) {
         return;
     --gPanelContextHolders;
     if (gPanelContextHolders > 0)
-        return; // the other host is still drawing with it: nothing here goes yet
+        return; // another host is still drawing with it: nothing here goes yet
 
-    // The LAST holder: the context, its backend and the two GL passes that live with
-    // it (the curve stroke and the contrast outline) are context objects, so the
-    // releasing host's context has to be current while they go. A host torn down after
-    // its context has gone leaves those few objects to the driver rather than calling
-    // into a dead context - the rule this class always had.
+    // The LAST holder: the context, its backend and the two GL passes are context
+    // objects, so the releasing host's context is made current while they go. A host torn
+    // down after its context has gone leaves those few objects to the driver rather than
+    // calling into a dead context - the rule this unit always had.
     QOpenGLWidget* widget = &aHost;
     const bool madeCurrent = widget->context() && widget->context()->isValid();
     if (madeCurrent)
         widget->makeCurrent();
-    stroke::shutdown();
-    outline::shutdown();
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui::DestroyContext();
-    gPanelOwnerContext.clear();
+    destroyPanelObjects();
     if (madeCurrent)
         widget->doneCurrent();
 }
@@ -2386,14 +2275,20 @@ ImDrawData* runPanelFrame(
     if (!panelContextReady())
         return nullptr;
 
+    // THE OBJECTS MUST BELONG TO THIS CONTEXT (see gPanelOwnerContext): a frame that
+    // arrived with another one would bind VAOs that mean nothing here, which is a GL error
+    // and not a sharing problem. Every host goes through this function, so every host is
+    // covered.
+    if (!rebindPanelObjects(aHost) || !panelContextReady())
+        return nullptr;
+
     const QSize viewport = aHost.size();
     const double dpr = aHost.devicePixelRatioF();
     ImGuiIO& io = ImGui::GetIO();
     // Logical (device independent) pixels, which is the space QMouseEvent::position()
     // and the model's rects are in; ImGui scales the projection by
-    // ImDrawData::FramebufferScale itself. THIS HOST'S OWN numbers: that is what puts
-    // the frame in this widget's viewport at this widget's ratio, while the context,
-    // the backend and the atlas stay shared.
+    // ImDrawData::FramebufferScale itself. THIS HOST'S OWN numbers: the frame lands in
+    // this widget's viewport at this widget's ratio.
     io.DisplaySize = ImVec2(float(viewport.width()), float(viewport.height()));
     io.DisplayFramebufferScale = ImVec2(float(dpr > 0.0 ? dpr : 1.0), float(dpr > 0.0 ? dpr : 1.0));
     io.DeltaTime = nextDeltaTime(aState.frameTimer, aState.frameTimerStarted);
@@ -2417,8 +2312,8 @@ ImDrawData* runPanelFrame(
     // The curve ink's own pass, built on the current context the first time this runs and
     // kept for the life of that context (idempotent, so the call per frame costs a null
     // check). It is called HERE because drawPanel is what decides which stroke to use, and
-    // it refuses quietly: a driver that cannot compile the programs leaves the panel on its
-    // AddPolyline path rather than with no curves at all (see gui::stroke).
+    // it refuses quietly: a context that cannot compile the programs leaves the panel on
+    // its AddPolyline path rather than with no curves at all (see gui::stroke).
     stroke::init();
 
     // The model of this frame, and nothing else: the panel's geometry never comes
@@ -2443,46 +2338,26 @@ ImDrawData* runPanelFrame(
 }
 
 //-------------------------------------------------------------------------------------------------
-void declarePanelDockHost(QWidget& aHost) {
-    // The whole of the declaration: from here on the panel is published from aHost and
-    // the viewport overlay never installs (see publishPanelAccessibility, and the header
-    // for why the moment has to be this one). The a11y installation itself was taken by
-    // the caller's own installFactoryOnly(), from the same constructor, BEFORE anything
-    // can have asked Qt about either widget - which is what makes the panel's
-    // installation and its first frame ONE installation (a repeat install() for the same
-    // widget keeps the interface and its id and only takes the callback).
-    gPanelDockPublisher = &aHost;
-}
-
-//-------------------------------------------------------------------------------------------------
 void publishPanelAccessibility(
-    QOpenGLWidget& aHost, GraphPanelHost aHostStyle, PanelFrameState& aState,
-    void (*aOnAction)(void*, int aId), void* aUser
+    QOpenGLWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void*, int aId), void* aUser
 ) {
     const bool onScreen = aState.editor != nullptr;
 
-    if (aHostStyle == GraphPanelHost::Dock) {
-        if (!onScreen && gPanelA11yHost != &aHost) {
-            // Not on screen, and this host has never published: there is no panel to
-            // publish and no installation to take. (A host that HAS published - which is
-            // every host that ever drew a visible frame - publishes the empty model
-            // below instead, so the tree is told the panel is gone rather than being
-            // left with the last frame of a hidden tab.)
-            return;
-        }
-    } else if (gPanelDockPublisher) {
-        // The panel is published from the dock (declarePanelDockHost, from the docked
-        // host's constructor): the overlay draws and hit-tests as it always did, but it
-        // neither publishes nor takes an installation of its own.
+    if (!onScreen && gPanelA11yHost != &aHost) {
+        // The panel is not on screen and this host has never published: there is nothing
+        // to publish and no installation to take. (A host that HAS published - i.e. that
+        // drew a visible frame - publishes the EMPTY model below instead, so the tree is
+        // told the panel is gone rather than being left with the last frame of a hidden
+        // tab.)
         return;
     }
 
-    // ONE installation (gui::a11y): the first publish of a host takes it for that
-    // host's widget - for the docked host that is a REPEAT install for the widget its
-    // constructor already installed for, so the interface and its id stay, and only the
-    // callback is taken over - and a host that already owns it refreshes the callback
-    // when that changes. Nothing here ever ends an installation that belongs to the
-    // other host's widget.
+    // ONE installation (gui::a11y): the host's constructor installed the factory for this
+    // widget (installFactoryOnly, see GraphPanelWidget), so this call is the SECOND half
+    // of that pairing - a repeat install for the SAME widget, which keeps the interface
+    // and its id and only takes over the action callback. The registry below is what keeps
+    // it to one call per callback: a per-frame install() would re-take the callback (and
+    // re-ask Qt for the interface) on every frame.
     if (gPanelA11yHost != &aHost || gPanelA11yAction != aOnAction || gPanelA11yUser != aUser) {
         a11y::install(aHost, [aOnAction, aUser](int aId) { aOnAction(aUser, aId); });
         gPanelA11yHost = &aHost;
@@ -2491,406 +2366,6 @@ void publishPanelAccessibility(
     }
 
     a11y::sync(buildAccessibilityModel(aState.model, aState.editor));
-}
-
-//-------------------------------------------------------------------------------------------------
-ImGuiOverlay::ImGuiOverlay(): mState(new State()), mReady(false) {}
-
-ImGuiOverlay::~ImGuiOverlay() {
-    // The accessible factory points at this object's callback, so it goes first -
-    // but only while this host is the one the panel's installation answers for.
-    // The dock may have taken the publication (see publishPanelAccessibility), and
-    // uninstalling there would take the tree away from a host that is still drawing.
-    if (mState && mState->widget && gPanelA11yHost == mState->widget.data()) {
-        a11y::uninstall();
-        gPanelA11yHost.clear();
-        gPanelA11yAction = nullptr;
-        gPanelA11yUser = nullptr;
-    }
-    shutdown();
-}
-
-void ImGuiOverlay::shutdown() {
-    if (!mState)
-        return;
-
-    // The bridge is ImGui's platform IME target and reads the context: drop it
-    // before the shared context can go, and drop the frame state with it (the editor
-    // pointer and the geometry are answers about a frame this host no longer draws).
-    mState->bridge.reset();
-    // The framebuffer cache goes with the widget's GL context: its own framebuffer is
-    // recreated when the context is.
-    mState->pixelsCache = QSize();
-    mState->pixelsCacheLogical = QSize();
-    mState->pixelsCacheDpr = 0.0;
-    mState->frame.model = GraphPanelModel();
-    mState->frame.editor = nullptr;
-
-    if (!mReady)
-        return;
-
-    // This host's outline targets are context objects, so the widget's context is made
-    // current for the release while it is still usable; a widget torn down after its
-    // context has gone leaves those few objects to the driver rather than calling into
-    // a dead context. The context, the backend and the two passes are NOT this host's
-    // any more - releasePanelContext drops this host's hold and tears them down only
-    // when it was the last one.
-    QOpenGLWidget* widget = mState->widget;
-    const bool madeCurrent = widget && widget->context() && widget->context()->isValid();
-    if (madeCurrent)
-        widget->makeCurrent();
-    mState->outline.release();
-    if (madeCurrent)
-        widget->doneCurrent();
-    if (widget)
-        releasePanelContext(*widget);
-
-    mState->frame = PanelFrameState();
-    mState->widget = nullptr;
-    mReady = false;
-}
-
-bool ImGuiOverlay::init(QOpenGLWidget& aWidget) {
-    if (!mState)
-        return false;
-
-    // initializeGL can run more than once, and it does so exactly when the widget
-    // has a new GL context (a reparent, a screen change): every object this host
-    // created belongs to the OLD context, so the host is dropped and re-attached
-    // rather than kept. (The SHARED context survives that whenever the other host is
-    // still holding it - see acquirePanelContext.)
-    if (mReady)
-        shutdown();
-
-    if (!acquirePanelContext(aWidget))
-        return false;
-
-    mState->widget = &aWidget;
-    mState->bridge.reset(new ImGuiInputBridge(aWidget));
-    mReady = true;
-
-    // ImGui draws triangles into a GL framebuffer, so without an accessibility factory
-    // the panel does not exist for assistive technology at all. The installation is the
-    // shared one, taken by the first frame this host publishes (see
-    // publishPanelAccessibility): two hosts of one panel must not each claim it.
-    return true;
-}
-
-void ImGuiOverlay::paint(
-    QOpenGLWidget& aWidget, ctrl::GraphEditor* aEditor, core::Project*, bool aVisible
-) {
-    if (!mReady || !mState)
-        return;
-    State& state = *mState;
-
-    // THE FRAME ITSELF is the shared one (see runPanelFrame): the io setup from THIS
-    // widget's own size and device pixel ratio, the backend's NewFrame, the model, the
-    // ink, the accessibility model's own inputs - everything except getting the
-    // vertices into a framebuffer, which is where the two hosts differ (the overlay
-    // composites behind a contrast ring, the dock draws straight into its own widget).
-    const QSize viewport = aWidget.size();
-    ImDrawData* drawData = runPanelFrame(aWidget, GraphPanelHost::Overlay, aEditor, aVisible, state.frame);
-    if (!drawData)
-        return; // no context up: nothing to draw
-
-    const theme::Graph& palette = state.frame.palette;
-    const bool panelDrawn = state.frame.editor != nullptr;
-
-    // THE CONTRAST OUTLINE, THEN THE COMPOSITE (see gui::outline in the header). One
-    // full-screen pass at the very end of the frame, and the two renders it needs:
-    // the widget framebuffer becomes the BACKDROP - what the user would see without
-    // the panel - and the panel is drawn into its own framebuffer, where alpha IS
-    // the coverage and rgb the ink. The pass then rings the ink that would have been
-    // lost against that backdrop and composites the panel over it.
-    //
-    // It is skipped ENTIRELY while the panel is hidden (an empty draw data has no
-    // ink to ring and nothing to composite, which is why the hidden path is exactly
-    // the cheap frame it always was) and when the driver refuses the pass or its
-    // targets, in which case the panel is drawn straight into the widget
-    // framebuffer, i.e. precisely the frame this pass was added to.
-    const GLuint widgetFbo = GLuint(aWidget.defaultFramebufferObject());
-    const QSize pixels =
-        panelDrawn ? state.cachedFramebufferPixels(widgetFbo, viewport, aWidget.devicePixelRatioF()) : QSize();
-    bool composited = false;
-    if (!pixels.isEmpty() && outline::init() && state.outline.ensure(pixels)) {
-        OutlineTargets& targets = state.outline;
-        gl::Global::Functions& ggl = gl::Global::functions();
-
-        // 1. the backdrop. A BLIT, never a readback: the widget's framebuffer is
-        // 4x multisampled (MainWindow's QSurfaceFormat), and a blit resolves it.
-        outline::copyBackdrop(widgetFbo, targets.backdropFbo->id(), pixels);
-
-        // 2. the panel, into its own framebuffer.
-        targets.overlayFbo->bind();
-        // ImGui's own draw commands set a scissor box, so the clear has to be free
-        // of one, and the viewport is the framebuffer's - both were last set by
-        // something else.
-        ggl.glDisable(GL_SCISSOR_TEST);
-        ggl.glViewport(0, 0, pixels.width(), pixels.height());
-        ggl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        ggl.glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(drawData);
-
-        // 3. ONE pass into the widget's own framebuffer: ring, then composite.
-        ggl.glBindFramebuffer(GL_FRAMEBUFFER, widgetFbo);
-        outline::Params outlineParams;
-        outlineParams.colour = palette.outline();
-        outline::composite(targets.overlayTexture->id(), targets.backdropTexture->id(), pixels, outlineParams);
-        composited = true;
-    }
-    if (!composited)
-        ImGui_ImplOpenGL3_RenderDrawData(drawData);
-
-    // What the backend does NOT restore (measured: the viewport is left as the
-    // backend set it, the scissor box is left set, and a temporary VAO is created
-    // and deleted per draw). paintGL re-sets the viewport and the render state at
-    // its top, so nothing here has to restore them - and the pass above leaves the
-    // widget's own framebuffer bound, which is the state it was called in.
-
-    // The QWidget side of the IME contract (see ImGuiInputBridge's class comment):
-    // Qt asks the FOCUS OBJECT for input-method queries, and a plain QOpenGLWidget
-    // is not an input item at all - so the attribute is set exactly while a Dear
-    // ImGui text field wants text, and the widget takes focus so Qt asks it. With no
-    // ImGui field on screen this is a no-op every frame.
-    const bool wantsText = state.bridge && state.bridge->imeWantsTextInput();
-    if (aWidget.testAttribute(Qt::WA_InputMethodEnabled) != wantsText)
-        aWidget.setAttribute(Qt::WA_InputMethodEnabled, wantsText);
-    if (wantsText && !aWidget.hasFocus())
-        aWidget.setFocus(Qt::OtherFocusReason);
-
-    // THE PANEL'S ONE PUBLICATION, through the shared publisher: this host publishes
-    // only while no visible docked host owns the panel's installation (see
-    // publishPanelAccessibility).
-    publishPanelAccessibility(
-        aWidget, GraphPanelHost::Overlay, state.frame, &ImGuiOverlay::accessibilityAction, this
-    );
-}
-
-//-------------------------------------------------------------------------------------------------
-bool ImGuiOverlay::mouseMove(const QMouseEvent& aEvent) {
-    return mState && mState->bridge ? mState->bridge->handleMouseMove(aEvent) : false;
-}
-
-bool ImGuiOverlay::mouseButton(const QMouseEvent& aEvent) {
-    const bool captured = mState && mState->bridge ? mState->bridge->handleMouseButton(aEvent) : false;
-
-    // THE KEY MENU'S GESTURE, and the only place this class sees a right press: the
-    // widget forwards EVERY button here (mousePressEvent's first step) and offers
-    // press() the left one only, so a right-click on a key has to be taken here.
-    // The menu itself is the application's own QMenu (see the class comment) and
-    // QMenu::popup() returns immediately, so nothing here blocks the press.
-    if (aEvent.type() == QEvent::MouseButtonPress && aEvent.button() == Qt::RightButton)
-        openKeyMenuAt(aEvent.position().toPoint());
-    return captured;
-}
-
-bool ImGuiOverlay::wheel(const QWheelEvent& aEvent) {
-    return mState && mState->bridge ? mState->bridge->handleWheel(aEvent) : false;
-}
-
-bool ImGuiOverlay::key(const QKeyEvent& aEvent) {
-    // The application's own key commands are untouched: with the menu a QMenu, this
-    // overlay consumes no key of its own, and the bridge's answer is the whole
-    // routing rule (see ImGuiInputBridge::keyboardCaptured).
-    return mState && mState->bridge ? mState->bridge->handleKey(aEvent) : false;
-}
-
-bool ImGuiOverlay::inputMethod(const QInputMethodEvent& aEvent) {
-    return mState && mState->bridge ? mState->bridge->handleInputMethod(aEvent) : false;
-}
-
-bool ImGuiOverlay::tablet(const QTabletEvent& aEvent) {
-    return mState && mState->bridge ? mState->bridge->handleTablet(aEvent) : false;
-}
-
-bool ImGuiOverlay::touch(const QTouchEvent& aEvent) {
-    return mState && mState->bridge ? mState->bridge->handleTouch(aEvent) : false;
-}
-
-void ImGuiOverlay::setTopInset(int aLogicalPixels) {
-    if (!mState)
-        return;
-
-    const int inset = ImMax(0, aLogicalPixels);
-    if (inset == mState->frame.topInset)
-        return; // the caller sets it every frame: a steady inset is not an event
-
-    mState->frame.topInset = inset;
-    // A CHANGE is a frame the widget may not otherwise ask for: the call comes from
-    // the widget's own paintEvent, but the widget above the viewport can appear,
-    // disappear or change height without the viewport's pixels changing at all, and
-    // without this the band would move only on the next unrelated repaint.
-    requestRepaint();
-}
-
-void ImGuiOverlay::focus(bool aFocused) {
-    if (mState && mState->bridge)
-        mState->bridge->handleFocus(aFocused);
-}
-
-void ImGuiOverlay::dprChanged(qreal aDpr) {
-    if (mState && mState->bridge)
-        mState->bridge->handleDprChanged(aDpr);
-}
-
-QVariant ImGuiOverlay::inputMethodQuery(Qt::InputMethodQuery aQuery) const {
-    return (mState && mState->bridge) ? mState->bridge->inputMethodQuery(aQuery) : QVariant();
-}
-
-bool ImGuiOverlay::imeWantsTextInput() const {
-    return mState && mState->bridge && mState->bridge->imeWantsTextInput();
-}
-
-//-------------------------------------------------------------------------------------------------
-bool ImGuiOverlay::press(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
-    Q_UNUSED(aEditor); // the control is the MODEL's: the editor it was built from is mState->frame.editor
-    if (!mReady || !mState || !mState->frame.editor)
-        return false; // hidden: nothing is on screen to hit
-
-    // The panel's ONE control, against the LAST FRAME's own geometry (the model the
-    // pixels were drawn from), so the control under the pointer is the control on
-    // screen. An empty box is not a control: the model publishes one only when the
-    // button fits inside the plot.
-    if (!mState->frame.model.channelsButton.isEmpty() && mState->frame.model.channelsButton.contains(aPos))
-        return openChannelMenuAt(aPos);
-
-    return false;
-}
-
-//-------------------------------------------------------------------------------------------------
-bool ImGuiOverlay::openChannelMenuAt(const QPoint& aPos) {
-    if (!mReady || !mState || !mState->frame.editor)
-        return false; // hidden: nothing is on screen to hit
-
-    // THE LIST IS THE APPLICATION'S OWN, through the widget that owns it - the same
-    // route the key menu takes (showGraphKeyMenu): the panel's rows travel to
-    // gui::MainDisplayWidget, which builds and pops a real QMenu and whose actions
-    // toggle a channel's visibility and focus it. The overlay draws no popup and
-    // measures none, exactly as it does not for the key menu. The press is this
-    // class's either way (it landed on the button, not on the viewport) - a widget
-    // that owns no overlay (a headless gate) simply has no menu to show.
-    if (mState->widget)
-        static_cast<MainDisplayWidget*>(mState->widget.data())
-            ->showGraphChannelMenu(mState->frame.model.channels, aPos);
-    return true;
-}
-
-bool ImGuiOverlay::doubleClick(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
-    if (!mReady || !mState || !mState->frame.editor)
-        return false;
-    if (!mState->frame.model.plot.contains(aPos))
-        return false; // not the plot: the viewport's own double-click semantics apply
-
-    // A double-click ON the panel's ONE control is that control's business, not the
-    // fit's: the first press already opened the channel list, and a second click must
-    // not turn it into a zoom change. An empty button box is not a control (the model
-    // publishes one only when it fit the plot).
-    if (!mState->frame.model.channelsButton.isEmpty() && mState->frame.model.channelsButton.contains(aPos))
-        return false;
-
-    // Both axes to the shown data: the panel's own fit gesture.
-    aEditor.fitAll();
-    return true;
-}
-
-//-------------------------------------------------------------------------------------------------
-bool ImGuiOverlay::openKeyMenuAt(const QPoint& aPos) {
-    if (!mReady || !mState || !mState->frame.editor)
-        return false; // hidden: nothing is on screen to hit
-
-    ctrl::GraphEditor& editor = *mState->frame.editor;
-
-    // THE KEY UNDER THE POINTER, by the EDITOR'S OWN RULE - the one hit test both hosts
-    // of the panel ask (panelKeyAt), so the key a right-click names here is the key a
-    // right-click names on the docked page. A handle is not considered: the panel's
-    // right-click has no handle action, and the editor's own handle grab is the LEFT
-    // press's, which still goes through ctrl::GraphEditor. So a right-click near a
-    // handle that is also near a key opens the key's menu - there is no second, quieter
-    // gesture for a handle to take.
-    core::ObjectNode* node = nullptr;
-    ctrl::graph::Channel channel;
-    core::Frame frame;
-    if (!panelKeyAt(mState->frame.model, aPos, node, channel, frame))
-        return false; // no key that close: this is not the panel's right-click
-
-    // The right-click makes that key the panel's SELECTION, which is the timeline's
-    // own behaviour with its key menu (selectKeysAt with the click point, then the
-    // menu acts on the result): the menu acts on the selection, so the key it was
-    // opened on has to be in it. Selecting is also what a press on a key does, so a
-    // right-click here is not a second, quieter way to move the panel's current key.
-    editor.selectKey(*node, channel, frame);
-
-    // ...and the menu is the TIMELINE'S OWN, handed the selection and this widget's
-    // position (see the class comment): one menu, one list of easings, one edit path
-    // for both views.
-    core::TimeLineEvent selection;
-    if (!editor.retrieveSelection(selection) || selection.targets().isEmpty())
-        return false;
-
-    // The widget the overlay lives in owns the menu: it is the object that owns the
-    // timeline, and it is the one that can map the panel's own pixels to a screen
-    // position (MainDisplayWidget::showGraphKeyMenu). The cast is a static_cast and
-    // not a qobject_cast ON PURPOSE: qobject_cast would need the widget class's
-    // staticMetaObject at link time, and the pixel gate compiles this file with no
-    // widget translation unit at all (tests/CMakeLists.txt: "there is no gui library
-    // to link against"). MainDisplayWidget is this class's ONE construction site, so
-    // the widget it holds is one whenever there is a widget at all; a gate that drives
-    // this class owns none, and the selection above is then the whole of the gesture's
-    // effect.
-    if (mState->widget)
-        static_cast<MainDisplayWidget*>(mState->widget.data())->showGraphKeyMenu(selection, aPos);
-
-    // The selection just changed under the panel's ink (the key turns
-    // theme::Graph::selected()), so this frame is already stale.
-    requestRepaint();
-    return true;
-}
-
-//-------------------------------------------------------------------------------------------------
-void ImGuiOverlay::onAccessibilityAction(int aId) {
-    if (!mState || !mState->frame.editor)
-        return;
-
-    ctrl::GraphEditor& editor = *mState->frame.editor;
-    if (aId == kPanelFitItemId) {
-        editor.fitAll();
-        requestRepaint();
-        return;
-    }
-
-    // The key menu: THE SAME ROUTE THE POINTER TAKES, at the same widget position -
-    // the menu is the application's own and it is anchored where the key is drawn,
-    // so an assistive activation puts it exactly where a right-click on that key
-    // would (MainDisplayWidget::showGraphKeyMenu). The selection is the one the
-    // published item was built from, re-read here because a frame may have passed
-    // since.
-    if (aId == kPanelKeyMenuItemId) {
-        core::TimeLineEvent selection;
-        QPoint dot;
-        if (!editor.retrieveSelection(selection)
-            || !panelSelectedKeyDot(mState->frame.model, selection, dot))
-            return; // the selection moved on: nothing to open the menu on
-        if (mState->widget)
-            static_cast<MainDisplayWidget*>(mState->widget.data())->showGraphKeyMenu(selection, dot);
-        return;
-    }
-
-    // The panel's ONE control: the very action a pointer press on it performs, at
-    // the same widget position (the box the model gave the button), so an assistive
-    // activation opens the channel list exactly where a press would.
-    if (aId == kPanelChannelsItemId) {
-        openChannelMenuAt(mState->frame.model.channelsButton.topLeft());
-        return;
-    }
-}
-
-void ImGuiOverlay::accessibilityAction(void* aUser, int aId) {
-    static_cast<ImGuiOverlay*>(aUser)->onAccessibilityAction(aId);
-}
-
-void ImGuiOverlay::requestRepaint() {
-    if (mState && mState->widget)
-        mState->widget->update();
 }
 
 } // namespace gui

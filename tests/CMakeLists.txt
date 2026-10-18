@@ -1037,7 +1037,7 @@ if(AE_ENABLE_IMGUI)
     # precedes the backend.
     add_executable(graph_panel_pixels graph_panel_pixels.cpp
         ../src/gui/ImGuiGLBackend.cpp
-        ../src/gui/ImGuiOverlay.cpp
+        ../src/gui/GraphPanelFrame.cpp
         ../src/gui/GraphPanelModel.cpp
         ../src/gui/ImGuiInputBridge.cpp
         ../src/gui/ImGuiA11y.cpp

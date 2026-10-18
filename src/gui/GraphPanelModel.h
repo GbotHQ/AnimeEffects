@@ -21,17 +21,17 @@ class Graph;
 
 namespace gui {
 
-// The animation graph panel as an engine-neutral MODEL: everything the overlay
-// has to know to draw the panel, and nothing about how it is drawn.
+// The animation graph panel as an engine-neutral MODEL: everything the panel's
+// host has to know to draw it, and nothing about how it is drawn.
 //
 // The panel was once a QPainter renderer (ctrl::graph::Renderer) and then a Dear
 // ImGui spike (src/gui/ImGuiSpike.cpp, buildDocumentScene); both are deleted.
 // This header is the durable form that replaced them: a pure function from the
 // editor, a viewport size and a palette to a flat, POD-ish description of the
-// panel. The drawing layer - gui::drawPanel, in the shipping ImGui overlay -
-// walks the vectors below and emits primitives; it owns every appearance
-// decision the model deliberately does not make (line widths, halos, fonts,
-// alpha, emphasis).
+// panel. The drawing layer - gui::drawPanel, in src/gui/GraphPanelFrame.{h,cpp},
+// the panel's one frame - walks the vectors below and emits primitives; it owns
+// every appearance decision the model deliberately does not make (line widths,
+// halos, fonts, alpha, emphasis).
 //
 // WHY IT EXISTS
 //   * the panel's content is testable headlessly: no QPainter, no GL context, no
@@ -246,19 +246,30 @@ struct PanelKeyDrag {
     float valueDelta = 0.0f; // == keyMoveValueDelta(), the delta it last WROTE
 };
 
-// WHICH FLOOR THE PANEL IS ON - the dock's Graph tab or the fullscreen overlay.
-// The panel is ONE component on either floor (design section 5: "one dock, two
-// tabs", the Graph tab being the same panel), and the whole of what the model
-// does differently for the two is the home of its ONE control: the dock's Graph
-// tab draws the panel edge to edge on the dock's floor, so the control belongs to
-// the PLOT the panel owns and is placed inside the plot's own right edge; the
-// overlay floats the panel over the viewport with no chrome of its own above it,
-// so the control keeps the panel's own top-right corner (see CHANNELS BUTTON
-// below). Either way it hangs clear of the ruler band's tick-and-number block.
+// WHICH PLACEMENT THE MODEL PUBLISHES - the dock's Graph tab's, or the viewport
+// overlay's. The panel is ONE component (design section 5: "one dock, two tabs",
+// the Graph tab being the docked panel), and the whole of what the model does
+// differently for the two is the home of its ONE control: the dock's Graph tab
+// draws the panel edge to edge on the dock's floor, so the control belongs to the
+// PLOT the panel owns and is placed inside the plot's own right edge; the overlay
+// floats the panel over the viewport with no chrome of its own above it, so the
+// control keeps the panel's own top-right corner (see CHANNELS BUTTON below).
+// Either way it hangs clear of the ruler band's tick-and-number block.
+//
+// WHERE EACH ONE IS REACHED FROM, now that the application has ONE host. The
+// docked page (gui::GraphPanelWidget, the dock's Graph tab) is the only host the
+// application draws the panel in, and it asks for Dock
+// (src/gui/GraphPanelWidget.cpp). Overlay is not dead: it is the DEFAULT of the
+// builder and of the member below, so it is what every direct consumer of this
+// model gets - the headless pixel gate (tests/graph_panel_pixels.cpp) builds its
+// models that way and asserts the overlay's own ink for the control (the
+// translucent backing drawPanel adds when `host != Dock`, src/gui/GraphPanelFrame
+// .cpp). It is therefore the model's "no host was named" placement rather than a
+// second live floor.
 //
 // It is a flag on the BUILD, not a second code path: one model, one
 // channelsButton rect, published into whichever geometry this host places it in -
-// so a drawing layer draws and hit-tests the same field on both floors. The model
+// so a drawing layer draws and hit-tests the same field for either. The model
 // republishes the flag it was built with (`host`), so an ink rule that differs by
 // host (the overlay's control floats over the artwork and carries its own
 // translucent backing; the docked one reads on the opaque dock floor) can read the
@@ -353,7 +364,7 @@ enum class GraphPanelHost {
 //               plot.top() + kFrameTickLength + 1, i.e. under the tick band, and a
 //               drawing layer must never put a glyph ABOVE its box's top edge - a
 //               font taller than the box is clamped into it (drawLabel in
-//               src/gui/ImGuiOverlay.cpp). That pair is what keeps the top row of
+//               src/gui/GraphPanelFrame.cpp). That pair is what keeps the top row of
 //               numbers off the plot's top edge and out of the plot clip; the model
 //               measures the box with the default UI font and cannot know the
 //               drawing layer's, so the obligation is split rather than assumed.

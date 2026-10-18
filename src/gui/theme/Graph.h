@@ -8,7 +8,7 @@
 namespace theme {
 
 // Appearance tokens for the animation graph overlay (gui::drawPanel, in
-// src/gui/ImGuiOverlay.cpp).
+// src/gui/GraphPanelFrame.cpp).
 //
 // The panel is drawn by the gui layer from gui::GraphPanelModel, so - exactly
 // like theme::TimeLine for ctrl::time::Renderer - the palette decisions live here
@@ -43,7 +43,7 @@ public:
     // would sit on if it had one, and the text colour is chosen against it.
     QColor halo() const { return mHalo; }
     // Contrast outline: the ring the composite pass (gui::outline, in
-    // src/gui/ImGuiOverlay.cpp) draws around panel ink whose own colour is too
+    // src/gui/GraphPanelFrame.cpp) draws around panel ink whose own colour is too
     // close to the artwork underneath it. It is BLACK on both palettes, on
     // purpose: the ring exists only where the panel has lost contrast against
     // arbitrary artwork, and a theme's polarity is a statement about the
@@ -75,7 +75,7 @@ public:
     // floaterBody and edged with floaterEdge, highlights a row with accentHover
     // under accentText text, and separates with the hairline - and these tokens are
     // those five decisions plus the disabled text. applyPanelStyle (declared in
-    // gui/ImGuiOverlay.h) copies them, and the panel's geometry tokens below, into
+    // gui/GraphPanelFrame.h) copies them, and the panel's geometry tokens below, into
     // ImGui's style; that is the ONE place the palette meets ImGuiStyle, and it is
     // re-applied on every frame so a runtime palette or accent change is picked up
     // without any signal (see applyPanelStyle).

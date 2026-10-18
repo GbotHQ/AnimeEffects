@@ -1,0 +1,554 @@
+#ifndef GUI_IMGUIOVERLAY_H
+#define GUI_IMGUIOVERLAY_H
+
+#include <QColor>
+#include <QElapsedTimer>
+#include <QPoint>
+#include <QRect>
+#include <QSize>
+#include <QVector>
+#include <QtCore/qnamespace.h>
+#include <QtOpenGL/QtOpenGL>
+
+#include "core/TimeKeyType.h"
+#include "gui/GraphPanelModel.h"
+
+// The shared frame API's return type. Forward-declared rather than pulled in through
+// imgui.h: the header is included by targets that do not carry ImGui at all (the graph
+// tests stub the gui symbols), and a pointer return needs only the name.
+struct ImDrawData;
+
+// The palette the frame is drawn from is part of a host's frame state
+// (gui::PanelFrameState below), so the token class itself is named here rather than
+// forward-declared.
+#include "gui/theme/Graph.h"
+
+class QInputMethodEvent;
+class QKeyEvent;
+class QMouseEvent;
+class QOpenGLWidget;
+class QTabletEvent;
+class QTouchEvent;
+class QWheelEvent;
+
+struct ImDrawCmd;
+struct ImDrawList;
+struct ImFont;
+struct ImGuiContext;
+
+namespace core {
+class Project;
+class TimeLineEvent;
+}
+
+namespace gui {
+
+// What the drawing layer reads off the editor: the STICKY FOCUS, and nothing else.
+// Passed in rather than read here, so the drawing stays a pure function of its
+// inputs (and a headless pixel gate can hand over a synthetic one).
+//
+// THE SELECTION IS NOT HERE, and that is deliberate: which marker is selected, and
+// which marker's key has a selected sibling, are published per key by the MODEL
+// (PanelCurve::keySelected / keySiblingSelected), straight from the editor's own
+// two queries. A list of selected keys here would be a SECOND source of the same
+// fact - one that had to be matched back to a marker by pixel x, and that could
+// silently disagree with the flags the model just published.
+//
+// The one thing the focus still decides is EACH CURVE'S TANGENT HANDLES
+// (node/channel/valid): the panel draws them for one channel at a time because they
+// cost ~52 of the ~68 vertices a key spends (the measured rule in GraphPanelFrame.cpp),
+// and the editor's hit-test focuses a channel on a handle press. The curve EMPHASIS
+// is the selection's, and it comes from the model's marker flags.
+struct PanelFocus {
+    core::ObjectNode* node = nullptr;
+    ctrl::graph::Channel channel;
+    bool valid = false;
+};
+
+// Draws the panel into aDrawList: the short ticks (in the numbers' own token, each
+// frame mark at the tier's alpha the model publishes for it - one ink for the ruler,
+// the timeline's rule), the labels with their
+// halo, the zero rule, the curves (clipped to the plot; the channels that own a
+// selected marker, or the SIBLING of one, at full colour and every other curve dimmed -
+// see curveStrength), the key
+// markers (a filled dot of radius ctrl::graph::kKeyDotRadius about each key's centre,
+// ringed in theme::Graph::keyEdge(), in one of the THREE states the model classifies:
+// a selected marker brightens its fill and takes a 1px ring clear of the marker, a
+// marker whose key has a selected sibling keeps the faint ring, and the marker under
+// the pointer brightens its fill alone - see the marker pass), every segment's tangent
+// handles (a stored pair filled, an
+// Auto segment's derived pair hollow; the grabbed one highlighted from io.MousePos),
+// the playhead, the box-select marquee, the selection HULL and its count label, the
+// name CHIP of every curve in play, the panel's one control (the channel button), and
+// the empty state. It keeps no state - which
+// is what lets the overlay call it per frame and a headless pixel gate call it
+// once. It reads no font off the current context (the draw list carries its own),
+// but the marker hover (gui::panelKeyAt), the handle highlight and the
+// hovered-curve chip DO read
+// ImGui::GetIO().MousePos, so a caller must own a context: the overlay's frame and
+// the headless pixel gate both do.
+//
+// It draws the MODEL and nothing else: every rect it uses comes out of aModel
+// (or is derived from the draw list's own font, for the chips' text boxes and the
+// hull's count label, whose models are rects the drawing layer puts glyphs in). No
+// background and no grid are drawn - the model publishes none, and the panel
+// must leave the artwork showing through (a plot area with nothing in it is
+// therefore untouched by this function).
+void drawPanel(
+    ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
+);
+
+// Whether drawPanel draws the LABEL HALO: the same glyphs 16 more times, at the
+// eight compass offsets of radius 1 and radius 2, in theme::Graph::halo().
+// SHIPPED OFF. The halo is unconditional - it prints an opaque panel-toned smear
+// around every label, including the labels sitting on artwork that never needed
+// one - and it costs 17 glyph passes for a single line of text. The contrast
+// outline pass below rings the same ink, glyphs included, but only where that ink
+// would otherwise have been lost against what is behind it, and in the outline
+// colour rather than a panel tone. The halo's code is kept and this flag is the
+// only thing that switches it off, so the two can still be compared.
+constexpr bool kDrawTextHalo = false;
+
+// The gutter a VALUE label keeps from the right edge of its box, when the box has
+// that much room to spare (see drawLabel's right-alignment): the top value label and
+// the plot's first frame number otherwise land 7px apart on the same rows and read as
+// the single string "10" - measured in the design-review capture (the value label '1'
+// at x 208..215 and the frame label '0' at x 223..231 of a 1440x900 shot).
+//
+// WHY 8. The timeline answers this exact defect with its own margin:
+// src/gui/TimeRuler.cpp's kNumberMargin = 8 ("Number labels never come closer than
+// this gap: without a margin, adjacent numbers ... read as one"). The panel takes the
+// application's own number for the same problem, and 8px on top of the model's own
+// ctrl::graph::Scaler::kAxisLabelPad (4px) and the frame number's inset leaves the two
+// numbers ~15px apart - more than two 7px digits of clear gutter.
+//
+// IT IS A MAXIMUM, NOT A SHIFT: the pull is limited to the box's spare width, so a
+// label that fills its box keeps the position the model's measured column gave it and
+// the gutter can never push a number out of the column.
+//
+// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp asserts
+// the drawn gutter against THIS number, so the bar and the drawing cannot drift (the
+// same reason kDrawTextHalo lives here).
+constexpr int kValueLabelGap = 8;
+
+// How far past a key marker's own radius its SELECTION ring's centre sits, in pixels:
+// the ring the design asks for, "a 1px ring 1px clear of the marker"
+// (index.html:279-280 and :302-303, quoted in full in GraphPanelFrame.cpp's marker rule).
+//
+// WHY 2.6 AND NOT 1.5. A literal reading - the ring's stroke 1px wide, its inner edge
+// 1px clear of the marker's own edge - puts the ring's centre at radius + 1.5, and at
+// that radius the dark SLEEVE the reference draws under the highlight ink (mock-graph.js
+// strokes 2.6px at this same radius, "the ring reads on any artwork") would reach
+// 0.2px INSIDE the marker's edge and paint the clear gap black. The reference's own
+// radius is `KEY_R + 2.6` (mock-graph.js:865-876) and it is taken as it stands: the
+// highlight stroke is 1px as the design says, its centre is 2.6px out, and the whole
+// band's inner edge - the sleeve's - then sits 1.3px clear of the marker, which is the
+// design's "1px clear" at the scale it means (the marker's own radius, not a hairline).
+//
+// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp has to
+// find the ring's pixels to read their ink, and a bar that moved would move every probe
+// with it (the same reason kDrawTextHalo and kValueLabelGap live here).
+constexpr float kKeyRingOffsetPx = 2.6f;
+
+// The air between the pointer and the DRAG READOUT's first glyph (GraphPanelModel's
+// PanelKeyDrag): the key move's live numbers are written at the pointer, and the glyphs
+// start this far right and below it so the cursor itself never covers them.
+//
+// Declared here for the same reason as the two above: tests/graph_panel_pixels.cpp has to
+// find the readout's glyphs to assert that a live drag paints them and a still panel
+// paints nothing, and a gap that moved would move the probe with it.
+constexpr int kReadoutGapPx = 12;
+
+// The contrast outline and composite: ONE full-screen pass that rings panel ink
+// whose own colour is too close to the artwork underneath it, and then composites
+// the panel over that artwork.
+//
+// WHY IT IS A FREE UNIT AND NOT A MEMBER OF THE HOST: the same reason drawPanel
+// is one - a headless pixel gate has to be able to drive it with synthetic
+// textures and no overlay instance, a real context and the real framebuffer.
+//
+// WHAT IT READS. Two textures of the same pixel size:
+//   * the overlay: the panel rendered into its OWN framebuffer, where rgb is the
+//     panel's ink and alpha is its coverage. That render is the ImGui backend's
+//     own source-over blend into a framebuffer cleared to (0,0,0,0), so the rgb
+//     the pass reads is PREMULTIPLIED by the coverage (the backend uses
+//     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, ...),
+//     which leaves dst.rgb = src.rgb * src.a). The pass divides the coverage back
+//     out before it does anything else, so its own formulas are written in the
+//     panel's colours. Without that step a partially covered pixel would composite
+//     at alpha SQUARED - the artefact the "do not gate at alpha >= 1" rule exists
+//     to avoid would be replaced by a different one on every AA fringe.
+//   * the backdrop: the pixels the panel would sit on if it were not there. It is
+//     a GPU copy of the widget's framebuffer (copyBackdrop, a glBlitFramebuffer
+//     resolve, never a readback), so the pass can ask what the artwork under a
+//     label actually is.
+//
+// THE RING IS BUILT FROM TAPS, NOT FROM THE PIXEL'S OWN COVERAGE. The four taps
+// one pixel away from the ink carry the ring: a 40%-covered stroke gets a 40%
+// ring, two adjacent strokes fill in without double-darkening, and nothing is
+// drawn where no ink is nearby. The contrast test compares each TAP's own colour
+// against the backdrop at THAT pixel, so a glyph straddling a light/dark boundary
+// is ringed only on the side that needs it.
+namespace outline {
+
+// The ratio below which the ring is drawn. The shader rings ink whose contrast
+// against the backdrop is BELOW this number, so a HIGHER constant rings MORE: it
+// is the "the ink would otherwise have been lost" line, not a target for the ink.
+//
+// WHY 2.0 AND NOT 3.0 (the value this shipped with). 3.0 is WCAG's minimum for
+// large text and UI components, and read as a ring TRIGGER it is far too eager:
+// the panel's ink is theme::Colors::text, and in linear light white ink reaches
+// 3:1 against any backdrop darker than grey 149/255 - i.e. the ring was drawn over
+// almost every mid-tone in the artwork, which is the "the ring shows up
+// everywhere" report. 2.0 draws it only where the ink is genuinely near-invisible:
+// white ink rings over a backdrop brighter than grey 183/255, and every darker
+// backdrop is left alone. The relation is measured in the gate
+// (tests/graph_panel_pixels.cpp, the outline block): a grey-130 stroke over the
+// bright 200 patch is 2.30:1, untouched at 2.0 and ringed at 3.0 - the pair that
+// pins this number rather than merely accepting it.
+//
+// The ratio is only that number in LINEAR light, so luma() linearises the sRGB
+// channels first (see the fragment shader).
+constexpr float kMinContrast = 2.0f;
+
+// The shipped ring: the four taps one pixel away. The alternative measured here is
+// 2, which adds a second ring at +/-2px and takes maxA over all eight taps - the
+// extension for a ring that reads too thin next to 13px labels. It is a parameter
+// rather than a compile-time constant so the two can be compared without a second
+// build; the pass pays for the extra four taps only when it is set.
+constexpr float kRingRadiusPx = 1.0f;
+
+struct Params {
+    float minContrast = kMinContrast;
+    float ringRadiusPx = kRingRadiusPx;
+    QColor colour = QColor(0, 0, 0); // theme::Graph::outline() in the shipping path
+};
+
+// Builds the pass's program and its full-screen quad on the CURRENT GL context.
+// Idempotent (safe to call per frame) and false when the context cannot compile
+// it - the caller must then draw without it rather than draw nothing.
+bool init();
+// Releases the program and the quad, with the context current.
+void shutdown();
+
+// Copies the framebuffer aSourceFbo (aPixelSize pixels) into aDestinationFbo with
+// glBlitFramebuffer: a GPU copy, never a readback. The widget's own framebuffer is
+// 4x multisampled (MainWindow's QSurfaceFormat), and a blit from it RESOLVES it -
+// which is why the filter is GL_NEAREST, the only filter a multisample resolve
+// accepts. Both framebuffers must have the same internal format (GL_RGBA8 here)
+// and the same size.
+void copyBackdrop(GLuint aSourceFbo, GLuint aDestinationFbo, const QSize& aPixelSize);
+
+// Runs the pass into the CURRENTLY BOUND framebuffer, which holds aPixelSize
+// pixels. The overlay (unit 0) and the backdrop (unit 1) are sampled, and the pass
+// sets every piece of GL state it depends on: this is the last thing in the frame,
+// and the ImGui backend leaves blending, the scissor box and the viewport as its
+// own last draw left them.
+void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const Params& aParams);
+
+} // namespace outline
+
+// The CURVE INK: the channel polylines, stroked by a coverage pass of our own
+// instead of by the draw list's own ImDrawList::AddPolyline - and the tangent HANDLE STEMS,
+// which are 1px lines with fractional ends and the one 1px family in the panel whose ink can
+// sit off the line it means.
+//
+// WHY NOT AddPolyline. ImGui antialiases a polyline by building the fringe into the
+// GEOMETRY: each segment is a quad whose edge vertices carry a partial alpha, so how
+// thick the stroke looks is a property of its vertices - and a horizontal run and a
+// steep diagonal of the same nominal width then disagree. This pass measures the
+// coverage PER FRAGMENT, from the distance to the segment's own centreline, so the
+// width is a property of the SHAPE. It is the technique of Chan & Durand, "Rendering
+// Antialiased Lines on the GPU" (2005) and the treatment in Rougier, "Shader-Based
+// Antialiased, Dashed, Stroked Polylines", JCGT 2(2) 2013 (whose body distance is the
+// absolute perpendicular coordinate and whose filter radius is a parameter) - the same
+// family Vello/piet-gpu draw strokes with.
+//
+// WHY THE STEMS ARE HERE TOO. A handle stem is one pixel wide and its ends are fractional
+// (PanelHandle::base/dot are QPointF), and ImGui's AddLine shifts its geometry by (+0.5,+0.5)
+// (the 1px rasterization convention in imgui_draw.cpp) - which is a pure translation, but the
+// coverage that matters is measured PERPENDICULAR to the line, so on a stem at a diagonal the
+// ink lands up to 0.71px off the line the model asked for (the (0.5,0.5) shift's component
+// along the stem's own normal is 0.699 for the gate's fixture). MEASURED on that fixture, at
+// three stations along it, through one method for both strokes: +0.68, +0.75 and +0.76px for
+// AddLine, against -0.01, -0.00 and +0.01px for this pass. The pass measures the
+// distance to the segment that was asked for, so the offset goes away; the stem is already
+// antialiased today (drawPanel does NOT turn the draw list's line AA off for it), so its
+// crispness is unchanged - only its position.
+//
+// The integer-positioned chrome (the frame and value ticks, the zero rule and the playhead) does
+// NOT come through here, and that is a measured decision rather than an omission: those three
+// are drawn with the line AA explicitly OFF (the timeline's hairline rule), every one of them is
+// positioned by an INTEGER column, and at an integer column the hard-edged line is exact - one
+// column at full coverage, on the column the model named. A 1px stroke through this pass on a
+// pixel boundary puts half its ink in each of two columns, i.e. it would trade one crisp column
+// for two grey ones. tests/graph_panel_pixels.cpp pins both halves of that (its assertion 27),
+// so the decision fails loudly if someone makes it by accident.
+//
+// HOW IT DRAWS. One quad per segment, expanded on every side to
+// halfWidth + filter, so a segment's capsule already has its round join and cap and
+// no join geometry is needed; each vertex carries the segment's own two endpoints.
+// The fragment computes the distance to the SEGMENT (never to its infinite line) and
+// turns it into a coverage with a one-device-pixel box filter, so the 50% crossing
+// sits exactly on the nominal edge. Below one device pixel the stroke keeps the 1px
+// footprint with its alpha scaled down rather than vanishing.
+//
+// NO DOUBLE-DARKENING AT THE JOINS. Neighbouring segments' quads overlap by the
+// filter's own width, and compositing them one after another would blend the overlap
+// twice - which is worse than it sounds, because a dimmed curve is drawn at 45%
+// alpha and even a FULLY covered overlap composites darker than the stroke's own body.
+// So the coverage is accumulated with glBlendEquation(GL_MAX) into a scratch texture
+// (the union of the capsules, which IS the round-joined stroke) and composited once
+// into the frame with the ImGui backend's own source-over function, in the
+// premultiplied convention the contrast outline pass documents.
+//
+// WHERE IT SITS IN THE FRAME. The curves belong between the ticks and the key
+// markers, and the ImGui backend renders a whole draw list in one call, so the pass is
+// inserted INTO the draw list: drawPanel puts one ImDrawList::AddCallback per curve,
+// carrying that curve's polyline, colour and strength in the callback's own COPIED
+// data, and the callback draws into whichever framebuffer is bound (the overlay's
+// coverage framebuffer in the application, the harness's own in the pixel gate) using
+// the backend's own ortho matrix - so a curve lands on exactly the pixels AddPolyline
+// would have inked.
+//
+// IT IS A GUEST IN THE FRAME and puts back every binding it changes: the ImGui backend
+// keeps its program, its vertex array and its array buffer bound across commands and
+// uploads the next draw list's vertices with them.
+//
+// WITHOUT init() - a context that refuses the programs, or a caller that never built
+// the pass - drawPanel keeps the old AddPolyline path: a panel drawn with the fringe
+// stroke beats a panel with no curves at all. The pixel gate drives both, which is
+// what makes the two stroke geometries comparable in one run.
+namespace stroke {
+
+// The stroke's nominal width in LOGICAL pixels - gui::kCurveWidth, the number both
+// paths stroke with. Declared here because tests/graph_panel_pixels.cpp asserts the
+// measured width against it, the same reason gui::kValueLabelGap lives in the header.
+constexpr float kWidthPx = 2.0f;
+
+// The coverage filter's width in DEVICE pixels: the box filter the fragment turns the
+// distance to the centreline into a coverage with. Rougier's r, and 1 is both the
+// paper's usual value and this shipment, so the ramp spans the pixel either side of the
+// nominal edge. Read only by the pass; named here so the gate can say what it measured
+// against.
+constexpr float kFilterPx = 1.0f;
+
+// Builds the pass's programs, its vertex array and its coverage scratch on the CURRENT
+// GL context. Idempotent (safe to call per frame) and false when the context cannot
+// compile the programs - drawPanel then strokes with ImDrawList::AddPolyline.
+bool init();
+// Releases the programs, the vertex array and the scratch, with a context current.
+void shutdown();
+// Whether init() has built the pass, i.e. whether drawPanel will insert it. The gate
+// uses this to render the SAME model through both stroke geometries in one run.
+bool isReady();
+
+// The draw-list callback drawPanel inserts where a curve's ink belongs (an
+// ImDrawCallback, one per curve). Public for the same reason drawPanel and
+// outline::composite are: the pixel gate has to be able to drive it directly, which is
+// how it is checked for leaving the frame's GL state exactly as it found it. It draws
+// only what the ImDrawCmd it is handed carries - the curve's polyline, colour and
+// strength, in the callback data ImGui copied for it - and it reads the projection
+// from the frame's own ImDrawData, so it must be called while that frame is current.
+// It returns without drawing when there is no frame to project against.
+void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
+
+} // namespace stroke
+
+// ---------------------------------------------------------------------------
+// THE PANEL'S FRAME DRIVER: what the panel's ONE host runs, and what the headless
+// pixel gate drives directly.
+//
+// The panel lives in the TIMELINE DOCK (the Graph tab's page, gui::GraphPanelWidget,
+// design section 5) and it used to have a second host - the viewport overlay that drew
+// it over the artwork, with gui::MainDisplayWidget forwarding its input. That host is
+// GONE, and this file is where the machinery it needed still lives, because the panel
+// is not a widget and is not an ImGui window either: it is drawn into the host's GL
+// framebuffer from a model, and every piece of that is a free unit a test can drive.
+//
+// WHAT ONE FRAME IS (gui::runPanelFrame, below): the io setup from the host widget's
+// own size and device pixel ratio, the GL3 backend's NewFrame, ImGui::NewFrame, the
+// curve ink's pass, the model (gui::buildGraphPanelModel) and its ink
+// (gui::drawPanel), and ImGui::Render(). The host then renders the returned draw data
+// into its own framebuffer - the dock's page does it with
+// ImGui_ImplOpenGL3_RenderDrawData and nothing else, because its floor is opaque and
+// there is no artwork to ring (see gui::outline for the pass the overlay host needed
+// and the pixel gate still drives).
+//
+// THE PANEL'S GL OBJECTS BELONG TO A CONTEXT, AND THAT IS CHECKED. Sharing is not
+// enough for them: Qt's sharable context group gives buffers, textures, shaders and
+// programs, but NOT vertex-array objects - a VAO name created in one context is
+// GL_INVALID_OPERATION in another on a core profile (measured: the second host bound
+// the stroke pass's VAO in its own context and GL_CHECK_ERROR() aborted on 1282).
+// acquirePanelContext() therefore records the QOpenGLContext the ImGui context, the
+// backend and both GL passes were created against, and runPanelFrame() re-creates them
+// whenever a frame arrives with a different one. One host means this never fires in the
+// application; it is the guard that keeps a second host from reintroducing that crash.
+//
+// WHAT THE HOST STILL OWNS ITSELF: the widget it draws into (io.DisplaySize and
+// io.DisplayFramebufferScale come from ITS size and ratio, which is what puts the frame
+// in its own viewport at its own ratio; the backend sets the GL viewport and the scissor
+// boxes from draw_data->DisplaySize * FramebufferScale, i.e. in device pixels), its own
+// input bridge (gui::ImGuiInputBridge), its own frame state below for its own hit-tests,
+// and the framebuffer it renders the frame into.
+
+// The state of ONE host, between its frames. Each host owns one and hands it to
+// runPanelFrame() every frame.
+struct PanelFrameState {
+    // The frame the pixels were drawn from and the editor it was built from (null
+    // while the panel is hidden). A host's OWN interactions - the channel button, a
+    // double-click on the plot, the accessible items - are tested against THIS
+    // geometry, so the clickable control is exactly the drawn control.
+    GraphPanelModel model;
+    ctrl::GraphEditor* editor = nullptr;
+    // The palette that frame was built and drawn with: theme::Graph::from of the LIVE
+    // theme::Colors::current(), derived once per frame here (the app changes palette at
+    // runtime, so there is nothing to cache). It travels in the state because a host's
+    // work AFTER the frame still needs it (gui::outline's composite takes its
+    // outline() colour) and a second derivation would be the same work twice.
+    theme::Graph palette;
+    // How many LOGICAL pixels of this host's top another widget covers. The dock's page
+    // leaves it at 0 - nothing floats over the dock, the tab names the page and the
+    // header belongs to the dock - so the ruler band sits at the plot's own top. (The
+    // field and the clamp stay: the inset is the model's, GraphPanelModel's THE OCCLUDED
+    // TOP, and a host that floats something over the panel sets it rather than the model
+    // inferring one.)
+    int topInset = 0;
+    // io.DeltaTime, from the real interval between THIS host's frames.
+    QElapsedTimer frameTimer;
+    bool frameTimerStarted = false;
+};
+
+// The panel's Dear ImGui context, GL3 backend and font atlas, brought up on aHost's own
+// GL context - together with the two GL passes that are context objects (gui::stroke's
+// programs and scratch, gui::outline's program and quad). The host calls this from
+// initializeGL, with that context current, and the LAST release tears them down again
+// (also with a context current).
+//
+// THE OBJECTS REMEMBER THEIR CONTEXT and are re-created if a frame ever arrives with a
+// different one (see the note at the top of this section): VAOs are not shared between
+// contexts, so a second host attaching to this one's objects would be a GL error rather
+// than a sharing success. The atlas is built from aHost's font - the face and the size
+// Qt rasterizes the rest of the application with, and the dock's page sets no font of
+// its own.
+bool acquirePanelContext(QOpenGLWidget& aHost);
+void releasePanelContext(QOpenGLWidget& aHost);
+// Whether the context is up, i.e. whether a frame can be run at all.
+bool panelContextReady();
+
+// ONE FRAME of the panel, for aHost. This is the whole per-frame body: the io setup,
+// the backend's NewFrame, ImGui::NewFrame (in that order - the backend's own NewFrame
+// is the CALLER's duty in 1.92 and is what creates its device objects), the curve
+// ink's pass, the model, drawPanel and ImGui::Render().
+//
+// aHostStyle is the host's own kind (gui::GraphPanelHost): it is what places the
+// model's one control - the docked button sits in the ruler band, the overlay's (which
+// only the pixel gate builds now) floats below it. aEditor is the panel's editor
+// (ctrl::Driver::graphEditor()) and aVisible whether the panel is up at all: with false
+// the frame draws nothing but still drains ImGuiIO's queue, and aState comes back with
+// an empty model and a null editor.
+//
+// It also guards the CONTEXT: a frame whose host draws with a context other than the one
+// the panel's GL objects were created against re-creates them on that context first (see
+// the note at the top of this section). False from that re-creation - a context that
+// cannot host the backend - and the function returns null.
+//
+// The frame's vertices are NOT drawn here. The returned draw data is rendered into the
+// host's own framebuffer - the dock's page with ImGui_ImplOpenGL3_RenderDrawData and
+// nothing else. Null when no context is up, i.e. when the host must draw nothing.
+ImDrawData* runPanelFrame(
+    QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,
+    PanelFrameState& aState
+);
+
+// THE PANEL'S ACCESSIBILITY PUBLICATION.
+//
+// gui::a11y keeps ONE installation for the process (one factory, one widget, one
+// published model), so the panel can be published exactly once, from the widget that
+// owns it. That widget is the host that draws the panel (gui::GraphPanelWidget), which
+// installed the factory for itself in its CONSTRUCTOR (installFactoryOnly - see
+// gui/ImGuiA11y.h, "WHERE TO CALL IT": a widget shown or parented while accessibility is
+// active caches its ordinary interface first, and no factory installed later is reached
+// for it). This call is the second half of that pairing: a repeat install for the SAME
+// widget, which keeps the interface and the id and only takes over the action callback.
+//
+// The panel is published while the host is ON SCREEN and the EMPTY model while it is
+// not: the tree says "no panel" rather than showing the last frame of a hidden tab. All
+// of that is one rule here because there is exactly ONE host - if a second one ever
+// returns, this is the function whose ownership rule has to be re-thought, together with
+// the GL guard (the note at the top of this section is what it cost last time).
+//
+// aOnAction(aUser, aId) is the host's own handler for the ids below, called
+// synchronously from the accessibility call that activated the item.
+void publishPanelAccessibility(
+    QOpenGLWidget& aHost, PanelFrameState& aState, void (*aOnAction)(void* aUser, int aId), void* aUser
+);
+
+// The panel's accessible item ids. No item is a row index (the channel list and the key
+// menu are the application's own QMenus, not in the tree), so every id is a fixed
+// negative; the host dispatches on them.
+constexpr int kPanelSummaryItemId = -1;
+constexpr int kPanelFitItemId = -2;
+constexpr int kPanelKeyMenuItemId = -3;
+constexpr int kPanelChannelsItemId = -4;
+
+// The drawn marker of the one key aTargets names, in the model's own pixels: the
+// (node, channel type, frame) triple - the timeline's own name for a key - looked up
+// in PanelCurve::keyFrames/keyDots, which are published beside each other. False when
+// the selection names no single key the model carries (a key outside the plot's
+// window, or on a hidden channel). It is the rectangle of the key menu's accessible
+// action and the position the picker opens at.
+bool panelSelectedKeyDot(const GraphPanelModel& aModel, const core::TimeLineEvent& aTargets, QPoint& aDot);
+
+// The key under aPos, by the EDITOR's own rule: the nearest key whose centre is within
+// ctrl::graph::kKeyHitRadius of it - the same distance, and the same `<=`,
+// ctrl::GraphEditor::hitTest grabs a key with - reported as the triple (node, channel,
+// frame) the timeline names a key by. The centre is PanelCurve::keyDots, not the key's
+// HIT rect and not the drawn marker: the rect is that rule's square form (too small at
+// the diagonals), and the marker is the ink, deliberately smaller than the target.
+//
+// False when no key is that close, which is a right-click's whole answer: the panel's
+// right button has one action (the easing picker on the key under the pointer) and opens
+// nothing when there is no key. It is the one right-click hit test and the one marker
+// HOVER test (drawPanel brightens the marker it names), so the key a right-click grabs
+// and the marker the pointer lights are the same key.
+bool panelKeyAt(
+    const GraphPanelModel& aModel, const QPoint& aPos, core::ObjectNode*& aNode,
+    ctrl::graph::Channel& aChannel, core::Frame& aFrame
+);
+
+// WHAT IS LEFT IN THIS FILE, and why it is a file at all.
+//
+// The class that used to live here was the panel's VIEWPORT OVERLAY host: it drew the
+// panel over the artwork, forwarded the viewport widget's Qt events into ImGui, owned
+// the contrast-outline composite and published the panel's accessibility model. That host
+// is GONE (design section 5 puts the panel in the timeline dock's Graph tab, and one host
+// means one GL context, which is also what the per-context guard above exists for). What
+// remains here is everything the ONE host and the headless pixel gate still share:
+//
+//   * the panel's INK: gui::drawPanel and its helpers (labels, curves, markers, chips,
+//     the marquee and the hull, the panel's one control), which draw a model into a draw
+//     list and read no font off the current context;
+//   * the model's PIXEL-LEVEL palette decisions: gui::kDrawTextHalo and
+//     gui::kValueLabelGap, here rather than in the .cpp because the gate asserts against
+//     them;
+//   * the CURVE STROKE pass (gui::stroke) and the CONTRAST OUTLINE pass (gui::outline):
+//     the stroke is what the panel strokes its curves with; the outline is the pass the
+//     overlay host used to ring ink that would have been lost against arbitrary artwork,
+//     and it is kept as a free unit for the reason it always was - the gate drives it
+//     with synthetic textures and no widget (tests/graph_panel_pixels.cpp), so its
+//     arithmetic is still pinned even though the floor the panel sits on is now opaque;
+//   * the FRAME DRIVER above: the panel's ImGui context, backend and atlas, one frame's
+//     body, and the accessibility publication;
+//   * the two HIT TESTS the host and the a11y items share: gui::panelKeyAt (the
+//     right-click's key, and the marker the pointer lights up) and
+//     gui::panelSelectedKeyDot (the key the selection names).
+//
+// Every user-visible string in the .cpp goes through QCoreApplication::translate with the
+// "gui::ImGuiOverlay" context: that name is a CATALOG key the shipped .ts files already
+// carry, so it is frozen (see the note beside kTranslationContext in the .cpp) - the file
+// and the class it was named after are not what it describes.
+
+} // namespace gui
+
+#endif // GUI_IMGUIOVERLAY_H

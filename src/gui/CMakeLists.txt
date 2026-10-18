@@ -213,12 +213,15 @@ endif()
 # ae_imgui library that compiles ImGui's four core sources. The tests link that
 # same library, which is why neither the fetch nor the core sources live here.
 #
-# What each unit is: ImGuiOverlay draws the panel and takes its input;
-# GraphPanelModel is what it draws, as engine-neutral geometry (so the panel's
-# content is testable without GL); ImGuiInputBridge is the Qt->ImGuiIO translation
-# plus the WantCapture gate the application's key routing obeys;
-# ImGuiQtFontLoader makes ImGui rasterize through Qt (CJK, .ttc, CFF); ImGuiA11y
-# publishes the panel to the screen-reader tree, which ImGui itself cannot do.
+# What each unit is: GraphPanelFrame is the panel's frame driver and its ink (the
+# ImGui context, GL3 backend, atlas and per-frame body the dock's Graph tab runs,
+# plus gui::drawPanel and the two GL passes); GraphPanelWidget is that dock page, the
+# panel's only host; GraphPanelModel is what the frame draws, as engine-neutral
+# geometry (so the panel's content is testable without GL); ImGuiInputBridge is the
+# Qt->ImGuiIO translation plus the WantCapture gate the application's key routing
+# obeys; ImGuiQtFontLoader makes ImGui rasterize through Qt (CJK, .ttc, CFF);
+# ImGuiA11y publishes the panel to the screen-reader tree, which ImGui itself cannot
+# do.
 #
 # ImGuiGLBackend.cpp is the GL3 backend reached through a loader shim: it includes
 # gui/ImGuiGLBackend.h - the wrapper over gl::Global::functions() - ahead of the
@@ -229,7 +232,7 @@ endif()
 # ---------------------------------------------------------------------------
 if(AE_ENABLE_IMGUI)
     target_sources(${PROJECT_NAME} PRIVATE
-        ImGuiOverlay.cpp ImGuiOverlay.h
+        GraphPanelFrame.cpp GraphPanelFrame.h
         GraphPanelWidget.cpp GraphPanelWidget.h
         ImGuiGLBackend.cpp ImGuiGLBackend.h
         ImGuiInputBridge.cpp ImGuiInputBridge.h
@@ -241,7 +244,7 @@ if(AE_ENABLE_IMGUI)
         ${imgui_SOURCE_DIR}/backends
     )
     target_link_libraries(${PROJECT_NAME} PRIVATE ae_imgui)
-    # The one compile-time gate the overlay's hooks obey.
+    # The one compile-time gate the panel's units obey.
     target_compile_definitions(${PROJECT_NAME} PRIVATE AE_ENABLE_IMGUI=1)
 endif()
 
