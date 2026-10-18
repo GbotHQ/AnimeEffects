@@ -333,8 +333,12 @@ Measured traps, all of which cost time here:
 - **`en` is not a translated language.** It is absent from
   `qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES es ja ko ru zh)` (root `CMakeLists.txt:29`),
   so `translation_en.ts` is the source-language stub. lupdate prints `Updating …/translation_en.ts`
-  and `Found 893 source text(s) (893 new and 0 already existing)` and then leaves the 4-line,
-  0-entry file **byte-identical**. Do not "fix" it, and never read its `unfinished` count as debt.
+  and a `Found … source text(s)` summary (`Found 893 source text(s) (893 new and 0 already existing)`
+  at the run that first measured this) and then leaves the file holding ONLY the `numerus="yes"`
+  messages: after `73ba0919` that is **5 entries** - 2 under `GraphPanel`, 1 under `QCoreApplication`,
+  2 under `gui::ImGuiOverlay` (one of those `type="vanished"`) - so a `grep` there for a plain source
+  string finds nothing, which is the shape, not a gap. Do not "fix" it, and never read its
+  `unfinished` count as debt.
 - lupdate sees what the *translation units* contain. A `tr()` in a file missing from
   `AE_I18N_SOURCES`, or a `QT_TRANSLATE_NOOP` in a header nothing `#include`s, is invisible **with
   no error at all** — the string simply never appears in a catalog. `src/ctrl/ExportTargetStrings.h`
@@ -350,6 +354,23 @@ Measured traps, all of which cost time here:
   wrong context returns the **English source without any error**, so a check has to assert the
   translation differs from the source, and ask once in a deliberately wrong context to show the
   lookup is actually context-keyed.
+
+Two more, measured after the redesign's i18n commit (`73ba0919`, which added 14 strings extracted
+from the panel, the header and the chip):
+
+- Graded by the toolchain rather than a grep: `lrelease` on each of the five translated catalogs
+  reports **948 translations, 948 finished, 0 unfinished**, and 4/4 for `translation_en.ts`. The raw
+  `<message>` counts differ per catalog - 1434 es, 1434 ja, 1387 ko, 1401 ru, 1427 zh - and each minus
+  its own `type="vanished"` count (486/486/439/453/479) is exactly the same 948, so a raw entry count
+  is a history measure and not progress. The binaries are not on `PATH`; they are at
+  `/usr/lib64/qt6/bin/lrelease` (and `lconvert` beside it).
+- The panel's translation context is FROZEN at `gui::ImGuiOverlay` even though the class that named
+  it is gone - the file renamed to `GraphPanelFrame.{h,cpp}` (`aa92de2a`). The context is a CATALOG
+  KEY, not a description: renaming it would silently ship English in five languages until every
+  catalog is re-extracted and re-translated, and the code says exactly that
+  (`GraphPanelFrame.cpp:198-203`). The consequence is why the rename cost no translation work: the
+  panel's entries kept their ids, and the redesign added exactly 14 new ones (`git show 73ba0919`
+  adds 14 `<source>` lines per catalog).
 
 ## The editing model: one open edit, one command, no half-solved document states
 
@@ -425,10 +446,17 @@ Family status, measured:
 
 ## The animation graph panel (Dear ImGui), and its overlay host
 
-The panel is **drawn by Dear ImGui 1.92.7** and has TWO hosts since the dock round: the fullscreen
-viewport overlay this section measures, and the timeline dock's `Graph` tab (`gui::GraphPanelWidget`),
-which is the design's end state and is described in "The redesign as it now stands" below; the
-overlay hosting is removed once the docked tab is proven live. Pinned by a
+The panel is **drawn by Dear ImGui 1.92.7** and has had ONE host since `aa92de2a`: the timeline
+dock's `Graph` tab (`gui::GraphPanelWidget`), described in "The redesign as it now stands" below. The
+fullscreen viewport overlay it had beside the dock is DELETED, together with its contrast-outline
+composite, its framebuffer-pixel cache, its `topInset` forwarding and every input route it owned -
+and with it the Tools dock's "Show animation graph" toggle and `MainViewSetting::showGraphEditor`
+(the dock's own tab IS the control). `scripts/gui/probe_graph_overlay.sh` went the same way: a probe
+that drives a removed host is worse than none. The class was renamed with the host -
+`ImGuiOverlay.{h,cpp}` -> `GraphPanelFrame.{h,cpp}`, which is now the shared frame driver, the
+`stroke` and `outline` modules and the accessibility publication - **so every `ImGuiOverlay.cpp:NNNN`
+/ `ImGuiOverlay.h:NNNN` citation in this file names `GraphPanelFrame.{h,cpp}`, whose line numbers
+have moved** (that header still carries the old `GUI_IMGUIOVERLAY_H` include guard). Pinned by a
 `FetchContent` declaration in the root `CMakeLists.txt` behind
 `AE_ENABLE_IMGUI` (default ON). The sources are NOT in this repository: they are
 fetched into `build/_deps`. `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<an existing
@@ -476,8 +504,9 @@ failure otherwise):
   is created per draw.
 
 **The panel's design, as implemented** (`src/ctrl/GraphEditor.h` and
-`src/gui/GraphPanelModel.h` are the two durable specs). The bullets below describe the OVERLAY host;
-the docked host keeps every rule except the two marked:
+`src/gui/GraphPanelModel.h` are the two durable specs). The bullets below describe the OVERLAY host,
+which is DELETED (SUPERSEDED 2026-10-18, `aa92de2a`) - read them as history; the docked host kept
+every rule except the two marked:
 - fullscreen over the animation, **no background and no grid**: short tick marks
   and labels only, so the artwork stays readable through the panel (OVERLAY
   only: the docked host clears an OPAQUE floor of its own before the frame, so
@@ -739,8 +768,11 @@ correct - so the fix is not in the label layout. `MainDisplayWidget::paintEvent`
 hands the overlay `setTopInset()` on every frame (the tab bar's bottom edge in the
 widget's own coordinates, in LOGICAL pixels, clamped to 0 when the bar sits above the
 widget rather than over it), and the model moves only the ruler band - the ticks, the
-frame numbers and any value label that would fall under it. It moves NOT the plot, the
-curves, the keys or the hit-test geometry: those are the editor's own rect
+frame numbers and any value label that would fall under it. SUPERSEDED (2026-10-18, `aa92de2a`):
+the overlay host and its `setTopInset` are gone (`grep` returns 0), and the docked page keeps
+`PanelFrameState::topInset` at 0 because nothing floats over the dock (`GraphPanelFrame.h:416`,
+`GraphPanelWidget.h:213`) - the field and the clamp stay for a host that needs them. It moves NOT the
+plot, the curves, the keys or the hit-test geometry: those are the editor's own rect
 (`GraphEditor::panelRect`), and drawing them anywhere else would put the key a user
 sees a tab bar's height away from the key a press grabs.
 
@@ -989,7 +1021,10 @@ suggests - the ring was showing up everywhere.
 
 Ten commits (`7f683ba3..9ba5edbc`) landed the approved timeline + animation-panel redesign. Where a
 line above describes the overlay-only world, this section is the current one and the older line is
-marked SUPERSEDED in place.
+marked SUPERSEDED in place. THREE commits have landed since this section was written - `aa92de2a`
+(the overlay host deleted, the frame driver renamed), `46978a29` (the axis hue table, the visibility
+state deleted) and `73ba0919` (the 14 strings extracted and translated) - and what each changes is
+marked in place, in the paragraph it changes.
 
 **The dock header is 40px and ACROSS the dock** (`gui::TimeLineHeader`, `TimeLineHeader.cpp:25`
 `kHeaderHeight`), above the ruler and spanning tree + surface:
@@ -1023,7 +1058,15 @@ the current page). With `AE_ENABLE_IMGUI=OFF` there is no graph page, no Graph t
 caller could use - the whole panel unit set is registered inside `if(AE_ENABLE_IMGUI)`
 (`src/gui/CMakeLists.txt:230-233`), and the header simply has no tabs.
 
-**The docked panel is the SAME panel, on a SECOND host.** `gui::GraphPanelWidget` is a
+**The docked panel is the SAME panel, on a SECOND host.** SUPERSEDED (2026-10-18, `aa92de2a`): the
+overlay host is DELETED and `gui::GraphPanelWidget` is the panel's ONLY host. The frame driver is
+still `gui::runPanelFrame` (`GraphPanelFrame.h:459`), but the contrast-outline composite stopped
+being drawn: the pass survives because the headless pixel gate drives `gui::outline::composite`
+directly (`tests/graph_panel_pixels.cpp:3510`), while the application's only caller of `runPanelFrame`
+is the docked widget (`GraphPanelWidget.cpp:175`). `GraphPanelHost::Overlay` survives too, as the
+model builder's DEFAULT host style (`GraphPanelModel.h:698,717`), which is what every harness gets
+unless it asks for `Dock`. What follows describes how the two hosts related while both existed.
+`gui::GraphPanelWidget` is a
 `QOpenGLWidget` pinned over the dock's opaque floor (`theme::Colors::base`, cleared per frame -
 `GraphPanelWidget.cpp:132-150`); the model lays out for `GraphPanelHost::Dock`, which is what puts
 its one control in the plot's corner and suppresses the overlay's contrast-outline composite.
@@ -1038,13 +1081,20 @@ behind its contrast-outline composite. The atlas is built from whichever host ac
 both draw the application face. `PanelFrameState` is per host, so a host's own hit tests and the
 accessible items are tested against the geometry THAT host drew (`ImGuiOverlay.h:396-416`).
 
-**The GL/ImGui sharing is CHECKED, not assumed.** Both pages are children of `MainWindow`, so Qt puts
-them in one context group sharing one default format (`QSurfaceFormat::setDefaultFormat`,
-`MainWindow.cpp:73`); `acquirePanelContext` keeps the first host's `QOpenGLContext` and, for a later
-host, calls `QOpenGLContext::areSharing(gPanelOwnerContext, aHost.context())`, warning with the cause
-and the fix when it is false (`ImGuiOverlay.cpp:2263-2285`). There is deliberately NO fallback - a
-second context would be a second backend, which the design refuses - so the diagnosis is the whole
-of the fix.
+**The GL/ImGui sharing is CHECKED, not assumed.** The dock's page and the viewport are both children
+of `MainWindow`, so Qt puts them in one context group sharing one default format
+(`QSurfaceFormat::setDefaultFormat`,
+`MainWindow.cpp:69-73`). A second host on its own context would need a second backend, which the
+design refuses - one ImGui context, one backend, one atlas, whatever draws. So instead the panel
+records the `QOpenGLContext` its objects were created against (`gPanelOwnerContext`,
+`GraphPanelFrame.cpp:2116-2125`) and, on a frame whose host draws with a different one, tears the
+objects down ON THE CURRENT CONTEXT and rebuilds them there (`rebindPanelObjects`,
+`GraphPanelFrame.cpp:2206-2227`; called from
+`runPanelFrame` at `:2282`), warning ONCE with the cause - "(vertex-array objects are not shared
+between contexts, even in one window)" (`:2219-2223`). One host means the rebuild never fires in the
+application; it is the guard that keeps a second host from reintroducing the VAO crash. Note that no
+`QOpenGLContext::areSharing` call exists anywhere in the tree (`grep` returns 0) - the pointer
+compare plus the rebuild IS the guard, not an are-they-sharing assertion.
 
 **The selection is the CHANNEL MARKER, and that is the user's ruling** (see the contradictions
 section below). `ctrl::time::Selection` carries both granularities in ONE container
@@ -1106,6 +1156,37 @@ surface is the plot (`GraphPanelModel.cpp:316-340`). Either way it hangs BELOW t
 (the `kFrameTickLength` tick rows plus the numbers' line), with a model-level precondition that the
 box and the band cannot intersect (`GraphPanelModel.cpp:342-350`).
 
+**One channel hue table, and the rule is "axis where there is an axis, type otherwise".** Per-TYPE
+colouring could not answer "which channel is this": Move X and Move Y shared one hue, Scale X and
+Scale Y too, Blur's three too, and HSV reused Move's indigo while Blur reused Scale's fuchsia. The
+assignment now lives in ONE table both views read - `theme::channelAxis(type, component)` and
+`theme::channelColor(...)` (`theme/Colors.h:231-285`, `:597-604`, with `kChannelAxisRow` at `:262`
+taking the palette's own rose / green / sky rows, dark `#fb7185` / `#4ade80` / `#38bdf8`). A
+component that lies on an axis takes that axis's hue - the first and second component of Move,
+Scale, Image and Blur's two radii - and every other channel keeps its type's hue, so Opa stays
+amber, Depth and the two angles keep their type's hue, and no graphable channel is a Z today (the Z
+cell is stated for the convention's completeness). `tests/graph_panel_model.cpp:893-904` fails if an
+axis is ever assigned to an angle or to Depth. THE TIMELINE READS THE SAME TABLE: a timeline key
+belongs to the TYPE, so `ctrl::time::Renderer` draws it in `channelColor(colors, type, 0)` - the X
+hue for those four 2D types (`time_Renderer.cpp:51`) - and its lane label and its chip in the same
+hue, so a lane label, a timeline key and a panel curve cannot disagree about a channel's colour. The
+panel's palette copies the three axis cells once per theme (`theme/Graph.cpp:126-128`) and the
+drawing layer inks each row, curve, marker and chip with it. Consequence the pixel gate had to
+absorb: two FIRST components are both red now, so its fixture was rebuilt from channels the hue CAN
+tell apart (Move X against Scale Y - `tests/graph_panel_pixels.cpp:564,578,589`), which is section
+7's own point. The channel list is the GROUPED legend section 7 describes: one group per (layer, key
+type) - `PanelChannelRow::group`, e.g. `Move [X][Y]`, `Opa [Opacity]` (`GraphPanelModel.h:107-114`,
+built in `GraphPanelModel.cpp:257-276`) - with one heading row and one row per component beneath it
+in its axis hue, the group carrying which PROPERTY it is and the hue only which axis, so two red X
+curves are told apart by their headings. The heading is a disabled row in the application's own
+`QMenu` (`MainDisplayWidget::showGraphChannelMenu`, `MainDisplayWidget.cpp:316`), so it is structure
+and not a control, and every row keeps its visibility toggle and its hover-to-focus. One DELETION
+came with the rule: the panel's copy of the table dropped its four unreachable entries -
+Bone/Pose/Mesh/FFD, because `componentCount()` is 0 for them and `graphableTypes()` filters on that,
+so a row could never be published - while `theme::Colors` keeps their tokens and `keyTypeColor()`
+still names them for the TIMELINE (`theme/Graph.cpp:130-150`); the contradictions section records
+which half of the design won that, and why.
+
 **The selection's HULL and COUNT.** `GraphEditor::selectionHull()` returns the convex outline of
 every selected key in DATA space, collinear points dropped and empty with nothing selected
 (`GraphEditor.cpp:2037`); `selectionCount()` is the live count (`GraphEditor.cpp:2070`). The caller
@@ -1142,6 +1223,28 @@ because the picker must not open on nothing (`prop_Items.cpp:276-283,286-290`).
 A multi-key picker session is ONE undo step (one scoped macro, one notifier, one Assign per key),
 where the old menu pushed one command per key.
 
+**The graph editor's visibility state is DELETED, and re-arming it for the dock would be WRONG.**
+The removed overlay host was the only thing that ever made the editor "visible", and the flag's only
+readers were two `Driver` paths that arbitrated VIEWPORT events against the panel's rect:
+`Driver::updateCursor`'s graph branch took the event when `mGraphEditor->isVisible() &&
+mGraphEditor->ownsCursor(...)`, and `ownsCursor` tests `GraphEditor::currentPanelRect()`
+(`GraphEditor.cpp:647`, which is `panelRect(aCamera.screenSize())` - the WHOLE surface it is handed,
+`GraphEditor.cpp:341-357`, i.e. the whole viewport while the panel was the fullscreen overlay). A
+canvas press whose coordinates landed inside it therefore opened a graph marquee instead of running
+the current tool; that is why the flag could not simply be re-armed with the dock as its reader. So
+`Driver::setGraphEditorVisible`,
+`Driver::updateGraphWheel` (which had NO caller at all), the `isVisible()` guard in
+`Driver::updateCursor` and `GraphEditor::setVisible`/`isVisible`/`mVisible` are gone, and the
+viewport's events are the tools' alone (`Driver.cpp:71-78`). The one live side effect hiding ever had
+- dropping a gesture when the page goes away - kept its door: `GraphEditor::panelHidden()`
+(`GraphEditor.h:153`, `GraphEditor.cpp:324`) is `endDrag()` and nothing else, called from
+`gui::GraphPanelWidget::hideEvent` (`GraphPanelWidget.cpp:201-213`, because the tab can be switched
+away from with a key move, a handle drag, a marquee or a pan still in flight), and the selection, the
+scale and the hidden channels are kept so the page coming back is the panel as it was. **The command
+a dropped gesture had already pushed STAYS on the undo stack** - dropping a gesture is not an undo.
+`tests/graph_drag.cpp`'s section 24 drives the hide WITH a key move open and pins exactly that, plus
+that a further move after the drop changes nothing (`tests/graph_drag.cpp:3418-3500`).
+
 ## Where the redesign contradicts itself, and which side won (2026-10-18)
 
 Four places the design document disagrees with itself. Each was decided; the reason is the deciding
@@ -1165,9 +1268,14 @@ fact.
   The mock's hosted variant has no app-side host and is not implemented.
 - **The four not-graphable types.** s7's note: the Bone/Pose/Mesh/FFD panel entries are unreachable
   (`componentCount()` is 0) and "should be deleted rather than coloured". s8's row: they "keep their
-  hues". s8 WON - the per-type table still colours them (`theme/Graph.cpp:134-137`) - because the
-  colours are one table shared with the timeline and the entries are dead but harmless; deleting them
-  is a decision nobody made.
+  hues". SECTION 7'S NOTE WON, one commit after this section was written (`46978a29`), and the code
+  is what decided it: `componentCount()` returns 0 for the four and `graphableTypes()` is the filter
+  that walks it, `buildChannels` walks that list - so a row or curve for them could never be
+  published, i.e. the colours were unreachable rather than merely dead. The four entries are GONE
+  from the panel's table, which now says so in place (`theme/Graph.cpp:130-150`); the TIMELINE still
+  draws their keys, so `theme::Colors` keeps their tokens and `keyTypeColor()` still names all four
+  (`theme/Colors.h:568-593`). The colours are still ONE table shared with the timeline, which is why
+  removing them from the panel's table costs the timeline nothing.
 - **The lane curves.** s1 offers two opt-in lane-curve modes (selected object only / every lane) and
   calls them off by default. THE USER'S RULING: the timeline's lanes NEVER draw curves. Nothing in
   this wave added one - `ctrl::time::Renderer` has no lane-easing pass (the fill, the separators,
@@ -1235,6 +1343,31 @@ Each of these cost a defect that was invisible in the code that caused it.
   skips an item within 6px of the edge and never moves one back in. The header's "pushed apart
   vertically ... and clamped into the plot" was wrong about both the code and the mock and was
   corrected to the drop (`ImGuiOverlay.cpp:1817-1845`).
+- **A VAO is not shared between GL contexts, and the stroke pass's was process-global.** With the
+  panel in the dock its tab ABORTED the process the first time it had anything to stroke: `paintGL`
+  -> `ImGui_ImplOpenGL3_RenderDrawData` -> `gui::stroke`'s draw callback ->
+  `gl::EasyShaderProgram::makeSureVBO` -> `GL_CHECK_ERROR` -> `Q_ASSERT(0)`, "OpenGL Error
+  (code:1282)". Qt's sharable context group gives buffers, textures, shaders and programs but NOT
+  vertex-array objects, so `glBindVertexArray` on a name the CURRENT context never generated is
+  `GL_INVALID_OPERATION` on a core profile - and the pass and its VAO were process-global, created by
+  whichever host ran first, always the viewport overlay (`initializeGL` fires before the dock page is
+  ever shown). Reproduced **7/7**, including with the overlay toggled on first. The EMPTY panel drew
+  fine - no keys, no stroke, no crash - which is exactly why the live checks that had verified the
+  tab missed it. The fix is structural plus a guard: one host owns the objects by construction, and
+  the frame driver records the context they were created on (`gPanelOwnerContext`,
+  `GraphPanelFrame.cpp:2116-2125`) and, on a frame whose context differs, tears them down ON THE
+  CURRENT CONTEXT and rebuilds them there (`rebindPanelObjects`, `GraphPanelFrame.cpp:2206-2227`,
+  called from `runPanelFrame` at `:2282`), warning once with the cause (`:2219-2223`) - a pointer
+  compare per frame with one host.
+- **Removing a class can leave the file's NAMESPACE nesting broken, and the symptom is the compiler
+  calling your own names "ambiguous".** The overlay surgery cut one `} // namespace` along with the
+  class, so `outline`, `stroke` and `drawPanel` ended up nested inside an ANONYMOUS namespace - which
+  is what made the reported names "ambiguous" and put `outline`'s own `Params`/`kFilterPx` out of
+  reach. Nothing in the edit pointed at it; the statements still parsed. After the repair the
+  functions the surgery had touched (`outline::init`, `nextDeltaTime`, `stroke::init`) were checked
+  byte-identical to the original at `HEAD` with `git show`. The nesting at HEAD puts `outline` and
+  `stroke` at `namespace gui`'s own scope, each inside its own anonymous-namespace helpers rather
+  than the other way round (`GraphPanelFrame.cpp:48-49, 409, 551, 1029`).
 
 ## How to verify this area now (2026-10-18)
 
@@ -1248,6 +1381,14 @@ the scale cannot silently move it), `graph_panel_model` (the model's content and
 46 pass / 0 fail on the dock wave's tree (`a55dfb2a`); the marker-ink wave that followed had its two
 pixel gates red when this was written.
 
+**A `-W` warning is only absent from the run that COMPILED that TU.** `46978a29` deleted three
+warnings - two unused test symbols (`tests/time_scaler.cpp`'s `notchIn`,
+`tests/easing_regression.cpp`'s `numCases`) and one dead lambda (`tests/picker_keyboard.cpp`'s
+`spin`), all left behind by earlier edits - that NO incremental build had reported and that only a
+fresh Release compile of the whole tree surfaced. So "the build is warning-free" is a statement
+about the object files on disk, not about the tree: it is only true of a run that actually compiled
+those translation units.
+
 PROBES (live, under Xvfb, `scripts/gui/run_probes.sh`, each assertion naming the number it
 measured): **`probe_timeline_ink.sh` PASSES, 31/31** - the selected tree row's 2px rail and its
 disappearance, the lane band's accent@0.06 tint measured against BOTH composites with a share bound
@@ -1255,16 +1396,16 @@ the old 0.40 flood is 2.7x past, the focused key's ring 0 -> 20-25 -> 0 accent p
 annulus while its centre goes to the 0.45 highlight mix, the lane label's 0.42 ink present with the
 playhead away and absent when it is parked on the label, and the ruler number yielding its column to
 the pill and coming back. Its shared helper is `scripts/gui/ae_ink.py` (modal colour of a box, counts
-within a tolerance, x/y runs of inked columns and rows, an annulus count). The two PANEL probes still
-drive the VIEWPORT overlay host: `probe_graph_ink.sh` fails one claim of its own - it finds channel
-hues on the timeline but 0 pure-hue pixels in the plot, while the overlay path is intact (its
-`paint()` still reaches `runPanelFrame`), so that zero is the probe's measurement - and
-`probe_graph_overlay.sh`'s key-menu phase was re-aimed in this wave: it recognises the picker by its
-OWN source constants, asserts the window is override-redirect and viewable, presses a tile at
-coordinates derived from the tile order and reads the commit off the application's own state line,
-with the assertions that cannot survive a widget popover dropped and their reason recorded in the
-file. Both are being RETARGETED AT THE DOCK, which is where the panel now lives; whether they have
-landed is not verified here.
+within a tolerance, x/y runs of inked columns and rows, an annulus count). The two PANEL probes were
+RETARGETED AT THE DOCK, and the retarget has landed: `aa92de2a` rewrote `probe_graph_ink.sh` to reach
+the panel through the dock's own tab and the dock's own pixels (its header records the crash that
+phase now pins - "WHY THAT FRAME USED TO KILL THE APPLICATION", `scripts/gui/probe_graph_ink.sh:54`)
+and added `probe_graph_anchor.sh`, which asserts on the dock that a middle-drag pan moves the content
+by exactly the pixels dragged and that a wheel notch holds the frame under the cursor. The viewport
+overlay probe `probe_graph_overlay.sh` is DELETED with the host it drove, and its key-menu /
+easing-picker phase went with it - no probe opens the picker at HEAD (`grep -r kTileOrder scripts/`
+returns 0). Neither dock probe was run for this file: their PASS/FAIL on this tree, and their claim
+counts, are NOT verified here.
 
 TWO LIVE CHECKS FOUND REAL DEFECTS in this wave, and each is worth re-running:
 
@@ -1280,14 +1421,17 @@ TWO LIVE CHECKS FOUND REAL DEFECTS in this wave, and each is worth re-running:
   `Timeline | Graph`, transport, `1 / 600`, the chip's "Select keys" IN FULL, zoom - exactly the
   design's header, and the dock's size hint keeps the bar's height without the lanes losing theirs.
 
-WHAT IS NOT VERIFIED. The catalogs: the wave's OWN user-visible strings - the chip's `Select keys`,
-`Mixed` and `%n key(s)`, and the channels button's `%n channel(s)` and `%1 of %2` - are absent from
-ALL SIX `assets/locale/translation_*.ts` (checked as source entries), so they render in English in
-every locale until the next lupdate/lrelease; the strings the preceding i18n commit in the series did
-add (`%n channel(s) shown`, `%1 (%n more channel(s) not listed: no room in the panel)`) are in all
-six, under the `gui::ImGuiOverlay` context. Also not re-tested here: the 2026-10-14 residual (a
-Ctrl-press deselect in the plot followed by a typed dock write) - the press routing that paragraph
-blames was rewritten by the marker-selection commit, but no run here exercised it.
+THE CATALOGS ARE TRANSLATED NOW. `73ba0919` extracted the wave's own user-visible strings (the chip's
+`Select keys` / `Mixed` / `%n key(s)`, the dock's tabs and zoom actions, the channel control and its
+accessibility value, the selection count, the drag readout's `Δframe %1   Δvalue %2` - its spacing
+preserved in every language - and the two `Change key(s) easing` labels) and translated them into
+es/ja/ko/ru/zh, with the source forms filled in en: `lrelease` reports 948 translations with 0
+unfinished for each of the five and 4/4 for the en stub (the entry counts are in "Translations"
+above). The same extraction is why `%1 (%n more channel(s) not listed: no room in the panel)` is
+`type="vanished"` now - the chip DROPS a chip that no longer fits rather than listing it. Also not
+re-tested here: the 2026-10-14 residual (a Ctrl-press deselect in the plot followed by a typed dock
+write) - the press routing that paragraph blames was rewritten by the marker-selection commit, but
+no run here exercised it.
 
 ## When a `bash -c '...'` probe dies silently, count the ARGV words (measured 2026-10-14)
 
@@ -1319,7 +1463,8 @@ key-menu phase, which is written against the ImGui popup that no longer exists.)
 
 ## The viewport overlay's paint engine is a SUBSET, and its gaps are silent
 
-Anything drawn in the viewport overlay pass — the tool gizmos, and now the animation graph panel —
+Anything drawn in the viewport overlay pass — the tool gizmos (the animation graph panel was drawn
+there too until `aa92de2a`; it is in the dock's own page now) —
 goes through `ctrl::PainterHandle`, whose `GLCorePaintEngine` (in a `USE_GL_CORE_PROFILE` build) is a
 hand-written `QPaintEngine` over `gl::PrimitiveDrawer`. Four limits cost real time on 2026-10-12 while
 building the graph panel; all four fail with NO warning, so a renderer that looks correct can paint
@@ -1359,15 +1504,17 @@ and zero for the other seven.
 
 What that gate still does NOT cover is the application's own composition - that the panel and the
 gizmos reach the screen over the canvas - because a raster or FBO harness never runs the widget's
-real paint path. That is `scripts/gui/probe_graph_overlay.sh` (auto-discovered by `run_probes.sh`):
-it selects a layer, presses the graph toggle **by name**, and asserts with pixel diffs that the
-change lands inside the central widget (bounds derived from the `page tab` and `Properties` AT-SPI
-rectangles) and that toggling off restores the pixels exactly. Measured there: 18505 px changed, of
-which only 568 are the toggle's own highlight, and off-vs-off is 0 px. Two traps for anything like
-it: the View Settings buttons are icon-only, so every AT-SPI lookup returned the GROUP BOX's name
-until the toggle got its own `accessibleName`; and **normalise both screenshots to truecolor sRGB
-before `magick compare`** - comparing a grayscale capture against an sRGB one reports 0 differing
-pixels for images that differ by 1200, because the first image's colourspace seeds the metric.
+real paint path. The probe that covered it was `scripts/gui/probe_graph_overlay.sh` (auto-discovered
+by `run_probes.sh`), DELETED with the overlay host it drove (`aa92de2a`); the dock's equivalent now is
+`scripts/gui/probe_graph_ink.sh`, which reaches the panel through the dock's page tab **by name** and
+asserts with pixel diffs that the change lands inside the Animation dock's AT-SPI rectangle. What the
+deleted probe measured is kept for reference: a layer selected, the graph toggle pressed **by name**,
+18505 px changed, of which only 568 are the toggle's own highlight, and off-vs-off is 0 px. Two traps
+for anything like it: the View Settings buttons are icon-only, so every AT-SPI lookup returned the
+GROUP BOX's name until the toggle got its own `accessibleName`; and **normalise both screenshots to
+truecolor sRGB before `magick compare`** - comparing a grayscale capture against an sRGB one reports 0
+differing pixels for images that differ by 1200, because the first image's colourspace seeds the
+metric.
 
 
 ## The object tree, and where a project's keys hide
@@ -1503,9 +1650,10 @@ meaning what it meant. The DISPLAY order is a separate table and puts Auto at in
 before Custom -> **14 pickable entries** (the menu skips Custom). Anything that counted 13 had to
 move, and each of those was silent: `scripts/gui/probe_graph_overlay.sh`'s `MENU_ENTRY_ROWS`/
 `MENU_ITEM_ROWS` (the menu was one row per entry, so a stale count failed the height identity - BOTH
-constants went with the 14-row menu when the picker replaced it, and the probe reads the tile catalog
-instead), `tests/golden/easing_picker_geometry.json` (it enumerated `tile-0..12` only - the 14th tile
-now wraps into the second row at `229,133`), and `grep -rn '"13"' tests/`.
+constants went with the 14-row menu when the picker replaced it, and the probe read the tile catalog
+instead - it is deleted now, see below), `tests/golden/easing_picker_geometry.json` (it enumerated
+`tile-0..12` only - the 14th tile now wraps into the second row at `229,133`), and
+`grep -rn '"13"' tests/`.
 
 **A trap worth its own line: `Type_Sine <= type && type < Type_Custom` is an ORDINAL test**, used by
 the chip's name and by `calculate`'s weight blending. It reads "the analytic curves with a direction
@@ -1540,8 +1688,10 @@ weight/range are inert; `tests/graph_curve.cpp` samples Auto through the panel's
 Custom exactly once (remove one from `kTileOrder` and it reports `missing=1` - measured);
 `tests/easing_picker_layout.cpp` + the golden pin the tile wrap; `tests/general_setting_form.cpp`
 asserts the combo IS the table (count, order, index-as-value); `tests/anim_setting_i18n.cpp` and a
-manual `QTranslator` pass cover the catalogs; `scripts/gui/probe_graph_overlay.sh` is the end-to-end
-one - since the picker replaced the key menu it recognises the picker by its OWN source constants
-(`kTileOrder`), opens it from the timeline's key context menu, presses a tile at a coordinate derived
-from the tile order and reads the commit off the application's own state line (there is no 14-row
-menu left to count: 14 display-order entries now means 14 TILES).
+manual `QTranslator` pass cover the catalogs. The end-to-end one WAS
+`scripts/gui/probe_graph_overlay.sh` - since the picker replaced the key menu it recognised the
+picker by its OWN source constants (`kTileOrder`), opened it from the timeline's key context menu,
+pressed a tile at a coordinate derived from the tile order and read the commit off the application's
+own state line (there is no 14-row menu left to count: 14 display-order entries now means 14 TILES).
+It is DELETED with the overlay host it drove (`aa92de2a`), and NO probe opens the picker at HEAD
+(`grep -r kTileOrder scripts/` returns 0), so that phase is a gate to RE-ADD rather than to re-run.
