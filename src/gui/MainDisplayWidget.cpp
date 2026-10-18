@@ -1,6 +1,12 @@
 #include <functional>
+#include <QAction>
+#include <QFont>
+#include <QIcon>
 #include <QInputMethodEvent>
+#include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPixmap>
 #include <QTouchEvent>
 #include <QOpenGLFunctions>
 #include <QGuiApplication>
@@ -37,17 +43,21 @@ namespace gui {
 // no longer called; ctrl::Driver::renderQt says so).
 namespace {
 QScopedPointer<ImGuiOverlay> gImGuiOverlay;
-
-// The editor the panel is built from, or null when the driver has none (before the
-// driver is set, or after it is gone). The widget hands it to the overlay's own
-// interaction so a press is answered with the same editor the pixels came from.
-ctrl::GraphEditor* graphEditorOrNull(ctrl::Driver* aDriver) {
-    return aDriver ? aDriver->graphEditor() : nullptr;
-}
 }
 #endif
 
 namespace {
+// The editor the panel is built from, or null when the driver has none (before the
+// driver is set, or after it is gone). The widget hands it to the overlay's own
+// interaction so a press is answered with the same editor the pixels came from -
+// and the channel list's actions read it HERE, at the moment they fire, rather than
+// capturing one: a menu can be open across a project change. Independent of the
+// ImGui build flag, like the two panel questions below: the editor is the driver's
+// either way.
+ctrl::GraphEditor* graphEditorOrNull(ctrl::Driver* aDriver) {
+    return aDriver ? aDriver->graphEditor() : nullptr;
+}
+
 // Whether the animation graph panel is UP. Independent of the ImGui build flag:
 // the editor exists either way, and ctrl::GraphEditor::setVisible is the state the
 // Driver's cursor routing reads, so this is the same answer the graph itself gives.
@@ -70,6 +80,51 @@ bool graphPanelShown(ctrl::Driver* aDriver) {
 bool graphPanelTakesPress(ctrl::Driver* aDriver, const core::AbstractCursor& aCursor, const core::CameraInfo& aCamera) {
     ctrl::GraphEditor* editor = aDriver ? aDriver->graphEditor() : nullptr;
     return editor && editor->isVisible() && editor->ownsCursor(aCamera, aCursor);
+}
+
+// The colour key of one channel-list row (showGraphChannelMenu): a 12px rounded
+// square in the channel's own hue while the channel is shown, and the same square
+// HOLLOW - the hue as its 1px outline - while it is hidden. That is the reference's
+// own swatch to the pixel (mock.css's .gp-chrow .gw: 12x12, radius 3, `background:
+// var(--h)`, and `.gp-chrow.off .gw { background: transparent }`), and it is the ONE
+// mark a row carries: the row is the toggle, so no second, redundant control sits
+// beside it.
+QIcon channelSwatch(const QColor& aHue, bool aVisible) {
+    constexpr int kSide = 12;
+    constexpr qreal kRadius = 3.0;
+
+    QPixmap pixmap(kSide, kSide);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(aVisible ? QPen(Qt::NoPen) : QPen(aHue, 1.0));
+    painter.setBrush(aVisible ? QBrush(aHue) : QBrush(Qt::NoBrush));
+    painter.drawRoundedRect(QRectF(0.5, 0.5, kSide - 1.0, kSide - 1.0), kRadius, kRadius);
+    painter.end();
+    return QIcon(pixmap);
+}
+
+// What one channel-list row's action acts on, snapshotted for the life of the menu:
+// the channel names the component, `visible` is the state the action flips, and the
+// node is a RAW pointer held only for the menu's lifetime. It cannot be a QPointer -
+// core::ObjectNode is no QObject, so there is nothing to auto-clear it - so the
+// liveness rule is explicit instead: every action re-checks the node against the LIVE
+// editor's own targets (channelRowNodeAlive below) before it writes. A menu outlives
+// the press that popped it and the document can change under it, so this is what
+// stops an action writing through a node the document has since dropped.
+struct ChannelRowTarget {
+    core::ObjectNode* node = nullptr;
+    ctrl::graph::Channel channel;
+    bool visible = true;
+};
+
+// Whether a row's node is still one the live editor knows: the panel's rows are built
+// from exactly that list (GraphPanelModel.cpp's buildChannels walks aEditor.targets()),
+// so a node the document has dropped since the menu was popped - or one a project
+// change took out of the editor's targets - is no longer in it. Only POINTERS are
+// compared, never dereferenced, so a stale node cannot be touched by the test itself.
+bool channelRowNodeAlive(const ctrl::GraphEditor* aEditor, core::ObjectNode* aNode) {
+    return aEditor && aNode && aEditor->targets().contains(aNode);
 }
 }
 
@@ -321,9 +376,106 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
 
 void MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos) {
     if (!mTimeLine)
-        return; // no timeline to show a menu from (and no document to act on)
+        return; // no timeline to open the picker from (and no document to act on)
 
-    mTimeLine->showKeyContextMenu(aTargets, this->mapToGlobal(aWidgetPos));
+    mTimeLine->showKeyEasingPicker(aTargets, this->mapToGlobal(aWidgetPos));
+}
+
+void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos) {
+    if (aRows.isEmpty())
+        return; // no channels: no list to show
+
+    // ONE menu, built fresh from the rows the panel's model published for the frame
+    // the button was pressed in. It is DELETED ON CLOSE and parented to this widget,
+    // because popup() is not exec(): it returns immediately, so a stack QMenu would
+    // be destroyed before the user ever saw it. A press with a QMenu already open
+    // cannot arrive here (the menu owns the mouse grab), so no second one is
+    // possible while one is up.
+    QMenu* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    // What each row's action acts on, snapshotted with the node GUARDED: the menu
+    // outlives the press that popped it and the document can change under it, so an
+    // action resolves its node at trigger time rather than holding a raw pointer
+    // into a model that has been replaced (or a node that has been deleted) since.
+    // The actions carry the INDEX into this vector; the lambdas below hold a copy.
+    QVector<ChannelRowTarget> rows;
+    rows.reserve(aRows.size());
+    for (const PanelChannelRow& row : aRows) {
+        ChannelRowTarget target;
+        target.node = row.node;
+        target.channel = row.channel;
+        target.visible = row.visible;
+        rows.append(target);
+    }
+
+    QString layer;
+    for (int i = 0; i < aRows.size(); ++i) {
+        const PanelChannelRow& row = aRows.at(i);
+        if (!row.node)
+            continue;
+
+        // The layer heading: a disabled row, so the list reads as one group per layer
+        // and the heading is not itself a control (the reference's own .gp-chlayer).
+        // It carries the sentinel index -1 so the hover handler below can tell it from
+        // a channel row (an action with NO data would read back as index 0, i.e. as
+        // the first channel).
+        if (row.layer != layer) {
+            layer = row.layer;
+            QAction* heading = menu->addAction(layer);
+            heading->setEnabled(false);
+            heading->setData(-1);
+        }
+
+        QAction* action = menu->addAction(channelSwatch(row.color, row.visible), row.name);
+        action->setData(i);
+        if (row.focused) {
+            // The focused channel, marked the one way a QMenu row can be: bold. It is
+            // the channel whose tangent handles the panel draws (and the one the
+            // accessible summary names), and the list is how it is chosen.
+            QFont font = action->font();
+            font.setBold(true);
+            action->setFont(font);
+        }
+
+        // THE ROW'S ONE ACTION is its channel's visibility switch - the swatch beside
+        // it IS its colour key, filled while the channel is shown and hollow while it
+        // is hidden. The editor is read from the DRIVER at this moment, not captured:
+        // the menu can be open across a project change, and the driver is what owns
+        // the live editor.
+        connect(action, &QAction::triggered, this, [this, rows, i] {
+            ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+            const ChannelRowTarget& row = rows.at(i);
+            if (!channelRowNodeAlive(editor, row.node))
+                return; // the node is not one the live editor holds any more
+            editor->setChannelVisible(*row.node, row.channel, !row.visible);
+            this->updateRender();
+        });
+    }
+
+    // Highlighting a row FOCUSES its channel - the other half of what the list is
+    // for ("the row itself focuses the type"): the panel then draws that channel's
+    // tangent handles and the panel's own summary names it. Hover, not activation,
+    // because activation is already spent on the visibility switch.
+    connect(menu, &QMenu::hovered, this, [this, rows](QAction* aAction) {
+        if (!aAction)
+            return;
+        const int index = aAction->data().toInt();
+        if (index < 0 || index >= rows.size())
+            return; // a layer heading, which carries no index
+        ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+        const ChannelRowTarget& row = rows.at(index);
+        if (!channelRowNodeAlive(editor, row.node))
+            return; // the node is not one the live editor holds any more
+        editor->setFocusedChannel(*row.node, row.channel);
+        this->updateRender();
+    });
+
+    if (menu->actions().isEmpty()) {
+        delete menu; // every row was a node-less one: nothing to show
+        return;
+    }
+    menu->popup(this->mapToGlobal(aWidgetPos));
 }
 
 void MainDisplayWidget::resetCamera() {
@@ -685,11 +837,11 @@ void MainDisplayWidget::mousePressEvent(QMouseEvent* aEvent) {
         //    overlay is about to act on it, because ImGui derives its own state from
         //    the stream and the next frame's capture flags come from it.
         gImGuiOverlay->mouseButton(*aEvent);
-        // 2. Then the overlay's OWN controls, which take precedence over the
-        //    viewport's cursor routing: a press on a legend swatch toggles that
-        //    channel, a press on a legend label focuses it. Both are hit-tested
-        //    against the geometry of the frame that was drawn - the model of the last
-        //    paint - so the control under the pointer is the control on screen.
+        // 2. Then the overlay's OWN control, which takes precedence over the
+        //    viewport's cursor routing: a press on the panel's channel button opens
+        //    the channel list. It is hit-tested against the geometry of the frame that
+        //    was drawn - the model of the last paint - so the control under the
+        //    pointer is the control on screen.
         ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
         if (aEvent->button() == Qt::LeftButton && editor && gImGuiOverlay->press(*editor, aEvent->position().toPoint())) {
             // Our own interaction changed something: the panel's next frame must show

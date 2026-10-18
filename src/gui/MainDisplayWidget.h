@@ -25,6 +25,9 @@
 #include "ctrl/Painter.h"
 #include "gui/MainViewSetting.h"
 #include "gui/CanvasMover.h"
+// The channel list's rows travel from the panel's model to this widget's menu
+// (showGraphChannelMenu), so the widget's interface names gui::PanelChannelRow.
+#include "gui/GraphPanelModel.h"
 namespace gui {
 class ProjectTabBar;
 }
@@ -64,6 +67,26 @@ public:
     // position needs no mapping. Does nothing when no timeline is wired or the
     // target list is empty.
     void showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos);
+    // Shows the application's own CHANNEL LIST - the animation graph panel's ONE
+    // control - for the rows the panel's model published, at aWidgetPos IN THIS
+    // WIDGET'S COORDINATES (the panel's own space, like showGraphKeyMenu).
+    //
+    // WHY IT IS HERE AND NOT IN THE OVERLAY. The list is a real QMenu, the
+    // application's own (styled by gui::AppStyle, keyboard-navigable, a native
+    // window), exactly like the key menu above: the overlay draws no popup and
+    // measures none, it hands the rows over and this class builds and pops the menu.
+    // One menu implementation for the whole application, and the panel's control is
+    // the same kind of control as the timeline's own menus.
+    //
+    // It is a plain list, grouped under each layer: one row per channel, the row's
+    // SWATCH is its colour key (filled while the channel is shown, hollow while it is
+    // hidden) and the row's activation toggles that channel's visibility - the one
+    // action per row the design asks for. The row ALSO focuses its channel when it is
+    // highlighted, which is the other thing the list is for (the panel draws the
+    // focused channel's tangent handles and the accessible summary names it). Rows
+    // for a hidden channel are listed like any other: that is how it is turned back
+    // on. Nothing happens with no rows, and no menu is shown.
+    void showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos);
     void updateRender();
     void resetCamera();
     void setViewportBackground(const QColor& aColor);

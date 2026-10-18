@@ -28,9 +28,19 @@ Graph Graph::from(const Colors& aColors) {
 }
 
 void Graph::assignFrom(const Colors& aColors) {
-    // The frame ticks read at the separator tone. There is no second, weaker
-    // tone: the panel draws ticks and no grid, so nothing is a step behind.
-    mGridMajor = aColors.hairline;
+    // The frame ticks read in the SAME ink as the frame numbers below them, at a
+    // tier's alpha: the timeline's own rule for its ruler, where one token
+    // (TimeRuler.cpp:106, headerContentColor == Colors::text) draws the ticks, the
+    // numbers and the boundary labels, and the tier is the ALPHA (TimeRuler.cpp:22-30:
+    // 0.85 major / 0.60 intermediate / 0.20 minor, one tick length for every level).
+    // The panel used to draw its ticks at the separator tone (hairline) under
+    // full-strength text numbers - two different tokens for one ruler, and the
+    // separator tone is the ink that disappears over mid-grey artwork (measured in
+    // Graph.h's axisText() note: 1.20:1 over mid-grey, against 4.54:1 for text).
+    // The drawing layer (gui::drawPanel) owns the tier table and applies the alpha;
+    // this token is the one ink both families are made of, the same one axisText()
+    // hands the numbers.
+    mGridMajor = aColors.text;
 
     // Value axis: the hover separator is the one line tone that stays legible
     // over the artwork the panel floats on.
@@ -109,18 +119,22 @@ void Graph::assignFrom(const Colors& aColors) {
     mHandleLine = aColors.textMuted;
 
     // Per-type curve colors are the timeline's key hues, so a curve on the
-    // graph and its keys on the timeline read as the same feature. The
-    // neutral family shares baseKey (the timeline's default key color); the
-    // array covers every type below TimeKeyType_TERM.
+    // graph and its keys on the timeline read as the same feature. EVERY key
+    // type takes its own token from the palette's key table (Colors.h, one
+    // Tailwind row per type), which is the table the timeline's own key pass
+    // switches over (ctrl/time/time_Renderer.cpp drawKeys): bone, pose, mesh and
+    // FFD used to share baseKey, so this table called those four features one
+    // colour while the timeline drew their keys in lime, green, emerald and cyan.
+    // baseKey stays the palette's neutral key tone, not a family's.
     mKeyColors[core::TimeKeyType_Move] = aColors.moveKey;
     mKeyColors[core::TimeKeyType_Rotate] = aColors.rotateKey;
     mKeyColors[core::TimeKeyType_Scale] = aColors.scaleKey;
     mKeyColors[core::TimeKeyType_Depth] = aColors.depthKey;
     mKeyColors[core::TimeKeyType_Opa] = aColors.opaKey;
-    mKeyColors[core::TimeKeyType_Bone] = aColors.baseKey;
-    mKeyColors[core::TimeKeyType_Pose] = aColors.baseKey;
-    mKeyColors[core::TimeKeyType_Mesh] = aColors.baseKey;
-    mKeyColors[core::TimeKeyType_FFD] = aColors.baseKey;
+    mKeyColors[core::TimeKeyType_Bone] = aColors.boneKey;
+    mKeyColors[core::TimeKeyType_Pose] = aColors.poseKey;
+    mKeyColors[core::TimeKeyType_Mesh] = aColors.meshKey;
+    mKeyColors[core::TimeKeyType_FFD] = aColors.FFDKey;
     mKeyColors[core::TimeKeyType_Image] = aColors.imageKey;
     mKeyColors[core::TimeKeyType_HSV] = aColors.HSVKey;
     mKeyColors[core::TimeKeyType_Blur] = aColors.blurKey;

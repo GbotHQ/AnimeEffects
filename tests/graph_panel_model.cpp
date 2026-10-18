@@ -4,8 +4,9 @@
 // The model is what the overlay (Dear ImGui now, the QPainter renderer until
 // then) draws the graph panel from, so what is pinned below is the geometry a
 // drawing layer would consume: the panel/plot/value-column rectangles, the two
-// SHORT tick axes with their label rects, the curves with their keys, the legend
-// with its swatches, the playhead, and the empty state. Every assertion prints
+// SHORT tick axes with their label rects, the curves with their keys, the channel
+// list with its rows, the panel's one control (the channel button), the selection
+// hull with its count, the playhead, and the empty state. Every assertion prints
 // the value it measured.
 //
 // The oracle is the editor's own scaler (GraphEditor::scale(), geometrised with
@@ -17,31 +18,43 @@
 //   1 consistency with the editor: panel == GraphEditor::panelRect(viewport),
 //     plot inside the panel, value column left of and clear of the plot (at
 //     1280x720 and at 320x200)
-//   2 no grid: the tick axes are POSITION lists (static_assert on their types),
+//   2 no grid: the tick axes are POSITION lists (static_assert on their types) and
+//     every frame tick's TIER is a CLASSIFICATION of the same length and order
+//     (static_assert too: an int per tick, no appearance),
 //     no published rect spans the plot, every published frame tick is a frame the
 //     ladder classifies and every frame the ladder classifies inside the plot has
 //     its tick, the value ticks are exactly the published value labels' own
 //     pixels, and every frame label box lies inside the plot
 //   3 the ladder follows the scaler: a label's number is scale.frameAt(tick),
-//     and neighbouring label boxes keep a minimum gap
+//     neighbouring label boxes keep a minimum gap, and every published tier is one
+//     of the three the ruler draws and is the ladder's own level for that tick's
+//     frame (index-aligned with the positions)
 //   4 curves: exactly one per shown (target, channel) - the same set and the
-//     same order as the editor's own curves() - each with >1 point, key rects
-//     clipped into the plot and equal to graph::keyRect, and the polyline's y
-//     at every key frame equal to scale.pixelY(valueOf(key))
+//     same order as the editor's own curves() and as the channel list's rows -
+//     each with >1 point, key rects clipped into the plot and equal to
+//     graph::keyRect, the polyline's y at every key frame equal to
+//     scale.pixelY(valueOf(key)), and a NAME CHIP whose box is derived from the
+//     curve it names (its centre on the value the curve leaves the plot with) and
+//     lies inside the plot
 //   5 hidden channels: the row survives with visible == false and no curve
 //   6 empty state: no targets -> a message and no curves
 //   7 playhead: scale.pixelX(editor.currentFrame()) after moving the document's
 //     frame, and -1 with no project
-//   8 legend overflow: a row with no room inside the plot publishes NO swatch (an
-//     empty rect) while keeping its identity, colour and label, and every swatch
-//     that IS published is a key square inside the plot
+//   8 NO LEGEND, and the panel's one control: nothing publishes a swatch stack
+//     (the legend is gone, not orphaned), the channel list still carries every
+//     row whatever the viewport, a chip that cannot fit the plot publishes NO box
+//     (an empty rect, never one in the margin), and a plot too small for the
+//     "N channels" button publishes no button rect - a control that cannot be
+//     drawn must not be hit
 //   9 the polyline is published unclipped and unreduced - point for point the
 //     sampled curve mapped through the scaler, out-of-plot samples included, so
 //     the drawing layer's own clip is the only clip (the header's CURVES)
-//  10 tangent handles: one PanelHandle pair per Custom segment, in segment order,
-//     with base/dot/radius exactly the shared geometry the editor's hit-test
-//     grabs through (ctrl::graph::handlePoint) - and none on a curve with no
-//     Custom segment
+//  10 tangent handles: one PanelHandle pair per segment that HAS one - a Custom
+//     segment's STORED pair (ghost == false) matching the editor's own grab
+//     mapping, ctrl::graph::handlePoint, and an Auto segment's DERIVED pair
+//     (ghost == true) whose x IS the third and two thirds of the segment's span
+//     and whose dot is the same mapping (ctrl::graph::handlePointAt) - and none on
+//     a segment whose easing is neither
 //  11 the reserved ruler band and the live marquee
 //  12 the label column is a STABLE, FORMAT-DERIVED reserve: its width is the
 //     widest label the value format can write (plus the box inset and text gap,
@@ -56,6 +69,11 @@
 //     ctrl::graph::kKeyDotRadius (== the TIMELINE's ctrl::keyRadius) centred on
 //     each key, published beside the key rects, with the hit radius a separate,
 //     larger constant
+//  14 the SELECTION HULL is the editor's own outline in the model's own pixels -
+//     EMPTY with nothing selected (and then no count label either) and
+//     NON-EMPTY with a key selected, each point the same (frame, value) the editor
+//     stated mapped through the same scaler the curves use - with the count the
+//     editor reports and the label that writes it
 // plus a read-only probe: building a model must not move the editor's scaler,
 // its targets, the project's dirty flag or the document's keys.
 //
@@ -147,7 +165,8 @@ XCErrorHandler* gXCErrorHandler = &gErrorHandler;
 
 namespace core {
 // Minimal ObjectNode subclass owning a real TimeLine (ObjectNode::timeLine() is
-// virtual and null by default), with a name so the legend labels are distinct.
+// virtual and null by default), with a name so the channel list's rows (and the
+// chips that name them in place) are distinct.
 class TestNode: public ObjectNode {
     TimeLine mTimeLine;
     QString mName;
@@ -277,9 +296,15 @@ QVector<QRect> publishedRects(const gui::GraphPanelModel& aModel) {
     for (const gui::PanelCurve& curve : aModel.curves) {
         for (const QRect& key : curve.keys)
             rects.append(key);
+        // A curve's NAME CHIP: the panel has no swatch stack to publish any more (the
+        // legend is gone), and this is the one box the model lays out per channel for
+        // the drawing layer to write a name in.
+        rects.append(curve.chip);
     }
-    for (const gui::PanelLegendRow& row : aModel.legend)
-        rects.append(row.swatch);
+    if (!aModel.selectionLabel.rect.isEmpty())
+        rects.append(aModel.selectionLabel.rect);
+    rects.append(aModel.channelsButton);
+    rects.append(aModel.marquee);
     return rects;
 }
 
@@ -424,6 +449,10 @@ int main(int argc, char** argv) {
         CHECK(smallModel.valueColumn.right() < smallModel.plot.left());
         CHECK(!smallModel.valueColumn.intersects(smallModel.plot));
         CHECK(smallModel.curves.size() == model.curves.size());
+        // The tier vector is index-aligned with the positions at every viewport: both
+        // are appended in one step (buildFrameAxis), so this is a structural invariant
+        // of the model rather than a property of this window.
+        CHECK(smallModel.frameTickLevel.size() == smallModel.frameTickX.size());
 
         // A viewport too small for the label column and the margins has no plot
         // at all: the model says so instead of publishing geometry it cannot back.
@@ -447,6 +476,14 @@ int main(int argc, char** argv) {
                       "frameTickX must be tick POSITIONS (ints): the model publishes no line geometry");
         static_assert(std::is_same<decltype(gui::GraphPanelModel::valueTickY), QVector<int> >::value,
                       "valueTickY must be tick POSITIONS (ints): the model publishes no line geometry");
+        // The tier vector is the same KIND of statement about a tick as the position
+        // vector is: an int per tick. It CLASSIFIES the tick - the ladder's own
+        // ctrl::time::Scaler::TickLevel as its value - and it is not appearance: no
+        // colour, no length, nothing a drawing layer would have to obey. The ladder
+        // check in block 3 pins that every value is one of the three drawn tiers and
+        // that the vector is index-aligned with frameTickX.
+        static_assert(std::is_same<decltype(gui::GraphPanelModel::frameTickLevel), QVector<int> >::value,
+                      "frameTickLevel must be a per-tick CLASSIFICATION (ints): the model publishes no appearance");
 
         const QVector<QRect> rects = publishedRects(model);
         int spanning = 0;
@@ -571,16 +608,26 @@ int main(int argc, char** argv) {
         const core::Frame windowFirst = scale.frameAt(model.plot.left());
         const core::Frame windowLast = scale.frameAt(model.plot.right());
         QVector<int> ladderTicks;
+        // The tier of each tick derived above, in the same step: the model publishes the
+        // ladder's own classification beside its positions (`frameTickLevel`), so the
+        // oracle for it is the same ladder call that produced the positions - and the
+        // model's own call at that (attributeAt at framePpf(), the spacing the frame
+        // mapping uses), never a re-statement of the model's own filter.
+        QVector<int> ladderLevels;
         int classified = 0;
         for (int frame = windowFirst.get(); frame <= windowLast.get(); ++frame) {
-            if (scale.frameScale().attribute(frame).level == ctrl::time::Scaler::TickLevel::None)
+            const ctrl::time::Scaler::TickLevel level =
+                scale.frameScale().attributeAt(frame, scale.framePpf()).level;
+            if (level == ctrl::time::Scaler::TickLevel::None)
                 continue;
             ++classified;
             const int x = scale.pixelX(core::Frame(frame));
             if (x < model.plot.left() || model.plot.right() < x)
                 continue;
-            if (ladderTicks.isEmpty() || ladderTicks.last() != x)
+            if (ladderTicks.isEmpty() || ladderTicks.last() != x) {
                 ladderTicks.append(x);
+                ladderLevels.append(int(level));
+            }
         }
 
         std::printf("[3] frame ticks: published=%d, the ladder's own inside the plot=%d (%d classified frames in "
@@ -591,6 +638,38 @@ int main(int argc, char** argv) {
         CHECK(notRoundTrip == 0);
         CHECK(notAscending == 0);
         CHECK(model.frameTickX == ladderTicks);
+
+        // The TIERS: one per tick, index-aligned with the positions, each one of the
+        // three tiers the ruler draws, and each the ladder's own level for that tick's
+        // frame. TickLevel::None is the ladder's "do not mark this frame" and never
+        // reaches the model (buildFrameAxis filters it before appending), so a None
+        // entry - or a tier for the wrong tick, or a count that does not match the
+        // positions - fails here. The tier is what the drawing layer turns into the
+        // mark's alpha (0.85 major / 0.60 intermediate / 0.20 minor, the timeline's
+        // table, applied in ImGuiOverlay.cpp): a model that published no tier, or one
+        // per something else, is the bug this catches.
+        int notATier = 0;
+        int tierHistogram[4] = {0, 0, 0, 0};
+        for (int i = 0; i < model.frameTickLevel.size(); ++i) {
+            const int level = model.frameTickLevel.at(i);
+            const bool known = int(ctrl::time::Scaler::TickLevel::Minor) <= level &&
+                level <= int(ctrl::time::Scaler::TickLevel::Major);
+            if (!known)
+                ++notATier;
+            else
+                ++tierHistogram[level];
+        }
+        std::printf("[3] frame tick tiers: major=%d intermediate=%d minor=%d  out of the three tiers=%d  "
+                    "index-aligned with the positions=%d (ticks=%d levels=%d)  matching the ladder=%d\n",
+                    tierHistogram[int(ctrl::time::Scaler::TickLevel::Major)],
+                    tierHistogram[int(ctrl::time::Scaler::TickLevel::Intermediate)],
+                    tierHistogram[int(ctrl::time::Scaler::TickLevel::Minor)], notATier,
+                    int(model.frameTickLevel.size() == model.frameTickX.size()), isz(model.frameTickX),
+                    isz(model.frameTickLevel), int(model.frameTickLevel == ladderLevels));
+        CHECK(!model.frameTickLevel.isEmpty());
+        CHECK(model.frameTickLevel.size() == model.frameTickX.size());
+        CHECK(notATier == 0);
+        CHECK(model.frameTickLevel == ladderLevels);
 
         // The value ticks are the value axis' own ticks: one per published value
         // label, in the labels' order, each on the pixel of the value its label
@@ -640,19 +719,24 @@ int main(int argc, char** argv) {
     // 4. curves
     {
         const QVector<ctrl::graph::Curve> editorCurves = editor.curves();
-        std::printf("[4] curves=%d  editor.curves()=%d  legend rows=%d\n", isz(model.curves), isz(editorCurves),
-                    isz(model.legend));
+        std::printf("[4] curves=%d  editor.curves()=%d  channel rows=%d\n", isz(model.curves), isz(editorCurves),
+                    isz(model.channels));
 
-        // Exactly one curve per expected pair, in the editor's own order.
+        // Exactly one curve per expected pair, in the editor's own order - and one
+        // CHANNEL LIST row per pair too, in the same order, with the curve naming the
+        // row it belongs to (so a consumer of one list can address the other).
         CHECK(model.curves.size() == pairs.size());
         CHECK(editorCurves.size() == pairs.size());
+        CHECK(model.channels.size() == pairs.size());
         for (int i = 0; i < pairs.size() && i < model.curves.size(); ++i) {
             CHECK(model.curves[i].node == pairs[i].first);
             CHECK(model.curves[i].channel == pairs[i].second);
-            CHECK(0 <= model.curves[i].legendIndex && model.curves[i].legendIndex < model.legend.size());
-            CHECK(model.legend[model.curves[i].legendIndex].channel == pairs[i].second);
+            CHECK(model.curves[i].channelRow == i);
+            CHECK(0 <= model.curves[i].channelRow && model.curves[i].channelRow < model.channels.size());
+            CHECK(model.channels[model.curves[i].channelRow].node == pairs[i].first);
+            CHECK(model.channels[model.curves[i].channelRow].channel == pairs[i].second);
             CHECK(model.curves[i].color.isValid());
-            CHECK(model.curves[i].color == model.legend[model.curves[i].legendIndex].color);
+            CHECK(model.curves[i].color == model.channels[model.curves[i].channelRow].color);
         }
         for (int i = 0; i < editorCurves.size() && i < model.curves.size(); ++i) {
             CHECK(editorCurves[i].channel() == model.curves[i].channel); // same set, same order
@@ -729,136 +813,218 @@ int main(int argc, char** argv) {
         CHECK(maxXDistance <= 0.5);
         CHECK(maxYDeviation <= 2.0);
 
-        // Every legend row is a channel with keys, and every swatch the model
-        // publishes is a key square INSIDE the plot. A row with no room for one
-        // publishes no rect at all - an empty swatch, the model's own signal that
-        // the row carries no geometry (the header's LEGEND; the overflow fixtures
-        // are block [8]).
-        int badSwatches = 0;
-        int rowsWithoutSwatch = 0;
-        for (const gui::PanelLegendRow& row : model.legend) {
-            const bool wellFormed =
-                row.node != nullptr && row.node->timeLine() != nullptr && !row.label.isEmpty() && row.color.isValid();
-            if (!wellFormed) {
-                ++badSwatches;
-                continue;
-            }
-            if (row.swatch.isEmpty()) {
-                ++rowsWithoutSwatch;
-                continue;
-            }
-            if (row.swatch.width() != 2 * ctrl::graph::kKeyRadius ||
-                row.swatch.height() != 2 * ctrl::graph::kKeyRadius || !model.plot.contains(row.swatch))
-                ++badSwatches;
+        // The channel list rows, and the NAME CHIP of every curve.
+        //
+        // A ROW is data only (the list is the application's own QMenu, so the model
+        // lays out no row geometry - the header's CHANNEL LIST): it must name a real
+        // target and channel, carry its layer, its name and a valid colour, and its
+        // `visible` must be the editor's own answer.
+        //
+        // A CHIP is geometry, and it is derived from the curve it NAMES: the box's
+        // right edge is at the plot's right edge, its vertical CENTRE is the value
+        // that same curve leaves the plot with (asserted against the curve's own
+        // published polyline, not against the model's arithmetic), and it lies
+        // inside the plot. A curve that leaves the window too near an edge publishes
+        // NO chip - an empty rect - rather than one in the margin.
+        int badRows = 0;
+        for (const gui::PanelChannelRow& row : model.channels) {
+            const bool wellFormed = row.node != nullptr && row.node->timeLine() != nullptr && !row.name.isEmpty() &&
+                !row.layer.isEmpty() && row.color.isValid() && row.visible == editor.isChannelVisible(*row.node, row.channel);
+            if (!wellFormed)
+                ++badRows;
         }
-        std::printf("[4] legend rows=%d, malformed rows=%d, rows without a swatch=%d, first swatch (%d,%d,%dx%d) "
-                    "label=\"%s\"\n",
-                    isz(model.legend), badSwatches, rowsWithoutSwatch, model.legend.first().swatch.x(),
-                    model.legend.first().swatch.y(), model.legend.first().swatch.width(),
-                    model.legend.first().swatch.height(), qUtf8Printable(model.legend.first().label));
-        CHECK(model.legend.size() == pairs.size());
-        CHECK(badSwatches == 0);
-        // At this viewport the legend fits the plot, so no row is left without a
-        // swatch: an empty one here would mean the layout gave up on a row it had
-        // room for.
-        CHECK(rowsWithoutSwatch == 0);
+        std::printf("[4] channel rows=%d, malformed rows=%d, first row layer=\"%s\" name=\"%s\" visible=%d\n",
+                    isz(model.channels), badRows, qUtf8Printable(model.channels.first().layer),
+                    qUtf8Printable(model.channels.first().name), int(model.channels.first().visible));
+        CHECK(model.channels.size() == pairs.size());
+        CHECK(badRows == 0);
 
-        int rowOverlaps = 0;
-        for (int i = 1; i < model.legend.size(); ++i) {
-            if (model.legend[i].swatch.intersects(model.legend[i - 1].swatch))
-                ++rowOverlaps;
+        int chips = 0;
+        int emptyChips = 0;
+        int badChipText = 0;
+        int emptyChipText = 0;
+        int outsideChips = 0;
+        int offCurveChips = 0;
+        double maxChipCentreError = 0.0;
+        for (const gui::PanelCurve& curve : model.curves) {
+            if (curve.chipText.isEmpty()) {
+                ++emptyChipText;
+                continue;
+            }
+            if (curve.channelRow < 0 || curve.channelRow >= model.channels.size()) {
+                ++badChipText;
+                continue;
+            }
+            // The chip names the CURVE: its text is the name of the row this curve
+            // belongs to (not some other channel's).
+            if (curve.chipText != model.channels.at(curve.channelRow).name)
+                ++badChipText;
+            if (curve.chip.isEmpty()) {
+                ++emptyChips;
+                continue;
+            }
+            ++chips;
+            if (!model.plot.contains(curve.chip))
+                ++outsideChips;
+            // The chip is anchored at the plot's right edge: its box ends inside the
+            // plot and starts left of it, so it is a chip AT the curve's own exit
+            // point rather than a label parked somewhere else.
+            if (curve.chip.right() > model.plot.right() || curve.chip.left() < model.plot.left())
+                ++outsideChips;
+            // ...and it is centred on the value the curve LEAVES the window with: the
+            // curve's own published polyline at the plot's right edge.
+            double y = 0.0;
+            double distance = 0.0;
+            if (polylineYAt(curve, double(model.plot.right()), y, distance)) {
+                const double error = std::fabs(double(curve.chip.center().y()) - y);
+                maxChipCentreError = std::max(maxChipCentreError, error);
+                if (error > 1.0)
+                    ++offCurveChips;
+            }
         }
-        std::printf("[4] overlapping legend swatches=%d  legendIndex set on curves=%d\n", rowOverlaps,
-                    [&model] {
-                        int n = 0;
-                        for (const gui::PanelCurve& c : model.curves)
-                            n += (c.legendIndex >= 0);
-                        return n;
-                    }());
-        CHECK(rowOverlaps == 0);
+        std::printf("[4] chips=%d  curves whose chip is empty=%d  chips outside the plot=%d  chips off their own "
+                    "curve=%d (max |centre - polyline y| = %.3f px)  empty chip texts=%d  chips naming another row=%d\n",
+                    chips, emptyChips, outsideChips, offCurveChips, maxChipCentreError, emptyChipText, badChipText);
+        CHECK(chips > 0);          // the fixture's premise: some curve leaves the window inside the plot's rows
+        CHECK(emptyChipText == 0); // every curve names itself
+        CHECK(badChipText == 0);
+        CHECK(outsideChips == 0);
+        CHECK(offCurveChips == 0);
+
+        // The panel's ONE control: the channel button, in the plot's top-right
+        // corner, clear of the ruler band and INSIDE the plot - or an empty box when
+        // there is no room for it (block [8]).
+        std::printf("[4] channelsButton (%d,%d,%dx%d) text=\"%s\"  plot.right=%d rulerBandTop=%d\n",
+                    model.channelsButton.x(), model.channelsButton.y(), model.channelsButton.width(),
+                    model.channelsButton.height(), qUtf8Printable(model.channelsButtonText), model.plot.right(),
+                    model.rulerBandTop);
+        CHECK(!model.channelsButtonText.isEmpty());
+        CHECK(model.plot.contains(model.channelsButton));
+        CHECK(model.channelsButton.right() < model.plot.right());
+        CHECK(model.channelsButton.top() >= model.rulerBandTop);
     }
 
     // -------------------------------------------------------------------------
-    // 8. legend overflow: a row with no room inside the plot publishes no swatch
+    // 8. NO LEGEND: the names live at their curves, and the panel's one control is
+    // the button that opens the channel list. Three things are pinned, and none of
+    // them is cosmetic:
+    //   1. nothing names a channel in the plot's bottom-left corner any more - the
+    //      legend stack is gone and not orphaned, and every chip the model publishes
+    //      is anchored at the plot's RIGHT edge (so not one of them can sit where the
+    //      stack did, over the value numbers and the zero rule);
+    //   2. a cramped viewport changes the LIST not at all - every row is still
+    //      published, because the list is the application's own QMenu and a menu
+    //      scrolls - while the geometry the panel DRAWS gives up rather than leaving
+    //      the plot: a chip with no room is an empty rect, and so is a button;
+    //   3. every chip the cramped model does publish is still inside the plot, so a
+    //      box that exists is always a box the drawing layer can draw.
     {
-        // The stack is anchored at the plot's bottom corner and grows upward, so a
-        // legend taller than the plot (or a plot narrower than the inset + a swatch)
-        // cannot lay every row out. The model keeps every row - identity, colour and
-        // label - and publishes no swatch for the rows it cannot place: an empty
-        // rect, the model's signal that the row has no geometry to draw or to hit
-        // (the header's LEGEND). What it must never do is publish a swatch outside
-        // the plot, which is what the unbounded stack did.
+        int chipsLeftOfCentre = 0;
+        int chipsOutsidePlot = 0;
+        for (const gui::PanelCurve& curve : model.curves) {
+            if (curve.chip.isEmpty())
+                continue;
+            if (curve.chip.left() < model.plot.center().x())
+                ++chipsLeftOfCentre;
+            if (!model.plot.contains(curve.chip))
+                ++chipsOutsidePlot;
+        }
+        std::printf("[8] full viewport: chips=%d  chips left of the plot's centre (where the legend was)=%d  "
+                    "chips outside the plot=%d  button (%d,%d,%dx%d) in the top half=%d\n",
+                    [&model] {
+                        int n = 0;
+                        for (const gui::PanelCurve& c : model.curves)
+                            n += !c.chip.isEmpty();
+                        return n;
+                    }(), chipsLeftOfCentre, chipsOutsidePlot, model.channelsButton.x(), model.channelsButton.y(),
+                    model.channelsButton.width(), model.channelsButton.height(),
+                    int(model.channelsButton.center().y() < model.plot.center().y()));
+        CHECK(chipsLeftOfCentre == 0);
+        CHECK(chipsOutsidePlot == 0);
+        CHECK(model.channelsButton.center().y() < model.plot.center().y());
+
         const QSize cramped(160, 48);
         const gui::GraphPanelModel crampedModel = gui::buildGraphPanelModel(editor, cramped, palette);
 
-        int emptyRows = 0;
-        int publishedSwatches = 0;
-        int outsideSwatches = 0;
-        int malformedSwatches = 0;
-        int emptyAfterPublished = 0;
         int identityLost = 0;
-        bool seenPublished = false;
-        for (int i = 0; i < crampedModel.legend.size(); ++i) {
-            const gui::PanelLegendRow& row = crampedModel.legend.at(i);
-            const gui::PanelLegendRow& full = model.legend.at(i);
-            if (row.node != full.node || row.channel != full.channel || row.label != full.label ||
-                row.color != full.color || row.visible != full.visible)
-                ++identityLost; // a row the layout could not place is still the same row
-            if (row.swatch.isEmpty()) {
-                ++emptyRows;
-                // The stack is bottom-anchored, so the rows without a swatch are the
-                // FIRST rows of the legend: an empty row BELOW a published one is a
-                // hole in the middle of the stack, which is not a layout at all.
-                if (seenPublished)
-                    ++emptyAfterPublished;
+        for (int i = 0; i < crampedModel.channels.size(); ++i) {
+            const gui::PanelChannelRow& row = crampedModel.channels.at(i);
+            const gui::PanelChannelRow& full = model.channels.at(i);
+            if (row.node != full.node || row.channel != full.channel || row.name != full.name ||
+                row.layer != full.layer || row.color != full.color || row.visible != full.visible ||
+                row.focused != full.focused)
+                ++identityLost; // a row the panel cannot DRAW is still the same row
+        }
+
+        int crampedChips = 0;
+        int crampedEmptyChips = 0;
+        int crampedOutsideChips = 0;
+        int dishonestEmptyChips = 0;
+        for (const gui::PanelCurve& curve : crampedModel.curves) {
+            if (curve.chip.isEmpty()) {
+                ++crampedEmptyChips;
+                // An empty chip must be TRUTHFUL: the box would not have fitted the
+                // plot. (A chip dropped for no reason would be a name the user can
+                // never see on a panel that had room for it.)
+                if (!curve.points.isEmpty()) {
+                    const QFontMetrics metrics{QFont()};
+                    const int width = metrics.horizontalAdvance(curve.chipText) + 12; // the model's own padding: 2 x 6
+                    const int height = metrics.height();
+                    const QRect box(
+                        crampedModel.plot.right() + 1 - 8 - width, qRound(curve.points.last().y()) - height / 2,
+                        width, height
+                    );
+                    if (crampedModel.plot.contains(box))
+                        ++dishonestEmptyChips;
+                }
                 continue;
             }
-            seenPublished = true;
-            ++publishedSwatches;
-            if (row.swatch.width() != 2 * ctrl::graph::kKeyRadius ||
-                row.swatch.height() != 2 * ctrl::graph::kKeyRadius)
-                ++malformedSwatches;
-            if (!crampedModel.plot.contains(row.swatch))
-                ++outsideSwatches;
+            ++crampedChips;
+            if (!crampedModel.plot.contains(curve.chip))
+                ++crampedOutsideChips;
         }
 
-        std::printf("[8] cramped viewport %dx%d -> plot (%d,%d,%dx%d)  legend rows=%d  rows with no swatch=%d  "
-                    "published swatches=%d  empty rows below a published one=%d  swatches outside the plot=%d  "
-                    "malformed=%d  identity mismatches=%d\n",
+        std::printf("[8] cramped viewport %dx%d -> plot (%d,%d,%dx%d)  channel rows=%d (identity mismatches=%d)  "
+                    "published chips=%d  empty chips=%d (of those, ones that WOULD have fitted=%d)  chips outside "
+                    "the plot=%d  button empty=%d\n",
                     cramped.width(), cramped.height(), crampedModel.plot.x(), crampedModel.plot.y(),
-                    crampedModel.plot.width(), crampedModel.plot.height(), isz(crampedModel.legend), emptyRows,
-                    publishedSwatches, emptyAfterPublished, outsideSwatches, malformedSwatches, identityLost);
+                    crampedModel.plot.width(), crampedModel.plot.height(), isz(crampedModel.channels), identityLost,
+                    crampedChips, crampedEmptyChips, dishonestEmptyChips, crampedOutsideChips,
+                    int(crampedModel.channelsButton.isEmpty()));
 
         CHECK(!crampedModel.plot.isEmpty());
-        CHECK(crampedModel.legend.size() == model.legend.size());
-        CHECK(emptyRows > 0);           // the fixture's premise: this stack does not fit
-        CHECK(publishedSwatches > 0);   // ... while the rows that DO fit keep their swatch
-        CHECK(emptyAfterPublished == 0); // the rows left without one are always the FIRST
-        CHECK(outsideSwatches == 0);
-        CHECK(malformedSwatches == 0);
+        CHECK(crampedModel.channels.size() == model.channels.size());
         CHECK(identityLost == 0);
+        CHECK(crampedOutsideChips == 0);
+        CHECK(dishonestEmptyChips == 0);
+        // The button gives up WHOLE: it is inside the plot, or it is not there at all.
+        CHECK(crampedModel.channelsButton.isEmpty() || crampedModel.plot.contains(crampedModel.channelsButton));
 
-        // A plot narrower than the legend's own left inset (6px) plus a swatch has
-        // no room for a swatch at all: every row is left empty rather than published
-        // in the margin, and the legend still lists every row. The viewport has to
-        // leave a NON-EMPTY plot first: the label column's reserve is now the value
-        // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
-        // than the old 46), so the plot starts 22px further right and this fixture
-        // grew by exactly that much (64 -> 80) to keep the same premise - a plot
-        // that exists and is narrower than 16px.
+        // A plot too small for anything at all: the chips are empty and the button is
+        // no control. The viewport has to leave a NON-EMPTY plot first: the label
+        // column's reserve is the value format's own width (Scaler::axisLabelWidth(),
+        // 68px at the UI font rather than the old 46), so the plot starts 22px further
+        // right and this fixture grew by exactly that much (64 -> 80) to keep the
+        // premise - a plot that exists and is narrower than 16px.
         const QSize tooNarrow(80, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
-        int narrowPublished = 0;
-        for (const gui::PanelLegendRow& row : narrowModel.legend) {
-            if (!row.swatch.isEmpty())
-                ++narrowPublished;
+        int narrowChips = 0;
+        for (const gui::PanelCurve& curve : narrowModel.curves) {
+            if (!curve.chip.isEmpty())
+                ++narrowChips;
         }
-        std::printf("[8] narrow viewport %dx%d -> plot width=%d  legend rows=%d  published swatches=%d\n",
-                    tooNarrow.width(), tooNarrow.height(), narrowModel.plot.width(), isz(narrowModel.legend),
-                    narrowPublished);
-        CHECK(narrowModel.plot.width() < 6 + 10); // no room for one: see the header's LEGEND insets
-        CHECK(narrowModel.legend.size() == model.legend.size());
-        CHECK(narrowPublished == 0);
+        std::printf("[8] narrow viewport %dx%d -> plot width=%d  channel rows=%d  published chips=%d  button "
+                    "(empty=%d)  chip text=\"%s\"\n",
+                    tooNarrow.width(), tooNarrow.height(), narrowModel.plot.width(), isz(narrowModel.channels),
+                    narrowChips, int(narrowModel.channelsButton.isEmpty()),
+                    narrowModel.curves.isEmpty() ? "" : qUtf8Printable(narrowModel.curves.first().chipText));
+        CHECK(narrowModel.plot.width() < 16); // no room for a 12px-chip-plus-text: see the header's CHIPS
+        CHECK(narrowModel.channels.size() == model.channels.size());
+        CHECK(narrowChips == 0);
+        CHECK(narrowModel.channelsButton.isEmpty()); // a control that cannot be drawn must not be hit
+        // ...and the names were never DROPPED, only their boxes: the list still names
+        // every channel (the button's own words say so).
+        CHECK(!narrowModel.channelsButtonText.isEmpty());
     }
 
     // -------------------------------------------------------------------------
@@ -1010,8 +1176,8 @@ int main(int argc, char** argv) {
         const gui::GraphPanelModel hiddenModel = gui::buildGraphPanelModel(editor, viewport, palette);
 
         int rowIndex = -1;
-        for (int i = 0; i < hiddenModel.legend.size(); ++i) {
-            if (samePair(Pair(hiddenModel.legend[i].node, hiddenModel.legend[i].channel), &nodeA, hidden))
+        for (int i = 0; i < hiddenModel.channels.size(); ++i) {
+            if (samePair(Pair(hiddenModel.channels[i].node, hiddenModel.channels[i].channel), &nodeA, hidden))
                 rowIndex = i;
         }
         int curvesForHidden = 0;
@@ -1020,23 +1186,24 @@ int main(int argc, char** argv) {
                 ++curvesForHidden;
         }
 
-        std::printf("[5] after hiding Move/Y of A: legend rows=%d (row found=%d, visible=%d) curves=%d (was %d) "
+        std::printf("[5] after hiding Move/Y of A: channel rows=%d (row found=%d, visible=%d) curves=%d (was %d) "
                     "curves for the hidden pair=%d\n",
-                    isz(hiddenModel.legend), rowIndex, rowIndex >= 0 ? int(hiddenModel.legend[rowIndex].visible) : -1,
-                    isz(hiddenModel.curves), isz(model.curves), curvesForHidden);
+                    isz(hiddenModel.channels), rowIndex,
+                    rowIndex >= 0 ? int(hiddenModel.channels[rowIndex].visible) : -1, isz(hiddenModel.curves),
+                    isz(model.curves), curvesForHidden);
 
         CHECK(rowIndex >= 0);
-        CHECK(hiddenModel.legend[rowIndex].visible == false);
+        CHECK(hiddenModel.channels[rowIndex].visible == false);
         CHECK(curvesForHidden == 0);
         CHECK(hiddenModel.curves.size() == model.curves.size() - 1);
-        CHECK(hiddenModel.legend.size() == model.legend.size());
+        CHECK(hiddenModel.channels.size() == model.channels.size());
         CHECK(hiddenModel.emptyState.isEmpty());
 
         editor.setChannelVisible(nodeA, hidden, true);
         const gui::GraphPanelModel restored = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[5] restored: curves=%d legend=%d\n", isz(restored.curves), isz(restored.legend));
+        std::printf("[5] restored: curves=%d channel rows=%d\n", isz(restored.curves), isz(restored.channels));
         CHECK(restored.curves.size() == model.curves.size());
-        CHECK(restored.legend.size() == model.legend.size());
+        CHECK(restored.channels.size() == model.channels.size());
     }
 
     // -------------------------------------------------------------------------
@@ -1044,14 +1211,18 @@ int main(int argc, char** argv) {
     {
         editor.setTargets({});
         const gui::GraphPanelModel emptyModel = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[6] no targets: emptyState=\"%s\" curves=%d legend=%d isEmpty=%d\n",
+        std::printf("[6] no targets: emptyState=\"%s\" curves=%d channel rows=%d isEmpty=%d\n",
                     qUtf8Printable(emptyModel.emptyState),
-                    isz(emptyModel.curves), isz(emptyModel.legend), int(emptyModel.isEmpty()));
+                    isz(emptyModel.curves), isz(emptyModel.channels), int(emptyModel.isEmpty()));
 
         CHECK(!emptyModel.emptyState.isEmpty());
         CHECK(emptyModel.curves.isEmpty());
-        CHECK(emptyModel.legend.isEmpty());
+        CHECK(emptyModel.channels.isEmpty());
         CHECK(emptyModel.isEmpty());
+        // An empty panel has no control either: the button's words would name a list
+        // of nothing, and its box would be a hit target with no action behind it.
+        CHECK(emptyModel.channelsButton.isEmpty());
+        CHECK(emptyModel.selectionHull.isEmpty());
 
         editor.setTargets({ &nodeA, &nodeB });
         const gui::GraphPanelModel again = gui::buildGraphPanelModel(editor, viewport, palette);
@@ -1160,27 +1331,132 @@ int main(int argc, char** argv) {
         CHECK(totalHandles == 4);
         CHECK(badHandles == 0);
         CHECK(misplacedDots == 0);
-
-        // A curve with no Custom segment publishes NO handle, so the pairs are
-        // keyed to the easing and not to "a curve".
-        int nonCustomCurves = 0;
-        int handlesOnNonCustom = 0;
+        // A STORED pair is not a ghost pair: `ghost` is the whole distinction, and a
+        // Custom handle drawn hollow would claim the document holds no tangent.
+        int storedGhosts = 0;
         for (const gui::PanelCurve& curve : handled.curves) {
             const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
-            bool anyCustom = false;
-            for (int s = 0; s < source.segmentCount(); ++s) {
-                if (source.isCustom(source.segment(s)))
-                    anyCustom = true;
-            }
-            if (!anyCustom) {
-                ++nonCustomCurves;
-                handlesOnNonCustom += curve.handles.size();
+            for (const gui::PanelHandle& handle : curve.handles) {
+                if (0 <= handle.segment && handle.segment < source.segmentCount() &&
+                    source.isCustom(source.segment(handle.segment)) && handle.ghost)
+                    ++storedGhosts;
             }
         }
-        std::printf("[10] curves without a Custom segment=%d, handles they published=%d\n", nonCustomCurves,
-                    handlesOnNonCustom);
-        CHECK(nonCustomCurves > 0);
-        CHECK(handlesOnNonCustom == 0);
+        CHECK(storedGhosts == 0);
+
+        // A curve with NO Custom and NO Auto segment publishes no handle at all: the
+        // pairs are keyed to the easing, not to "a curve". (The other channels here
+        // carry the default Linear easing, which exposes no control point to drag.)
+        int nonHandleCurves = 0;
+        int handlesOnNonHandleCurves = 0;
+        for (const gui::PanelCurve& curve : handled.curves) {
+            const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
+            bool anyEditable = false;
+            for (int s = 0; s < source.segmentCount(); ++s) {
+                const ctrl::graph::Curve::Segment segment = source.segment(s);
+                if (source.isCustom(segment) || !source.ghostHandles(*segment.from).isEmpty())
+                    anyEditable = true;
+            }
+            if (!anyEditable) {
+                ++nonHandleCurves;
+                handlesOnNonHandleCurves += curve.handles.size();
+            }
+        }
+        std::printf("[10] curves with no Custom and no Auto segment=%d, handles they published=%d\n",
+                    nonHandleCurves, handlesOnNonHandleCurves);
+        CHECK(nonHandleCurves > 0);
+        CHECK(handlesOnNonHandleCurves == 0);
+
+        // ---- and now the AUTO segment: the DERIVED pair, which the document does
+        // NOT hold. It is published as ghost handles, and its x IS the third and two
+        // thirds of the segment's own frame span (the design's automatic handle, the
+        // whole reason the pair can be derived at all) while only the two y values
+        // come from the key's neighbours. The dot goes through the SAME mapping a
+        // stored one does - ctrl::graph::handlePointAt - so the two can never drift
+        // apart, and a drag on a ghost dot would convert the key (the editor's own
+        // job; the model only has to say WHICH kind of pair this is).
+        util::Easing::Param automatic;
+        automatic.type = util::Easing::Type_Auto;
+        move0->data().easing() = automatic;
+
+        const gui::GraphPanelModel ghosted = gui::buildGraphPanelModel(editor, viewport, palette);
+        ctrl::graph::Scaler ghostOracle = editor.scale();
+        ghostOracle.setRect(panel);
+
+        int ghostPairs = 0;
+        int ghostHandles = 0;
+        int badGhosts = 0;
+        int badGhostX = 0;
+        int ghostDotsOffMapping = 0;
+        int nonGhostOnAuto = 0;
+        for (const gui::PanelCurve& curve : ghosted.curves) {
+            const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
+            if (!source.isCustom(source.segment(0)) && source.ghostHandles(*source.segment(0).from).isEmpty())
+                continue; // not one of the Auto channels
+            if (curve.handles.size() != 2) {
+                ++badGhosts;
+                continue;
+            }
+            ++ghostPairs;
+            const ctrl::graph::Curve::Segment segment = source.segment(0);
+            const QVector<QPointF> derived = source.ghostHandles(*segment.from);
+            const core::TimeKey* owners[2] = { segment.from, segment.to };
+            for (int h = 0; h < 2 && h < curve.handles.size(); ++h) {
+                const gui::PanelHandle& handle = curve.handles.at(h);
+                ++ghostHandles;
+                if (!handle.ghost || handle.segment != 0 || handle.index != h ||
+                    handle.radius != ctrl::graph::kHandleRadius)
+                    ++badGhosts;
+                if (!handle.ghost)
+                    ++nonGhostOnAuto;
+                // The base is STILL the key the control belongs to: control 0 leaves
+                // the from key, control 1 arrives at the to key.
+                const QPointF expectedBase(
+                    ghostOracle.pixelXOfFrame(double(owners[h]->frame())),
+                    double(ghostOracle.pixelY(h == 0 ? segment.fromValue : segment.toValue))
+                );
+                if (handle.base != expectedBase)
+                    ++badGhosts;
+                // The derived x is the THIRD POINT of the span, exactly.
+                const double expectedX = h == 0 ? 1.0 / 3.0 : 2.0 / 3.0;
+                if (std::fabs(derived.at(h).x() - expectedX) > 1e-9)
+                    ++badGhostX;
+                if (std::fabs(handle.dot.x() - ghostOracle.pixelXOfFrame(
+                        double(segment.from->frame()) + expectedX * double(segment.to->frame() - segment.from->frame())
+                    )) > 0.5)
+                    ++badGhostX;
+                // ...and the dot is that normalized point through the shared mapping.
+                if (handle.dot != ctrl::graph::handlePointAt(ghostOracle, segment, derived.at(h)))
+                    ++ghostDotsOffMapping;
+            }
+        }
+        std::printf("[10] Auto segments: ghost pairs=%d handles=%d  mismatches=%d  x off the third point=%d  "
+                    "dots off handlePointAt=%d  stored-looking ghosts=%d\n",
+                    ghostPairs, ghostHandles, badGhosts, badGhostX, ghostDotsOffMapping, nonGhostOnAuto);
+        CHECK(ghostPairs == 2); // Move x and Move y again: one key, every component
+        CHECK(ghostHandles == 4);
+        CHECK(badGhosts == 0);
+        CHECK(badGhostX == 0);
+        CHECK(ghostDotsOffMapping == 0);
+        CHECK(nonGhostOnAuto == 0);
+
+        // Back to the Custom pair, so the blocks after this one measure the geometry
+        // they were written against (the trace handle is the one thing that moved).
+        move0->data().easing() = custom;
+        const gui::GraphPanelModel restoredHandles = gui::buildGraphPanelModel(editor, viewport, palette);
+        int restoredGhosts = 0;
+        for (const gui::PanelCurve& curve : restoredHandles.curves) {
+            for (const gui::PanelHandle& handle : curve.handles)
+                restoredGhosts += int(handle.ghost);
+        }
+        std::printf("[10] after restoring Custom: handles=%d  of them ghosts=%d\n",
+                    [&restoredHandles] {
+                        int n = 0;
+                        for (const gui::PanelCurve& c : restoredHandles.curves)
+                            n += isz(c.handles);
+                        return n;
+                    }(), restoredGhosts);
+        CHECK(restoredGhosts == 0);
     }
 
     // -------------------------------------------------------------------------
@@ -1606,6 +1882,71 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
+    // 14. THE SELECTION HULL: the editor's own outline, in the model's own pixels.
+    // The editor states it in DATA space (frame, value) - never in pixels, so it
+    // cannot desync from the markers it encloses - and the model maps every point
+    // through the SAME scaler the curves go through. With nothing selected the hull is
+    // EMPTY, which is the model's whole signal to draw nothing (and to publish no
+    // count label with it); with a key selected it is NON-EMPTY, its count is the
+    // editor's own, and the label writes that count.
+    {
+        // Nothing before this block selects a key, and that is stated rather than
+        // assumed: "the hull is empty" is only an assertion if nothing is selected.
+        editor.clearSelection();
+        const gui::GraphPanelModel none = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf("[14] no selection: hull points=%d  count=%d  label box empty=%d  label text=\"%s\"\n",
+                    isz(none.selectionHull), none.selectionCount, int(none.selectionLabel.rect.isEmpty()),
+                    qUtf8Printable(none.selectionLabel.text));
+        CHECK(none.selectionHull.isEmpty());
+        CHECK(none.selectionCount == 0);
+        CHECK(none.selectionLabel.rect.isEmpty());
+        CHECK(none.selectionLabel.text.isEmpty());
+
+        // ONE key: the Move X key at frame 0 of target A. The selection names a key by
+        // (node, type, frame) - the timeline's own triple - and the hull reads that
+        // key's value on the FIRST graphable component of its type.
+        const ctrl::graph::Channel moveX(core::TimeKeyType_Move, 0);
+        editor.selectKey(nodeA, moveX, core::Frame(0));
+
+        ctrl::graph::Scaler hullOracle = editor.scale();
+        hullOracle.setRect(panel);
+        const gui::GraphPanelModel one = gui::buildGraphPanelModel(editor, viewport, palette);
+
+        const QVector<QPointF> stated = editor.selectionHull();
+        int offTheEditorsOwnPoints = 0;
+        if (stated.size() != one.selectionHull.size())
+            ++offTheEditorsOwnPoints;
+        for (int i = 0; i < stated.size() && i < one.selectionHull.size(); ++i) {
+            const QPointF expected(
+                hullOracle.pixelXOfFrame(stated.at(i).x()), double(hullOracle.pixelY(float(stated.at(i).y())))
+            );
+            if (one.selectionHull.at(i) != expected)
+                ++offTheEditorsOwnPoints;
+        }
+        std::printf("[14] one key selected: editor selectionCount=%d hull points=%d (editor states %d)  points off "
+                    "the scaler mapping=%d  label box=(%d,%d %dx%d) text=\"%s\"\n",
+                    editor.selectionCount(), isz(one.selectionHull), isz(stated), offTheEditorsOwnPoints,
+                    one.selectionLabel.rect.x(), one.selectionLabel.rect.y(), one.selectionLabel.rect.width(),
+                    one.selectionLabel.rect.height(), qUtf8Printable(one.selectionLabel.text));
+        CHECK(!one.selectionHull.isEmpty());
+        CHECK(one.selectionCount == editor.selectionCount());
+        CHECK(one.selectionCount == 1);
+        CHECK(offTheEditorsOwnPoints == 0);
+        CHECK(!one.selectionLabel.rect.isEmpty());
+        CHECK(!one.selectionLabel.text.isEmpty());
+        CHECK(one.plot.contains(one.selectionLabel.rect));
+        CHECK(one.selectionLabel.text.contains(QString::number(one.selectionCount))); // the label IS the count
+
+        editor.clearSelection();
+        const gui::GraphPanelModel cleared = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf("[14] cleared again: hull points=%d  count=%d  label empty=%d\n", isz(cleared.selectionHull),
+                    cleared.selectionCount, int(cleared.selectionLabel.rect.isEmpty()));
+        CHECK(cleared.selectionHull.isEmpty());
+        CHECK(cleared.selectionCount == 0);
+        CHECK(cleared.selectionLabel.rect.isEmpty());
+    }
+
+    // -------------------------------------------------------------------------
     // read-only probe: a build must not move the editor or the document
     {
         editor.setProject(&project);
@@ -1640,6 +1981,9 @@ int main(int argc, char** argv) {
         CHECK(editor.currentFrame().get() == frameBefore);
         CHECK(probe.playheadX == probeAgain.playheadX);
         CHECK(probe.frameTickX == probeAgain.frameTickX);
+        // The tiers are part of the same pure function: the ladder does not move
+        // between two builds either, so the classification is reproducible too.
+        CHECK(probe.frameTickLevel == probeAgain.frameTickLevel);
         CHECK(probe.curves.size() == probeAgain.curves.size());
     }
 

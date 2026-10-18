@@ -23,7 +23,7 @@ namespace {
 // shares are read from their own homes instead: Scaler::kMargin, the label
 // column's own size rule (Scaler::axisLabelWidth(), measured - see THE LABEL
 // COLUMN in graph_Scaler.h) and Scaler::kAxisLabelPad from the scaler,
-// ctrl::graph::kKeyRadius and kKeyDotRadius from graph_Geometry.h.
+// ctrl::graph::kKeyDotRadius from graph_Geometry.h.
 //
 // The short tick marks replaced the renderer's full grid lines. Their length is
 // the drawing layer's business (the model publishes positions); 4px is the
@@ -37,15 +37,27 @@ constexpr int kFrameLabelGap = 8;
 // Horizontal padding of a text box around its glyphs, the renderer's own
 // `horizontalAdvance(text) + 4`.
 constexpr int kLabelPad = 2;
-// The legend swatch is a key square: side 2 * ctrl::graph::kKeyRadius.
-constexpr int kLegendSwatchSide = 2 * ctrl::graph::kKeyRadius;
-// The legend's insets from the plot's bottom-left corner: the left gap and the
-// bottom gap are the renderer's caption offsets (the caption sat at
-// plotLeft + 6, plotBottom - height - 3). The channel name is drawn beside the
-// swatch by the drawing layer, whose font only it knows.
-constexpr int kLegendLeftGap = 6;
-constexpr int kLegendBottomGap = 3;
-constexpr int kLegendRowPad = 2;
+// The chip that names a curve IN PLACE (see CHIPS in the header): the box's own
+// padding around the text and its inset from the plot's right edge. The numbers
+// are the reference's - mock-graph.js right-aligns the text 8px inside the plot
+// and pads the chip's backing 6px left and right (its backdrop is the text box
+// grown by (6, 8)).
+constexpr int kChipRightGap = 8;
+constexpr int kChipPadX = 6;
+
+// The panel's ONE control (see CHANNELS BUTTON in the header): its inset from the
+// PANEL's right edge and below the ruler band, and its padding around its text.
+// The reference floats it at the panel's top-right corner, 8px inside the edge and
+// 30px from the top - which is kChannelsButtonTopGap below the band while nothing
+// occludes it - padded 6px/2px, "clear of the ruler band so it cannot read as part
+// of the scale" (mock.css, .gp-chbtn:not(.hosted)).
+constexpr int kChannelsButtonGap = 8;
+constexpr int kChannelsButtonTopGap = 8;
+constexpr int kChannelsButtonPadX = 6;
+constexpr int kChannelsButtonPadY = 2;
+
+// The gap between the selection label's box and the hull's own bounding box.
+constexpr int kSelectionLabelGap = 2;
 
 // The sampling budget of a curve: one point per ~2px of plot width, bounded so a
 // dense key set does not explode the point count and a single long segment
@@ -61,7 +73,12 @@ constexpr int kMaxSamplesPerSegment = 256;
 //
 // The frame window is the plot's edges through the frame mapping: a ladder can
 // be far denser than the plot is wide, and only what is visible is published.
-// Ticks are positions, never spans - there is no grid.
+// Ticks are positions, never spans - there is no grid. Each tick's TIER travels
+// beside its position in frameTickLevel (same order, same length): the ladder that
+// decided the tick also said which tier it is, so the classification is read here
+// rather than re-derived by a drawing layer from the tick spacing - and what a tier
+// looks like (its alpha; the length is one for every level) stays that layer's
+// decision, the way the model publishes a position and not a span.
 void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics) {
     const QRect& plot = aModel.plot;
     const core::Frame first = aScale.frameAt(plot.left());
@@ -96,8 +113,14 @@ void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
         // would otherwise be ticked in the margin.
         if (x < plot.left() || plot.right() < x)
             continue;
-        if (aModel.frameTickX.isEmpty() || aModel.frameTickX.last() != x)
+        if (aModel.frameTickX.isEmpty() || aModel.frameTickX.last() != x) {
             aModel.frameTickX.append(x);
+            // The tier travels with the position, appended in the same step so the two
+            // vectors cannot desync: the model classifies the tick (the ladder's own
+            // TickLevel), and how a tier LOOKS - its alpha, its length - stays the
+            // drawing layer's decision (see THE AXES in the header).
+            aModel.frameTickLevel.append(static_cast<int>(level));
+        }
 
         if (level != ctrl::time::Scaler::TickLevel::Major || !roomForText)
             continue;
@@ -193,14 +216,25 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
     }
 }
 
-// The legend: one row per (target, channel) that has keys - the same set of
+// The channel list: one row per (target, channel) that has keys - the same set of
 // channels the editor builds entries for (a type whose map is empty has no curve
 // and no row), in target then channel order, hidden channels included. The row's
-// colour is the curve's colour, so a swatch and its curve always read as one
-// feature.
-void buildLegend(
+// colour is the curve's colour, so the list's swatch and its curve always read as
+// one feature. No row GEOMETRY is laid out: the list is the application's own
+// QMenu (see the header's CHANNEL LIST).
+//
+// The same walk also lays out the panel's ONE control, the button that opens that
+// list: its text states the shown/total count and its box is the text plus the
+// button's padding, in the plot's top-right corner and clear of the ruler band.
+void buildChannels(
     gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const theme::Graph& aTheme, const QFontMetrics& aMetrics
 ) {
+    // focusedNode() hands out a CONST pointer (GraphEditor.h), and this model only
+    // ever COMPARES it with the targets' own (non-const) pointers - it never mutates
+    // through it - so the local keeps the const rather than casting it away.
+    const core::ObjectNode* focusedNode = aEditor.hasFocus() ? aEditor.focusedNode() : nullptr;
+    const ctrl::graph::Channel focusedChannel = aEditor.focusedChannel();
+
     for (core::ObjectNode* node : aEditor.targets()) {
         if (!node)
             continue;
@@ -213,57 +247,136 @@ void buildLegend(
                 continue; // no keys: nothing to draw and nothing to toggle
 
             for (const ctrl::graph::Channel& channel : ctrl::graph::Channel::channelsOf(type)) {
-                gui::PanelLegendRow row;
+                gui::PanelChannelRow row;
                 row.node = node;
                 row.channel = channel;
-                row.label = node->name() + QStringLiteral(" : ") + channel.name();
+                row.layer = node->name();
+                // A one-component type has no sibling to be told apart from, so the
+                // component word is noise: "Opa", not "Opa Opacity" (the reference
+                // draws exactly this chip, mock-graph.js's _curveLabels).
+                row.name = ctrl::graph::Channel::componentCount(type) > 1
+                               ? channel.name()
+                               : core::TimeLine::getTimeKeyName(type);
                 const QColor color = aTheme.keyColor(channel.type());
                 row.color = color.isValid() ? color : aTheme.curve();
                 row.visible = aEditor.isChannelVisible(*node, channel);
-                aModel.legend.append(row);
+                row.focused = node == focusedNode && channel == focusedChannel;
+                aModel.channels.append(row);
             }
         }
     }
 
-    // The swatches are stacked top to bottom in the plot's bottom-left corner,
-    // the last row ending kLegendBottomGap above the plot's bottom edge. The
-    // stack grows upward, so the first row is the one furthest from the edge.
-    //
-    // The stack is bounded by the plot: the top edge cuts it, and a plot
-    // narrower than the left gap plus the swatch side has no room for a swatch
-    // at all. A row that does not fit publishes NO swatch - an empty rect -
-    // rather than one above the plot or in the margin. The row itself stays in
-    // the legend with its identity, colour and label, because the user has to
-    // be able to see that the channel exists and an assistive tool acts on a
-    // row by index; the empty swatch is the model's own truthful signal that
-    // the row has no geometry to draw or to hit (see the header's LEGEND).
-    // Because the stack is anchored at the bottom, the rows left without a
-    // swatch are always its first ones.
-    const int rows = aModel.legend.size();
-    if (rows <= 0)
-        return;
-
-    const int rowHeight = std::max(aMetrics.height() + 2 * kLegendRowPad, kLegendSwatchSide + 2 * kLegendRowPad);
-    const int stackTop = aModel.plot.bottom() + 1 - kLegendBottomGap - rows * rowHeight;
-    bool room = true;
-    for (int i = rows - 1; 0 <= i; --i) {
-        const int top = stackTop + i * rowHeight + (rowHeight - kLegendSwatchSide) / 2;
-        const QRect swatch(aModel.plot.left() + kLegendLeftGap, top, kLegendSwatchSide, kLegendSwatchSide);
-        // Walking upward from the bottom, so the first row that does not fit ends
-        // the stack: a higher row cannot fit where a lower one did not.
-        room = room && aModel.plot.contains(swatch);
-        if (room)
-            aModel.legend[i].swatch = swatch;
+    // The button's label: the total while every channel is shown ("6 channels"),
+    // and the shown count out of the total once one is hidden ("4 of 6") - the
+    // count IS the state the button changes. With NO channels there is no list to
+    // open, so there is no control either: nothing is published (an empty panel's
+    // reason already says why it is empty, and a button that opens nothing would be
+    // a hit target with no action behind it).
+    int shown = 0;
+    for (const gui::PanelChannelRow& row : aModel.channels) {
+        if (row.visible)
+            ++shown;
     }
+    const int total = aModel.channels.size();
+    if (total <= 0)
+        return;
+    aModel.channelsButtonText =
+        shown == total
+            ? gui::graphPanelTr(QT_TRANSLATE_N_NOOP("GraphPanel", "%n channel(s)"), total)
+            : QCoreApplication::translate("GraphPanel", QT_TRANSLATE_NOOP("GraphPanel", "%1 of %2"))
+                  .arg(shown)
+                  .arg(total);
+
+    // The button's box, in the plot's top-right corner: the text's advance plus the
+    // button's own padding, kChannelsButtonGap (8px) inside the PANEL's right edge -
+    // the frame the reference floats it in (mock.css: `right: 8px` of the panel) -
+    // and kChannelsButtonTopGap below the ruler band, which is the reference's own
+    // 30px from the panel's top while nothing occludes the band. A button that does
+    // not fit inside the plot publishes NO box - the drawing layer draws nothing and
+    // hit-tests nothing, the model's own truthful signal (the same rule every rect
+    // here follows).
+    const int width = aMetrics.horizontalAdvance(aModel.channelsButtonText) + 2 * kChannelsButtonPadX;
+    const int height = aMetrics.height() + 2 * kChannelsButtonPadY;
+    const QRect button(
+        aModel.panel.right() + 1 - kChannelsButtonGap - width, aModel.rulerBandTop + kChannelsButtonTopGap, width,
+        height
+    );
+    if (aModel.plot.contains(button))
+        aModel.channelsButton = button;
 }
 
-// The curves: one per visible legend row, sampled and mapped through the scaler
+// The selection's HULL and its count, in the same pixels as everything else: the
+// editor states the outline in (frame, value) - never in pixels, so it cannot
+// desync from the markers it encloses - and this maps every point through the SAME
+// Scaler the curves go through.
+//
+// Nothing is published while nothing is selected (ctrl::GraphEditor::
+// selectionHull() is empty then, and so is the hull here): an empty hull IS the
+// signal to draw nothing, exactly as an empty marquee is.
+void buildSelection(
+    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const ctrl::graph::Scaler& aScale,
+    const QFontMetrics& aMetrics
+) {
+    aModel.selectionCount = aEditor.selectionCount();
+
+    const QVector<QPointF> hull = aEditor.selectionHull();
+    if (hull.isEmpty())
+        return;
+
+    aModel.selectionHull.reserve(hull.size());
+    int left = 0;
+    int top = 0;
+    int right = 0;
+    for (int i = 0; i < hull.size(); ++i) {
+        const QPointF point(
+            aScale.pixelXOfFrame(hull.at(i).x()), static_cast<double>(aScale.pixelY(float(hull.at(i).y())))
+        );
+        aModel.selectionHull.append(point);
+        const int x = int(point.x());
+        const int y = int(point.y());
+        if (i == 0) {
+            left = right = x;
+            top = y;
+            continue;
+        }
+        left = std::min(left, x);
+        right = std::max(right, x);
+        top = std::min(top, y);
+    }
+
+    // The count label, in the panel's own label currency: centred on the hull's own
+    // bounding box, just above its top edge - and just INSIDE it when the hull
+    // reaches the plot's top edge, so the label is never pushed out of the plot.
+    // A box that does not fit is not published (see the header's SELECTION HULL).
+    const QString text =
+        gui::graphPanelTr(QT_TRANSLATE_N_NOOP("GraphPanel", "%n key(s)"), aModel.selectionCount);
+    const int width = aMetrics.horizontalAdvance(text) + 2 * kLabelPad;
+    const int height = aMetrics.height();
+    if (aModel.plot.width() < width || aModel.plot.height() < height)
+        return; // the box could not be clamped into the plot, so there is none
+    const int left2 = std::clamp((left + right + 1) / 2 - width / 2, aModel.plot.left(), aModel.plot.right() - width + 1);
+    int top2 = top - height - kSelectionLabelGap;
+    if (top2 < aModel.plot.top())
+        top2 = top + kSelectionLabelGap; // no room above the hull: sit just inside its top edge
+    top2 = std::clamp(top2, aModel.plot.top(), aModel.plot.bottom() - height + 1);
+
+    const QRect box(left2, top2, width, height);
+    if (!aModel.plot.contains(box))
+        return;
+    aModel.selectionLabel.rect = box;
+    aModel.selectionLabel.text = text;
+}
+
+// The curves: one per visible channel row, sampled and mapped through the scaler
 // (Curve::buildPolyline over the plot's frame window, then Scaler::pixelXOfFrame
-// / Scaler::pixelY), with the keys and the Custom tangent handles as the shared
-// hit-test geometry (ctrl/graph/graph_Geometry.h).
-void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale) {
-    for (int i = 0; i < aModel.legend.size(); ++i) {
-        const gui::PanelLegendRow& row = aModel.legend[i];
+// / Scaler::pixelY), with the keys and every segment's tangent handles as the
+// shared hit-test geometry (ctrl/graph/graph_Geometry.h), and the chip that names
+// the curve in place.
+void buildCurves(
+    gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics
+) {
+    for (int i = 0; i < aModel.channels.size(); ++i) {
+        const gui::PanelChannelRow& row = aModel.channels[i];
         if (!row.visible)
             continue; // a hidden channel keeps its row and contributes no curve
 
@@ -283,7 +396,7 @@ void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale
         out.loop = aModel.projectLoop;
         out.loopRange = aModel.projectLoopRange;
         out.color = row.color;
-        out.legendIndex = i;
+        out.channelRow = i;
 
         const core::Frame first = aScale.frameAt(aModel.plot.left());
         const core::Frame last = aScale.frameAt(aModel.plot.right());
@@ -329,18 +442,30 @@ void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale
             }
         }
 
-        // The Custom segments' tangent handles, in segment order: one pair per
-        // segment, handle 0 leaving `from` and 1 arriving at `to`. The dot is
-        // ctrl::graph::handlePoint - the editor's own grab mapping - and the base
-        // is the key the handle belongs to, so the drawn stem starts on the key
-        // it moves. Published whether or not the pair lies inside the plot: the
-        // drawing layer clips, and a handle off the plot's edge is still one the
-        // user can grab.
+        // Every segment's tangent handles, in segment order: one pair per segment,
+        // handle 0 leaving `from` and 1 arriving at `to`. The base is the key the
+        // handle belongs to, so the drawn stem starts on the key it moves, and the
+        // dot is the mapping the editor's own hit-test grabs through - a Custom
+        // segment's STORED pair (handlePoint) or an Auto segment's DERIVED one
+        // (handlePointAt over ghostHandles, the same function handlePoint calls), so
+        // a stored pair and a derived one cannot drift apart. `ghost` carries which
+        // kind it is: the derived pair is not in the document, and the drawing layer
+        // draws it hollow (a drag on it converts the key to Custom).
+        // Published whether or not the pair lies inside the plot: the drawing layer
+        // clips, and a handle off the plot's edge is still one the user can grab.
         const int handleSegments = curve.segmentCount();
         for (int s = 0; s < handleSegments; ++s) {
             const ctrl::graph::Curve::Segment segment = curve.segment(s);
-            if (!curve.isCustom(segment))
-                continue; // only a Custom easing has tangent handles to show
+            if (!segment.from || !segment.to)
+                continue;
+
+            const bool custom = curve.isCustom(segment);
+            // The derived pair, when this is an Auto segment and there is something
+            // to derive from (a last key in the channel has none, and neither has a
+            // type that carries no easing at all): empty otherwise.
+            const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
+            if (!custom && ghosts.size() != 2)
+                continue; // the analytic easings expose no handle to drag at all
 
             const core::TimeKey* owners[2] = { segment.from, segment.to };
             const float ownerValues[2] = { segment.fromValue, segment.toValue };
@@ -352,10 +477,31 @@ void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale
                     aScale.pixelXOfFrame(static_cast<double>(owners[h]->frame())),
                     static_cast<double>(aScale.pixelY(ownerValues[h]))
                 );
-                handle.dot = ctrl::graph::handlePoint(aScale, segment, h);
+                handle.dot = custom ? ctrl::graph::handlePoint(aScale, segment, h)
+                                    : ctrl::graph::handlePointAt(aScale, segment, ghosts.at(h));
                 handle.radius = ctrl::graph::kHandleRadius;
+                handle.ghost = !custom;
                 out.handles.append(handle);
             }
+        }
+
+        // The chip that names this curve IN PLACE: at the plot's right edge, on the
+        // value the curve LEAVES the window with - the last of the polyline
+        // `points` above, so the chip is derived from the curve it names rather than
+        // from a second evaluation of the curve at the edge. An empty box when the
+        // chip would not fit inside the plot (see the header's CHIPS): a curve
+        // leaving the window too near an edge, or a plot too narrow for the name,
+        // publishes no chip rather than one in the margin or over another row.
+        out.chipText = row.name;
+        if (!out.points.isEmpty()) {
+            const int width = aMetrics.horizontalAdvance(out.chipText) + 2 * kChipPadX;
+            const int height = aMetrics.height();
+            const double y = out.points.last().y();
+            const QRect chip(
+                aModel.plot.right() + 1 - kChipRightGap - width, qRound(y) - height / 2, width, height
+            );
+            if (aModel.plot.contains(chip))
+                out.chip = chip;
         }
 
         aModel.curves.append(out);
@@ -374,7 +520,7 @@ void buildEmptyState(gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor) {
             anyTarget = true;
     }
 
-    if (aModel.legend.isEmpty()) {
+    if (aModel.channels.isEmpty()) {
         aModel.emptyState =
             anyTarget ? gui::graphPanelTr(QT_TRANSLATE_NOOP("GraphPanel", "No keys on the selected layers"))
                       : gui::graphPanelTr(QT_TRANSLATE_NOOP("GraphPanel", "Select a layer to show its curves"));
@@ -396,6 +542,14 @@ namespace gui {
         // call site, so a renamed context fails the extractor's check rather than
         // silently shipping English.
         return QCoreApplication::translate("GraphPanel", aSourceText);
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    QString graphPanelTr(const char* aSourceText, int aN) {
+        // The plural half of the pair above: the same context, resolved through
+        // Qt's plural form, and the call site carries the same literal in
+        // QT_TRANSLATE_N_NOOP("GraphPanel", ...) for the extractor.
+        return QCoreApplication::translate("GraphPanel", aSourceText, nullptr, aN);
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -463,8 +617,9 @@ namespace gui {
 
         buildFrameAxis(model, scale, metrics);
         buildValueAxis(model, scale, metrics);
-        buildLegend(model, aEditor, aTheme, metrics);
-        buildCurves(model, scale);
+        buildChannels(model, aEditor, aTheme, metrics);
+        buildCurves(model, scale, metrics);
+        buildSelection(model, aEditor, scale, metrics);
         buildEmptyState(model, aEditor);
 
         return model;

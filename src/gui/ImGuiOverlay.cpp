@@ -85,9 +85,55 @@ const char* kGlslVersion = "#version 400 core";
 constexpr float kCurveWidth = stroke::kWidthPx;
 
 // Length of the short axis marks. The model publishes positions and leaves the
-// length to the drawing layer; 4 is the convention its own KFrameTickLength
-// documents (and the room it reserves above a frame number).
+// length to the drawing layer; 4 is the convention its own kFrameTickLength
+// documents (and the room it reserves above a frame number). ONE length for every
+// tick level: the tier is read from the ALPHA, never from a pixel length (the
+// timeline's own rule, TimeRuler.cpp:20).
 constexpr int kAxisTickLength = 4;
+
+// The ruler ink's ALPHA for a tick mark, keyed by the tick's own tier, on top of
+// the one token the ticks and the numbers share (theme::Graph::gridMajor() ==
+// axisText() == Colors::text; see assignFrom). What these numbers are is the
+// timeline's own ruler table (TimeRuler.cpp:22-30), mirrored here because the two
+// views' rulers have to read as one ruler: the frame numbers stay at full strength
+// and the marks under them take their tier's alpha, so a major, an intermediate and
+// a minor tick are one ink at three emphases rather than three colours. THE TIER IS
+// THE ALPHA, NEVER THE LENGTH: every mark is kAxisTickLength long, the timeline's own
+// rule of one length for every level.
+//
+// THE TIER IS THE MODEL'S, not something measured here. GraphPanelModel classifies
+// every tick against the ladder it already owns and publishes the classification
+// beside the position (`frameTickLevel`, one entry per `frameTickX` entry, the
+// ctrl::time::Scaler::TickLevel as its integer value - see THE AXES in
+// GraphPanelModel.h). A tier recovered in this layer from tick spacing or label
+// widths would be the pixel measurement the timeline's own comment rejects; the
+// model has the ladder, so it states the tier and this table only says what a tier
+// looks like.
+constexpr float kMajorTickAlpha = 0.85f;
+
+float tickAlpha(int aLevel) {
+    switch (static_cast<ctrl::time::Scaler::TickLevel>(aLevel)) {
+        case ctrl::time::Scaler::TickLevel::Major:
+            return kMajorTickAlpha;
+        case ctrl::time::Scaler::TickLevel::Intermediate:
+            return 0.60;
+        case ctrl::time::Scaler::TickLevel::Minor:
+            return 0.20;
+        case ctrl::time::Scaler::TickLevel::None:
+            return 0.0; // not a tick: the model publishes no entry for it
+    }
+    return 0.0;
+}
+
+// The alpha of the model's tick `aIndex`, from its published tier. A model that
+// published no tier for that tick (a hand-built one, e.g. a pixel gate's model built
+// by hand) keeps the single major-tier alpha this layer drew before the tiers were
+// published, so the marks are never dropped for want of a classification.
+float tickAlphaOf(const GraphPanelModel& aModel, int aIndex) {
+    if (0 <= aIndex && aIndex < aModel.frameTickLevel.size())
+        return tickAlpha(aModel.frameTickLevel.at(aIndex));
+    return kMajorTickAlpha;
+}
 
 // The box-select marquee's corner radius, in pixels: the timeline's own box
 // (ctrl/time/Renderer.cpp draws a 6px rounded rect) so the two views' selection
@@ -100,34 +146,68 @@ constexpr float kMarqueeRounding = 6.0f;
 constexpr int kHaloRadius = 2;
 constexpr float kHaloAlpha = 0.85f;
 
-// Emphasis: the alpha an unfocused curve and its keys are drawn at WHILE a focus
-// exists (with no focus every curve is full). 45% keeps the shape readable and
-// leaves no doubt about which curve is the focused one.
-constexpr float kUnfocusedAlpha = 0.45f;
+// Emphasis by SELECTION: the alpha a curve and its key markers are drawn at when its
+// channel owns no selected key (gui::drawPanel's curveStrength). 45% keeps the shape
+// readable while leaving no doubt about which curves are the ones being edited - and
+// with an EMPTY selection every curve is drawn at this strength, because no channel
+// owns a selected key (the design's decision table, "Curve emphasis": full strength
+// for the channels that own a selected key, 0.45 for the rest, all dimmed when
+// nothing is selected). This replaced the sticky focused channel's dim; the focus
+// still governs which channel's tangent handles are drawn.
+constexpr float kUnselectedAlpha = 0.45f;
 
-// A hidden legend row keeps its swatch and its label - that is how the user sees
-// what is hidden and clicks it back - so both read at a third of the strength
-// rather than disappearing.
-constexpr float kHiddenAlpha = 0.35f;
+// A curve's name CHIP (GraphPanelModel's CHIPS), drawn in the plot's right-hand
+// edge for the curves IN PLAY - the channels that own a selected key and whatever
+// the pointer is over. The chip carries its own backing, so it stays readable
+// wherever the curve leaves the window: the model's chip box filled with the panel
+// tone at this alpha, and the name in the channel's own hue. The backdrop's alpha is
+// the reference's (mock-graph.js draws 'rgba(16,16,16,0.82)' - the panel tone at
+// 82%), through theme::Graph::halo(), which IS this palette's panel tone.
+constexpr float kChipBackdropAlpha = 0.82f;
+// The chip's own corner radius: the reference rounds its backing by 3px
+// (mock-graph.js's roundRect(..., 3)).
+constexpr float kChipRounding = 3.0f;
+// The alpha of a chip's text for a curve the pointer is merely OVER, against full
+// strength for one whose channel owns a selected key (the reference's own two
+// strengths, mock-graph.js's _curveLabels).
+constexpr float kChipHoverAlpha = 0.75f;
+// How close the pointer's row must be to a curve's value at the pointer's own x for
+// that curve to count as hovered. The reference's own reach (mock-graph.js's `best =
+// 6`, in pixels).
+constexpr double kChipHoverDistance = 6.0;
 
-// Gap between a legend swatch and its label. The model insets the swatch from the
-// plot by its own kLegendLeftGap (6px); the label starts the same distance after
-// the swatch, so a row reads as one line.
-constexpr int kLegendLabelGap = 6;
+// The panel's ONE control (GraphPanelModel's CHANNELS BUTTON): a translucent panel
+// tone under its label, the reference's own 'rgba(16,16,16,0.55)' through
+// theme::Graph::halo(), so the button reads over whatever curve crosses it.
+constexpr float kChannelsButtonAlpha = 0.55f;
+// Its corner radius, the reference's own 4px (mock.css, .gp-chbtn: border-radius 4px).
+constexpr float kChannelsButtonRounding = 4.0f;
+
+// GHOST (Auto) tangent handles (PanelHandle::ghost). The reference draws them
+// hollow where a stored pair is filled: a smaller dot with no fill, its stem and ring
+// in the CHANNEL's own hue at reduced alpha (mock-graph.js: the stem at 0.5, the ring
+// at 0.7, the radius 1.5px under the stored one), so an implicit tangent can never
+// be taken for one the document stores.
+constexpr float kGhostHandleStemAlpha = 0.5f;
+constexpr float kGhostHandleEdgeAlpha = 0.7f;
+constexpr float kGhostHandleShrink = 1.5f;
 
 // The text size used when the widget's font states no size at all (neither a pixel
 // nor a usable point size: gui::imgui_qt::panelFontPixelSize returns 0). 13 is
 // ImGui's own default font size, which keeps the panel legible instead of empty.
 constexpr float kFallbackFontPixelSize = 13.0f;
 
-// The accessibility ids that are not a legend row index. Legend rows are the ids
-// 0..n-1, so the fixed items are negative - one namespace, no collision.
+// The accessibility ids. No item is a row index any more (the channel list is a
+// QMenu, not in the tree - see the class comment), so every id is a fixed negative.
 constexpr int kSummaryItemId = -1;
 constexpr int kFitItemId = -2;
 // The key menu's own action (see the class comment): published only while the
 // selection names exactly one key, and it opens the application's own easing menu
 // at that key's marker.
 constexpr int kKeyMenuItemId = -3;
+// The panel's one control (see the class comment): published while the model gave
+// the channel button a box, and it opens the application's own channel list at it.
+constexpr int kChannelsItemId = -4;
 
 // lupdate's context for everything this file says to the user: the class is not a
 // QObject, so there is no tr() member for it to find.
@@ -270,6 +350,24 @@ bool isKeySelected(const PanelFocus& aFocus, core::TimeKeyType aType, const QPoi
             return true;
     }
     return false;
+}
+
+// The curve's INK STRENGTH: the SELECTION's, not the sticky focus's (the design's
+// decision table, "Curve emphasis": full strength for the channels that own a
+// selected key, 0.45 for the rest, and all of them dimmed when nothing is selected).
+// "Owns" is isKeySelected() over the curve's own key markers - the same identity the
+// selected marker's ring uses (key type + pixel x) - which also gives the design's
+// sibling rule for free: one TimeKeyType_Move key is shared by the Move X and Move Y
+// components, so both curves are in play and both stay at full strength
+// (mock-graph.js's _live() states the same rule). Its one limit is the model's: a key
+// the model published no dot for (its hit rect lies entirely outside the plot) cannot
+// put its channel in play here, and nothing else in the model names a key.
+float curveStrength(const PanelFocus& aFocus, const PanelCurve& aCurve) {
+    for (const QPointF& dot : aCurve.keyDots) {
+        if (isKeySelected(aFocus, aCurve.channel.type(), dot))
+            return 1.0f;
+    }
+    return kUnselectedAlpha;
 }
 
 } // namespace
@@ -763,7 +861,7 @@ struct CurveInkBlob {
     float red;
     float green;
     float blue;
-    float alpha;      // the ink's strength: 1.0, or kUnfocusedAlpha
+    float alpha;      // the ink's strength: 1.0, or kUnselectedAlpha
     float halfWidth;  // the stroke's half width, in LOGICAL px: the curve's kCurveWidth/2,
                       // a handle stem's 0.5. Both are the same stroke otherwise, which is
                       // why there is one record and not two.
@@ -1223,30 +1321,21 @@ void drawListCallback(const ImDrawList*, const ImDrawCmd* aCommand) {
 } // namespace stroke
 
 //-------------------------------------------------------------------------------------------------
-// The one legend label geometry - declared to the gate as well (see the header),
-// so a pixel gate can assert the no-room rule on the geometry the hit-test uses.
-QRect legendLabelRect(const PanelLegendRow& aRow, ImFont* aFont, float aFontSize) {
-    if (!aFont || aRow.label.isEmpty() || aRow.swatch.isEmpty())
-        return QRect();
-
-    const QByteArray utf8 = aRow.label.toUtf8();
-    const ImVec2 size = measureText(aFont, aFontSize, utf8.constData());
-    const int width = int(size.x + 0.5f);
-    const int height = int(size.y + 0.5f);
-    if (width <= 0 || height <= 0)
-        return QRect();
-    return QRect(aRow.swatch.right() + 1 + kLegendLabelGap, aRow.swatch.center().y() - height / 2, width, height);
-}
-
-//-------------------------------------------------------------------------------------------------
 void drawPanel(
     ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
 ) {
     ImFont* font = drawListFont(aDrawList);
     const float fontSize = drawListFontSize(aDrawList);
     const ImU32 halo = toImU32Strength(aTheme.halo(), kHaloAlpha);
+    // ONE ink for the ruler: the ticks and the numbers below them are the same token
+    // (theme::Graph::axisText()), the numbers at full strength and every FRAME mark at
+    // its own tier's alpha (tickAlphaOf, over the timeline's table) - the timeline's
+    // own rule, instead of the separator tone's ticks under text numbers. The value
+    // axis' three marks have no ladder to tier them (one per window value), so they
+    // take the major tier's alpha; the zero rule keeps its own line tone (axisLine),
+    // because it is a LINE and not a ruler mark.
     const ImU32 axisText = toImU32(aTheme.axisText());
-    const ImU32 tick = toImU32(aTheme.gridMajor());
+    const ImU32 valueTick = toImU32Strength(aTheme.gridMajor(), kMajorTickAlpha);
 
     const QRect& plot = aModel.plot;
 
@@ -1260,14 +1349,14 @@ void drawPanel(
     // Everything that belongs to the plot is clipped to it. This is the capability
     // the painter engine lacked (ctrl::GLCorePaintEngine has no clip), and it is
     // what keeps a curve that leaves the value window from stroking over the
-    // value column or the legend.
+    // value column or the panel's chrome.
     aDrawList.PushClipRect(rectMin(plot), rectMax(plot), true);
 
-    // The axes: SHORT marks only, 1px with AA off (the timeline's hairline rule -
-    // an AA'd 1px line straddles two columns and reads as 2px of grey). The model
-    // publishes positions, never spans, so there is no grid to draw. The flags are
-    // put back exactly as they were found, so a caller's own setting is not
-    // clobbered.
+    // The axes: SHORT marks only, 1px with AA off (an AA'd 1px line straddles two
+    // columns and reads as 2px of grey, and every mark here is asked for an INTEGER
+    // column by the model). The model publishes positions, never spans, so there is
+    // no grid to draw. The flags are put back exactly as they were found, so a
+    // caller's own setting is not clobbered.
     const ImDrawListFlags savedLineFlags = aDrawList.Flags;
     aDrawList.Flags = savedLineFlags & ~ImDrawListFlags_AntiAliasedLines;
     // ...down from the RULER BAND's top, not from the plot's: a widget floating above
@@ -1275,14 +1364,19 @@ void drawPanel(
     // itself, and the marks are its top edge (see THE OCCLUDED TOP in
     // GraphPanelModel.h). The band is inside the plot by construction.
     const float bandTop = float(aModel.rulerBandTop);
-    for (int x : aModel.frameTickX) {
-        const float fx = float(x);
-        aDrawList.AddLine(ImVec2(fx, bandTop), ImVec2(fx, bandTop + float(kAxisTickLength)), tick, 1.0f);
+    // One mark per tick, each at its own tier's alpha from the model's classification
+    // (walked by index, so the two vectors are read as one geometry).
+    for (int i = 0; i < aModel.frameTickX.size(); ++i) {
+        const float fx = float(aModel.frameTickX.at(i));
+        aDrawList.AddLine(
+            ImVec2(fx, bandTop), ImVec2(fx, bandTop + float(kAxisTickLength)),
+            toImU32Strength(aTheme.gridMajor(), tickAlphaOf(aModel, i)), 1.0f
+        );
     }
     for (int y : aModel.valueTickY) {
         const float fy = float(y);
         aDrawList.AddLine(
-            ImVec2(float(plot.left()), fy), ImVec2(float(plot.left() + kAxisTickLength), fy), tick, 1.0f
+            ImVec2(float(plot.left()), fy), ImVec2(float(plot.left() + kAxisTickLength), fy), valueTick, 1.0f
         );
     }
 
@@ -1300,8 +1394,9 @@ void drawPanel(
     for (const PanelLabel& label : aModel.frameLabels)
         drawLabel(aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre, axisText, halo);
 
-    // The curves. Clipped to the plot (above); the focused one at full colour,
-    // every other one dimmed while a focus exists.
+    // The curves. Clipped to the plot (above); the channels that own a SELECTED key
+    // at full colour, every other curve dimmed - and with an empty selection every
+    // curve is dimmed (curveStrength).
     //
     // THE SHIPPING STROKE IS gui::stroke's (see the header): one draw-list callback per
     // curve, carrying the polyline, the colour and the strength, so the ink is measured
@@ -1314,8 +1409,7 @@ void drawPanel(
         if (curve.points.size() < 2)
             continue; // identity and colour but no geometry: the keys are outside the window
 
-        const bool focused = aFocus.valid && aFocus.node == curve.node && aFocus.channel == curve.channel;
-        const float strength = (aFocus.valid && !focused) ? kUnfocusedAlpha : 1.0f;
+        const float strength = curveStrength(aFocus, curve);
 
         if (stroke::isReady()) {
             addInkCallback(aDrawList, curve.points, curve.color, strength, kCurveWidth * 0.5f);
@@ -1338,7 +1432,7 @@ void drawPanel(
     // of radius ctrl::graph::kKeyDotRadius - the timeline's own key-body radius
     // (ctrl::keyRadius, 3.75px) - filled with ITS CHANNEL'S OWN COLOUR
     // (PanelCurve::color, i.e. theme::Graph::keyColor(channel.type()) - the same
-    // colour its curve is stroked in and its legend swatch filled with), inside the
+    // colour its curve is stroked in and its chip's text drawn in), inside the
     // palette's floor-coloured ring, which is what keeps a key visible on top of the
     // curve that carries it (a same-hue key on a same-hue stroke would otherwise
     // disappear into it). The editor's selection turns both into the selected token.
@@ -1352,8 +1446,10 @@ void drawPanel(
     const float dotRadius = float(ctrl::graph::kKeyDotRadius);
     const ImU32 selectedKey = toImU32(aTheme.selected());
     for (const PanelCurve& curve : aModel.curves) {
-        const bool focused = aFocus.valid && aFocus.node == curve.node && aFocus.channel == curve.channel;
-        const float strength = (aFocus.valid && !focused) ? kUnfocusedAlpha : 1.0f;
+        // The markers follow their own curve's emphasis (curveStrength): a channel
+        // that owns a selected key draws its dots at full strength, every other
+        // channel's are dimmed.
+        const float strength = curveStrength(aFocus, curve);
         const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
         for (const QPointF& dot : curve.keyDots) {
@@ -1426,6 +1522,27 @@ void drawPanel(
                 const bool highlighted = c == nearestCurve && h == nearestHandle;
                 const ImVec2 base(float(handle.base.x()), float(handle.base.y()));
                 const ImVec2 dot(float(handle.dot.x()), float(handle.dot.y()));
+                // A GHOST handle (an Auto segment's DERIVED pair, PanelHandle::ghost)
+                // is drawn HOLLOW, in the channel's own hue at the reference's reduced
+                // alphas: it is not in the document - a drag on it CONVERTS the key to
+                // Custom - so a filled dot would claim a stored tangent that is not
+                // there. A STORED pair keeps the palette's handle tokens, unchanged.
+                // THE STEM'S INK IS A QColor, NOT ITS PACKED FORM. addInkCallback takes
+                // the colour itself; handing it the ImU32 would reach QColor(QRgb) -
+                // ImU32 and QRgb are both `unsigned int`, so it COMPILES - and ImGui
+                // packs IM_COL32 as A<<24|B<<16|G<<8|R while QColor(QRgb) reads
+                // A<<24|R<<16|G<<8|B, i.e. the red and blue channels swap. That is
+                // invisible on the stored stem (theme::Graph::handleLine() is the
+                // palette's neutral textMuted, R == G == B) and would NOT be on a ghost
+                // stem, which is the channel's own hue - so both branches pass the
+                // colour, and the strength carries the alpha the packed token had.
+                const QColor stemColour = handle.ghost ? curve.color : aTheme.handleLine();
+                const float stemStrength = handle.ghost ? kGhostHandleStemAlpha : 1.0f;
+                const ImU32 stem = handle.ghost ? toImU32Strength(curve.color, kGhostHandleStemAlpha) : handleLine;
+                const float radius =
+                    handle.ghost ? ImMax(0.0f, float(handle.radius) - kGhostHandleShrink) : float(handle.radius);
+                const ImU32 edge =
+                    handle.ghost ? toImU32Strength(curve.color, kGhostHandleEdgeAlpha) : handleEdge;
                 // THE STEM IS A 1px LINE WITH FRACTIONAL ENDS, and it goes through the same
                 // coverage pass the curves do - measured first, because it is the one 1px
                 // line in the panel whose position can be wrong: ImGui's own AddLine shifts
@@ -1439,15 +1556,60 @@ void drawPanel(
                 // AntiAliasedLines flag is not turned off here), so nothing about its
                 // crispness changes; only where its ink sits.
                 if (stroke::isReady()) {
-                    addInkCallback(aDrawList, QVector<QPointF>{handle.base, handle.dot}, handleLine, 1.0f, 0.5f);
+                    addInkCallback(aDrawList, QVector<QPointF>{handle.base, handle.dot}, stemColour, stemStrength, 0.5f);
                 } else {
-                    aDrawList.AddLine(base, dot, handleLine, 1.0f);
+                    aDrawList.AddLine(base, dot, stem, 1.0f);
                 }
-                aDrawList.AddCircleFilled(dot, float(handle.radius), highlighted ? handleSelected : handleFill);
-                aDrawList.AddCircle(dot, float(handle.radius), highlighted ? handleSelected : handleEdge, 0, 1.0f);
+                if (!handle.ghost)
+                    aDrawList.AddCircleFilled(dot, radius, highlighted ? handleSelected : handleFill);
+                aDrawList.AddCircle(dot, radius, highlighted ? handleSelected : edge, 0, 1.0f);
             }
         }
     }
+
+    // The selection HULL: the polygon the model mapped from the editor's own
+    // outline (GraphPanelModel::selectionHull), stroked as a closed 1px outline in
+    // theme::Graph::marqueeEdge() - the panel's selection accent, which is the very
+    // ink the marquee's edge uses below, because the hull IS that selection read
+    // around the markers instead of around a drag rectangle. NOTHING is drawn while
+    // the hull is empty: that IS the "nothing is selected" signal, exactly as an
+    // empty marquee is (and with ONE key selected the hull is a single point, which
+    // has no outline to stroke either). The count the model wrote as words - "3
+    // keys" - goes in the box it measured, in the panel's own text ink.
+    //
+    // IT GOES THROUGH THE COVERAGE PASS, like the curve strokes and the handle stems,
+    // and it has to: ImGui's own 1px path shifts its geometry by (+0.5, +0.5)
+    // (imgui_draw.cpp's rasterisation convention - see the stem's own note below), so
+    // a 1px outline asked for at the model's own integer coordinates spills across two
+    // half-covered rows instead of one whole one. The pass measures the distance to
+    // the segment it was handed, so the ink lands ON the model's points - which is
+    // what the gate measures. The point list is CLOSED here (the first vertex
+    // repeated) because the pass strokes the segments it is given, and one list serves
+    // both paths, so the fallback needs no closing flag either.
+    if (aModel.selectionHull.size() >= 2) {
+        QVector<QPointF> outline = aModel.selectionHull;
+        outline.append(aModel.selectionHull.first()); // the closing edge
+        const QColor outlineInk = aTheme.marqueeEdge();
+        if (stroke::isReady()) {
+            // The pass takes the ink's RGB from the colour and its ALPHA from the
+            // strength (it never reads the colour's own alpha - see addInkCallback), so
+            // a token that carries its alpha in the colour passes it as the strength:
+            // marqueeEdge() is accentBright at 230/255, i.e. this outline's own alpha.
+            addInkCallback(aDrawList, outline, outlineInk, float(outlineInk.alphaF()), 0.5f);
+        } else {
+            QVarLengthArray<ImVec2, 8> hull(int(outline.size()));
+            for (int i = 0; i < outline.size(); ++i) {
+                const QPointF& point = outline.at(i);
+                hull[i] = ImVec2(float(point.x()), float(point.y()));
+            }
+            aDrawList.AddPolyline(hull.constData(), int(hull.size()), toImU32(outlineInk), ImDrawFlags_None, 1.0f);
+        }
+    }
+    if (!aModel.selectionLabel.rect.isEmpty())
+        drawLabel(
+            aDrawList, font, fontSize, aModel.selectionLabel.rect, aModel.selectionLabel.text, LabelAlign::Centre,
+            axisText, halo
+        );
 
     // The live box-select marquee, when a drag is in flight. It is the timeline's
     // own gesture and is drawn with the timeline's own colours
@@ -1485,25 +1647,90 @@ void drawPanel(
         aDrawList.Flags = savedPlayheadFlags;
     }
 
-    // The legend: one swatch per row, at the swatch rect the model laid out, with
-    // the row's own colour and its label beside it. A hidden row keeps both, dimmed.
-    // A row with NO ROOM (an empty swatch: GraphPanelModel's LEGEND note) is skipped
-    // whole - nothing is drawn for it, and nothing is derived from its empty rect.
-    for (const PanelLegendRow& row : aModel.legend) {
-        if (row.swatch.isEmpty())
-            continue;
+    // The name CHIPS: one for every curve IN PLAY - the channels that own a selected
+    // key and whatever curve the pointer is over - and for nothing else. Six
+    // permanent chips would be the same wall of tokens the deleted corner legend was;
+    // this is the subset being edited, named AT the curve.
+    //
+    // WHICH curves are in play is EMPHASIS, and emphasis is this layer's decision
+    // (the model publishes a chip for every curve - see its CHIPS note): a curve is
+    // in play when curveStrength() gives it full strength, i.e. when its channel owns
+    // a selected key, which is the reference's own _live() rule - plus the hovered
+    // one, which is not a selection fact at all. With an EMPTY selection no curve is
+    // in play and no chip is drawn, exactly as every curve is dimmed then.
+    //
+    // The pointer's curve is the one whose VALUE AT THE POINTER's own column is
+    // within kChipHoverDistance of the pointer - the reference's rule, and the reason
+    // a chip can appear while the pointer is merely near the curve (mock-graph.js's
+    // _move: |valueAt(x) - y| <= 6). The polyline is one sample per ~2px, so the
+    // sample nearest the pointer's x IS the value at that column.
+    if (!aModel.curves.isEmpty()) {
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        int hovered = -1;
+        if (plot.contains(QPoint(int(mouse.x), int(mouse.y)))) {
+            double best = kChipHoverDistance;
+            for (int c = 0; c < aModel.curves.size(); ++c) {
+                const PanelCurve& curve = aModel.curves.at(c);
+                if (curve.points.isEmpty())
+                    continue;
+                int nearest = 0;
+                double nearestDx = std::abs(curve.points.first().x() - double(mouse.x));
+                for (int i = 1; i < curve.points.size(); ++i) {
+                    const double dx = std::abs(curve.points.at(i).x() - double(mouse.x));
+                    if (dx <= nearestDx) {
+                        nearestDx = dx;
+                        nearest = i;
+                    }
+                }
+                const double dy = std::abs(curve.points.at(nearest).y() - double(mouse.y));
+                if (dy <= best) { // `<=`, so the LAST curve at the same distance wins, like the reference
+                    best = dy;
+                    hovered = c;
+                }
+            }
+        }
 
-        const float strength = row.visible ? 1.0f : kHiddenAlpha;
-        const ImVec2 min = rectMin(row.swatch);
-        const ImVec2 max = rectMax(row.swatch);
-        aDrawList.AddRectFilled(min, max, toImU32Strength(row.color, strength));
-        aDrawList.AddRect(min, max, toImU32Strength(aTheme.keyEdge(), strength), 0.0f, ImDrawFlags_None, 1.0f);
+        // The chips to draw, each at the box the model measured (an empty box is not
+        // a chip: no room for it inside the plot). Their order is the curves', then
+        // pushed apart top-to-bottom so two names cannot overlap - the reference's own
+        // de-collide, which keeps the order and moves the LOWER chip down by a line.
+        // The push is by the chip's own height, so the same rule holds for any font.
+        QVector<int> chips;
+        QVector<QRect> boxes(aModel.curves.size()); // indexed BY CURVE, so the sort below can look one up
+        for (int c = 0; c < aModel.curves.size(); ++c) {
+            const PanelCurve& curve = aModel.curves.at(c);
+            if (curve.chip.isEmpty() || (c != hovered && curveStrength(aFocus, curve) < 1.0f))
+                continue;
+            chips.append(c);
+            boxes[c] = curve.chip;
+        }
+        std::sort(chips.begin(), chips.end(), [&boxes](int aLhs, int aRhs) {
+            return boxes.at(aLhs).top() < boxes.at(aRhs).top();
+        });
+        for (int i = 1; i < chips.size(); ++i) {
+            const QRect& previous = boxes.at(chips.at(i - 1));
+            QRect& box = boxes[chips[i]];
+            if (box.top() < previous.top() + previous.height())
+                box.moveTop(previous.top() + previous.height());
+        }
 
-        const QRect box = legendLabelRect(row, font, fontSize);
-        drawLabel(
-            aDrawList, font, fontSize, box, row.label, LabelAlign::Left, toImU32Strength(aTheme.axisText(), strength),
-            halo
-        );
+        for (int i = 0; i < chips.size(); ++i) {
+            const PanelCurve& curve = aModel.curves.at(chips.at(i));
+            const QRect& box = boxes.at(chips.at(i));
+            // The chip carries its OWN backing: the name has to be readable wherever
+            // the curve leaves the window, and the panel has no background otherwise.
+            aDrawList.AddRectFilled(
+                rectMin(box), rectMax(box), toImU32Strength(aTheme.halo(), kChipBackdropAlpha), kChipRounding
+            );
+            // A channel that owns a selected key reads at full strength even while the
+            // pointer is on it; only a chip that is there because of the POINTER is
+            // dimmed (the reference's own order: live wins over hover).
+            const float strength = curveStrength(aFocus, curve) >= 1.0f ? 1.0f : kChipHoverAlpha;
+            drawLabel(
+                aDrawList, font, fontSize, box, curve.chipText, LabelAlign::Centre,
+                toImU32Strength(curve.color, strength), halo
+            );
+        }
     }
 
     // Why the panel is empty, in the middle of the plot: an empty panel has to say
@@ -1533,6 +1760,24 @@ void drawPanel(
             aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo, kValueLabelGap
         );
     aDrawList.PopClipRect();
+
+    // The panel's ONE control, last so it is the topmost ink on the panel: the
+    // "N channels" button, at the box the model laid out in the plot's top-right
+    // corner (GraphPanelModel's CHANNELS BUTTON), over its own translucent panel
+    // tone and labelled in the panel's text ink. An EMPTY box means the model found
+    // no room for it: nothing is drawn and nothing is hit-tested (see press()).
+    // Drawn after the plot clip because it is CHROME, not data: a curve crossing it
+    // is simply behind it, and unlike the labels inside the plot it is never cut.
+    if (!aModel.channelsButton.isEmpty()) {
+        aDrawList.AddRectFilled(
+            rectMin(aModel.channelsButton), rectMax(aModel.channelsButton),
+            toImU32Strength(aTheme.halo(), kChannelsButtonAlpha), kChannelsButtonRounding
+        );
+        drawLabel(
+            aDrawList, font, fontSize, aModel.channelsButton, aModel.channelsButtonText, LabelAlign::Centre,
+            axisText, halo
+        );
+    }
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1544,16 +1789,11 @@ struct ImGuiOverlay::State {
     QScopedPointer<ImGuiInputBridge> bridge;
 
     // The frame the pixels were drawn from, and the editor they were built from
-    // (null while the panel is hidden). The widget's own hits - a legend swatch, a
-    // legend label, a double-click on the plot - are tested against THIS geometry,
-    // so the clickable control is exactly the drawn control.
+    // (null while the panel is hidden). The widget's own hits - the channel button,
+    // a double-click on the plot - are tested against THIS geometry, so the
+    // clickable control is exactly the drawn control.
     GraphPanelModel model;
     ctrl::GraphEditor* editor = nullptr;
-    // The frame's font, kept so a press BETWEEN frames measures a legend label
-    // exactly as the frame did. It belongs to the context's atlas and lives as
-    // long as the context.
-    ImFont* font = nullptr;
-    float fontSize = 0.0f;
 
     // The contrast outline pass's own targets (see gui::outline): the backdrop copy
     // and the panel's coverage framebuffer. Built lazily on the frame that first
@@ -1668,8 +1908,6 @@ void ImGuiOverlay::shutdown() {
     mState->pixelsCacheDpr = 0.0;
     mState->model = GraphPanelModel();
     mState->editor = nullptr;
-    mState->font = nullptr;
-    mState->fontSize = 0.0f;
 
     if (!mReady)
         return;
@@ -1819,13 +2057,6 @@ void ImGuiOverlay::paint(
     if (panelDrawn) {
         model = buildGraphPanelModel(*aEditor, viewport, palette, state.topInset);
         drawPanel(*drawList, model, palette, buildFocus(*aEditor, model));
-        state.font = drawListFont(*drawList);
-        state.fontSize = drawListFontSize(*drawList);
-    } else {
-        // Hidden: no draw command at all, and no geometry left behind for a press
-        // to hit.
-        state.font = nullptr;
-        state.fontSize = 0.0f;
     }
 
     // Published whether or not anything was drawn: the widget's own hits and the
@@ -1981,39 +2212,36 @@ bool ImGuiOverlay::imeWantsTextInput() const {
 
 //-------------------------------------------------------------------------------------------------
 bool ImGuiOverlay::press(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
+    Q_UNUSED(aEditor); // the control is the MODEL's: the editor it was built from is mState->editor
     if (!mReady || !mState || !mState->editor)
         return false; // hidden: nothing is on screen to hit
 
-    // The last frame's own geometry. A swatch takes precedence over a label, and
-    // the label's box is the one legendLabelRect measured for the drawn glyphs. A row
-    // with no room is skipped in both passes: it has no swatch on screen and - see
-    // legendLabelRect - no label box either, so nothing of it is a control.
-    for (int i = 0; i < mState->model.legend.size(); ++i) {
-        const PanelLegendRow& row = mState->model.legend.at(i);
-        if (!row.node || row.swatch.isEmpty() || !row.swatch.contains(aPos))
-            continue;
-        // The swatch is the channel's switch. Hiding one also drops it from the
-        // model's curves on the next frame, and it keeps its (dimmed) row so it can
-        // be switched back on.
-        aEditor.setChannelVisible(*row.node, row.channel, !row.visible);
-        return true;
-    }
+    // The panel's ONE control, against the LAST FRAME's own geometry (the model the
+    // pixels were drawn from), so the control under the pointer is the control on
+    // screen. An empty box is not a control: the model publishes one only when the
+    // button fits inside the plot.
+    if (!mState->model.channelsButton.isEmpty() && mState->model.channelsButton.contains(aPos))
+        return openChannelMenuAt(aPos);
 
-    for (int i = 0; i < mState->model.legend.size(); ++i) {
-        const PanelLegendRow& row = mState->model.legend.at(i);
-        if (!row.node || row.swatch.isEmpty())
-            continue;
-        if (legendLabelRect(row, mState->font, mState->fontSize).contains(aPos)) {
-            // Focusing a channel: the one place the panel lets a click choose which
-            // curve is emphasised (every other curve is dimmed while a focus exists).
-            // It does NOT move the value window - focusing is not a fit; the fit
-            // gestures are GraphEditor::fitAll (the plot's double-click) and the
-            // editor's own axis fits.
-            aEditor.setFocusedChannel(*row.node, row.channel);
-            return true;
-        }
-    }
     return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+bool ImGuiOverlay::openChannelMenuAt(const QPoint& aPos) {
+    if (!mReady || !mState || !mState->editor)
+        return false; // hidden: nothing is on screen to hit
+
+    // THE LIST IS THE APPLICATION'S OWN, through the widget that owns it - the same
+    // route the key menu takes (showGraphKeyMenu): the panel's rows travel to
+    // gui::MainDisplayWidget, which builds and pops a real QMenu and whose actions
+    // toggle a channel's visibility and focus it. The overlay draws no popup and
+    // measures none, exactly as it does not for the key menu. The press is this
+    // class's either way (it landed on the button, not on the viewport) - a widget
+    // that owns no overlay (a headless gate) simply has no menu to show.
+    if (mState->widget)
+        static_cast<MainDisplayWidget*>(mState->widget.data())
+            ->showGraphChannelMenu(mState->model.channels, aPos);
+    return true;
 }
 
 bool ImGuiOverlay::doubleClick(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
@@ -2022,17 +2250,12 @@ bool ImGuiOverlay::doubleClick(ctrl::GraphEditor& aEditor, const QPoint& aPos) {
     if (!mState->model.plot.contains(aPos))
         return false; // not the plot: the viewport's own double-click semantics apply
 
-    // A double-click ON a legend control is that control's business, not the fit's:
-    // the swatch toggles and the label focuses, and a second click must not turn
-    // either into a zoom change. A row with no room has neither on screen.
-    for (const PanelLegendRow& row : mState->model.legend) {
-        if (row.swatch.isEmpty())
-            continue;
-        if (row.swatch.contains(aPos))
-            return false;
-        if (legendLabelRect(row, mState->font, mState->fontSize).contains(aPos))
-            return false;
-    }
+    // A double-click ON the panel's ONE control is that control's business, not the
+    // fit's: the first press already opened the channel list, and a second click must
+    // not turn it into a zoom change. An empty button box is not a control (the model
+    // publishes one only when it fit the plot).
+    if (!mState->model.channelsButton.isEmpty() && mState->model.channelsButton.contains(aPos))
+        return false;
 
     // Both axes to the shown data: the panel's own fit gesture.
     aEditor.fitAll();
@@ -2160,32 +2383,24 @@ void ImGuiOverlay::publishAccessibility() {
         return;
     }
 
-    // One item per legend swatch: the same control the pointer toggles, with the
-    // row's own label as its name and its state as the value.
+    // The panel's ONE control: the button that opens the channel list. It is the
+    // only control the panel has, and it is published with the box the model laid out
+    // for it - an EMPTY box means the button did not fit the plot, so there is no
+    // control on screen to publish.
     //
-    // A row with NO ROOM is NOT published: its swatch is empty, so an item carrying
-    // that rect would be a control at the panel's corner that is nowhere on screen
-    // (and a rect of zero size is not something Qt can map to a screen position
-    // either). Rows are only skipped for want of room, never for any other reason,
-    // and the count of them is named in the summary below - a screen-reader user has
-    // no other way to learn that the channel exists and is controllable.
-    int roomlessRows = 0;
-    for (int i = 0; i < model.legend.size(); ++i) {
-        const PanelLegendRow& row = model.legend.at(i);
-        if (row.swatch.isEmpty()) {
-            ++roomlessRows;
-            continue;
-        }
-        a11y::Item item;
-        item.role = a11y::Item::CheckBox;
-        item.id = i;
-        item.name = row.label;
-        item.value = row.visible ? trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "shown"))
-                                 : trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "hidden"));
-        item.rect = row.swatch;
-        item.checked = row.visible;
-        item.enabled = row.node != nullptr;
-        published.items.append(item);
+    // AND THE LIST ITSELF IS NOT IN THE TREE, exactly like the key menu: it is the
+    // application's own QMenu (a native window). What the tree says instead is the
+    // state the list changes, and the summary line below names how many channels are
+    // shown and which one is focused; the channels the panel cannot list are a count
+    // in that same line rather than a rack of invisible check boxes.
+    if (!model.channelsButton.isEmpty()) {
+        a11y::Item channelsItem;
+        channelsItem.role = a11y::Item::PushButton;
+        channelsItem.id = kChannelsItemId;
+        channelsItem.name = model.channelsButtonText;
+        channelsItem.value = trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "shows the channel list"));
+        channelsItem.rect = model.channelsButton;
+        published.items.append(channelsItem);
     }
 
     // The panel in one line: its own reason while it is empty (the model states it
@@ -2230,20 +2445,6 @@ void ImGuiOverlay::publishAccessibility() {
             )
                           .arg(summary, keyLabel);
         }
-    }
-
-    if (roomlessRows > 0) {
-        // The channels the viewport could not lay out, stated rather than dropped in
-        // silence: they keep their curves and they are NOT listed above. %n is the
-        // count, so the pair is the plural form.
-        summary = QCoreApplication::translate(
-                      kTranslationContext,
-                      QT_TRANSLATE_N_NOOP(
-                          "gui::ImGuiOverlay", "%1 (%n more channel(s) not listed: no room in the panel)"
-                      ),
-                      nullptr, roomlessRows
-        )
-                      .arg(summary);
     }
 
     a11y::Item summaryItem;
@@ -2317,12 +2518,12 @@ void ImGuiOverlay::onAccessibilityAction(int aId) {
         return;
     }
 
-    // A legend swatch: the very action a pointer press on it performs.
-    if (aId >= 0 && aId < mState->model.legend.size()) {
-        const PanelLegendRow& row = mState->model.legend.at(aId);
-        if (row.node)
-            editor.setChannelVisible(*row.node, row.channel, !row.visible);
-        requestRepaint();
+    // The panel's ONE control: the very action a pointer press on it performs, at
+    // the same widget position (the box the model gave the button), so an assistive
+    // activation opens the channel list exactly where a press would.
+    if (aId == kChannelsItemId) {
+        openChannelMenuAt(mState->model.channelsButton.topLeft());
+        return;
     }
 }
 

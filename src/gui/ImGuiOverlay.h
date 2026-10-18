@@ -38,9 +38,19 @@ class Graph;
 
 namespace gui {
 
-// Which channel the drawing layer emphasises: the editor's STICKY FOCUS, passed
-// in rather than read here, so the drawing stays a pure function of its inputs
+// What the drawing layer reads off the editor: the STICKY FOCUS and the SELECTION,
+// passed in rather than read here, so the drawing stays a pure function of its inputs
 // (and a headless pixel gate can hand over a synthetic one).
+//
+// The two answer different questions and are not interchangeable:
+//   * EMPHASIS is the SELECTION's (selectedKeys): a curve whose channel owns a
+//     selected key is drawn at full strength and every other curve at 45%, with an
+//     empty selection dimming every curve - the design's decision table, "Curve
+//     emphasis". The sticky focus used to dim, and it no longer does.
+//   * EACH CURVE'S TANGENT HANDLES are still the FOCUS's (node/channel/valid): the
+//     panel draws them for one channel at a time because they cost ~52 of the ~68
+//     vertices a key spends (the measured rule in ImGuiOverlay.cpp), and the editor's
+//     hit-test focuses a channel on a handle press.
 struct PanelFocus {
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
@@ -51,8 +61,9 @@ struct PanelFocus {
     // key's MARKER is centred. PanelCurve::keyDots publishes those centres (and
     // PanelCurve::keyFrames their frames), and ctrl::graph::keyDot is the same
     // mapping the editor's hit-test measures from, so the pixel X is the whole
-    // identity a key marker can be matched by. The caller maps the selection
-    // through the editor's own scaler, with the model's panel.
+    // identity a key marker can be matched by - both to ring it (drawPanel) and to
+    // decide whose curve is at full strength (curveStrength). The caller maps the
+    // selection through the editor's own scaler, with the model's panel.
     struct SelectedKey {
         core::TimeKeyType type = core::TimeKeyType_TERM;
         int x = 0;
@@ -60,39 +71,33 @@ struct PanelFocus {
     QVector<SelectedKey> selectedKeys;
 };
 
-// Draws the panel into aDrawList: the short ticks, the labels with their halo,
-// the zero rule, the curves (clipped to the plot), the key markers (a filled
+// Draws the panel into aDrawList: the short ticks (in the numbers' own token, each
+// frame mark at the tier's alpha the model publishes for it - one ink for the ruler,
+// the timeline's rule), the labels with their
+// halo, the zero rule, the curves (clipped to the plot; the channels that own a
+// selected key at full colour and every other curve dimmed - see PanelFocus), the key
+// markers (a filled
 // dot of radius ctrl::graph::kKeyDotRadius about each key's centre, ringed in
-// theme::Graph::keyEdge()), the Custom tangent handles (the grabbed one
-// highlighted from io.MousePos), the playhead, the legend swatches and labels,
-// and the empty state. It keeps no state - which
+// theme::Graph::keyEdge()), every segment's tangent handles (a stored pair filled, an
+// Auto segment's derived pair hollow; the grabbed one highlighted from io.MousePos),
+// the playhead, the box-select marquee, the selection HULL and its count label, the
+// name CHIP of every curve in play, the panel's one control (the channel button), and
+// the empty state. It keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
-// but the handle highlight DOES read ImGui::GetIO().MousePos, so a caller must
-// own a context: the overlay's frame and the headless pixel gate both do.
+// but the handle highlight and the hovered-curve chip DO read
+// ImGui::GetIO().MousePos, so a caller must own a context: the overlay's frame and
+// the headless pixel gate both do.
 //
 // It draws the MODEL and nothing else: every rect it uses comes out of aModel
-// (or is derived from the draw list's own font, for the legend labels). No
+// (or is derived from the draw list's own font, for the chips' text boxes and the
+// hull's count label, whose models are rects the drawing layer puts glyphs in). No
 // background and no grid are drawn - the model publishes none, and the panel
 // must leave the artwork showing through (a plot area with nothing in it is
 // therefore untouched by this function).
 void drawPanel(
     ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
 );
-
-// The box a legend row's LABEL occupies, beside its swatch: the text's own advance
-// wide, vertically centred on the swatch, measured with aFont at aFontSize.
-//
-// It is EMPTY when the row's swatch is empty (a row with no room: see the LEGEND
-// note in GraphPanelModel.h). That guard is load-bearing rather than cosmetic -
-// QRect().right() is -1 and a null rect's centre is (0,0), so a box derived from an
-// empty swatch would land near the panel's top-left corner and become a control
-// that is nowhere on screen.
-//
-// This is THE one geometry of a legend label: drawPanel draws the glyphs in it,
-// ImGuiOverlay::press() hit-tests it, and the accessibility item carries it. It is
-// exposed so a pixel gate can assert the no-room rule on the geometry itself.
-QRect legendLabelRect(const PanelLegendRow& aRow, ImFont* aFont, float aFontSize);
 
 // Whether drawPanel draws the LABEL HALO: the same glyphs 16 more times, at the
 // eight compass offsets of radius 1 and radius 2, in theme::Graph::halo().
@@ -263,7 +268,7 @@ void composite(GLuint aOverlay, GLuint aBackdrop, const QSize& aPixelSize, const
 //
 // NO DOUBLE-DARKENING AT THE JOINS. Neighbouring segments' quads overlap by the
 // filter's own width, and compositing them one after another would blend the overlap
-// twice - which is worse than it sounds, because an unfocused curve is drawn at 45%
+// twice - which is worse than it sounds, because a dimmed curve is drawn at 45%
 // alpha and even a FULLY covered overlap composites darker than the stroke's own body.
 // So the coverage is accumulated with glBlendEquation(GL_MAX) into a scratch texture
 // (the union of the capsules, which IS the round-joined stroke) and composited once
@@ -392,7 +397,7 @@ void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
 //     (3.75px, the timeline's own key-body radius) at PanelCurve::keyDots, FILLED
 //     WITH ITS CHANNEL'S COLOUR (PanelCurve::color ==
 //     theme::Graph::keyColor(channel.type()), the colour its curve is stroked in
-//     and its legend swatch filled with) inside theme::Graph::keyEdge() - a
+//     and its chip's text drawn in) inside theme::Graph::keyEdge() - a
 //     floor-toned ring, which is what keeps a key visible on top of the curve that
 //     carries it. The editor's selection turns both into theme::Graph::selected().
 //     The marker is deliberately NOT the size of the pick area: the editor grabs a
@@ -404,51 +409,77 @@ void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
 //     edge - the timeline's own box-select colours (ctrl/time/time_Renderer.cpp), so
 //     the gesture reads the same in both views. ImGui's draw list has no dashed
 //     stroke, so the edge is solid where the timeline's is dashed.
-//   * emphasis. While a focus exists, the focused channel's curve and its key
-//     markers are drawn at full colour and every other curve at 45% alpha
-//     (kUnfocusedAlpha). With no focus every curve is full.
-//   * tangent handles. Each PanelHandle is a stem (theme::Graph::handleLine())
-//     from its base to its dot, then the dot itself (theme::Graph::handleFill()
-//     inside theme::Graph::handleEdge()). The dot NEAREST the current pointer,
-//     within ctrl::graph::kHandleHitRadius, is drawn in theme::Graph::selected()
-//     instead - the same distance the editor's hit-test uses, so the highlight
+//   * emphasis. A curve whose channel owns at least one SELECTED key (and its key
+//     markers with it) is drawn at full colour; every other curve at 45% alpha, and
+//     with an EMPTY selection every curve is dimmed - the selection decides, not the
+//     sticky focus (curveStrength in ImGuiOverlay.cpp, and the design's decision
+//     table, "Curve emphasis").
+//   * tangent handles. Each PanelHandle is a stem from its base to its dot, then the
+//     dot itself. WHICH ink depends on PanelHandle::ghost, and that is the document's
+//     distinction, not a style: a Custom segment's pair is STORED (Curve::handle) and
+//     is drawn FILLED (theme::Graph::handleFill() inside theme::Graph::handleEdge(),
+//     the stem in theme::Graph::handleLine(), as before); an Auto segment's pair is
+//     DERIVED (Curve::ghostHandles) and is drawn HOLLOW - no fill, a smaller dot
+//     (kGhostHandleShrink less than the stored radius), stem and ring in the channel's
+//     own hue (PanelCurve::color) at the reference's reduced alphas - because a drag
+//     on it would CONVERT the key to Custom, and a filled dot would claim the document
+//     stores a tangent it does not. The dot NEAREST the current pointer, within
+//     ctrl::graph::kHandleHitRadius, is drawn in theme::Graph::selected() instead -
+//     ghost or not, and the same distance the editor's hit-test uses, so the highlight
 //     names exactly the handle a grab would take. The handles are clipped to the
 //     plot like the rest of the data, so one that leaves the plot shows its stem
 //     cut at the edge rather than painting over the panel's chrome.
-//   * legend text. A row's label is drawn beside its swatch - kLegendLabelGap
-//     (6px) right of it, vertically centred on the swatch - inside a box whose
-//     width is the text's own advance, and that same box is what the hit-test and
-//     the accessibility rect use, so the clickable label is the drawn label.
-//   * a row with NO ROOM (PanelLegendRow::swatch is empty, see the LEGEND note in
-//     GraphPanelModel.h): NOTHING is drawn for it, nothing is hit-tested for it and
-//     no accessibility item is published for it. That is not a detail: QRect().right()
-//     is -1 and its centre is (0,0), so a label box derived from an empty swatch
-//     would land at the panel's top-left corner - a label sliver nobody drew and a
-//     hit box at a place no control is. The count of such rows is named in the
-//     accessible summary instead, because a screen-reader user has no other way to
-//     learn that a channel is controllable but unlisted.
+//   * the selection HULL. GraphPanelModel::selectionHull is a polygon in panel
+//     pixels; a 1px closed outline in theme::Graph::marqueeEdge() - the panel's
+//     selection accent, the same ink the marquee's edge uses - inside the plot clip,
+//     and NOTHING is drawn while the hull is empty. Its count is the model's
+//     selectionLabel ("3 keys"), drawn in theme::Graph::axisText() in the box the
+//     model measured.
+//   * the name CHIP of a curve in play. A chip is drawn for a curve whose channel
+//     owns a selected key (curveStrength == 1) and for whatever curve the pointer is
+//     over, and for NOTHING else: that subset is what is being edited, and it is the
+//     drawing layer's decision (emphasis), exactly as the curve dimming is. The chip
+//     is the model's `chip` box (empty when it would not fit the plot: then nothing
+//     is drawn) with its `chipText` right-aligned in it, the text in the channel's
+//     hue (curve.color, at full strength for a selected channel and 0.75 for one the
+//     pointer is merely over) over its own backing - theme::Graph::halo() at
+//     kChipBackdropAlpha, an opaque panel tone at 0.82, so the name stays readable
+//     wherever the curve leaves the window. Chips that would overlap are pushed
+//     apart vertically (the reference's own de-collide) and clamped into the plot.
+//   * the panel's ONE control. GraphPanelModel::channelsButton is the box the
+//     "N channels" button is drawn in, with channelsButtonText as its label, filled
+//     with theme::Graph::halo() at kChannelsButtonAlpha (the reference floats the
+//     same translucent panel tone under it) and labelled in
+//     theme::Graph::axisText(). An EMPTY box means the button did not fit the plot:
+//     nothing is drawn for it and nothing is hit-tested (see press()).
+//   * a chip box that is EMPTY (GraphPanelModel's CHIPS) is skipped whole: nothing is
+//     drawn for it and no geometry is derived from it. That is not a detail:
+//     QRect().right() is -1 and its centre is (0,0), so a box derived from an empty
+//     rect would land at the panel's top-left corner. The same rule holds for the
+//     channel button's and the selection label's empty rects.
 //
 // Strings: every user-visible string this class creates goes through
 // QCoreApplication::translate with the "gui::ImGuiOverlay" context (the class is
 // not a QObject, so there is no tr() member), and the panel's own reasons for
 // being empty come from the model, which states them as plain English literals.
-// THE MENU'S STRINGS ARE NOT THIS CLASS'S AT ALL: the menu IS the timeline's own
-// (mSelectEasing, built from util::Easing::getTypeName through the "EasingName"
-// context), so a translator has one set of easing names for both views by
-// construction - the class that draws the menu is the class that built it, and
-// this file cannot drift from it. The one string this class adds for the menu is
-// the accessible ACTION that opens it (see publishAccessibility).
+// THE KEY ROUTE'S STRINGS ARE NOT THIS CLASS'S: the control that route opens is the
+// TIMELINE's own easing picker, and the easing NAME this class prints for a
+// selected key comes from the timeline's table (util::Easing::getTypeName through
+// the "EasingName" context), so a translator has one set of easing names for the
+// whole application and this file cannot drift from it. The one string this class
+// adds for the route is the accessible ACTION that opens the picker (see
+// publishAccessibility).
 //
-// THE KEY MENU IS THE APPLICATION'S OWN QMENU. A right-click within
+// THE KEY ROUTE OPENS THE APPLICATION'S OWN EASING PICKER. A right-click within
 // ctrl::graph::kKeyHitRadius of a key's CENTRE selects that key exactly as a press
-// on it would and then opens the TIMELINE's easing menu through
-// gui::MainDisplayWidget::showGraphKeyMenu - the one menu the timeline's own key
-// gesture builds (TimeLineEditorWidget::mSelectEasing, from util::Easing's display
-// table), so there is no second list of easings, no second wording and no second
-// edit path to keep in step. Nothing else on the panel is a right-click target: a
-// right-click that hits no key opens nothing and consumes nothing (the graph itself
-// takes no right-button action - it is ctrl::Driver's cursor test that decides
-// whether a press is the panel's at all).
+// on it would and then opens the TIMELINE's one picker through
+// gui::MainDisplayWidget::showGraphKeyMenu (gui::TimeLineWidget::showKeyEasingPicker)
+// - the same popover the timeline header's easing chip opens, and the single
+// instance TimeLineEditorWidget owns - so there is no second list of easings, no
+// second wording and no second edit path to keep in step. Nothing else on the panel
+// is a right-click target: a right-click that hits no key opens nothing and consumes
+// nothing (the graph itself takes no right-button action - it is ctrl::Driver's
+// cursor test that decides whether a press is the panel's at all).
 //
 //   * THE HIT IS THE EDITOR'S OWN RULE, not the drawn shape and not the model's
 //     key RECT. ctrl::GraphEditor::hitTest grabs a key within
@@ -463,37 +494,54 @@ void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
 //     the dots for exactly this: (node, channel type, frame) is the timeline's own
 //     name for a key.
 //   * the right-click also makes that key the panel's SELECTION, which is the
-//     timeline's own behaviour: its key menu calls selectKeysAt() with the
-//     right-click point and then acts on the result. So the menu's wording
-//     ("key(s)") and its effect agree: the menu acts on the selection, and the key
-//     it was opened on is in it. The selection is not restored on dismissal, exactly
-//     as the timeline leaves the key it lent its selection to.
-//   * the chosen easing goes through the timeline's own action, on the timeline's
-//     notifier and event currency, so the two menus cannot disagree about the
-//     document - and the keyboard (Escape, the arrows, Enter) is the QMenu's, not
-//     this overlay's: nothing here gates ImGui's navigation, takes the Qt focus, or
-//     claims the keyboard, so the application's own key commands work exactly as
-//     they did before the menu existed, menu open or not.
+//     timeline's own behaviour: its key gesture calls selectKeysAt() with the
+//     right-click point and then acts on the result. So the picker's effect and the
+//     selection agree: the open acts on the selection, and the key it was opened on
+//     is in it. The selection is not restored on dismissal, exactly as the timeline
+//     leaves the key it lent its selection to.
+//   * the edit the picker commits is written by the TIMELINE itself, on the
+//     timeline's notifier and event currency (TimeLineEditorWidget::assignEasingToTargets),
+//     so the panel's route and the timeline's chip cannot disagree about the
+//     document. The picker is a Qt popup (a native window) that holds the keyboard
+//     while it is up, Escape closing it, exactly as the QMenu it replaced did:
+//     nothing here gates ImGui's navigation, takes the Qt focus, or claims a key.
 //
 // WHERE IT IS OPENED FROM. The widget forwards every button to mouseButton(), which
 // is the only place this class sees a right press; press() is the LEFT press path
-// and the widget only offers it the left button. The menu itself is a native window
-// (QMenu::popup, not exec(): the caller is inside a press handler and a nested event
-// loop there could re-enter the code asking for the menu), so the overlay does not
-// draw it and cannot measure it.
+// and the widget only offers it the left button. The picker is a native window the
+// TIMELINE owns (shown, never exec()ed: the caller is inside a press handler and a
+// nested event loop there could re-enter the code asking for it), so the overlay
+// does not draw it and cannot measure it.
 //
-// AND THE ACCESSIBILITY LAYER KEEPS ITS ROUTE TO IT. The menu is a QMenu and is
-// therefore NOT in the accessible tree - like the repository's own QMenus, the
-// object tree's row menu included (measured in the application-level probe). What
-// the tree says instead is the state the menu changes: the summary line names the
-// selected key and the easing it carries (see publishAccessibility). On top of
-// that, when the selection names exactly one key the class publishes ONE more
-// action - a button on the key's own marker - and activating it calls the SAME
-// route the pointer does (showGraphKeyMenu with the key's position in this widget),
-// so the menu is reachable without a pointer. Its rect is the region the pointer's
+// AND THE ACCESSIBILITY LAYER KEEPS ITS ROUTE TO IT. The picker is the timeline's
+// own native window, so this class neither draws nor describes it, and what the tree
+// says instead is the state it changes: the summary line names the selected key and
+// the easing it carries (see publishAccessibility). On top of that, when the
+// selection names exactly one key the class publishes ONE more action - a button on
+// the key's own marker - and activating it calls the SAME route the pointer does
+// (showGraphKeyMenu with the key's position in this widget), so the picker is
+// reachable without a pointer. Its rect is the region the pointer's
 // gesture works in (the key's centre grown by ctrl::graph::kKeyHitRadius), which is
 // the same "a click where this item says it is does what this item does" rule the
 // fit action follows.
+//
+// THE PANEL'S ONE CONTROL IS THE CHANNEL BUTTON, AND ITS LIST IS A QMENU. The
+// panel has exactly one control - the "N channels" button the model lays out in the
+// plot's top-right corner (GraphPanelModel's CHANNELS BUTTON) - and pressing it
+// opens the application's channel list through the widget
+// (gui::MainDisplayWidget::showGraphChannelMenu), which builds and pops a real QMenu
+// from the rows the model published: one row per channel, grouped under its layer,
+// the row's swatch its colour key (filled while the channel is shown, hollow while
+// it is hidden), the row's activation its visibility switch and its highlight the
+// channel's focus. The key route delegates the same way (showGraphKeyMenu, to the
+// timeline's picker) for the same reasons: one implementation for the application,
+// nothing drawn by this class, and no second list of channels to keep in step. A
+// list of controls is what replaced the legend the panel used to paint in its
+// bottom-left corner: the legend named every
+// channel at equal weight and covered the value labels; now a name appears AT the
+// curve it belongs to, and only for the channels in play (see drawPanel's chips),
+// while the complete list - which is a control surface, not an annotation - lives
+// behind the one button.
 class ImGuiOverlay {
 public:
     ImGuiOverlay();
@@ -558,10 +606,13 @@ public:
     bool imeWantsTextInput() const;
 
     // ---- the overlay's own interaction ----
-    // A press on a legend swatch toggles that channel's visibility and a press on
-    // a legend label focuses that channel. aPos is in widget-logical pixels, the
-    // space the model's rects are in. Returns true when it acted (the widget then
-    // must not route the press to the viewport tools, and repaints).
+    // A press on the panel's ONE control - the "N channels" button
+    // (GraphPanelModel::channelsButton) - opens the application's channel list
+    // through the widget (see showGraphChannelMenu). aPos is in widget-logical
+    // pixels, the space the model's rects are in. Returns true when it acted (the
+    // widget then must not route the press to the viewport tools, and repaints). An
+    // empty button rect (no room for it) is not a control: the press falls through
+    // to the viewport.
     bool press(ctrl::GraphEditor& aEditor, const QPoint& aPos);
 
     // A double-click on the plot: fits both axes. Returns true when it acted.
@@ -574,19 +625,29 @@ private:
     // which case every object the backend created belongs to the old one.
     void shutdown();
 
-    // Publishes the frame just drawn to Qt's accessibility layer: one item per
-    // legend swatch, one line of state, one fit action and - while the selection
-    // names one key - the key menu's own action.
+    // Publishes the frame just drawn to Qt's accessibility layer: the panel's one
+    // control (the channel button), one line of state, one fit action and - while
+    // the selection names one key - the key route's own action (the one that opens
+    // the timeline's easing picker).
     void publishAccessibility();
-    // The application's own key menu, at aPos in widget-logical pixels: the key
-    // under the pointer by the EDITOR's distance rule (ctrl::graph::kKeyHitRadius
-    // about the key's centre, PanelCurve::keyDots), selected exactly as a press on
-    // it would select it, then gui::MainDisplayWidget::showGraphKeyMenu with the
-    // selection. Does nothing when no key is that close or when the panel is
-    // hidden. Returns true when a key was hit, i.e. when the right-click was this
-    // class's (the menu itself belongs to the widget, which may have no timeline to
-    // show one from - see showGraphKeyMenu).
+    // The route to the application's own easing picker, at aPos in widget-logical
+    // pixels: the key under the pointer by the EDITOR's distance rule
+    // (ctrl::graph::kKeyHitRadius about the key's centre, PanelCurve::keyDots),
+    // selected exactly as a press on it would select it, then
+    // gui::MainDisplayWidget::showGraphKeyMenu with the selection. Does nothing when
+    // no key is that close or when the panel is hidden. Returns true when a key was
+    // hit, i.e. when the right-click was this class's (the picker itself belongs to
+    // the widget, which may have no timeline to open one from - see
+    // showGraphKeyMenu).
     bool openKeyMenuAt(const QPoint& aPos);
+    // The panel's ONE control: opens the application's channel list through the
+    // widget (gui::MainDisplayWidget::showGraphChannelMenu) at aPos in
+    // widget-logical pixels, from the rows the last frame's model published. Does
+    // nothing when the model gave the button no box (no room for it in the plot) or
+    // when the panel is hidden - an empty rect is not a control. Returns true when
+    // the press landed on the button, i.e. when it is this class's rather than the
+    // viewport's.
+    bool openChannelMenuAt(const QPoint& aPos);
     // The drawn marker of the one key aTargets names, in widget-logical pixels -
     // the same (node, channel type, frame) triple looked up in the model's own
     // geometry that openKeyMenuAt() finds by distance. False when the selection

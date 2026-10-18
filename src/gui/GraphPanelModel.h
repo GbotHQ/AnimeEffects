@@ -69,32 +69,68 @@ namespace gui {
 // expression at each call site, so they cannot drift - which is what
 // scripts/i18n/check_tr_contexts.py exists to police.
 QString graphPanelTr(const char* aSourceText);
+// The PLURAL half of the same pair: a string carrying %n, which Qt resolves
+// through the plural form of the same context ("3 keys", "1 key"). aN is the
+// count. Only the strings the panel writes as a COUNT use it - the channel
+// button's label and the selection label - and they are marked with
+// QT_TRANSLATE_N_NOOP("GraphPanel", ...) at their call sites, the extractor half
+// of the same pairing.
+QString graphPanelTr(const char* aSourceText, int aN);
 
-// One legend row: a channel of one target, its colour and where its clickable
-// swatch is. A row exists for every (target, channel) that HAS KEYS, including a
-// channel hidden through GraphEditor::setChannelVisible - a hidden channel keeps
-// its row (visible == false) and contributes no curve, so the user can see what
-// is hidden and click the swatch to bring it back.
-struct PanelLegendRow {
+// One row of the CHANNEL LIST: a channel of one target, as the panel's one
+// control (the "N channels" button, see CHANNELS BUTTON) lists it. A row exists
+// for every (target, channel) that HAS KEYS, including a channel hidden through
+// GraphEditor::setChannelVisible - a hidden channel keeps its row (visible ==
+// false) and contributes no curve, so the user can see what is hidden and turn
+// it back on.
+//
+// NO GEOMETRY IS PUBLISHED FOR A ROW, and that is the design: the list is the
+// application's own QMenu (gui::MainDisplayWidget::showGraphChannelMenu), a
+// native window this drawing layer neither draws nor measures - the same rule
+// the key menu already follows. What a consumer gets here is the row's DATA: the
+// layer it is grouped under, its name, its hue and its two states. A row is
+// NEVER dropped for want of room: the menu scrolls, so every keyed channel is
+// listed whatever the panel's size.
+struct PanelChannelRow {
+    // The target the row acts on. NON-CONST on purpose: the two actions a row
+    // performs go through the editor, and both of those take a mutable node
+    // (GraphEditor::setChannelVisible and setFocusedChannel). The targets the builder
+    // walks carry non-const pointers (GraphEditor::targets() is a const method whose
+    // ELEMENTS are ObjectNode*), so filling this needs no cast - only the sticky focus
+    // it is compared against is const (focusedNode()), and that is a comparison.
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
-    QString label;      // "<layer name> : <channel name>", the editor's own row label
+    QString layer;      // the target's own name: the heading the row is grouped under
+    QString name;       // the channel's label for a list row or a chip ("Move X"), or
+                        // the bare type name for a one-component type ("Opa") - see CHIPS
     QColor color;       // theme::Graph::keyColor(channel.type()), theme::Graph::curve() when unnamed
-    QRect swatch;       // the clickable colour chip, inside the plot; EMPTY when
-                        // this row has no room to lay one out (see LEGEND)
-    bool visible = true;
+    bool visible = true;  // == GraphEditor::isChannelVisible
+    bool focused = false; // == the editor's sticky focus (focusedNode()/focusedChannel())
 };
 
-// One Custom segment's tangent handle, ready to stroke and to dot. A pair is
-// published per Custom segment (index 0 leaves the segment's `from` key, 1
-// arrives at its `to` key), so the drawing layer never has to know the easing
-// model - only where to put a stem and a dot.
+// One tangent handle of one segment, ready to stroke and to dot. A pair is
+// published per segment that HAS handles: index 0 leaves the segment's `from`
+// key, 1 arrives at its `to` key. Two kinds of pair exist and they are NOT
+// interchangeable (see PanelHandle::ghost):
+//   * a Custom segment's STORED pair (Curve::handle), the one a drag writes; and
+//   * an Auto segment's DERIVED pair (Curve::ghostHandles), which the document
+//     does not hold - it is recomputed from the key's neighbours, which is why
+//     it cannot be stored - so the drawing layer can show that the segment's
+//     tangent is implicit and a drag would convert it.
+// Either way the drawing layer never has to know the easing model: only where to
+// put a stem and a dot.
 struct PanelHandle {
     int segment = -1; // index into Curve::segmentCount()
     int index = 0;    // 0 = leaving `from`, 1 = arriving at `to`
     QPointF base;     // where the stem starts (the key the handle belongs to)
-    QPointF dot;      // where the user grabs (Curve::handle() mapped through the scaler)
+    QPointF dot;      // where the user grabs (mapped through the scaler)
     int radius = 0;   // the dot's drawn radius
+    // TRUE for an Auto segment's DERIVED pair and false for a Custom one's
+    // STORED pair. It is the whole of what distinguishes them: a ghost handle is
+    // not in the document (dragging one converts the key to Custom), so the
+    // drawing layer draws it hollow - a stored handle is filled - and a consumer
+    // that grabbed a handle knows which kind of write it would start.
+    bool ghost = false;
 };
 
 // One channel's curve, ready to stroke and to dot with keys.
@@ -127,11 +163,19 @@ struct PanelCurve {
     // not an index into the curve's own key list, which is exactly the desync a
     // consumer must not be trusted to reconstruct for itself.
     QVector<core::Frame> keyFrames;
-    QVector<PanelHandle> handles; // the Custom segments' tangent handles, in segment order
-    QColor color;            // == legend[legendIndex].color; the drawing layer paints
-                             // this curve's stroke, its key markers' FILL and its legend
-                             // swatch in it, so a channel is one colour everywhere
-    int legendIndex = -1;    // the row this curve belongs to
+    QVector<PanelHandle> handles; // every segment's tangent handles, in segment order
+    QColor color;            // == channels[channelRow].color; the drawing layer paints
+                             // this curve's stroke, its key markers' FILL, its chip's
+                             // text and its handle stems in it, so a channel is one
+                             // colour everywhere
+    int channelRow = -1;     // the row of `channels` this curve belongs to
+    // The CHIP that names this curve IN PLACE: the box the name sits in, at the
+    // plot's right edge, on the value the curve leaves the window with (see
+    // CHIPS), and the text that goes in it. EMPTY when the chip would not fit
+    // inside the plot - the drawing layer draws nothing for it and hit-tests
+    // nothing derived from it.
+    QRect chip;
+    QString chipText;
 };
 
 // One piece of text and the box it goes in. The box is what the model decides;
@@ -190,6 +234,20 @@ struct PanelLabel {
 //               TickLevel != None) inside the plot, ascending. The drawing layer
 //               draws a SHORT mark down from rulerBandTop at each - 4px is the
 //               convention (kFrameTickLength) - and nothing else.
+//   frameTickLevel: the tier of each of those ticks, one entry per frameTickX
+//               entry in the same order, so index i is tick i's tier. It is the
+//               ladder's own classification (ctrl::time::Scaler::TickLevel, carried
+//               as its integer value; None never appears, because such a frame is
+//               not a tick and frameTickX has no entry for it) and NOT a
+//               measurement: the tier is what the ladder that decided the tick
+//               said about it, and recovering it in the drawing layer from tick
+//               spacing or label widths is the pixel measurement the timeline's own
+//               ruler comment rejects. It is a CLASSIFICATION and not appearance -
+//               the model names no tier's alpha or length, exactly as it publishes
+//               a position and not a span, and the drawing layer decides how a tier
+//               looks (the timeline's own table, 0.85 major / 0.60 intermediate /
+//               0.20 minor, one length for every level). The two vectors are
+//               appended in one step, so they are the same length by construction.
 //   valueTickY: the y of the value axis' own ticks, one per window value (max,
 //               midpoint, min), in that order. A SHORT mark rightwards from
 //               plot.left() at each. A value whose NUMBER the column could not
@@ -197,9 +255,11 @@ struct PanelLabel {
 //               be written beside it, the frame axis' own rule - so a tick can
 //               outnumber the valueLabels below (only past the column's ceiling,
 //               unreachable at the UI font; see graph_Scaler.h).
-//   The model publishes POSITIONS (ints), never spans: a full-height or
-//   full-width line cannot be expressed in this structure at all, which is the
-//   mechanical form of "no grid".
+//   The model publishes POSITIONS (ints) and CLASSIFICATIONS (ints), never
+//   spans and never ink: a full-height or full-width line cannot be expressed in
+//   this structure at all, which is the mechanical form of "no grid", and a
+//   tick's tier is an index into the drawing layer's own appearance table rather
+//   than a colour or a length.
 //
 // LABELS (rects only)
 //   frameLabels: the frame NUMBER of a Major tick, in a box centred on that tick
@@ -287,50 +347,106 @@ struct PanelLabel {
 //   timeline's own triple). Published beside `keys` rather than reconstructed by
 //   the consumer: an empty rect is dropped, so an index into `keys` is not an
 //   index into the curve's key list.
-//   handles: one PanelHandle pair per Custom segment of the curve, in segment
-//   order (segment 0's two handles, then segment 1's, ...). base is the key the
-//   handle belongs to, mapped through the scaler; dot is
+//   handles: one PanelHandle pair per segment of the curve HAVE handles, in
+//   segment order (segment 0's two handles, then segment 1's, ...). base is the
+//   key the handle belongs to, mapped through the scaler (handle 0's base is the
+//   segment's `from` key, handle 1's the `to` key - each control's stem leaves
+//   the key it moves).
+//   A CUSTOM segment publishes its STORED pair (ghost == false): dot is
 //   ctrl::graph::handlePoint(scale, segment, index) - the SAME mapping the
 //   editor's hit-test grabs through, so a grab at the dot is the drag the editor
-//   performs. radius is ctrl::graph::kHandleRadius (the dot's drawn radius); the
-//   grab radius is the larger ctrl::graph::kHandleHitRadius, and the two are
+//   performs.
+//   An AUTO segment publishes its DERIVED pair (ghost == true): dot is
+//   ctrl::graph::handlePointAt over Curve::ghostHandles(segment.from), i.e. the
+//   SAME mapping through the same function (x is always the third and two thirds
+//   of the segment's span; the two y values come from the key's neighbours), so
+//   a stored pair and a derived one cannot drift apart. The document holds no
+//   such pair - it is recomputed - which is exactly what `ghost` tells a
+//   consumer: drawing it filled would claim the key stores a tangent it does
+//   not.
+//   Every other easing type (the analytic curves) publishes nothing for that
+//   segment, so a curve with no Custom and no Auto segment has an empty
+//   `handles`.
+//   radius is ctrl::graph::kHandleRadius (the dot's drawn radius); the grab
+//   radius is the larger ctrl::graph::kHandleHitRadius, and the two are
 //   deliberately different (the same visual/hit split as a key's).
 //   A pair is published whether or not it lies inside the plot: the drawing
 //   layer clips (the overlay's plot clip covers the handles like everything
 //   else), and a handle the user can grab off the plot's edge must still be
-//   published for the highlight to name it. A non-Custom segment publishes no
-//   handle, so a curve with no Custom segment has an empty `handles`.
+//   published for the highlight to name it.
 //   color: theme::Graph::keyColor(channel.type()), which falls back to
 //   theme::Graph::curve() for a type the palette does not name.
+//   chip/chipText: the curve's own NAME, IN PLACE.
+//   chip is the box the name sits in: it is anchored at the plot's RIGHT edge
+//   (kChipRightGap = 8px inside it) and vertically centred on the value the
+//   curve's polyline leaves the window with - the last of `points`, so the chip
+//   is derived from the curve it names rather than from a second evaluation of
+//   the curve at the edge. The box is the text's own advance plus
+//   kChipPadX (6px) on each side, the reference's own backing padding. It is a
+//   chip at the CURVE, not a legend in a corner,
+//   so the name of a channel cannot be read off the wrong row; that is the whole
+//   difference from the deleted legend.
+//   chipText is "Move X", or the bare type name for a one-component type
+//   ("Opa", not "Opa Opacity"): a channel whose type has one component has no
+//   sibling to be told apart from, so the component word is noise.
+//   chip is EMPTY when the box would not fit inside the plot - a curve leaving
+//   the window too near the top or the bottom edge, or a plot too narrow for the
+//   name - and the drawing layer MUST draw nothing for it and MUST NOT
+//   hit-test any geometry derived from it (QRect().right() is -1 and its centre
+//   is (0,0), so a box derived from an empty rect lands in the panel's corner).
+//   WHICH chips are drawn is the drawing layer's: the model publishes one chip
+//   per curve and the layer draws the ones IN PLAY - the channels that own a
+//   selected key and whatever the pointer is over - and pushes the drawn ones
+//   apart so two names cannot overlap. That subset is EMPHASIS, which is the
+//   drawing layer's decision; the model publishes the candidate geometry only,
+//   exactly as it publishes every curve and lets the layer dim the ones that own
+//   no selected key.
 //
-// LEGEND
-//   legend: one row per (target, channel) with keys, in target then channel
-//   order - the same order as the curves. Layout: the swatches are stacked
-//   top-to-bottom in legend order in the plot's bottom-left corner, the last row
-//   ending kLegendBottomGap (3px) above plot.bottom(), each swatch
-//   kLegendSwatchSide (10px - the side of the key HIT square,
-//   2 * graph::kKeyRadius; a square colour chip, not the round key marker,
-//   which is kKeyDotRadius across)
-//   and left-aligned kLegendLeftGap (6px) inside the plot, clear of the value
-//   column. The model publishes the swatch and not a row rect: the row is where
-//   its swatch is, and the label is drawn beside it for as long as the drawing
-//   layer's font needs.
-//   The stack never leaves the plot: it is anchored at the bottom and bounded by
-//   plot.top(), and by plot.right() for a plot narrower than
-//   kLegendLeftGap + kLegendSwatchSide. A row that cannot be laid out inside the
-//   plot publishes NO swatch - swatch.isEmpty() - and its identity, colour and
-//   label are still published, so the user can still see that the channel exists.
-//   Because the stack is anchored at the bottom, the rows left without a swatch
-//   are always its FIRST ones; the published swatches are the tail of the
-//   legend, in legend order. An empty swatch is not a rectangle at the origin:
-//   the drawing layer MUST draw nothing for that row and MUST NOT hit-test it,
-//   and no geometry derived from the empty rect is a control either (a label box
-//   computed from it is not the row's label), so a consumer lays out a row only
-//   while its swatch is non-empty - which is what keeps a row with no room from
-//   leaving a phantom control at the panel's corner. Rows are NEVER dropped from
-//   the legend for want of room, so the published row count is the number of
-//   keyed channels whatever the viewport, and an assistive tool that acts on a
-//   row by its index can still toggle a row the pointer cannot reach.
+// CHANNEL LIST
+//   channels: one row per (target, channel) with keys, in target then channel
+//   order - the same order as the curves, and the same set the editor builds
+//   entries for. A hidden channel keeps its row with visible == false: that is
+//   how the user sees what is hidden. The list is the application's own QMenu,
+//   so NO row geometry is published (see PanelChannelRow): the menu is a native
+//   window the drawing layer neither draws nor measures, exactly like the key
+//   menu, and it can scroll, so no row is ever dropped for want of room.
+//
+// CHANNELS BUTTON
+//   channelsButton/channelsButtonText: the panel's ONE control - the button that
+//   opens the channel list - and the words on it. It sits in the panel's
+//   top-right corner, kChannelsButtonGap (8px) inside the PANEL's right edge and
+//   kChannelsButtonTopGap (8px) below rulerBandTop, so it stays clear of the
+//   ruler band and cannot be read as part of the scale (the reference's own
+//   placement: `right: 8px; top: 30px` of the panel root, 30 being the band's 22
+//   plus this 8 while nothing occludes the band). The box is the text's advance plus the button's own padding
+//   (kChannelsButtonPadX/Y, the reference's 6px/2px), and it is EMPTY when it
+//   would not fit inside the plot - a control that cannot be drawn must not be
+//   hit-tested either. It is EMPTY too while the panel has no channel at all
+//   (channelsButtonText is empty with it): there is no list to open, and an empty
+//   panel's own reason is what says why it is empty.
+//   The TEXT is "6 channels" while every channel of the panel is shown, and
+//   "4 of 6" once one is hidden: the count is the state the button changes, so
+//   the button states it. It is translated here (the model is where the panel's
+//   words live), and the list itself is built by the application from the rows.
+//
+// SELECTION HULL
+//   selectionHull: the convex outline of the selected keys, in the SAME
+//   viewport pixels as `plot` - ctrl::GraphEditor::selectionHull() is (frame,
+//   value) and this maps every point through the same Scaler the curves use, so
+//   the outline cannot desync from the markers it encloses. Counter-clockwise,
+//   collinear points dropped. EMPTY when nothing is selected, and then nothing
+//   is drawn for it: an empty hull is the signal, exactly as an empty marquee is.
+//   selectionCount is ctrl::GraphEditor::selectionCount(), the number of keys
+//   the hull encloses: the editor's own FACT, published beside the label the way
+//   keyFrames is published beside keyDots, so a consumer that shows the count
+//   somewhere other than this box (a header, a status line) reads the number
+//   rather than the box.
+//   selectionLabel: the one place this model writes it - "3 keys" - in the
+//   panel's own label currency, in a box centred on the hull's bounding box just
+//   above its top edge (and just inside it when the hull touches the plot's top),
+//   clamped into the plot. EMPTY while nothing is selected (the count is 0).
+//   The hull is drawn with the marquee's ink: it is the same selection, read as
+//   an outline around the markers instead of around a drag rectangle.
 //
 // PLAYHEAD
 //   playheadX == Scaler::pixelX(aEditor.currentFrame()), or -1 when the editor
@@ -366,9 +482,9 @@ struct PanelLabel {
 //   The strings are translatable: they are marked with
 //   QT_TRANSLATE_NOOP("GraphPanel", ...) and resolved by graphPanelTr() through
 //   that same context (see it above).
-//   With targets but every shown channel hidden, the legend still lists the
-//   hidden rows and emptyState names the state: an empty panel must say why it
-//   is empty.
+//   With targets but every shown channel hidden, the channel list still carries
+//   the hidden rows and emptyState names the state: an empty panel must say why
+//   it is empty.
 //
 // READ-ONLY
 //   buildGraphPanelModel() takes the editor by non-const reference only because
@@ -385,6 +501,11 @@ struct GraphPanelModel {
     // >= plot.top() and never past the plot's bottom edge.
     int rulerBandTop = -1;
     QVector<int> frameTickX;
+    // The tier of each tick in frameTickX: same length, same order, so index i is
+    // tick i's tier (the ladder's own ctrl::time::Scaler::TickLevel as an int; None
+    // never appears). A CLASSIFICATION, not an appearance - the drawing layer maps a
+    // tier to its own alpha (see THE AXES above).
+    QVector<int> frameTickLevel;
     QVector<int> valueTickY;
     QVector<PanelLabel> frameLabels;
     QVector<PanelLabel> valueLabels;
@@ -394,11 +515,27 @@ struct GraphPanelModel {
     // flight (see the MARQUEE note above). The drawing layer paints it inside the
     // plot clip; nothing is drawn for an empty rect.
     QRect marquee;
+    // The live selection's hull in panel pixels, mapped from
+    // ctrl::GraphEditor::selectionHull() through the same Scaler the curves use
+    // (see SELECTION HULL); EMPTY when nothing is selected, and then nothing is
+    // drawn for it and no label is published either.
+    QVector<QPointF> selectionHull;
+    // The number of keys that hull encloses (ctrl::GraphEditor::selectionCount()),
+    // 0 with nothing selected.
+    int selectionCount = 0;
+    // The one place this model writes that number as words - "3 keys" - and the box
+    // it goes in, above the hull. EMPTY while nothing is selected.
+    PanelLabel selectionLabel;
     QVector<PanelCurve> curves;
     // The project's own loop rule, as the editor reported it, for every curve in this model.
     bool projectLoop = false;
     util::Range projectLoopRange;
-    QVector<PanelLegendRow> legend;
+    QVector<PanelChannelRow> channels;
+    // The panel's ONE control: the button that opens the channel list, and the
+    // words on it. Both empty/empty-rect when the button would not fit inside the
+    // plot (see CHANNELS BUTTON), and then there is no control to draw or to hit.
+    QRect channelsButton;
+    QString channelsButtonText;
     QString emptyState;
     bool isEmpty() const { return curves.isEmpty() && !emptyState.isEmpty(); }
 };
