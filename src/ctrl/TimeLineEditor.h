@@ -133,10 +133,12 @@ public:
     // one margin past each end.
     int frameStartPixel() const;
     int frameEndPixel() const;
-    int pixelsPerFrame() const;
+    // The frame axis' rate, FRACTIONAL below 1 px/frame (see time::Scaler's ladder): the
+    // content axis is still integer pixels, but a frame no longer needs a whole one.
+    double pixelsPerFrame() const;
     // New-scale position of the content point under the mouse, computed
     // pixel-exact from the old scale (see implementation for why).
-    int anchorPixelAfterScale(int aContentPixel, int aOldSpacing) const;
+    int anchorPixelAfterScale(int aContentPixel, double aOldSpacing) const;
     // Context-menu key targeting. selectKeysAt() resolves the key under
     // aPos into aEvent. A click on an already-selected key operates on the
     // whole selection; right-clicking an UNSELECTED key clears the current

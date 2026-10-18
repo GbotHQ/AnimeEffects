@@ -217,12 +217,13 @@ void Driver::setGraphModifiers(Qt::KeyboardModifiers aModifiers) {
 }
 
 bool Driver::updateGraphWheel(
-    const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+    const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
+    bool aInvertScaling
 ) {
     // A hidden graph never swallows the wheel: reporting true here would stop
     // the viewport from zooming the canvas while nothing on screen reacted.
     if (mGraphEditor->isVisible()) {
-        return mGraphEditor->updateWheel(aCamera, aPos, aWheelDelta, aModifiers);
+        return mGraphEditor->updateWheel(aCamera, aPos, aWheelDelta, aModifiers, aInvertScaling);
     }
 
     return false;

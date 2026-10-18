@@ -46,8 +46,12 @@ public:
     // core::AbstractCursor nor the panel's own updateCursor signature carries
     // modifiers (see GraphEditor::setModifiers for what each one means).
     void setGraphModifiers(Qt::KeyboardModifiers aModifiers);
+    // aInvertScaling is the user's zoom direction for the MAIN VIEW (the panel
+    // takes the wheel from it while it is up), applied to both of the panel's
+    // axes - see GraphEditor::updateWheel, which is the only reader.
     bool updateGraphWheel(
-        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
+        bool aInvertScaling
     );
     GraphEditor* graphEditor() { return mGraphEditor.data(); }
 

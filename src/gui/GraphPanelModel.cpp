@@ -77,8 +77,17 @@ void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
     bool anyLabel = false;
     int lastLabelRight = 0;
 
-    for (int frame = first.get(); frame <= last.get(); ++frame) {
-        const ctrl::time::Scaler::TickLevel level = aScale.frameScale().attribute(frame).level;
+    // Strided by the finest level the ladder draws (Scaler::tickStride): the window can span
+    // viewport / spacing frames at a deep zoom-out, and the drawn ticks are a handful. The start
+    // is aligned to the stride, which is what the levels are tested against.
+    const double framePpf = aScale.framePpf();
+    const int stride = aScale.frameScale().tickStride(framePpf);
+    int frame = first.get();
+    if (const int rem = frame % stride)
+        frame += rem > 0 ? stride - rem : -rem;
+    for (; frame <= last.get(); frame += stride) {
+        const ctrl::time::Scaler::TickLevel level =
+            aScale.frameScale().attributeAt(frame, framePpf).level;
         if (level == ctrl::time::Scaler::TickLevel::None)
             continue; // the ladder says this frame sits too close to its neighbours to mark
 
@@ -262,27 +271,36 @@ void buildCurves(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale
         if (!timeLine)
             continue;
 
-        const ctrl::graph::Curve curve(*timeLine, row.channel);
+        const ctrl::graph::Curve curve = [&] {
+            ctrl::graph::Curve made(*timeLine, row.channel);
+            made.setLoop(aModel.projectLoop, aModel.projectLoopRange);
+            return made;
+        }();
 
         gui::PanelCurve out;
         out.node = row.node;
         out.channel = row.channel;
+        out.loop = aModel.projectLoop;
+        out.loopRange = aModel.projectLoopRange;
         out.color = row.color;
         out.legendIndex = i;
 
         const core::Frame first = aScale.frameAt(aModel.plot.left());
         const core::Frame last = aScale.frameAt(aModel.plot.right());
         const int segments = std::max(1, curve.segmentCount());
-        // One point per ~2px of plot width per segment (the drawing budget),
-        // floored so the analytic easings keep their shape and capped so a long
-        // segment cannot ask for thousands of samples.
+        // One point per ~2px of plot width per segment (the drawing budget), floored so the
+        // analytic easings keep their shape and capped so a long segment cannot ask for thousands
+        // of samples. The budget is spent on the part of each segment the PLOT SHOWS (see
+        // Curve::buildPolyline), which is what keeps a zoomed-in curve smooth.
         const int samples = std::clamp(aModel.plot.width() / (2 * segments), kMinSamplesPerSegment, kMaxSamplesPerSegment);
 
         QVector<QPointF> polyline;
         curve.buildPolyline(first, last, samples, polyline);
         out.points.reserve(polyline.size());
         for (const QPointF& sample : polyline) {
-            out.points.append(QPointF(aScale.pixelXOfFrame(sample.x()), double(aScale.pixelY(float(sample.y())))));
+            out.points.append(
+                QPointF(aScale.pixelXOfFrame(sample.x()), aScale.pixelYOfValue(float(sample.y())))
+            );
         }
 
         // ctrl::graph::keyRect is the editor's HIT-TEST geometry: one rectangle,
@@ -390,6 +408,9 @@ namespace gui {
         // graph view over the animation. Nothing here hardcodes a size, and
         // nothing here writes back into the editor's scaler.
         model.panel = ctrl::GraphEditor::panelRect(aViewport);
+
+        model.projectLoop = aEditor.isLooping();
+        model.projectLoopRange = aEditor.frameRange();
 
         ctrl::graph::Scaler scale = aEditor.scale();
         scale.setRect(model.panel);

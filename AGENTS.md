@@ -623,6 +623,52 @@ flipping the value axis, whose old sense was opposite the frame axis beside it a
 opposite the canvas below it; two axes that zoom in opposite directions cannot be
 made into one gesture that keeps its shape.
 
+**The frame axis' zoom, and the graph panel's window onto it** - the rules, as they are:
+
+- *The ladder.* `ctrl::time::Scaler` owns the frame axis' rate: `pixelsPerFrame() = 1.1 ^ index`
+  (`kZoomPerNotch` is the application's own zoom step, the one `gui::CanvasMover` and the graph
+  panel's value axis take), so one notch is a constant x1.1 at EVERY zoom and the index bounds
+  (-120..120 = 1.07e-5 .. 93000 px/frame) are the only limits. `indexForRate` inverts it, floored, so
+  a caller with a rate in hand gets the sparsest rung that still fits; `setIndex` addresses a rung
+  directly (the delta arithmetic `update` uses is easy to get backwards).
+- *The ticks.* `majorStep` picks the rung whose on-screen spacing is closest to 96px, DOUBLING past
+  the ladder's coarsest rung when even that is below the 48px floor - so a deep zoom-out labels ever
+  wider spans instead of going blank. At the other end a frame wider than a number
+  (`spacing >= kNumberSpacing`) is itself a numbered major. `tickStride` is the finest level drawn,
+  and the ruler's and the panel's loops iterate frames in strides of it: the visible span is
+  viewport / spacing and spacing can be 1e-5, so a per-frame loop would be millions of iterations.
+  `attribute(int)` publishes every position (ruler ticks and numbers, keys, range markers) from
+  `pixelsPerFrame()`, never from the index.
+- *The frames outside the keys*, which is the project's own playback rule
+  (`graph::Curve::setLoop`): inside the frame range, loop ON continues the eased segment from the LAST
+  key back to the FIRST, wrapped by the range's span (the period `core::TimeKeyGatherer` also uses);
+  loop OFF holds the nearest key. OUTSIDE the frame range the frame is CLAMPED into it, so the curve
+  is FLAT at the range's edge value - the animation is defined over the range, and the gatherer is
+  never asked about those frames (the playback range clamps its own).
+- *The panel's X is the timeline's window as VALUES, in FRACTIONAL frames.*
+  `TimeLineWidget::visibleFrameWindow` gives the viewport's exact frame edges; `graph::Scaler::applyFrameWindow`
+  maps them into the plot's inset exactly (a fractional `framePpf`), so the frame under the cursor
+  keeps its fraction of the window and the timeline's own anchored zoom arrives already anchored.
+  The wheel's frame half is delegated with the cursor's frame SUB-PIXEL. `graph::Scaler::fitFrameAxis`
+  and the tick rung both choose their rate with `indexForRate`.
+- *Direction.* The panel takes the wheel from the main view, so its zoom direction is
+  `gui::MouseSetting::invertMainViewScaling`, applied to BOTH halves of the notch before the frame
+  half is delegated; `TimeLineWidget::zoomFramesAbout` passes `invert = false` because its delta
+  arrives in the caller's sense. The timeline's own wheel reads `invertTimeLineScaling`.
+- *The view stays with the content.* `TimeLineWidget::updateCamera` bounds `mHorizontalOffset` so the
+  view and the content OVERLAP: a pan may go anywhere, it just cannot leave the content behind
+  entirely. (Centring instead would undo every pan, and `scrollFramesBy` carries a fractional
+  remainder between calls so a drag's small deltas cannot round away and drop the view behind the
+  pointer.)
+
+Gates: `tests/time_scaler.cpp` (the ladder's x1.1 at every index, its bounds, `indexForRate`'s
+inversion, `tickStride` agreeing with `attribute` over 42k drawn ticks, and that every zoom level
+marks something inside a viewport); `tests/graph_curve.cpp` and `tests/graph_drag.cpp` for the
+panel's own axis, its fit and its mapping (a half-frame push moves the content half a frame's
+pixels; a zoom keeps the anchor's pixel; the delegate receives a sub-pixel anchor);
+`scripts/gui/probe_graph_anchor.sh` end to end (a 40px middle-drag moves the playhead column 40px at
+0.8 and at 6.2 px/frame, and a notch with the pointer on a frame leaves it within a pixel).
+
 *Selecting never moves the view.* Focusing a channel is emphasis only. The value
 window fits when the SHOWN SET changes (panel opened, targets changed, a channel
 hidden - without that the panel opens blank) and on the explicit routes (double
@@ -714,6 +760,10 @@ Extend these instead of writing new one-off scripts:
   the Xvfb/`QT_QPA_PLATFORM` setup, the settings sandbox.
 - `scripts/gui/ae_ui.py` — the AT-SPI client: `click`, `set`, `value`, `text`, `report`, `wait`,
   `extents`, `dump`, addressing controls **by name**.
+- `scripts/gui/ae_pix.py` — the raw-crop scanner: `line` (the column holding the most pixels of
+  one colour) and `moved` (the colour that tops a column in two shots at a different column in
+  each). It is how `probe_graph_anchor.sh` finds the graph panel's playhead without baking in a
+  theme colour; `magick shot.png -crop WxH+X+Y +repage -depth 8 rgb:file` makes its input.
 - `scripts/gui/run_probes.sh` and `scripts/gui/probe_*.sh` — the end-to-end checks; run one probe
   directly while iterating, the runner for the whole suite.
 - `tests/` — headless unit tests (`QT_QPA_PLATFORM=offscreen`), including `export_form` and
@@ -851,6 +901,18 @@ what broke typing into the dock after the menu had been used ("phase 4b"): that 
 consequences worth knowing: a Qt menu is MODAL (the app's Delete/Undo cannot reach the timeline while it is
 open), and it is a top-level window, so its pixels are NOT in the application window's screenshot -
 `probe_graph_overlay.sh`'s old menu phase scanned for them and had to be re-derived.
+
+Removing the ImGui popup ALSO cured the long-standing "phase 4b" red, and this is the measured
+attribution: typing into the dock's Angle field used to stop committing once the key menu had been
+used, and the cause was the popup's own keyboard machinery (`ImGuiConfigFlags_NavEnableKeyboard`,
+`SetNextFrameWantCaptureKeyboard`, the Qt focus take), not the menu. MEASURED 2026-10-14: a typed
+write commits after an Escape-closed menu, after a pointer-picked entry and after a Return-closed
+menu. ONE residual, measured by the same pass and NOT yet fixed: after the **graph's own Ctrl-press
+deselect in the plot** - the selection-toggle branch in `GraphEditor`, the gesture the plain-drag
+marquee round introduced - a typed write into the dock does not commit for the rest of the session,
+while the field still reports AT-SPI focused-and-editable and the X modifier state and the input
+focus are both clean, so it is not a harness artefact. The probe records its reproduction beside the
+phase that exercises it; it needs a fix in the panel's press routing and a real run to verify.
 
 **The numerals were 1.298x too large.** `fontPixelSize()` used `QFontMetricsF(widget.font()).height()` - the
 LINE height, 15.578125px - as the atlas's pixel size, while Qt rasterizes the same face at 12px (pointSize 9

@@ -109,8 +109,10 @@ TimeLineWidget::TimeLineWidget(
     mAbstractCursor(),
     mVerticalScrollValue(0),
     mHorizontalOffset(0),
+    mPendingScrollFrames(0.0),
     mPendingScrollbarAdopt(false),
-    mReportedFrameRange(1, 0), // min > max: "nothing reported yet"
+    mReportedWindowLo(0.0),
+    mReportedWindowHi(0.0),
     mScrollbarDragActive(false),
     mScrollbarDragAnchorValue(0),
     mScrollbarDragAnchorX(0),
@@ -445,6 +447,19 @@ void TimeLineWidget::scrollViewBy(int aValueDelta) {
 }
 
 void TimeLineWidget::updateCamera() {
+    // KEEP THE CONTENT IN REACH. The track never clamps the view (see the scrollbar note), so a pan
+    // may float past the content - but a view that has left the content entirely is a view of
+    // nothing. The bound is an OVERLAP, not a centring: the view is free to move and only stops at
+    // the ends, so panning works at every zoom.
+    if (const ctrl::TimeLineEditor* controller = editor()) {
+        const int contentSpan = controller->frameEndPixel() + ctrl::TimeLineEditor::kTimeLineMargin;
+        const int viewport = mInner->width();
+        // The view's start v = -offset and its span is [v, v + viewport]; overlap with the
+        // content [0, contentSpan] means v <= contentSpan and v + viewport >= 0.
+        if (viewport > 0)
+            mHorizontalOffset = std::max(-contentSpan, std::min(viewport, mHorizontalOffset));
+    }
+
     mCameraInfo.setScreenWidth(mInner->width());
     mCameraInfo.setScreenHeight(mInner->height());
     mCameraInfo.setLeftTopPos(QVector2D(viewportTransform()));
@@ -747,14 +762,6 @@ void TimeLineWidget::showKeyContextMenu(const core::TimeLineEvent& aTargets, con
 }
 
 util::Range TimeLineWidget::visibleFrameRange() const {
-    // The viewport's two edges on the CONTENT axis, converted to frames through
-    // the editor's own scale - the same conversion every input path here uses
-    // (worldPoint.x() - kTimeLineMargin fed to timeScale().frame()):
-    //   * the view's left edge is the viewport start v = -mHorizontalOffset, and
-    //     a content pixel x is frame scale.frame(x - kTimeLineMargin);
-    //   * the right edge is that start plus the surface's width.
-    // A widget with no surface yet (or no project) answers an empty range, which
-    // is the "nothing to show" the panel's own push treats as a no-op.
     const ctrl::TimeLineEditor* controller = editor();
     if (!controller || !mInner || mInner->width() <= 0)
         return util::Range();
@@ -767,12 +774,38 @@ util::Range TimeLineWidget::visibleFrameRange() const {
     return util::Range(qMin(first, last), qMax(first, last));
 }
 
+void TimeLineWidget::visibleFrameWindow(double& aLo, double& aHi) const {
+    aLo = aHi = 0.0;
+
+    const ctrl::TimeLineEditor* controller = editor();
+    if (!controller || !mInner || mInner->width() <= 0)
+        return; // no surface (or no project) yet: no window
+
+    // The same edges as visibleFrameRange, in content pixels and therefore in
+    // fractions of a frame: the viewport's left edge is -mHorizontalOffset, a content
+    // pixel x is frame (x - kTimeLineMargin) / pixelsPerFrame. Dividing last keeps the
+    // edges exact; the rounded form rounds them into whole frames.
+    const double ppf = controller->pixelsPerFrame();
+    const int left = -mHorizontalOffset;
+    const int right = left + mInner->width();
+    const double first = (left - ctrl::TimeLineEditor::kTimeLineMargin) / ppf;
+    const double last = (right - ctrl::TimeLineEditor::kTimeLineMargin) / ppf;
+    aLo = std::min(first, last);
+    aHi = std::max(first, last);
+}
+
 void TimeLineWidget::notifyViewRange() {
-    const util::Range visible = visibleFrameRange();
-    if (visible == mReportedFrameRange)
+    // The window is reported in FRACTIONAL frames, and only a change of it is a change: rounding to
+    // whole frames here would emit only when a frame boundary crosses the viewport, which at a high
+    // zoom is many pixels and quantizes every consumer of the signal - the graph panel's whole X.
+    double lo = 0.0;
+    double hi = 0.0;
+    visibleFrameWindow(lo, hi);
+    if (lo == mReportedWindowLo && hi == mReportedWindowHi)
         return;
 
-    mReportedFrameRange = visible;
+    mReportedWindowLo = lo;
+    mReportedWindowHi = hi;
     onViewRangeChanged();
 }
 
@@ -786,36 +819,47 @@ void TimeLineWidget::scrollFramesBy(double aFrameDelta) {
     // exactly N frames whatever the zoom. scrollViewBy takes the delta of the
     // viewport's START (v = -mHorizontalOffset) and updates the camera and the
     // scrollbar, which is where the new window is reported from (notifyViewRange).
-    const int delta = static_cast<int>(std::lround(aFrameDelta * controller->pixelsPerFrame()));
+    //
+    // The content axis is whole pixels, so this conversion rounds - and a drag arrives as MANY small
+    // deltas, so rounding each one away would lose a fraction per event and the view would fall
+    // behind the pointer. The remainder is carried between calls instead, so the total is exact.
+    mPendingScrollFrames += aFrameDelta;
+    const double rate = controller->pixelsPerFrame();
+    const int delta = static_cast<int>(std::lround(mPendingScrollFrames * rate));
     if (delta == 0)
         return; // sub-pixel: a frame delta too small to move this view is no move
+    mPendingScrollFrames -= static_cast<double>(delta) / rate;
     scrollViewBy(delta);
 }
 
-void TimeLineWidget::zoomFramesAbout(int aWheelDelta, core::Frame aAnchorFrame) {
+void TimeLineWidget::zoomFramesAbout(int aWheelDelta, double aAnchorFrame) {
     ctrl::TimeLineEditor* controller = editor();
     if (!controller)
         return;
 
-    // The frame the panel's cursor is over, as THIS widget's content pixel: the
-    // frame range's first frame sits at frameStartPixel() (margin + its scale
-    // position), and every later frame is one pixels-per-frame step further.
-    const int anchorX =
+    // The frame the panel's cursor is over, as THIS widget's content pixel: the frame
+    // range's first frame sits at frameStartPixel() (margin + its scale position), and
+    // every later frame is one pixels-per-frame step further. Kept in doubles and
+    // rounded once: a whole-frame anchor would move the anchored point by up to half a
+    // frame, which the panel (whose own mapping is exact) would show as a jump.
+    const double anchorX =
         mInner->frameStartPixel()
-        + (aAnchorFrame.get() - controller->frameRange().min()) * controller->pixelsPerFrame();
+        + (aAnchorFrame - static_cast<double>(controller->frameRange().min())) * controller->pixelsPerFrame();
 
-    // The editor's own zoom, with the same anchoring rule this widget's wheelEvent
-    // uses for the mouse: the content point under the anchor stays under it, which
-    // is the editor's anchorPixelAfterScale. updateWheel returns false when the
-    // ladder is already at the floor or ceiling, in which case nothing moves (and
-    // nothing is repainted).
-    const int oldSpacing = controller->pixelsPerFrame();
+    // The editor's own zoom, anchored exactly as this widget's own wheelEvent anchors
+    // it: the content point under the anchor stays under it. The invert flag is false
+    // because aWheelDelta arrives in the CALLER's sense (the panel applied its own user
+    // setting to the notch, and to its value half beside it) - this widget's setting
+    // belongs to its own wheel, and applying it here would invert the caller's notch
+    // twice.
+    const double oldSpacing = controller->pixelsPerFrame();
     if (!controller->updateWheel(aWheelDelta, false))
         return;
 
-    const int pixelAfter = controller->anchorPixelAfterScale(anchorX, oldSpacing);
+    const int roundedAnchorX = static_cast<int>(std::lround(anchorX));
+    const int pixelAfter = controller->anchorPixelAfterScale(roundedAnchorX, oldSpacing);
     QPoint viewTrans = viewportTransform();
-    viewTrans.setX(anchorX + viewTrans.x() - pixelAfter);
+    viewTrans.setX(roundedAnchorX + viewTrans.x() - pixelAfter);
     setViewTransform(viewTrans);
 }
 

@@ -87,13 +87,18 @@ public:
     // animation graph panel's horizontal window IS while the two are attached
     // (see MainDisplayWidget::setTimeLineWidget).
     util::Range visibleFrameRange() const;
+    // The same edges EXACTLY (fractional frames): the shared frame window the panel
+    // maps, see GraphEditor::setFrameWindow. Both are 0.0 with no surface to read them
+    // from, which the caller treats as "no window".
+    void visibleFrameWindow(double& aLo, double& aHi) const;
     // The two horizontal gestures the panel delegates here, in FRAMES - the one
     // unit both views can agree on: a pan (positive reveals LATER frames) and a
-    // wheel notch about a frame. Both drive this widget's own view transform and
-    // zoom ladder, which is what keeps a gesture made over the panel and one made
-    // over the timeline from landing on different frames.
+    // wheel notch about aAnchorFrame, fractional, so the frame under a cursor the
+    // panel owns pixel-exactly can be anchored pixel-exactly here too. Both drive
+    // this widget's own view transform and zoom ladder, which is what keeps a
+    // gesture made over the panel and one made over the timeline on the same frames.
     void scrollFramesBy(double aFrameDelta);
-    void zoomFramesAbout(int aWheelDelta, core::Frame aAnchorFrame);
+    void zoomFramesAbout(int aWheelDelta, double aAnchorFrame);
 
 private:
     virtual void mouseMoveEvent(QMouseEvent* aEvent);
@@ -143,12 +148,14 @@ private:
     // the frame range. The horizontal scrollbar is a one-way projection of it
     // and never feeds back, except through explicit user slider actions.
     int mHorizontalOffset;
+    // A delegated pan's frame remainder, carried between scrollFramesBy calls so whole-content-pixel
+    // rounding cannot make the view drift behind the pointer over a drag.
+    double mPendingScrollFrames;
     bool mPendingScrollbarAdopt;
-    // The frame window the last onViewRangeChanged emission reported, so the
-    // signal only fires when visibleFrameRange() really answered something new.
-    // A window with min > max means "nothing reported yet" (no project, no
-    // geometry), which can never equal a real range.
-    util::Range mReportedFrameRange;
+    // The window the last onViewRangeChanged emission reported, in FRACTIONAL frames (the same
+    // values the signal's consumers get), so the signal fires on every change of it.
+    double mReportedWindowLo;
+    double mReportedWindowHi;
     // Custom scrollbar thumb drag: Qt remaps the mouse against the live
     // range, which compounds (exponential gain) while the track grows; the
     // drag is anchored instead — the value<->pixel ratio is frozen at press

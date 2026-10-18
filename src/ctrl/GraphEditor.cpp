@@ -89,9 +89,7 @@ handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Se
 // one the user's curve shows: a key holds all of its type's components at once,
 // so adding a key from a Move X curve must carry the evaluated Y as well or the
 // insert would change the animation it is meant to leave alone.
-float sampledChannelValue(const core::TimeLine& aLine, core::TimeKeyType aType, int aComponent, core::Frame aFrame) {
-    return ctrl::graph::Curve(aLine, ctrl::graph::Channel(aType, aComponent)).sample(aFrame);
-}
+
 
 } // namespace
 
@@ -111,10 +109,11 @@ namespace ctrl {
         mScale(),
         mVisible(false),
         mFrameWindowShared(false),
-        mFrameWindow(),
-        mAppliedFrameWindow(),
+        mFrameWindowLo(0.0),
+        mFrameWindowHi(0.0),
+        mAppliedLo(0.0),
+        mAppliedHi(0.0),
         mAppliedPlotWidth(0), // nothing mapped yet: the first sync always maps
-        mAppliedFramePpf(0),
         mScrollFrames(),
         mZoomFrames(),
         mModifiers(Qt::NoModifier),
@@ -256,6 +255,25 @@ namespace ctrl {
     // end of its frame range. Both setters rebuild the ladder, so they are called
     // only when the attribute actually moved - this runs on every cursor event,
     // and the project's attribute can change while the panel is open.
+    // A curve of this project's channel, carrying the project's rule for the frames OUTSIDE the keys
+    // (see graph::Curve::setLoop): a looping project continues the easing from the last key back to
+    // the first, and everything that reads a curve - the drawn polyline, the value fit's samples, the
+    // insert's seeding - has to read the same rule or the panel would disagree with playback.
+    graph::Curve GraphEditor::curveFor(const core::TimeLine& aLine, const graph::Channel& aChannel) const {
+        graph::Curve curve(aLine, aChannel);
+        curve.setLoop(isLooping(), frameRange());
+        return curve;
+    }
+
+    // The value playback reports for one component of a key type at a frame: the insert's seeding
+    // (an insert must be invisible on every channel, so it carries the value the curve shows there,
+    // loop rule included).
+    float GraphEditor::sampledChannelValue(
+        const core::TimeLine& aLine, core::TimeKeyType aType, int aComponent, core::Frame aFrame
+    ) const {
+        return curveFor(aLine, graph::Channel(aType, aComponent)).sample(aFrame);
+    }
+
     void GraphEditor::syncFrameAxis() {
         if (!mProject)
             return;
@@ -274,11 +292,12 @@ namespace ctrl {
     }
 
     //-------------------------------------------------------------------------------------------------
-    // The shared frame window (see the header). The timeline hands in the frames
-    // it is showing; this maps them onto the panel's plot.
-    void GraphEditor::setFrameWindow(const util::Range& aFrames) {
+    // The shared frame window (see the header). The timeline hands in the frames it is
+    // showing; this maps them onto the panel's plot.
+    void GraphEditor::setFrameWindow(double aFramesLo, double aFramesHi) {
         mFrameWindowShared = true;
-        mFrameWindow = aFrames;
+        mFrameWindowLo = aFramesLo;
+        mFrameWindowHi = aFramesHi;
         syncFrameWindow();
     }
 
@@ -291,20 +310,16 @@ namespace ctrl {
         if (!mFrameWindowShared)
             return; // the frame axis is the panel's own: nothing to derive
 
-        // The same rect the cursor path writes (a pure function of the viewport), so
-        // the geometry the panel is DRAWN with and the geometry it is PICKED through
-        // are one, and the mapping below is derived from the rect the drawing layer
-        // will copy.
         mScale.setRect(panelRect(aViewportSize));
         syncFrameWindow();
     }
 
     void GraphEditor::clearFrameAxis() {
         mFrameWindowShared = false;
-        mFrameWindow = util::Range();
-        mAppliedFrameWindow = util::Range();
-        mAppliedPlotWidth = 0; // nothing mapped: a later attach maps afresh
-        mAppliedFramePpf = 0;
+        mFrameWindowLo = mFrameWindowHi = 0.0;
+        mAppliedLo = mAppliedHi = 0.0;
+        mAppliedPlotWidth = 0;
+        mScale.clearFrameWindow();
         mScrollFrames = nullptr;
         mZoomFrames = nullptr;
     }
@@ -313,57 +328,19 @@ namespace ctrl {
         if (!mFrameWindowShared)
             return;
 
-        const QRect plot = mScale.plotRect();
-        if (plot.width() <= 0)
-            return; // no plot to map into (an unlaid-out scale): keep the window
+        const int plotWidth = mScale.plotRect().width();
+        if (plotWidth <= 0)
+            return; // no plot to map into (an unlaid-out panel): keep the window
 
-        // Already mapped for this range, this plot and this rung: the write below
-        // is not a fixed point (see the members), so it must not run twice on the
-        // same inputs.
-        const int plotWidth = plot.width();
-        const int currentPpf = mScale.frameScale().pixelsPerFrame();
-        if (mFrameWindow == mAppliedFrameWindow && plotWidth == mAppliedPlotWidth
-            && currentPpf == mAppliedFramePpf) {
+        if (mFrameWindowLo == mAppliedLo && mFrameWindowHi == mAppliedHi && plotWidth == mAppliedPlotWidth)
             return;
-        }
 
-        // The window is [lo, hi] in frames; a span of at least one frame, so a
-        // degenerate timeline viewport (a one-frame window) still has a positive
-        // divisor and does not ask the ladder for infinite pixels per frame.
-        const double lo = static_cast<double>(mFrameWindow.min());
-        const double hi = static_cast<double>(mFrameWindow.max());
-        const double span = std::max(1.0, hi - lo);
+        if (!mScale.applyFrameWindow(mFrameWindowLo, mFrameWindowHi))
+            return;
 
-        // The rung: the largest zoom the ladder has that still fits the pushed span
-        // in the plot's INSET width (kFrameWindowMargin held at each end, see the
-        // header), which is graph::Scaler::fitFrameAxis's rule with that margin in
-        // place of its pad. The inset is not decoration: the origin below is written
-        // through the scaler's integer pixel origin, so an end can land a pixel
-        // closer to its edge than this arithmetic asks - and a key AT the window's
-        // first or last frame must be drawn and picked WHOLE, not half clipped by the
-        // plot's edge. update() is the only way to address the rung (whole notches of
-        // 120) and clamps to the ladder's own floor and ceiling, so a range too wide
-        // for 1 px/frame is shown as much of it as fits - the same limit the fit has.
-        constexpr int kWheelNotch = 120;
-        const int wanted = std::max(1, (plotWidth - 2 * kFrameWindowMargin) / static_cast<int>(span));
-        mScale.frameScale().update((currentPpf - wanted) * kWheelNotch);
-
-        // The origin: frame `lo` at plotRect().left() + kFrameWindowMargin, so the
-        // plot shows exactly [lo, hi] inset by that margin at both ends (to the pixel
-        // the mapping rounds to) and neither end's key is clipped. mFrameOffset - the
-        // content pixel of frame 0, relative to the plot's left edge - is written
-        // through panFrame, one of the only two writers of it (the other is an
-        // anchored zoom): pixelX(0) reads it back as plot.left() + round(offset), so
-        // the delta is derived from the same mapping the drawing layer uses.
-        const double ppf = static_cast<double>(mScale.frameScale().pixelsPerFrame());
-        const int currentOrigin = mScale.pixelX(core::Frame(0)) - plot.left();
-        mScale.panFrame(
-            static_cast<int>(std::lround(kFrameWindowMargin - ppf * lo)) - currentOrigin
-        );
-
-        mAppliedFrameWindow = mFrameWindow;
+        mAppliedLo = mFrameWindowLo;
+        mAppliedHi = mFrameWindowHi;
         mAppliedPlotWidth = plotWidth;
-        mAppliedFramePpf = mScale.frameScale().pixelsPerFrame();
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -759,7 +736,8 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     bool GraphEditor::updateWheel(
-        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
+        bool aInvertScaling
     ) {
         // The panel owns the wheel inside its rect and nowhere else. The rect is
         // now the whole viewport (the panel is fullscreen), so the wheel over the
@@ -783,38 +761,29 @@ namespace ctrl {
         // cursor's own coordinate). A modifier narrows the zoom to one axis:
         // Shift is the frame axis (horizontal), Ctrl the value axis (vertical).
         //
-        // DIRECTION: matching the rest of the application. A wheel notch that Qt
-        // reports as positive (the wheel rotated away from the user) makes
-        // ctrl::CanvasMover and ctrl::TimeLineEditor zoom OUT, and both do it per
-        // 1.1 of scale - so the panel does the same on both axes, and one wheel
-        // feels the same over the panel and over the viewport. (The value axis
-        // used to zoom IN on that notch, i.e. opposite both the frame axis beside
-        // it and the canvas below it; the two axes have to agree for a uniform
-        // zoom to mean anything.)
+        // DIRECTION: a notch Qt reports as positive zooms OUT at 1.1 of scale, the
+        // canvas mover's and the timeline scaler's own sense (see aInvertScaling for
+        // the user's own). The value axis alone used to zoom IN on that notch, which
+        // is the one thing a uniform two-axis zoom cannot have.
+        const int delta = aInvertScaling ? -aWheelDelta : aWheelDelta;
         const bool frameOnly = aModifiers.testFlag(Qt::ShiftModifier);
         const bool valueOnly = aModifiers.testFlag(Qt::ControlModifier);
 
         if (!frameOnly) {
-            // The value axis about the cursor's row, so the number under the
-            // cursor stays there. The negated delta is what turns "Qt's notch
-            // direction" into "a notch up means further away", the canvas's own
-            // sense.
-            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-aWheelDelta)), aPos.y());
+            // About the cursor's row, so the number under it stays there. The
+            // negated delta is what turns Qt's notch direction into the canvas's.
+            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
         }
         if (!valueOnly) {
-            // The frame axis delegates its ladder and its anchoring rule to the
-            // timeline's scaler, about the cursor's column; it already reads the
-            // raw delta in the application's own sense. WHILE A TIMELINE OWNS THE
-            // FRAME AXIS the notch is handed to the TIMELINE instead - the frames
-            // on screen are its window, so a zoom that moved only this panel would
-            // leave the two views showing different frames. The panel's X then
-            // moves only when the timeline pushes its new window back (see the
-            // shared-frame-window note in the header).
+            // While a timeline owns the frame axis the notch goes to IT, about the
+            // frame under the cursor - sub-pixel (frameAtPixel, never frameAt), so the
+            // timeline can put that exact frame back under the cursor. The panel's X
+            // then follows the window the timeline pushes back.
             if (mFrameWindowShared) {
                 if (mZoomFrames)
-                    mZoomFrames(aWheelDelta, mScale.frameAt(aPos.x()));
+                    mZoomFrames(delta, mScale.frameAtPixel(aPos.x()));
             } else {
-                mScale.updateFrameZoom(aWheelDelta, aPos.x());
+                mScale.updateFrameZoom(delta, aPos.x());
             }
         }
         // Taken even when the axes were already clamped at their floor or
@@ -979,7 +948,7 @@ namespace ctrl {
         // EARLIER frames, so the frame delta is the negative of the pixel delta.
         if (mFrameWindowShared) {
             if (mScrollFrames && delta.x() != 0)
-                mScrollFrames(-static_cast<double>(delta.x()) / framesPerPixel());
+                mScrollFrames(-static_cast<double>(delta.x()) / mScale.framePpf());
         } else {
             mScale.panFrame(delta.x());
         }
@@ -1027,7 +996,7 @@ namespace ctrl {
                     entry.node = node;
                     entry.line = node; // the layer that owns the key map
                     entry.channel = channel;
-                    entry.curve = graph::Curve(*timeLine, channel);
+                    entry.curve = curveFor(*timeLine, channel);
                     items.append(entry);
                 }
             }

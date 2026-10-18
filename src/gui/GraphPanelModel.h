@@ -7,6 +7,7 @@
 #include <QString>
 #include <QVector>
 #include "ctrl/graph/graph_Channel.h"
+#include "util/Range.h"
 
 namespace core {
 class ObjectNode;
@@ -100,6 +101,11 @@ struct PanelHandle {
 struct PanelCurve {
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
+    // The project's rule for the frames outside the keys (ctrl::GraphEditor::isLooping/frameRange):
+    // the model rebuilds its own Curve from (node, channel), so the rule has to travel with them or
+    // the drawn polyline would hold where playback wraps.
+    bool loop = false;
+    util::Range loopRange;
     QVector<QPointF> points; // (frame, value) mapped to panel pixels, in frame order
     QVector<QRect> keys;     // the key HIT squares, each clipped to the plot
     // The VISUAL of each key in `keys`: the centre of the marker its drawing
@@ -389,6 +395,9 @@ struct GraphPanelModel {
     // plot clip; nothing is drawn for an empty rect.
     QRect marquee;
     QVector<PanelCurve> curves;
+    // The project's own loop rule, as the editor reported it, for every curve in this model.
+    bool projectLoop = false;
+    util::Range projectLoopRange;
     QVector<PanelLegendRow> legend;
     QString emptyState;
     bool isEmpty() const { return curves.isEmpty() && !emptyState.isEmpty(); }

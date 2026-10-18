@@ -144,20 +144,22 @@ public:
     //   * Shift - the FRAME axis alone (horizontal), about the cursor's column;
     //   * Ctrl  - the VALUE axis alone (vertical), about the cursor's row.
     // Both use the canvas mover's and the timeline scaler's own per-notch factor
-    // (1.1 per notch) AND their direction: a notch Qt reports as positive zooms
-    // OUT, so one wheel motion does the same thing over the panel and over the
-    // viewport. (The value axis alone used to zoom IN on that notch, opposite the
-    // frame axis beside it; the two have to agree for a uniform zoom to mean
-    // anything.) The application's invert-scaling settings are NOT consulted
-    // here: the panel reads the raw wheel, as it always has.
+    // (1.1 per notch) and their default direction (a positive notch zooms OUT), so
+    // one wheel motion does the same thing over the panel and over the viewport.
+    //
+    // aInvertScaling is the user's zoom direction, and it inverts BOTH halves here -
+    // before the frame half is delegated - so one notch cannot move the two axes
+    // against each other. It is gui::MouseSetting::invertMainViewScaling: the panel
+    // takes its wheel from the main view (hiding it gives the wheel back to the
+    // canvas), so it takes that view's setting.
     //
     // The FRAME half is the TIMELINE's while a timeline owns the frame axis (see
-    // the shared-frame-window note): the notch goes to the timeline through its
-    // delegate, about the frame under the cursor, and the panel's own X moves only
-    // because the timeline pushed its new window back. The VALUE half is always
-    // this panel's - it is the axis nothing else shows.
+    // setFrameWindow): the notch goes to the timeline through its delegate, about the
+    // frame under the cursor, and the panel's own X moves only because the timeline
+    // pushed its new window back. The VALUE half is always this panel's.
     bool updateWheel(
-        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers
+        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
+        bool aInvertScaling
     );
 
     // The modifier state the panel's own gestures read, fed by the widget before
@@ -415,28 +417,9 @@ public:
     // genuinely empty stretch of a curve inserts.
     static constexpr int kCurveBandRadius = 6;
 
-    // The shared frame window's EDGE MARGIN, in pixels: while a timeline owns the
-    // frame axis, its first frame is mapped to plotRect().left() + this and its last
-    // to plotRect().right() - this (see setFrameWindow), so a key AT either end of
-    // the window is drawn and picked WHOLE. Without it the window's first frame lands
-    // on the plot's left edge and its marker is half outside the plot's clip - half
-    // drawn, and unclickable at its own centre (measured 2026-10-14 on the captured
-    // project's single key at frame 0: only the right half of the dot was on screen,
-    // under the playhead's own column). The timeline answers the same problem with
-    // ctrl::TimeLineEditor::kTimeLineMargin (24px), the gutter its own frame 0 sits
-    // in; the panel's window is a different mapping of the same frames and needs only
-    // enough to keep a marker whole.
-    //
-    // WHY 8. The rect the hit-test and the drawing share is +/-graph::kKeyRadius (5)
-    // around the key's pixel, and the marker drawn inside it has radius
-    // graph::kKeyDotRadius (3.75). The origin is written through the scaler's INTEGER
-    // pixel origin (panFrame is the only writer available besides an anchored zoom),
-    // so an end can land up to two pixels closer to its edge than the arithmetic
-    // asks: one from that integer step and one from the rounding that places it. The
-    // floor is therefore kKeyRadius + 2 = 7 - the hit square still whole at either
-    // end - and 8 is that floor plus one pixel so neither end can be exactly flush
-    // with its own radius.
-    static constexpr int kFrameWindowMargin = 8;
+    // The shared frame window's edge margin: the mapping lives in graph::Scaler
+    // (kFrameWindowMargin, where the WHY 8 is measured).
+    static constexpr int kFrameWindowMargin = graph::Scaler::kFrameWindowMargin;
 
     // --- sticky focus ---
     // The panel marks ONE shown channel as focused: the channel a press last hit
@@ -529,66 +512,39 @@ public:
 
     // --- the shared FRAME window ---
     //
-    // X IS THE TIMELINE'S while the panel is a second view of one. "Second view
-    // of the same data" means the two views show the same FRAMES: the panel's
-    // horizontal window is handed in here as VALUES (setFrameWindow, which the
-    // gui repeats whenever the timeline scrolls, zooms or changes its range) and
-    // mapped onto the panel's own plot, and the two horizontal gestures - the
-    // wheel's frame half and the middle-drag pan's horizontal half - are handed
-    // BACK to the timeline through the delegates below, because a gesture that
-    // moved only the panel would leave the two views showing different frames.
-    // The panel's own X therefore never moves on its own: it is written by
-    // setFrameWindow and by nothing else (see fitFrameAxis, updateWheel,
-    // updatePan).
+    // X is the TIMELINE's while the panel is a second view of one: the gui pushes the
+    // frames the timeline is showing (setFrameWindow) and the two horizontal gestures -
+    // the wheel's frame half and the pan's horizontal half - go back to the timeline
+    // through the delegates below. The panel's own X is written by setFrameWindow and
+    // by nothing else (see fitFrameAxis, updateWheel, updatePan).
     //
-    // WHAT IS SHARED IS A WINDOW, NOT A SCALE. The panel maps the pushed range
-    // with its own zoom ladder (ctrl::time::Scaler's rung: the largest one that
-    // shows the range in its plot) and INSETS it by kFrameWindowMargin at both
-    // ends, so the window's first and last frames are drawn and picked whole - a
-    // marker centred on the plot's own edge would be half clipped away and
-    // unclickable at its centre. The timeline's pixels-per-frame stays the
-    // timeline's: the panel's plot is a different width, and forcing one pixel
-    // scale on both would either waste the wider one or overflow the narrower.
-    // A range too wide for the ladder's floor (1 px/frame) is shown as much of it
-    // as fits, which is the same limit graph::Scaler::fitFrameAxis has.
-    //
-    // The VERTICAL axis is untouched by all of this: value fit, zoom and pan stay
-    // this panel's, exactly as before.
-    void setFrameWindow(const util::Range& aFrames);
-    // Re-derives the shared window's mapping for a panel covering aViewportSize
-    // (viewport pixels, the same size the drawing layer builds its model with), and
-    // does nothing while no timeline owns the frame axis.
-    //
-    // WHY THIS EXISTS, and it is load-bearing: setFrameWindow is pushed by the gui
-    // the moment the timeline's view or the driver changes - which can be BEFORE the
-    // viewport has been laid out, so the panel's plot rect is still degenerate and
-    // the mapping has no width to choose a rung from (measured in the running
-    // application: the first pushes arrive with a plot of width -79). The editor's
-    // own rect is otherwise written only on the cursor path, which the panel reaches
-    // only when it OWNS an event - so a panel nobody has touched yet would keep the
-    // frame axis it was born with and never become a view of the timeline at all.
-    // The gui therefore calls this from the path that is about to DRAW the panel,
-    // where the geometry is finally known; a resize re-derives it the same way (the
-    // rung depends on the plot's width).
-    //
-    // Cheap and idempotent: it writes the rect, then returns at once when the range,
-    // the width and the rung are the ones already applied (see mAppliedFrameWindow).
+    // The window is FRACTIONAL frames, mapped into the plot's inset exactly
+    // (graph::Scaler::applyFrameWindow): the timeline's viewport is expressed in content
+    // pixels, so its frame edges are not whole numbers, and a camera carried as whole
+    // frames cannot hold a point still - it snaps. The panel's pixels-per-frame follows
+    // from the fit (fractional too), so one notch moves both views by the same factor.
+    void setFrameWindow(double aFramesLo, double aFramesHi);
+    // Re-applies the pushed window for a panel covering aViewportSize, for the pushes
+    // that arrive before the viewport is laid out (the plot has no width to map into
+    // yet). Called from the draw path, where the geometry is known.
     void syncFrameWindowFor(const QSize& aViewportSize);
-    // The two horizontal gestures, in the timeline's units: a pan by aFrameDelta
-    // FRAMES (positive reveals LATER frames, i.e. the content moves left) and a
-    // wheel notch about the frame the panel's cursor is over (aWheelDelta is Qt's
-    // raw delta, aFrame the cursor's frame on the panel's own axis). Both are
-    // optional and independent of setFrameWindow: with the window set but no
-    // delegates, the panel still never moves its own X - the gestures simply have
-    // nowhere to go.
+    // The two horizontal gestures, in the units each side owns: a pan by aFrameDelta
+    // FRAMES, and a wheel notch about aAnchorFrame, the frame under the panel's cursor
+    // (fractional, so the timeline can anchor on it exactly).
     using FrameScrollFunc = std::function<void(double aFrameDelta)>;
-    using FrameZoomFunc = std::function<void(int aWheelDelta, core::Frame aAnchorFrame)>;
+    using FrameZoomFunc = std::function<void(int aWheelDelta, double aAnchorFrame)>;
     void setFrameGestureDelegates(FrameScrollFunc aScrollFrames, FrameZoomFunc aZoomFrames);
     // Detaches: the panel's frame axis is its own again (fit, zoom and pan work
     // as they did before a timeline was ever attached).
     void clearFrameAxis();
     // True while a timeline owns the frame axis.
     bool hasTimelineFrameAxis() const { return mFrameWindowShared; }
+
+    // The project's own rule for the frames OUTSIDE the keys (see graph::Curve::setLoop): a looping
+    // project continues the easing from the last key back to the first, wrapped by the range's span.
+    // ONE source for it - the editor's curves and the model's own rebuild both read these.
+    bool isLooping() const { return mProject && mProject->attribute().loop(); }
+    util::Range frameRange() const { return mProject ? mProject->attribute().frameRange() : util::Range(); }
 
 private:
     // The curve under a viewport point: which curve, which segment and - when
@@ -616,17 +572,18 @@ private:
     // two setters rebuild the tick ladder, so this is called from the paths that
     // already have a camera (they run on every cursor event).
     void syncFrameAxis();
+    // A curve of this project's channel, carrying the project's loop rule for the frames outside the
+    // keys (see graph::Curve::setLoop), and the value of one component at a frame through it.
+    graph::Curve curveFor(const core::TimeLine& aLine, const graph::Channel& aChannel) const;
+    float sampledChannelValue(
+        const core::TimeLine& aLine, core::TimeKeyType aType, int aComponent, core::Frame aFrame
+    ) const;
+
     // Re-applies the frame window the timeline pushed, so a panel rect that moved
-    // (a resize, the first cursor pass after a setTargets) still shows exactly
-    // that range. A no-op while no timeline owns the frame axis. Idempotent by
-    // construction - it derives the rung and the origin from the pushed range and
-    // the current plot, and nothing else writes either while the axis is shared -
-    // so calling it on every cursor and wheel event costs two comparisons and
-    // cannot drift.
+    // (a resize, the first cursor pass after a setTargets) still shows exactly that
+    // window. A no-op while no timeline owns the frame axis, and while the mapping is
+    // already the one for this window and plot.
     void syncFrameWindow();
-    // The panel's own frames-per-pixel: its frame ladder's rung. The unit a
-    // delegated pan is measured in.
-    double framesPerPixel() const { return static_cast<double>(mScale.frameScale().pixelsPerFrame()); }
 
     // Fits the value axis only when the shown curves CHANGED since the last fit,
     // by comparing the (node, channel) basis below; it also drops a focus that
@@ -740,23 +697,19 @@ private:
     graph::Scaler mScale;
     bool mVisible;
 
-    // The shared frame window (see setFrameWindow): the flag says a timeline owns
-    // the panel's frame axis, the range is what it pushed (kept so the mapping can
-    // be re-derived when the panel rect moves), and the two delegates are the
-    // gestures that go back to the timeline. Cleared together by clearFrameAxis.
+    // The shared frame window (see setFrameWindow): the flag says a timeline owns the
+    // panel's frame axis, the window is what it pushed (kept so the mapping can be
+    // re-derived when the panel rect moves), and the two delegates are the gestures
+    // that go back to the timeline. Cleared together by clearFrameAxis.
     //
-    // mAppliedFrameWindow/mAppliedPlotWidth/mAppliedFramePpf are what the mapping
-    // was last computed FROM, so syncFrameWindow() runs only when one of them
-    // changed. That is not an optimisation: the mapping writes the scaler's origin
-    // through its integer pan, which can land half a pixel off the exact value, and
-    // re-deriving the origin from such a value is not a fixed point (it can
-    // oscillate by a pixel). Computing it once per distinct (range, plot, rung) and
-    // remembering that keeps every later call a no-op.
+    // mAppliedLo/mAppliedHi/mAppliedPlotWidth are what the mapping was last computed
+    // from, so syncFrameWindow() maps only on a real change.
     bool mFrameWindowShared;
-    util::Range mFrameWindow;
-    util::Range mAppliedFrameWindow;
+    double mFrameWindowLo;
+    double mFrameWindowHi;
+    double mAppliedLo;
+    double mAppliedHi;
     int mAppliedPlotWidth;
-    int mAppliedFramePpf;
     FrameScrollFunc mScrollFrames;
     FrameZoomFunc mZoomFrames;
 

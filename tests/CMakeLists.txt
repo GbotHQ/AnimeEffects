@@ -390,6 +390,12 @@ add_executable(general_setting_form general_setting_form.cpp
     ../src/gui/qml/GeneralSettingViewModel.cpp
     ../src/gui/qml/QmlTheme.cpp
     ../src/gui/theme/Icons.cpp
+    # The model now builds its easing list from util::Easing's own display table (the
+    # one place the names live, so they translate - see GeneralSettingViewModel.cpp).
+    # The two files are header-only in their dependencies, so the light target stays
+    # light; the `util` library would drag the whole Qt/GL stack in for two symbols.
+    ../src/util/Easing.cpp
+    ../src/util/EasingName.cpp
     ../src/gui/MouseSetting.cpp)
 target_include_directories(general_setting_form PRIVATE .. ../src ../src/gui)
 target_compile_definitions(general_setting_form PRIVATE
@@ -956,6 +962,20 @@ target_link_libraries(graph_curve PRIVATE
     cmnd core ctrl gl img thr util pugixml
 )
 
+# The frame axis' zoom ladder: the two limits it used to have (1 and 16 px/frame) are gone, its
+# inverse rounds to the sparsest rung that fits, and the tick stride the ruler and the panel
+# iterate with never skips a drawn tick. Headless: the scaler and Qt6::Core only.
+add_executable(time_scaler time_scaler.cpp)
+target_include_directories(time_scaler PRIVATE ..)
+target_compile_definitions(time_scaler PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+)
+target_link_libraries(time_scaler PRIVATE
+    Qt6::Core ctrl util
+)
+
 # ---------------------------------------------------------------------------
 # The overlay's units (the Dear ImGui renderer of the viewport panel). They exist
 # because the pieces a screenshot cannot see need gates of their own: the font
@@ -1086,10 +1106,14 @@ target_link_libraries(graph_panel_model PRIVATE
 # than by inspection. Headless: offscreen, no GL, no .anie. Compiles the real
 # theme::Graph because GraphEditor names it and the ctrl library leaves that
 # symbol unresolved - the same reason the timeline tests compile
-# theme/TimeLine.cpp. See graph_drag.cpp.
+# theme/TimeLine.cpp. gui/CanvasMover.cpp is here for the wheel's DIRECTION:
+# the panel's notch must move the same way as the canvas', and comparing against
+# the real mover is the only way that stays true (see graph_drag's section 0b-ii;
+# ../src is on the include path for the gui/ header, which `ctrl` does not export).
 add_executable(graph_drag graph_drag.cpp
-    ../src/gui/theme/Graph.cpp)
-target_include_directories(graph_drag PRIVATE ..)
+    ../src/gui/theme/Graph.cpp
+    ../src/gui/CanvasMover.cpp)
+target_include_directories(graph_drag PRIVATE .. ../src)
 target_compile_definitions(graph_drag PRIVATE
     AE_MAJOR_VERSION=1
     AE_MINOR_VERSION=7

@@ -49,9 +49,9 @@ PlayBackWidget::PlayBackWidget(GUIResources& aResources, QWidget* aParent, core:
     mButtons.push_back(createButton("play", true, 2, tr("Play")));
     mButtons.push_back(createButton("step-forward", false, 3, tr("One frame forward")));
     mButtons.push_back(createButton("skip-forward", false, 4, tr("Advance to final frame")));
-    mButtons.push_back(createButton("arrows-clockwise", true, 5, tr("Loop animation")));
+    mButtons.push_back(createButton("arrows-clockwise", true, 5, tr("Loop playback")));
     mButtons.back()->setChecked(mDoesLoop);
-    mButtons.push_back(createButton("faders-horizontal", false, 6, tr("Animation settings")));
+    mButtons.push_back(createButton("faders-horizontal", false, 6, tr("Playback settings")));
     mButtons.push_back(createButton("speaker-high", false, 7, tr("Audio track")));
     // Frame nudge buttons repeat on hold: fire once on press, then every
     // 50ms after a 400ms hold (QAbstractButton re-emits pressed()).
@@ -85,8 +85,10 @@ void PlayBackWidget::setPushDelegate(const PushDelegate& aDelegate) {
     connect(mButtons.at(6), &QPushButton::clicked, [=]() { owner->mPushDelegate(PushType_Options); });
 
     // Loop toggle: checked state IS the live playback loop; the timeline
-    // mirrors it via setPlayBackLoop and the loop shortcut via checkLoop()
-    // (the Project menu's "Loop animation" is a separate persisted attribute).
+    // mirrors it via setPlayBackLoop and the loop shortcut via checkLoop().
+    // It is called "Loop playback" so it cannot be read as the Project menu's
+    // "Loop animation", which is a persisted attribute of the document (the
+    // interpolation from the last key back to the first).
     connect(mButtons.at(5), &QPushButton::clicked, [=]() {
         owner->mDoesLoop = owner->mButtons.at(5)->isChecked();
         owner->mPushDelegate(PushType_Loop);

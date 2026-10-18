@@ -300,12 +300,20 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
             if (mTimeLine)
                 mTimeLine->scrollFramesBy(aFrameDelta);
         },
-        [this](int aWheelDelta, core::Frame aAnchorFrame) {
+        [this](int aWheelDelta, double aAnchorFrame) {
             if (mTimeLine)
                 mTimeLine->zoomFramesAbout(aWheelDelta, aAnchorFrame);
         }
     );
-    editor->setFrameWindow(mTimeLine->visibleFrameRange());
+
+    // The window itself: fractional frames, because that is what the timeline's
+    // content-pixel viewport is. A whole-frame carrier (util::Range) made every pan
+    // land on a frame and left the panel's zoom unable to hold its anchor.
+    double lo = 0.0;
+    double hi = 0.0;
+    mTimeLine->visibleFrameWindow(lo, hi);
+    if (hi > lo)
+        editor->setFrameWindow(lo, hi);
 
     // The panel draws that window, so its own frame is now stale.
     this->updateRender();
@@ -785,9 +793,15 @@ void MainDisplayWidget::wheelEvent(QWheelEvent* aEvent) {
         // The modifier state goes with it: the wheel zooms BOTH axes by default
         // and one axis under Shift (the frame) or Ctrl (the value), so the graph
         // needs the same modifiers the cursor path gets.
+        //
+        // And the zoom DIRECTION: the panel takes the wheel from this widget while it
+        // is up, so it takes this widget's own setting ("Inverse canvas scrolling").
+        // Reading the timeline's instead would zoom the panel the other way from the
+        // canvas it covers whenever only one of the two toggles is on.
         mDriver->setGraphModifiers(aEvent->modifiers());
         if (mDriver->updateGraphWheel(
-                mRenderInfo->camera, aEvent->position().toPoint(), aEvent->angleDelta().y(), aEvent->modifiers()
+                mRenderInfo->camera, aEvent->position().toPoint(), aEvent->angleDelta().y(), aEvent->modifiers(),
+                mViaPoint.mouseSetting().invertMainViewScaling
             )) {
             // The graph took the wheel, so its zoom changed - a PANEL state, not a canvas
             // one, which is why the graph reports the take instead of letting the viewport

@@ -919,6 +919,96 @@ int sectionPolyline() {
     // inside the window.
     CHECK(onFrameCount >= 3);
 
+    // A window NARROWER than the segment still gets the whole budget: the samples land on the part
+    // the window shows, so a zoomed-in view of a long segment is a curve and not one chord. (Sampling
+    // over the segment's own span instead puts about one point in a view like this.)
+    {
+        const core::Frame nearFrom(0);
+        const core::Frame nearTo(1);
+        QVector<QPointF> zoomed;
+        curve.buildPolyline(nearFrom, nearTo, 10, zoomed);
+        int inside = 0;
+        double lastX = -1.0;
+        double widest = 0.0;
+        for (const QPointF& point : zoomed) {
+            if (point.x() < -1e-9 || 1.0 + 1e-9 < point.x())
+                continue; // the segment's own ends, which the caller clips away
+            ++inside;
+            if (lastX >= 0.0)
+                widest = std::max(widest, point.x() - lastX);
+            lastX = point.x();
+        }
+        CHECK(inside >= 9);
+        CHECK(widest <= 0.1 + 1e-6);
+    }
+
+    // With the project's LOOP on, the frames outside the keys are the eased segment from the LAST key
+    // back to the first, wrapped by the frame range's span (core::TimeKeyGatherer's own rule) - not a
+    // hold. The keys here sit on the range's own ends (0 and 10 of a 0..10 range, span 11), so the
+    // wrapped segment is the last key's easing over the one frame that is left of the period.
+    {
+        k0->data().easing().type = util::Easing::Type_Linear; // linear, so the wrapped values are readable
+        // A range ONE PERIOD wide with the keys inside it (0..20, keys at 0 and 10): past the last key
+        // the wrap runs to the first key one span ahead, and past the RANGE the frame clamps, so the
+        // curve is flat there rather than extrapolating.
+        ctrl::graph::Curve looped(*node.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
+        looped.setLoop(true, util::Range(0, 20));
+        CHECK(looped.isLooped());
+
+        // The last key's own value at its own frame (the wrap starts there), and strict movement
+        // toward the first key across the wrap - a property of the rule, not a restatement of the
+        // easing's arithmetic.
+        CHECK(nearly(looped.sample(core::Frame(10)), 100.0f));
+        const float inside15 = looped.sample(core::Frame(15));
+        const float atRangeEnd = looped.sample(core::Frame(20));
+        CHECK(inside15 < 100.0f);          // the wrap moved off the last key...
+        CHECK(0.0f < atRangeEnd);          // ...toward the first key without reaching it
+        CHECK(atRangeEnd < inside15);
+        CHECK(!nearly(inside15, 100.0f));  // a HOLD would sit at 100 for both of these
+
+        // Past the frame range the frame clamps: FLAT at the range's edge value.
+        CHECK(nearly(looped.sample(core::Frame(25)), atRangeEnd));
+        CHECK(nearly(looped.sample(core::Frame(200)), atRangeEnd));
+        // ...and flat before it, at the range's start value (the first key's).
+        CHECK(nearly(looped.sample(core::Frame(-5)), looped.sample(core::Frame(0))));
+        CHECK(nearly(looped.sample(core::Frame(-500)), looped.sample(core::Frame(0))));
+
+        // A polyline over a window wider than the range follows the same rule everywhere: the samples
+        // inside the range are the wrap, and past the range they are constant.
+        QVector<QPointF> loopLine;
+        looped.buildPolyline(core::Frame(-25), core::Frame(45), 10, loopLine);
+        CHECK(!loopLine.isEmpty());
+        CHECK(std::fabs(loopLine.first().x() + 25.0) <= 1e-9);
+        CHECK(std::fabs(loopLine.last().x() - 45.0) <= 1e-9);
+        for (const QPointF& point : loopLine) {
+            const float at = std::min(20.0f, std::max(0.0f, static_cast<float>(point.x())));
+            CHECK(nearly(static_cast<float>(point.y()), looped.sample(core::Frame::fromDecimal(at))));
+            if (point.x() > 20.0 + 1e-6)
+                CHECK(nearly(static_cast<float>(point.y()), atRangeEnd));
+        }
+        k0->data().easing().type = util::Easing::Type_Cubic;
+    }
+
+    // The value HOLDS outside the keys (what sample() reports there), so the polyline reaches the
+    // WINDOW's own edges: the whole X range shows what playback plays, not only the span between the
+    // first and last key.
+    {
+        QVector<QPointF> wide;
+        curve.buildPolyline(core::Frame(-5), core::Frame(15), 10, wide);
+        CHECK(!wide.isEmpty());
+        CHECK(std::fabs(wide.first().x() + 5.0) <= 1e-9);
+        CHECK(nearly(static_cast<float>(wide.first().y()), curve.sample(core::Frame(-5))));
+        CHECK(std::fabs(wide.last().x() - 15.0) <= 1e-9);
+        CHECK(nearly(static_cast<float>(wide.last().y()), curve.sample(core::Frame(15))));
+        for (int i = 1; i < wide.size(); ++i)
+            CHECK(wide.at(i).x() >= wide.at(i - 1).x() - 1e-9);
+        // "Holds" stated as VALUES: the first key's before the keys, the last key's after them. A
+        // curve with no loop range has no range to clamp to, so nothing moves these.
+        CHECK(nearly(curve.sample(core::Frame(-5)), curve.sample(core::Frame(0))));
+        CHECK(nearly(curve.sample(core::Frame(15)), curve.sample(core::Frame(10))));
+        CHECK(nearly(curve.sample(core::Frame(-40)), curve.sample(core::Frame(0))));
+    }
+
     // A step-held channel comes out as steps: with a Floor easing the rate is 0
     // across the whole interval, so every sample before the arrival key's frame
     // carries the lower key's value and the window end carries the arrival
@@ -990,17 +1080,33 @@ int sectionScaler() {
 
     // updateFrameZoom re-anchors the frame axis: the frame under the anchor
     // pixel is the same before and after (the content coordinate is scaled
-    // exactly and only the final pixel is rounded).
+    // exactly and only the final pixel is rounded), and the rate steps by a
+    // constant factor wherever it is called from (THE LADDER in time_Scaler).
     const int anchorX = plot.left() + 250;
     const double anchorFrame = scaler.frameAtPixel(anchorX);
-    CHECK(scaler.updateFrameZoom(-120, anchorX)); // one notch in: 2 -> 3 px/frame
-    CHECK(scaler.frameScale().pixelsPerFrame() == 3);
+    const double beforeZoom = scaler.frameScale().pixelsPerFrame();
+    CHECK(scaler.updateFrameZoom(-120, anchorX)); // one notch in
+    CHECK(std::fabs(scaler.frameScale().pixelsPerFrame() / beforeZoom - 1.1) < 1e-6);
     CHECK(std::fabs(scaler.frameAtPixel(anchorX) - anchorFrame) <= 1e-6);
-    // The ladder is clamped: at the ceiling a further zoom-in notch moves
-    // nothing and says so.
+    // Zooming is not bounded inside the ladder's range: many notches in keep scaling by the same
+    // factor and the anchor still holds, and the same call the other way keeps going out.
     CHECK(scaler.updateFrameZoom(-100000, anchorX));
-    CHECK(scaler.frameScale().pixelsPerFrame() == 16);
-    CHECK(!scaler.updateFrameZoom(-120, anchorX));
+    const double zoomedIn = scaler.frameScale().pixelsPerFrame();
+    CHECK(zoomedIn > beforeZoom * 10.0);
+    CHECK(std::fabs(scaler.frameAtPixel(anchorX) - anchorFrame) <= 1e-6);
+    CHECK(scaler.updateFrameZoom(100000, anchorX));
+    CHECK(scaler.frameScale().pixelsPerFrame() < zoomedIn / 10.0);
+    CHECK(std::fabs(scaler.frameAtPixel(anchorX) - anchorFrame) <= 1.0);
+    // A fit puts the whole span in the plot and lands on a ladder rung (the rate it picks is one the
+    // ladder can actually reach - indexForRate inverts it exactly).
+    scaler.fitFrameAxis(core::Frame(0), core::Frame(40));
+    const QRect fitPlot = scaler.plotRect();
+    const double fitted = scaler.frameScale().pixelsPerFrame();
+    CHECK(std::fabs(scaler.frameScale().pixelsPerFrame() -
+                    std::pow(1.1, scaler.frameScale().index())) < 1e-9);
+    CHECK(scaler.frameAtPixel(fitPlot.left()) <= 1.0);
+    CHECK(scaler.frameAtPixel(fitPlot.right()) >= 39.0);
+    (void)fitted;
 
     // value <-> pixel round trip, and the two ends of the window.
     scaler.setValueWindow(0.0f, 1.0f);
@@ -1033,6 +1139,173 @@ int sectionScaler() {
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// 11. Type_Auto: the derived curve is the played curve.
+//
+// An Auto easing keeps no controls of its own - core::TimeKeyBlender derives
+// them from the keys AROUND the segment (core/AutoEasing.h) - so two things can
+// go wrong and both are pinned here: the derivation reads the component that
+// moves MOST across the segment, and the graph draws what playback plays. The
+// oracle comparison is the one section 2 runs, over channels whose keys are all
+// Auto.
+//
+// Every expected number below is worked out by hand from the derivation (the
+// segment's neighbours, the central difference at an inner key, 1.5 - 0.5*m at
+// an end with no neighbour, and the clamp into the three keys' value range).
+// With the segment's own value change as the unit and both control x at 1/3 and
+// 2/3, the bezier's x IS the progress, so a rate can be read off the curve.
+// ---------------------------------------------------------------------------
+int sectionAutoEasing() {
+    using core::TimeKeyType;
+    using core::TimeKeyType_Rotate;
+    using core::TimeKeyType_Scale;
+    using core::TimeKeyType_Opa;
+
+
+    // A three-key Rotate, all Auto: the middle segment has neighbours on both
+    // sides, and the arrival at 100 is a local maximum (0 below, 40 above), so
+    // the automatic handle must flatten there.
+    core::TestNode node;
+    cmnd::Stack stack;
+    {
+        auto* k0 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 0);
+        auto* k1 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 10);
+        auto* k2 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 20);
+        k0->data().setRotate(0.0f);
+        k1->data().setRotate(100.0f);
+        k2->data().setRotate(40.0f);
+        k0->data().easing().type = util::Easing::Type_Auto;
+        k1->data().easing().type = util::Easing::Type_Auto;
+    }
+
+    const ctrl::graph::Curve rotate(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+    CHECK(rotate.segmentCount() == 2);
+
+    // Precondition the numbers below rely on: Auto is not treated as a Custom
+    // curve with draggable handles.
+    CHECK(!rotate.isCustom(rotate.segment(0)));
+
+    // The graph equals playback over the whole span, key frames included.
+    for (int frame = 0; frame <= 20; ++frame) {
+        const BlenderOracle oracle(node, core::Frame(frame));
+        CHECK(matchesPlayback(oracle, rotate, core::Frame(frame)));
+    }
+
+    // Segment 0 (0 -> 100, next key 40 at frame 20): m1 = 0.4/2 = 0.2, but the
+    // outgoing handle at the arrival key would leave the range the three keys
+    // span ([0,1] here), so the clamp holds m1 at 0 - a flat arrival at the
+    // maximum 100. The start then follows that handle: m0 = 1.5 - 0.5*0 = 1.5.
+    // Handles (1/3, 0.5) and (2/3, 1): the rate at half way is
+    // 1.5t(1-t)^2 + 3t^2(1-t) + t^3 at t = 0.5 = 0.6875 -> 68.75 degrees.
+    CHECK(nearly(rotate.sample(core::Frame(5)), 68.75f, 0.5f));
+    // (Linear would hold exactly 50 there, so the assertion above cannot pass
+    //  with an Auto easing that fell back to Linear.)
+    CHECK(!nearly(rotate.sample(core::Frame(5)), 50.0f, 1.0f));
+
+    // Segment 1 (100 -> 40, previous key 0 at frame 0): the previous value in
+    // the segment's own units is (0-100)/(40-100) = 5/3, so the central
+    // difference at the start is (1 - 5/3)/2 = -1/3; flat, then clamped to the
+    // range floor 0, because 100 is the maximum of the three keys. The end then
+    // follows: m1 = 1.5 - 0 = 1.5 -> handles (1/3, 0) and (2/3, 0.5), whose rate
+    // at half way is 1.5t^2(1-t) + t^3 = 0.3125 -> 100 - 60*0.3125 = 81.25.
+    CHECK(nearly(rotate.sample(core::Frame(15)), 81.25f, 0.5f));
+
+    // The rate leaves a key whose neighbours are equal FLAT, which is the whole
+    // point of an automatic handle. (Above, at frame 10 the arrival is flat too;
+    // this checks the property on the drawn curve, not on a handle value.)
+    {
+        const float before = rotate.sample(core::Frame(9));
+        const float at = rotate.sample(core::Frame(10));
+        const float after = rotate.sample(core::Frame(11));
+        CHECK(at > before && at > after); // a real maximum, not a linear ramp
+        CHECK(at - before < 18.0f); // and the approach is eased, not straight (Linear: 100)
+        CHECK(at - after < 18.0f);
+    }
+
+    // The value basis is the component that moves MOST across the segment. Scale
+    // with a still X and a moving Y must therefore be shaped by Y - a flat X
+    // would carry no shape at all and leave the segment Linear, which lands on
+    // exactly 2.5 at half way instead of 2.6875.
+    {
+        core::TestNode scaleNode;
+        cmnd::Stack scaleStack;
+        auto* s0 = pushKey<core::ScaleKey>(scaleNode, scaleStack, TimeKeyType_Scale, 0);
+        auto* s1 = pushKey<core::ScaleKey>(scaleNode, scaleStack, TimeKeyType_Scale, 10);
+        auto* s2 = pushKey<core::ScaleKey>(scaleNode, scaleStack, TimeKeyType_Scale, 20);
+        s0->data().setScale(QVector2D(1.0f, 1.0f));
+        s1->data().setScale(QVector2D(1.0f, 3.0f));
+        s2->data().setScale(QVector2D(1.0f, 2.0f));
+        s0->data().easing().type = util::Easing::Type_Auto;
+        s1->data().easing().type = util::Easing::Type_Auto;
+
+        const ctrl::graph::Curve scaleY(*scaleNode.timeLine(), ctrl::graph::Channel(TimeKeyType_Scale, 1));
+        const ctrl::graph::Curve scaleX(*scaleNode.timeLine(), ctrl::graph::Channel(TimeKeyType_Scale, 0));
+
+        for (int frame = 0; frame <= 20; ++frame) {
+            const BlenderOracle oracle(scaleNode, core::Frame(frame));
+            CHECK(matchesPlayback(oracle, scaleY, core::Frame(frame)));
+            CHECK(matchesPlayback(oracle, scaleX, core::Frame(frame)));
+        }
+
+        // Segment 1 (y 3 -> 2, previous y 1 at frame 0): the previous value in
+        // the segment's units is (1-3)/(2-3) = 2, so the inner tangent is
+        // (1-2)/2 = -0.5, clamped to 0 (3 is the maximum of 1, 3, 2), and the
+        // end follows it: handles (1/3, 0) and (2/3, 0.5) -> rate 0.3125 at half
+        // way -> 3 - 1*0.3125 = 2.6875.
+        CHECK(nearly(scaleY.sample(core::Frame(15)), 2.6875f, 0.005f));
+        CHECK(!nearly(scaleY.sample(core::Frame(15)), 2.5f, 0.01f));
+        // The still component stays exactly still: Auto shapes the rate, it
+        // never invents a change of its own.
+        CHECK(nearly(scaleX.sample(core::Frame(15)), 1.0f));
+    }
+
+    // A two-key channel has no neighbours at all, so Auto has nothing to derive
+    // and degenerates to Linear - the documented fallback, and the same curve
+    // the derivation's identity handles give.
+    {
+        core::TestNode solo;
+        cmnd::Stack soloStack;
+        auto* a = pushKey<core::OpaKey>(solo, soloStack, TimeKeyType_Opa, 0);
+        auto* b = pushKey<core::OpaKey>(solo, soloStack, TimeKeyType_Opa, 8);
+        a->data().setOpacity(0.2f);
+        b->data().setOpacity(1.0f);
+        a->data().easing().type = util::Easing::Type_Auto;
+        const ctrl::graph::Curve line(*solo.timeLine(), ctrl::graph::Channel(TimeKeyType_Opa, 0));
+        for (int frame = 0; frame <= 8; ++frame) {
+            const float t = float(frame) / 8.0f;
+            CHECK(nearly(line.sample(core::Frame(frame)), 0.2f + 0.8f * t));
+        }
+    }
+
+    // Deleting a key changes what is AROUND the survivors, so the surviving
+    // segment's Auto curve re-shapes itself. After removing the key at frame 20
+    // the channel is two keys (0 and 10) and has neither neighbour at all, so
+    // the derivation's identity handles apply and the segment is Linear again -
+    // which is the whole point of an automatic handle: it is a function of the
+    // keys around it, not a stored shape. The oracle comparison over the span
+    // pins that the graph still draws exactly what playback plays.
+    {
+        const float shaped = rotate.sample(core::Frame(5));
+        CHECK(!nearly(shaped, 50.0f, 0.5f)); // the three-key channel is shaped
+        auto* victim = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, 20));
+        CHECK(victim);
+        stack.push(node.timeLine()->createRemover(TimeKeyType_Rotate, 20));
+        const ctrl::graph::Curve narrowed(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+        CHECK(narrowed.segmentCount() == 1);
+        for (int frame = 0; frame <= 10; ++frame) {
+            const float t = float(frame) / 10.0f;
+            CHECK(nearly(narrowed.sample(core::Frame(frame)), 100.0f * t));
+        }
+        CHECK(nearly(narrowed.sample(core::Frame(5)), 50.0f, 0.01f));
+        for (int frame = 0; frame <= 10; ++frame) {
+            const BlenderOracle oracle(node, core::Frame(frame));
+            CHECK(matchesPlayback(oracle, narrowed, core::Frame(frame)));
+        }
+    }
+
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1060,6 +1333,9 @@ int main(int argc, char** argv) {
         return 1;
     if (sectionScaler())
         return 1;
+    if (sectionAutoEasing())
+        return 1;
+
 
     std::printf("graph_curve: all checks passed\n");
     return 0;

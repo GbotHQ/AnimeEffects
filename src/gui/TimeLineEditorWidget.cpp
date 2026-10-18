@@ -359,7 +359,7 @@ bool TimeLineEditorWidget::updateCursor(const core::AbstractCursor& aCursor, Qt:
 }
 
 bool TimeLineEditorWidget::updateWheel(QWheelEvent* aEvent, int aMouseX, int& aPixelAfter) {
-    const int oldSpacing = mEditor->pixelsPerFrame();
+    const double oldSpacing = mEditor->pixelsPerFrame();
     const bool changed =
         mEditor->updateWheel(aEvent->angleDelta().y(), mViaPoint.mouseSetting().invertTimeLineScaling);
     if (changed) {

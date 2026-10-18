@@ -138,7 +138,8 @@
 #     at the row rectangle the hover measurement puts it at.
 #     THE ROW MAP IS MEASURED, NOT STYLED. Hovering row 0 and row 1 gives the row inset (4
 #     px), the pitch (22 px) and the width (84 px), and the window's own height (294) is
-#     asserted to hold exactly the 13 entries of util::Easing's display order minus Custom.
+#     asserted to hold exactly the entries of util::Easing's display order minus Custom
+#     (14 of them once Auto is in the table - see MENU_ENTRY_ROWS below).
 #     MEASURED, one Down lights the FIRST row and each further Down the next one, so row N
 #     is display index N: two Downs then Return pick Round (the second entry), three pick
 #     Linear, four pick Sine. Every entry this phase picks is named by the number of Downs
@@ -1306,8 +1307,8 @@ PY
   # THE ROW MAP IS THE MENU OWN DISPLAY ORDER, MEASURED RATHER THAN ASSUMED. The entries are
   # util::Easing's shared display order minus Custom, in that order (Floor, Round, Linear,
   # Sine, Quad, Cubic, ...), and MEASURED here they tile the window 4 px in from its left and
-  # top edges, 22 px apart and 84 px wide - so the window own height holds exactly the 13
-  # entries. MEASURED, the keyboard map is one row per Down: the first Down highlights the
+  # top edges, 22 px apart and 84 px wide - so the window own height holds one row per entry
+  # (14 with Auto in the table). MEASURED, the keyboard map is one row per Down: the first Down highlights the
   # FIRST row, each further Down the next one, and Return activates the row the arrows
   # reached (two Downs then Return set the key own easing to Round, the SECOND entry). So row
   # N is display index N, and this phase names an entry by the number of Downs that reach it.
@@ -1440,7 +1441,8 @@ PY
   # rule any more. The rule this replaces demanded the changed pixels be a menu-sized
   # rectangle INSIDE the panel own viewport, because the ImGui popup it was written for was
   # drawn in the widget own GL frame; the application own QMenu is a top-level window as
-  # wide as its longest entry and as tall as its 13 entries, so MEASURED it is 92x294 at the
+  # wide as its longest entry and as tall as its entries - one row each (MEASURED 92x294 at
+  # the 13 entries before Auto; a row pitch taller with it, 14) - so MEASURED it sits at the
   # anchor while the panel own viewport is 210x164 - it runs past the viewport own right and
   # bottom edges, and every candidate the old rule was applied to was rejected for that
   # reason and that reason alone (the run this phase was fixed against found nothing at all).
@@ -1493,8 +1495,13 @@ PY
   MENU_ITEM_H=""
   MENU_ITEM_W=""
   MENU_ROW_TOP=""
-  MENU_ENTRY_ROWS=13   # util::Easing::displayCount() minus Custom (Easing.cpp)
-  MENU_ITEM_ROWS=13
+  # util::Easing::displayCount() minus Custom (Easing.cpp). MEASURED 2026-10-17 with Auto
+  # in the display order (it sits at index 13, just before Custom): 14 pickable entries -
+  # Floor, Round, Linear, Sine, Quad, Cubic, Quart, Quint, Expo, Circ, Back, Elastic,
+  # Bounce, Auto. The two row counts are the SAME number because the menu holds one row per
+  # entry, so a mismatch between them is a menu that dropped an entry.
+  MENU_ENTRY_ROWS=14
+  MENU_ITEM_ROWS=14
   MENU_PRE_SCAN=""
   MENU_DESELECT=""
   MENU_STATE_BEFORE=""

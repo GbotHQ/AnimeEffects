@@ -125,6 +125,26 @@ public:
     // the column would be sized for text nobody draws.
     static QString valueAxisText(float aValue);
 
+    // The shared window is inset by this many pixels at both plot edges, so a key on the window's
+    // first or last frame is drawn and picked whole. WHY 8: the hit rect is +/-kKeyRadius (5) and
+    // the drawn marker kKeyDotRadius (3.75), plus the two pixels an end can land closer to its
+    // edge than the arithmetic asks (an integer origin step and the rounding that places it).
+    static constexpr int kFrameWindowMargin = 8;
+
+    // Pixels per frame the mapping uses: the ladder's rung normally, the exact fit of
+    // a pushed window while a timeline owns the frame axis (fractional - see
+    // applyFrameWindow).
+    double framePpf() const {
+        return mFramePpf > 0.0 ? mFramePpf : static_cast<double>(mFrameScale.pixelsPerFrame());
+    }
+
+    // Maps the pushed window [aLo, aHi] (fractional frames) into the plot's inset
+    // width exactly. False when there is no plot width or no span to map.
+    bool applyFrameWindow(double aLo, double aHi);
+
+    // Back to the ladder's own rung: the panel's own frame axis.
+    void clearFrameWindow() { mFramePpf = 0.0; }
+
     // --- frame axis (ctrl::time::Scaler owns the ladder) ---
     ctrl::time::Scaler& frameScale() { return mFrameScale; }
     const ctrl::time::Scaler& frameScale() const { return mFrameScale; }
@@ -154,6 +174,12 @@ public:
     // Fits [aMin,aMax] with padding on both sides, and widens a degenerate span
     // so an all-constant channel still has a usable scale.
     void fitValueWindow(float aMin, float aMax);
+    // The value axis' mapping, and its exact (sub-pixel) form: this is what the CURVES are drawn
+    // with, because a curve's own y is what its edges are made of - a whole-pixel y would lock a
+    // flat line's edges to the pixel grid and leave it with no antialiasing at all, while the frame
+    // axis' exact mapping keeps a steep line's edges smooth. pixelY is for the integer chrome (the
+    // value labels, the ticks, the 1px rules), whose placement the pixel gate pins exactly.
+    double pixelYOfValue(float aValue) const;
     int pixelY(float aValue) const;
     float valueAt(int aPixelY) const;
     double valueAtPixel(double aPixelY) const;
@@ -174,6 +200,9 @@ private:
     ctrl::time::Scaler mFrameScale;
     QRect mRect;
     double mFrameOffset; // content pixel of frame 0, relative to plotRect().left()
+    // The shared window's mapping, when one is applied: pixels per frame as a
+    // DOUBLE (see framePpf). 0 while the frame mapping is the ladder's own rung.
+    double mFramePpf;
     float mValueMin;
     float mValueMax;
     // Memo of axisLabelWidth(), -1 while unmeasured. plotRect() is on the pixel

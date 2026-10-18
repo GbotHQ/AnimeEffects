@@ -967,18 +967,19 @@ int TimeLineEditor::frameEndPixel() const {
     return kTimeLineMargin + mTimeScale.maxPixelWidth();
 }
 
-int TimeLineEditor::pixelsPerFrame() const {
+double TimeLineEditor::pixelsPerFrame() const {
     return mTimeScale.pixelsPerFrame();
 }
 
-int TimeLineEditor::anchorPixelAfterScale(int aContentPixel, int aOldSpacing) const {
+int TimeLineEditor::anchorPixelAfterScale(int aContentPixel, double aOldSpacing) const {
     // The zoom anchor is the content pixel under the mouse, scaled exactly
     // (no frame rounding, no range clamp). The half-spacing bias rounds
-    // half-up for positive content and away from zero for negative.
-    const int newSpacing = mTimeScale.pixelsPerFrame();
-    const qint64 num = (static_cast<qint64>(aContentPixel) - kTimeLineMargin) * newSpacing;
-    const qint64 scaled = num >= 0 ? num + aOldSpacing / 2 : num - aOldSpacing / 2;
-    return kTimeLineMargin + static_cast<int>(scaled / aOldSpacing);
+    // half-up for positive content and away from zero for negative. Both
+    // spacings are rates, so they are fractional below 1 px/frame - the
+    // ratio is what matters and it is exact.
+    const double newSpacing = mTimeScale.pixelsPerFrame();
+    const double scaled = (static_cast<double>(aContentPixel) - kTimeLineMargin) * newSpacing / aOldSpacing;
+    return kTimeLineMargin + static_cast<int>(scaled >= 0.0 ? scaled + 0.5 : scaled - 0.5);
 }
 
 void TimeLineEditor::render(

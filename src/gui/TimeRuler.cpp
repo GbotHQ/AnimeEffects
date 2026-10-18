@@ -165,7 +165,16 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
 
         const util::Range& activeRange = mEditor->playbackRange();
 
-        for (int i = aVisibleRange.min(); i <= aVisibleRange.max(); ++i) {
+        // Strided by the finest level the ladder draws (see Scaler::tickStride): at a deep
+        // zoom-out the visible span is viewport / spacing frames, and visiting every one of them
+        // would cost millions of iterations for a handful of ticks. The start is aligned so the
+        // absolute multiples the levels are tested against are all visited.
+        const double spacing = scale.pixelsPerFrame();
+        const int stride = scale.tickStride(spacing);
+        int i = aVisibleRange.min();
+        if (const int rem = i % stride)
+            i += rem > 0 ? stride - rem : -rem;
+        for (; i <= aVisibleRange.max(); i += stride) {
             // The boundary labels own their frames: when the range's
             // first/last frame label is active (the frame is off-major)
             // or the labels are merged, the loop's tier tick would stack

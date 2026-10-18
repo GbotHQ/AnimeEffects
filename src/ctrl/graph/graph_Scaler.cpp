@@ -12,12 +12,6 @@ namespace {
 // noise, and the inverse would amplify it into a curve that flickers.
 constexpr double kMinRelativeSpan = 1e-6;
 
-// One wheel notch in the units ctrl::time::Scaler accumulates: its private
-// kWheelValue (120), where the zoom rung is mWheel / 120. fitFrameAxis moves
-// the rung by handing update() a whole number of notches, and it has no other
-// way to address the rung - update() is the only public writer of it.
-constexpr int kWheelNotch = 120;
-
 // The values whose 'g'/4 forms are the WIDEST the value format can write - one
 // candidate per shape it can emit, both signs where the sign changes the width.
 // The format is 'g' with four significant digits, so a label is at most 10
@@ -96,7 +90,13 @@ namespace graph {
     // class assumes a positive span, and the setters below are what keep that
     // true.
     Scaler::Scaler():
-        mFrameScale(), mRect(), mFrameOffset(0.0), mValueMin(0.0f), mValueMax(1.0f), mMeasuredAxisLabelWidth(-1) {}
+        mFrameScale(),
+        mRect(),
+        mFrameOffset(0.0),
+        mFramePpf(0.0),
+        mValueMin(0.0f),
+        mValueMax(1.0f),
+        mMeasuredAxisLabelWidth(-1) {}
 
     //-------------------------------------------------------------------------------------------------
     void Scaler::setRect(const QRect& aRect) { mRect = aRect; }
@@ -113,33 +113,44 @@ namespace graph {
     }
 
     //-------------------------------------------------------------------------------------------------
-    // The frame axis is linear in pixels-per-frame, and the ladder of that
-    // rate belongs to ctrl::time::Scaler. What this class adds is the origin:
-    // mFrameOffset is a free content pixel, kept in doubles precisely so a
-    // wheel zoom can be re-anchored without the half-pixel drift an integer
-    // origin would accumulate over a wheel's worth of notches.
+    // The frame axis is linear in pixels-per-frame. The ladder of that rate belongs
+    // to ctrl::time::Scaler; the rate the MAPPING uses is framePpf(), and the origin
+    // is mFrameOffset, a free content pixel kept in doubles so an anchored zoom
+    // accumulates no integer drift.
     double Scaler::pixelXOfFrame(double aFrame) const {
-        // pixelsPerFrame() is the same (mIndex + 1) factor time::Scaler's
-        // pixelWidth() multiplies by, but applied in doubles here so a
-        // sub-frame position is not truncated toward zero first.
-        return plotRect().left() + mFrameOffset + mFrameScale.pixelsPerFrame() * aFrame;
+        return plotRect().left() + mFrameOffset + framePpf() * aFrame;
     }
 
     int Scaler::pixelX(core::Frame aFrame) const {
-        // getDecimal(), not get(): the double form carries the fraction (a key
-        // may sit on a sub-frame position). Only the pixel boundary rounds.
+        // getDecimal(): a key may sit on a sub-frame position; only the pixel rounds.
         return static_cast<int>(std::lround(pixelXOfFrame(aFrame.getDecimal())));
     }
 
     double Scaler::frameAtPixel(double aPixelX) const {
-        // The exact inverse of pixelXOfFrame, in doubles end to end.
-        // pixelsPerFrame() is at least 1 (time::Scaler's index floor is 0), so
-        // this never divides by zero.
-        return (aPixelX - plotRect().left() - mFrameOffset) / mFrameScale.pixelsPerFrame();
+        return (aPixelX - plotRect().left() - mFrameOffset) / framePpf();
     }
 
     core::Frame Scaler::frameAt(int aPixelX) const {
         return core::Frame(static_cast<int>(std::lround(frameAtPixel(static_cast<double>(aPixelX)))));
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    bool Scaler::applyFrameWindow(double aLo, double aHi) {
+        const double inset = plotRect().width() - 2.0 * kFrameWindowMargin;
+        if (!(inset > 0.0) || !(aHi > aLo))
+            return false;
+
+        // The window fills the plot's inset exactly: it can never be clipped, and the
+        // frame under the cursor keeps its fraction of the window, so the timeline's
+        // own anchored zoom arrives here already anchored.
+        mFramePpf = inset / (aHi - aLo);
+        mFrameOffset = kFrameWindowMargin - mFramePpf * aLo;
+
+        // The ladder now only picks the tick classification's density; positions come from the
+        // mapping (pixelX), so a fractional rate cannot desync them. indexForRate inverts the
+        // ladder, which has room on both sides of its linear core now.
+        mFrameScale.setIndex(mFrameScale.indexForRate(mFramePpf));
+        return true;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -155,7 +166,11 @@ namespace graph {
         const double anchorFrame = frameAtPixel(anchorX);
         if (!mFrameScale.update(aWheelDelta))
             return false; // clamped at the ladder's floor or ceiling: nothing moved to re-anchor
-        mFrameOffset = anchorX - plotRect().left() - mFrameScale.pixelsPerFrame() * anchorFrame;
+        // framePpf() and not the ladder: this is the panel's OWN frame axis (a
+        // timeline that owns it delegates the notch instead of arriving here), so
+        // mFramePpf is 0 and the two are one value - reading the mapping's rate
+        // keeps that true if the two ever stop being the same thing.
+        mFrameOffset = anchorX - plotRect().left() - framePpf() * anchorFrame;
         return true;
     }
 
@@ -177,19 +192,17 @@ namespace graph {
         hi += pad;
         const double span = hi - lo;
 
-        // Pick the largest zoom rung that still fits the span. pixelsPerFrame()
-        // is (mIndex + 1), so the rung that makes the span exactly fill the plot
-        // is floor(width / span) - 1 frames-per-pixel-wise; update() clamps the
-        // result to its own floor and ceiling, so an over-wide or over-narrow
-        // span lands on the nearest rung the axis can actually reach.
-        const int currentIndex = mFrameScale.pixelsPerFrame() - 1;
-        const int wantedIndex = static_cast<int>(std::floor(static_cast<double>(plot.width()) / span)) - 1;
-        mFrameScale.update((currentIndex - wantedIndex) * kWheelNotch);
+        // The rung that still fits the span - the sparsest one whose rate is <= the plot's own
+        // rate for it, which is what indexForRate answers (it is the ladder's inverse now that
+        // the ladder has room on both sides of its linear core). update() clamps to the ladder's
+        // ends, so a span too wide or too narrow for it lands on the nearest rung there is.
+        const double wantedRate = static_cast<double>(plot.width()) / span;
+        mFrameScale.setIndex(mFrameScale.indexForRate(wantedRate));
 
         // Centre the padded span in the plot. mFrameOffset is the content pixel
         // of frame 0 relative to plotRect().left(), which is exactly where
         // pixelXOfFrame() reads it back from.
-        const double ppf = static_cast<double>(mFrameScale.pixelsPerFrame());
+        const double ppf = mFrameScale.pixelsPerFrame();
         mFrameOffset = 0.5 * (static_cast<double>(plot.width()) - span * ppf) - ppf * lo;
     }
 
@@ -247,14 +260,15 @@ namespace graph {
     }
 
     //-------------------------------------------------------------------------------------------------
-    int Scaler::pixelY(float aValue) const {
+    double Scaler::pixelYOfValue(float aValue) const {
         const double height = plotHeight();
         const double span = static_cast<double>(mValueMax) - mValueMin;
         if (!(height > 0.0) || !(span > 0.0))
-            return static_cast<int>(std::lround(plotTop())); // no vertical span to map through
-        const double value = static_cast<double>(aValue);
-        return static_cast<int>(std::lround(plotTop() + (mValueMax - value) / span * height));
+            return plotTop(); // no vertical span to map through
+        return plotTop() + (static_cast<double>(mValueMax) - static_cast<double>(aValue)) / span * height;
     }
+
+    int Scaler::pixelY(float aValue) const { return static_cast<int>(std::lround(pixelYOfValue(aValue))); }
 
     double Scaler::valueAtPixel(double aPixelY) const {
         const double height = plotHeight();

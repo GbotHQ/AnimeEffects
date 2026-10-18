@@ -901,8 +901,11 @@ int main(int argc, char** argv) {
 
             bool same = (polyline.size() == curve.points.size());
             for (int i = 0; same && i < polyline.size(); ++i) {
+                // Both axes through the SCALER's exact mapping: the curve's own coordinates are the
+                // mapping's, not a rounded copy of it (a whole-pixel y is what makes a flat curve's
+                // edges hard).
                 const QPointF expected(
-                    zoomed.pixelXOfFrame(polyline.at(i).x()), double(zoomed.pixelY(float(polyline.at(i).y())))
+                    zoomed.pixelXOfFrame(polyline.at(i).x()), zoomed.pixelYOfValue(float(polyline.at(i).y()))
                 );
                 const double dx = std::fabs(expected.x() - curve.points.at(i).x());
                 const double dy = std::fabs(expected.y() - curve.points.at(i).y());
@@ -912,6 +915,25 @@ int main(int argc, char** argv) {
             }
             if (!same)
                 ++mismatchedCurves;
+
+            // A curve's own coordinates are the EXACT mapping's on both axes. The frame axis always
+            // was (pixelXOfFrame); the value axis was rounded to whole pixels, which locks a flat
+            // curve's edges to the pixel grid - a nearly-horizontal line then has no antialiasing at
+            // all while a steep one, whose edge phase runs along x, stays smooth. This window's
+            // mapping is fractional, so an integer y here means the rounding is back.
+            {
+                bool subPixelY = false;
+                for (const QPointF& point : curve.points)
+                    subPixelY = subPixelY || std::fabs(point.y() - std::floor(point.y())) > 1e-6;
+                CHECK(subPixelY);
+            }
+
+            // The value HOLDS outside the keys, so every curve reaches the PLOT's edges: the whole X
+            // range shows what playback plays. A polyline that stopped at its first and last key
+            // would leave the rest of the plot empty (and a one-key channel would draw nothing).
+            CHECK(curve.points.size() >= 2);
+            CHECK(curve.points.first().x() <= zoomedModel.plot.left() + 1);
+            CHECK(curve.points.last().x() >= zoomedModel.plot.right() - 1);
 
             for (const QPointF& point : curve.points) {
                 ++totalPoints;
@@ -933,6 +955,51 @@ int main(int argc, char** argv) {
         // The fixture's premise, and the documented contract: samples the narrowed
         // window pushed out of the plot are published anyway.
         CHECK(outsideY > 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // 4b. the project's LOOP reaches the drawn polyline
+    //
+    // The model rebuilds its own Curve from each entry's (node, channel), so the editor's loop rule
+    // has to travel with them: with the loop on, the frames outside the keys continue the easing from
+    // the last key back to the first, and with it off they hold. The assertion is the DIFFERENCE -
+    // a hold cannot make the extension vary.
+    {
+        project.attribute().setLoop(true);
+        const gui::GraphPanelModel loopedModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(loopedModel.projectLoop);
+        CHECK(loopedModel.projectLoopRange == project.attribute().frameRange());
+
+        int varying = 0;
+        int held = 0;
+        for (const gui::PanelCurve& curve : loopedModel.curves) {
+            if (curve.points.size() < 3)
+                continue;
+            // The last key's own pixel column: everything past it is the extension.
+            const double lastKeyX = curve.keys.isEmpty() ? 0.0 : double(curve.keys.last().right());
+            double lo = 1e30;
+            double hi = -1e30;
+            for (const QPointF& point : curve.points) {
+                if (point.x() < lastKeyX)
+                    continue;
+                lo = std::min(lo, point.y());
+                hi = std::max(hi, point.y());
+            }
+            if (hi - lo > 0.5)
+                ++varying;
+            else if (hi > -1e30)
+                ++held;
+        }
+        std::printf(
+            "[4b] loop on: curves=%d extension varying=%d holding=%d range=%d..%d\n",
+            isz(loopedModel.curves), varying, held, loopedModel.projectLoopRange.min(),
+            loopedModel.projectLoopRange.max()
+        );
+        CHECK(varying > 0);
+
+        project.attribute().setLoop(false);
+        const gui::GraphPanelModel heldModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(!heldModel.projectLoop);
     }
 
     // -------------------------------------------------------------------------

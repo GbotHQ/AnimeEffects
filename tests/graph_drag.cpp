@@ -137,6 +137,7 @@
 #include <QRect>
 #include <QSize>
 #include <QString>
+#include <QVector2D>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -162,6 +163,7 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+#include "gui/CanvasMover.h"
 #include "util/Easing.h"
 
 // core::Project.cpp references the GUI AudioPlaybackWidget::deserialize (only to
@@ -514,7 +516,7 @@ int main(int argc, char** argv) {
     // is the direction the panel has headroom in: the frame axis' ladder starts at
     // 2 px/frame, so a zoom-out notch would already be at its floor and prove
     // nothing.
-    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::NoModifier)); // one notch: closer
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::NoModifier, false)); // one notch: closer
     const int afterFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float afterValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
     // The application's own wheel direction (ctrl::CanvasMover and
@@ -528,7 +530,7 @@ int main(int argc, char** argv) {
     const float beforeShiftMin = editor.scale().valueMin();
     const float beforeShiftMax = editor.scale().valueMax();
     const int beforeShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
-    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier));
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier, false));
     CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) > beforeShiftSpan);
     CHECK(editor.scale().valueMin() == beforeShiftMin);
     CHECK(editor.scale().valueMax() == beforeShiftMax);
@@ -537,7 +539,7 @@ int main(int argc, char** argv) {
     // Ctrl: the value axis alone, and the frame axis untouched this time.
     const int beforeCtrlSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeCtrlValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
-    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier));
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier, false));
     CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == beforeCtrlSpan);
     CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeCtrlValueSpan);
     const float afterCtrlValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
@@ -548,7 +550,7 @@ int main(int argc, char** argv) {
     // asserted as "the span shrank", not as "the same number came back".)
     const int beforeOutFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeOutValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
-    CHECK(editor.updateWheel(camera, kWheelPoint, 120, Qt::NoModifier));
+    CHECK(editor.updateWheel(camera, kWheelPoint, 120, Qt::NoModifier, false));
     CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) < beforeOutFrameSpan);
     CHECK(editor.scale().valueMax() - editor.scale().valueMin() > beforeOutValueSpan);
 
@@ -580,6 +582,57 @@ int main(int argc, char** argv) {
     CHECK(editor.scale().plotRect().contains(
         QPoint(editor.scale().pixelX(core::Frame(0)), editor.scale().pixelY(0.0f))
     ));
+
+    // --- 0b-ii: THE ZOOM DIRECTION IS THE USER'S SETTING, AND IT IS ONE DIRECTION
+    // FOR ALL THREE SURFACES. The panel used to read the raw wheel and no setting
+    // at all, so with "Inverse canvas scrolling" ON - which IS the setting the panel
+    // takes its wheel under: it takes the wheel from the main view, see
+    // MainDisplayWidget::wheelEvent - the canvas and the timeline zoomed IN on a
+    // wheel-away notch while the panel zoomed OUT.
+    //
+    // The three are pinned AGAINST EACH OTHER here, on the real objects: the mover
+    // is gui::CanvasMover and the timeline ctrl::TimeLineEditor, both of which this
+    // test compiles/links (the mover because CanvasMover.cpp is in this target's
+    // sources - see tests/CMakeLists.txt), so the comparison cannot drift from the
+    // code that actually runs it. The panel's half is its VALUE axis: that is the
+    // axis neither of the other two shows, and the delta the setting inverts is one
+    // value for both halves (see GraphEditor::updateWheel).
+    {
+        gui::CanvasMover mover;
+        core::CameraInfo moverCamera;
+        mover.setCamera(&moverCamera);
+        ctrl::TimeLineEditor tline;
+        tline.setProject(&project);
+        tline.setFrameRange(util::Range(1, 60));
+
+        for (int i = 0; i < 2; ++i) {
+            const bool invertScaling = i == 1;
+            const float moverPreScale = moverCamera.scale();
+            const double tlinePrePpf = tline.pixelsPerFrame();
+            const float panelPreSpan = editor.scale().valueMax() - editor.scale().valueMin();
+
+            // ONE wheel-away notch (Qt reports it as +120), the user's setting as it is
+            CHECK(mover.updateByWheel(QVector2D(100.0f, 100.0f), 120, invertScaling));
+            CHECK(tline.updateWheel(120, invertScaling));
+            CHECK(editor.updateWheel(camera, kWheelPoint, 120, Qt::ControlModifier, invertScaling));
+
+            const float panelSpan = editor.scale().valueMax() - editor.scale().valueMin();
+            const bool closer = moverCamera.scale() > moverPreScale; // the canvas' own answer
+            CHECK((tline.pixelsPerFrame() > tlinePrePpf) == closer); // the timeline agrees with it...
+            CHECK((panelSpan < panelPreSpan) == closer);             // ...and the panel agrees with BOTH
+            CHECK(closer == invertScaling);                          // and the setting is what decides
+            std::printf(
+                "[W] direction invert=%d: canvas scale %.4f -> %.4f, timeline %.4f -> %.4f px/frame, "
+                "panel value span %.4f -> %.4f (all three %s)\n",
+                invertScaling ? 1 : 0, moverPreScale, moverCamera.scale(), tlinePrePpf, tline.pixelsPerFrame(),
+                panelPreSpan, panelSpan, closer ? "closer" : "further away"
+            );
+        }
+
+        // Both axes of the window back on the shown keys, which is the state the
+        // sections below measure their pixels in.
+        editor.fitAll();
+    }
 
     // --- 0c: a change of the shown curves DOES refit - that is what the fit is
     // for. Dropping the selection and taking the layer back is a new basis even
@@ -2083,7 +2136,7 @@ int main(int argc, char** argv) {
 
         const int beforeFramePixel = panScale.pixelX(core::Frame(0));
         const double beforeLeftEdge = panScale.frameAtPixel(static_cast<double>(panScale.plotRect().left()));
-        const int beforePpf = panScale.frameScale().pixelsPerFrame();
+        const double beforePpf = panScale.frameScale().pixelsPerFrame();
         const float beforePanMin = panScale.valueMin();
         const float beforePanMax = panScale.valueMax();
 
@@ -2118,7 +2171,7 @@ int main(int argc, char** argv) {
         // 1px, so px(0) moved 41 where the pan owes 40). What the pan owes is the
         // WINDOW: the frame at the plot's left edge moves by the pointer's x delta
         // worth of frames, and the rung does not change.
-        const double panPpf = static_cast<double>(panScale.frameScale().pixelsPerFrame());
+        const double panPpf = panScale.frameScale().pixelsPerFrame();
         const double leftEdgeAfter = panScale.frameAtPixel(static_cast<double>(panScale.plotRect().left()));
         CHECK(std::fabs((leftEdgeAfter - beforeLeftEdge) * panPpf + panDelta.x()) < 1e-6);
         CHECK(panScale.frameScale().pixelsPerFrame() == beforePpf);
@@ -2148,7 +2201,7 @@ int main(int argc, char** argv) {
 
         std::printf(
             "[P] middle-button pan: (%d,%d) px moved the frame WINDOW by the x delta (frame at the plot's "
-            "left edge %.4f -> %.4f at %d px/frame; absolute px(0) %d -> %d, the rest of that being the "
+            "left edge %.4f -> %.4f at %.4f px/frame; absolute px(0) %d -> %d, the rest of that being the "
             "measured label column) and the "
             "value window %+.4f..%+.4f -> %+.4f..%+.4f (span %.6f vs %.6f, a pan and not a zoom); no command pushed\n",
             panDelta.x(), panDelta.y(), beforeLeftEdge, leftEdgeAfter, beforePpf, beforeFramePixel,
@@ -2174,7 +2227,7 @@ int main(int argc, char** argv) {
     //     The round trip is asserted in BOTH directions, and so is the instance
     //     identity - two sets that must agree are two sets that eventually do not.
     //   * FRAME WINDOW: setFrameWindow pushes the frames the timeline is showing
-    //     (TimeLineWidget::visibleFrameRange) in as VALUES, and while it is set the
+    //     (TimeLineWidget::visibleFrameWindow) in as VALUES, and while it is set the
     //     panel does not fit, zoom or pan its own X; the wheel's frame half and a
     //     middle-drag pan go to the delegates, which the application wires to the
     //     timeline's own scrollFramesBy/zoomFramesAbout. Nothing the timeline shows
@@ -2279,10 +2332,10 @@ int main(int argc, char** argv) {
         // axis it was born with. syncFrameWindowFor() is the second step, called from
         // the path that is about to DRAW the panel. Both steps are pinned here, in the
         // application's own order.
-        editor.setFrameWindow(util::Range(50, 150));
+        editor.setFrameWindow(50.0, 150.0);
         const int beforeDegeneratePush = editor.scale().pixelX(core::Frame(0));
         editor.scale().setRect(QRect()); // the viewport has no layout yet
-        editor.setFrameWindow(util::Range(50, 150));
+        editor.setFrameWindow(50.0, 150.0);
         CHECK(editor.hasTimelineFrameAxis());          // the window is REMEMBERED...
         CHECK(editor.scale().plotRect().width() <= 0); // ...but there is nothing to map into
         CHECK(editor.scale().pixelX(core::Frame(0)) == beforeDegeneratePush); // so nothing moved
@@ -2299,47 +2352,72 @@ int main(int argc, char** argv) {
             ) <= 1
         );
 
-        // --- (d) THE SHARED FRAME WINDOW. The gui pushes the timeline's visible
-        // range (TimeLineWidget::visibleFrameRange) as VALUES; the panel maps it onto
-        // its own plot with the timeline's own ladder and never writes its own X
-        // again. 100 frames is wider than most rungs of that ladder, so the plot's
-        // rung is the largest that fits rather than the ceiling - which the assertion
-        // below pins, so a change to that rule fails loudly instead of passing on a
-        // clamped axis. ---
-        const util::Range pushed(50, 150);
-        editor.setFrameWindow(pushed);
+        // --- (d) THE SHARED FRAME WINDOW: the gui pushes the timeline's visible window
+        // (TimeLineWidget::visibleFrameWindow, FRACTIONAL frames) as VALUES and the panel
+        // maps it into its plot exactly, then never writes its own X again. ---
+        const double pushedLo = 50.0;
+        const double pushedHi = 150.0;
+        editor.setFrameWindow(pushedLo, pushedHi);
         CHECK(editor.hasTimelineFrameAxis());
 
         const QRect sharedPlot = editor.scale().plotRect();
         CHECK(sharedPlot.width() > 2 * ctrl::GraphEditor::kFrameWindowMargin);
-        const int sharedPpf = editor.scale().frameScale().pixelsPerFrame();
-        CHECK(
-            sharedPpf
-            == std::max(
-                   1, (sharedPlot.width() - 2 * ctrl::GraphEditor::kFrameWindowMargin) / pushed.diff()
-               )
-        );
-        // The pushed range's LEFT frame is at the plot's left edge PLUS the window's
-        // edge margin - exactly, to the pixel the mapping rounds to (the origin is
-        // written through the scaler's own integer pixel origin, panFrame, which is
-        // the only writer the graph's frame axis offers besides an anchored zoom)...
+        const double sharedPpf = editor.scale().framePpf();
+        const double sharedInset =
+            sharedPlot.width() - 2.0 * ctrl::GraphEditor::kFrameWindowMargin;
+        // The rate is the exact fit - not a rung of the ladder. (A rung is what made a
+        // pan land on whole frames and left the panel's zoom unable to hold an anchor.)
+        CHECK(std::fabs(sharedPpf - sharedInset / (pushedHi - pushedLo)) < 1e-9);
+        // Both ends of the window land on the plot's inset edges, to the pixel the
+        // mapping rounds to, so the window is never clipped and never wastes plot.
         CHECK(
             std::abs(
-                editor.scale().pixelX(core::Frame(pushed.min()))
+                editor.scale().pixelX(core::Frame(50))
                 - (sharedPlot.left() + ctrl::GraphEditor::kFrameWindowMargin)
             ) <= 1
         );
-        // ...and the WHOLE pushed range is inside the plot, so the panel never hides a
-        // frame the timeline is showing. (Its plot may be wider than the ladder can
-        // fill with that range: the frames past the end are then extra ink on the
-        // right, which is the one direction a view may safely be wider.)
         CHECK(
-            editor.scale().pixelX(core::Frame(pushed.min()))
-            >= sharedPlot.left() + ctrl::GraphEditor::kFrameWindowMargin - 1
+            std::abs(
+                editor.scale().pixelX(core::Frame(150))
+                - (sharedPlot.right() - ctrl::GraphEditor::kFrameWindowMargin)
+            ) <= 1
         );
-        CHECK(editor.scale().pixelX(core::Frame(pushed.max())) <= sharedPlot.right());
-        CHECK(editor.scale().frameAt(sharedPlot.left()) <= pushed.min() + 1);
-        CHECK(editor.scale().frameAt(sharedPlot.right()) >= pushed.max());
+        CHECK(editor.scale().frameAt(sharedPlot.left()) <= pushedLo + 1.0);
+        CHECK(editor.scale().frameAt(sharedPlot.right()) >= pushedHi - 1.0);
+
+        // --- (d2) THE MAPPING IS AFFINE IN FRAMES, so neither horizontal gesture can
+        // snap. A push half a frame further along (what the timeline's own content-pixel
+        // viewport produces when it pans by half a frame) moves every frame's pixel by
+        // exactly half a frame's worth - not by a whole frame, and not by nothing. ---
+        {
+            const int xBefore = editor.scale().pixelX(core::Frame(100));
+            const double subFrame = 0.5;
+            editor.setFrameWindow(pushedLo + subFrame, pushedHi + subFrame);
+            const double expected = xBefore - subFrame * sharedPpf;
+            CHECK(std::abs(static_cast<double>(editor.scale().pixelX(core::Frame(100))) - expected) <= 1.0);
+            CHECK(editor.scale().pixelX(core::Frame(100)) != xBefore); // a half frame is not a no-op
+            editor.setFrameWindow(pushedLo, pushedHi);
+        }
+
+        // --- (d3) A ZOOM KEEPS ITS ANCHOR. The timeline zooms about the frame under the
+        // cursor in its own content pixels, so the window it pushes back keeps that
+        // frame at the same FRACTION of the window; the panel's mapping therefore puts
+        // it back on the same pixel, with no second anchoring step. (Measured on the
+        // anchor's own sub-pixel position: the anchor is not a whole frame, and a whole
+        // frame below it would move by up to a frame's worth of pixels under the zoom,
+        // which is exactly the drift this pins out.) ---
+        {
+            const double anchorPixel = sharedPlot.center().x();
+            const double anchorFrame = editor.scale().frameAtPixel(anchorPixel);
+            const double xBefore = editor.scale().pixelXOfFrame(anchorFrame);
+            // The window the same anchor at the same fraction implies, at half the span:
+            const double lo = anchorFrame - (anchorFrame - pushedLo) / 2.0;
+            const double hi = anchorFrame + (pushedHi - anchorFrame) / 2.0;
+            editor.setFrameWindow(lo, hi);
+            CHECK(editor.scale().framePpf() > sharedPpf); // it really zoomed in...
+            CHECK(std::fabs(editor.scale().pixelXOfFrame(anchorFrame) - xBefore) <= 0.5); // ...about the anchor
+            editor.setFrameWindow(pushedLo, pushedHi);
+        }
 
         // NOTHING REFITS X WHILE THE TIMELINE OWNS IT: a cursor pass, a change of the
         // shown curves (which IS the value fit's trigger), the panel's own
@@ -2365,8 +2443,7 @@ int main(int argc, char** argv) {
         // again (the value would then be 0, not -margin).
         CHECK(
             std::abs(
-                (windowLeftFrame - pushed.min()) * static_cast<double>(sharedPpf)
-                + ctrl::GraphEditor::kFrameWindowMargin
+                (windowLeftFrame - pushedLo) * sharedPpf + ctrl::GraphEditor::kFrameWindowMargin
             ) <= 1.5
         );
 
@@ -2376,10 +2453,10 @@ int main(int argc, char** argv) {
         editor.setTargets({});
         editor.setTargets({ &seamNode });
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
-        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+        CHECK(std::fabs(editor.scale().framePpf() - sharedPpf) < 1e-9);
         editor.fitAll();
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
-        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+        CHECK(std::fabs(editor.scale().framePpf() - sharedPpf) < 1e-9);
 
         // --- (d2) THE WINDOW'S END MARGIN: a key at the window's FIRST and at its
         // LAST frame is drawn and picked WHOLE. This is the defect the shared window
@@ -2393,10 +2470,8 @@ int main(int argc, char** argv) {
         // drawing and the hit-test share, and reachable at its own centre.
         //
         // The window pushed here has a key at EACH of its ends, and its span is chosen
-        // from the live plot so both ends really land near their edge (see the
-        // preconditions below): a short window is clamped by the ladder's ceiling and
-        // would leave the last frame hundreds of pixels inside the plot, where the
-        // assertion could not tell a margin from no margin.
+        // from the live plot so both ends land near their own edge (see the
+        // preconditions below), which the exact mapping now guarantees for every span.
         core::TestNode endNode;
         const int endSpan =
             std::max(2, (sharedPlot.width() - 2 * ctrl::GraphEditor::kFrameWindowMargin) / 8);
@@ -2408,11 +2483,11 @@ int main(int argc, char** argv) {
         setup.push(endNode.timeLine()->createPusher(core::TimeKeyType_Rotate, endSpan, e1));
 
         editor.setTargets({ &endNode });
-        editor.setFrameWindow(util::Range(0, endSpan));
+        editor.setFrameWindow(0.0, static_cast<double>(endSpan));
         {
             const QRect endPlot = editor.scale().plotRect();
             CHECK(endPlot.width() == sharedPlot.width()); // the plot did not move under this
-            CHECK(editor.scale().frameScale().pixelsPerFrame() >= 8); // the rung the span asks for
+            CHECK(editor.scale().framePpf() >= 8.0);      // ~8 px/frame by the span's own arithmetic
             for (const int frame : { 0, endSpan }) {
                 const float value = frame == 0 ? 0.0f : 90.0f;
                 const QRect rect = ctrl::graph::keyRect(editor.scale(), core::Frame(frame), value);
@@ -2470,8 +2545,8 @@ int main(int argc, char** argv) {
         // selection - and put the target and the window the gesture half below works on
         // back too.
         editor.setTargets({ &seamNode });
-        editor.setFrameWindow(pushed);
-        CHECK(editor.scale().frameScale().pixelsPerFrame() == sharedPpf);
+        editor.setFrameWindow(pushedLo, pushedHi);
+        CHECK(std::fabs(editor.scale().framePpf() - sharedPpf) < 1e-9);
         {
             core::TimeLineEvent both;
             both.pushTarget(seamNode, core::TimeKeyType_Rotate, 2);
@@ -2482,39 +2557,62 @@ int main(int argc, char** argv) {
         // --- (e) THE HORIZONTAL GESTURES GO TO THE TIMELINE. ---
         double scrolledFrames = 0.0;
         int zoomedDelta = 0;
-        int zoomedAnchor = 0;
+        double zoomedAnchor = 0.0;
         int zoomCalls = 0;
         editor.setFrameGestureDelegates(
             [&scrolledFrames](double aDelta) { scrolledFrames += aDelta; },
-            [&zoomedDelta, &zoomedAnchor, &zoomCalls](int aDelta, core::Frame aAnchor) {
+            [&zoomedDelta, &zoomedAnchor, &zoomCalls](int aDelta, double aAnchor) {
                 zoomedDelta = aDelta;
-                zoomedAnchor = aAnchor.get();
+                zoomedAnchor = aAnchor;
                 ++zoomCalls;
             }
         );
 
         // Shift = the frame axis alone: the notch is the TIMELINE's, about the frame
-        // under the panel's cursor, and the panel's own X does not move under it.
-        const int anchorFrameAtCursor = editor.scale().frameAt(sharedPlot.center().x()).get();
-        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier));
+        // under the panel's cursor, and the panel's own X does not move under it. The
+        // anchor is that frame SUB-PIXEL, which is what lets the timeline put it back
+        // under the cursor instead of rounding to the nearest whole one.
+        const double anchorFrameAtCursor = editor.scale().frameAtPixel(sharedPlot.center().x());
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, false));
         CHECK(zoomCalls == 1);
         CHECK(zoomedDelta == -120);
-        CHECK(zoomedAnchor == anchorFrameAtCursor); // the frame the panel's cursor is over
+        CHECK(std::fabs(zoomedAnchor - anchorFrameAtCursor) < 1e-9);
+        CHECK(zoomedAnchor != std::floor(zoomedAnchor)); // a real sub-pixel anchor, not a coincidence
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X stayed put
 
         // The plain wheel zooms BOTH axes: the frame half still goes to the timeline,
         // while the VALUE half - the axis the timeline does not show - is the panel's
         // own and really moves.
         const float beforeSeamValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
-        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier));
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, false));
         CHECK(zoomCalls == 2);
         CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeSeamValueSpan);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
         // Ctrl = the value axis alone: the frame delegate hears nothing at all.
-        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier));
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier, false));
         CHECK(zoomCalls == 2);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+
+        // ...and the INVERTED setting is applied BEFORE the delegation, so the
+        // timeline is handed a notch in the panel's own sense and the panel's two
+        // axes keep moving together: with the setting on, the same wheel-away notch
+        // that arrived as -120 above arrives as +120 here. (The timeline's own
+        // invert setting is its own wheel's; that is the gesture
+        // gui::TimeLineEditorWidget::updateWheel drives, not this one.)
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, true));
+        CHECK(zoomCalls == 3);
+        CHECK(zoomedDelta == 120);
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
+        const float beforeInvertSpan = editor.scale().valueMax() - editor.scale().valueMin();
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, true));
+        CHECK(zoomCalls == 4);
+        CHECK(zoomedDelta == 120); // the plain wheel's frame half too
+        // The value half moves the way the canvas moves on that same notch with the
+        // setting on: a notch TOWARD the user is the zoom OUT when the wheel is
+        // inverted (gui::CanvasMover scales by 0.9 on it), so the span grows - the
+        // two halves agreeing is the point.
+        CHECK(editor.scale().valueMax() - editor.scale().valueMin() > beforeInvertSpan);
 
         // The MIDDLE drag: its horizontal half becomes a FRAME delta handed to the
         // timeline (dragging right reveals EARLIER frames, so the delta is negative
@@ -2528,7 +2626,7 @@ int main(int argc, char** argv) {
         CHECK(sendMiddlePress(editor, camera, seamPanCur, seamPanStart));
         CHECK(sendMiddleMove(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
         CHECK(sendMiddleRelease(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
-        CHECK(zoomCalls == 2); // a pan is not a zoom
+        CHECK(zoomCalls == 4); // a pan is not a zoom
         CHECK(std::fabs(scrolledFrames + 40.0 / static_cast<double>(sharedPpf)) < 1e-9);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X still did not move
         const float afterSeamPanSpan = editor.scale().valueMax() - editor.scale().valueMin();
@@ -2538,11 +2636,12 @@ int main(int argc, char** argv) {
 
         std::printf(
             "[T] timeline seam: the panel writes the timeline's own selection (1 key selected in the panel "
-            "is 1 in the timeline, focused), a pushed window of %d..%d maps onto the panel's plot at %d px/frame "
+            "is 1 in the timeline, focused), a pushed window of %.2f..%.2f maps onto the panel's plot at "
+            "%.3f px/frame "
             "(plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a wheel notch and a 40px "
             "middle-drag pan both reach the delegates and leave the panel's own X exactly where the timeline put "
             "it, while a Ctrl wheel moves only the value axis\n",
-            pushed.min(), pushed.max(), sharedPpf, sharedPlot.width(), sharedPlot.height()
+            pushedLo, pushedHi, sharedPpf, sharedPlot.width(), sharedPlot.height()
         );
 
         // --- (f) DETACHED, the panel owns its frame axis again: the same fit and the
@@ -2554,10 +2653,10 @@ int main(int argc, char** argv) {
         const QRect ownPlot = editor.scale().plotRect();
         CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.left())) <= 2.0);   // the shown keys came back
         CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.right())) >= 6.0);
-        const int ownPpfBefore = editor.scale().frameScale().pixelsPerFrame();
-        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier)); // a notch AWAY from the ceiling
+        const double ownPpfBefore = editor.scale().frameScale().pixelsPerFrame();
+        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier, false)); // a notch AWAY from the ceiling
         CHECK(editor.scale().frameScale().pixelsPerFrame() < ownPpfBefore); // the panel's OWN frame axis moved
-        CHECK(zoomCalls == 2);                                              // and the delegate heard nothing
+        CHECK(zoomCalls == 4);                                              // and the delegate heard nothing
 
         // The shared end must go before the timeline it points at does: a dangling
         // selection source is the one thing this seam can get catastrophically wrong.
@@ -2595,7 +2694,10 @@ int main(int argc, char** argv) {
         "button (a pan), or mid-gesture - a press outside the plot, and every hover, stays the "
         "viewport tools'; the selection takes one key by a plain press, extends on Shift, toggles on "
         "Ctrl and replaces on a marquee over empty plot space; the focus moves NO window (a click "
-        "does not zoom); the wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value); the "
+        "does not zoom); the wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value), and its "
+        "DIRECTION is the caller's invert setting - the one the canvas takes - applied to both axes before "
+        "the frame half is delegated, so the canvas, the timeline and the panel never zoom against each "
+        "other; the "
         "three key edits are one undo step each through the timeline's own route: a Ctrl-press on the "
         "band inserts the key the curve already passes through (no sampled value moves at that "
         "frame), a press on a key plus a 2-axis drag moves its frame AND its value (Shift pins the "
