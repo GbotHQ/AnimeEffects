@@ -37,6 +37,16 @@ namespace time {
         // the range markers dim while it is active.
         void setPlayWindow(const ctrl::TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
 
+        // The playhead's own column: the pill's centre x (content axis) and
+        // its half-width. The lane labels are not drawn inside that span — the
+        // pill carries the only number in its column (design s1). The caller
+        // owns the pill's geometry (gui::TimeCursor), so the span passed here
+        // is the span that is actually painted.
+        void setPlayhead(int aX, int aHalfWidth) {
+            mPlayheadX = aX;
+            mPlayheadHalfWidth = aHalfWidth;
+        }
+
         // The track background: fills, lane separators, type labels and the
         // row seams. Keys are a separate pass (renderKeys) so background
         // layers like the range markers can paint between them.
@@ -61,6 +71,9 @@ namespace time {
         util::Range mProjectRange; // the project frame range (range markers)
         const Scaler* mScale;
         ctrl::TimeLineEditor::PlayWindow mPlayWindow;
+        // No pill until a caller sets one: an empty span suppresses nothing.
+        int mPlayheadX = 0;         // the pill's centre x on the content axis
+        int mPlayheadHalfWidth = 0; // the pill's half-width (its own geometry)
     };
 
 } // namespace time

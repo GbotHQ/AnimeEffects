@@ -1,0 +1,461 @@
+// The timeline's PIXEL CONTRACT for the row/selection/label ink (design doc
+// dev/graph-timeline-redesign, sections 1 and 3).
+//
+// WHAT IS DRIVEN. Not a widget and not the application: a real
+// ctrl::TimeLineEditor with manually pushed rows, rendered through its own
+// public ctrl::TimeLineEditor::render() into an offscreen QImage (no GL, no
+// window, no paint event). That is the shipping paint path - renderLines
+// (lane fills, separators, lane labels, seams), renderRangeMarkers and
+// renderKeys - so the pixels asserted here are the timeline's own.
+//
+// WHAT IT PINS, and why each assertion is a regression gate:
+//   1 THE ROW TINT. A selected object's lane band is the accent at 0.06
+//     ("a whisper, not a flood"), NOT the old @selection@ flood (accent at
+//     0.40). Both composites are computed from the live palette - the answer
+//     comes from theme::TimeLine::trackSelectColor(), which is the brush the
+//     renderer fills the band with - and the band must be the new tint and
+//     must NOT be the old fill.
+//     The rail AND the tree's own row background belong to the object tree
+//     (ObjectTreeWidget), not to this pass: the row fill is painted by
+//     QTreeView::drawRow through the QSS item:selected rule the tree
+//     overrides, and neither that rule nor the widget's private paint is
+//     reachable from this harness, which drives ctrl::TimeLineEditor::render()
+//     into a QImage and deliberately does not link the gui library (it stubs
+//     the two ObjectTreeWidget symbols it needs). What IS asserted here is the
+//     value the tree's rule carries: the tint base (accentBright) and the
+//     flood token (selection, the accent at 0.40) are distinct, the pair is
+//     told apart by the same comparison the band uses, and the band's own
+//     brush - the tint the tree restates - is pinned in section 1.
+//   2 THE KEY FILL AND THE RING. An unfocused key is drawn in its own type
+//     colour; a focused one brightens its fill toward the keyframe highlight
+//     (the mock's mixWhite at 0.45 - white, the value of --key-highlight) and
+//     gains a 1px ring clear of the marker. No size change: the ring does not
+//     touch the marker's centre pixel, which is only the fill. The ring is
+//     asserted as a pair: its arc pixels exist around the focused key and the
+//     identical window around the unfocused key is clean band. The states are
+//     told apart by their centres: the mock's mix replaces the old
+//     .lighter(150) fill outright.
+//   3 THE LABEL INK. A lane's name is drawn in its channel's hue at 0.42, one
+//     step quieter than the keys: the label's ink is closer to the hue's 0.42
+//     composite than to the old neutral text composite, and it is still nearer
+//     its own band than the full-strength hue (the "quieter" half).
+//   4 THE PILL'S COLUMN. The playhead's pill carries the only number in its
+//     column, so a lane name that would sit under it is NOT drawn: with the
+//     playhead parked on the label's own centre the label box holds no ink at
+//     all, and with the playhead away from it the same box does.
+//
+// The geometry is read off the implementation's own public mapping
+// (TimeLineEditor::timeScale(), kTimeLineMargin) rather than restated, so a
+// change to the scale cannot silently move a probe.
+//
+// CMake wiring (tests/CMakeLists.txt, another unit's file - NOT added here):
+// this target needs the ctrl library and - like the other timeline tests - the
+// real ../src/gui/theme/TimeLine.cpp, because ctrl's renderer names that class
+// and the ctrl library leaves its symbols unresolved. Add:
+//   add_executable(timeline_visuals timeline_visuals.cpp ../src/gui/theme/TimeLine.cpp)
+//   target_include_directories(timeline_visuals PRIVATE .. ../src)
+//   target_compile_definitions(timeline_visuals PRIVATE
+//       AE_MAJOR_VERSION=1 AE_MINOR_VERSION=7 AE_MICRO_VERSION=1 USE_GL_CORE_PROFILE)
+//   target_link_libraries(timeline_visuals PRIVATE
+//       Qt6::Core Qt6::Core5Compat Qt6::Widgets Qt6::Gui Qt6::OpenGL
+//       Qt6::OpenGLWidgets Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+//       cmnd core ctrl gl img thr util pugixml)
+// Headless: QApplication for the app's own internals (QSettings, palettes), no
+// GL context and no .anie file.
+#include <QApplication>
+#include <QImage>
+#include <QPainter>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include "XCAssert.h"
+#include "core/MoveKey.h"
+#include "core/ObjectNode.h"
+#include "core/OpaKey.h"
+#include "core/TimeLine.h"
+#include "ctrl/TimeLineEditor.h"
+#include "cmnd/Stack.h"
+#include "gui/theme/Colors.h"
+#include "gui/theme/TimeLine.h"
+
+// Project.cpp (in the core library) references the GUI's AudioPlaybackWidget
+// only to load a .aemus sidecar, which this test never has. Stub it so the link
+// succeeds - same as rightclick_transient_selection and bonekey_regression.
+#include "gui/AudioPlaybackWidget.h"
+bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfig>*) { return false; }
+
+// ctrl::TimeLineEditor's clipboard-paste helpers reference two GUI symbols that
+// only matter on the paste path this test never exercises. Stub them (same
+// pattern) instead of linking the whole gui library.
+#include "gui/ObjectTreeWidget.h"
+bool gui::obj::Item::isTopNode() const { return false; }
+std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshImpl(core::ObjectNode&, int) {
+    return { nullptr, nullptr };
+}
+
+namespace {
+
+class HarnessAssertHandler: public XCAssertHandler {
+public:
+    void failure() const override { std::abort(); }
+};
+class HarnessErrorHandler: public XCErrorHandler {
+public:
+    void critical(const QString&, const QString&, const QString&) const override { std::abort(); }
+};
+HarnessAssertHandler gAssertHandler;
+HarnessErrorHandler gErrorHandler;
+
+#define CHECK(cond)                                                                                    \
+    do {                                                                                               \
+        if (!(cond)) {                                                                                 \
+            std::printf("FAIL %d: %s\n", __LINE__, #cond);                                             \
+            return 1;                                                                                  \
+        }                                                                                              \
+    } while (false)
+
+// A pixel as plain components: the assertions are stated in the palette's own
+// numbers, so nothing has to round-trip through QColor's colour spaces.
+struct Rgb {
+    int r = 0;
+    int g = 0;
+    int b = 0;
+};
+
+Rgb rgbOf(const QColor& aColor) { return {aColor.red(), aColor.green(), aColor.blue()}; }
+
+Rgb pixelAt(const QImage& aImage, int aX, int aY) { return rgbOf(aImage.pixelColor(aX, aY)); }
+
+// The distance the assertions care about: the largest single-channel gap. A hue
+// tint and a neutral ink of the same strength are told apart by this on a
+// neutral band, and a composite that differs in one channel only still counts.
+int chebyshev(const Rgb& a, const Rgb& b) {
+    return std::max({std::abs(a.r - b.r), std::abs(a.g - b.g), std::abs(a.b - b.b)});
+}
+
+// Source-over of a translucent source on an opaque destination: what a lane
+// band does over the floor, and how the old and the new fill tokens are
+// compared with the pixel that is actually painted.
+Rgb over(const QColor& aSrc, double aAlpha, const Rgb& aDst) {
+    auto channel = [&](int aS, int aD) {
+        return static_cast<int>(std::lround(aAlpha * aS + (1.0 - aAlpha) * aD));
+    };
+    return {channel(aSrc.red(), aDst.r), channel(aSrc.green(), aDst.g), channel(aSrc.blue(), aDst.b)};
+}
+
+// The focused key's fill (design s3): the type colour mixed toward the
+// keyframe highlight - the mock's mixWhite(hue, t), i.e. t of each channel's
+// distance to white, at the mock's own t. Its --key-highlight token is
+// #ffffff (proposal.css), so the mix target is plain white.
+constexpr double kSelectFillMix = 0.45;
+
+Rgb towardHighlight(const Rgb& aColor, double aT) {
+    auto mix = [&](int aChannel) {
+        return static_cast<int>(std::lround(aChannel + (255 - aChannel) * aT));
+    };
+    return {mix(aColor.r), mix(aColor.g), mix(aColor.b)};
+}
+
+// The canvas: lane bands span the whole visible width, so the probes need a
+// wide, short surface. The width is what puts the centred lane label
+// (cameraRect.center().x() - 50) far from the keys.
+constexpr int kWidth = 800;
+constexpr int kHeight = 200;
+// The row bands: 22px-aligned lanes below the ruler strip, like the rows a real
+// view pushes from the tree.
+constexpr int kRowATop = 22;
+constexpr int kRowABottom = 82;
+constexpr int kRowBTop = 82;
+constexpr int kRowBBottom = 142;
+// The frames the keys live on: far from the frame range's ends, so the range
+// marker hairlines (drawn at the first/last frame) never touch a probe.
+constexpr int kKeyFrameA = 100;
+constexpr int kKeyFrameFocused = 120;
+// A probe column inside every band and clear of every key, of the label boxes
+// and of the range markers (the label box starts around x=349, the markers sit
+// at x=24 and x=244).
+constexpr int kBandProbeX = 300;
+// The most ink a band may carry over itself: Qt's 8-bit compositing rounds by
+// at most a unit per channel, so this is "nothing is painted here".
+constexpr int kClean = 2;
+
+QImage renderTimeline(const ctrl::TimeLineEditor& aEditor, theme::TimeLine& aTheme) {
+    // The floor the widget's own background paints (the QSS @base@): the lane
+    // fills composite onto it, so the probes compare against the same dst.
+    QImage image(kWidth, kHeight, QImage::Format_RGB32);
+    image.fill(theme::Colors::current().base);
+
+    core::CameraInfo camera;
+    camera.setScreenSize(QSize(kWidth, kHeight));
+
+    QPainter painter(&image);
+    const QPoint origin = camera.leftTopPos().toPoint();
+    painter.translate(origin);
+    aEditor.render(painter, camera, aTheme, QRect(QPoint(0, 0), QSize(kWidth, kHeight)).translated(-origin));
+    painter.end();
+    return image;
+}
+
+// The label box: the renderer's own placement (100px wide, centred on the
+// camera rect, the row's whole height for a one-type row), inset a few pixels
+// so the row seams are never sampled.
+QRect labelBox(int aRowTop, int aRowBottom) {
+    const int center = QRect(0, 0, kWidth, kHeight).center().x();
+    return QRect(QPoint(center - 50 + 3, aRowTop + 4), QPoint(center + 50 - 3, aRowBottom - 4));
+}
+
+int inkIn(const QImage& aImage, const QRect& aBox, const Rgb& aBand) {
+    int best = 0;
+    for (int y = aBox.top(); y <= aBox.bottom(); ++y) {
+        for (int x = aBox.left(); x <= aBox.right(); ++x) {
+            best = std::max(best, chebyshev(pixelAt(aImage, x, y), aBand));
+        }
+    }
+    return best;
+}
+
+// The pixel of aBox that carries the most ink against the band: the glyph's
+// core, and the only sample a partial-coverage probe can state a rule about.
+Rgb strongestInk(const QImage& aImage, const QRect& aBox, const Rgb& aBand) {
+    Rgb found = aBand;
+    int best = -1;
+    for (int y = aBox.top(); y <= aBox.bottom(); ++y) {
+        for (int x = aBox.left(); x <= aBox.right(); ++x) {
+            const Rgb p = pixelAt(aImage, x, y);
+            const int ink = chebyshev(p, aBand);
+            if (ink > best) {
+                best = ink;
+                found = p;
+            }
+        }
+    }
+    return found;
+}
+
+// The most ink over the band in a horizontal window at the marker's own y: the
+// row a key's ring arc crosses. A window with no ring is band, i.e. no ink.
+int maxInkIn(const QImage& aImage, int aX0, int aX1, int aY, const Rgb& aBand) {
+    int best = 0;
+    for (int x = aX0; x <= aX1; ++x) {
+        best = std::max(best, chebyshev(pixelAt(aImage, x, aY), aBand));
+    }
+    return best;
+}
+
+} // namespace
+
+XCAssertHandler* gXCAssertHandler = &gAssertHandler;
+XCErrorHandler* gXCErrorHandler = &gErrorHandler;
+
+namespace core {
+// Minimal ObjectNode subclass owning a real TimeLine (ObjectNode::timeLine()
+// is virtual and null by default). No meshes, no resources -- just key maps.
+class TestNode: public ObjectNode {
+    TimeLine mTimeLine;
+
+public:
+    ObjectType type() const override { return ObjectType_Layer; }
+    void setName(const QString&) override {}
+    const QString& name() const override {
+        static QString s;
+        return s;
+    }
+    float initialDepth() const override { return 0; }
+    void setVisibility(bool) override {}
+    bool isVisible() const override { return true; }
+    void setSlimDown(bool) override {}
+    bool isSlimmedDown() const override { return false; }
+    bool canHoldChild() const override { return false; }
+    void setInitialRect(const QRect&) override {}
+    QRect initialRect() const override { return QRect(); }
+    bool serialize(Serializer&) const override { return true; }
+    bool deserialize(Deserializer&) override { return true; }
+    TimeLine* timeLine() override { return &mTimeLine; }
+    const TimeLine* timeLine() const override { return &mTimeLine; }
+};
+} // namespace core
+
+int main(int argc, char** argv) {
+    QApplication app(argc, argv);
+
+    theme::Colors::activate(true, theme::kDefaultAccent);
+    theme::TimeLine theme;
+
+    const theme::Colors& colors = theme::Colors::current();
+    const Rgb floor = rgbOf(colors.base);
+
+    core::TestNode nodeA; // the selected row: Move keys, one of them focused
+    core::TestNode nodeB; // an unselected row: one Opa key (a strongly hued label)
+    cmnd::Stack stack;
+
+    auto* keyA = new core::MoveKey();
+    auto* keyFocused = new core::MoveKey();
+    stack.push(nodeA.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameA, keyA));
+    stack.push(nodeA.timeLine()->createPusher(core::TimeKeyType_Move, kKeyFrameFocused, keyFocused));
+    stack.push(nodeB.timeLine()->createPusher(core::TimeKeyType_Opa, kKeyFrameA, new core::OpaKey()));
+
+    // The focus the renderer reads is the key's own life link (the same live
+    // link the editor's Selection holds); it must outlive the renders below.
+    util::LifeLink focusLink;
+    keyFocused->setFocus(focusLink);
+    CHECK(keyFocused->isFocused());
+    CHECK(!keyA->isFocused());
+
+    ctrl::TimeLineEditor editor;
+    // The frame range is placed so its ends (and so the range markers) are far
+    // from every probe column.
+    editor.setFrameRange(util::Range(0, 200));
+    editor.pushRow(&nodeA, util::Range(kRowATop, kRowABottom), false);
+    editor.pushRow(&nodeB, util::Range(kRowBTop, kRowBBottom), false);
+    editor.updateRowSelection(&nodeA);
+
+    const ctrl::time::Scaler& scale = editor.timeScale();
+    const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
+    const int keyAx = margin + scale.pixelWidth(kKeyFrameA);
+    const int keyFocusedX = margin + scale.pixelWidth(kKeyFrameFocused);
+    // Both lanes hold one key type, so the key row is the lane's own middle row
+    // (TimeLineRow::keyHeight for a single valid type).
+    const int keyRowAY = kRowATop + (kRowABottom - kRowATop + 1) / 2;
+    const QRect labelA = labelBox(kRowATop, kRowABottom);
+    const QRect labelB = labelBox(kRowBTop, kRowBBottom);
+
+    // The probes only mean anything if they are where they claim to be: the
+    // bands are wide, the label boxes are far to the right of every key, and
+    // the key columns are distinct.
+    CHECK(labelA.left() > kBandProbeX);
+    CHECK(labelB.left() > kBandProbeX);
+    CHECK(keyAx != keyFocusedX);
+    CHECK(keyFocusedX + 9 < labelA.left());
+
+    // --- 1: the selected row's band is the 0.06 accent, and the old 0.40 fill
+    // is gone.
+    {
+        const QImage image = renderTimeline(editor, theme);
+
+        // The band's brush is the token the renderer reads, so its value is
+        // part of the contract: accentBright at 0.06.
+        CHECK(theme.trackSelectColor().name() == colors.accentBright.name());
+        CHECK(theme.trackSelectColor().alphaF() > 0.05 && theme.trackSelectColor().alphaF() < 0.07);
+
+        const Rgb selected = pixelAt(image, kBandProbeX, kRowATop + 38);
+        const Rgb unselected = pixelAt(image, kBandProbeX, kRowBTop + 30);
+
+        const Rgb tint = over(colors.accentBright, 0.06, floor);
+        const Rgb oldFill = over(colors.selection, 0.40, floor);
+        CHECK(chebyshev(tint, oldFill) > 20); // the two states are far apart
+
+        CHECK(chebyshev(selected, tint) <= 2);    // the whisper
+        CHECK(chebyshev(selected, oldFill) > 20); // not the flood
+        CHECK(chebyshev(unselected, floor) <= 2); // untouched rows keep the floor
+
+        // The object tree's selected ROW carries this same tint (see the
+        // harness note at the top: the row fill itself is QTreeView's QSS
+        // paint and is out of reach here). The facts this harness CAN state
+        // about the rule the tree appends: its fill is built from the band's
+        // token - checked above - and the token the app-wide rule paints
+        // instead, the selection flood, is a different colour at a different
+        // alpha, so the override changes what a selected row shows.
+        CHECK(colors.selection.name() != colors.accentBright.name());
+        CHECK(colors.selection.alphaF() > 0.39 && colors.selection.alphaF() < 0.41); // the 0.40 flood, not 0.06
+    }
+
+    // --- 2: the focused key's fill brightens toward the highlight, the
+    // unfocused key keeps its type colour, and the focused key gains the ring.
+    {
+        const QImage image = renderTimeline(editor, theme);
+        const Rgb moveKey = rgbOf(colors.moveKey);
+        const Rgb brightened = towardHighlight(moveKey, kSelectFillMix);
+        // The band the ring is drawn on (row A is the selected row).
+        const Rgb bandA = pixelAt(image, kBandProbeX, keyRowAY);
+
+        // The focused marker's centre is the brightened composite: the type
+        // colour mixed toward the keyframe highlight at the mock's own 0.45.
+        // Equality to that mix is what pins the mix TARGET and its step - the
+        // first wave's "the centre is the plain hue" is exactly what this
+        // replaces.
+        CHECK(chebyshev(pixelAt(image, keyFocusedX, keyRowAY), brightened) <= 2);
+        CHECK(chebyshev(pixelAt(image, keyFocusedX, keyRowAY), moveKey) > 20); // the two states are far apart
+        // No size change at the centre: the ring sits keyRadius+2.6 out and
+        // never covers the marker's own fill.
+        // The unfocused marker is the plain type colour, un-brightened.
+        CHECK(chebyshev(pixelAt(image, keyAx, keyRowAY), moveKey) <= 1);
+        CHECK(chebyshev(pixelAt(image, keyAx, keyRowAY), brightened) > 20);
+
+        // The ring's arc crosses the marker's y a few pixels out (the window
+        // starts past the marker's own edge): an accent arc carries a large
+        // channel deviation from the band.
+        const int ringInk = std::max(
+            maxInkIn(image, keyFocusedX + 5, keyFocusedX + 9, keyRowAY, bandA),
+            maxInkIn(image, keyFocusedX - 9, keyFocusedX - 5, keyRowAY, bandA)
+        );
+        CHECK(ringInk > 40);
+
+        // The control: the identical window around the UNFOCUSED key (its
+        // marker's edge is at +3.75, the window starts at +5) is bare band.
+        const int plainInk = std::max(
+            maxInkIn(image, keyAx + 5, keyAx + 9, keyRowAY, bandA),
+            maxInkIn(image, keyAx - 9, keyAx - 5, keyRowAY, bandA)
+        );
+        CHECK(plainInk <= kClean);
+    }
+
+    // --- 3: the lane label's ink is the channel's hue at 0.42.
+    {
+        const QImage image = renderTimeline(editor, theme);
+        // Row B is unselected, so its band is the floor: a clean dst for an ink
+        // measurement. Its single type is Opa, whose hue is strongly non-neutral.
+        const Rgb bandB = pixelAt(image, kBandProbeX, kRowBTop + 30);
+        CHECK(chebyshev(bandB, floor) <= kClean);
+
+        const Rgb ink = strongestInk(image, labelB, bandB);
+        CHECK(chebyshev(ink, bandB) > 15); // there is ink at all
+
+        const Rgb hueTint = over(colors.opaKey, 0.42, bandB);
+        const Rgb neutralInk = over(colors.text, 180.0 / 255.0, bandB);
+
+        // The ink carries the channel's HUE: the old neutral text ink was a
+        // grey and had no channel spread at all.
+        CHECK(std::max({ink.r, ink.g, ink.b}) - std::min({ink.r, ink.g, ink.b}) > 15);
+        // It is the hue at 0.42 rather than a neutral ink of the same strength:
+        // much closer to the tint than to the old text composite.
+        CHECK(chebyshev(ink, hueTint) + 20 < chebyshev(ink, neutralInk));
+        // And it is quiet - still nearer its own band than the full-strength
+        // hue, which no full-brightness ink is.
+        CHECK(chebyshev(ink, bandB) < chebyshev(ink, rgbOf(colors.opaKey)));
+    }
+
+    // --- 4: the lane label yields its column to the playhead's pill.
+    {
+        // The pill's centre is margin + pixelWidth(frame) - the same mapping the
+        // keys and the ruler use - so the label can be put exactly under it: the
+        // label is centred on the camera rect.
+        const int labelCenterX = QRect(0, 0, kWidth, kHeight).center().x();
+        int playFrame = 0;
+        while (margin + scale.pixelWidth(playFrame + 1) <= labelCenterX)
+            ++playFrame;
+        const int playX = margin + scale.pixelWidth(playFrame);
+        CHECK(std::abs(playX - labelCenterX) <= 1); // the suppression's precondition
+
+        editor.setFrame(core::Frame(playFrame));
+        const QImage underPill = renderTimeline(editor, theme);
+        const Rgb bandUnderPill = pixelAt(underPill, kBandProbeX, kRowBTop + 30);
+        // The label is not drawn at all, so its whole box - not just the pill's
+        // own column - stays bare band.
+        CHECK(inkIn(underPill, labelB, bandUnderPill) <= kClean);
+        // Row A is the selected row, so its band is the tint: compare against
+        // its own band, not row B's.
+        const Rgb bandUnderPillRowA = pixelAt(underPill, kBandProbeX, keyRowAY);
+        CHECK(inkIn(underPill, labelA, bandUnderPillRowA) <= kClean);
+
+        // The control: with the playhead away from the label's column the same
+        // box carries ink, so the suppression is the pill's doing.
+        editor.setFrame(core::Frame(10)); // x = margin + 11, far to the left
+        const QImage awayFromPill = renderTimeline(editor, theme);
+        const Rgb bandAway = pixelAt(awayFromPill, kBandProbeX, kRowBTop + 30);
+        CHECK(inkIn(awayFromPill, labelB, bandAway) > 15);
+    }
+
+    std::printf("timeline_visuals: all checks passed\n");
+    return 0;
+}

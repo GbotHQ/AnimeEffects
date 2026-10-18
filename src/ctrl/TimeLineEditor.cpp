@@ -8,6 +8,7 @@
 #include "qjsonarray.h"
 #include "qjsondocument.h"
 #include "qjsonobject.h"
+#include <QFontMetrics>
 #include "cmnd/ScopedMacro.h"
 #include "cmnd/BasicCommands.h"
 #include "ctrl/TimeLineEditor.h"
@@ -1001,6 +1002,16 @@ void TimeLineEditor::render(
     renderer.setTimeScale(mTimeScale);
     renderer.setProjectRange(mFrameRange);
     renderer.setPlayWindow(mPlayWindow);
+    // The playhead's pill (gui::TimeCursor) overlays the numbers row in its
+    // own column; the lane labels yield to it (design s1). Its geometry is
+    // read the way the cursor itself derives it — the frame text measured
+    // with the font both are painted in, plus kPillPadding either side — so
+    // the column the renderer clears is the column the pill actually covers.
+    const core::TimeFormat cursorFormat(mFrameRange, mFps);
+    const QString cursorText = cursorFormat.frameToString(mTimeCurrent.frame().get(), timelineFormat);
+    const int pillHalfWidth =
+        (QFontMetrics(aPainter.font()).horizontalAdvance(cursorText) + 2 * kPillPadding) / 2;
+    renderer.setPlayhead(margin + mTimeScale.pixelWidth(mTimeCurrent.frame().get()), pillHalfWidth);
 
     renderer.renderLines(mRows, camRect, cullRect);
     // Range hairlines are part of the track background: they paint over the

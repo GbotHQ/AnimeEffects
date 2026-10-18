@@ -24,6 +24,7 @@
 #include "ctrl/ImageFileLoader.h"
 #include "gui/ResourceDialog.h"
 #include "gui/ProjectHook.h"
+#include "gui/theme/Colors.h"
 #include "gui/obj/obj_MoveItem.h"
 #include "gui/obj/obj_InsertItem.h"
 #include "gui/obj/obj_RemoveItem.h"
@@ -57,6 +58,22 @@ constexpr int kIconFadeRole = Qt::UserRole + 1;
 // Scrollable space kept after the last row so collapsing a branch near the
 // bottom doesn't make the view jump when the content height shrinks.
 static const int kBottomPadding = 12;
+// The selected row's rail (design s3): a 2px accent-bright bar at the row's
+// left edge — the mock's .tl-trow.sel draws the same thing as an inset 2px
+// box-shadow, and its row background is the lane's 0.06 tint.
+constexpr int kSelectRailWidth = 2;
+// The selected row's background: the SAME tint as the timeline's lane band
+// (theme::TimeLine::reset bakes the identical accentBright @0.06), because
+// selection is one treatment across the two columns — the rail plus the faint
+// tint over the row. The app-wide stylesheet paints every item view's selected
+// row with the shared selection token (the accent at 0.40, the flood), so the
+// widget that owns the rail restates just its own rows' fill below.
+constexpr double kSelectRowTintAlpha = 0.06;
+QColor selectRowTint() {
+    QColor tint = theme::Colors::current().accentBright;
+    tint.setAlphaF(kSelectRowTintAlpha);
+    return tint;
+}
 
 // QStyledItemDelegate maps the item's ForegroundRole brush onto the palette's
 // Text role only: selected text is drawn with HighlightedText, so a hidden
@@ -592,7 +609,25 @@ void ObjectTreeWidget::updateColumnWidth() {
 }
 
 void ObjectTreeWidget::onThemeUpdated(theme::Theme& aTheme) {
-    this->setStyleSheet(aTheme.loadStylesheet("standard.ssa"));
+    // The tree's selected row is the lane band's 0.06 tint plus the rail, not
+    // the shared selection token the app-wide stylesheet gives every item view
+    // (the accent at 0.40) — one treatment, so the two columns read as the same
+    // selection. The rule is restated for #objectTree alone: an ID makes it win
+    // the cascade wherever standard.ssa places its own rule, and keeps every
+    // other item view on the shared token. The value is written the way the
+    // theme writes its own translucent tokens (HexArgb keeps the 0.06 alpha;
+    // plain name() would drop it and paint an opaque accent).
+    const QColor tint = selectRowTint();
+    this->setStyleSheet(
+        aTheme.loadStylesheet("standard.ssa")
+        + QStringLiteral(
+              "QAbstractItemView#objectTree::item:pressed,"
+              "QAbstractItemView#objectTree::item:selected:!active,"
+              "QAbstractItemView#objectTree::item:selected:active,"
+              "QAbstractItemView#objectTree::item:selected:hover"
+              "{ background: %1; }")
+              .arg(tint.name(QColor::HexArgb))
+    );
 
     // Item colors are derived from the (possibly changed) palette and the icons
     // from the (rebuilt) icon map, so re-apply them to every node. Without this
@@ -1656,6 +1691,31 @@ void ObjectTreeWidget::onDeleteActionTriggered(bool) {
 //-------------------------------------------------------------------------------------------------
 void ObjectTreeWidget::paintEvent(QPaintEvent* aEvent) {
     QTreeWidget::paintEvent(aEvent);
+
+    // The selected object row's rail (design s3): a 2px accent-bright bar
+    // along the row's left edge, spanning its whole height. There is ONE rail
+    // and it is the tree's — a rail marks where a row STARTS, and a row starts
+    // in this column, so the lane band carries only the 0.06 tint (a second
+    // rail at the lane's left edge would be the same statement in a column a
+    // few hundred pixels away). The row the rail marks is the row the lanes
+    // tint: findSelectingRepresentNode() is the same authority the timeline
+    // uses, so a multi-selection (which marks no lane) gets no rail either.
+    if (const core::ObjectNode* represent = findSelectingRepresentNode()) {
+        QPainter painter(this->viewport());
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(theme::Colors::current().accentBright);
+        // The row's start in viewport coordinates: the item column's own
+        // position, so the rail stays on the row's edge when the tree is
+        // scrolled horizontally.
+        const int x = this->header()->sectionViewportPosition(kItemColumn);
+        for (QTreeWidgetItem* item : this->selectedItems()) {
+            obj::Item* objItem = obj::Item::cast(item);
+            if (!objItem || &objItem->node() != represent)
+                continue;
+            const QRect row = this->visualItemRect(item);
+            painter.drawRect(QRect(x, row.top(), kSelectRailWidth, row.height()));
+        }
+    }
 
     if (mDragIndex.isValid()) {
         QPainter painter(this->viewport());

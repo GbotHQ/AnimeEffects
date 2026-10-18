@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QMouseEvent>
+#include <QFontMetrics>
 #include "core/TimeFormat.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/TimeLineEditorWidget.h"
@@ -110,6 +111,23 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
         // top + height) so they never draw over it
         const QPoint rb = lt + QPoint(scale.maxPixelWidth(), aHeight - 1);
         const core::TimeFormat timeFormat(aVisibleRange, aFps);
+
+        // The playhead's own column. gui::TimeCursor draws the frame-number
+        // pill at the playhead's x, and that pill carries the only number in
+        // its column: a ruler number whose centre falls inside the pill's
+        // half-width is not drawn at all (design s1/s3 — the mock's ruler
+        // suppresses its numbers the same way). The span is the PILL's own
+        // geometry, derived exactly as the cursor derives it (the frame text
+        // measured with the font both are painted in, plus kPillPadding either
+        // side), so the yield matches the pill rather than a guessed number.
+        const int playFrame = mEditor->currentFrame().get();
+        const QString playText = timeFormat.frameToString(playFrame, mEditor->timeFormatType());
+        const int pillHalfWidth =
+            (QFontMetrics(aPainter.font()).horizontalAdvance(playText) + 2 * ctrl::TimeLineEditor::kPillPadding) / 2;
+        const int playheadX = lt.x() + scale.pixelWidth(playFrame);
+        const auto underPill = [&](int aNumberCenter) {
+            return qAbs(aNumberCenter - playheadX) < pillHalfWidth;
+        };
 
         // The project's last frame owns the end of the ruler: when it is
         // in view but not on a scale multiple, it reads as a major tick
@@ -245,6 +263,10 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
                             continue;
                     }
                 }
+                // The pill owns its column: the number yields to it (the tick
+                // above it stays — only the number is the pill's).
+                if (underPill(pos.x()))
+                    continue;
                 QColor numberColor = kBrush.color();
                 if (!inRange)
                     numberColor.setAlphaF(0.4);
@@ -293,17 +315,20 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
             const bool inRange = activeRange.contains(firstFrame) && activeRange.contains(lastFrame);
             const qreal mergedAlpha = inRange ? 1.0 : 0.4;
 
-            QColor numberColor = kBrush.color();
-            numberColor.setAlphaF(mergedAlpha);
-            aPainter.setPen(QPen(numberColor, 1));
-            const int left = mergedLabelCenter - (mergedNumberWidth >> 1);
-            const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
-            const QRect rect(
-                QPoint(left, top), QPoint(left + mergedNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
-            );
-            aPainter.drawText(rect, mergedNumber);
+            // The pill owns its column (its own number is the one to read).
+            if (!underPill(mergedLabelCenter)) {
+                QColor numberColor = kBrush.color();
+                numberColor.setAlphaF(mergedAlpha);
+                aPainter.setPen(QPen(numberColor, 1));
+                const int left = mergedLabelCenter - (mergedNumberWidth >> 1);
+                const int top = lt.y() + ctrl::TimeLineEditor::kNumberTop;
+                const QRect rect(
+                    QPoint(left, top), QPoint(left + mergedNumberWidth + 1, top + ctrl::TimeLineEditor::kNumberHeight)
+                );
+                aPainter.drawText(rect, mergedNumber);
+            }
         } else {
-            if (firstLabelActive) {
+            if (firstLabelActive && !underPill(firstLabelCenter)) {
                 const qreal firstAlpha = activeRange.contains(firstFrame) ? 1.0 : 0.4;
 
                 QColor numberColor = kBrush.color();
@@ -316,7 +341,7 @@ void TimeRuler::renderHeader(QPainter& aPainter, const QRect& aCameraRect, const
                 );
                 aPainter.drawText(rect, firstNumber);
             }
-            if (lastLabelActive) {
+            if (lastLabelActive && !underPill(lastLabelCenter)) {
                 const qreal lastAlpha = activeRange.contains(lastFrame) ? 1.0 : 0.4;
 
                 QColor numberColor = kBrush.color();

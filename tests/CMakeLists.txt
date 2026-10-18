@@ -1077,6 +1077,30 @@ target_link_libraries(imgui_a11y PRIVATE
     Qt6::Core Qt6::Gui Qt6::Widgets
 )
 
+# The timeline's pixel contract for the row tint, the key fill/ring, the lane
+# label's ink and the pill's column. Drives the real ctrl::TimeLineEditor::render
+# into an offscreen QImage - no GL, no window - and reads its geometry off the
+# editor's own public mapping, so a change to the scale cannot silently move it.
+# Compiles theme::TimeLine directly because ctrl's renderer names that class and
+# leaves its symbols unresolved (the same reason graph_panel_model compiles
+# theme::Graph). See timeline_visuals.cpp.
+
+add_executable(timeline_visuals timeline_visuals.cpp
+    ../src/gui/theme/TimeLine.cpp)
+target_include_directories(timeline_visuals PRIVATE .. ../src)
+target_compile_definitions(timeline_visuals PRIVATE
+    AE_MAJOR_VERSION=1
+    AE_MINOR_VERSION=7
+    AE_MICRO_VERSION=1
+    USE_GL_CORE_PROFILE
+)
+target_link_libraries(timeline_visuals PRIVATE
+    Qt6::Core Qt6::Core5Compat Qt6::Widgets
+    Qt6::Gui Qt6::OpenGL Qt6::OpenGLWidgets
+    Qt6::Svg Qt6::Xml Qt6::Concurrent Qt6::Multimedia
+    cmnd core ctrl gl img thr util pugixml
+)
+
 # The panel model: what the overlay draws, as engine-neutral geometry computed from
 # ctrl::GraphEditor - and, crucially, asserted CONSISTENT with the editor's own
 # panelRect/scale, because a model that computed its own rects would silently

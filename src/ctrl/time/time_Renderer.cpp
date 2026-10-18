@@ -2,12 +2,67 @@
 #include "ctrl/TimeLineEditor.h"
 #include "gui/theme/Colors.h"
 
+#include <cmath>
+
 using namespace core;
 
 namespace ctrl {
 namespace time {
 
     static QColor withAlpha(QColor aColor, int aAlpha) { aColor.setAlpha(aAlpha); return aColor; }
+
+    // The focused key's fill: the type colour mixed toward the keyframe
+    // highlight (design s3 — "the fill brightens toward the keyframe highlight
+    // ... the size never changes"). The mock's own step is
+    // mixWhite(hue, 0.45) = round(c + (255 - c) * 0.45) per channel, i.e. 45%
+    // of the distance to white; its --key-highlight token is #ffffff
+    // (proposal.css), and the app's palette has no pure-white cell, so the mix
+    // target is white itself and the step is 0.45. Hover brightens the same way
+    // in the design; the app still has no hover state, so only focus uses it.
+    constexpr double kSelectFillMix = 0.45;
+    static QColor brightenTowardHighlight(const QColor& aColor) {
+        const auto mix = [](int aChannel) {
+            return static_cast<int>(std::lround(aChannel + (255 - aChannel) * kSelectFillMix));
+        };
+        return QColor(mix(aColor.red()), mix(aColor.green()), mix(aColor.blue()), aColor.alpha());
+    }
+
+    // The lane label's ink: the channel's hue at 0.42 (design s1 — "the ink
+    // becomes the channel's hue at 0.42", one step quieter than the keys). The
+    // value is the mock's own (hexA(hue, 0.42) in its band-name pass).
+    constexpr int kLabelAlpha = 107; // 0.42
+    // The selected key's ring (design s3): 1px wide, clear of the marker, in
+    // the accent — the marker itself keeps its size and its own type colour.
+    // Radius and alpha are the mock's own values for that ring (marker
+    // r=keyRadius, ring r=keyRadius+2.6, at 0.85). The mock paints that ring in
+    // --key-highlight (#ffffff); this pass keeps the app's accentBright, the
+    // token every other focus/selection edge in the app already uses.
+    constexpr int kSelectRingAlpha = 217; // 0.85
+    constexpr double kSelectRingRadius = keyRadius + 2.6;
+
+    // The channel hue of a key type: the timeline's own per-type key colours
+    // (theme::Colors kKeyColorRow at the theme's key column). One lookup for
+    // both the keys and their lane's label, so a band's name can never
+    // disagree with the keys under it.
+    static QColor keyColor(TimeKeyType aType) {
+        const theme::Colors& c = theme::Colors::current();
+        switch (aType) {
+            case TimeKeyType_Move: return c.moveKey;
+            case TimeKeyType_Rotate: return c.rotateKey;
+            case TimeKeyType_Scale: return c.scaleKey;
+            case TimeKeyType_Depth: return c.depthKey;
+            case TimeKeyType_Opa: return c.opaKey;
+            case TimeKeyType_Bone: return c.boneKey;
+            case TimeKeyType_Pose: return c.poseKey;
+            case TimeKeyType_Mesh: return c.meshKey;
+            case TimeKeyType_FFD: return c.FFDKey;
+            case TimeKeyType_Image: return c.imageKey;
+            case TimeKeyType_HSV: return c.HSVKey;
+            case TimeKeyType_Blur: return c.blurKey;
+            case TimeKeyType_TERM: break;
+        }
+        return c.baseKey; // the neutral key, drawn plain in every state
+    }
 
     Renderer::Renderer(QPainter& aPainter, const CameraInfo& aCamera, const theme::TimeLine& aTheme):
         mPainter(aPainter), mCamera(aCamera), mTheme(aTheme), mMargin(), mRange(), mScale() {}
@@ -20,9 +75,16 @@ namespace time {
         const QBrush kBrushBodySelect(mTheme.trackSelectColor());
         const QBrush kBrushEdge(mTheme.trackEdgeColor());
         const QBrush kBrushSepa(mTheme.trackSeperatorColor());
-        const QBrush kBrushText(mTheme.trackTextColor());
         const int textWidth = 100;
         const int textLeft = aCameraRect.center().x() - textWidth / 2;
+        // Design s1: a name is never drawn under the playhead's own pill — the
+        // pill carries the only number in its column. The test is the pill's
+        // own half-width about the playhead's x, i.e. exactly the rule the
+        // ruler applies to its numbers (the mock suppresses both the same
+        // way), so the lane names and the ruler cannot disagree about which
+        // column the pill owns. The label's x is its own centre: its
+        // placement is unchanged (centred on the viewport).
+        const bool labelUnderPlayhead = qAbs(textLeft + textWidth / 2 - mPlayheadX) < mPlayheadHalfWidth;
 
         for (const TimeLineRow& row : aRows) {
             const QRect rect = row.rect;
@@ -61,22 +123,25 @@ namespace time {
                     mPainter.drawLine(v0, v1);
                 }
 
-                // draw type labels
-                mPainter.setPen(QPen(kBrushText, 1));
-                int i = 0;
-                for (int typei = 0; typei < TimeKeyType_TERM; ++typei) {
-                    auto type = TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
-                    if (row.node->timeLine()->isEmpty(type)) {
-                        continue;
-                    }
+                // draw type labels: in the channel's hue at 0.42 (design s1),
+                // and not at all when the playhead's pill owns this column.
+                if (!labelUnderPlayhead) {
+                    int i = 0;
+                    for (int typei = 0; typei < TimeKeyType_TERM; ++typei) {
+                        auto type = TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
+                        if (row.node->timeLine()->isEmpty(type)) {
+                            continue;
+                        }
 
-                    const float h = static_cast<float>(rect.height()) / sepa;
-                    mPainter.drawText(
-                        QRect(textLeft, rect.top() + static_cast<int>(i * h), textWidth, static_cast<int>(h)),
-                        TimeLine::getTimeKeyName(type),
-                        QTextOption(Qt::AlignCenter)
-                    );
-                    ++i;
+                        const float h = static_cast<float>(rect.height()) / sepa;
+                        mPainter.setPen(QPen(withAlpha(keyColor(type), kLabelAlpha), 1));
+                        mPainter.drawText(
+                            QRect(textLeft, rect.top() + static_cast<int>(i * h), textWidth, static_cast<int>(h)),
+                            TimeLine::getTimeKeyName(type),
+                            QTextOption(Qt::AlignCenter)
+                        );
+                        ++i;
+                    }
                 }
             }
 
@@ -203,67 +268,18 @@ namespace time {
                 const float height = aRow.keyHeight(validIndex, validNum);
                 ++validIndex;
 
-                mPainter.setPen(QPen(kBrushKeyEdge, 1));
-
                 auto itr = map.lowerBound(mRange.min());
                 while (itr != map.end() && itr.key() <= mRange.max()) {
                     const bool isFocused = itr.value()->isFocused();
-                    constexpr int lighter_val_selected = 150;
-                    QBrush kBrushKeyBody1(theme::Colors::current().baseKey.lighter(lighter_val_selected));
-                    QBrush kBrushKeyBody2(theme::Colors::current().baseKey);
-                    switch (itr.value()->type()) {
-                        case TimeKeyType_Move:
-                            kBrushKeyBody1 = theme::Colors::current().moveKey;
-                            kBrushKeyBody2 = theme::Colors::current().moveKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Rotate:
-                            kBrushKeyBody1 = theme::Colors::current().rotateKey;
-                            kBrushKeyBody2 = theme::Colors::current().rotateKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Scale:
-                            kBrushKeyBody1 = theme::Colors::current().scaleKey;
-                            kBrushKeyBody2 = theme::Colors::current().scaleKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Depth:
-                            kBrushKeyBody1 = theme::Colors::current().depthKey;
-                            kBrushKeyBody2 = theme::Colors::current().depthKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Opa:
-                            kBrushKeyBody1 = theme::Colors::current().opaKey;
-                            kBrushKeyBody2 = theme::Colors::current().opaKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Bone:
-                            kBrushKeyBody1 = theme::Colors::current().boneKey;
-                            kBrushKeyBody2 = theme::Colors::current().boneKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Pose:
-                            kBrushKeyBody1 = theme::Colors::current().poseKey;
-                            kBrushKeyBody2 = theme::Colors::current().poseKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Mesh:
-                            kBrushKeyBody1 = theme::Colors::current().meshKey;
-                            kBrushKeyBody2 = theme::Colors::current().meshKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_FFD:
-                            kBrushKeyBody1 = theme::Colors::current().FFDKey;
-                            kBrushKeyBody2 = theme::Colors::current().FFDKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Image:
-                            kBrushKeyBody1 = theme::Colors::current().imageKey;
-                            kBrushKeyBody2 = theme::Colors::current().imageKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_HSV:
-                            kBrushKeyBody1 = theme::Colors::current().HSVKey;
-                            kBrushKeyBody2 = theme::Colors::current().HSVKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_Blur:
-                            kBrushKeyBody1 = theme::Colors::current().blurKey;
-                            kBrushKeyBody2 = theme::Colors::current().blurKey.lighter(lighter_val_selected);
-                            break;
-                        case TimeKeyType_TERM:
-                            break;
-                    }
-                    mPainter.setBrush(isFocused ? kBrushKeyBody2 : kBrushKeyBody1);
+                    const QColor hue = keyColor(itr.value()->type());
+                    // Unfocused keys keep their own type colour outright; a
+                    // focused one brightens its fill toward the keyframe
+                    // highlight (above), which is the design's selection
+                    // feedback for the fill — the .lighter(150) body swap and
+                    // the neutral key's polarity inversion (lit when unfocused,
+                    // plain when focused) are both gone.
+                    mPainter.setPen(QPen(kBrushKeyEdge, 1));
+                    mPainter.setBrush(isFocused ? brightenTowardHighlight(hue) : hue);
 
                     auto attr = mScale->attribute(itr.key());
                     QPointF pos(left + attr.pos + 0.5, height + 0.5f);
@@ -288,6 +304,19 @@ namespace time {
                         mPainter.drawConvexPolygon(poly, 4);
                     } else {
                         mPainter.drawEllipse(pos, keyRadius, keyRadius);
+                    }
+
+                    if (isFocused) {
+                        // Design s3: the selected key's 1px accent ring, clear
+                        // of the marker; no size change, so the drawn radius
+                        // stays keyRadius (the hit radius is ~4x it, and no hit
+                        // test keys off the drawn size). It replaces the old
+                        // fill brightening outright.
+                        mPainter.setPen(
+                            QPen(withAlpha(theme::Colors::current().accentBright, kSelectRingAlpha), 1)
+                        );
+                        mPainter.setBrush(Qt::NoBrush);
+                        mPainter.drawEllipse(pos, kSelectRingRadius, kSelectRingRadius);
                     }
 
                     ++itr;
