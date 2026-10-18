@@ -118,23 +118,31 @@ inline QPointF keyDot(const Scaler& aScale, core::Frame aFrame, float aValue) {
     return QPointF(center.x(), center.y());
 }
 
-// Where a Custom easing's tangent handle lands in panel pixels. x normalizes
-// along the segment's frame span and y across its value span - the space
-// Curve::handle() stores handles in, because it is the space playback consumes -
-// so the pixel is that normalized point pushed through the two axes.
+// Where a NORMALIZED handle point lands in panel pixels. x normalizes along the
+// segment's frame span and y across its value span - the space Curve::handle()
+// stores handles in, because it is the space playback consumes - so the pixel is
+// that normalized point pushed through the two axes.
 //
-// aHandleIndex 0 leaves the segment's `from` key and 1 arrives at its `to` key.
-// The editor's hit-test grabs a handle here (within kHandleHitRadius) and the
-// model publishes its dot here (drawn at radius kHandleRadius), so a grab at the
-// dot is the drag the editor performs.
-inline QPointF handlePoint(const Scaler& aScale, const Curve::Segment& aSegment, int aHandleIndex) {
-    const QPointF normalized = Curve::handle(aSegment, aHandleIndex);
+// This is the one mapping every handle goes through, stored or derived: a Custom
+// pair (Curve::handle), an Auto pair (Curve::ghostHandles), and a drag's own
+// position read back (the editor's handleNormalized is the inverse). A pair's
+// first point leaves the segment's `from` key and its second arrives at its `to`
+// key, which is the order handlePoint() and ghostHandles() both hand out.
+inline QPointF handlePointAt(const Scaler& aScale, const Curve::Segment& aSegment, const QPointF& aNormalized) {
     const double frameSpan = static_cast<double>(aSegment.to->frame() - aSegment.from->frame());
     const double valueSpan = static_cast<double>(aSegment.toValue - aSegment.fromValue);
 
-    const double frame = static_cast<double>(aSegment.from->frame()) + normalized.x() * frameSpan;
-    const float value = aSegment.fromValue + static_cast<float>(normalized.y() * valueSpan);
+    const double frame = static_cast<double>(aSegment.from->frame()) + aNormalized.x() * frameSpan;
+    const float value = aSegment.fromValue + static_cast<float>(aNormalized.y() * valueSpan);
     return QPointF(aScale.pixelXOfFrame(frame), static_cast<double>(aScale.pixelY(value)));
+}
+
+// Where a STORED (Custom) tangent handle lands in panel pixels: the segment's own
+// pair through the mapping above. The editor's hit-test grabs a handle here
+// (within kHandleHitRadius) and the model publishes its dot here (drawn at radius
+// kHandleRadius), so a grab at the dot is the drag the editor performs.
+inline QPointF handlePoint(const Scaler& aScale, const Curve::Segment& aSegment, int aHandleIndex) {
+    return handlePointAt(aScale, aSegment, Curve::handle(aSegment, aHandleIndex));
 }
 
 } // namespace graph

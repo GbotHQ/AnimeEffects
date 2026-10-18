@@ -1210,6 +1210,52 @@ int sectionAutoEasing() {
     // at half way is 1.5t^2(1-t) + t^3 = 0.3125 -> 100 - 60*0.3125 = 81.25.
     CHECK(nearly(rotate.sample(core::Frame(15)), 81.25f, 0.5f));
 
+    // ...and the SAME pair the drawing rate uses is published as the segment's
+    // GHOST handles (Curve::ghostHandles): derived, not stored, at the third
+    // points - so the panel can draw them hollow where a Custom pair is filled,
+    // and a drag can turn one into a Custom pair without the curve moving.
+    {
+        const QVector<QPointF> ghost0 = rotate.ghostHandles(*rotate.segment(0).from);
+        CHECK(ghost0.size() == 2);
+        CHECK(nearly(static_cast<float>(ghost0[0].x()), 1.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(ghost0[0].y()), 0.5f, 1e-4f));
+        CHECK(nearly(static_cast<float>(ghost0[1].x()), 2.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(ghost0[1].y()), 1.0f, 1e-4f));
+
+        const QVector<QPointF> ghost1 = rotate.ghostHandles(*rotate.segment(1).from);
+        CHECK(ghost1.size() == 2);
+        CHECK(nearly(static_cast<float>(ghost1[0].x()), 1.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(ghost1[0].y()), 0.0f, 1e-4f));
+        CHECK(nearly(static_cast<float>(ghost1[1].x()), 2.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(ghost1[1].y()), 0.5f, 1e-4f));
+
+        // ...and the pair is the curve: the cubic with those controls passes the
+        // values the section above read out of the document, so a ghost dot drawn
+        // at the third really is a control point of the drawn curve.
+        CHECK(nearly(rotate.sample(core::Frame(5)), 100.0f * 0.6875f, 0.5f));
+
+        // The LAST key of a channel has no segment to derive over - and a key
+        // whose easing is not Auto derives nothing either - so the answer is
+        // EMPTY, which is how a caller tells "these handles are ghosts" from
+        // "these handles are stored".
+        CHECK(rotate.ghostHandles(*rotate.segment(1).to).isEmpty());
+        {
+            core::TestNode plain;
+            cmnd::Stack plainStack;
+            auto* p0 = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 0);
+            auto* p1 = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 10);
+            p0->data().setRotate(0.0f);
+            p1->data().setRotate(90.0f);
+            const ctrl::graph::Curve linear(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+            CHECK(linear.segmentCount() == 1);
+            CHECK(linear.ghostHandles(*linear.segment(0).from).isEmpty()); // Linear stores nothing to ghost
+
+            p0->data().easing().type = util::Easing::Type_Custom;
+            const ctrl::graph::Curve custom(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+            CHECK(custom.ghostHandles(*custom.segment(0).from).isEmpty()); // Custom's pair is STORED
+        }
+    }
+
     // The rate leaves a key whose neighbours are equal FLAT, which is the whole
     // point of an automatic handle. (Above, at frame 10 the arrival is flat too;
     // this checks the property on the drawn curve, not on a handle value.)
@@ -1275,6 +1321,17 @@ int sectionAutoEasing() {
             const float t = float(frame) / 8.0f;
             CHECK(nearly(line.sample(core::Frame(frame)), 0.2f + 0.8f * t));
         }
+
+        // The ghost pair says the same thing the samples do: the derivation's
+        // IDENTITY handles, (1/3, 1/3) and (2/3, 2/3), whose cubic IS the
+        // straight line - so an Auto segment with no neighbours has ghost
+        // handles exactly on the diagonal it draws.
+        const QVector<QPointF> soloGhosts = line.ghostHandles(*line.segment(0).from);
+        CHECK(soloGhosts.size() == 2);
+        CHECK(nearly(static_cast<float>(soloGhosts[0].x()), 1.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(soloGhosts[0].y()), 1.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(soloGhosts[1].x()), 2.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(soloGhosts[1].y()), 2.0f / 3.0f, 1e-6f));
     }
 
     // Deleting a key changes what is AROUND the survivors, so the surviving

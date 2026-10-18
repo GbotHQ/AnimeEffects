@@ -34,6 +34,60 @@ namespace TimeLineUtil {
     class AssignKeyValue;
 }
 
+// THE WHOLE KEY MOVE AS ONE COMMAND, so a drag that moves N keys is ONE undo
+// step - the design's "Multi-key drag: a per-selection delta, one command per
+// gesture".
+//
+// A key move is two kinds of edit: a FRAME (a map operation on the owning
+// TimeLine) and a VALUE (a field write on one component of one key). The panel
+// already drives the timeline's own commands for both - ctrl::TimeLineUtil's
+// MoveFrameOfKey (which moves a WHOLE core::TimeLineEvent, i.e. every selected
+// key, by one delta with its own conflict rule) and one AssignKeyValue per key's
+// value. What this class adds is the "one command" half: it OWNS those commands,
+// is the single command a cmnd::Gesture<KeyMoveCommand> pushes, and every later
+// step of the drag REWRITES it (modifyMove / modifyValues) instead of pushing
+// another - so the stack grows by one entry per gesture, not one per move, and
+// the whole gesture is one undo step.
+//
+// The sub-commands are NOT stack entries (undo/redo delegate to them), which is
+// exactly what makes replay work: each carries the values it restores, so
+// undoing this command puts every frame and every value back, as cmnd/Stable.h
+// requires of an interactive edit.
+class KeyMoveCommand: public cmnd::Stable {
+public:
+    KeyMoveCommand();
+    virtual ~KeyMoveCommand();
+
+    // The FRAME half, over every target of aTargets (one per selected key, at the
+    // frame it held when the gesture began).
+    void buildFrames(const core::TimeLineEvent& aTargets);
+    // The frame step. Before the command is on the stack this only validates and
+    // records it; afterwards it moves the live keys and fills aModEvent with each
+    // target's from/to frames (Type_MoveKey). False when the step is refused - a
+    // destination another key owns - in which case NOTHING moved and nothing is
+    // recorded, so a refused step can be dropped without leaving a history entry.
+    bool modifyMove(core::TimeLineEvent& aModEvent, int aStep, const util::Range& aFrame, int* aClampedStep);
+
+    // One VALUE half: aKey's (aType, aComponent) follows the gesture's value
+    // delta, from the aBaseValue it held when the gesture began.
+    void addValue(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent, float aBaseValue);
+    // Rewrites every value half to aBaseValue + aValueDelta (an absolute function
+    // of the pointer, so it cannot accumulate a key's own clamp).
+    void modifyValues(float aValueDelta);
+
+    virtual void exec();
+    virtual void undo();
+    virtual void redo();
+
+private:
+    TimeLineUtil::MoveFrameOfKey* mFrames;
+    struct Value {
+        TimeLineUtil::AssignKeyValue* command;
+        float base;
+    };
+    QVector<Value> mValues;
+};
+
 // The animation graph editor: the value curves of the selected layers'
 // channels, drawn as a fullscreen overlay over the animation.
 //
@@ -65,7 +119,9 @@ namespace TimeLineUtil {
 //
 // Every edit is ONE undo step, and every edit announces itself on the timeline's
 // own wire: a handle drag is a cmnd::Gesture over a single
-// cmnd::ModifiableAssign<util::Easing::Param>, and the three key edits - insert,
+// cmnd::ModifiableAssign<util::Easing::Param>, the key move is a
+// cmnd::Gesture over a single KeyMoveCommand (the whole selection, one step of
+// the drag rewritten - see that class above), and the three key edits - insert,
 // move and remove (see insertKeyAt, the MOVE note next to it and
 // removeSelectedKey) - go through a ctrl::TimeLineUtil::Notifier inside a
 // cmnd::ScopedMacro, carrying the same core::TimeLineEvent the timeline emits.
@@ -236,6 +292,30 @@ public:
     // The live selection this editor writes. Never null.
     time::Selection& selection() { return *mSelection; }
     const time::Selection& selection() const { return *mSelection; }
+
+    // --- the selection's HULL and COUNT ---
+    //
+    // The selection as the panel's own drawing pass needs it, in DATA space (frame
+    // and value), never in pixels: the mapping to pixels is the caller's, through
+    // the same Scaler the curves and the hit-test go through, so a hull drawn from
+    // this cannot desync from the markers it encloses.
+    //
+    // HULL: the convex outline of every SELECTED KEY - their corners, in order,
+    // with collinear points dropped - as (frame, value) points. The value is read
+    // on the FIRST graphable component of the key's own type: the selection is the
+    // timeline's own currency and names a key by (line, type, frame), so it does
+    // not carry the component a key was clicked on, and the first component is the
+    // one a type's row leads with. A key whose type is not graphable contributes
+    // nothing, and a stale entry (a frame the document no longer holds) is skipped.
+    // EMPTY when nothing (live) is selected - and, with fewer than three points,
+    // the hull of what is there (a point or a segment), which encloses nothing but
+    // is the honest outline of that many keys.
+    QVector<QPointF> selectionHull() const;
+    // The number of KEYS the selection names that the document still holds - the
+    // count the header and the marquee label show ("3 keys"). A stale entry is not
+    // a key the user sees selected, so it is not counted.
+    int selectionCount() const;
+
     // True while a marquee drag is in flight.
     bool hasMarquee() const { return mMarqueeArmed; }
     // The marquee's rectangle in viewport pixels, normalized (a positive width
@@ -306,43 +386,57 @@ public:
     // every shown curve.
     bool insertKeyAt(const core::CameraInfo& aCamera, const QPoint& aPos);
 
-    // MOVE. Pressing a KEY (not a handle) arms a move: while the button is down
-    // the key follows the pointer in BOTH axes - its frame follows the pointer's
-    // frame delta and its value follows the pointer's value delta, each measured
-    // from where the button went down, so grabbing a key off its centre does not
-    // make it jump by the offset - and the whole gesture is ONE undo step. It is
-    // driven by updateCursor, like the handle drag, and the rules are:
-    //   * the first ACCEPTED move opens ONE commit: a TimeLineUtil::MoveFrameOfKey
-    //     for the FRAME and a cmnd::ModifiableAssign<tKey::Data> for the VALUE,
-    //     side by side inside ONE cmnd::ScopedMacro carrying ONE
-    //     TimeLineUtil::Notifier. Every later move of the gesture rewrites both
-    //     through their own modifyMove/modifyValue, so a drag cannot push one
-    //     command per move;
-    //   * the value command assigns the key's own Data - a copy of what the key
-    //     holds, with the one component the dragged channel names replaced by the
-    //     value the pointer points at. It is a whole-Data assign precisely so
-    //     every component the graph does not draw (a Move key's centroid, an HSV
-    //     key's absolute flag, an Image key's resource and blend mode) is carried
-    //     through unchanged, and the key's own setter still clamps the value to
-    //     its type's bound;
+    // MOVE. Pressing a KEY (not a handle) arms a move over the panel's SELECTION:
+    // while the button is down every selected key follows the pointer - each frame
+    // by the pointer's frame delta and each value by the pointer's value delta,
+    // both measured from where the button went down, so grabbing a key off its
+    // centre does not make it jump by the offset - and the whole gesture is ONE
+    // undo step AND one command (KeyMoveCommand). It is driven by updateCursor,
+    // like the handle drag, and the rules are:
+    //   * the members are the keys the selection named when the press armed the
+    //     move (the press wrote that selection: a plain press replaces it, Shift
+    //     extends it, Ctrl toggles it), resolved against the document so a stale
+    //     entry is dropped. A selection of ONE key - the common case, and what a
+    //     plain press leaves - is exactly the single-key move this replaced;
+    //   * the first ACCEPTED move builds ONE commit: a TimeLineUtil::MoveFrameOfKey
+    //     over every member's FRAME (it already moves a whole core::TimeLineEvent,
+    //     so the selection moves as one unit by one delta with its own conflict
+    //     rule) and one cmnd::AssignKeyValue<T> per VALUE the drag writes, wrapped
+    //     in ONE KeyMoveCommand pushed by ONE cmnd::Gesture inside ONE
+    //     cmnd::ScopedMacro carrying ONE TimeLineUtil::Notifier. Every later move
+    //     rewrites that command (modifyMove/modifyValues), so a drag cannot push
+    //     one command per move;
+    //   * WHICH VALUES MOVE. The value delta is written on the members whose type
+    //     is the PRESSED channel's type, on the pressed channel's own component;
+    //     a member of another type moves its frame only. The selection is named by
+    //     (line, type, frame) and carries no component, so a component the press
+    //     did not name cannot be a component the drag writes - and a component
+    //     written on a type it does not belong to would be a second guess;
+    //   * the value command writes that ONE component through graph::Channel - a
+    //     copy with one field replaced - so every component the graph does not
+    //     draw (a Move key's centroid, an HSV key's absolute flag, an Image key's
+    //     resource and blend mode) is carried through unchanged, and the key's own
+    //     setter still clamps the value to its type's bound;
     //   * SHIFT constrains the gesture to the DOMINANT axis: the pointer's own
     //     pixel displacement decides (|dx| >= |dy| keeps the frame, otherwise the
     //     value), so a drag that is overwhelmingly horizontal does not smear a
     //     stray pixel of vertical movement into the value. Shift is re-read on
     //     every move, so it can be pressed and released mid-drag;
     //   * a destination frame that already holds a key of that type is REFUSED
-    //     (MoveFrameOfKey's own conflict rule), and a refusal refuses the whole
-    //     step - frame AND value stay where the gesture last had them, nothing
-    //     is announced, and the gesture stays open so the pointer can be dragged
-    //     on to a free frame. Nothing is pushed before a step is accepted, so a
-    //     refused drag leaves no empty history entry behind (the timeline's own
-    //     move pushes its command on the first drag and can then be refused,
-    //     which does leave one; the graph does not repeat that);
+    //     (MoveFrameOfKey's own conflict rule, applied to the whole selection: a
+    //     move that would land any member on another key's frame refuses the WHOLE
+    //     step), and a refusal refuses the whole step - frame AND value stay where
+    //     the gesture last had them, nothing is announced, and the gesture stays
+    //     open so the pointer can be dragged on to a free frame. Nothing is pushed
+    //     before a step is accepted, so a refused drag leaves no empty history
+    //     entry behind (the timeline's own move pushes its command on the first
+    //     drag and can then be refused, which does leave one; the graph does not
+    //     repeat that);
     //   * a step that moves neither frame nor value pushes nothing and opens
     //     nothing, so a press that never moves leaves the history untouched;
-    //   * an undo mid-drag drops the commands' modifiable link, so the next move
-    //     opens a fresh commit from the frame and value the key is at then;
-    //   * the armed key is held in the timeline's currency (the layer that owns
+    //   * an undo mid-drag drops the command's modifiable link, so the next move
+    //     opens a fresh commit from the frames and values the keys are at then;
+    //   * the PRESSED key is held in the timeline's currency (the layer that owns
     //     the map, the node the event names, the type and the frame it is at
     //     now), not as an index into a rebuilt entry list, so the move follows
     //     the key the press hit; if that key is gone (an undo or another view
@@ -655,13 +749,14 @@ private:
     // the value there are the origins of the two pointer deltas the move follows.
     void beginKeyMove(const Hit& aHit, const QVector<Entry>& aItems, const QPoint& aPressPos);
     void updateDrag(const QPoint& aPos);
-    // Steps the armed key move to aPos; true when the key moved (i.e. when the
-    // caller has something to repaint). Both axes move - the frame by the
-    // pointer's frame delta, the value by its value delta - unless the shift
-    // modifier constrains the gesture to the dominant axis. A destination frame
-    // another key of that type owns refuses the WHOLE step: nothing moves, the
-    // history is untouched and the gesture stays open. Stops the gesture (with a
-    // log line) when the armed key is no longer in the document.
+    // Steps the armed key move to aPos; true when the selection moved (i.e. when
+    // the caller has something to repaint). Both axes move - every member's frame
+    // by the pointer's frame delta, the pressed component of the pressed type by
+    // its value delta - unless the shift modifier constrains the gesture to the
+    // dominant axis. A destination frame another key of that type owns refuses the
+    // WHOLE step: nothing moves, the history is untouched and the gesture stays
+    // open. Stops the gesture (with a log line) when the PRESSED key is no longer
+    // in the document.
     bool updateKeyMove(const QPoint& aPos);
     // Closes whatever pointer gesture is in flight (the easing gesture, the key
     // move, the marquee, the pan) and clears every flag it set. The commands
@@ -755,6 +850,11 @@ private:
     int mDragSegment;
     int mDragHandle;
     cmnd::Gesture<cmnd::ModifiableAssign<util::Easing::Param> > mGesture;
+    // The KEY MOVE's own gesture, over the one command that carries the whole
+    // selection (see KeyMoveCommand). A separate Gesture from the handle drag's
+    // because the kinds never coexist: each press clears the other, and the two
+    // edits have different command types.
+    cmnd::Gesture<KeyMoveCommand> mKeyMoveGesture;
 
     // The marquee: where the press went down and where the pointer is now, both
     // in viewport pixels. The rectangle is the two corners - the box the pointer
@@ -769,43 +869,44 @@ private:
     // step is a pixel delta (there is no press-time origin to drift from).
     QPoint mPanPointer;
 
-    // The key-move gesture's armed key, in the timeline's own currency: the
-    // layer that owns the key map, the node the TimeLineEvent names, the key
+    // The key-move gesture's armed PRESSED key, in the timeline's own currency:
+    // the layer that owns the key map, the node the TimeLineEvent names, the key
     // type, and the frame the key is at NOW (advanced by every accepted move).
     // Held instead of an index into buildEntries() so the move follows the key
-    // the press hit rather than the position of a rebuilt list.
+    // the press hit rather than the position of a rebuilt list. The frame and
+    // value DELTAS the whole gesture applies are measured from this key's press
+    // (mMoveFrame here is the anchor the anchor-check and the notification name).
     core::ObjectNode* mMoveLine;
     core::ObjectNode* mMoveNode;
     core::TimeKeyType mMoveType;
     // The graphable COMPONENT of the key the drag moves (Photoshop's "X"), which
     // is the half of a graph::Channel that says which field of the key's Data the
-    // value half of the gesture writes.
+    // value half of the gesture writes. It is ONE component for the whole
+    // selection: the component the press's own channel names, written on every
+    // selected key of the PRESSED TYPE (a key of another type has no such field).
     int mMoveComponent;
     core::Frame mMoveFrame;
     // The pointer's frame as of the last accepted step, and the pointer pixels
-    // the press went down at: the key follows the pointer's frame DELTA from the
+    // the press went down at: every key follows the pointer's frame DELTA from the
     // last ACCEPTED frame, so a refused step does not accumulate, and the
     // dominant-axis rule under Shift is decided on the pixel displacement from
     // the press - which is the movement the user actually made.
     core::Frame mMovePointerFrame;
     QPoint mMovePressPos;
-    // The key's own value as it was at the press: the value the drag's delta is
-    // added to, so the whole gesture is one absolute function of the pointer and
-    // cannot accumulate the key's own clamping. The delta itself is taken from
-    // the pointer's own rows (valueAt(aPos.y()) - valueAt(mMovePressPos.y())),
-    // never from a stored value, so it stays correct whatever the window does.
-    float mMoveBaseValue;
 
-    // The commands the gesture opened, or null before its first accepted step.
-    // The stack owns them once pushed, so these are only handles, used to ask
-    // whether a further step may rewrite them (isModifiable) - the same question
-    // the easing drag's Gesture asks. A destination frame another key owns is
-    // refused BEFORE either command is opened, so a refused drag never leaves an
-    // empty history entry behind. The value command is held type-erased behind
-    // its own cmnd::Stable, so the frame and the value halves of one gesture stay
-    // one undo step without this class having to know a key's Data type.
-    TimeLineUtil::MoveFrameOfKey* mMoveCommand;
-    TimeLineUtil::AssignKeyValue* mValueCommand;
+    // The keys the move carries: ONE entry per key the panel's SELECTION named
+    // when the press armed the move (the press that armed it wrote that selection,
+    // so this is every key the user sees highlighted). The whole selection moves
+    // by the same frame delta; the value delta is written on the members whose
+    // type is mMoveType (mKey == nullptr means "frame only"). The frame the key
+    // held at the press is the base both deltas are added to, so the gesture is
+    // one absolute function of the pointer and cannot accumulate a key's clamp.
+    struct MoveMember {
+        core::TimeLineEvent::Target target; // node + (line, type, frame) at the press
+        core::TimeKey* key;                 // the value half's key, or null (frame only)
+        float baseValue;                    // the value it held at the press
+    };
+    QVector<MoveMember> mMoveMembers;
 
     // The FPS last handed to mScale.frameScale(). It is what the axis was BUILT
     // with, not document state the editor draws from: setFps() rebuilds the tick

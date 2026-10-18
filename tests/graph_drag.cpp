@@ -131,6 +131,23 @@
 // core::TimeLine::createPusher path onto a test-owned stack, so the project's
 // own stack holds nothing but the graph's edits and every undo probe below is
 // about the drag.
+//
+// THE MULTI-KEY MOVE, the HULL and the GHOST HANDLES are pinned in sections
+// 23b-23d:
+//
+//   * 23b - the move carries the panel's WHOLE SELECTION: a two-key selection is
+//     dragged and BOTH keys move by the same frame AND value delta, the whole
+//     gesture is ONE command (KeyMoveCommand), ONE undo restores every frame and
+//     every value, a second undo finds nothing, and ONE redo rebuilds both. The
+//     single-key move is the one-member case of exactly this path.
+//   * 23c - selectionHull() is the convex outline of the selected keys as
+//     (frame, value) points (counter-clockwise, vertices only, empty with no
+//     selection, and the degenerate point/segment for one or two keys), and
+//     selectionCount() is the number of keys the selection names.
+//   * 23d - a drag on an Auto segment's GHOST handle (Curve::ghostHandles, the
+//     derived pair) WRITES Type_Custom carrying that pair at (1/3, y1) and
+//     (2/3, y2), inside the drag's own Gesture: one undo brings the Auto easing
+//     back whole, and a drag away then moves only the grabbed handle.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -2672,6 +2689,278 @@ int main(int argc, char** argv) {
         CHECK(fromTimeline.targets().size() == 2);
     }
 
+    // --- 23b: THE MULTI-KEY MOVE. A move carries the panel's WHOLE SELECTION:
+    // every selected key moves by the same delta, and the whole gesture is ONE
+    // command (KeyMoveCommand) - so ONE undo puts every frame AND every value
+    // back. The behaviour this replaced moved only the PRESSED key, which fails
+    // both halves of what is asserted below.
+    {
+        core::TestNode groupNode;
+        core::RotateKey* g0 = new core::RotateKey();
+        g0->setRotate(5.0f);
+        setup.push(groupNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, g0));
+        core::RotateKey* g1 = new core::RotateKey();
+        g1->setRotate(25.0f);
+        setup.push(groupNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, g1));
+        CHECK(groupNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 2);
+
+        editor.setTargets({ &groupNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        project.commandStack().clear();
+
+        const Scaler& groupScale = editor.scale();
+        const QPoint pG0(groupScale.pixelX(core::Frame(0)), groupScale.pixelY(5.0f));
+        const QPoint pG1(groupScale.pixelX(core::Frame(20)), groupScale.pixelY(25.0f));
+        CHECK(groupScale.plotRect().contains(pG0));
+        CHECK(groupScale.plotRect().contains(pG1));
+
+        core::AbstractCursor groupCur;
+
+        // The selection: a plain press replaces it with the frame-20 key, then a
+        // SHIFT-press ADDS the frame-0 key and arms the move - so the drag that
+        // follows starts from a two-key selection. (A plain press would replace
+        // the selection with one key again, which is the single-key case.)
+        CHECK(sendPress(editor, camera, groupCur, pG1));
+        CHECK(sendRelease(editor, camera, groupCur, pG1));
+        CHECK(editor.selectionCount() == 1);
+        CHECK(sendPress(editor, camera, groupCur, pG0, Qt::ShiftModifier));
+        CHECK(editor.selectionCount() == 2);
+        CHECK(editor.selectionHull().size() == 2); // two keys are the segment between them
+
+        const QPoint groupTo(groupScale.pixelX(core::Frame(5)), groupScale.pixelY(15.0f));
+        const int expectedFrameStep = groupScale.frameAt(groupTo.x()).get() - groupScale.frameAt(pG0.x()).get();
+        const float expectedValueDelta = groupScale.valueAt(groupTo.y()) - groupScale.valueAt(pG0.y());
+        CHECK(expectedFrameStep == 5); // the pixels name the frames they map to
+        CHECK(expectedValueDelta > 5.0f && expectedValueDelta < 15.0f); // a real value move
+
+        // The drag: NO modifier, so both axes move (the Shift above was the
+        // selection's; the modifiers are re-read per event).
+        CHECK(sendMove(editor, camera, groupCur, groupTo));
+        CHECK(sendRelease(editor, camera, groupCur, groupTo));
+
+        // Every selected key went where the pointer pointed, by the SAME delta,
+        // and they are the SAME key objects (TimeLine::move re-keys, it never
+        // rebuilds).
+        CHECK(!groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(!groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20));
+        CHECK(groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, expectedFrameStep));
+        CHECK(groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20 + expectedFrameStep));
+        CHECK(groupNode.timeLine()->timeKey(core::TimeKeyType_Rotate, expectedFrameStep) == g0);
+        CHECK(groupNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 20 + expectedFrameStep) == g1);
+        CHECK(g0->rotate() == 5.0f + expectedValueDelta);
+        CHECK(g1->rotate() == 25.0f + expectedValueDelta);
+
+        // ONE command for the WHOLE multi-key drag: one undo restores both frames
+        // and both values, and a second finds nothing behind it.
+        bool undoneGroup = false;
+        CHECK(!stack.undo(&undoneGroup).isEmpty());
+        CHECK(undoneGroup);
+        CHECK(groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20));
+        CHECK(!groupNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, expectedFrameStep));
+        CHECK(g0->rotate() == 5.0f);
+        CHECK(g1->rotate() == 25.0f);
+        bool undoneGroupAgain = true;
+        CHECK(stack.undo(&undoneGroupAgain).isEmpty());
+        CHECK(!undoneGroupAgain);
+
+        // ...and that ONE command redoes whole: both axes are rebuilt from the
+        // values the command itself carries.
+        bool redoneGroup = false;
+        CHECK(!stack.redo(&redoneGroup).isEmpty());
+        CHECK(redoneGroup);
+        CHECK(g0->frame() == expectedFrameStep);
+        CHECK(g1->frame() == 20 + expectedFrameStep);
+        CHECK(g0->rotate() == 5.0f + expectedValueDelta);
+        CHECK(g1->rotate() == 25.0f + expectedValueDelta);
+
+        std::printf(
+            "[G] multi-key move: 2 selected keys moved by frame %+d / value %+.3f in ONE command; one undo "
+            "restored both frames and both values, a second found nothing, and one redo rebuilt both\n",
+            expectedFrameStep, expectedValueDelta
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 23c: the selection HULL and COUNT. selectionHull() is the convex
+    // outline of the selected keys as frame/value points (the drawing layer maps
+    // it through the same Scaler the curves go through), and selectionCount() is
+    // the "3 keys" the header and the marquee label show.
+    {
+        core::TestNode hullNode;
+        const float kHullValues[3] = { 0.0f, 10.0f, 0.0f };
+        for (int i = 0; i < 3; ++i) {
+            core::RotateKey* key = new core::RotateKey();
+            key->setRotate(kHullValues[i]);
+            setup.push(hullNode.timeLine()->createPusher(core::TimeKeyType_Rotate, i * 10, key));
+        }
+        CHECK(hullNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 3);
+
+        editor.setTargets({ &hullNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        // NOTHING SELECTED: an empty outline and no keys.
+        CHECK(editor.selectionHull().isEmpty());
+        CHECK(editor.selectionCount() == 0);
+
+        const Scaler& hullScale = editor.scale();
+        const QPoint h0(hullScale.pixelX(core::Frame(0)), hullScale.pixelY(0.0f));
+        const QPoint h1(hullScale.pixelX(core::Frame(10)), hullScale.pixelY(10.0f));
+        const QPoint h2(hullScale.pixelX(core::Frame(20)), hullScale.pixelY(0.0f));
+        for (const QPoint& pixel : { h0, h1, h2 }) {
+            CHECK(hullScale.plotRect().contains(pixel));
+        }
+
+        core::AbstractCursor hullCur;
+
+        // ONE key: the hull is that key's own point (fewer than three points
+        // cannot enclose an area, so they come back as the hull of themselves).
+        CHECK(sendPress(editor, camera, hullCur, h1));
+        CHECK(sendRelease(editor, camera, hullCur, h1));
+        CHECK(editor.selectionCount() == 1);
+        const QVector<QPointF> oneHull = editor.selectionHull();
+        CHECK(oneHull.size() == 1);
+        CHECK(oneHull[0] == QPointF(10.0, 10.0));
+
+        // TWO keys: the segment between them, in x order.
+        CHECK(sendPress(editor, camera, hullCur, h0, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, hullCur, h0, Qt::ShiftModifier));
+        CHECK(editor.selectionCount() == 2);
+        const QVector<QPointF> twoHull = editor.selectionHull();
+        CHECK(twoHull.size() == 2);
+        CHECK(twoHull[0] == QPointF(0.0, 0.0));
+        CHECK(twoHull[1] == QPointF(10.0, 10.0));
+
+        // THREE keys: a real outline, counter-clockwise and vertices only. The
+        // frame-10 key is the triangle's apex and the two zero-value keys its
+        // base, so the outline is (0,0) -> (20,0) -> (10,10).
+        CHECK(sendPress(editor, camera, hullCur, h2, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, hullCur, h2, Qt::ShiftModifier));
+        CHECK(editor.selectionCount() == 3);
+        const QVector<QPointF> triangle = editor.selectionHull();
+        CHECK(triangle.size() == 3);
+        CHECK(triangle[0] == QPointF(0.0, 0.0));
+        CHECK(triangle[1] == QPointF(20.0, 0.0));
+        CHECK(triangle[2] == QPointF(10.0, 10.0));
+
+        std::printf(
+            "[H] selection hull: 3 keys at (0,0), (10,10), (20,0) give a %lld-vertex outline "
+            "(%.0f,%.0f) -> (%.0f,%.0f) -> (%.0f,%.0f), count %d\n",
+            triangle.size(), triangle[0].x(), triangle[0].y(), triangle[1].x(), triangle[1].y(),
+            triangle[2].x(), triangle[2].y(), editor.selectionCount()
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
+    // --- 23d: a GHOST-handle drag writes Type_Custom at the third points. An
+    // Auto segment's control points are DERIVED (Curve::ghostHandles), not
+    // stored, so a press must FIND them (the hit-test does now) and a drag must
+    // CONVERT: Type_Custom carrying the derived pair at (1/3, y1) and (2/3, y2),
+    // inside the drag's own cmnd::Gesture - so the conversion is one undo step.
+    {
+        core::TestNode ghostNode;
+        core::RotateKey* a0 = new core::RotateKey();
+        a0->setRotate(0.0f);
+        setup.push(ghostNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, a0));
+        core::RotateKey* a1 = new core::RotateKey();
+        a1->setRotate(100.0f);
+        setup.push(ghostNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 10, a1));
+        core::RotateKey* a2 = new core::RotateKey();
+        a2->setRotate(40.0f);
+        setup.push(ghostNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, a2));
+        a0->data().easing().type = util::Easing::Type_Auto;
+        a1->data().easing().type = util::Easing::Type_Auto;
+        const util::Easing::Param kAutoAuthored = a0->data().easing();
+
+        editor.setTargets({ &ghostNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        project.commandStack().clear();
+
+        const Curve ghostCurve(*ghostNode.timeLine(), Channel(core::TimeKeyType_Rotate, 0));
+        CHECK(ghostCurve.segmentCount() == 2);
+        const Curve::Segment ghostSeg = ghostCurve.segment(0);
+        CHECK(ghostSeg.from == a0 && ghostSeg.to == a1);
+        CHECK(ghostSeg.fromValue == 0.0f && ghostSeg.toValue == 100.0f);
+
+        const QVector<QPointF> ghosts = ghostCurve.ghostHandles(*ghostSeg.from);
+        CHECK(ghosts.size() == 2);
+        CHECK(std::fabs(ghosts[0].x() - 1.0 / 3.0) < 1e-9);
+        CHECK(std::fabs(ghosts[1].x() - 2.0 / 3.0) < 1e-9);
+
+        // The ghost DOT, mapped exactly the way the panel's own geometry maps a
+        // handle (graph::handlePointAt), rounded to the pixel a press can name.
+        const QPointF ghostDot = ctrl::graph::handlePointAt(editor.scale(), ghostSeg, ghosts[0]);
+        const QPoint ghostGrab(
+            static_cast<int>(std::lround(ghostDot.x())), static_cast<int>(std::lround(ghostDot.y()))
+        );
+        CHECK(editor.scale().plotRect().contains(ghostGrab));
+
+        core::AbstractCursor ghostCur;
+
+        // (a) A drag whose move lands back ON the ghost dot: the conversion is
+        // the whole edit, so what was written is the derived pair at the thirds.
+        CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
+        CHECK(editor.ownsCursor(camera, ghostCur)); // the ghost dot is a grabbable handle
+        CHECK(a0->data().easing().type == util::Easing::Type_Auto); // the press alone edits nothing
+        CHECK(sendMove(editor, camera, ghostCur, ghostGrab));
+        CHECK(sendRelease(editor, camera, ghostCur, ghostGrab));
+
+        CHECK(a0->data().easing().type == util::Easing::Type_Custom);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - 1.0f / 3.0f) < 0.01f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) < 0.01f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(ghosts[0].y())) < 0.02f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 0.02f);
+
+        // ONE undo brings the Auto easing back whole (the conversion and the
+        // handle write are one command), and a second finds nothing behind it.
+        bool undoneGhost = false;
+        CHECK(!stack.undo(&undoneGhost).isEmpty());
+        CHECK(undoneGhost);
+        CHECK(a0->data().easing() == kAutoAuthored);
+        bool undoneGhostAgain = true;
+        CHECK(stack.undo(&undoneGhostAgain).isEmpty());
+        CHECK(!undoneGhostAgain);
+
+        // (b) A real drag AWAY from the dot: the conversion still writes the pair
+        // at the thirds, and the drag then writes the GRABBED handle where the
+        // pointer is - the other handle stays exactly on its own third.
+        const QPoint ghostMoved(ghostGrab.x() + 6, ghostGrab.y() + 5);
+        CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
+        CHECK(sendMove(editor, camera, ghostCur, ghostMoved));
+        CHECK(sendRelease(editor, camera, ghostCur, ghostMoved));
+
+        CHECK(a0->data().easing().type == util::Easing::Type_Custom);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) < 1e-4f); // untouched
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-3f);
+        const double ghostFrameSpan = static_cast<double>(ghostSeg.to->frame() - ghostSeg.from->frame());
+        const double ghostValueSpan = static_cast<double>(ghostSeg.toValue - ghostSeg.fromValue);
+        const double expectedNx = (editor.scale().frameAtPixel(static_cast<double>(ghostMoved.x()))
+                                   - static_cast<double>(ghostSeg.from->frame()))
+                                  / ghostFrameSpan;
+        const double expectedNy = (editor.scale().valueAtPixel(static_cast<double>(ghostMoved.y()))
+                                   - static_cast<double>(ghostSeg.fromValue))
+                                  / ghostValueSpan;
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - static_cast<float>(expectedNx)) < 1e-4f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(expectedNy)) < 1e-4f);
+
+        std::printf(
+            "[A] ghost-handle drag: an Auto segment's derived pair (1/3,%.3f)/(2/3,%.3f) was written as "
+            "Type_Custom at the thirds and undone by ONE undo; a drag away moved the grabbed handle to "
+            "(%.3f,%.3f) and left the other on its third\n",
+            ghosts[0].y(), ghosts[1].y(), a0->data().easing().cubicBezier.x1,
+            a0->data().easing().cubicBezier.y1
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
     // --- 24: the switch's OTHER direction - the half the show at the top of this
     // file cannot cover - and it sits last so nothing above or below runs against
     // a panel that was hidden out from under it. Hiding is what hands the pointer
@@ -2702,7 +2991,11 @@ int main(int argc, char** argv) {
         "band inserts the key the curve already passes through (no sampled value moves at that "
         "frame), a press on a key plus a 2-axis drag moves its frame AND its value (Shift pins the "
         "dominant axis) and refuses an occupied destination, and removeSelectedKey() removes every "
-        "selected key and restores the same key objects on undo; setSelectedKeysEasing() changes the "
+        "selected key and restores the same key objects on undo; a key drag moves the WHOLE SELECTION "
+        "by one delta as ONE command (one undo, one redo), selectionHull()/selectionCount() report the "
+        "selection's convex outline in frame/value space and how many keys it names, and a drag on an "
+        "Auto segment's ghost handle writes Type_Custom carrying the derived pair at the third points "
+        "as one undo step; setSelectedKeysEasing() changes the "
         "easing type of the selected key(s) as ONE undo step on that same route, pushing nothing for "
         "an empty or stale selection, for the step-held image channel or for the type a key already "
         "has; and with a timeline attached the panel shares its selection (one instance, both "

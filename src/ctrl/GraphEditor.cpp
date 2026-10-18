@@ -57,6 +57,45 @@ double pixelDistance(const QPointF& aLhs, const QPointF& aRhs) {
     return std::hypot(aLhs.x() - aRhs.x(), aLhs.y() - aRhs.y());
 }
 
+// The convex hull of a point set, in counter-clockwise order (Andrew's monotone
+// chain), with collinear boundary points dropped so the outline's vertices are
+// the corners only. Duplicates are collapsed first, so two points that coincide
+// count once. Fewer than three points cannot enclose an area, so they come back
+// as the hull of themselves (a point or a segment) rather than as an empty
+// outline: the caller gets the same KIND of answer for one selected key as for
+// ten. This is the selection hull's geometry (GraphEditor::selectionHull), and it
+// works in DATA space - the caller maps the points through the Scaler.
+QVector<QPointF> convexHull(QVector<QPointF> aPoints) {
+    std::sort(aPoints.begin(), aPoints.end(), [](const QPointF& aLhs, const QPointF& aRhs) {
+        return aLhs.x() != aRhs.x() ? aLhs.x() < aRhs.x() : aLhs.y() < aRhs.y();
+    });
+    aPoints.erase(std::unique(aPoints.begin(), aPoints.end()), aPoints.end());
+
+    const int count = aPoints.size();
+    if (count <= 2) {
+        return aPoints;
+    }
+
+    const auto cross = [](const QPointF& aO, const QPointF& aA, const QPointF& aB) {
+        return (aA.x() - aO.x()) * (aB.y() - aO.y()) - (aA.y() - aO.y()) * (aB.x() - aO.x());
+    };
+
+    QVector<QPointF> hull(2 * count);
+    int k = 0;
+    for (int i = 0; i < count; ++i) {
+        while (k >= 2 && cross(hull[k - 2], hull[k - 1], aPoints[i]) <= 0.0)
+            --k;
+        hull[k++] = aPoints[i];
+    }
+    for (int i = count - 2, floor = k + 1; i >= 0; --i) {
+        while (k >= floor && cross(hull[k - 2], hull[k - 1], aPoints[i]) <= 0.0)
+            --k;
+        hull[k++] = aPoints[i];
+    }
+    hull.resize(k - 1); // the last vertex repeats the first
+    return hull;
+}
+
 // The inverse of graph::handlePoint for one drag position. aFlatY is what the y
 // component falls back to when the segment's value span is zero: a constant
 // segment has no value axis to normalize across, so the vertical component of
@@ -99,6 +138,77 @@ namespace ctrl {
     GraphEditor::Hit::Hit(): hitCurve(false), hitHandle(false), item(-1), segment(-1), handle(-1), keyFrame() {}
 
     //-------------------------------------------------------------------------------------------------
+    KeyMoveCommand::KeyMoveCommand(): mFrames(nullptr), mValues() {}
+
+    KeyMoveCommand::~KeyMoveCommand() {
+        delete mFrames;
+        for (const Value& value : mValues) {
+            delete value.command;
+        }
+        mValues.clear();
+    }
+
+    void KeyMoveCommand::buildFrames(const core::TimeLineEvent& aTargets) {
+        delete mFrames;
+        mFrames = new TimeLineUtil::MoveFrameOfKey(aTargets);
+    }
+
+    bool KeyMoveCommand::modifyMove(
+        core::TimeLineEvent& aModEvent, int aStep, const util::Range& aFrame, int* aClampedStep
+    ) {
+        if (!mFrames) {
+            return false;
+        }
+        return mFrames->modifyMove(aModEvent, aStep, aFrame, aClampedStep);
+    }
+
+    void KeyMoveCommand::addValue(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent, float aBaseValue) {
+        Value value;
+        value.command = new TimeLineUtil::AssignKeyValue(aKey, aType, aComponent, aBaseValue);
+        value.base = aBaseValue;
+        mValues.append(value);
+    }
+
+    void KeyMoveCommand::modifyValues(float aValueDelta) {
+        for (const Value& value : mValues) {
+            value.command->modifyValue(value.base + aValueDelta);
+        }
+    }
+
+    void KeyMoveCommand::exec() {
+        // The frame half first: the value halves hold a key by POINTER, and
+        // TimeLine::move re-keys the same object, so the two orders agree - the
+        // frame move never invalidates a value command's key.
+        if (mFrames) {
+            mFrames->exec();
+        }
+        for (const Value& value : mValues) {
+            value.command->exec();
+        }
+    }
+
+    void KeyMoveCommand::undo() {
+        // Reverse of exec, so a key's value is restored before the map entry that
+        // names its frame (they are independent, but an undo that reads like the
+        // exec backwards is the one that is easy to check).
+        for (int i = mValues.size() - 1; i >= 0; --i) {
+            mValues[i].command->undo();
+        }
+        if (mFrames) {
+            mFrames->undo();
+        }
+    }
+
+    void KeyMoveCommand::redo() {
+        if (mFrames) {
+            mFrames->redo();
+        }
+        for (const Value& value : mValues) {
+            value.command->redo();
+        }
+    }
+
+    //-------------------------------------------------------------------------------------------------
     GraphEditor::GraphEditor(core::Project& aProject, UILogger& aLogger):
         mProject(&aProject),
         mLogger(aLogger),
@@ -129,6 +239,7 @@ namespace ctrl {
         mDragSegment(-1),
         mDragHandle(-1),
         mGesture(aProject.commandStack()),
+        mKeyMoveGesture(aProject.commandStack()),
         mMarqueeOrigin(),
         mMarqueeCurrent(),
         mAddToSelection(false),
@@ -140,9 +251,7 @@ namespace ctrl {
         mMoveFrame(),
         mMovePointerFrame(),
         mMovePressPos(),
-        mMoveBaseValue(0.0f),
-        mMoveCommand(nullptr),
-        mValueCommand(nullptr),
+        mMoveMembers(),
         mAxisFps(0) {
         // The graph starts HIDDEN. The Driver routes every cursor and wheel
         // event to the tools while isVisible() is false, so a panel nobody asked
@@ -179,6 +288,11 @@ namespace ctrl {
             mGesture.~Gesture();
             ::new (static_cast<void*>(&mGesture))
                 cmnd::Gesture<cmnd::ModifiableAssign<util::Easing::Param> >(aProject->commandStack());
+            // The key move's gesture holds the same stack by reference, so it is
+            // rebuilt for the same reason and at the same, inert moment.
+            mKeyMoveGesture.~Gesture();
+            ::new (static_cast<void*>(&mKeyMoveGesture))
+                cmnd::Gesture<KeyMoveCommand>(aProject->commandStack());
             syncFrameAxis();
         }
 
@@ -1020,11 +1134,21 @@ namespace ctrl {
             const int segments = curve.segmentCount();
             for (int s = 0; s < segments; ++s) {
                 const graph::Curve::Segment segment = curve.segment(s);
-                if (!curve.isCustom(segment))
-                    continue; // only a Custom easing exposes tangent handles at all
+
+                // A Custom segment STORES its two handles; an AUTO segment
+                // DERIVES them (the ghost pair). Both are real, grabbable dots
+                // where the drawing layer puts them, so both are hit here - the
+                // only difference is what a drag on one does (see updateDrag: a
+                // ghost drag converts the easing to Custom first). Every other
+                // easing exposes no handle at all.
+                const bool custom = curve.isCustom(segment);
+                const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
+                if (!custom && ghosts.size() != 2)
+                    continue;
 
                 for (int h = 0; h < 2; ++h) {
-                    const double distance = pixelDistance(graph::handlePoint(aScale, segment, h), pos);
+                    const QPointF normalized = custom ? graph::Curve::handle(segment, h) : ghosts[h];
+                    const double distance = pixelDistance(graph::handlePointAt(aScale, segment, normalized), pos);
                     if (distance <= bestHandle) {
                         bestHandle = distance;
                         hit.hitCurve = true;
@@ -1344,13 +1468,44 @@ namespace ctrl {
         // agree about the row the pointer is on.
         mMovePointerFrame = mScale.frameAt(aPressPos.x());
         mMovePressPos = aPressPos;
-        // The key's own value at the press: the drag's value delta is added to
-        // THIS, so the gesture is one absolute function of the pointer.
-        mMoveBaseValue = entry.curve.valueOf(*key);
-        // No command yet: the first ACCEPTED step is what commits, so a press
-        // that never moves leaves the history untouched.
-        mMoveCommand = nullptr;
-        mValueCommand = nullptr;
+
+        // THE SELECTION the move carries: one member per key the panel's selection
+        // names NOW, which the press that armed this move has just written (a plain
+        // press replaced it with the pressed key, Shift extended it, Ctrl toggled
+        // it). Each member keeps the target it will be moved by and, when the key's
+        // type is the PRESSED channel's, the key its value half writes and the base
+        // value that delta is added to - so the whole gesture is one absolute
+        // function of the pointer.
+        //
+        // The entry is resolved against the DOCUMENT: a selection can name a key
+        // that is no longer in its map (a stale entry), and such a member would
+        // make every step refuse. A member of another type moves its FRAME only -
+        // the selection carries no component, so the value delta has no field to
+        // write there.
+        mMoveMembers.clear();
+        const graph::Channel valueChannel(mMoveType, mMoveComponent);
+        for (const time::Selection::Item& item : mSelection->items()) {
+            // A NON-const copy: pos.line()'s non-const overload is how the map
+            // owner comes back writable, and the selection hands out const items.
+            core::TimeLineEvent::Target target = item.target;
+            core::TimeLine* memberLine = target.pos.line();
+            if (!memberLine)
+                continue;
+            core::TimeKey* memberKey = memberLine->timeKey(target.pos.type(), target.pos.index());
+            if (!memberKey)
+                continue;
+
+            MoveMember member;
+            member.target = target;
+            if (target.pos.type() == mMoveType) {
+                member.key = memberKey;
+                member.baseValue = valueChannel.value(*memberKey);
+            } else {
+                member.key = nullptr;
+                member.baseValue = 0.0f;
+            }
+            mMoveMembers.append(member);
+        }
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1364,11 +1519,17 @@ namespace ctrl {
             return false;
         }
 
-        // The anchor check, the handle drag's own honesty: if the armed key is no
-        // longer in the document (an undo removed it, or another view did), this
-        // move would write a key that is not there. MoveFrameOfKey's own
-        // validation would refuse every step, leaving the drag silently dead under
-        // the cursor - so close the edit and say why.
+        // A Ctrl-press that TOGGLED the pressed key out of the selection leaves
+        // the move armed with nothing to carry (the selection is the gesture's
+        // member list): a drag then moves nothing, and it must not push a command
+        // that does.
+        if (mMoveMembers.isEmpty())
+            return false;
+
+        // The anchor check, the handle drag's own honesty: if the PRESSED key is
+        // no longer in the document (an undo removed it, or another view did), the
+        // move has nothing to measure against and the member that names it would
+        // refuse every step - so close the edit and say why.
         core::TimeKey* key = line->timeKey(mMoveType, mMoveFrame.get());
         if (!key) {
             mLogger.pushLog(
@@ -1392,46 +1553,61 @@ namespace ctrl {
 
         // The FRAME delta from the last ACCEPTED frame: a refused step leaves
         // mMovePointerFrame where it was, so the next accepted step is measured
-        // from the last accepted place.
+        // from the last accepted place. It is ONE delta for the whole selection.
         const core::Frame pointerFrame = mScale.frameAt(aPos.x());
         const int step = frameAllowed ? pointerFrame.get() - mMovePointerFrame.get() : 0;
 
         // The VALUE: the pointer's delta from the row it went down on, added to
-        // the key's own value at the press. Both rows go through the SAME live
+        // each member's own value at the press. Both rows go through the SAME live
         // scale, so this is an absolute function of the pointer and cannot
-        // accumulate the key's own clamp.
+        // accumulate a key's own clamp.
         const float valueDelta = valueAllowed ? mScale.valueAt(aPos.y()) - mScale.valueAt(mMovePressPos.y()) : 0.0f;
-        const float nextValue = mMoveBaseValue + valueDelta;
-        const bool valueMoves = (nextValue != graph::Channel(mMoveType, mMoveComponent).value(*key));
+
+        // Does the step move ANY member's value? The members whose type is the
+        // pressed channel's name the component the gesture writes; the rest are
+        // frame-only, so they cannot make a value-only step.
+        bool valueMoves = false;
+        for (const MoveMember& member : mMoveMembers) {
+            if (!member.key)
+                continue;
+            if (member.baseValue + valueDelta
+                != graph::Channel(member.target.pos.type(), mMoveComponent).value(*member.key)) {
+                valueMoves = true;
+                break;
+            }
+        }
 
         if (!valueMoves && step == 0)
-            return false; // the pointer has not moved the key: nothing to rewrite, nothing to open
+            return false; // the pointer has not moved the selection: nothing to rewrite, nothing to open
 
         // The frame range is playback's business, not the keying system's: keys
         // may live anywhere, so the move is asked with the widest range there is
         // (the timeline's own move asks the same way).
         const util::Range frameRange(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
 
-        if (mMoveCommand && mProject->commandStack().isModifiable(mMoveCommand)) {
-            // The commands this gesture already pushed: REWRITE them, which is
-            // what makes the whole drag one undo step. modifyMove refuses a
-            // destination another key of the type owns, and a refusal leaves both
-            // commands exactly as they were (no move, no mMove, no notification).
+        if (mKeyMoveGesture.continues()) {
+            // The ONE command this gesture already pushed: REWRITE it, which is
+            // what makes the whole drag one undo step. modifyMove refuses the
+            // whole step when ANY member's destination is occupied, and a refusal
+            // leaves the command exactly as it was (no move, no notification, and
+            // the value halves are not even asked - the frame is the half that can
+            // refuse).
             int clampedStep = step;
             core::TimeLineEvent modEvent;
             bool frameMoved = false;
             if (step != 0) {
-                if (!mMoveCommand->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
-                    return false; // the frame is occupied: the WHOLE step is refused
+                if (!mKeyMoveGesture.command()->modifyMove(modEvent, step, frameRange, &clampedStep)
+                    || clampedStep == 0)
+                    return false; // an occupied destination: the WHOLE step is refused
                 frameMoved = true;
             }
 
             if (valueMoves) {
-                mValueCommand->modifyValue(nextValue);
+                mKeyMoveGesture.command()->modifyValues(valueDelta);
             }
 
             // ONE notification per step, as the timeline emits one per gesture
-            // step: the frame event when the frame moved (it names where the key
+            // step: the frame event when the frame moved (it names where each key
             // came from and where it went, the structural half), and the value
             // event otherwise - the same two events the timeline uses for its own
             // frame moves and value edits. Nothing in the application tells the two
@@ -1455,50 +1631,49 @@ namespace ctrl {
         // The gesture's first accepted step, or its first after an undo dropped
         // the stack's modifiable link.
         //
-        // Both commands are built and VALIDATED before the macro is opened: a
+        // The command is built and VALIDATED before the gesture is opened: a
         // not-yet-pushed MoveFrameOfKey only records where it would move to (its
         // own mCurrent == 0 path), so a REFUSED step can be dropped right here -
-        // no commands on the stack, no notification, no empty history entry. Both
-        // are always pushed, exactly once per gesture, so a later step that moves
-        // the axis this one did not can still rewrite the command that owns it -
-        // the one that was inert on this step simply stays inert.
-        int clampedStep = step;
+        // no command on the stack, no notification, no empty history entry. The
+        // frame half always carries every member (so a later step that moves the
+        // axis this one did not can still rewrite it), and the value halves are
+        // added even when this step writes none, for the same reason.
+        std::unique_ptr<KeyMoveCommand> command(new KeyMoveCommand());
+
+        // The frame half's targets: one per member, at the frame it held at the
+        // press. The notifier carries this same event, so what reaches the
+        // application names where each key came from, and the gesture's macro
+        // close is what fires it for this first commit (the later rewrites notify
+        // by hand, above).
         core::TimeLineEvent source;
         source.setType(step != 0 ? core::TimeLineEvent::Type_MoveKey : core::TimeLineEvent::Type_ChangeKeyValue);
-        source.pushTarget(*mMoveNode, mMoveType, mMoveFrame.get());
+        for (const MoveMember& member : mMoveMembers) {
+            source.pushTarget(*member.target.node, member.target.pos);
+        }
+        command->buildFrames(source);
 
-        std::unique_ptr<TimeLineUtil::MoveFrameOfKey> frameCommand(new TimeLineUtil::MoveFrameOfKey(source));
+        int clampedStep = step;
         if (step != 0) {
             core::TimeLineEvent modEvent;
-            if (!frameCommand->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
+            if (!command->modifyMove(modEvent, step, frameRange, &clampedStep) || clampedStep == 0)
                 return false;
         }
-        std::unique_ptr<TimeLineUtil::AssignKeyValue> valueCommand(
-            new TimeLineUtil::AssignKeyValue(*key, mMoveType, mMoveComponent, nextValue)
-        );
 
-        TimeLineUtil::MoveFrameOfKey* pushedFrame = frameCommand.release();
-        TimeLineUtil::AssignKeyValue* pushedValue = valueCommand.release();
-        {
-            cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("move a key"));
+        for (const MoveMember& member : mMoveMembers) {
+            if (member.key)
+                command->addValue(*member.key, member.target.pos.type(), mMoveComponent, member.baseValue);
+        }
+        command->modifyValues(valueDelta);
 
-            // The notifier carries the step's ORIGINAL target, exactly like the
-            // timeline's beginMoveKeys: what reaches the application names where
-            // the key came from, and the macro's close is what fires it for this
-            // first commit (the later rewrites notify by hand, above).
+        // ONE command in ONE gesture inside ONE macro: the whole selection's move
+        // is a single stack entry, and continues() above rewrites exactly it.
+        mKeyMoveGesture.begin(CmndName::tr("move a key"), [&](cmnd::ScopedMacro& aMacro) {
             auto* notifier = new TimeLineUtil::Notifier(*mProject);
             notifier->event() = source;
-            macro.grabListener(notifier);
+            aMacro.grabListener(notifier);
+            return command.release();
+        });
 
-            // The value command is pushed FIRST, so the FRAME command is the
-            // stack's modifiable one: isModifiable(mMoveCommand) is the single
-            // gate for rewriting either half of the gesture.
-            mProject->commandStack().push(pushedValue);
-            mProject->commandStack().push(pushedFrame);
-        }
-
-        mMoveCommand = pushedFrame;
-        mValueCommand = pushedValue;
         mMoveFrame = core::Frame(mMoveFrame.get() + clampedStep);
         mMovePointerFrame = core::Frame(mMovePointerFrame.get() + clampedStep);
         return true;
@@ -1543,14 +1718,35 @@ namespace ctrl {
         if (!easing)
             return; // the type carries no easing: nothing this graph could be editing
 
-        const QPointF normalized = handleNormalized(
-            mScale, segment, aPos, graph::Curve::handle(segment, mDragHandle).y()
-        );
-
         // Built from the param the document holds NOW, never from a press-time
         // copy, so the fields this drag does not touch - the easing type above
         // all - cannot be reverted by a stale snapshot.
         util::Easing::Param next = *easing;
+
+        // A GHOST handle: the grabbed dot belongs to a Type_Auto segment, whose
+        // pair is DERIVED, not stored. The drag WRITES Type_Custom carrying that
+        // exact derived pair at the third points (1/3, y1) and (2/3, y2), so the
+        // curve the user was looking at does not move when the gesture begins;
+        // the pointer's own write just below then moves the GRABBED handle. The
+        // conversion rides the SAME mGesture, so it is one undo step with the
+        // drag - the whole Auto->Custom change undone by one undo.
+        //
+        // Detected from the LIVE param (not a press-time flag): the first step
+        // converts, and every later step sees Custom and skips this branch.
+        double flatY = graph::Curve::handle(segment, mDragHandle).y();
+        if (easing->type == util::Easing::Type_Auto) {
+            const QVector<QPointF> ghosts = entry.curve.ghostHandles(*segment.from);
+            if (ghosts.size() == 2) {
+                next.type = util::Easing::Type_Custom;
+                next.cubicBezier.x1 = static_cast<float>(ghosts[0].x());
+                next.cubicBezier.y1 = static_cast<float>(ghosts[0].y());
+                next.cubicBezier.x2 = static_cast<float>(ghosts[1].x());
+                next.cubicBezier.y2 = static_cast<float>(ghosts[1].y());
+                flatY = ghosts[mDragHandle].y();
+            }
+        }
+
+        const QPointF normalized = handleNormalized(mScale, segment, aPos, flatY);
         graph::Curve::setHandle(next, mDragHandle, normalized);
 
         if (mGesture.continues()) {
@@ -1585,8 +1781,11 @@ namespace ctrl {
         // Every command is already on the stack with its last value, so closing
         // the edit is all a release has to do: Gesture::end() makes the next drag
         // open a fresh command instead of coalescing into this one, and a gesture
-        // that never committed pushes nothing at all.
+        // that never committed pushes nothing at all. BOTH gestures close: a
+        // press ends whatever was open before it starts its own, and the two
+        // kinds never coexist.
         mGesture.end();
+        mKeyMoveGesture.end();
         mDragging = false;
         mKeyMoveArmed = false;
         mMarqueeArmed = false;
@@ -1603,13 +1802,12 @@ namespace ctrl {
         mMarqueeCurrent = QPoint();
         mAddToSelection = false;
 
-        // The key move's commands stay on the stack (they ARE the gesture's one
-        // undo step, whatever they were last asked to do); this drops the handles
-        // to them, so no later press can rewrite commands that belong to a
-        // finished gesture. The armed key goes with them: nothing may move until
-        // a new press arms one.
-        mMoveCommand = nullptr;
-        mValueCommand = nullptr;
+        // The key move's command stays on the stack (it IS the gesture's one undo
+        // step, whatever it was last asked to do); this drops the gesture's handle
+        // to it, so no later press can rewrite a command that belongs to a
+        // finished gesture. The armed members go with it: nothing may move until a
+        // new press arms one.
+        mMoveMembers.clear();
         mMoveLine = nullptr;
         mMoveNode = nullptr;
         mMoveType = core::TimeKeyType_TERM;
@@ -1617,7 +1815,6 @@ namespace ctrl {
         mMoveFrame = core::Frame();
         mMovePointerFrame = core::Frame();
         mMovePressPos = QPoint();
-        mMoveBaseValue = 0.0f;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1666,6 +1863,44 @@ namespace ctrl {
     }
 
     void GraphEditor::clearSelection() { mSelection->clear(); }
+
+    QVector<QPointF> GraphEditor::selectionHull() const {
+        QVector<QPointF> points;
+
+        for (const time::Selection::Item& item : mSelection->items()) {
+            // A NON-const copy: pos.line()'s non-const overload is how the map
+            // owner comes back, and the selection hands out const items.
+            core::TimeLineEvent::Target target = item.target;
+            core::TimeLine* line = target.pos.line();
+            if (!line || graph::Channel::componentCount(target.pos.type()) <= 0)
+                continue;
+            const core::TimeKey* key = line->timeKey(target.pos.type(), target.pos.index());
+            if (!key)
+                continue; // a stale entry names a key the document no longer holds
+
+            // (frame, value) in the panel's own data space, on the type's FIRST
+            // graphable component: the selection names a key by (line, type,
+            // frame), so it carries no component, and the first is the one a
+            // type's row leads with.
+            points.append(
+                QPointF(static_cast<double>(target.pos.index()),
+                        static_cast<double>(graph::Channel(target.pos.type(), 0).value(*key)))
+            );
+        }
+
+        return convexHull(points);
+    }
+
+    int GraphEditor::selectionCount() const {
+        int count = 0;
+        for (const time::Selection::Item& item : mSelection->items()) {
+            core::TimeLineEvent::Target target = item.target; // non-const: pos.line() writable
+            core::TimeLine* line = target.pos.line();
+            if (line && line->timeKey(target.pos.type(), target.pos.index()))
+                ++count; // a stale entry is not a key the user sees selected
+        }
+        return count;
+    }
 
     void GraphEditor::selectKey(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame) {
         // One key, one target: the graph selects a key, not a range, and it is

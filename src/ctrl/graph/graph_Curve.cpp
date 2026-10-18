@@ -359,6 +359,53 @@ bool Curve::isCustom(const Segment& aSegment) const {
     return aSegment.easing.type == util::Easing::Type_Custom;
 }
 
+QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
+    QVector<QPointF> result;
+    if (!mTimeLine) {
+        return result;
+    }
+
+    // Only an Auto easing derives its pair; every other type stores one (Custom)
+    // or exposes none to drag at all (the analytic curves).
+    const util::Easing::Param* easing = easingOf(aFrom, mChannel.type());
+    if (!easing || easing->type != util::Easing::Type_Auto) {
+        return result;
+    }
+
+    // The segment this easing shapes: from aFrom to its successor in the
+    // channel's map. The LAST key of a channel has no next key at all - the
+    // wrapped segment a looping playback draws is not a segment the panel hands
+    // handles to.
+    const core::TimeLine::MapType& map = mTimeLine->map(mChannel.type());
+    auto toItr = map.constFind(aFrom.frame());
+    if (toItr == map.constEnd()) {
+        return result;
+    }
+    ++toItr;
+    if (toItr == map.constEnd()) {
+        return result;
+    }
+    const core::TimeKey& to = *toItr.value();
+
+    // The SAME derivation sampleOver() evaluates with: the neighbours the
+    // gatherer's point(-1)/point(2) name, and the segment's own frame span, which
+    // is the length the drawn rate runs over. This is the one place the two could
+    // drift apart, so they are written the same way.
+    const core::TimeKey* prev = nullptr;
+    const core::TimeKey* next = nullptr;
+    neighborsOf(aFrom, to, prev, next);
+
+    float y1 = 0.0f;
+    float y2 = 0.0f;
+    util::Easing::autoHandles(
+        core::autoEasingContext(aFrom, to, prev, next), static_cast<float>(to.frame() - aFrom.frame()), y1, y2
+    );
+
+    result.append(QPointF(1.0 / 3.0, y1));
+    result.append(QPointF(2.0 / 3.0, y2));
+    return result;
+}
+
 QPointF Curve::handle(const Segment& aSegment, int aHandleIndex) {
     const util::Easing::CubicBezier& bezier = aSegment.easing.cubicBezier;
     if (aHandleIndex == 1) {

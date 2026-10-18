@@ -69,6 +69,27 @@ public:
     // expressible.
     static void setHandle(util::Easing::Param& aEasing, int aHandleIndex, const QPointF& aNormalized);
 
+    // A Type_Auto segment's control points, which are DERIVED rather than stored
+    // (util::Easing::autoHandles): x is always the third of the segment's span
+    // (1/3 and 2/3, Blender's automatic handle) and only the two y values come
+    // from the keys AROUND the segment, so the pair re-shapes itself when a
+    // neighbour changes - which is why it cannot live in the key's param. These
+    // are the GHOST handles: real control points the panel can map with
+    // graph_Geometry's handlePointAt and draw hollow, next to a Custom pair it
+    // draws filled.
+    //
+    // The pair is returned in the SAME normalized easing space handle() reads a
+    // Custom pair from, handle 0 first, and it is the pair the DRAWING rate uses:
+    // the same derivation sample() evaluates with (core::autoEasingContext +
+    // autoHandles over the same neighbours), so the ghost dot sits on the control
+    // point of the curve the panel draws.
+    //
+    // aFrom is the segment's FROM key - the key whose easing shapes the segment,
+    // exactly as handle() reads. EMPTY when there is nothing to derive: a segment
+    // whose easing is not Type_Auto, a key with no successor in its channel (the
+    // last key), and a channel of a type that carries no easing at all.
+    QVector<QPointF> ghostHandles(const core::TimeKey& aFrom) const;
+
     // Polyline of the channel across [aFrom,aTo] in (frame, value) space; the caller maps it through
     // the Scaler. aSamplesPerSegment bounds the error of the analytic curves (one sample per frame is
     // NOT enough: Expo and Elastic are steep inside a single frame at high zoom) and is spent on the
