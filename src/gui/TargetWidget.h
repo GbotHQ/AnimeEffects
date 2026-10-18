@@ -28,6 +28,9 @@ class GraphPanelWidget;
 class TargetWidget: public QWidget, public core::Animator {
 public:
     TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidget* aParent, const QSize& aSizeHint);
+    // Drops the frame-move connection into the dock's panel before the children (the
+    // timeline that emits it, the panel that receives it) are destroyed.
+    ~TargetWidget() override;
     void setProject(core::Project* aProject);
 
     // The project's driver - the object that owns ctrl::GraphEditor - or null while no
@@ -65,14 +68,14 @@ public:
     const TimeLineHeader& timeLineHeader() const { return *mHeader; }
 
     // from Animator
-    virtual core::Frame currentFrame() const;
-    virtual void stop();
-    virtual void suspend();
-    virtual void resume();
-    virtual bool isSuspended() const;
+    core::Frame currentFrame() const override;
+    void stop() override;
+    void suspend() override;
+    void resume() override;
+    bool isSuspended() const override;
 
 private:
-    virtual QSize sizeHint() const { return mSizeHint; }
+    QSize sizeHint() const override { return mSizeHint; }
 
     void onPlayBackButtonPushed(PlayBackWidget::PushType aType);
 #ifdef AE_ENABLE_IMGUI
@@ -105,6 +108,19 @@ private:
     TimeLineWidget* mTimeLine;
 #ifdef AE_ENABLE_IMGUI
     GraphPanelWidget* mGraphPanel;
+    // The dock's SECOND VIEW OF THE CURRENT FRAME: the timeline's own frame-move
+    // notification, connected to the panel's refresh() in the constructor (see the
+    // definition for why one emission per move is the whole story).
+    util::SlotId mFrameSlot;
+    // The tree's selection, connected to the same refresh: the tree picks the layers the
+    // panel draws, and it is on screen in the Graph tab too.
+    util::SlotId mSelectionSlot;
+    // The PROJECT's own two change notifications, connected to the same refresh while a
+    // project is set (setProject re-wires them): a timeline edit changes the curves, and an
+    // attribute change (fps, frame range) moves the frame axis. Both are emitted after their
+    // write, and refresh() writes nothing, so neither can feed back into the other.
+    util::SlotId mDocumentSlot;
+    util::SlotId mAttributeSlot;
 #endif
     TimeLineHeader* mHeader;
     PlayBackWidget* mPlayBack;

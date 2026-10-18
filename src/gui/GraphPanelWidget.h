@@ -112,10 +112,33 @@ public:
     // for, which is what makes the new project's curves appear.
     void setDriver(ctrl::Driver* aDriver);
 
-    // The document (or the dock's own layout) changed and this page is on screen: ask
-    // for a repaint. The dock calls it when it sets a project and when it switches to
-    // this tab; both are moments the frame's content is already different and nothing
-    // else would ask for the pixels.
+    // ASK FOR ONE REPAINT. This page draws from the document and from the project's
+    // current frame, and neither touches this widget's pixels on its own, so the dock
+    // (gui::TargetWidget) calls this at every moment the panel's content has already
+    // changed - one call per change, each after the change's own write:
+    //
+    //   * TargetWidget::setDriver - a new driver is a new editor (one per project), so
+    //     the panel is a new panel; setDriver() refreshes here itself;
+    //   * TargetWidget::onSurfaceChanged - the Graph tab became the current page (Qt laid
+    //     the page out and painted nothing of it while the timeline was up);
+    //   * TimeLineWidget::onFrameUpdated, connected by the dock - the CURRENT FRAME moved
+    //     (a transport step, a playback tick, a ruler or playhead gesture); the panel is
+    //     the second view of that one frame, so the playhead has to be redrawn;
+    //   * ObjectTreeWidget::onSelectionChanged, connected by the dock - the tree picks the
+    //     layers the panel draws, and it is on screen in this tab as well;
+    //   * core::Project::onTimeLineModified and ::onProjectAttributeModified, connected by
+    //     the dock while a project is set - a key edit from beside the dock (the property
+    //     panel, or the easing picker's commit) changes the curves, and an fps or frame
+    //     range change moves the frame axis.
+    //
+    // The two properties that make that safe: every one of those notifications is emitted
+    // AFTER the state it reports was written (the frame is set before setFrame emits, the
+    // command stack executes before its listeners run, an attribute setter assigns before
+    // it notifies), so a paint this call schedules never reads a stale value; and this
+    // call is only update() - it writes nothing, so a repaint cannot feed
+    // any of those notifications back. Duplicate requests (the panel's own gesture already
+    // asks for the repaint its command's notification would ask for again) are free: Qt
+    // coalesces them into one paint, and a request for a hidden page is dropped.
     void refresh();
 
 protected:

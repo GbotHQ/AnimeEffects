@@ -27,6 +27,10 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mTimeLine(nullptr),
 #ifdef AE_ENABLE_IMGUI
     mGraphPanel(nullptr),
+    mFrameSlot(),
+    mSelectionSlot(),
+    mDocumentSlot(),
+    mAttributeSlot(),
 #endif
     mHeader(nullptr),
     mSuspendCount(0) {
@@ -54,6 +58,40 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mSurfaceStack->addWidget(mTimeLine);
 #ifdef AE_ENABLE_IMGUI
     mSurfaceStack->addWidget(mGraphPanel);
+
+    // THE PANEL IS THE SAME CURRENT FRAME'S SECOND VIEW. What a step, a playback tick or
+    // a ruler gesture changes is the project's current frame, and the ONE announcement of
+    // that is the timeline's own onFrameUpdated - TimeLineWidget::setFrame emits it (after
+    // mInner->setFrame, so the frame is already the new one when it fires) and so does the
+    // cursor pass that moves the frame, exactly once per move. The panel draws its
+    // playhead from core::Project::currentTimeInfo() through the editor, i.e. from a value
+    // that changes without touching this widget's pixels, so without this connection the
+    // Graph tab's playhead stands still while the transport steps the frame (measured:
+    // twenty ctrl+Right presses, zero pixels changed, with the Graph tab current).
+    //
+    // ONE EMISSION, ONE update(), ONE PAINT: the notification is emitted once per frame
+    // move (setFrame and the frame-moving cursor pass each emit it once), refresh() is
+    // update(), and Qt coalesces requests; nothing in this path forces a paint out of
+    // order, and the frame is already the new one when the notification fires, so the
+    // panel can never read the value a step just left. While the timeline tab is up the
+    // request lands on a hidden page and is dropped by Qt; the tab switch has its own
+    // refresh (onSurfaceChanged).
+    mFrameSlot = mTimeLine->onFrameUpdated.connect([this]() {
+        if (mGraphPanel)
+            mGraphPanel->refresh();
+    });
+
+    // AND THE TREE SELECTS WHAT IT DRAWS. The tree is the splitter's first widget, so it
+    // is on screen in this tab as well - the design keeps it here because it names the
+    // layers and picks whose channels the panel draws. A selection change is a different
+    // model (new targets), and nothing about it touches this page's pixels: the graph
+    // would keep drawing the previous layer's curves. The same one-request-per-change rule
+    // applies (refresh() is update(), Qt coalesces, and a hidden page drops it); the
+    // selection is a different event from a frame move, so the two never double up.
+    mSelectionSlot = mObjTree->onSelectionChanged.connect([this](core::ObjectNode*) {
+        if (mGraphPanel)
+            mGraphPanel->refresh();
+    });
 #endif
     mSurfaceStack->setCurrentWidget(mTimeLine);
 
@@ -94,9 +132,63 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mPlayBack->setPushDelegate([=](PlayBackWidget::PushType aType) { this->onPlayBackButtonPushed(aType); });
 }
 
+TargetWidget::~TargetWidget() {
+#ifdef AE_ENABLE_IMGUI
+    // The signaler lives in the timeline widget, the receiver is the panel; both are
+    // children destroyed after this body, and the connection is dropped here so nothing
+    // can be emitted into the panel while the dock is being torn down.
+    mTimeLine->onFrameUpdated.disconnect(mFrameSlot);
+    mObjTree->onSelectionChanged.disconnect(mSelectionSlot);
+    if (mProject) {
+        mProject->onTimeLineModified.disconnect(mDocumentSlot);
+        mProject->onProjectAttributeModified.disconnect(mAttributeSlot);
+    }
+#endif
+}
+
 void TargetWidget::setProject(core::Project* aProject) {
     mPlayBack->pushPauseButton();
+#ifdef AE_ENABLE_IMGUI
+    // The OUTGOING project's notifications go first: the panel must never be asked to
+    // redraw from a document that is being dropped, and the old project may be gone the
+    // moment MainWindow finishes this reset.
+    if (mProject) {
+        mProject->onTimeLineModified.disconnect(mDocumentSlot);
+        mProject->onProjectAttributeModified.disconnect(mAttributeSlot);
+    }
+#endif
     mProject = aProject;
+#ifdef AE_ENABLE_IMGUI
+    if (mProject) {
+        // THE PANEL IS A VIEW OF THIS DOCUMENT. Two of the project's changes alter what it
+        // draws without touching this page's pixels, and each is announced by the project
+        // AFTER the write that made it - the panel's repaint always reads the new state:
+        //
+        //  * onTimeLineModified: a key edit made from beside the dock (the property panel,
+        //    or the easing picker's commit, which goes through the timeline's notifier).
+        //    TimeLineUtil::Notifier is a cmnd::Listener, and the stack executes the command
+        //    first and calls onExecuted/onRedone/onUndone afterwards (cmnd::Scalable::
+        //    tryExec / Stack::Macro: the command loop, then the listeners), so the keys are
+        //    already written when it fires. The graph's OWN gestures fire it too, after
+        //    their command landed - the panel has already asked for that repaint from its
+        //    cursor pass, so here it is a second update() on the same paint (Qt coalesces).
+        //  * onProjectAttributeModified: fps and the frame range, which move the panel's
+        //    frame axis. Project::Attribute's setters assign the member and only then call
+        //    the project's notifier (core/Project.cpp: setFrameRange/setFps/... all return
+        //    early when the value did not change, so this is one emission per real change).
+        //
+        // NO LOOP IS POSSIBLE: refresh() is update(), which writes nothing, so a repaint
+        // cannot re-emit either signal; and neither signal is emitted from a paint.
+        mDocumentSlot = mProject->onTimeLineModified.connect([this](core::TimeLineEvent&, bool) {
+            if (mGraphPanel)
+                mGraphPanel->refresh();
+        });
+        mAttributeSlot = mProject->onProjectAttributeModified.connect([this](core::ProjectEvent&, bool) {
+            if (mGraphPanel)
+                mGraphPanel->refresh();
+        });
+    }
+#endif
     mObjTree->setProject(aProject);
     mTimeLine->setProject(aProject);
     mPlayBack->aProject = aProject;
