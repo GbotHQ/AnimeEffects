@@ -3,6 +3,8 @@
 #include <QCoreApplication>
 #include <QVariantMap>
 
+#include "util/Easing.h"
+
 namespace {
 
 // One {label, value} entry per row, value = the combo index.
@@ -33,17 +35,28 @@ QVariantList GeneralSettingViewModel::languageOptions() const {
 }
 
 QVariantList GeneralSettingViewModel::easingOptions() const {
-    // util::Easing::displayCount() - 1 entries in util/Easing.cpp's
-    // kEasingDisplayOrder, with Type_Custom dropped (a global default carries no
-    // bezier control points). The shell asserts this count against
-    // util::Easing::displayCount() - 1, so the two cannot silently drift apart;
-    // the ORDER here must match kEasingDisplayOrder, which is what
-    // util::Easing::typeAtDisplayIndex() (the shell's save path) reads.
-    static const char* const kLabels[] = {
-        "Floor", "Round", "Linear", "Sine", "Quad", "Cubic", "Quart",
-        "Quint", "Expo", "Circ", "Back", "Elastic", "Bounce",
-    };
-    return makeIndexedOptions("util::EasingName", kLabels, 13);
+    // Built from util::Easing's own display table (util/Easing.cpp's
+    // kEasingDisplayOrder), with Type_Custom dropped - a global default carries no
+    // bezier control points - so the list IS the order the shell's save path reads
+    // (typeAtDisplayIndex) and it can never drift from the timeline's menu or the
+    // picker's tiles. The names are the SAME strings those two show
+    // (Easing::getTypeName, context "EasingName"), which is what makes them
+    // translate: a hand-written label table here was invisible to lupdate (the
+    // literal is an argument to a helper, not to a tr() call) AND asked for a
+    // context no catalog carries ("util::EasingName"), so every language showed
+    // these names in English while the same names were translated in the menu.
+    QVariantList out;
+    const int count = util::Easing::displayCount();
+    for (int i = 0; i < count; ++i) {
+        const util::Easing::Type type = util::Easing::typeAtDisplayIndex(i);
+        if (type == util::Easing::Type_Custom)
+            continue;
+        QVariantMap map;
+        map.insert(QStringLiteral("label"), util::Easing::getTypeName(type));
+        map.insert(QStringLiteral("value"), out.size());
+        out.append(map);
+    }
+    return out;
 }
 
 QVariantList GeneralSettingViewModel::rangeOptions() const {

@@ -206,10 +206,12 @@ GeneralSettingDialog::GeneralSettingDialog(GUIResources& aGUIResources, ViaPoint
         mModel->seed(init);
     }
 
-    // The three option lists the model cannot build itself: the theme ids come from
+    // The two option lists the model cannot build itself: the theme ids come from
     // gui::GUIResources::themeList() (the widget built its buttons from the same
-    // list), the easing names are the shared util::Easing table (the shell asserts
-    // the count against it) and the accent previews are the theme's own hues.
+    // list) and the accent previews are the theme's own hues. The easing names are
+    // the model's own now - it reads them from util::Easing's display table, so the
+    // combo, the timeline's menu and the picker's tiles cannot disagree - and the
+    // assert below is the count that ordering implies.
     // Everything else is model-built.
     XC_ASSERT(mModel->easingOptions().size() == util::Easing::displayCount() - 1);
     {

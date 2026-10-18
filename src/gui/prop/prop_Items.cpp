@@ -258,6 +258,13 @@ namespace prop {
             update();
         }
 
+        // The neighbouring keys a Type_Auto value is shaped by, so the chip's
+        // glyph is the curve the key actually plays (see EasingItem).
+        void setAutoContext(const util::Easing::AutoContext& aContext) {
+            mAuto = aContext;
+            update();
+        }
+
         // Re-tint the caret pixmap after an appearance change.
         void reloadCaret() {
             mCaret = (mRes ? mRes->icon("caret-down").pixmap(kCaret, kCaret) : QPixmap());
@@ -274,7 +281,7 @@ namespace prop {
 
             // Curve glyph, left; caret, right; name (+ delta) between.
             const int gy = (height() - kGlyph) / 2;
-            paintEasingCurve(p, QRectF(kMarginL, gy, kGlyph, kGlyph), mValue, c.accentBright, kStroke);
+            paintEasingCurve(p, QRectF(kMarginL, gy, kGlyph, kGlyph), mValue, c.accentBright, kStroke, &mAuto);
 
             const int caretX = width() - kMarginR - kCaret;
             const int caretY = (height() - kCaret) / 2;
@@ -306,6 +313,7 @@ namespace prop {
 
         GUIResources* mRes;
         util::Easing::Param mValue;
+        util::Easing::AutoContext mAuto;
         QPixmap mCaret;
     };
 
@@ -385,10 +393,27 @@ namespace prop {
         updateChip(mStamp);
     }
 
+    void EasingItem::setAutoContextProvider(std::function<util::Easing::AutoContext()> aProvider) {
+        mAutoProvider = std::move(aProvider);
+        refreshAutoContext();
+    }
+
+    void EasingItem::refreshAutoContext() {
+        // Re-read on every refresh rather than cached: the neighbours move
+        // whenever a key of the same channel is added, removed, moved or
+        // revalued, and an Auto curve that lagged them would draw a shape the
+        // document does not play.
+        const util::Easing::AutoContext context =
+            mAutoProvider ? mAutoProvider() : util::Easing::AutoContext();
+        mChip->setAutoContext(context);
+        mPicker->setAutoContext(context);
+    }
+
     void EasingItem::updateChip(const util::Easing::Param& aValue) {
         // The chip renders itself from a value; this is how it tracks the menu
         // live. The picker emits changed(v) on every edit and we pass the live
         // v here (not mStamp, which only advances on a commit).
+        refreshAutoContext();
         mChip->setParam(aValue);
     }
 

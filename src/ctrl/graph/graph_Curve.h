@@ -5,6 +5,7 @@
 #include <QVector>
 #include "core/TimeKey.h"
 #include "core/TimeLine.h"
+#include "util/Range.h"
 #include "util/Easing.h"
 #include "ctrl/graph/graph_Channel.h"
 
@@ -68,11 +69,26 @@ public:
     // expressible.
     static void setHandle(util::Easing::Param& aEasing, int aHandleIndex, const QPointF& aNormalized);
 
-    // Polyline of the channel across [aFrom,aTo] in (frame, value) space; the
-    // caller maps it through the Scaler. aSamplesPerSegment bounds the error of
-    // the analytic curves (one sample per frame is NOT enough: Expo and Elastic
-    // are steep inside a single frame at high zoom).
+    // Polyline of the channel across [aFrom,aTo] in (frame, value) space; the caller maps it through
+    // the Scaler. aSamplesPerSegment bounds the error of the analytic curves (one sample per frame is
+    // NOT enough: Expo and Elastic are steep inside a single frame at high zoom) and is spent on the
+    // part of each segment the window SHOWS, plus each touched segment's own endpoints for the caller
+    // to clip against. The frames outside the keys follow setLoop below.
     void buildPolyline(core::Frame aFrom, core::Frame aTo, int aSamplesPerSegment, QVector<QPointF>& aOut) const;
+
+    // How the frames OUTSIDE the keys are evaluated, which is the project's own playback rule
+    // (core::TimeKeyGatherer reads core::TimeInfo the same way):
+    //   * inside the frame range, loop ON  - the value is the eased segment from the LAST key back
+    //     to the FIRST, wrapped by the range's span (the animation repeats over the range, so the
+    //     first key sits one span ahead of the last);
+    //   * inside it, loop OFF - the value HOLDS: the first key before it, the last key after it;
+    //   * OUTSIDE the range the frame is CLAMPED into it, so the curve is flat at the range's edge
+    //     value - the animation is defined over the range and a repeated period is not something a
+    //     curve should extrapolate to infinity.
+    // A single key, or a range with no span, means no wrap.
+    void setLoop(bool aLoop, const util::Range& aRange);
+    bool isLooped() const;
+
 
     // The easing param that shapes the segment starting at one key, for a
     // graphable type. Null for a type that carries no easing.
@@ -83,10 +99,22 @@ private:
     // The key whose segment starts at or before aFrame, and its successor.
     // Mirrors the gatherer's no-key / single / sandwiched cases.
     const core::TimeKey* findLower(core::Frame aFrame) const;
+    // The keys either side of the segment aFrom -> aTo in this channel's map:
+    // the blender gatherer's point(-1) / point(2). Either is null at an end of
+    // the key list. They are what a Type_Auto easing derives its handles from,
+    // and what the Move spline takes its Catmull-Rom velocities from.
+    void neighborsOf(const core::TimeKey& aFrom, const core::TimeKey& aTo,
+                     const core::TimeKey*& aPrev, const core::TimeKey*& aNext) const;
     float sampleBetween(const core::TimeKey& aFrom, const core::TimeKey& aTo, core::Frame aFrame) const;
+    // The value aAt (a float frame) inside the pair aFrom/aTo over a length of aD frames: the easing
+    // belongs to aFrom, and aD is the pair's effective length - the frames' own difference, or the
+    // loop span for a wrapped pair.
+    float sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, float aAt, float aD) const;
 
     const core::TimeLine* mTimeLine;
     Channel mChannel;
+    bool mLoop;
+    util::Range mLoopRange;
 };
 
 } // namespace graph

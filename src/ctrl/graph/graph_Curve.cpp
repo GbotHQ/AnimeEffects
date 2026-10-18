@@ -3,6 +3,7 @@
 #include <QVector3D>
 
 #include "XC.h"
+#include "core/AutoEasing.h"
 #include "core/BlurKey.h"
 #include "core/DepthKey.h"
 #include "core/HsvKey.h"
@@ -15,6 +16,13 @@
 
 namespace ctrl {
 namespace graph {
+
+// The range a curve holds before setLoop() is given one: an INVALID range (min > max), the same
+// "nothing yet" the timeline uses, so it can never be mistaken for a real frame range and clamp a
+// frame to it.
+namespace {
+const util::Range kNoLoopRange(1, 0);
+} // namespace
 
 namespace {
 
@@ -85,11 +93,20 @@ float defaultValue(const core::TimeLine& aTimeLine, const Channel& aChannel) {
 } // namespace
 
 //-------------------------------------------------------------------------------------------------
-Curve::Curve(): mTimeLine(nullptr), mChannel() {}
+Curve::Curve(): mTimeLine(nullptr), mChannel(), mLoop(false), mLoopRange(kNoLoopRange) {}
 
 Curve::Curve(const core::TimeLine& aTimeLine, const Channel& aChannel):
     mTimeLine(&aTimeLine),
-    mChannel(aChannel) {}
+    mChannel(aChannel),
+    mLoop(false),
+    mLoopRange(kNoLoopRange) {}
+
+void Curve::setLoop(bool aLoop, const util::Range& aRange) {
+    mLoop = aLoop;
+    mLoopRange = aRange;
+}
+
+bool Curve::isLooped() const { return mLoop && 0 <= mLoopRange.diff(); }
 
 //-------------------------------------------------------------------------------------------------
 QVector<const core::TimeKey*> Curve::keys() const {
@@ -140,34 +157,93 @@ float Curve::sample(core::Frame aFrame) const {
         return defaultValue(*mTimeLine, mChannel);
     }
 
-    const core::TimeKey* from = findLower(aFrame);
+    // OUTSIDE the frame range the frame is CLAMPED into it: the animation is defined over the range,
+    // so past either end the curve is FLAT at the range's edge value (the playback range clamps its
+    // own frames, so the gatherer is never asked about them - this is the graph's own statement).
+    // A curve that was never given a range (see kNoLoopRange) has nothing to clamp to.
+    const float raw = aFrame.getDecimal();
+    const bool haveRange = 0 <= mLoopRange.diff();
+    const float at = haveRange
+        ? std::min(static_cast<float>(mLoopRange.max()), std::max(static_cast<float>(mLoopRange.min()), raw))
+        : raw;
+    const float firstFrame = static_cast<float>(map.first()->frame());
+    const float lastFrame = static_cast<float>(map.last()->frame());
+    const bool wraps = isLooped() && map.size() > 1;
+    // The project's period, and the wrapped pair's effective length: the first key sits one span
+    // ahead of the last.
+    const float span = static_cast<float>(mLoopRange.diff() + 1);
+    const float wrapD = static_cast<float>(map.first()->frame() - map.last()->frame()) + span;
 
-    // Before the first key: playback holds the first key ("perfect following",
-    // the gatherer's isSingle()), not the default value.
-    if (!from) {
+    // OUTSIDE the keys, which is the project's own playback rule (see setLoop). The test is on the
+    // DECIMAL frame and not on Frame::get(): that truncates toward zero, so a frame just below the
+    // first key reports 0 and would not read as "before the first key" at all.
+    if (at < firstFrame) {
+        // The last key sits one span ahead of the first, so this is the tail of the eased segment
+        // from the last key back to the first.
+        if (wraps)
+            return sampleOver(*map.last(), *map.first(), at + span, wrapD);
         return mChannel.value(*map.first());
     }
+    if (lastFrame < at) {
+        // The same wrapped segment, continued toward the range's end (the clamp above keeps a frame
+        // past the range at the range's edge, so this only reaches the wrap's own tail).
+        if (wraps)
+            return sampleOver(*map.last(), *map.first(), at, wrapD);
+        return mChannel.value(*map.last());
+    }
+
+    const core::TimeKey* from = findLower(aFrame);
 
     // A key exactly at the frame. The gatherer's hasSameFrame() also requires an
     // integral frame: a fractional frame sitting on a key is a point inside that
     // key's segment and must be interpolated with the next key.
-    if (!aFrame.hasFraction() && from->frame() == aFrame.get()) {
+    if (from && !aFrame.hasFraction() && from->frame() == aFrame.get()) {
         return mChannel.value(*from);
     }
 
-    const auto upper = map.upperBound(aFrame.get());
-    if (upper == map.end()) {
-        // Past the last key: playback holds it to the end of the layer.
-        return mChannel.value(*from);
-    }
     // value(), then dereference: dereferencing the iterator yields the MAPPED
     // POINTER (a TimeKey*), which is not a TimeKey& - *upper alone does not
     // compile against sampleBetween's reference parameters.
+    const auto upper = map.upperBound(aFrame.get());
+    if (!from || upper == map.end()) {
+        // Unreachable while the range tests above hold (a frame inside [first,last] always has both
+        // neighbours); a hand-built map that says otherwise holds its lower key.
+        return mChannel.value(from ? *from : *map.first());
+    }
     return sampleBetween(*from, *upper.value(), aFrame);
 }
 
 //-------------------------------------------------------------------------------------------------
 float Curve::sampleBetween(const core::TimeKey& aFrom, const core::TimeKey& aTo, core::Frame aFrame) const {
+    return sampleOver(
+        aFrom, aTo, aFrame.getDecimal(), static_cast<float>(aTo.frame() - aFrom.frame())
+    );
+}
+
+//-------------------------------------------------------------------------------------------------
+void Curve::neighborsOf(const core::TimeKey& aFrom, const core::TimeKey& aTo,
+                        const core::TimeKey*& aPrev, const core::TimeKey*& aNext) const {
+    aPrev = nullptr;
+    aNext = nullptr;
+
+    const core::TimeLine::MapType& map = mTimeLine->map(mChannel.type());
+    auto fromItr = map.constFind(aFrom.frame());
+    if (fromItr != map.constBegin() && fromItr != map.constEnd()) {
+        auto prev = fromItr;
+        --prev;
+        aPrev = prev.value();
+    }
+    auto toItr = map.constFind(aTo.frame());
+    if (toItr != map.constEnd()) {
+        ++toItr;
+        if (toItr != map.constEnd()) {
+            aNext = toItr.value();
+        }
+    }
+}
+
+//-------------------------------------------------------------------------------------------------
+float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, float aAt, float aD) const {
     const core::TimeKeyType type = mChannel.type();
     const float v0 = mChannel.value(aFrom);
     const float v1 = mChannel.value(aTo);
@@ -179,7 +255,7 @@ float Curve::sampleBetween(const core::TimeKey& aFrom, const core::TimeKey& aTo,
         return v0;
     }
 
-    const float d = static_cast<float>(aTo.frame() - aFrom.frame());
+    const float d = aD;
     if (d == 0.0f) {
         // TimeLine::createPusher() replaces the key at an occupied frame, so a
         // document edited through the timeline cannot hold two keys on one
@@ -191,14 +267,26 @@ float Curve::sampleBetween(const core::TimeKey& aFrom, const core::TimeKey& aTo,
     // The blender evaluates the easing of the `from` key at the point's frame
     // offset inside the segment (t = frame - k0->frame), never at the segment's
     // endpoints and never with the `to` key's param.
-    const float t = aFrame.getDecimal() - static_cast<float>(aFrom.frame());
+    const float t = aAt - static_cast<float>(aFrom.frame());
     const util::Easing::Param* easing = easingOf(aFrom, type);
-    const float rate = easing ?
-        util::Easing::calculate(*easing, t, 0.0f, 1.0f, d) :
+    float rate = 0.0f;
+    if (!easing) {
         // No graphable channel reaches this: types without an easing param have
         // no components and so no Channel. A hand-made Channel gets the neutral
         // (linear) rate instead of an invented curve.
-        (t / d);
+        rate = t / d;
+    } else if (easing->type == util::Easing::Type_Auto) {
+        // An Auto easing is shaped by the keys AROUND its segment, and this is
+        // the same pair core::TimeKeyBlender takes from its gatherer
+        // (point(-1)/point(2)), so the drawn curve is the played one.
+        const core::TimeKey* prev = nullptr;
+        const core::TimeKey* next = nullptr;
+        neighborsOf(aFrom, aTo, prev, next);
+        rate = util::Easing::calculate(
+            *easing, core::autoEasingContext(aFrom, aTo, prev, next), t, 0.0f, 1.0f, d);
+    } else {
+        rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
+    }
 
     if (type == core::TimeKeyType_Move) {
         // Move is the one channel playback does not lerp: getMoveExpans() feeds
@@ -208,28 +296,15 @@ float Curve::sampleBetween(const core::TimeKey& aFrom, const core::TimeKey& aTo,
         // straight line it is not.
         const core::MoveKey& k0 = static_cast<const core::MoveKey&>(aFrom);
         const core::MoveKey& k1 = static_cast<const core::MoveKey&>(aTo);
-        const core::TimeLine::MapType& map = mTimeLine->map(type);
 
         // The gatherer's point(-1) and point(2): the neighbour keys that shape
         // the velocities. Either is missing at the ends of the key list, and
         // getCatmullRomVels() handles nulls.
-        const core::MoveKey* knot = nullptr;
-        auto fromItr = map.constFind(k0.frame());
-        if (fromItr != map.constBegin() && fromItr != map.constEnd()) {
-            auto prev = fromItr;
-            --prev;
-            knot = static_cast<const core::MoveKey*>(prev.value());
-            XC_ASSERT(knot->type() == core::TimeKeyType_Move);
-        }
-        const core::MoveKey* knot2 = nullptr;
-        auto toItr = map.constFind(k1.frame());
-        if (toItr != map.constEnd()) {
-            ++toItr;
-            if (toItr != map.constEnd()) {
-                knot2 = static_cast<const core::MoveKey*>(toItr.value());
-                XC_ASSERT(knot2->type() == core::TimeKeyType_Move);
-            }
-        }
+        const core::TimeKey* prev = nullptr;
+        const core::TimeKey* next = nullptr;
+        neighborsOf(aFrom, aTo, prev, next);
+        const auto knot = static_cast<const core::MoveKey*>(prev);
+        const auto knot2 = static_cast<const core::MoveKey*>(next);
 
         const auto vels = core::MoveKey::getCatmullRomVels(knot, &k0, &k1, knot2);
         util::FergusonCoonsSpline<QVector3D> spline;
@@ -388,6 +463,26 @@ void Curve::buildPolyline(
     // between its keys, which is flatly wrong for the analytic easings.
     const int steps = qMax(1, aSamplesPerSegment);
 
+    // Outside the keys the polyline reaches the window's own EDGES - stopping at the first and last
+    // key would leave the rest of the plot empty - and it carries the value playback reports there:
+    // the hold (no loop), the wrapped easing inside the frame range (loop on), or the flat edge value
+    // past the range. sample() is that rule, so the extension asks it.
+    const core::TimeKey* firstKey = all.first();
+    const core::TimeKey* lastKey = all.last();
+    const bool wraps = isLooped() && all.size() > 1;
+    auto appendExtension = [&](float aLo, float aHi) {
+        for (int s = 0; s <= steps; ++s) {
+            const float frame = aLo + (aHi - aLo) * (static_cast<float>(s) / static_cast<float>(steps));
+            aOut.append(QPointF(frame, sample(core::Frame::fromDecimal(frame))));
+        }
+    };
+    if (fromFrame < static_cast<float>(firstKey->frame())) {
+        if (wraps)
+            appendExtension(fromFrame, static_cast<float>(firstKey->frame()));
+        else
+            aOut.append(QPointF(fromFrame, mChannel.value(*firstKey)));
+    }
+
     for (int i = 0; i + 1 < all.size(); ++i) {
         const core::TimeKey* from = all[i];
         const core::TimeKey* to = all[i + 1];
@@ -412,21 +507,34 @@ void Curve::buildPolyline(
             continue;
         }
 
-        // The segment's own endpoints are always emitted when the window
-        // touches the segment: a polyline clipped to the interior samples alone
-        // would fall up to one step short of the plot edge. The caller clips to
-        // the plot rect anyway.
+        // The samples go over the part of the segment the WINDOW SHOWS, not over the whole segment:
+        // the budget a caller hands in is spent on what is on screen (a segment spanning hundreds of
+        // frames would otherwise be drawn as a handful of straight chords in a view of a few frames
+        // of it). The segment's own endpoints are emitted as well, so the caller's clip to the plot
+        // rect cuts a chord that reaches the edge.
+        const float visLo = std::max(f0, fromFrame);
+        const float visHi = std::min(f1, toFrame);
         aOut.append(QPointF(f0, v0));
-        for (int s = 1; s < steps; ++s) {
-            const float frame = f0 + (f1 - f0) * (static_cast<float>(s) / static_cast<float>(steps));
-            if (frame < fromFrame || toFrame < frame) {
-                continue;
+        if (visHi > visLo) {
+            for (int s = 0; s <= steps; ++s) {
+                const float frame = visLo + (visHi - visLo) * (static_cast<float>(s) / static_cast<float>(steps));
+                if (frame <= f0 || f1 <= frame)
+                    continue; // the segment's own ends are already emitted
+                // Through sample(), so a drawn point is the played value - a
+                // fractional frame included, and the HSV truncation with it.
+                aOut.append(QPointF(frame, sample(core::Frame::fromDecimal(frame))));
             }
-            // Through sample(), so a drawn point is the played value - a
-            // fractional frame included, and the HSV truncation with it.
-            aOut.append(QPointF(frame, sample(core::Frame::fromDecimal(frame))));
         }
         aOut.append(QPointF(f1, v1));
+    }
+
+    // AFTER the last key, appended here so the polyline stays in frame order: the rest of the wrap, or
+    // the held last value.
+    if (static_cast<float>(lastKey->frame()) < toFrame) {
+        if (wraps)
+            appendExtension(static_cast<float>(lastKey->frame()), toFrame);
+        else
+            aOut.append(QPointF(toFrame, mChannel.value(*lastKey)));
     }
 }
 

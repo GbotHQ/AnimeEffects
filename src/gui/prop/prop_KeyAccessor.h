@@ -68,6 +68,12 @@ namespace prop {
         void assignImageOffset(const QVector2D&);
         void assignImageCellSize(int);
 
+        // The neighbouring keys a Type_Auto easing of aType's key at the CURRENT
+        // frame is shaped by - the same pair the blender's gatherer hands it
+        // (point(-1)/point(2)). Empty when no such key or segment exists, which
+        // leaves an Auto curve the neutral straight line.
+        util::Easing::AutoContext autoContext(core::TimeKeyType aType) const;
+
         // new keys
         void knockNewMove();
         void knockNewRotate();

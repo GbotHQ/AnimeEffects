@@ -34,6 +34,7 @@
 #include "gui/qml/GeneralSettingViewModel.h"
 #include "gui/qml/QmlTheme.h"
 #include "gui/theme/Icons.h"
+#include "util/Easing.h"
 
 static int failures = 0;
 
@@ -158,8 +159,31 @@ int main(int argc, char** argv) {
 
     // The option lists the scene repeats over and the combos bind.
     check(model.languageOptions().size() == 7, QStringLiteral("seven languages (%1)").arg(model.languageOptions().size()));
-    // util::Easing::displayCount() - 1: the display order minus Type_Custom.
-    check(model.easingOptions().size() == 13, QStringLiteral("thirteen easings (%1)").arg(model.easingOptions().size()));
+    // The model builds this list from util::Easing's own display table and drops
+    // Type_Custom (a global default carries no bezier control points), so BOTH the
+    // count and the ORDER are the table's, and the shell maps a saved value through
+    // the same index. Asserting the whole list against the table is what keeps a new
+    // easing (Auto was the last appended) from being published out of order - and it
+    // is the reason this target compiles util/Easing.cpp rather than carrying a copy
+    // of the names.
+    {
+        const QVariantList options = model.easingOptions();
+        check(options.size() == util::Easing::displayCount() - 1,
+              QStringLiteral("the display order minus Custom (%1 options against %2 - 1)")
+                  .arg(options.size()).arg(util::Easing::displayCount()));
+        bool ordered = !options.isEmpty();
+        for (int i = 0; i < options.size(); ++i) {
+            const QVariantMap map = options.at(i).toMap();
+            const auto type = util::Easing::typeAtDisplayIndex(i);
+            ordered = ordered && map.value(QStringLiteral("value")).toInt() == i &&
+                map.value(QStringLiteral("label")).toString() == util::Easing::getTypeName(type) &&
+                type != util::Easing::Type_Custom;
+        }
+        check(ordered, "every entry carries the display index as its value and the table's own name");
+        check(options.last().toMap().value(QStringLiteral("label")).toString() == QStringLiteral("Auto"),
+              QStringLiteral("Auto is the last easing offered (%1)")
+                  .arg(options.last().toMap().value(QStringLiteral("label")).toString()));
+    }
     check(model.rangeOptions().size() == 3, QStringLiteral("three ranges (%1)").arg(model.rangeOptions().size()));
     check(model.timeFormatOptions().size() == 5, QStringLiteral("five timeline formats (%1)").arg(model.timeFormatOptions().size()));
     check(!model.languageOptions().first().toMap().value(QStringLiteral("label")).toString().isEmpty(),

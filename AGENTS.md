@@ -1051,3 +1051,105 @@ widget itself is only 70 px wide at `(0,199)`, so the synthesized click lands be
 which layer it is driving.
 
 
+
+## The `Auto` easing: Blender's automatic bezier handles, per segment
+
+`util::Easing::Type_Auto` is the one easing whose shape is NOT in the key: its control points are
+**derived** from the keys around the segment every time the rate is evaluated, which is what an
+automatic handle means. The reference implementation is a standalone multi-key curve tool
+(`dev/curves/easing-demo.html` - `computeAllTangents` / `getBezierTangents` / `recalcHandles`); the
+port keeps that arithmetic and runs it for **one segment**, because a segment is the unit an
+AnimeEffects easing shapes.
+
+**Where the port lives, and the four rules it keeps** (`src/util/Easing.cpp::autoHandles`, called from
+`calculateAuto`). With the segment normalized to `(0,0) -> (1,1)` and the neighbouring keys as
+`(px,py)` (before the from key, `px < 0`) and `(nx,ny)` (after the to key, `nx > 1`):
+
+- an end that HAS a neighbour takes the **central difference over its own triple** - the "uniform"
+  tangent mode, the one Blender's auto handles use: the start's is `(1 - py) / (1 - px)`, the end's
+  `ny / nx`. (Both are the reference's `(y[i+1]-y[i-1])/(x[i+1]-x[i-1])` in the segment's units.)
+- an end that has NO neighbour follows **the handle it faces**: `1.5 - 0.5 * m_other`, which is the
+  reference's geometric construction (slope from the endpoint toward the other key's control point,
+  with the chord slope = 1 in normalized space).
+- either tangent is then **clamped ("auto clamped") so neither of its handles leaves the value range
+  its three keys span**. This is what stops an automatic handle from easing PAST a key it sits
+  between - the whole reason Blender's default is *Auto Clamped* rather than *Auto*. The reference
+  exposes the clamp as a toggle; the port always clamps, because the option IS "auto clamped" and a
+  curve that overshoots its neighbour is the thing users disable an automatic handle to avoid.
+- each control point sits **a third of the way across its interval**, so only the y values are ever
+  derived.
+
+**A segment with NEITHER neighbour is the identity (= Linear), and that is a deliberate answer**, not
+a fallback: the segment carries no information about its own shape. The consequence to remember
+before writing a smoke test for this feature is that a two-key channel CANNOT show Auto doing
+anything at all - the drawn curve is byte-identical to Linear (its only difference is the chip's
+name). Seeing it move needs **three keys on one channel**, so that the middle segments have a
+neighbour on each side.
+
+**The value an Auto handle reads, and why it is not the key's own number.** The easing must not know
+whether it is shaping pixels, radians or an opacity, and the segment decides which component of a
+multi-component key is read: `core::autoEasingValue` (`src/core/AutoEasing.h`) takes **the component
+that moves MOST across the segment**, so a y-only move is shaped by its own y and a one-bone-only
+pose by that bone (ties and a flat segment fall to the first component; a type with no scalar at all
+- bone, mesh, and image, whose offset is step-held - returns false and the context comes back empty).
+`core::autoEasingContext` then normalizes each neighbour to the SEGMENT's own change (`0` at the from
+key, `1` at the to key), which is what makes `autoHandles` unit-free. A channel that does not change
+across the segment has no shape to derive and yields the empty context, i.e. Linear - the right
+answer, since nothing changes.
+
+**The neighbours must come from ONE place on both paths, or the drawn curve is not the played one.**
+`core::TimeKeyBlender::getEasingRateFromTwoKeys` already holds them - `point(-1)` and `point(2)` are
+the channel's neighbouring keys, loop-aware and null at either end - so the Auto branch there is
+`core::autoEasingContext(*k0, *k1, point(-1), point(2))`. The graph panel's `ctrl::graph::Curve`
+takes the same pair through `Curve::neighborsOf` (extracted from the Move channel's own Catmull-Rom
+knot lookup, which wanted exactly the same two keys) and calls the same
+`util::Easing::calculate(param, ctx, t, 0, 1, d)`. `prop::KeyAccessor::autoContext(type)` publishes
+the same context for the dock's chip and the picker, re-read on every refresh through
+`EasingItem::setAutoContextProvider` / `EasingPickWidget::setAutoContext`, so a preview follows the
+document instead of freezing at the shape it first saw.
+
+**Serialization and the display order.** `Type_Auto` is **appended after `Type_Round`** (id 15,
+`Type_TERM` = 16): existing ids 0-14 are serialized as-is and must never shift, and the default
+easing is stored as the ENUM ID (`int(typeAtDisplayIndex(index))`), so an old settings file keeps
+meaning what it meant. The DISPLAY order is a separate table and puts Auto at index 13, immediately
+before Custom -> **14 pickable entries** (the menu skips Custom). Anything that counted 13 had to
+move, and each of those was silent: `scripts/gui/probe_graph_overlay.sh`'s `MENU_ENTRY_ROWS`/
+`MENU_ITEM_ROWS` (the menu is one row per entry, so a stale count fails the height identity),
+`tests/golden/easing_picker_geometry.json` (it enumerated `tile-0..12` only - the 14th tile now wraps
+into the second row at `229,133`), and `grep -rn '"13"' tests/`.
+
+**A trap worth its own line: `Type_Sine <= type && type < Type_Custom` is an ORDINAL test**, used by
+the chip's name and by `calculate`'s weight blending. It reads "the analytic curves with a direction
+and a blend", and Auto (15) is outside it - which is what we want (an Auto curve is derived, so a
+stale `weight` or `range` must not skew it, exactly as for Custom). It works only because
+Sine..Bounce are contiguous below Custom, so anything APPENDED is automatically "no direction, no
+blend". Keep new entries appended for that reason too.
+
+**The picker shows the blend slider for a type whose weight is inert** (Floor, Round, and now Auto -
+`calculate` applies weight only inside the ordinal window above; Custom is the exception because its
+own panel replaces the normal one). That is PRE-EXISTING for the two stepped holds; Auto joins that
+set rather than making the picker inconsistent with itself.
+
+**The settings dialog's easing combo asked for a context no catalog carries** (measured 2026-10-17,
+found while adding Auto): `GeneralSettingViewModel::easingOptions()` built its own label table and
+looked it up with `QCoreApplication::translate("util::EasingName", ...)`, while the names are filed
+under `EasingName` (`util::EasingName`'s entries are all `vanished`, and lrelease drops those). It
+therefore showed **English in every language** - including the new "Auto" - while the same names were
+translated in the timeline's menu. It now builds the list from `util::Easing`'s own display table
+(`displayCount` / `typeAtDisplayIndex` / `getTypeName`), so the combo, the menu and the picker cannot
+disagree and the names translate by construction. The check that proves it, and the reason the
+measurement exists at all: build the `.qm` (`ninja -C build 'release_translations:Debug'` - lupdate
+alone does NOT refresh them, and a stale `.qm` makes every i18n claim unverifiable), then ask a real
+`QTranslator`. A lookup in the WRONG context returns the source with **no error**, so the assertion
+has to be "the answer differs from the source".
+
+**Gates.** `tests/easing_regression.cpp` hand-derives five handle cases (isolated segment, both
+neighbours, first key, last key, clamped start) and checks the solved curve against a
+`UnitBezier` built from those handles plus both endpoints, that a local extremum is flat, and that
+weight/range are inert; `tests/graph_curve.cpp` samples Auto through the panel's own curve;
+`tests/picker_probe.cpp` #10 asserts the tile catalog offers **every** display-order easing except
+Custom exactly once (remove one from `kTileOrder` and it reports `missing=1` - measured);
+`tests/easing_picker_layout.cpp` + the golden pin the tile wrap; `tests/general_setting_form.cpp`
+asserts the combo IS the table (count, order, index-as-value); `tests/anim_setting_i18n.cpp` and a
+manual `QTranslator` pass cover the catalogs; `scripts/gui/probe_graph_overlay.sh` is the end-to-end
+one (the app's own key menu, its 14 rows, and row 3 = Sine / two Downs = Round as display indices).

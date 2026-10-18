@@ -1,5 +1,6 @@
 #include "cmnd/ScopedMacro.h"
 #include "cmnd/BasicCommands.h"
+#include "core/AutoEasing.h"
 #include "core/TimeKeyExpans.h"
 #include "core/BlurKey.h"
 #include "ctrl/TimeLineUtil.h"
@@ -334,6 +335,42 @@ namespace prop {
         aNext.type = util::Easing::easingToEnum(QString());
         aNext.range = util::Easing::rangeToEnum(QString());
         key->data().easing() = aNext;
+    }
+
+    //-------------------------------------------------------------------------------------------------
+
+    util::Easing::AutoContext KeyAccessor::autoContext(core::TimeKeyType aType) const {
+        util::Easing::AutoContext context;
+        if (!isValid())
+            return context;
+
+        const int frame = getFrame();
+        const core::TimeLine::MapType& map = mTarget->timeLine()->map(aType);
+
+        // The easing panel edits the key AT the current frame, and that key's
+        // easing shapes the segment starting at it - so the segment's far end is
+        // its successor in the map. A key with no successor has no segment.
+        auto from = map.constFind(frame);
+        if (from == map.constEnd())
+            return context;
+        auto to = from;
+        ++to;
+        if (to == map.constEnd())
+            return context;
+
+        const core::TimeKey* prev = nullptr;
+        if (from != map.constBegin()) {
+            auto p = from;
+            --p;
+            prev = p.value();
+        }
+        const core::TimeKey* next = nullptr;
+        auto n = to;
+        ++n;
+        if (n != map.constEnd())
+            next = n.value();
+
+        return core::autoEasingContext(*from.value(), *to.value(), prev, next);
     }
 
     //-------------------------------------------------------------------------------------------------

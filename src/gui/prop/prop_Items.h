@@ -156,16 +156,24 @@ namespace prop {
         // Re-render the chip glyph/name after a theme change.
         void refreshIcon();
 
+        // Where a Type_Auto draft's neighbouring keys come from. The item has no
+        // timeline of its own; its owner (a key group, which has the accessor)
+        // supplies them, and they are re-read on every refresh so an Auto chip
+        // follows its neighbours instead of freezing at the shape it first saw.
+        void setAutoContextProvider(std::function<util::Easing::AutoContext()> aProvider);
+
         UpdateType onValueUpdated;
 
     private:
         void updateChip();
         void updateChip(const util::Easing::Param& aValue); // render the chip from an explicit value (live)
+        void refreshAutoContext();
         void openPopover();
 
         EasingChip* mChip;
         EasingPickWidget* mPicker;
         util::Easing::Param mStamp;
+        std::function<util::Easing::AutoContext()> mAutoProvider;
         GUIResources* mGUIResources;
         util::SlotId mThemeSlot;
         bool mItemEnabled = true;

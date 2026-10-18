@@ -3,6 +3,7 @@
 #include "util/MathUtil.h"
 #include "core/TimeKeyExpans.h"
 #include "core/TimeKeyBlender.h"
+#include "core/AutoEasing.h"
 #include "core/LayerMesh.h"
 #include "core/ObjectNodeUtil.h"
 #include "core/DepthKey.h"
@@ -318,6 +319,21 @@ float getEasingRateFromTwoKeys(const TimeKeyGatherer& aGatherer) {
     const tKey* k0 = static_cast<const tKey*>(p0.key);
 
     const util::Easing::Param& easing = k0->data().easing();
+
+    // An Auto easing is shaped by the keys AROUND its segment, and the gatherer
+    // already holds them: point(-1)/point(2) are the neighbouring keys of this
+    // channel, loop-aware and null at either end of the key list. Deriving the
+    // rate here therefore needs no new plumbing and changes no value-combining
+    // line below.
+    if (easing.type == util::Easing::Type_Auto) {
+        const tKey* k1 = static_cast<const tKey*>(p1.key);
+        const auto prev = aGatherer.point(-1);
+        const auto next = aGatherer.point(2);
+        const auto ctx = core::autoEasingContext(
+            *k0, *k1, prev ? prev.key : nullptr, next ? next.key : nullptr);
+        return util::Easing::calculate(easing, ctx, -p0.relativeFrame, 0.0f, 1.0f, frame);
+    }
+
     // calculate easing
     return util::Easing::calculate(easing, -p0.relativeFrame, 0.0f, 1.0f, frame);
 }

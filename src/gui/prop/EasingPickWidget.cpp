@@ -51,13 +51,14 @@ constexpr double kVMIN = -0.35, kVMAX = 1.35;
 
 // Picker tile catalog in display order (mock PRIMARY + MORE; the vsep sits
 // between index 3 and 4). Keyed by position, not enum value.
-const util::Easing::Type kTileOrder[13] = {
+const util::Easing::Type kTileOrder[] = {
     util::Easing::Type_Linear, util::Easing::Type_Floor, util::Easing::Type_Round,
     util::Easing::Type_Cubic,  util::Easing::Type_Sine,  util::Easing::Type_Quad,
     util::Easing::Type_Quart,  util::Easing::Type_Quint, util::Easing::Type_Expo,
     util::Easing::Type_Circ,   util::Easing::Type_Back,  util::Easing::Type_Elastic,
-    util::Easing::Type_Bounce,
+    util::Easing::Type_Bounce, util::Easing::Type_Auto,
 };
+constexpr int kTileOrderCount = int(sizeof(kTileOrder) / sizeof(kTileOrder[0]));
 
 QString tileName(int aIdx) { return QString::fromLatin1("tile-%1").arg(aIdx); }
 
@@ -333,7 +334,8 @@ private:
 // ---------------------------------------------------------------------------
 void paintEasingCurve(QPainter& p, const QRectF& aRect,
                       const util::Easing::Param& aParam,
-                      const QColor& aColor, qreal aStrokeWidth) {
+                      const QColor& aColor, qreal aStrokeWidth,
+                      const util::Easing::AutoContext* aAuto) {
     const qreal w = aRect.width(), h = aRect.height();
     if (w <= 1 || h <= 1) return;
 
@@ -365,11 +367,15 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
     }
 
     const int N = 64;
+    const util::Easing::AutoContext emptyAuto;
+    const util::Easing::AutoContext& autoCtx = aAuto ? *aAuto : emptyAuto;
     QPainterPath path;
     bool first = true;
     for (int i = 0; i <= N; ++i) {
         const double x = (double)i / N;
-        const double y = util::Easing::calculate(aParam, x, 0.0f, 1.0f, 1.0f);
+        // The 6-argument form: for every type but Auto it is the same call as
+        // before, and for Auto it is the only form that can derive the handles.
+        const double y = util::Easing::calculate(aParam, autoCtx, x, 0.0f, 1.0f, 1.0f);
         const double vx = x0 + x * (x1 - x0);
         const double vy = pad + (kVMAX - y) / (kVMAX - kVMIN) * span;
         const QPointF s = toScreen(vx, vy);
@@ -383,6 +389,10 @@ CurveGlyph::CurveGlyph(QWidget* aParent) : QWidget(aParent) {
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 }
 void CurveGlyph::setParam(const util::Easing::Param& aParam) { mParam = aParam; update(); }
+void CurveGlyph::setAutoContext(const util::Easing::AutoContext& aContext) {
+    mAuto = aContext;
+    update();
+}
 void CurveGlyph::setGlyphColor(const QColor& aColor) { mColor = aColor; update(); }
 void CurveGlyph::setStrokeWidth(double aWidth) { mStrokeWidth = aWidth; update(); }
 
@@ -391,7 +401,7 @@ void CurveGlyph::paintEvent(QPaintEvent*) {
     p.setRenderHint(QPainter::Antialiasing, true);
     paintEasingCurve(p, QRectF(0, 0, width(), height()), mParam,
                      mColor.isValid() ? mColor : palette().color(QPalette::WindowText),
-                     mStrokeWidth);
+                     mStrokeWidth, &mAuto);
 }
 
 // ---------------------------------------------------------------------------
@@ -646,7 +656,7 @@ QWidget* EasingPickWidget::buildTrow() {
     mTrow = new QWidget(this);
     mTrow->setObjectName("trow");
     FlowLayout* flow = new FlowLayout(mTrow, kTileGap);
-    for (int i = 0; i < 13; ++i) {
+    for (int i = 0; i < kTileOrderCount; ++i) {
         QToolButton* tile = makeTileAt(i, kTileOrder[i]);
         tile->setObjectName(tileName(i));
         flow->addWidget(tile);
@@ -680,6 +690,7 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType) 
     g->setObjectName("t-glyph");
     g->setFixedSize(kTileGlyph, kTileGlyph);
     g->setParam(mkParam(aType, mDraft.range, mDraft.weight));
+    g->setAutoContext(mAuto);
     g->setGlyphColor(C().textMutedDim);
     vl->addWidget(g, 0, Qt::AlignCenter);
     connect(tile, &QToolButton::clicked, this, [this, aType] { setType(aType); });
@@ -902,6 +913,14 @@ void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
     refresh();
 }
 
+void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext) {
+    // The neighbour keys, not the draft, changed: re-render the curves the popup
+    // derives from them (the tile glyphs, and the motion preview on its next
+    // tick) so an Auto draft is never shown as a shape no key has.
+    mAuto = aContext;
+    refreshTiles();
+}
+
 // ---- session undo/redo -----------------------------------------------------
 void EasingPickWidget::pushState(const util::Easing::Param& aState) {
     mUndo.push_back(aState);
@@ -985,6 +1004,7 @@ void EasingPickWidget::refreshTiles() {
             // palette (it does not repaint on check-state change alone).
             g->setGlyphColor(on ? C().accentBright : C().textMutedDim);
             g->setParam(mkParam(type, mDraft.range, mDraft.weight));
+            g->setAutoContext(mAuto);
         }
     }
 }
@@ -1122,7 +1142,7 @@ void EasingPickWidget::hideEvent(QHideEvent* aEvent) {
 void EasingPickWidget::animStep() {
     mAnimT = std::fmod(mAnimT + 0.007, 1.0);
     if (!mPipeline || !mPipelineFill) return;
-    const float v = util::Easing::calculate(mDraft, (float)mAnimT, 0.0f, 1.0f, 1.0f);
+    const float v = util::Easing::calculate(mDraft, mAuto, (float)mAnimT, 0.0f, 1.0f, 1.0f);
     const float f = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
     mPipelineFill->setFixedWidth(qRound(f * mPipeline->width()));
     // Drive the Custom-view animation gauge (the ball's Y = the live value).

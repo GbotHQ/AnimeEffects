@@ -35,6 +35,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Move); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignMoveEasing(aNext);
             };
@@ -104,6 +105,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Rotate); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignRotateEasing(aNext);
             };
@@ -159,6 +161,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Scale); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignScaleEasing(aNext);
             };
@@ -209,6 +212,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Depth); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignDepthEasing(aNext);
             };
@@ -264,6 +268,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Opa); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignOpaEasing(aNext);
             };
@@ -324,6 +329,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Blur); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignBlurEasing(aNext);
             };
@@ -446,6 +452,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_HSV); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignHSVEasing(aNext);
             };
@@ -520,6 +527,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_Pose); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignPoseEasing(aNext);
             };
@@ -563,6 +571,7 @@ namespace prop {
             // easing
             mEasing = new EasingItem(this, mGUIResources);
             this->addItem(tr("Easing"), mEasing);
+            mEasing->setAutoContextProvider([this] { return this->mAccessor.autoContext(core::TimeKeyType_FFD); });
             mEasing->onValueUpdated = [=](util::Easing::Param, util::Easing::Param aNext) {
                 this->mAccessor.assignFFDEasing(aNext);
             };

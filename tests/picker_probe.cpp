@@ -5,6 +5,8 @@
 #include <QApplication>
 #include <QWidget>
 #include <QSlider>
+#include <QSet>
+#include <QToolButton>
 #include <QDoubleSpinBox>
 #include <QMouseEvent>
 #include <QRandomGenerator>
@@ -290,6 +292,42 @@ int main(int argc, char** argv) {
     fprintf(stderr, "#9 fi: h=%d hover=%d focus=%d pressed=%d borderRule=%d -> %s\n",
             fiH, (int)hasHover, (int)hasFocus, (int)hasPressed, (int)hasBorder,
             verdict(ok));
+
+    // ---- #10 tile catalog: every easing the table lists is REACHABLE ----
+    // The tiles are hand-listed in EasingPickWidget.cpp (kTileOrder) while the
+    // offering itself is util::Easing's display table, so a new easing can be added
+    // to the table and never appear here - which is invisible: the picker looks
+    // complete and the option simply cannot be chosen. Assert the two sets agree
+    // (every display-order type except Custom, exactly once) and that a tile's click
+    // really writes its type into the draft.
+    {
+        QSet<int> reachable;
+        bool allTilesClick = true;
+        int tileCount = 0;
+        for (int i = 0;; ++i) {
+            QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
+            if (!tile) break;
+            ++tileCount;
+            tile->click();
+            app.processEvents();
+            const int got = int(w.value().type);
+            reachable.insert(got);
+            allTilesClick = allTilesClick && got != int(util::Easing::Type_Custom);
+        }
+        QSet<int> expected;
+        for (int i = 0; i < util::Easing::displayCount(); ++i) {
+            const auto type = util::Easing::typeAtDisplayIndex(i);
+            if (type != util::Easing::Type_Custom)
+                expected.insert(int(type));
+        }
+        const bool complete = (reachable == expected) && allTilesClick && tileCount > 0;
+        fprintf(stderr,
+                "#10 tile catalog: %d tile(s) reach %d of the %d offered easings "
+                "(missing=%d extra=%d, none is Custom=%d) -> %s\n",
+                tileCount, reachable.size(), expected.size(),
+                (expected - reachable).size(), (reachable - expected).size(),
+                (int)allTilesClick, verdict(complete));
+    }
 
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");
     return gMismatches == 0 ? 0 : 1;

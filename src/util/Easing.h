@@ -28,6 +28,12 @@ public:
         // Appended after Custom: existing ids 0-12 are serialized as-is and
         // must never shift.
         Type_Round,
+        // Blender-style "auto clamped" bezier handles: the segment's control
+        // points are not stored, they are DERIVED from the neighbouring keys of
+        // the same channel every time the rate is evaluated (see AutoContext and
+        // autoHandles below). A key whose neighbours change therefore re-shapes
+        // itself, which is the point of an automatic handle.
+        Type_Auto,
         Type_TERM,
     };
 
@@ -63,6 +69,34 @@ public:
         mutable CubicBezier cubicBezier;
     };
 
+    // ---- Type_Auto's derived handles -------------------------------------
+    // One neighbouring key of an Auto segment. `value` is the shape's value
+    // expressed in the SEGMENT's own change - 0 at the segment's `from` key and
+    // 1 at its `to` key - so the handle math is unit-free: it reads the same
+    // whether the channel is a position in pixels, an angle in radians or an
+    // opacity in 0..1, and it never needs the easing to know what it is shaping.
+    struct AutoKey {
+        bool valid = false;
+        float frame = 0.0f; // frame offset from the segment's from key
+        float value = 0.0f; // (v - vFrom) / (vTo - vFrom)
+    };
+
+    // The keys around an Auto segment's two ends. A segment of a two-key channel
+    // has neither; the first key of a channel has no `prev`, the last no `next`.
+    struct AutoContext {
+        AutoKey prev; // the key before the segment's from key
+        AutoKey next; // the key after the segment's to key
+    };
+
+    // The control points of the segment (0,0) -> (aSpan,1) in the normalized
+    // space aCtx's neighbours are expressed in, at x = 1/3 and x = 2/3 (Blender
+    // puts an automatic handle a third of the way across its interval, so only
+    // the y values are ever derived). y is the neighbouring keys' slope at each
+    // end, clamped so neither handle leaves the value range its own neighbouring
+    // keys span - Blender's "auto clamped", which is what stops an automatic
+    // handle from easing PAST a key it sits between.
+    static void autoHandles(const AutoContext& aCtx, float aSpan, float& aY1, float& aY2);
+
     static QString getTypeName(Type aType);
     static QString getRangeName(Range aRange);
     // Picker display order: the stepped holds lead, then the analytic curves,
@@ -75,6 +109,11 @@ public:
 
     static float calculate(Type, Range, float t, float b, float c, float d);
     static float calculate(const Param&, float t, float b, float c, float d);
+    // The Auto form. aCtx carries the neighbouring keys (an empty context - what
+    // a caller with no document hands in - yields the straight identity curve).
+    // aSpan must be the segment's length in the same frame unit as aCtx's
+    // frames, exactly as `d` is for calculate() above.
+    static float calculate(const Param&, const AutoContext& aCtx, float t, float b, float c, float d);
 
     static float sineIn(float t, float b, float c, float d);
     static float sineOut(float t, float b, float c, float d);

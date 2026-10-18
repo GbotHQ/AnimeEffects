@@ -234,6 +234,125 @@ int main(int argc, char** argv) {
         XC_ASSERT(!(a.cubicBezier == diff.cubicBezier));
     }
 
-    std::printf("easing_regression: PASS (%d curves, solver + weight + threads ok)\n", numCurves);
+    // 6) Type_Auto: the handles are DERIVED from the segment's neighbours, so
+    //    these cases pin the derivation itself. Each expected pair is worked out
+    //    by hand from the algorithm (interior tangent = central difference of
+    //    the neighbours; an end with no neighbour follows the handle it faces,
+    //    1.5 - 0.5*m; each handle is clamped into the value range its three keys
+    //    span), not copied from the implementation's output.
+    {
+        const float span = 10.0f; // the segment 0 -> 10, values 0 -> 1
+
+        // A key is a "key of the segment" here: frame offset from the from key,
+        // value in units of the segment's own change.
+        auto make = [&](bool aHasPrev, float aPrevFrame, float aPrevValue,
+                        bool aHasNext, float aNextFrame, float aNextValue) {
+            util::Easing::AutoContext ctx;
+            ctx.prev.valid = aHasPrev;
+            ctx.prev.frame = aPrevFrame;
+            ctx.prev.value = aPrevValue;
+            ctx.next.valid = aHasNext;
+            ctx.next.frame = aNextFrame;
+            ctx.next.value = aNextValue;
+            return ctx;
+        };
+
+        struct HandleCase {
+            util::Easing::AutoContext ctx;
+            float y1, y2;
+            const char* name;
+        };
+        const HandleCase cases[] = {
+            // No neighbours at all: the segment says nothing about its own shape,
+            // so the controls sit on the diagonal and the curve IS Linear.
+            {make(false, 0, 0, false, 0, 0), 1.0f / 3.0f, 2.0f / 3.0f, "isolated segment"},
+            // Both neighbours: interior rules on both ends.
+            //   m0 = (1 - (-0.5)) / (1 - (-1))  = 0.75
+            //   m1 = 2 / 2.5                    = 0.8
+            {make(true, -10.0f, -0.5f, true, 25.0f, 2.0f), 0.25f, 1.0f - 0.8f / 3.0f, "both neighbours"},
+            // Only a next key: its tangent (3/2 = 1.5) drives the start's, 1.5 - 0.5*1.5 = 0.75.
+            {make(false, 0, 0, true, 20.0f, 3.0f), 0.25f, 1.0f - 1.5f / 3.0f, "first key of the channel"},
+            // Only a previous key: m0 = 2/1.5, then the end follows it: 1.5 - 0.5*m0.
+            {make(true, -5.0f, -1.0f, false, 0, 0), (2.0f / 1.5f) / 3.0f, 1.0f - (1.5f - 0.5f * (2.0f / 1.5f)) / 3.0f,
+             "last key of the channel"},
+            // A near, high previous key: the raw start tangent is (1-2)/1.1 and
+            // NEGATIVE (the curve would dip below the start key). The clamp holds
+            // it at the range's floor, 0, so the handle is flat instead.
+            {make(true, -1.0f, 2.0f, false, 0, 0), 0.0f, 0.5f, "clamped start"},
+        };
+        const int numCases = int(sizeof(cases) / sizeof(cases[0]));
+
+        for (const HandleCase& c : cases) {
+            float y1 = 0.0f, y2 = 0.0f;
+            util::Easing::autoHandles(c.ctx, span, y1, y2);
+            XC_MSG_ASSERT(std::fabs(y1 - c.y1) <= 1e-6, "auto handles %s: y1=%.6f want %.6f",
+                          c.name, double(y1), double(c.y1));
+            XC_MSG_ASSERT(std::fabs(y2 - c.y2) <= 1e-6, "auto handles %s: y2=%.6f want %.6f",
+                          c.name, double(y2), double(c.y2));
+
+            // The evaluated curve must be the bezier those handles draw, and it
+            // must pass through both keys (a handle pair that missed them would
+            // make the segment jump).
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Auto;
+            const util::UnitBezier expect(1.0f / 3.0f, c.y1, 2.0f / 3.0f, c.y2);
+            for (int k = 0; k <= 20; ++k) {
+                const float x = float(k) / 20.0f;
+                const double got = double(util::Easing::calculate(p, c.ctx, x * span, 0.0f, 1.0f, span));
+                const double ref = expect.solve(double(x), util::UnitBezier::kBezierEpsilon);
+                XC_MSG_ASSERT(std::fabs(got - ref) <= 1e-5, "auto solve %s x=%.2f got=%.6f ref=%.6f",
+                              c.name, double(x), got, ref);
+            }
+            XC_ASSERT(std::fabs(util::Easing::calculate(p, c.ctx, 0.0f, 0.0f, 1.0f, span) - 0.0f) <= 1e-6);
+            XC_ASSERT(std::fabs(util::Easing::calculate(p, c.ctx, span, 0.0f, 1.0f, span) - 1.0f) <= 1e-6);
+        }
+
+        // A local extremum is FLAT, which is the whole point of auto handles: a
+        // start key whose previous key sits at the same value as its next one has
+        // a zero central difference, so the curve leaves it horizontally.
+        {
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Auto;
+            const auto flat = make(true, -10.0f, 1.0f, true, 10.0f, 2.0f);
+            float y1 = 9.0f, y2 = 9.0f;
+            util::Easing::autoHandles(flat, span, y1, y2);
+            XC_ASSERT(std::fabs(y1) <= 1e-6);
+            // and the drawn curve really is flat there (not just the handle)
+            const double a = util::Easing::calculate(p, flat, 0.2f, 0.0f, 1.0f, span);
+            const double b = util::Easing::calculate(p, flat, 0.4f, 0.0f, 1.0f, span);
+            XC_ASSERT(a < 0.03 && b < 0.06);
+        }
+
+        // Weight and range are inert, exactly as they are for Custom: an Auto
+        // curve is the derived curve, and a stale weight (from another type, or
+        // read out of a saved file) can never skew it.
+        {
+            util::Easing::AutoContext ctx = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
+            util::Easing::Param base;
+            base.type = util::Easing::Type_Auto;
+            for (float w : {0.0f, 0.25f, 1.0f}) {
+                util::Easing::Param p = base;
+                p.weight = w;
+                for (int r = 0; r < util::Easing::Range_TERM; ++r) {
+                    p.range = util::Easing::Range(r);
+                    for (int k = 0; k <= 10; ++k) {
+                        const float t = float(k) / 10.0f * span;
+                        const double a = util::Easing::calculate(p, ctx, t, 0.0f, 1.0f, span);
+                        const double b = util::Easing::calculate(base, ctx, t, 0.0f, 1.0f, span);
+                        XC_ASSERT(std::fabs(a - b) <= 1e-6);
+                    }
+                }
+            }
+            // A context-free Auto param (what a preview with no document has) is
+            // the identity, never a hold.
+            base.weight = 0.5f;
+            for (int k = 0; k <= 10; ++k) {
+                const double t = double(k) / 10.0;
+                XC_ASSERT(std::fabs(double(util::Easing::calculate(base, float(t), 0.0f, 1.0f, 1.0f)) - t) <= 1e-5);
+            }
+        }
+    }
+
+    std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto ok)\n", numCurves);
     return 0;
 }

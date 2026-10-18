@@ -42,6 +42,9 @@ class CurveGlyph : public QWidget {
 public:
     explicit CurveGlyph(QWidget* aParent = nullptr);
     void setParam(const util::Easing::Param& aParam);
+    // The neighbouring keys an Auto curve is shaped by. Only a Type_Auto param
+    // reads it; an empty context is the neutral (straight) curve.
+    void setAutoContext(const util::Easing::AutoContext& aContext);
     void setGlyphColor(const QColor& aColor);
     void setStrokeWidth(double aWidth); // default 1.5
 
@@ -50,6 +53,7 @@ protected:
 
 private:
     util::Easing::Param mParam;
+    util::Easing::AutoContext mAuto;
     QColor mColor;
     double mStrokeWidth = 1.5;
 };
@@ -63,7 +67,8 @@ private:
 // ---------------------------------------------------------------------------
 void paintEasingCurve(QPainter& aPainter, const QRectF& aRect,
                       const util::Easing::Param& aParam,
-                      const QColor& aColor, qreal aStrokeWidth = 1.5);
+                      const QColor& aColor, qreal aStrokeWidth = 1.5,
+                      const util::Easing::AutoContext* aAuto = nullptr);
 
 // ---------------------------------------------------------------------------
 // EasingPickWidget — the locked "shape-first" easing picker (variant A).
@@ -110,6 +115,14 @@ public:
 
     util::Easing::Param value() const { return mDraft; }
     void setValue(const util::Easing::Param& aParam);
+
+    // The neighbouring keys an Auto draft is shaped by. The widget cannot know
+    // them (they live in the timeline), so its owner hands them in whenever the
+    // edited key or its neighbours change; an empty context is correct for every
+    // non-Auto draft. They drive the Auto tile, the blend thumbnails and the
+    // motion preview, so the popup previews the curve the document would play
+    // rather than a shape that belongs to no key.
+    void setAutoContext(const util::Easing::AutoContext& aContext);
 
     // Segment / tile interactions (public so a harness can drive them).
     void setType(util::Easing::Type aType);
@@ -203,6 +216,7 @@ private:
 
     util::Easing::Param mDraft;     // live draft (edited in the popup)
     util::Easing::Param mApplied;   // baseline: last value committed / loaded
+    util::Easing::AutoContext mAuto; // neighbour keys a Type_Auto draft is shaped by
     QVector<util::Easing::Param> mUndo; // session states to step back to
     QVector<util::Easing::Param> mRedo; // session states to re-do forward to
     util::Easing::Param mGestureStart;  // draft snapshot at drag start
