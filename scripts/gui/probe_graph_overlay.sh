@@ -78,8 +78,8 @@
 #   * the changed region's bounding box is 370x143+8+39 on BOTH of those states: x 8..377
 #     and y 39..181, i.e. LEFT of the Properties dock (x=382) and ABOVE the Animation
 #     panel (y=185). Everything the panel draws - frame ticks, frame numbers, the value
-#     labels, the zero rule, the 1px playhead, the centred state line and the legend -
-#     is in there: the Tools dock (x 0..176) changes 0 pixels apart from the toggle.
+#     labels, the zero rule, the 1px playhead, the centred state line and the channel
+#     button - is in there: the Tools dock (x 0..176) changes 0 pixels apart from the toggle.
 #   * OFF -> ON -> OFF restores the pixels exactly: the two OFF shots differ by 0.
 #   * the empty state, with the panel ON and NO layer selected, publishes the model's own
 #     sentence as an accessible label ("Select a layer to show its curves"), and its
@@ -88,10 +88,17 @@
 #     text-only panel should be.
 #   * PHASE 2, one explicit key added to a child layer by pressing the Current Keys knob:
 #     the control pair is 0 px, and the plot repaints by 2162 px = 3.45% inside the crop.
-#   * the legend row the press produces ("Folder16 : Rotate") is a real checkable
-#     control: activating it flips it to unchecked and removes its curve, 2078 px = 3.32% inside
-#     the crop and 0 outside it; activating it again flips it back and restores the crop
-#     EXACTLY (0 px).
+#   * the channel list the press produces is a real control, and it is the panel's ONE
+#     control: a PushButton whose own NAME is the count it changes ("1 channel(s)" for the
+#     one channel the press keyed), which opens the application's own QMenu - a native
+#     window, one row per channel plus a disabled heading per layer, each row carrying a
+#     hue swatch (filled = shown, hollow = hidden). Hovering a row focuses that channel
+#     (the panel's line then reads "..., focused: <layer> : Rotate"); activating it removes
+#     its curve from the crop, 2078 px = 3.32% inside the crop and 0 outside it, and moves
+#     the button's own name to "0 of 1" while the model says the channels are hidden;
+#     activating it again restores the crop EXACTLY (0 px). The per-row CheckBoxes the
+#     panel used to publish are gone with the model's legend label, so the row COUNT claim
+#     is now the button's own count.
 #   * PHASE 3, THE DANGLING TARGET - the gate the rest of this probe cannot be. The layer
 #     the panel is DRAWING is deleted through the object tree while the panel is on
 #     screen, and the app has to come out of it alive. MEASURED on the state phase 2
@@ -102,83 +109,126 @@
 #     with the input focus pointed at that window presses its last entry, which is Delete.
 #     Afterwards: the process is ALIVE, no `table cell` named Folder16 answers, the panel
 #     publishes one of the model's sentences again ("No keys on the selected layers") with
-#     0 legend rows, and the crop changes 9043 px = 14.43% against a control pair of 0 px (28944 px whole screen).
+#     NO channel control at all (the model publishes the button only while there is a channel
+#     to list), and the crop changes 9043 px = 14.43% against a control pair of 0 px (28944 px whole screen).
 #     The crop number is NOT the curve alone and is not claimed to be - the deleted layer
 #     also drew in the crop's canvas strip (the same crop still differs from the panel's ON
 #     empty state by 12799 px) - which is why the MODEL is what pins the panel here (the
-#     sentence, and a legend that went from one row to none) and the pixels corroborate it.
+#     sentence, and a channel control that went from one count to none) and the pixels
+#     corroborate it.
 #     What would make THAT claim false is a target left in GraphEditor's raw-pointer list:
 #     the draw after the deletion walks it, and a fault there is a dead process, which the
 #     alive assertion reports (and which no AT-SPI assertion could, since a dead app just
 #     stops answering).
-#   * PHASE 4, THE KEY CONTEXT MENU, THE APPLICATION'S OWN QMenu. A right-click on a key
-#     hands the APPLICATION'S menu to the viewport (ImGuiOverlay::openKeyMenuAt ->
-#     MainDisplayWidget::showGraphKeyMenu -> TimeLineEditorWidget::showKeyContextMenu, which
-#     pops mSelectEasing, so the panel and the timeline share ONE list of easings and one
-#     edit path) and choosing an entry changes the SELECTED key's easing (one undo step on
-#     the timeline's notifier). What opens is therefore a real Qt menu - a top-level window
-#     of its own, NOT pixels inside the panel - and that is the fact the phase is built on:
-#     it is identified the way this repository's AGENTS.md identifies a dialog, as THE
-#     WINDOW THAT DID NOT EXIST BEFORE (a set difference over the children of the root
-#     window), and its own rectangle comes from the X server, not from a capture.
-#     MEASURED on this build (1440x900 Xvfb, no window manager): one right-click on a drawn
-#     key opens exactly ONE new window, 92x294 whose ORIGIN IS THE CLICK POINT; Escape takes
-#     it away; a second right-click at the same point brings a new one. The rule that
-#     accepts such a window (menu_window) is a shape rule - menu-sized, tall enough to hold
-#     the entries - and it replaces the pixel rule the ImGui phase needed, which could only
-#     ever REJECT this menu: it demanded the changed pixels be inside the panel's viewport
-#     while the popup is 92x294 against a 210x164 viewport.
-#     THE MENU CANNOT BE ADDRESSED BY NAME, which is why this phase drives it by keyboard
-#     and says so rather than leaving it implied: MEASURED with the menu up and its window
-#     mapped, `ae dump` published no easing entry at all (the only `menu item` nodes in the
-#     tree are the menu bar's own) and `ae extents "Sine"` came back empty. So the phase
-#     drives the popup's own window the way phase 3 drives the object tree's QMenu - Down
-#     moves the menu's own highlighted row (MEASURED: 1844 px, one row rect, inside the
-#     menu's own window) and Return activates it - and takes ONE entry with the real pointer
-#     at the row rectangle the hover measurement puts it at.
-#     THE ROW MAP IS MEASURED, NOT STYLED. Hovering row 0 and row 1 gives the row inset (4
-#     px), the pitch (22 px) and the width (84 px), and the window's own height (294) is
-#     asserted to hold exactly the entries of util::Easing's display order minus Custom
-#     (14 of them once Auto is in the table - see MENU_ENTRY_ROWS below).
-#     MEASURED, one Down lights the FIRST row and each further Down the next one, so row N
-#     is display index N: two Downs then Return pick Round (the second entry), three pick
-#     Linear, four pick Sine. Every entry this phase picks is named by the number of Downs
-#     that reach it.
-#     THE MENU IS MODAL, and this phase pins both halves of that because the ImGui popup's
-#     keyboard-capture pair no longer exists to pin: with the menu OPEN the application's own
-#     Delete and Undo key commands do NOT reach the timeline (MEASURED: the key survived
-#     Delete, the line was byte-identical after it and after ctrl+Z, and the menu was still
-#     mapped), and with it CLOSED they DO (ctrl+Z moves the line back to the easing the last
-#     pick replaced). The menu's own existence is read from the window list each time, never
-#     from a pixel bar.
+#   * PHASE 4, THE KEY CONTEXT MENU, WHICH IS THE EASING PICKER. A right-click on a key
+#     hands the viewport the application's key-menu entry point
+#     (ImGuiOverlay::openKeyMenuAt -> MainDisplayWidget::showGraphKeyMenu ->
+#     TimeLineEditorWidget::showKeyContextMenu -> openEasingPicker), and that opens the ONE
+#     gui::prop::EasingPickWidget popover AT THE POINTER - the SAME control the dock header's
+#     easing chip opens from its own anchor (prop::EasingItem::openPicker), so the panel and
+#     the timeline still share ONE list of easings and one edit path. The flat 14-row QMenu
+#     and its builder (mSelectEasing) are DELETED with that change, and the pick's edit is
+#     still the timeline's undoable one, committed as a SINGLE step when the popover closes
+#     (EasingPickWidget::hideEvent emits applied() once). What opens is a real Qt popup: a
+#     top-level window of its own, NOT pixels inside the panel.
+#     WHAT IDENTIFIES IT NOW, AND WHY THE OLD WITNESS CANNOT. This phase used "the window
+#     that did not exist before" (a set difference over the root window's children), which
+#     worked because every right-click built a FRESH QMenu. The picker is ONE widget that the
+#     dock header owns and reuses for every open (prop_Items.cpp: "The one place the popover
+#     is opened"), so its native window outlives a close and that set difference only fires on
+#     the first open of a session. The witness is therefore what the window PUBLISHES about
+#     itself, read from the X server with no window manager in the way:
+#       - its own geometry, which is the PICKER'S: the phase reads kPopoverWidth and
+#         kNormalHeight/kCustomHeight OUT OF EasingPickWidget's SOURCE and asserts the window
+#         it accepts is exactly that wide and exactly that tall (300 x 202 for the non-Custom
+#         easings this phase works with; 442 in Custom);
+#       - Map State: IsViewable while it is up, and not viewable once it is dismissed;
+#       - Override Redirect State: yes - the X server's own answer that this top-level is
+#         UNMANAGED, which is what a Qt::Popup is (Qt's xcb backend ORs
+#         X11BypassWindowManagerHint for Qt::Popup) and NOT what the application's normal
+#         window is.
+#     NOT the WM window type: Qt's automatic _NET_WM_WINDOW_TYPE selection covers Tool,
+#     ToolTip, Dialog and Splash but NOT Popup, so the picker's window carries no popup atom;
+#     the property is RECORDED in the geometry file rather than asserted. The popup's origin
+#     is still the anchor - popUpAt moves it to (clamped anchor.x, anchor.y) - so the click
+#     point is the window's top-left, the same claim the QMenu phase made.
+#     THE TILES ARE THE ENTRY POINT, NOT KEYBOARD ROWS. The picker is a widget popover, not a
+#     QMenu: it has no row map, no highlight and no Down/Return navigation, so the three
+#     things this phase used to do to the menu - reading its rows by hovering them, asserting
+#     its height holds exactly the 14 entries of util::Easing's display order minus Custom, and
+#     reaching an entry with Down/Down/Return - are all gone with that control, and are listed
+#     as DROPPED below rather than quietly deleted. What the picker offers is its TILE CATALOG
+#     (kTileOrder in EasingPickWidget.cpp: Linear, Floor, Round, Cubic, Sine, ...), one
+#     checkable QToolButton per entry in a flow row, and this phase PRESSES A TILE with the
+#     REAL POINTER at the position the picker's OWN layout constants put it at (root margin,
+#     fixed header, body margins, seg row, motion-preview bar, then the flow of kTile-sized
+#     tiles kTileGap apart with the vsep after tile 3 - all read from the source, none of them
+#     hardcoded), so the control it drives is the one a user clicks.
+#     AND IT COMMITS ON CLOSE, which is the other half of what changed: a tile (like the seg
+#     buttons and the blend slider) edits a DRAFT, and the model is written once when the
+#     popover goes away (EasingPickWidget::hideEvent -> applied(), one undo step for the whole
+#     session). So every pick here is a PRESS followed by a DISMISSAL, and the dismissal this
+#     phase uses is Escape - which Qt itself makes the popup's cancel key
+#     (QWidget::keyPressEvent closes a Qt::Popup on QKeySequence::Cancel, and the picker does
+#     not override it). An outside click would do as well (QWidget::mousePressEvent closes a
+#     Qt::Popup pressed outside its rect, which prop_Items.cpp records: "the popup is a
+#     Qt::Popup, so an outside click hides it on its own"); Escape is used because it is the
+#     key this phase already drove at the control it replaces.
+#     THE PICKS, NAMED BY THE CATALOG AND ASSERTED BY THE DOCUMENT. The phase presses the SINE
+#     tile (kTileOrder index 4, derived from the source rather than assumed) with the pointer -
+#     the key carries Linear before it, so the pick is a real change - and then, at a fresh
+#     open, the ROUND tile (index 2), which leaves phase 4b re-shaping the key from Sine. Both
+#     are read back from the panel's own state line, which names the selected key and the easing
+#     it carries and is built from the DOCUMENT, not from the picker's return value. The dock's
+#     Easing chip is NOT a readback: its accessible name is the static tooltip "Easing" and no
+#     type name (recorded, together with whatever the accessibility tree says about the popup
+#     itself while it is up, in this phase's dump).
+#     THE POPUP IS MODAL, and this phase still pins both halves of that, because a Qt::Popup
+#     grabs the keyboard just as the QMenu did: with the popover OPEN the application's own
+#     Delete and Undo key commands do NOT reach the timeline (Delete is not the popup's cancel
+#     key, so QWidget::keyPressEvent ignores it and a top-level has no parent to propagate to;
+#     and ctrl+Z is consumed by the picker's own session-undo event filter), and with it
+#     CLOSED they DO (ctrl+Z moves the line back to the easing the last pick replaced). The
+#     popup's own existence is read from the window list each time, never from a pixel bar.
 #     THE KEY IS FOUND, NOT PREDICTED, and the reading the phase moves is made decidable
 #     first: the phase clears the panel's selection with the graph's OWN deselect gesture (a
 #     Ctrl-press in the plot on no key and no band, which GraphEditor::beginMarquee owns and
 #     which changes no document byte), then right-clicks along the fit rect's CENTRE ROW -
 #     and that row then +/- 8 and +/- 4 px, in 6 px steps, which cannot straddle the 20 px
 #     band ctrl::graph::kKeyHitRadius = 10 gives the right-click - and accepts a sample only
-#     when its click opened the menu window. Why the centre ROW: the value axis is fitted, so
-#     a single key is vertically centred, while its frame position is the FIT's business,
-#     which this phase deliberately does not assert. The right-click that opens the menu
-#     SELECTS the key it opens on (the overlay makes its key the selection, exactly as the
-#     timeline's own menu does), so the panel's own state line names that key afterwards -
-#     the assertion is that the selected-key half MOVED from the empty reading taken before
-#     the scan. THE ONE LEFT PRESS the phase then makes is the editor's own gesture on the
-#     same point, with the selection emptied again first, so it too is asserted by the half
-#     moving; it and its deselect run LAST, after phase 4b, because of a MEASURED side effect
-#     of the Ctrl-press gesture itself: it leaves the dock's Angle spin box unable to accept
-#     typed text for the rest of the session (the measurement, and the fact that it is NOT a
-#     stuck modifier or a focus change, are recorded beside the block at the end of 4b; the
-#     phase 4b typed write is the instrument that shows it, so the write is made first).
-#     The readback for every easing change is the panel's own state line, which names
-#     the selected key and the easing it carries - built from the DOCUMENT, not from the
-#     menu's return value. The dock's Easing chip is NOT a readback: MEASURED, its accessible
-#     name is the static tooltip "Easing" and no type name.
+#     when its click put the PICKER'S OWN WINDOW on screen (its geometry and map state, as
+#     above; the window is NOT viewable before the click, so a sample is still attributable to
+#     its own right-click even though the window object outlives the first close). Why the
+#     centre ROW: the value axis is fitted, so a single key is vertically centred, while its
+#     frame position is the FIT's business, which this phase deliberately does not assert. The
+#     right-click that opens the popup SELECTS the key it opens on (ImGuiOverlay::openKeyMenuAt
+#     calls editor.selectKey BEFORE it hands the selection on), so the panel's own state line
+#     names that key afterwards - and it is a REAL selection, not the timeline's temporary one,
+#     so it survives the popover's close (only endTemporarySelection runs there). The assertion
+#     is that the selected-key half MOVED from the empty reading taken before the scan. THE ONE
+#     LEFT PRESS the phase then makes is the editor's own gesture on the same point, with the
+#     selection emptied again first, so it too is asserted by the half moving; it and its
+#     deselect run LAST, after phase 4b, because of a MEASURED side effect of the Ctrl-press
+#     gesture itself: it leaves the dock's Angle spin box unable to accept typed text for the
+#     rest of the session (the measurement, and the fact that it is NOT a stuck modifier or a
+#     focus change, are recorded beside the block at the end of 4b; the phase 4b typed write is
+#     the instrument that shows it, so the write is made first).
 #     THE NEGATIVE is the true claim, not "changes nothing": a right-click that hits no key
-#     opens NO window at all and leaves the state line alone - MEASURED on this build, both on
-#     the off-key samples of a lattice walk and on the phase's own off-key click: no new
-#     top-level window, and no change to the panel's line.
-#     AND WHY THERE IS A PHASE 4b UNDER IT. The state line is the only readback the menu's
+#     opens NO popover at all and leaves the state line alone - the witness is the window list,
+#     which for an inert right-click holds no viewable picker window (the picker's own window
+#     is already in that list, unmapped, from the first open of the session).
+#     DROPPED WITH THE DELETED CONTROL, rather than silently: the menu's row map (two rows
+#     hovered for their inset, pitch and width), the assertion that its height held exactly the
+#     14 display-order entries minus Custom, the Down-arrow highlight measurement, and the
+#     Down/Down/Return keyboard pick - none of them can hold for a popover that has no rows.
+#     What they carried that CAN: the modality pair above, and a pixel witness inside the
+#     popup's own rectangle for the press (pressing the Round tile with the popover up changes
+#     the popup's own pixels - the checked tile's accent fill and glyph - and the changed region
+#     is asserted to lie inside the popup's own window). The picker's motion-preview bar
+#     animates between ANY two captures, so that assertion is the claim "the press landed on the
+#     picker's own surface" rather than a claim about the tile's fill alone; WHICH entry was
+#     pressed is the state line's business, as it was for the menu.
+#     AND WHY THERE IS A PHASE 4b UNDER IT. The state line is the only readback the pick's
 #     effect HAS while the panel shows ONE key: graph::Curve::buildPolyline emits nothing for
 #     a single-key map, so no segment is drawn at all; the panel paints its summary line only
 #     while the model is EMPTY; and MEASURED, changing that one key's easing moves 0 pixels.
@@ -188,20 +238,20 @@
 #     accessibility write does not fire) - and then asserts the CURVE'S own pixels: the
 #     segment appears with the second key, re-shaping it from Sine to Linear moves the
 #     polyline, and picking the SAME easing a second time moves exactly 0 px, which is what
-#     makes the first assertion about the EASING rather than about the menu having been used.
+#     makes the first assertion about the EASING rather than about the picker having been used.
 #     THE TYPED WRITE IS ALSO THE INSTRUMENT FOR A DEFECT THE IMGUI PHASE RECORDED and which
-#     the Qt menu is expected to have removed: typing into the dock's Angle field used to stop
-#     committing after the key menu had been used. Phase 4b's write happens AFTER five menu
+#     the Qt popover is expected to have removed: typing into the dock's Angle field used to stop
+#     committing after the key menu had been used. Phase 4b's write happens AFTER five popover
 #     openings, and it is asserted to commit (the field's own Value interface is read back and
 #     compared with what was typed), with the in-progress readings beside it so a failure says
 #     whether the characters arrived and the commit was refused or never arrived at all.
 #     THE MUTATION THIS HALF WAS RECORDED AGAINST no longer exists (the ImGui
 #     ImGuiConfigFlags_NavEnableKeyboard toggle and its SetNextFrameWantCaptureKeyboard line
 #     are deleted with the popup). What replaces it as the control is the application's own
-#     modality, which is not this probe's code: deleting the key the menu was opened on with
-#     the menu closed (phase 3's next-door behaviour) is what the blocked-Delete assertion
+#     modality, which is not this probe's code: deleting the key the popover was opened on with
+#     the popover closed (phase 3's next-door behaviour) is what the blocked-Delete assertion
 #     would have done instead, and the window-list half of that assertion goes red if the
-#     menu is not really up.
+#     popover is not really up.
 #
 #   * PHASE 5, THE WHEEL. Which side gets a wheel over the viewport is decided in
 #     ctrl::Driver::updateGraphWheel, and MEASURED here in both directions at ONE point (the
@@ -271,16 +321,17 @@
 #
 # WHAT IS NOT COVERED, stated so nobody has to measure it again:
 #   * the panel's OWN accessible rectangles do not agree with where it draws. MEASURED:
-#     the state line reports [222 25 156 156] (the plot) and the legend swatch
-#     [228 163 10 10], while the pixels the panel changes are at x 192..377, y 39..181.
+#     the state line reports [222 25 156 156] (the plot), while the pixels the panel
+#     changes are at x 192..377, y 39..181.
 #     The x is consistent with the drawn panel - 192 is where its leftmost ink is (the
 #     value column and its labels, left of the plot at 222) - but the published top (25)
 #     is 14 px ABOVE the highest pixel the panel paints (39), so the two spaces are offset
 #     vertically. Nothing here uses those rectangles as geometry: the crop comes from the
-#     docks, the legend is activated through the AT-SPI ACTION interface (never at a
-#     coordinate), and the assertions are about pixels. The offset is the accessibility
-#     layer's business, not this probe's, and it is recorded here rather than worked
-#     around.
+#     docks, the panel's channel button is activated through the AT-SPI ACTION interface
+#     (never at a coordinate - that action opens the list, and the LIST is then driven by
+#     its own window and pixels), and the assertions are about pixels. The offset is the
+#     accessibility layer's business, not this probe's, and it is recorded here rather than
+#     worked around.
 #   * the tab-strip role is asserted nowhere here; a build that starts enumerating the tab
 #     strip would neither fix nor fail this probe.
 #   * the object tree's CONTEXT MENU is not published to AT-SPI, so phase 3 cannot address
@@ -343,9 +394,9 @@
 #   * FAIL  the empty panel still drew its state line (0 px = 0.00% of the crop, floor 2%)
 #   * FAIL  the Current Keys add-key knob is addressable for the layer the tree had selected (last row activated: none; rect none)
 #   * FAIL  the press turned the knob row into the channel rows, i.e. the key now exists (Angle row none)
-#   * FAIL  the phase-2 selection publishes exactly one legend row (0 rows: none)
-#   * FAIL  activating the legend item flips the panel's own state to hidden (absent)
-#   * FAIL  hiding the legend row removes its curve from the crop (0 px = 0.00% gone, bar 200)
+#   * FAIL  and the phase-2 key makes the panel publish it, with its own name counting exactly one channel (none)
+#   * FAIL  activating the row toggles that channel's visibility, and the panel's own control says so ... (none)
+#   * FAIL  hiding the channel from the list removes its curve from the crop (0 px = 0.00% gone, bar 200)
 #   * FAIL  the panel falls back to one of the model's own empty-state sentences after the
 #     deletion (none; rects: empty none, no-keys none, all-hidden none)
 #   * FAIL  the right-click opened a popup whose pixels are a menu, not a sliver (none)
@@ -369,7 +420,8 @@
 # assertions are expected to PASS, and they are about the tree rather than about the panel.
 # The one line that must go red is the sentence one above: with setVisible a no-op the
 # overlay publishes nothing at all, so no empty-state sentence is there to be found, while
-# the legend-row count (0) passes vacuously. Note also what this mutation does NOT
+# the channel-control absence passes vacuously (the control is published by the same model
+# the mutation silences). Note also what this mutation does NOT
 # exercise: it never leaves a destroyed node in a live target list, so the assertion that
 # carries THIS gate's verdict - the process still being alive after the deletion - is
 # expected to pass under it. THAT control is the other direction and is named rather than
@@ -485,11 +537,12 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -s 2>&1 <<'AE_PROBE_BODY_
   # run of this script with every toggle removed: the wheel asks for the frame in
   # MainDisplayWidget::wheelEvent (the same request the cursor path makes), a key push and
   # an undo reach MainDisplayWidget::onVisualUpdated through DriverHolder (the slot it keeps
-  # on onTimeLineModified, which MainWindow connects to the viewport), a legend toggle asks
-  # for one in ImGuiOverlay::onAccessibilityAction, and the key menu is the application own
-  # QMenu - it is not drawn by the overlay at all any more, so the captures of the panel are
-  # taken with the menu already gone and the edit it performed reached the viewport through
-  # that same onTimeLineModified slot.
+  # on onTimeLineModified, which MainWindow connects to the viewport), a channel-list row asks
+  # for one through the menu action (MainDisplayWidget::showGraphChannelMenu -> updateRender),
+  # and the key menu is the application own
+  # easing picker - a top-level popup the overlay does not draw at all, so the captures of the
+  # panel are taken with that popup already gone and the edit its pick committed reached the
+  # viewport through that same onTimeLineModified slot.
   # So the captures below are taken straight after the state change with nothing in
   # between, and a phase whose pixels then do NOT move is a real finding rather than a
   # missing toggle.
@@ -500,87 +553,76 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -s 2>&1 <<'AE_PROBE_BODY_
   # hiding and syncs the value axis when showing - so a capture taken after one was a
   # capture of a window that had been refitted. Re-recorded from the no-toggle run: the
   # key push moves 2162 px inside the crop (was 2637), the whole screen 12807 (was
-  # 13282), and hiding the legend row 2078 (was 2116). The bars and the shapes of the
+  # 13282), and hiding the channel from its list 2078 (was 2116). The bars and the shapes of the
   # assertions are untouched.
 
   # ---- the overlay DRIVES its own items through accessibility, and so does this probe
   #
   # The geometry assertions below are about pixels, but the panel is a drawn surface with
   # no widgets in it: the only handles on its controls are the accessible items it
-  # publishes (a11y::sync, see gui/ImGuiOverlay.cpp). Both helpers read the tree through
+  # publishes (a11y::sync, see gui/ImGuiOverlay.cpp). The helpers here read the tree through
   # the repository own tooling (scripts/gui/ae_ui.py, imported rather than re-implemented)
   # and are pid-guarded by it, so a second AnimeEffects on the bus cannot be addressed.
   #
-  # legend list            -> one line per legend row: "<label>\t<checked|unchecked>"
-  # legend toggle <label>  -> flips that row through the AT-SPI Toggle action and waits
-  #                           for the state bit to move; prints "STATE <before> -> <after>"
-  #                           and exits 0 only when it really moved.
+  # THE PANEL HAS ONE CONTROL NOW, AND IT IS A BUTTON, NOT A RACK OF CHECK BOXES. It used
+  # to publish one check box per legend row - "<layer> : <channel>", one per channel that
+  # had a key. It publishes ONE PushButton instead (gui::ImGuiOverlay::publishAccessibility,
+  # role PushButton, id kChannelsItemId): its accessible NAME IS THE COUNT the button
+  # changes - "N channel(s)" while every channel is shown, "shown of total" once one is
+  # hidden (GraphPanelModel::buildChannels) - its VALUE says what it does ("shows the
+  # channel list"), and its RECTANGLE is the box the model laid out for it. The button is
+  # published only while there is something to list, so with no channel to show there is NO
+  # control at all - which is what makes its appearance and its disappearance assertions
+  # rather than a count of rows.
   #
-  # A legend row is a CheckBox whose accessible NAME is the model label, which
-  # GraphPanelModel builds as "<layer> : <channel>" (measured: "Folder16 : Rotate"). That
-  # " : " is the filter, and it is the panel own convention rather than a guess about the
-  # Qt tree: every other check box in this window is named after its panel ("View
-  # Settings", "Toolbox", ...) and carries its meaning in the DESCRIPTION instead.
-  legend() { # legend list | legend toggle <exact row label>
-    python3 - "$@" <<PY
-import sys, time, warnings
-warnings.filterwarnings("ignore")
-sys.path.insert(0, "$ROOT/scripts/gui")
-import ae_ui
-from gi.repository import Atspi
-
-def rows():
-    app = ae_ui._app()
-    out = []
-    if app is None:
-        return out
-    for _depth, role, name, node in ae_ui._walk(app):
-        if role == "check box" and " : " in name:
-            out.append((name, node))
-    return out
-
-def state(node):
-    try:
-        return "checked" if node.get_state_set().contains(Atspi.StateType.CHECKED) else "unchecked"
-    except Exception:
-        return "?"
-
-mode = sys.argv[1] if len(sys.argv) > 1 else "list"
-if mode == "list":
-    for name, node in rows():
-        print("%s\t%s" % (name, state(node)))
-    sys.exit(0)
-
-want = sys.argv[2]
-node = None
-for name, cand in rows():
-    if name == want:
-        node = cand
-        break
-if node is None:
-    print("absent")
-    sys.exit(1)
-before = state(node)
-# The Toggle action, which the panel advertises first for a check box and which fires the
-# very callback a pointer press on the swatch fires.
-if not ae_ui.do(node, "toggle"):
-    print("NOACTION")
-    sys.exit(2)
-after = before
-deadline = time.time() + 5.0
-while time.time() < deadline:
-    now = None
-    for name, cand in rows():
-        if name == want:
-            now = state(cand)
-    if now is not None and now != before:
-        after = now
-        break
-    time.sleep(0.2)
-print("STATE %s -> %s" % (before, after))
-sys.exit(0 if after != before else 1)
-PY
+  # AND THE LIST ITSELF IS A NATIVE QMenu, NOT ACCESSIBLE ITEMS: pressing the button opens
+  # gui::MainDisplayWidget::showGraphChannelMenu - the application's own menu, one row per
+  # channel plus a DISABLED heading per layer, each channel row carrying a 12px hue swatch
+  # (filled while the channel is shown, hollow while it is hidden) and the channel's own
+  # name, with the focused channel in bold. Activating a row toggles that channel's
+  # visibility; HOVERING one focuses it (the app's own hover handler), which the panel then
+  # reports in its own line ("..., focused: <layer> : <channel>") and draws by emphasising
+  # that channel's handles. MEASURED the way the tree's own QMenus are: the menu is NOT in
+  # the accessibility tree (ae dump publishes no row of it), so this probe drives it by its
+  # WINDOW and its pixels - the same route phase 3 takes to the object tree's menu - and
+  # reads the state it changes from the MODEL (the panel's line, the button's own name) and
+  # from the pixels.
+  #
+  # qmenu_at <x> <y>   -> "<id> <w> <h> <x> <y>" for a viewable, menu-shaped top-level that
+  #                       is anchored at that point (empty when there is none)
+  # row_rect <png>     -> "x y w h": the rectangle a diff image's changed pixels occupy
+  # focused_layer      -> the "<layer>" half of the panel's own "focused: <layer> : ..."
+  #                       (empty when no channel is focused)
+  qmenu_at() { # qmenu_at <x> <y> -> "<id> <w> <h> <x> <y>"
+      local id g w h gx gy info
+      for id in $(top_windows); do
+          g=$(win_geo "$id"); [ -n "$g" ] || continue
+          read -r w h gx gy <<< "$g"
+          # menu-shaped: narrower than the main window, at least a row tall
+          [ "$w" -ge 40 ] && [ "$w" -le 600 ] && [ "$h" -ge 20 ] && [ "$h" -le 600 ] || continue
+          # anchored at the point the caller pressed (Qt may nudge a popup to keep it on
+          # screen, so this is a bound and the caller asserts the measured numbers)
+          [ "$gx" -ge $(( ${1:-0} - 4 )) ] && [ "$gx" -le $(( ${1:-0} + 4 )) ] || continue
+          [ "$gy" -ge $(( ${2:-0} - 40 )) ] && [ "$gy" -le $(( ${2:-0} + 40 )) ] || continue
+          info=$(win_info "$id")
+          case "$info" in *"Map State: IsViewable"*) ;; *) continue ;; esac
+          echo "$id $w $h $gx $gy"
+          return 0
+      done
+      return 1
   }
+  # The rectangle a diff image's changed pixels occupy, as "x y w h" (0s when empty).
+  row_rect() {
+      local bb x y w h
+      bb=$(magick identify -format "%@" "${1:-}" 2>/dev/null)
+      read -r w h x y <<< "$(printf "%s" "${bb:-0x0+0+0}" | tr "x+" "  ")"
+      echo "${x:-0} ${y:-0} ${w:-0} ${h:-0}"
+  }
+  # The layer the panel says it is working on: the "<layer>" of its own
+  # "..., focused: <layer> : <channel>" half, which the model builds from the editor's
+  # focused channel (ImGuiOverlay::publishAccessibility). Empty when no channel is focused -
+  # the caller says which of the two it used rather than assuming one is there.
+  focused_layer() { panel_line | sed -n "s/.*focused: \(.*\) : .*/\1/p" | head -1; }
 
   # The Angle field current value, read from the UNNAMED spin box that sits beside the
   # "Angle" label in the Current Keys panel. It cannot be reached by name - measured: the
@@ -694,7 +736,9 @@ PY
   # The accessibility tree is the only instrument this probe has for the focus, and this
   # reads the two things that decide it: every node that holds FOCUSED at that moment (the
   # viewport or the panel holding it is the failure mode that matters, because gui::ImGuiOverlay
-  # takes the Qt focus while the key menu is open and must hand it back when the menu closes),
+  # takes the Qt focus while an ImGui text field wants it and must hand it back - and while the
+  # easing picker (a Qt::Popup) is up it owns the keyboard itself, which is why this is read
+  # with the popover closed),
   # and the Angle field own states.
   dock_focus() {
     python3 - <<PY
@@ -951,8 +995,9 @@ PY
   WHEEL_X=$(( (WTX + WTW + WPX) / 2 ))
   WHEEL_Y=$(( (WPY + WAY) / 2 ))
   # The viewport rectangle in screen coordinates: left of the Properties dock, right of the
-  # Tools dock, under the menu bar row, above the Animation dock. The key menu popup is
-  # CLAMPED into it (see open_key_menu), so this is what its rectangle is checked against.
+  # Tools dock, under the menu bar row, above the Animation dock. It is the region the RING
+  # capture below is cropped to; the key menu's popover is NOT checked against it any more (it
+  # is a top-level window, and popUpAt clamps it into the SCREEN, not into the viewport).
   VIEW_L=$((WTX + WTW)); VIEW_T=$WPY; VIEW_R=$WPX; VIEW_B=$WAY
   WHEEL_NOTCHES=3
   echo "WHEEL_TOOLS=\"$WHEEL_TOOLS\""        >> $G
@@ -1046,7 +1091,7 @@ PY
   #     what puts a bright area larger than the viewport under the panel rather than a patch
   #     inside it;
   #   * the graph is then shown again through its own toggle, so the labels, the tick row, the
-  #     zero rule and the legend sit over that bright artwork: that frame is the capture;
+  #     zero rule and the channel button sit over that bright artwork: that frame is the capture;
   #   * and the canvas zoom is UNDONE with the same notches at the same anchor. The round trip
   #     is exact rather than approximate - CanvasMover re-centres about the pointer
   #     ((scale/pre)*(center - cursor) + cursor, whose inverse is itself, and the notch index
@@ -1200,7 +1245,13 @@ PY
   #     here, and to a row at [382 245 82 23] after the press.
   ANGLE_BEFORE=$(ae extents "Angle" "label")
   ANGLE_VALUE_BEFORE=$(angle_value 2>/dev/null)
-  LEGEND_BEFORE=$(legend list | tr "\n" ";")
+  # THE PANEL'S ONE CONTROL, BEFORE THE KEY. The list is published only while there is a
+  # channel to list, and the model lists a channel only once it HAS a key - so before this
+  # press there is no control at all. It is read by the name the button carries while every
+  # channel is shown ("1 channel(s)"), which is also what the read after the press compares
+  # against; a check of BOTH names is made after the deletion in phase 3, where a channel
+  # that existed but were hidden would answer to the other one.
+  CHANNELS_BEFORE=$(ae extents "1 channel(s)" "push button")
 
   # AND INTO THE VIEWPORT, through the title labels of the panels above it.
   for title in "Constants" "Default Keys"; do
@@ -1218,7 +1269,7 @@ PY
   echo "KNOB=\"$KNOB\""                 >> $G
   echo "ANGLE_BEFORE=\"$ANGLE_BEFORE\"" >> $G
   echo "ANGLE_VALUE_BEFORE=\"$ANGLE_VALUE_BEFORE\"" >> $G
-  echo "LEGEND_BEFORE=\"$LEGEND_BEFORE\"" >> $G
+  echo "CHANNELS_BEFORE=\"$CHANNELS_BEFORE\"" >> $G
   echo "ANIM=\"$ANIM\""                 >> $G
 
   # READ THE PANEL TWICE, WITH NOTHING IN BETWEEN: no toggle, no forced paint. The pair is
@@ -1244,83 +1295,195 @@ PY
   import -window root "$SHOTS/graph_probe_09_after_key.png"
   echo "ANGLE=\"$ANGLE\""               >> $G
   echo "ANGLE_VALUE=\"$ANGLE_VALUE\""   >> $G
-  echo "LEGEND_ROWS=\"$(legend list | tr "\n" ";")\"" >> $G
+  CHANNELS_AFTER=$(ae extents "1 channel(s)" "push button")
+  echo "CHANNELS_AFTER=\"$CHANNELS_AFTER\"" >> $G
 
-  # ---- THE LEGEND SWATCH, DRIVEN THROUGH THE PANEL OWN ACCESSIBLE ITEM ----
-  # The row the phase-2 selection produces is named by its model label, and the model
-  # only lists channels that HAVE a key - so before the press this name does not exist
-  # and after it there is exactly one of them. That is the transition asserted outside;
-  # here the row is found, then toggled twice round the pixel captures. The toggle is the
-  # panel own accessible action, and it asks for its own frame
-  # (ImGuiOverlay::onAccessibilityAction -> requestRepaint), so again nothing is forced.
-  LEGEND_NAME=$(legend list | head -1 | cut -f1)
-  LEGEND_EXT=$(ae extents "$LEGEND_NAME" "check box")
-  LEGEND_OFF=$(legend toggle "$LEGEND_NAME")
+  # ---- THE CHANNEL LIST, DRIVEN THROUGH THE PANEL'S ONE CONTROL ----
+  # WHAT REPLACED THE LEGEND CHECK BOXES, AND WHY THE ROUTE IS THE POINTER AND THE WINDOW.
+  # This block used to read one checkable row per channel out of the accessibility tree and
+  # flip it through the AT-SPI Toggle action. The panel publishes ONE PushButton now, and the
+  # list behind it is the application's own QMenu - a native window that is NOT in the
+  # accessibility tree, exactly like the object tree's menu - so the list is driven the way
+  # phase 3 drives that one: through its WINDOW and its own pixels. Every claim the old block
+  # made is still made, on the surface that replaced it:
+  #   * the row count    -> the BUTTON's own name, which IS the count the control changes
+  #     ("1 channel(s)" while every channel is shown, "0 of 1" once one is hidden), plus the
+  #     button's absence before any channel had a key;
+  #   * the row's name   -> the panel's own line: hovering the list's channel row focuses
+  #     that channel, and the model then says which one it is ("..., focused: <layer> :
+  #     <channel>");
+  #   * the toggle state -> the same button name plus the model's own all-hidden sentence,
+  #     read either side of each activation;
+  #   * the ink          -> the two captures below, unchanged: hiding removes the curve from
+  #     the crop, and showing it again restores the crop exactly.
+  CHAN_MENU=""
+  CHAN_MENU_AFTER=""
+  CHAN_ROWS=""
+  CHAN_ROW=""
+  CHAN_HOVER_LINE=""
+  CHAN_BTN_HIDDEN=""
+  CHAN_BTN_SHOWN=""
+  if [ -n "$CHANNELS_AFTER" ]; then
+      read -r BX BY BW BH <<< "$CHANNELS_AFTER"
+      # THE PRESS IS THE CONTROL'S OWN ACTION (ImGuiOverlay::onAccessibilityAction ->
+      # openChannelMenuAt), which is the very action a pointer press on the box performs, at
+      # the same widget position - so the list is popped at the box's top-left, which is what
+      # the window's own origin is asserted against outside.
+      ae_activate "1 channel(s)" "the panel's channel-list button opens the list"
+      sleep 1.0
+      CHAN_MENU=$(qmenu_at "$BX" "$BY")
+      read -r CHAN_MENU_ID CHAN_MENU_W CHAN_MENU_H CHAN_MENU_X CHAN_MENU_Y <<< "${CHAN_MENU:-0 0 0 0 0}"
+      if [ -n "$CHAN_MENU_ID" ]; then
+          # THE ROW IS FOUND, NOT ASSUMED. The list's first row is the layer HEADING, a
+          # disabled action, so the walk starts at the top and takes the first hover that
+          # lights a rectangle INSIDE the list's own window: that is the channel row, and
+          # nothing about the style's row pitch is hardcoded. Every candidate is diffed
+          # against a capture of the same list with the pointer parked, so what moved is the
+          # row under the pointer.
+          park
+          import -window root /tmp/probe_chan_ctl.png
+          for off in 6 14 22 30 38 46 54 62 70; do
+              HY=$((CHAN_MENU_Y + off))
+              [ "$HY" -le $((CHAN_MENU_Y + CHAN_MENU_H - 2)) ] || break
+              xdotool mousemove --sync $((CHAN_MENU_X + CHAN_MENU_W / 2)) $HY
+              sleep 0.7
+              import -window root /tmp/probe_chan_hov.png
+              magick compare -compose src /tmp/probe_chan_ctl.png /tmp/probe_chan_hov.png /tmp/probe_chan_diff.png 2>/dev/null
+              ROW=$(row_rect /tmp/probe_chan_diff.png)
+              read -r RX RY RW RH <<< "$ROW"
+              CHAN_ROWS="${CHAN_ROWS}${CHAN_ROWS:+ }${off}=${ROW}"
+              if [ -z "$CHAN_ROW" ] && [ "$RW" -gt 0 ] && [ "$RH" -gt 0 ] \
+                 && [ "$RY" -ge "$CHAN_MENU_Y" ] && [ $((RY + RH)) -le $((CHAN_MENU_Y + CHAN_MENU_H)) ]; then
+                  CHAN_ROW="$ROW"
+              fi
+          done
+          # HOVERING THE ROW IS THE LIST'S OWN FOCUS GESTURE: the model then names that
+          # channel in the panel's line, which is the readback for "focus changed what is
+          # emphasised" (the panel draws the focused channel's handles; with the single key
+          # this phase has there is no segment, so the line is the instrument that exists).
+          CHAN_HOVER_LINE=$(panel_line)
+          park
+      fi
+  fi
+
+  # THE ACTIVATION: the row's centre, with the real pointer - which is what a user does with
+  # the list. It toggles the channel's visibility, and the list closes on the activation.
+  if [ -n "$CHAN_ROW" ]; then
+      read -r RX RY RW RH <<< "$CHAN_ROW"
+      xdotool mousemove --sync $((RX + RW / 2)) $((RY + RH / 2))
+      sleep 0.5
+      xdotool click 1
+      sleep 1.2
+      park
+  fi
   import -window root "$SHOTS/graph_probe_10_legend_hidden.png"
+  CHAN_BTN_HIDDEN=$(ae extents "0 of 1" "push button")
   ALLHIDDEN=$(ae extents "All channels of the selected layers are hidden" "label")
-  LEGEND_ON=$(legend toggle "$LEGEND_NAME")
-  import -window root "$SHOTS/graph_probe_11_legend_shown.png"
-  ALLHIDDEN_BACK=$(ae extents "All channels of the selected layers are hidden" "label")
-  echo "LEGEND_NAME=\"$LEGEND_NAME\""   >> $G
-  echo "LEGEND_EXT=\"$LEGEND_EXT\""     >> $G
-  echo "LEGEND_OFF=\"$LEGEND_OFF\""     >> $G
-  echo "LEGEND_ON=\"$LEGEND_ON\""       >> $G
-  echo "ALLHIDDEN=\"$ALLHIDDEN\""       >> $G
-  echo "ALLHIDDEN_BACK=\"$ALLHIDDEN_BACK\"" >> $G
 
-  # ---- PHASE 4: THE KEY CONTEXT MENU, THE APPLICATION OWN QMenu ----
+  # AND THE SAME ROW AGAIN, at a fresh opening of the list: the button's own name has moved
+  # to the hidden count, so the press that reopens it is addressed by that name, and the
+  # second opening's window is asserted to be the first one's place outside.
+  if [ -n "$CHAN_BTN_HIDDEN" ] && [ -n "$CHAN_ROW" ]; then
+      ae_activate "0 of 1" "the button, now counting the hidden channel, reopens the list"
+      sleep 1.0
+      CHAN_MENU_AFTER=$(qmenu_at "$BX" "$BY")
+      xdotool mousemove --sync $((RX + RW / 2)) $((RY + RH / 2))
+      sleep 0.5
+      xdotool click 1
+      sleep 1.2
+      park
+  fi
+  import -window root "$SHOTS/graph_probe_11_legend_shown.png"
+  CHAN_BTN_SHOWN=$(ae extents "1 channel(s)" "push button")
+  ALLHIDDEN_BACK=$(ae extents "All channels of the selected layers are hidden" "label")
+  echo "CHAN_MENU=\"$CHAN_MENU\""             >> $G
+  echo "CHAN_MENU_AFTER=\"$CHAN_MENU_AFTER\"" >> $G
+  echo "CHAN_ROWS=\"$CHAN_ROWS\""             >> $G
+  echo "CHAN_ROW=\"$CHAN_ROW\""               >> $G
+  echo "CHAN_HOVER_LINE=\"$CHAN_HOVER_LINE\"" >> $G
+  echo "CHAN_BTN_HIDDEN=\"$CHAN_BTN_HIDDEN\"" >> $G
+  echo "CHAN_BTN_SHOWN=\"$CHAN_BTN_SHOWN\""   >> $G
+  echo "ALLHIDDEN=\"$ALLHIDDEN\""             >> $G
+  echo "ALLHIDDEN_BACK=\"$ALLHIDDEN_BACK\""   >> $G
+
+  # ---- PHASE 4: THE KEY CONTEXT MENU, WHICH IS THE EASING PICKER ----
   # WHAT THIS PROVES, AND WHY NOTHING ELSE CAN. The panel had no way to change the easing
-  # TYPE of a key; a right-click on a key now hands the APPLICATION OWN menu to the viewport
-  # (ImGuiOverlay::openKeyMenuAt -> MainDisplayWidget::showGraphKeyMenu ->
-  # TimeLineEditorWidget::showKeyContextMenu, which pops mSelectEasing - the same menu a
-  # right-click in the timeline itself uses, so one list of easings and one edit path serve
-  # both views). What opens is therefore not a popup drawn by the panel: it is a real Qt
-  # menu, a top-level window of its own, and the edit it performs is the timeline own
-  # undoable one. No headless test can see either.
+  # TYPE of a key; a right-click on a key now hands the viewport the application own key-menu
+  # entry point (ImGuiOverlay::openKeyMenuAt -> MainDisplayWidget::showGraphKeyMenu ->
+  # TimeLineEditorWidget::showKeyContextMenu -> openEasingPicker), and that opens the ONE
+  # gui::prop::EasingPickWidget popover AT THE POINTER - the SAME control the dock header own
+  # easing chip opens from its own anchor (prop::EasingItem::openPicker), so one list of
+  # easings and one edit path serve both views. The flat 14-row QMenu and its builder
+  # (mSelectEasing) are DELETED with that change, and the pick's edit is still the timeline
+  # own undoable one, committed as a SINGLE step when the popover closes
+  # (EasingPickWidget::hideEvent emits applied() once). No headless test can see any of it.
   #
-  # THE MENU IS A WINDOW, NOT PIXELS IN THE PANEL, AND THAT IS HOW THE PHASE FINDS IT. A Qt
-  # popup is not drawn inside the application window, so it is not in the panel own pixels at
-  # all: it is a new child of the ROOT window, and this repository own AGENTS.md documents
-  # exactly this identification for a dialog - "the window that did not exist before", a set
-  # difference over the root own children. MEASURED on this build (1440x900 Xvfb, no window
-  # manager), one right-click on a drawn key opens exactly ONE new window, 92x294 whose
-  # origin IS the click point; Escape takes it away again, and a second right-click at the
-  # same point brings a new one. The scan below therefore accepts a sample when its click
-  # opened a window that was not there before, and the assertion afterwards is that the
-  # window is the menu - a pixel rule cannot do this job any more, and the rule this
-  # replaces could only ever reject the real menu: it demanded the changed pixels be inside
-  # the panel own viewport, while the popup is 92x294 at the anchor against a 210x164
-  # viewport, so it runs past both of the viewport own right and bottom edges.
+  # THE POPUP IS A WINDOW, NOT PIXELS IN THE PANEL, AND WHAT IDENTIFIES IT CHANGED WITH THE
+  # CONTROL. A Qt popup is not drawn inside the application window, so it is not in the panel
+  # own pixels at all: it is a top-level child of the ROOT window, and its rectangle comes
+  # from the X server rather than from a capture. The phase used to find it the way AGENTS.md
+  # finds a dialog - "the window that did not exist before", a set difference over the root
+  # own children - which worked because every right-click built a FRESH QMenu. The picker is
+  # ONE widget the dock header owns and reuses for every open (prop_Items.cpp: "The one place
+  # the popover is opened"), so its native window survives a close and that set difference
+  # only fires on the first open of a session. The witness is therefore WHAT THE WINDOW
+  # PUBLISHES ABOUT ITSELF, which the phase reads from the X server with no window manager in
+  # the way (xwininfo/xprop, the same tools phase 3 uses on the object tree own menu):
+  #   * its own GEOMETRY, which is the picker own: kPopoverWidth wide and one of
+  #     kNormalHeight/kCustomHeight tall. Both numbers are READ OUT OF THE PICKER OWN SOURCE
+  #     (picker_const below), not hardcoded here, so a widget whose size changes is a red
+  #     assertion naming the numbers rather than a scan that silently finds nothing. The
+  #     easings this phase works with are not Custom, so the height expected is the normal one
+  #     (300 x 202 on a DPR-1 X server; a scaled environment would show up as exactly that
+  #     mismatch);
+  #   * Map State: IsViewable while it is up, and NOT viewable once it is dismissed - which is
+  #     how "the popup is gone" stays a fact about the window list and not a pixel bar;
+  #   * Override Redirect State: yes - the X server own answer that this top-level is
+  #     UNMANAGED, which is what a Qt::Popup is (Qt own xcb backend ORs
+  #     X11BypassWindowManagerHint for Qt::Popup) and NOT what the application own normal
+  #     window is. The WM window type is RECORDED instead of asserted: Qt own automatic
+  #     _NET_WM_WINDOW_TYPE selection covers Tool, ToolTip, Dialog and Splash but not Popup, so
+  #     the picker window carries no popup atom for a probe to accept on.
+  # The origin is still the anchor: popUpAt moves the popup to (clamped anchor.x, anchor.y), so
+  # the click point is the window own top-left, which is the same claim the QMenu phase made.
   #
-  # THE MENU CANNOT BE ADDRESSED BY NAME, SO THIS PHASE DRIVES IT THE WAY PHASE 3 DOES. The
-  # application own QMenus are not published to AT-SPI: MEASURED with this menu up and its
-  # window mapped, `ae dump` published no easing entry at all (the only `menu item` nodes in
-  # the whole tree are the menu bar own) and `ae extents "Sine"` - the name an entry would
-  # have - came back empty. So the name route is not available for this menu, and the phase
-  # drives the popup own window with the keyboard, exactly as phase 3 drives the object tree
-  # own menu: with the pointer parked off the menu, Down moves the menu own highlight
-  # (MEASURED: 1844 px, one row rect, inside the menu own window) and Return activates the
-  # highlighted entry. ONE entry is also taken with the REAL POINTER, at the row rectangle
-  # the hover measurement puts it at, so the phase still shows the menu is pointer-operable
-  # and not only keyboard-operable.
+  # THE TILES ARE THE ENTRY POINT, AND THE MODALITY PAIR STILL PINS THE POPUP. The picker is
+  # a widget popover, not a QMenu: it has no rows, no highlight and no keyboard navigation, so
+  # the three things this phase used to do to the menu - MAP ITS ROWS by hovering them,
+  # ASSERT ITS HEIGHT holds exactly the 14 entries of util::Easing's display order minus
+  # Custom, and REACH AN ENTRY with Down/Down/Return - cannot hold here, and are dropped with
+  # the control (the phase own echo and the assertions say so rather than leaving a reader to
+  # wonder). What the picker offers is its TILE CATALOG: kTileOrder in EasingPickWidget.cpp
+  # names one easing per tile in display order with the vsep after tile 3, each a checkable
+  # QToolButton. The phase PRESSES A TILE with the REAL POINTER, at the position the picker
+  # own layout constants put it at: root margin, fixed header, the body own top and left
+  # margins, the seg row, the motion-preview bar and the body gap above the tile row, then one
+  # kTile per entry kTileGap apart (picker_tile_mid below, all of it read from the source).
+  # It does NOT address the tiles by NAME, and says so rather than implying it: a QToolButton
+  # whose text is empty has an empty accessible name, so the name route does not exist for
+  # them - the values are read back from the panel own state line instead, exactly as for the
+  # menu.
   #
-  # THE ROW MAP IS THE MENU OWN DISPLAY ORDER, MEASURED RATHER THAN ASSUMED. The entries are
-  # util::Easing's shared display order minus Custom, in that order (Floor, Round, Linear,
-  # Sine, Quad, Cubic, ...), and MEASURED here they tile the window 4 px in from its left and
-  # top edges, 22 px apart and 84 px wide - so the window own height holds one row per entry
-  # (14 with Auto in the table). MEASURED, the keyboard map is one row per Down: the first Down highlights the
-  # FIRST row, each further Down the next one, and Return activates the row the arrows
-  # reached (two Downs then Return set the key own easing to Round, the SECOND entry). So row
-  # N is display index N, and this phase names an entry by the number of Downs that reach it.
+  # AND A PICK COMMITS ON CLOSE, WHICH IS WHY EVERY PICK HERE IS A PRESS PLUS A DISMISSAL. A
+  # tile edits a DRAFT; the model is written once when the popover goes away
+  # (EasingPickWidget::hideEvent -> applied(), one undo step for the whole session). The
+  # dismissal this phase uses is Escape, which Qt itself makes the popup own cancel key
+  # (QWidget::keyPressEvent closes a Qt::Popup on QKeySequence::Cancel and the picker does not
+  # override it, so the key reaches it even from a focused tile - an ignored key event
+  # propagates to the parent). An outside press would do as well (QWidget::mousePressEvent
+  # closes a Qt::Popup pressed outside its rect, which prop_Items.cpp records: "the popup is a
+  # Qt::Popup, so an outside click hides it on its own"); Escape is used because it is the key
+  # this phase already drove at the control it replaces.
   #
-  # THE MENU IS MODAL, WHICH IS THE APPLICATION OWN BEHAVIOUR AND NOT THE PANEL OWN. With the
-  # menu OPEN the application own Delete and Undo key commands do NOT reach the timeline -
-  # MEASURED: the key the menu was opened on survived Delete and the panel own line was
-  # byte-identical after it and after ctrl+Z, with the menu still mapped - and with the menu
-  # CLOSED they do: MEASURED, ctrl+Z with no menu up moved the line back to the easing the
-  # last pick had replaced. Those two halves replace the ImGui keyboard-capture pair this
-  # phase used to assert, which the ImGui popup and its ImGuiConfigFlags_NavEnableKeyboard
-  # toggle no longer exist to make.
+  # THE POPUP IS MODAL, WHICH IS THE APPLICATION OWN BEHAVIOUR AND NOT THE PANEL OWN. With the
+  # popover OPEN the application own Delete and Undo key commands do NOT reach the timeline -
+  # Delete is not the popup own cancel key, so QWidget::keyPressEvent ignores it and a
+  # top-level has no parent to propagate to, and ctrl+Z is consumed by the picker own session
+  # undo filter (EasingPickWidget::eventFilter) - and with it CLOSED they do: ctrl+Z with no
+  # popover up moves the line back to the easing the last pick had replaced. Those two halves
+  # replace the ImGui keyboard-capture pair this phase used to assert, which the ImGui popup
+  # and its ImGuiConfigFlags_NavEnableKeyboard toggle no longer exist to make. The popup own
+  # existence is read from the window list each time, never from a pixel bar.
   #
   # THE ONE LEFT PRESS THE PHASE MAKES IS THE EDITOR OWN, AND ITS READING IS MADE EMPTY
   # FIRST. A plain press on a key SELECTS it (ctrl::GraphEditor::ownsCursor claims it, so no
@@ -1330,8 +1493,9 @@ PY
   # GESTURE, a Ctrl-press in the plot on no key and no band, which reaches
   # GraphEditor::beginMarquee and applies a rectangle that selects nothing, changing no
   # document byte. The phase clears the selection with it TWICE - once before the scan, so
-  # that the right-click which opens the menu can be shown to have SELECTED the key (the
-  # overlay own menu makes its key the selection, exactly as the timeline own does), and once
+  # that the right-click which opens the popover can be shown to have SELECTED the key
+  # (ImGuiOverlay::openKeyMenuAt calls editor.selectKey before it hands the selection on, and
+  # that is a REAL selection, so the popover own close does not end it), and once
   # before the left press - and asserts the empty reading each time, so each "it moved"
   # statement is about the gesture that follows it.
   # AND THE SECOND PAIR RUNS LAST, AFTER PHASE 4b, because of a MEASURED SIDE EFFECT of that
@@ -1346,7 +1510,7 @@ PY
   #     so the panel draws a key square and no curve at all - MEASURED, changing the easing
   #     on that state changes 0 pixels. Worse, the drawn summary line the state sentence
   #     comes from is NOT drawn while a curve exists (ImGuiOverlay.cpp:843 paints it only
-  #     for an empty model), so at this point the menu own effect is invisible on screen
+  #     for an empty model), so at this point the pick own effect is invisible on screen
   #     altogether. Phase 4b below is where a curve is MADE so it is not: a second key one
   #     frame later carrying a different value, after which the segment is drawn and
   #     re-shaping it moves the curve own own pixels. (The field that gives a second key
@@ -1356,20 +1520,22 @@ PY
   #   * the panel own STATE LINE is therefore the readback HERE: gui::ImGuiOverlay publishes
   #     the panel summary to the accessibility tree, and it names the selected key and the
   #     easing it carries ("... selected key: Rotate Linear"). The easing name comes from
-  #     util::Easing::getTypeName - the same "EasingName" strings the menu entries are built
+  #     util::Easing::getTypeName - the same type names the picker own tile catalog is built
   #     from - and the line is built from the DOCUMENT (the key the selection names), not
-  #     from the menu return value, so "the line changed" is a statement about the document.
-  #     The menu cannot be the readback either: it is not in the accessibility tree (see
-  #     above), which is exactly why the line exists.
+  #     from the picker return value, so "the line changed" is a statement about the document.
+  #     The tile cannot be the readback instead: its state is a checked flag on a QToolButton
+  #     with no text and therefore no accessible name, and the widget writes the model only on
+  #     close - which is exactly why the line exists. The PRESS own own pixels are asserted
+  #     beside it, inside the popup own rectangle (the second pick below).
   #   * the dock Easing chip is read beside it as a DIAGNOSTIC, not an assertion: it is
   #     prop::EasingChip, a self-painting QAbstractButton with no text and no accessibleName,
   #     so there may be no easing name in the tree to read. The dump below records what the
   #     tree actually says about it, so the next reader does not have to re-measure.
   #
-  # AND THE NEGATIVE: a right-click on empty plot space opens NO MENU at all - no window
-  # appears, and the panel own state line is untouched by it. Both halves are asserted, and
-  # they are what make the scan own acceptance a fact about the key rather than about
-  # right-clicks in the plot in general.
+  # AND THE NEGATIVE: a right-click on empty plot space opens NO POPOVER at all - no viewable
+  # picker window appears, and the panel own state line is untouched by it. Both halves are
+  # asserted, and they are what make the scan own acceptance a fact about the key rather than
+  # about right-clicks in the plot in general.
   # THE PANEL OWN STATE LINE, READ IN FULL - AND WHY `ae dump` CANNOT BE USED FOR IT.
   # `ae dump` prints "<role> | <name>" with the NAME CUT AT 70 CHARACTERS (ae_ui.py), and
   # MEASURED on this build the line grows past that as soon as the panel also names the
@@ -1378,7 +1544,7 @@ PY
   # back as "Sin", and a comparison against the easing's own name can never hold. That is
   # exactly what happened in the run this phase was re-derived from: the pointer pick and the
   # keyboard pick both WORKED and both assertions failed on the cut. This helper walks the
-  # accessibility tree itself - the same walk legend(), angle_value() and dock_focus() use -
+  # accessibility tree itself - the same walk angle_value() and dock_focus() use -
   # and prints the WHOLE name of the first label carrying one of the model own four sentences
   # (the same strings the empty-state assertions above address by name, and the same rule the
   # old grep applied, now without the cut).
@@ -1424,10 +1590,10 @@ PY
           *)                 printf "" ;;
       esac
   }
-  # ---- THE MENU OWN WINDOW, MEASURED AND NOT ASSUMED ----
+  # ---- THE POPUP OWN WINDOW, MEASURED AND NOT ASSUMED ----
   # Every child of the ROOT window, by id: the set a popup own opening and closing has to
-  # change. This is the identification AGENTS.md documents for a dialog, used here for the
-  # menu (see the header above).
+  # change, and the list every witness below is a query over (see the phase comment for why
+  # "the window that did not exist before" is no longer the witness).
   top_windows() { xwininfo -root -children 2>/dev/null | sed -n "s/^ *\(0x[0-9a-f]*\) .*/\1/p" | sort; }
   # A window own rectangle, from the X server own own numbers rather than from any capture:
   # "w h x y" (empty when there is no such window).
@@ -1436,46 +1602,116 @@ PY
         | awk -v id="${1:-}" '$1 == id { for (i = 2; i <= NF; i++) \
               if ($i ~ /^[0-9]+x[0-9]+\+/) { gsub(/x|\+/, " ", $i); print $i; exit } }'
   }
-  # THE ONE RULE THAT SAYS "THAT NEW WINDOW IS THE KEY MENU", applied by the scan below and
-  # by every later reopening, so the two can never disagree. It is deliberately NOT a pixel
-  # rule any more. The rule this replaces demanded the changed pixels be a menu-sized
-  # rectangle INSIDE the panel own viewport, because the ImGui popup it was written for was
-  # drawn in the widget own GL frame; the application own QMenu is a top-level window as
-  # wide as its longest entry and as tall as its entries - one row each (MEASURED 92x294 at
-  # the 13 entries before Auto; a row pitch taller with it, 14) - so MEASURED it sits at the
-  # anchor while the panel own viewport is 210x164 - it runs past the viewport own right and
-  # bottom edges, and every candidate the old rule was applied to was rejected for that
-  # reason and that reason alone (the run this phase was fixed against found nothing at all).
-  # What makes it the menu: a real window, menu-sized, whose height holds the easing entries
-  # own rows. The one-window count is asserted by the caller, not here.
-  menu_window() { # menu_window <window-id> -> 0 when this window is the key menu
-      local g w h
-      g=$(win_geo "${1:-}")
-      [ -n "$g" ] || return 1
-      read -r w h _ _ <<< "$g"
-      [ "$w" -ge 60 ] && [ "$w" -le 400 ] && [ "$h" -ge 150 ] && [ "$h" -le 600 ]
+  # WHAT THE WINDOW ITSELF REPORTS when asked about it: the map state and override-redirect
+  # state the phase asserts on, and the width/height it checks against the picker own source
+  # constants. One xwininfo call, so the answer is one reading and not four.
+  win_info() { # win_info <window-id> -> "Map State: ...;Override Redirect State: ...;Width: ...;Height: ..."
+      xwininfo -id "${1:-}" 2>/dev/null \
+        | grep -E "Map State|Override Redirect State|Width:|Height:" | tr -s " " | tr "\n" ";"
   }
-  # The row map, from the MENU OWN GEOMETRY and the layout the hover measurement below
-  # reads off the menu own highlight: the rows tile the window 4 px in from its left and top
-  # edges, MENU_ITEM_H apart and MENU_ITEM_W wide. menu_row_mid echoes the centre of row <i>,
-  # which is where a pointer click on that entry lands.
-  menu_row_mid() { # menu_row_mid <w h x y> <i> -> "x y"
-      local w=$1 h=$2 x=$3 y=$4 i=$5
-      local pitch=$(( (h - 8) / MENU_ITEM_ROWS ))
-      echo "$((x + 4 + (w - 8) / 2)) $((y + 4 + pitch * i + pitch / 2))"
+  # The WM window type, RECORDED rather than asserted (see the phase comment: Qt own automatic
+  # selection does not give a Qt::Popup a popup atom).
+  win_type() { # win_type <window-id> -> the atoms of _NET_WM_WINDOW_TYPE (empty when absent)
+      xprop -id "${1:-}" _NET_WM_WINDOW_TYPE 2>/dev/null \
+        | sed -n "s/^_NET_WM_WINDOW_TYPE(ATOM) = //p" | head -1
   }
-  # The row rectangle the hover measurement reported, as "x y w h" (0s when unreadable).
-  row_rect() {
-      local bb x y w h
-      bb=$(magick identify -format "%@" "${1:-}" 2>/dev/null)
-      read -r w h x y <<< "$(printf "%s" "${bb:-0x0+0+0}" | tr "x+" "  ")"
-      echo "${x:-0} ${y:-0} ${w:-0} ${h:-0}"
+  # ---- THE PICKER OWN NUMBERS, READ OUT OF ITS SOURCE (the probe own convention) ----
+  # picker_const reads one integer constant out of the picker own source: the phase asserts
+  # the WINDOW the application maps against the width and heights the widget pins itself to,
+  # and it computes where a tile is from the layout constants, rather than copying numbers
+  # that a change to the widget would quietly outdate (which is what "92x294" was).
+  picker_const() { # picker_const <file> <name> -> the constant's integer value (empty if absent)
+      sed -n "s/.*[^A-Za-z0-9_]${2:-} *= *\([0-9][0-9]*\)[^0-9].*/\1/p" "${1:-}" | head -1
   }
-  # Whether the menu window is still there: "yes" while it is a child of the root. This is
-  # how the phase reads "the menu is still open" and "the menu closed" - the window own
-  # existence, not a pixel bar.
+  PICKER_CPP="$ROOT/src/gui/prop/EasingPickWidget.cpp"
+  PICKER_HDR="$ROOT/src/gui/prop/EasingPickWidget.h"
+  PICKER_W=$(picker_const "$PICKER_CPP" kPopoverWidth)
+  PICKER_H_NORMAL=$(picker_const "$PICKER_HDR" kNormalHeight)
+  PICKER_H_CUSTOM=$(picker_const "$PICKER_HDR" kCustomHeight)
+  PICKER_ROOTM=$(picker_const "$PICKER_CPP" kRootMargin)
+  PICKER_HEADER=$(picker_const "$PICKER_CPP" kHeaderH)
+  PICKER_SEG_PAD=$(picker_const "$PICKER_CPP" kSegPad)
+  PICKER_SEG_BTN=$(picker_const "$PICKER_CPP" kSegBtnH)
+  PICKER_PIPE=$(picker_const "$PICKER_CPP" kPipelineH)
+  PICKER_BODY_TOP=$(picker_const "$PICKER_CPP" kBodyMarginTop)
+  PICKER_BODY_LR=$(picker_const "$PICKER_CPP" kBodyMarginLr)
+  PICKER_BODY_GAP=$(picker_const "$PICKER_CPP" kBodyGapSegPipe)
+  PICKER_TILE=$(picker_const "$PICKER_CPP" kTile)
+  PICKER_TILE_GAP=$(picker_const "$PICKER_CPP" kTileGap)
+  PICKER_VSEP=$(picker_const "$PICKER_CPP" kVsepW)
+  # The tile catalog, in the picker own display order. The phase names an ENTRY by its type
+  # and derives the tile it sits on from this list, so a re-ordering of the catalog is read
+  # rather than assumed; the vsep the widget inserts after tile 3 is not an entry.
+  picker_tile_types() {
+      sed -n "/kTileOrder\[\] *= *{/,/};/p" "$PICKER_CPP" \
+        | tr -d "\n" | sed -n "s/.*{\(.*\)};.*/\1/p" | tr "," "\n" \
+        | sed -n "s/.*util::Easing::\(Type_[A-Za-z]*\).*/\1/p"
+  }
+  picker_tile_idx() { # picker_tile_idx <Name> -> Type_<Name>'s 0-based tile index (empty if absent)
+      picker_tile_types | grep -nx "Type_${1:-}" | head -1 | cut -d: -f1 \
+        | awk "{ if (\$1 != \"\") print \$1 - 1 }"
+  }
+  PICKER_TILES=$(picker_tile_types | grep -c .)
+  # WHICH WINDOWS ARE THE PICKER: exactly the ones that answer with the picker own geometry and
+  # are ON SCREEN. Applied by the scan below and by every later opening/dismissal, so the two
+  # can never disagree. It is deliberately not "a new window" (the picker own window survives a
+  # close) and not a pixel rule (a popup is a top-level window, not pixels in the panel).
+  picker_windows() {
+      local id g w h info
+      for id in $(top_windows); do
+          g=$(win_geo "$id"); [ -n "$g" ] || continue
+          read -r w h _ _ <<< "$g"
+          [ "$w" -eq "${PICKER_W:-0}" ] || continue
+          [ "$h" -eq "${PICKER_H_NORMAL:-0}" ] || [ "$h" -eq "${PICKER_H_CUSTOM:-0}" ] || continue
+          info=$(win_info "$id")
+          case "$info" in *"Map State: IsViewable"*) ;; *) continue ;; esac
+          echo "$id"
+      done
+  }
+  # WHERE A TILE IS INSIDE THE POPUP, from the picker own layout constants: the root margin,
+  # the fixed header, the body own top and left margins, the seg row (its padding and the
+  # button height), the motion-preview bar and the two body gaps down to the tile row, then
+  # one kTile per entry kTileGap apart with the vsep inserted after tile 3
+  # (EasingPickWidget::buildTrow). The caller adds the window own measured origin, so this is
+  # a window-relative centre.
+  picker_tile_mid() { # picker_tile_mid <index> -> "x y"
+      local i=$1 n x y
+      x=$((PICKER_ROOTM + PICKER_BODY_LR))
+      y=$((PICKER_ROOTM + PICKER_HEADER + PICKER_BODY_TOP + PICKER_SEG_PAD + PICKER_SEG_BTN \
+           + PICKER_SEG_PAD + PICKER_BODY_GAP + PICKER_PIPE + PICKER_BODY_GAP))
+      for ((n = 0; n < i; n++)); do
+          x=$((x + PICKER_TILE + PICKER_TILE_GAP))
+          if [ "$n" -eq 3 ]; then x=$((x + PICKER_VSEP + PICKER_TILE_GAP)); fi
+      done
+      echo "$((x + PICKER_TILE / 2)) $((y + PICKER_TILE / 2))"
+  }
+  # PRESS A TILE with the real pointer, at the point the picker own constants give for that
+  # index. Nothing is echoed; the caller reads the state line and the popup own window.
+  press_picker_tile() { # press_picker_tile <index> <window-x> <window-y>
+      local tx ty
+      read -r tx ty <<< "$(picker_tile_mid "$1")"
+      park
+      xdotool mousemove --sync $(( $2 + tx )) $(( $3 + ty ))
+      sleep 0.4
+      xdotool click 1
+      sleep 0.6
+      park
+  }
+  # DISMISS the popover the way this phase does it everywhere: Escape, which Qt makes the
+  # popup own cancel key (QWidget::keyPressEvent handles QKeySequence::Cancel for a Qt::Popup)
+  # and which COMMITS the session's draft on close (EasingPickWidget::hideEvent -> applied(),
+  # one undo step). Nothing is echoed: the caller reads the window list and the state line.
+  popup_dismiss() {
+      park
+      xdotool key --clearmodifiers Escape
+      sleep 1.2
+  }
+  # Whether the picker is STILL ON SCREEN: "yes" while a window with the picker own geometry is
+  # viewable. This is how the phase reads "the popup is still open" and "the popup closed" -
+  # the window own published state, not a pixel bar, and not the window own mere existence,
+  # which survives a close.
   window_open() {
-      if top_windows | grep -qx "${1:-}"; then echo yes; else echo no; fi
+      if picker_windows | grep -qx "${1:-}"; then echo yes; else echo no; fi
   }
 
   MENU_FIT=""
@@ -1489,19 +1725,27 @@ PY
   MENU_SCAN_TRACE=""
   MENU_WIN=""
   MENU_GEOM=""
-  MENU_OPEN_COUNT=0
-  MENU_ROW0=""
-  MENU_ROW1=""
-  MENU_ITEM_H=""
-  MENU_ITEM_W=""
-  MENU_ROW_TOP=""
-  # util::Easing::displayCount() minus Custom (Easing.cpp). MEASURED 2026-10-17 with Auto
-  # in the display order (it sits at index 13, just before Custom): 14 pickable entries -
-  # Floor, Round, Linear, Sine, Quad, Cubic, Quart, Quint, Expo, Circ, Back, Elastic,
-  # Bounce, Auto. The two row counts are the SAME number because the menu holds one row per
-  # entry, so a mismatch between them is a menu that dropped an entry.
-  MENU_ENTRY_ROWS=14
-  MENU_ITEM_ROWS=14
+  MENU_PICKER_COUNT=0
+  MENU_WIN_INFO=""
+  MENU_WIN_TYPE=""
+  MENU_PICK_W=""
+  MENU_PICK_H=""
+  MENU_PICK_H_CUSTOM=""
+  MENU_TILES=""
+  MENU_PICK_BASE=""
+  MENU_TILE_ENTRY=""
+  MENU_TILE_IDX=""
+  # THE TILES THE TWO PICKS PRESS, by TYPE NAME: their indexes are derived from kTileOrder
+  # above (picker_tile_idx), so a catalog change moves the press rather than leaving a stale
+  # index behind, and the state line then has to name exactly these types.
+  MENU_TILE_TYPE="Sine"      # the FIRST pick's tile (kTileOrder index 4)
+  MENU_TILE_KB_TYPE="Round"  # the SECOND pick's tile (kTileOrder index 2)
+  # The picker own numbers as THIS RUN read them, which is what the outer assertions quote
+  # (and what they fail on when a source change outdates them).
+  MENU_PICK_W="$PICKER_W"
+  MENU_PICK_H="$PICKER_H_NORMAL"
+  MENU_PICK_H_CUSTOM="$PICKER_H_CUSTOM"
+  MENU_TILES="$PICKER_TILES"
   MENU_PRE_SCAN=""
   MENU_DESELECT=""
   MENU_STATE_BEFORE=""
@@ -1515,6 +1759,7 @@ PY
   MENU_DOCK_AFTER=""
   MENU_ENTRY=""
   MENU_ENTRY_PT=""
+  MENU_ENTRY_TILE=""
   MENU_ENTRY_CLOSED=""
   MENU_DEL_LINE=""
   MENU_DEL_OPEN=""
@@ -1526,8 +1771,8 @@ PY
   MENU_KB_GEOM=""
   MENU_KB_HL=""
   MENU_KB_HL_BB=""
-  MENU_KB_STEPS=""
   MENU_KB_ENTRY=""
+  MENU_KB_TILE=""
   MENU_KB_LINE=""
   MENU_KB_CLOSED=""
   MENU_APPKEY_LINE=""
@@ -1585,16 +1830,20 @@ PY
   MENU_STATE_BEFORE=$(panel_line)
   MENU_SEL_BEFORE=$(selected_half)
 
-  # ---- FIND THE KEY BY THE WINDOW ITS RIGHT-CLICK OPENS ----
+  # ---- FIND THE KEY BY THE POPUP ITS RIGHT-CLICK PUTS ON SCREEN ----
   # WHAT WAS WRONG BEFORE, MEASURED. This walk used to accept a point when the pixels inside
   # the application window changed like a menu, and it had to be re-tuned twice for a popup
-  # that was drawn by ImGui in the widget own GL frame. The menu is the application own Qt
-  # QMenu now, a top-level window of its own, so the witness is that window and nothing else:
-  # a right-click on a drawn key opens exactly one new child of the root, and a right-click
-  # anywhere else opens nothing at all (the graph takes no right-button action there, so a
-  # miss is inert). MEASURED on this build: an off-key sample opens no window and changes no
-  # pixel at all, and the same right-click on empty plot space later in the phase does not
-  # move the panel own state line.
+  # that was drawn by ImGui in the widget own GL frame; the phase then accepted "a window that
+  # did not exist before". The popover is a top-level window of its own, so a window is still
+  # the witness - but NOT the fact that it is new: the picker is one widget the dock header
+  # owns and reuses, so its native window outlives a close and only the session's FIRST open
+  # is a new child of the root (see the phase comment). The witness is the window PUBLISHING
+  # ITSELF as the picker - the width and heights read out of its source, and a viewable map
+  # state - and picker_windows is the single rule both this scan and every later opening use.
+  # Every picker window is closed before the next sample is read, so a sample is still
+  # attributable to its own right-click: the walk asserts that nothing answered BEFORE the
+  # click (MENU_PICK_BASE) as well as after it. A right-click that hits no key opens nothing
+  # at all (the graph takes no right-button action there, so a miss is inert).
   # AND THE POINT IS FOUND RATHER THAN PREDICTED, because the phase own business is the DRAWN
   # key and not the fit policy. The right-click is answered by
   # ImGuiOverlay::openKeyMenuAt, which takes the nearest key whose centre is within
@@ -1606,7 +1855,7 @@ PY
   # viewport tools (a PLAIN press in the plot is deliberately left to them), while a
   # right-click that hits no key is inert. The ONE left press this phase makes follows the
   # scan, and the phase says there why it is the only one it can make.
-  # EVERY SAMPLE IS WRITTEN TO THE GEOMETRY FILE as point=new-window, so a scan that finds
+  # EVERY SAMPLE IS WRITTEN TO THE GEOMETRY FILE as point=picker-window, so a scan that finds
   # nothing says what it looked at rather than leaving an empty MENU_KEY to fail elsewhere.
   MENU_SAMPLES=0
   MENU_SCAN_LATTICE="x ${MFX}..$((MFX + MFW - 1)) step 6, rows 0 -8 8 -4 4 around y ${MENU_DY0}"
@@ -1614,7 +1863,8 @@ PY
   MENU_SCAN_NOTE=""
   MENU_WIN=""
   MENU_GEOM=""
-  MENU_BASE_WINS=$(top_windows)
+  MENU_PICK_BASE=$(picker_windows | tr "\n" " ")
+  MENU_PICK_BASE=${MENU_PICK_BASE% }
   for mrow in 0 -8 8 -4 4; do
       MY=$((MENU_DY0 + mrow))
       [ "$MY" -lt "$MFY" ] && MY=$MFY
@@ -1626,72 +1876,58 @@ PY
           sleep 0.25
           xdotool click 3
           sleep 1.0
-          NEW=$(comm -13 <(printf "%s\n" "$MENU_BASE_WINS") <(top_windows) | tr "\n" " ")
-          NEW=${NEW% }
-          MENU_SCAN_TRACE="${MENU_SCAN_TRACE}${MENU_SCAN_TRACE:+ }${MX},${MY}=${NEW:-none}"
-          echo "# menu scan $(date +%T): sample $MX,$MY new=[${NEW:-none}]" >> $G
-          if [ -n "$NEW" ] && menu_window "$(printf "%s" "$NEW" | awk "{print \$1}")"; then
-              MENU_WIN=$(printf "%s" "$NEW" | awk "{print \$1}")
+          POP=$(picker_windows | tr "\n" " ")
+          POP=${POP% }
+          MENU_SCAN_TRACE="${MENU_SCAN_TRACE}${MENU_SCAN_TRACE:+ }${MX},${MY}=${POP:-none}"
+          echo "# menu scan $(date +%T): sample $MX,$MY picker=[${POP:-none}]" >> $G
+          if [ -n "$POP" ] && [ -z "$MENU_PICK_BASE" ]; then
+              MENU_WIN=$(printf "%s" "$POP" | awk "{print \$1}")
               MENU_KEY="$MX $MY"
               MENU_OFFSET="$((MX - MENU_DX0)) $((MY - MENU_DY0))"
-              MENU_OPEN_COUNT=$(printf "%s" "$NEW" | wc -w)
+              MENU_PICKER_COUNT=$(printf "%s" "$POP" | wc -w)
               MENU_GEOM=$(win_geo "$MENU_WIN")
-              MENU_SCAN_NOTE="hit on row $mrow at x $MX after ${MENU_SAMPLES} sample(s): window ${MENU_WIN} ${MENU_GEOM:-unreadable}"
-              echo "# menu hit $(date +%T): $MX,$MY after ${MENU_SAMPLES} sample(s), window=${MENU_WIN} geo=${MENU_GEOM:-unreadable}" >> $G
+              MENU_SCAN_NOTE="hit on row $mrow at x $MX after ${MENU_SAMPLES} sample(s): picker window ${MENU_WIN} ${MENU_GEOM:-unreadable}"
+              echo "# menu hit $(date +%T): $MX,$MY after ${MENU_SAMPLES} sample(s), picker=${MENU_WIN} geo=${MENU_GEOM:-unreadable}" >> $G
               break 2
           fi
-          if [ -n "$NEW" ]; then
-              # A window opened that is NOT menu-shaped: say so and clear it, rather than
-              # accepting it as the menu or leaving it up for the next sample to read.
-              MENU_SCAN_NOTE="a window that is not the menu opened at $MX,$MY: $NEW $(win_geo "$(printf "%s" "$NEW" | awk "{print \$1}")")"
-              echo "# menu scan $(date +%T): NOT A MENU $MX,$MY new=[$NEW]" >> $G
+          if [ -n "$POP" ]; then
+              # A window that answers the picker own geometry was ALREADY on screen, or the
+              # click put one up that the phase cannot attribute to it: say so and clear it,
+              # rather than accepting it as this sample's popup.
+              MENU_SCAN_NOTE="a window already on screen answers the picker geometry (before [${MENU_PICK_BASE:-none}], now [$POP]) at $MX,$MY"
+              echo "# menu scan $(date +%T): POPUP NOT ATTRIBUTABLE $MX,$MY picker=[$POP] base=[${MENU_PICK_BASE:-none}]" >> $G
               xdotool key --clearmodifiers Escape
               sleep 0.5
           fi
           MX=$((MX + 6))
       done
   done
-  read -r MWW MWH MWX MWY <<< "${MENU_GEOM:-0 0 0 0}"
 
-  # ---- WITH THE MENU OPEN: THE KEY IT SELECTED, THE ROW MAP, AND THE TWO BLOCKED KEYS ----
-  # The menu acts on the selection, so the right-click that opened it made the key the panel
+  # ---- WITH THE POPOVER OPEN: THE KEY IT SELECTED, WHAT IT PUBLISHES, AND THE TWO BLOCKED KEYS ----
+  # The popover acts on the selection, so the right-click that opened it made the key the panel
   # own selected key: that half of the state line is the panel own answer that the point is
   # on a key the panel DRAWS, and it is asserted outside against the empty reading above.
   MENU_SEL_AFTER=$(selected_half)
   MENU_BEFORE=$(summary_line)
+  # The dock own Easing chip read as a DIAGNOSTIC, not an assertion (see the phase comment):
+  # while the popover is up the walk over the whole tree also says what - if anything - the
+  # accessibility tree publishes about the popup own widgets, which is what the next reader
+  # would otherwise have to re-measure.
   MENU_DOCK_BEFORE=$(ae dump 2>/dev/null | grep -i "easing" | tr "\n" ";" | head -c 200)
-  # THE ROW MAP IS MEASURED FROM THE MENU OWN HIGHLIGHT, not assumed from a style: each row
-  # is hovered from a parked pointer and the rectangle the highlight lights up is read back
-  # from the pixels. Row 0 gives the top inset and the row width, row 1 gives the pitch.
-  MENU_ROW0=""
-  MENU_ROW1=""
-  MENU_ITEM_H=""
-  MENU_ITEM_W=""
-  MENU_ROW_TOP=""
-  if menu_window "$MENU_WIN"; then
+  MENU_WIN_INFO=""
+  MENU_WIN_TYPE=""
+  if [ -n "$MENU_WIN" ]; then
+      MENU_WIN_INFO=$(win_info "$MENU_WIN")
+      MENU_WIN_TYPE=$(win_type "$MENU_WIN")
       park
       import -window root "$SHOTS/graph_probe_14_menu_open.png"
       cp "$SHOTS/graph_probe_14_menu_open.png" "$SHOTS/graph_probe_41_key_scan.png"
-      for i in 0 1; do
-          park
-          import -window root /tmp/probe_menu_hov_ctl.png
-          read -r HX HY <<< "$(menu_row_mid $MWW $MWH $MWX $MWY $i)"
-          xdotool mousemove --sync $HX $HY
-          sleep 0.6
-          import -window root /tmp/probe_menu_hov.png
-          magick compare -compose src /tmp/probe_menu_hov_ctl.png /tmp/probe_menu_hov.png /tmp/probe_menu_hov_diff.png 2>/dev/null
-          echo "# menu row $i hover at $HX,$HY: changed=$(magick compare -metric AE /tmp/probe_menu_hov_ctl.png /tmp/probe_menu_hov.png null: 2>&1 | awk "{print \$1+0}") rect=$(row_rect /tmp/probe_menu_hov_diff.png)" >> $G
-          if [ "$i" -eq 0 ]; then MENU_ROW0=$(row_rect /tmp/probe_menu_hov_diff.png)
-          else                      MENU_ROW1=$(row_rect /tmp/probe_menu_hov_diff.png); fi
-      done
-      read -r R0X R0Y R0W R0H <<< "${MENU_ROW0:-0 0 0 0}"
-      read -r R1X R1Y R1W R1H <<< "${MENU_ROW1:-0 0 0 0}"
-      MENU_ITEM_H=$((R1Y - R0Y))
-      MENU_ITEM_W=$R0W
-      MENU_ROW_TOP=$((R0Y - MWY))
-      # THE TWO APPLICATION KEY COMMANDS THE MENU MUST BLOCK, then Escape (see the header):
-      # Delete would remove exactly the key the menu was opened on, ctrl+Z would undo the
-      # last edit, and the menu own existence is read back from the window list each time.
+      # THE TWO APPLICATION KEY COMMANDS THE POPOVER MUST BLOCK, then Escape (see the header):
+      # Delete would remove exactly the key the popover was opened on, ctrl+Z is the popup own
+      # session undo, and the popup own existence is read back from the window list each time.
+      # The Escape at the end is ALSO the dismissal this phase uses for every pick below, and
+      # here it is the claim that dismissing with nothing picked changes nothing: the draft was
+      # never edited, so hideEvent commits nothing.
       park
       xdotool key --clearmodifiers Delete
       sleep 1.3
@@ -1702,8 +1938,7 @@ PY
       sleep 1.3
       MENU_UNDO_LINE=$(summary_line)
       MENU_UNDO_OPEN=$(window_open "$MENU_WIN")
-      xdotool key --clearmodifiers Escape
-      sleep 1.2
+      popup_dismiss
       MENU_ESCAPE_LINE=$(summary_line)
       MENU_ESC_OPEN=$(window_open "$MENU_WIN")
       import -window root "$SHOTS/graph_probe_33_menu_escape.png"
@@ -1712,8 +1947,8 @@ PY
 
   # ---- AND THE NEGATIVE, ON THE SAME STATE: A RIGHT-CLICK THAT HITS NO KEY OPENS NOTHING ----
   # The point is the key found above, 60 px along the frame axis and inside the plot, so it is
-  # on no key and on no drawn band (a one-key map draws no polyline at all). Nothing about the
-  # window list may change, and the panel own line must not move.
+  # on no key and on no drawn band (a one-key map draws no polyline at all). NO viewable picker
+  # window may be up afterwards, and the panel own line must not move.
   MENU_EMPTY=""
   MENU_EMPTY_WINS=""
   MENU_NOKEY_LINE=""
@@ -1724,12 +1959,11 @@ PY
           MENU_EMPTY_X=$((KX - 60))
       fi
       MENU_EMPTY="$MENU_EMPTY_X $KY"
-      MENU_EMPTY_BASE=$(top_windows)
       xdotool mousemove --sync $MENU_EMPTY_X $KY
       sleep 0.3
       xdotool click 3
       sleep 1.2
-      MENU_EMPTY_WINS=$(comm -13 <(printf "%s\n" "$MENU_EMPTY_BASE") <(top_windows) | tr "\n" " ")
+      MENU_EMPTY_WINS=$(picker_windows | tr "\n" " ")
       MENU_EMPTY_WINS=${MENU_EMPTY_WINS% }
       MENU_NOKEY_LINE=$(summary_line)
       park
@@ -1746,56 +1980,57 @@ PY
   # the Current Keys panel), and every deselect/press assertion below is unchanged by the
   # order. The two control captures (graph_probe_12/13_menu_control_*) moved with the block.
 
-  # ---- REOPENING THE MENU, AND THE ONE ENTRY TAKEN WITH THE REAL POINTER ----
-  # The scan own opening is closed by the Escape above, and the phase reopens the application
-  # own menu on the SAME point for the picks below. A reopen is a plain right-click again,
-  # and the witness is the same one the scan used: MEASURED, a fresh window appears at the
-  # same place (same geometry, a new window id). That is what "the point is still on the
-  # drawn key" means for this menu - the point is on the key because the menu opens there -
-  # and it is also the assertion that the menu is usable a second time.
+  # ---- REOPENING THE POPOVER, AND THE TILE PRESSED WITH THE REAL POINTER ----
+  # The scan own opening is closed by the Escape above, and the phase reopens the popover on
+  # the SAME point for the picks below. A reopen is a plain right-click again, and the witness
+  # is the same rule the scan used, with one extra half: the picker own window must NOT be on
+  # screen before the click and must be on screen after it. That is what "the point is still on
+  # the drawn key" means here - the point is on the key because the popover opens there - and
+  # it is also the assertion that the popover is usable a second time.
   MENU_TRIES=""
-  open_key_menu() { # open_key_menu <x> <y> [shot] -> 0 when the menu opened; sets MENU_WIN/MENU_GEOM
+  open_key_menu() { # open_key_menu <x> <y> [shot] -> 0 when the popover came up; sets MENU_WIN/MENU_GEOM
       local shot="${3:-"$SHOTS/graph_probe_34_menu_reopen.png"}"
-      local before new
-      before=$(top_windows)
+      local before after
+      before=$(picker_windows | tr "\n" " "); before=${before% }
       park
       xdotool mousemove --sync "$1" "$2"
       sleep 0.3
       xdotool click 3
       sleep 1.1
-      new=$(comm -13 <(printf "%s\n" "$before") <(top_windows) | tr "\n" " ")
-      new=${new% }
-      MENU_TRIES="${MENU_TRIES}${MENU_TRIES:+ }$1,$2"
-      echo "# menu reopen $(date +%T): at $1,$2 new=[${new:-none}]" >> $G
-      [ -n "$new" ] || return 1
-      MENU_WIN=$(printf "%s" "$new" | awk "{print \$1}")
-      menu_window "$MENU_WIN" || return 1
+      after=$(picker_windows | tr "\n" " "); after=${after% }
+      MENU_TRIES="${MENU_TRIES}${MENU_TRIES:+ }$1,$2=[${after:-none}]"
+      echo "# menu reopen $(date +%T): at $1,$2 picker=[${after:-none}] (before [${before:-none}])" >> $G
+      [ -n "$after" ] || return 1
+      [ -z "$before" ] || return 1   # a window that was already up is not this click's
+      MENU_WIN=$(printf "%s" "$after" | awk "{print \$1}")
       MENU_GEOM=$(win_geo "$MENU_WIN")
       import -window root "$shot"
       return 0
   }
 
-  # THE ENTRY THE POINTER TAKES is the row the HOVER MEASUREMENT above puts Sine at - display
-  # index 3 of the shared order (Floor, Round, Linear, Sine), so the FOURTH row - and the
-  # click is a plain left press at that row own centre, inside the menu own window, which is
-  # where a user clicks it. Nothing is assumed about the row layout that the hover did not
-  # measure (MENU_ROW_TOP and MENU_ITEM_H), and the effect is asserted outside against the
-  # panel own state line.
+  # THE ENTRY THE POINTER TAKES is the picker own SINE TILE (kTileOrder index 4), pressed at
+  # the point the picker own layout constants put it at (picker_tile_mid, inside the popup own
+  # measured window, which is where a user clicks it). Nothing is assumed about the layout that
+  # the source did not say, and the entry is named by the TYPE the tile carries rather than by
+  # the pixel it was pressed at; the effect is asserted outside against the panel own state
+  # line, and the dismissal that COMMITS it is the Escape.
   MENU_GEOM2=""
   MENU_ENTRY=""
   MENU_ENTRY_PT=""
+  MENU_ENTRY_TILE=""
   MENU_ENTRY_CLOSED=""
   MENU_AFTER=""
-  if [ -n "$MENU_KEY" ] && open_key_menu $MENU_KEY "$SHOTS/graph_probe_34_menu_reopen.png"; then
+  MENU_TILE_IDX=$(picker_tile_idx "$MENU_TILE_TYPE")
+  if [ -n "$MENU_KEY" ] && [ -n "$MENU_TILE_IDX" ] \
+     && open_key_menu $MENU_KEY "$SHOTS/graph_probe_34_menu_reopen.png"; then
       MENU_GEOM2="$MENU_GEOM"
       read -r MWW2 MWH2 MWX2 MWY2 <<< "$MENU_GEOM"
-      read -r EX EY <<< "$(menu_row_mid $MWW2 $MWH2 $MWX2 $MWY2 3)"
-      MENU_ENTRY_PT="$EX $EY"
-      xdotool mousemove --sync $EX $EY
-      sleep 0.4
-      xdotool click 1
-      sleep 1.3
-      MENU_ENTRY="Sine"
+      read -r TX TY <<< "$(picker_tile_mid "$MENU_TILE_IDX")"
+      MENU_ENTRY_PT="$((MWX2 + TX)) $((MWY2 + TY))"
+      press_picker_tile "$MENU_TILE_IDX" "$MWX2" "$MWY2"
+      popup_dismiss
+      MENU_ENTRY="$MENU_TILE_TYPE"
+      MENU_ENTRY_TILE="$MENU_TILE_TYPE tile index ${MENU_TILE_IDX} of 0..$((PICKER_TILES - 1)) in kTileOrder"
       MENU_AFTER=$(summary_line)
       MENU_ENTRY_CLOSED=$(window_open "$MENU_WIN")
       park
@@ -1803,53 +2038,54 @@ PY
   MENU_DOCK_AFTER=$(ae dump 2>/dev/null | grep -i "easing" | tr "\n" ";" | head -c 200)
   import -window root "$SHOTS/graph_probe_15_menu_after.png"
 
-  # ---- THE MENU OWN KEYBOARD: THE ARROWS, RETURN, AND THE APPLICATION KEYS BESIDE THEM ----
-  # WHY THIS IS A THIRD OPENING, and why it is the one that proves the menu own keyboard: the
-  # scan own opening was closed by Escape and the pick above by its own entry, so this opens
-  # the menu afresh at the same point - which is also the assertion that it is usable again.
-  # What is measured here, MEASURED rather than assumed: with the pointer parked OFF the
-  # menu, one Down lights up the menu own FIRST row - the highlight appears as one row
-  # rectangle inside the menu own window, and the capture it is diffed against was taken with
-  # the pointer parked, so the only thing that moved is that highlight - and each further
-  # Down moves it one row down. Return then activates the row the arrows reached: two Downs
-  # reach the SECOND entry of the shared display order (Floor, Round, ...), so the panel own
-  # state line has to name Round afterwards, which is what makes the change readable there.
-  # The pointer is parked before every capture here: an item under the pointer is highlighted
-  # too, and that would be a second highlight in the same picture.
+  # ---- A SECOND PICK, AND THE POPUP OWN PIXELS WHILE IT IS UP ----
+  # WHY THIS IS A THIRD OPENING: the scan own opening was closed by Escape and the pick above
+  # by its own dismissal, so this opens the popover afresh at the same point - which is also
+  # the assertion that it is usable again. What it does is the SECOND PICK, on a DIFFERENT tile
+  # of the same catalog (Round, kTileOrder index 2), so the key really changes again and the
+  # ctrl+Z below has something of its own to undo.
+  # AND THIS IS WHERE THE PRESS IS MEASURED IN PIXELS, whether or not a curve exists yet: the
+  # capture taken with the popover up and the pointer PARKED and the capture taken the same way
+  # after the press differ by what the press drew inside the popup - the checked tile's accent
+  # fill and glyph - and the phase asserts that the changed region lies INSIDE the popup own own
+  # rectangle, which is what makes it the popup surface the press landed on rather than a
+  # neighbour of it. The picker own motion-preview bar animates between ANY two captures, so
+  # this is not a claim about the tile's fill alone (it says so rather than pretending the
+  # animation is not there); WHICH entry was pressed is the state line's business.
   MENU_KB_GEOM=""
   MENU_KB_HL=""
   MENU_KB_HL_BB=""
-  MENU_KB_STEPS=""
   MENU_KB_ENTRY=""
+  MENU_KB_TILE=""
   MENU_KB_LINE=""
   MENU_KB_CLOSED=""
-  if [ -n "$MENU_KEY" ] && open_key_menu $MENU_KEY "$SHOTS/graph_probe_35_menu_kb_open.png"; then
+  MENU_TILE_KB_IDX=$(picker_tile_idx "$MENU_TILE_KB_TYPE")
+  if [ -n "$MENU_KEY" ] && [ -n "$MENU_TILE_KB_IDX" ] \
+     && open_key_menu $MENU_KEY "$SHOTS/graph_probe_35_menu_kb_open.png"; then
       MENU_KB_GEOM="$MENU_GEOM"
+      read -r _ _ KWX KWY <<< "${MENU_GEOM:-0 0 0 0}"   # MENU_GEOM is "w h x y"
       park
       import -window root /tmp/probe_menu_kb0.png
-      xdotool key --clearmodifiers Down
-      sleep 0.9
-      import -window root "$SHOTS/graph_probe_36_menu_down.png"
-      MENU_KB_HL=$(magick compare -metric AE /tmp/probe_menu_kb0.png "$SHOTS/graph_probe_36_menu_down.png" null: 2>&1 | awk "{print \$1+0}")
-      magick compare -compose src /tmp/probe_menu_kb0.png "$SHOTS/graph_probe_36_menu_down.png" /tmp/probe_menu_kb_diff.png 2>/dev/null
+      press_picker_tile "$MENU_TILE_KB_IDX" "$KWX" "$KWY"
+      import -window root "$SHOTS/graph_probe_36_picker_tile.png"
+      MENU_KB_HL=$(magick compare -metric AE /tmp/probe_menu_kb0.png "$SHOTS/graph_probe_36_picker_tile.png" null: 2>&1 | awk "{print \$1+0}")
+      magick compare -compose src /tmp/probe_menu_kb0.png "$SHOTS/graph_probe_36_picker_tile.png" /tmp/probe_menu_kb_diff.png 2>/dev/null
       MENU_KB_HL_BB=$(magick identify -format "%@" /tmp/probe_menu_kb_diff.png 2>/dev/null)
-      MENU_KB_STEPS=2
-      xdotool key --clearmodifiers Down
-      sleep 0.6
-      xdotool key --clearmodifiers Return
-      sleep 1.3
+      MENU_KB_ENTRY="$MENU_TILE_KB_TYPE"
+      MENU_KB_TILE="$MENU_TILE_KB_TYPE tile index ${MENU_TILE_KB_IDX} of 0..$((PICKER_TILES - 1)) in kTileOrder"
+      popup_dismiss
       MENU_KB_LINE=$(summary_line)
-      MENU_KB_ENTRY="Round"
       MENU_KB_CLOSED=$(window_open "$MENU_WIN")
       park
   fi
-  import -window root "$SHOTS/graph_probe_37_menu_kb_after.png"
+  import -window root "$SHOTS/graph_probe_37_picker_after.png"
 
-  # ---- AND THE APPLICATION OWN KEYS, WITH THE MENU CLOSED ----
+  # ---- AND THE APPLICATION OWN KEYS, WITH THE POPOVER CLOSED ----
   # The other half of the modality pair (see the header): the last edit at this point is the
-  # keyboard pick above, so ctrl+Z with no menu up has to undo it, and the panel own state
-  # line has to move back to what it read before that pick - which is what MENU_AFTER
-  # recorded, and what leaves the key carrying Sine for phase 4b to re-shape.
+  # tile press above - committed by the dismissal that followed it - so ctrl+Z with no popover
+  # up has to undo it, and the panel own state line has to move back to what it read before
+  # that pick, which is what MENU_AFTER recorded. That is also what leaves the key carrying
+  # Sine for phase 4b to re-shape.
   xdotool key --clearmodifiers ctrl+z
   sleep 1.6
   import -window root "$SHOTS/graph_probe_38_appkey_undo.png"
@@ -1865,13 +2101,18 @@ PY
   echo "MENU_SCAN_TRACE=\"$MENU_SCAN_TRACE\""   >> $G
   echo "MENU_WIN=\"$MENU_WIN\""                 >> $G
   echo "MENU_GEOM=\"$MENU_GEOM\""               >> $G
-  echo "MENU_OPEN_COUNT=\"$MENU_OPEN_COUNT\""   >> $G
-  echo "MENU_ROW0=\"$MENU_ROW0\""               >> $G
-  echo "MENU_ROW1=\"$MENU_ROW1\""               >> $G
-  echo "MENU_ITEM_H=\"$MENU_ITEM_H\""           >> $G
-  echo "MENU_ITEM_W=\"$MENU_ITEM_W\""           >> $G
-  echo "MENU_ROW_TOP=\"$MENU_ROW_TOP\""         >> $G
-  echo "MENU_ENTRY_ROWS=\"$MENU_ENTRY_ROWS\""   >> $G
+  echo "MENU_PICKER_COUNT=\"$MENU_PICKER_COUNT\"" >> $G
+  echo "MENU_WIN_INFO=\"$MENU_WIN_INFO\""       >> $G
+  echo "MENU_WIN_TYPE=\"$MENU_WIN_TYPE\""       >> $G
+  echo "MENU_PICK_W=\"$MENU_PICK_W\""           >> $G
+  echo "MENU_PICK_H=\"$MENU_PICK_H\""           >> $G
+  echo "MENU_PICK_H_CUSTOM=\"$MENU_PICK_H_CUSTOM\"" >> $G
+  echo "MENU_TILES=\"$MENU_TILES\""             >> $G
+  echo "MENU_TILE_TYPE=\"$MENU_TILE_TYPE\""     >> $G
+  echo "MENU_TILE_KB_TYPE=\"$MENU_TILE_KB_TYPE\"" >> $G
+  echo "MENU_TILE_IDX=\"$MENU_TILE_IDX\""       >> $G
+  echo "MENU_TILE_KB_IDX=\"$MENU_TILE_KB_IDX\"" >> $G
+  echo "MENU_PICK_BASE=\"$MENU_PICK_BASE\""     >> $G
   echo "MENU_PRE_SCAN=\"$MENU_PRE_SCAN\""       >> $G
   echo "MENU_SEL_BEFORE=\"$MENU_SEL_BEFORE\""   >> $G
   echo "MENU_SEL_AFTER=\"$MENU_SEL_AFTER\""     >> $G
@@ -1879,6 +2120,7 @@ PY
   echo "MENU_GEOM2=\"$MENU_GEOM2\""             >> $G
   echo "MENU_ENTRY=\"$MENU_ENTRY\""             >> $G
   echo "MENU_ENTRY_PT=\"$MENU_ENTRY_PT\""       >> $G
+  echo "MENU_ENTRY_TILE=\"$MENU_ENTRY_TILE\""   >> $G
   echo "MENU_ENTRY_CLOSED=\"$MENU_ENTRY_CLOSED\"" >> $G
   echo "MENU_AFTER=\"$MENU_AFTER\""             >> $G
   echo "MENU_DOCK_BEFORE=\"$MENU_DOCK_BEFORE\"" >> $G
@@ -1895,18 +2137,19 @@ PY
   echo "MENU_KB_GEOM=\"$MENU_KB_GEOM\""         >> $G
   echo "MENU_KB_HL=\"$MENU_KB_HL\""             >> $G
   echo "MENU_KB_HL_BB=\"$MENU_KB_HL_BB\""       >> $G
-  echo "MENU_KB_STEPS=\"$MENU_KB_STEPS\""       >> $G
   echo "MENU_KB_ENTRY=\"$MENU_KB_ENTRY\""       >> $G
+  echo "MENU_KB_TILE=\"$MENU_KB_TILE\""         >> $G
   echo "MENU_KB_LINE=\"$MENU_KB_LINE\""         >> $G
   echo "MENU_KB_CLOSED=\"$MENU_KB_CLOSED\""     >> $G
   echo "MENU_APPKEY_LINE=\"$MENU_APPKEY_LINE\"" >> $G
+  echo "MENU_TRIES=\"$MENU_TRIES\""             >> $G
   # The values are echoed as ONE assignment (not as a free-form sentence): the outer shell
   # eval()s this file, and a bare sentence with brackets and parentheses in it is a syntax
   # error there - which would leave every variable BELOW it unset and turn one broken line
   # into a cascade of unrelated failures.
-  echo "MENU_KBDNOTE=\"delete[${MENU_DEL_LINE:-none}] deleteopen[${MENU_DEL_OPEN:-none}] undo[${MENU_UNDO_LINE:-none}] undoopen[${MENU_UNDO_OPEN:-none}] escape[${MENU_ESCAPE_LINE:-none}] escopen[${MENU_ESC_OPEN:-none}] kb[${MENU_KB_LINE:-none}] kbclosed[${MENU_KB_CLOSED:-none}] appkey[${MENU_APPKEY_LINE:-none}]\"" >> $G
+  echo "MENU_KBDNOTE=\"delete[${MENU_DEL_LINE:-none}] deleteopen[${MENU_DEL_OPEN:-none}] undo[${MENU_UNDO_LINE:-none}] undoopen[${MENU_UNDO_OPEN:-none}] escape[${MENU_ESCAPE_LINE:-none}] escopen[${MENU_ESC_OPEN:-none}] pick2[${MENU_KB_LINE:-none}] pick2closed[${MENU_KB_CLOSED:-none}] appkey[${MENU_APPKEY_LINE:-none}]\"" >> $G
 
-  # ---- PHASE 4b: THE CURVE THE MENUS EASING ACTUALLY SHAPES ----
+  # ---- PHASE 4b: THE CURVE THE PICKER OWN EASING ACTUALLY SHAPES ----
   # WHY THIS IS NEEDED. Everything above reads the easing back from the panel own state
   # line - and MEASURED, that line is NOT DRAWN while a curve exists: the panel paints
   # its summary only while the model is EMPTY (ImGuiOverlay.cpp:843 draws
@@ -1917,7 +2160,8 @@ PY
   # key square and no curve, and the easing change above moved no pixel at all. So this
   # phase MAKES the segment: a second key at the NEXT frame carrying a DIFFERENT value,
   # after which the segment from the first key is drawn, and re-shaping that segment
-  # changes the curve own pixels.
+  # changes the curve own pixels - which is the only pixel-level proof that a pick in
+  # phase 4 reached the panel at all.
   #
   # HOW THE SECOND KEY IS MADE, all of it by driving the app the way a user does:
   #   * the playhead moves one frame right through the app own own key command, Ctrl+Right
@@ -2000,12 +2244,14 @@ PY
           read -r A2X A2Y A2W A2H <<< "$ANGLE_2ND_RECT"
           ANGLE_2ND_TRIES=1
           # THREE READINGS, before the click into the field, straight after it, and after the
-          # commit key - plus the names the dock is showing beside them (the panel own legend
-          # rows name the layer and channel it is drawing, which is the TARGET of the write).
+          # commit key - plus the panel's OWN LINE beside them (the model's statement of what
+          # it is drawing: how many channels are shown and which one is focused, which is
+          # the target of the write). This read used to be the legend rows, one per channel;
+          # the panel publishes no rows any more, and its line carries the same facts.
           # Nothing here is a retry and nothing here changes the write: the one attempt below
           # is the phase own, and these readings say what the field could see.
           DOCK_FOCUS_BEFORE=$(dock_focus 2>/dev/null | tr "\n" "; ")
-          DOCK_TARGET_BEFORE=$(legend list 2>/dev/null | tr "\n" ";")
+          DOCK_TARGET_BEFORE=$(panel_line) 2>/dev/null
           xdotool mousemove --sync $((A2X + A2W / 2)) $((A2Y + A2H / 2)) click 1
           sleep 0.5
           DOCK_FOCUS_CLICK=$(dock_focus 2>/dev/null | tr "\n" "; ")
@@ -2024,7 +2270,7 @@ PY
           xdotool key --clearmodifiers Return
           sleep 1.2; park
           DOCK_FOCUS_AFTER=$(dock_focus 2>/dev/null | tr "\n" "; ")
-          DOCK_TARGET_AFTER=$(legend list 2>/dev/null | tr "\n" ";")
+          DOCK_TARGET_AFTER=$(panel_line) 2>/dev/null
           ANGLE_2ND_WRITTEN=$(angle_value 2>/dev/null)
       fi
   fi
@@ -2036,27 +2282,26 @@ PY
 
   # THE MENU AGAIN, ON THE SAME KEY, CHANGING THE EASING - and this time a segment is
   # drawn, so the change is in the panel own OWN pixels rather than in a line only a screen
-  # reader can see. The entry is taken with the menu own keyboard, exactly as in phase 4:
-  # Linear is the 3rd easing in the shared display order (index 2), and MEASURED the arrows
-  # reach row N of the menu with N+1 Downs, so three Downs then Return pick it. The anchor is
-  # the point the scan found - the key has not moved, since adding a key to a channel already
-  # shown does not refit the frame window - and it is REOPENED rather than assumed: a fresh
-  # window at the same point is what says the anchor is still on the drawn key.
+  # reader can see. The entry is taken with the picker own TILE, pressed where its own layout
+  # constants put it: Linear is kTileOrder's FIRST entry (index 0), so this is the first tile
+  # of the catalog. The anchor is the point the scan found - the key has not moved, since
+  # adding a key to a channel already shown does not refit the frame window - and it is
+  # REOPENED rather than assumed: the picker own window coming back on screen at the same
+  # point is what says the anchor is still on the drawn key.
   read -r MKX2 MKY2 <<< "${MENU_KEY:-0 0}"
-  pick_linear() { # pick_linear <capture-to-write> -> 0 when the menu opened and Linear was picked
-      # The menu's own keyboard, three Downs then Return: MEASURED, one Down lights the first
-      # row and each further Down the next, so row 2 of the shared display order (Linear) is
-      # reached with three. Nothing is echoed here - the caller reads MENU_GEOM - so a chatty
-      # helper cannot contaminate a value.
-      local n
+  PICKER_LINEAR_IDX=$(picker_tile_idx Linear)
+  pick_linear() { # pick_linear <capture-to-write> -> 0 when the popover opened and its Linear tile was pressed
+      # The picker own catalog: the Linear tile is index 0 of kTileOrder, and the index is
+      # DERIVED from the source above rather than assumed. The press is followed by the
+      # dismissal that commits the draft (Escape), because the widget writes the model only
+      # on close. Nothing is echoed here - the caller reads MENU_GEOM - so a chatty helper
+      # cannot contaminate a value.
+      local gx gy
+      [ -n "$PICKER_LINEAR_IDX" ] || return 1
       open_key_menu $MKX2 $MKY2 "$1" || return 1
-      for n in 1 2 3; do
-          xdotool key --clearmodifiers Down
-          sleep 0.5
-      done
-      xdotool key --clearmodifiers Return
-      sleep 1.3
-      park
+      read -r _ _ gx gy <<< "${MENU_GEOM:-0 0 0 0}"
+      press_picker_tile "$PICKER_LINEAR_IDX" "$gx" "$gy"
+      popup_dismiss
       return 0
   }
   MENU2_GEOM=""
@@ -2064,7 +2309,7 @@ PY
   MENU2_LINE=""
   if pick_linear "$SHOTS/graph_probe_27_menu_linear_open.png"; then
       MENU2_GEOM="$MENU_GEOM"
-      MENU2_ENTRY="Linear (3 Downs then Return)"
+      MENU2_ENTRY="Linear (tile index ${PICKER_LINEAR_IDX} of kTileOrder, pressed with the pointer)"
   fi
   # Nothing forced: the entry is the application own action, and the edit reaches the viewport
   # through the timeline own notifier, exactly as in phase 4.
@@ -2073,13 +2318,13 @@ PY
 
   # AND THE SAME EASING A SECOND TIME: re-picking what the key already carries must move
   # nothing at all - the control that makes the assertion above an assertion about the
-  # EASING rather than about the menu having been used.
+  # EASING rather than about the picker having been used.
   MENU3_GEOM=""
   MENU3_ENTRY=""
   MENU3_LINE=""
   if pick_linear "$SHOTS/graph_probe_29_menu_linear_again_open.png"; then
       MENU3_GEOM="$MENU_GEOM"
-      MENU3_ENTRY="Linear (3 Downs then Return)"
+      MENU3_ENTRY="Linear (the same tile ${PICKER_LINEAR_IDX}, pressed again)"
   fi
   import -window root "$SHOTS/graph_probe_30_curve_linear_again.png"
   MENU3_LINE=$(summary_line)
@@ -2107,7 +2352,10 @@ PY
   #   * do the Ctrl-press deselect in the plot FIRST, then the same write with 22.00: the
   #     field still reads [21] while the edit is open and [21] after Return - the typed
   #     characters never reach it, and they never reach it again in that session (a second
-  #     attempt, and attempts after a menu pick or a Return-closed menu, all fail the same way).
+  #     attempt, and attempts after a key-menu pick or a dismissal-closed popover, all fail the
+  #     same way. (That last pair was MEASURED against the QMenu this phase used before the
+  #     picker; the side effect belongs to the Ctrl-press gesture in the graph editor, not to
+  #     the control the pick was made with, and nothing here depends on the wording.)
   #   * the state is NOT a stuck modifier and NOT a focus change: an Xlib observer on a bare
   #     Xvfb shows the X modifier state 0x0 (no Ctrl) after `xdotool keyup --clearmodifiers
   #     ctrl`, `xdotool getwindowfocus` is the application own main window before and after
@@ -2156,7 +2404,7 @@ PY
   echo "MENU_SEL_BEFORE2=\"$MENU_SEL_BEFORE2\"" >> $G
   echo "MENU_SEL_AFTER2=\"$MENU_SEL_AFTER2\""   >> $G
 
-  echo "phase 4b: the angle of the key was [${ANGLE_KEY:-unreadable}], the knob row at the next frame [${KNOB_2ND:-none}], the seeded value after [${KNOB_2ND_PRESSES:-?}] press(es) [${ANGLE_2ND_SEEDED:-unreadable}], the field own rect [${ANGLE_2ND_RECT:-none}], typed [${NEWDEG:-none}], read back [${ANGLE_2ND_WRITTEN:-unreadable}], the knob row after the press [${KNOB_2ND_AFTER:-none}]; the menu own own rect [${MENU2_GEOM:-none}] and the entry taken [${MENU2_ENTRY:-none}], the state line [${MENU2_LINE:-none}]; picking it again: rect [${MENU3_GEOM:-none}], entry [${MENU3_ENTRY:-none}], line [${MENU3_LINE:-none}]"
+  echo "phase 4b: the angle of the key was [${ANGLE_KEY:-unreadable}], the knob row at the next frame [${KNOB_2ND:-none}], the seeded value after [${KNOB_2ND_PRESSES:-?}] press(es) [${ANGLE_2ND_SEEDED:-unreadable}], the field own rect [${ANGLE_2ND_RECT:-none}], typed [${NEWDEG:-none}], read back [${ANGLE_2ND_WRITTEN:-unreadable}], the knob row after the press [${KNOB_2ND_AFTER:-none}]; the popover own rect [${MENU2_GEOM:-none}] and the entry taken [${MENU2_ENTRY:-none}], the state line [${MENU2_LINE:-none}]; picking it again: rect [${MENU3_GEOM:-none}], entry [${MENU3_ENTRY:-none}], line [${MENU3_LINE:-none}]"
   echo "ANGLE_KEY=\"$ANGLE_KEY\""             >> $G
   echo "KNOB_2ND=\"$KNOB_2ND\""               >> $G
   echo "KNOB_2ND_PRESSES=\"$KNOB_2ND_PRESSES\"" >> $G
@@ -2238,11 +2486,13 @@ PY
   import -window root "$SHOTS/graph_probe_17_pre_delete_a.png"
   import -window root "$SHOTS/graph_probe_18_pre_delete_b.png"
 
-  # The layer to delete is the one the LEGEND named - the label of the model itself,
-  # "<layer> : <channel>" - addressed as the `table cell` the tree publishes for it. That
-  # is what ties the deletion to what the panel is showing; the row the phase-2 loop
-  # happened to activate is only the fallback.
-  LAYER=$(printf "%s" "$LEGEND_NAME" | sed "s/ *: .*//")
+  # The layer to delete is the one the PANEL names as its own focus - the "<layer>" half of
+  # its line ("..., focused: <layer> : <channel>"), which the model builds from the editor's
+  # focused channel - addressed as the `table cell` the tree publishes for it. That is what
+  # ties the deletion to what the panel is showing; the row the phase-2 loop happened to
+  # activate is the fallback, and it is used whenever no channel is focused (the focus is
+  # pruned by the editor when the shown set changes, so it may be gone by now).
+  LAYER=$(focused_layer)
   LROW=$(ae extents "$LAYER" "table cell")
   if [ -z "$LROW" ] && [ -n "$KEY_ROW" ]; then
       LAYER="$KEY_ROW"
@@ -2278,7 +2528,11 @@ PY
   DEL_EMPTY=$(ae extents "Select a layer to show its curves" "label")
   DEL_NOKEYS=$(ae extents "No keys on the selected layers" "label")
   DEL_ALLHID=$(ae extents "All channels of the selected layers are hidden" "label")
-  DEL_LEGEND=$(legend list | tr "\n" ";")
+  # The panel's ONE control, asked for under BOTH names it can carry: with the keyed layer
+  # gone there is no channel to list, so the model publishes no button at all. (Reading one
+  # name alone would pass vacuously for a channel that still existed but were hidden.)
+  DEL_LEGEND=$(ae extents "1 channel(s)" "push button")
+  DEL_CHAN_HIDDEN=$(ae extents "0 of 1" "push button")
   DEL_CELLS=$(ae dump 2>/dev/null | sed -n "s/^ *table cell *| //p" | tr "\n" ";")
   # No forced paint: deleting the row changes the tree selection, and the tree own
   # selection signal asks the viewport for a frame (DriverHolder::onSelectionChanged ->
@@ -2297,6 +2551,7 @@ PY
   echo "DEL_NOKEYS=\"$DEL_NOKEYS\""      >> $G
   echo "DEL_ALLHID=\"$DEL_ALLHID\""      >> $G
   echo "DEL_LEGEND=\"$DEL_LEGEND\""      >> $G
+  echo "DEL_CHAN_HIDDEN=\"$DEL_CHAN_HIDDEN\"" >> $G
   echo "DEL_CELLS=\"$DEL_CELLS\""        >> $G
 
   kill $app 2>/dev/null; wait $app 2>/dev/null
@@ -2435,7 +2690,7 @@ has() { case "${1:-}" in *"${2:-}"*) return 0 ;; *) return 1 ;; esac; }
 #     the crop, so a floor above that cannot be cleared by the button repainting itself,
 #     and the smallest measured state (the empty panel, 2200 px = 3.51%) is nearly 2x it.
 #   * CEILING 20.00%: "the panel is not a wash". It draws ticks, frame numbers, value
-#     labels, a 1px playhead, the state line and the legend - measured 3.72% with the top
+#     labels, a 1px playhead, the state line and the channel button - measured 3.72% with the top
 #     row selected and 7.15% after a key was added. A panel that filled its background
 #     would cover the viewport (204x146 = 29784 px = 47.5% of the crop) and fail this by
 #     a factor of two; 20% is 2.8x above the largest measurement and far below a wash.
@@ -2645,10 +2900,11 @@ d_off_empty=$(ae_diff "$NORM/off_empty.png" "$NORM/off_empty2.png")
 # WHICH ROW GOT SELECTED is deliberately NOT asserted, because the tree cannot answer it
 # unambiguously: MEASURED, the object tree publishes its rows as `table cell` nodes named
 # after the objects (top `running thru my mind`, then `Folder16`, then `Layer1`), the probe
-# activates them one by one until the knob appears, and the legend then names the node that
-# received the key as `Folder16 : Rotate` - the model's own name for it, which need not be
-# the cell text the probe activated (a cell click that selects nothing leaves the previous
-# selection in place, and nothing in the accessibility tree reports which row is current).
+# activates them one by one until the knob appears, and the PANEL then names the channel that
+# received the key - its line carries a "focused:" half once the channel list has been hovered,
+# which is the model's own name for it ("Folder16 : Rotate"), and which need not be the cell
+# text the probe activated (a cell click that selects nothing leaves the previous selection in
+# place, and nothing in the accessibility tree reports which row is current).
 # What IS asserted is the panel's own state: the knob row exists, the channel rows do not,
 # the collapse lifts the row, and the press turns one into the other.
 echo "phase 2: last row activated [${KEY_ROW:-none}], knob row before [${KNOB_BEFORE:-none}], knob row after the collapse [${KNOB:-none}], Angle before [${ANGLE_BEFORE:-none}], Angle after [${ANGLE:-none}] = ${ANGLE_VALUE:-unreadable}"
@@ -2704,41 +2960,55 @@ magick compare -compose src "$NORM/on7.png" "$NORM/on9.png" "$NORM/diff_key_whol
 WHOLE_BBOX=$(magick identify -format "%@" "$NORM/diff_key_whole.png" 2>/dev/null)
 echo "changed region after the key: whole screen ${WHOLE_BBOX:-unreadable} (the dock and the timeline lane the key was added in), of which $d_key px are inside the crop"
 
-# ---- (b) THE LEGEND SWATCH, THROUGH THE PANEL'S OWN CHECKABLE ITEM ----
-# The row the phase-2 selection produces is named "<layer> : <channel>" by the model, and
-# the model only lists channels that HAVE a key: MEASURED, the panel published NO legend
-# check box at all before the press and exactly one after it ("Folder16 : Rotate",
-# checked, at 228 163 10 10). The label is therefore not hardcoded - it is read from the
-# panel in both states, and the appearance of exactly one row is itself an assertion.
-echo "legend rows: before the press [${LEGEND_BEFORE:-none}], after [${LEGEND_ROWS:-none}], control [${LEGEND_NAME:-none}] at [${LEGEND_EXT:-none}]; toggle off: ${LEGEND_OFF:-none}; toggle on: ${LEGEND_ON:-none}"
-ROWS_BEFORE=$(printf '%s' "${LEGEND_BEFORE:-}" | tr ';' '\n' | grep -c .)
-[ "$ROWS_BEFORE" -eq 0 ]
-check $? "the panel published no legend row before any channel had a key (${ROWS_BEFORE:-0} rows)"
-ROWS_AFTER=$(printf '%s' "${LEGEND_ROWS:-}" | tr ';' '\n' | grep -c .)
-[ "$ROWS_AFTER" -eq 1 ]
-check $? "the phase-2 selection publishes exactly one legend row ($ROWS_AFTER rows: ${LEGEND_ROWS:-none})"
-case "${LEGEND_NAME:-}" in
-    *" : Rotate") LEGEND_OK=0 ;;
-    *)            LEGEND_OK=1 ;;
-esac
-check $LEGEND_OK "that row is named by its channel, the one the probe pressed (${LEGEND_NAME:-none})"
-[ -n "${LEGEND_EXT:-}" ]
-check $? "and it is addressable as a check box with its own rectangle (${LEGEND_EXT:-none})"
+# ---- (b) THE CHANNEL LIST, DRIVEN THROUGH THE PANEL'S OWN CONTROL ----
+# The panel used to publish one check box per legend row. It publishes ONE PushButton now,
+# and this phase's claims are made on the surface that replaced it: the CONTROL (published
+# only while there is a channel to list, and named by the count it changes), the LIST behind
+# it (the application's own QMenu - opened through the control's own action, found by its
+# window, row found by hovering it), the model's own line for the focus, and the pixels for
+# the ink. What each old assertion became is named here rather than left to be guessed:
+#   "no legend row before the press"        -> no channel control at all before the press
+#   "exactly one legend row after it"       -> the control is published and its own name
+#                                              counts exactly one channel ("1 channel(s)")
+#   "that row is named by its channel"      -> the panel's line names the channel the hovered
+#                                              row focuses ("..., focused: <layer> : Rotate")
+#   "addressable with its own rectangle"    -> the control's published rectangle, plus the
+#                                              list's own row rectangle measured from pixels
+#   "the check box state flips"             -> the control's name moves to "0 of 1" and the
+#                                              model's all-hidden sentence appears
+# (a per-row CHECK BOX count has no equivalent to keep: there is one button now, and the
+#  number of channels it counts is what its name states.)
+CHAN_MENU_ID=""; CHAN_MENU_W=0; CHAN_MENU_H=0; CHAN_MENU_X=0; CHAN_MENU_Y=0
+read -r CHAN_MENU_ID CHAN_MENU_W CHAN_MENU_H CHAN_MENU_X CHAN_MENU_Y <<< "${CHAN_MENU:-0 0 0 0 0}"
+echo "channel list: the control before the key [${CHANNELS_BEFORE:-none}] and after it [${CHANNELS_AFTER:-none}] (names it by its own count); the list window [${CHAN_MENU:-none}] (rows walked ${CHAN_ROWS:-none}); the channel row [${CHAN_ROW:-none}]; after hovering it the panel's line [${CHAN_HOVER_LINE:-none}]; after the activation the control [${CHAN_BTN_HIDDEN:-none}] and the sentence [${ALLHIDDEN:-none}]; after the second opening [${CHAN_MENU_AFTER:-none}], the control [${CHAN_BTN_SHOWN:-none}] and the sentence [${ALLHIDDEN_BACK:-none}]"
 
-# THE STATE BIT, READ BEFORE AND AFTER EACH ACTIVATION - the panel's own truth about
-# whether a channel is shown, not a pixel inference: it is what a screen reader reads.
-case "${LEGEND_OFF:-}" in
-    "STATE checked -> unchecked") LEGEND_OFF_OK=0 ;;
-    *)                            LEGEND_OFF_OK=1 ;;
+[ -z "${CHANNELS_BEFORE:-}" ]
+check $? "the panel published NO channel control before any channel had a key (a push button named '1 channel(s)' answers [${CHANNELS_BEFORE:-none}]; the model publishes the control only while there is a channel to list)"
+[ -n "${CHANNELS_AFTER:-}" ]
+check $? "and the phase-2 key makes the panel publish it, with its own name counting exactly one channel ([${CHANNELS_AFTER:-none}] is the rectangle of a push button NAMED '1 channel(s)' - the name was the query, so the count is the assertion)"
+[ -n "${CHAN_MENU_ID:-}" ]
+check $? "pressing that control through its own accessibility action opened the application's channel list as a window of its own ([${CHAN_MENU:-none}]; a native QMenu, not accessible items - MEASURED, no row of it is in the tree)"
+read -r CBX CBY CBW CBH <<< "${CHANNELS_AFTER:-0 0 0 0}"
+[ "${CHAN_MENU_X:-0}" -ge $((CBX - 4)) ] && [ "${CHAN_MENU_X:-0}" -le $((CBX + 4)) ] \
+    && [ "${CHAN_MENU_Y:-0}" -ge $((CBY - 40)) ] && [ "${CHAN_MENU_Y:-0}" -le $((CBY + 40)) ]
+check $? "and the application put it at the control it belongs to (list origin ${CHAN_MENU_X:-none},${CHAN_MENU_Y:-none} against the button at [${CHANNELS_AFTER:-none}]; showGraphChannelMenu pops it at the box's own top-left)"
+[ -n "${CHAN_ROW:-}" ]
+check $? "and walking the list with the pointer found its CHANNEL row - the first row that lights a rectangle inside the list's own window is the channel, because the layer heading above it is a disabled action (rows walked: ${CHAN_ROWS:-none}; the channel row is [${CHAN_ROW:-none}] inside [${CHAN_MENU:-none}])"
+has "${CHAN_HOVER_LINE:-}" "focused:"
+check $? "and HOVERING that row focuses the channel it names, which the panel's own line then says: [${CHAN_HOVER_LINE:-none}]"
+case "${CHAN_HOVER_LINE:-}" in
+    *": Rotate"*) CHAN_FOCUS_OK=0 ;;
+    *)            CHAN_FOCUS_OK=1 ;;
 esac
-check $LEGEND_OFF_OK "activating the legend item flips the panel's own state to hidden (${LEGEND_OFF:-none})"
-case "${LEGEND_ON:-}" in
-    "STATE unchecked -> checked") LEGEND_ON_OK=0 ;;
-    *)                            LEGEND_ON_OK=1 ;;
-esac
-check $LEGEND_ON_OK "activating it again flips the state back to shown (${LEGEND_ON:-none})"
+check $CHAN_FOCUS_OK "and it is the channel the probe keyed, named the way the list names it (line [${CHAN_HOVER_LINE:-none}])"
+[ -n "${CHAN_BTN_HIDDEN:-}" ]
+check $? "activating the row toggles that channel's visibility, and the panel's own control says so: the button now answers to '0 of 1' ([${CHAN_BTN_HIDDEN:-none}] - the hidden count, which is the state the control changes)"
+[ -n "${CHAN_BTN_SHOWN:-}" ]
+check $? "and activating it again at a fresh opening of the list moves the control back to '1 channel(s)' ([${CHAN_BTN_SHOWN:-none}])"
+[ -n "${CHAN_MENU_AFTER:-}" ] && [ "${CHAN_MENU_AFTER:-}" = "${CHAN_MENU:-}" ]
+check $? "and the second opening landed at the same place and size as the first ([${CHAN_MENU_AFTER:-none}] against [${CHAN_MENU:-none}]), which is what makes the row rectangle above usable for its activation"
 
-assert_exists "$SHOTS/graph_probe_10_legend_hidden.png" "the viewport with that legend row hidden"
+assert_exists "$SHOTS/graph_probe_10_legend_hidden.png" "the viewport with that channel hidden from the list"
 assert_exists "$SHOTS/graph_probe_11_legend_shown.png"  "the viewport with it shown again"
 norm "$SHOTS/graph_probe_10_legend_hidden.png" "$NORM/on10.png"
 norm "$SHOTS/graph_probe_11_legend_shown.png"  "$NORM/on11.png"
@@ -2756,7 +3026,7 @@ d_hidden=$(ae_diff "$NORM/c_on9.png" "$NORM/c_on10.png")
 d_hidden_whole=$(ae_diff "$NORM/on9.png" "$NORM/on10.png")
 p_hidden=$(pct "$d_hidden" "$CROP_AREA")
 [ "$d_hidden" -gt "$CURVE_PIXELS" ]
-check $? "hiding the legend row removes its curve from the crop ($d_hidden px = ${p_hidden}% gone, bar $CURVE_PIXELS)"
+check $? "hiding that channel from the panel's list removes its curve from the crop ($d_hidden px = ${p_hidden}% gone, bar $CURVE_PIXELS)"
 [ "$d_hidden_whole" -eq "$d_hidden" ]
 check $? "and nothing changed outside the crop ($d_hidden_whole px whole screen vs $d_hidden inside)"
 
@@ -2765,37 +3035,40 @@ check $? "with the only keyed channel hidden the panel says so in the model's ow
 
 d_back=$(ae_diff "$NORM/c_on9.png" "$NORM/c_on11.png")
 [ "$d_back" -eq 0 ]
-check $? "activating the legend item again restores the pixels exactly ($d_back px against the pre-toggle capture)"
+check $? "and activating the row again restores the pixels exactly ($d_back px against the pre-toggle capture)"
 [ -z "${ALLHIDDEN_BACK:-}" ]
 check $? "and the all-hidden sentence is gone again (rect ${ALLHIDDEN_BACK:-none})"
 
-# ---- (d) PHASE 4: THE KEY CONTEXT MENU, THE APPLICATION'S OWN QMenu ----
+# ---- (d) PHASE 4: THE KEY CONTEXT MENU, WHICH IS THE EASING PICKER ----
 # WHAT IS ASSERTED, AND WHERE EACH PART COMES FROM. The route first: the panel's own fit
 # action gives the plot's rectangle; the phase clears the panel's selection with the graph's
 # own deselect gesture; the scan finds the key with right-clicks along the fit rect's centre
-# row, and a sample is accepted only when its click opened A WINDOW THAT DID NOT EXIST BEFORE
-# - the identification AGENTS.md documents for a dialog, and the one this menu answers to,
-# because it is the application's own QMenu: a top-level window of its own, not pixels in the
-# panel. The right-click that opened it SELECTED the key it landed on, which the panel's own
-# state line says by moving its selected-key half from the empty reading; the LEFT press on
-# the same point is the editor's own gesture and is asserted the same way; the menu's own
-# rectangle is the X server's answer about that window; and the state line then names the
-# easing the chosen entry wrote, because it is built from the DOCUMENT. The menu cannot be
-# read from the accessibility tree - MEASURED, the application's QMenus are not published
-# there - so it is driven through its own window: the keyboard (Down moves its highlight,
-# Return activates the row the arrows reached) and one pointer click at the row rectangle the
-# hover measurement puts an entry at. What is NOT asserted: that the key is at the fit rect
+# row, and a sample is accepted only when its click PUT THE PICKER'S OWN WINDOW ON SCREEN -
+# a viewable top-level that answers the picker's own geometry (its width and one of its two
+# pinned heights, read out of its source), which is the identification this control has now
+# that its window outlives a close (see the phase comment in the body). The right-click that
+# opened it SELECTED the key it landed on, which the panel's own state line says by moving
+# its selected-key half from the empty reading; the LEFT press on the same point is the
+# editor's own gesture and is asserted the same way; the popup's own rectangle is the X
+# server's answer about that window; and the state line then names the easing the tile the
+# phase pressed carries, because it is built from the DOCUMENT. The popup is driven through
+# its own window and its own layout constants - the tile is pressed with the pointer at the
+# point the source puts it, and Escape (Qt's cancel key for a Qt::Popup, and the dismissal
+# that COMMITS the pick) closes it - because a tile's QToolButton has no text and therefore
+# no accessible name to address it by. What is NOT asserted: that the key is at the fit rect
 # centre. The value axis is fitted and the FRAME axis is the fit's own business (the frame
 # half of fitAll is what the user asked to change this round), so the key sits where the fit
 # puts it, and the old centre test was measuring the probe's own assumption rather than the
-# panel.
-echo "phase 4: the panel's fit rect [${MENU_FIT:-none}], its centre [${MENU_DERIVED:-none}], the point the right-click scan found [${MENU_KEY:-none}] (offset [${MENU_OFFSET:-none}], ${MENU_SAMPLES:-?} sample(s) of the lattice [${MENU_SCAN_LATTICE:-none}], [${MENU_SCAN_NOTE:-no hit}], every sample as point=new-window [${MENU_SCAN_TRACE:-none}]); the selection before the phase [${MENU_PRE_SCAN:-empty}], after the DESELECT at [${MENU_DESELECT:-none}] [${MENU_SEL_BEFORE:-empty}], after the right-click that opened the menu [${MENU_SEL_AFTER:-empty}], after the second deselect [${MENU_SEL_BEFORE2:-empty}] and after the LEFT press [${MENU_SEL_AFTER2:-empty}]; the menu window [${MENU_WIN:-none}] [${MENU_GEOM:-none}] (new windows ${MENU_OPEN_COUNT:-?}; rows [${MENU_ROW0:-none}] and [${MENU_ROW1:-none}], pitch ${MENU_ITEM_H:-none}); the state line before the menu [${MENU_BEFORE:-none}]; with the menu OPEN: Delete -> [${MENU_DEL_LINE:-none}] (window open [${MENU_DEL_OPEN:-none}]), Undo -> [${MENU_UNDO_LINE:-none}] (window open [${MENU_UNDO_OPEN:-none}]), Escape -> [${MENU_ESCAPE_LINE:-none}] (window open [${MENU_ESC_OPEN:-none}]); the POINTER pick at [${MENU_ENTRY_PT:-none}] -> [${MENU_ENTRY:-none}], the line [${MENU_AFTER:-none}], the window closed [${MENU_ENTRY_CLOSED:-none}]; the second open [${MENU_GEOM2:-none}]; the dock's easing rows before [${MENU_DOCK_BEFORE:-none}] after [${MENU_DOCK_AFTER:-none}]; a right-click on empty plot space at [${MENU_EMPTY:-none}] opened [${MENU_EMPTY_WINS:-none}] and left the line [${MENU_NOKEY_LINE:-none}]"
+# panel. WHAT IS DROPPED with the deleted QMenu, and named here rather than left implicit:
+# the menu's row map and its entry count, and the Down-arrow highlight - a popover has no
+# rows. The modality pair, the selection behaviour and the state-line readback all remain.
+echo "phase 4: the panel's fit rect [${MENU_FIT:-none}], its centre [${MENU_DERIVED:-none}], the point the right-click scan found [${MENU_KEY:-none}] (offset [${MENU_OFFSET:-none}], ${MENU_SAMPLES:-?} sample(s) of the lattice [${MENU_SCAN_LATTICE:-none}], [${MENU_SCAN_NOTE:-no hit}], every sample as point=picker-window [${MENU_SCAN_TRACE:-none}], picker windows on screen before the scan [${MENU_PICK_BASE:-none}]); the selection before the phase [${MENU_PRE_SCAN:-empty}], after the DESELECT at [${MENU_DESELECT:-none}] [${MENU_SEL_BEFORE:-empty}], after the right-click that opened the popover [${MENU_SEL_AFTER:-empty}], after the second deselect [${MENU_SEL_BEFORE2:-empty}] and after the LEFT press [${MENU_SEL_AFTER2:-empty}]; the popover window [${MENU_WIN:-none}] [${MENU_GEOM:-none}] (${MENU_PICKER_COUNT:-?} window(s) on screen answering the picker's own ${MENU_PICK_W:-?}x${MENU_PICK_H:-?} geometry read from its source; the window itself reports [${MENU_WIN_INFO:-none}] and the recorded WM type [${MENU_WIN_TYPE:-none}]; picker windows on screen: ${MENU_PICKER_COUNT:-?}); the picker's catalog is ${MENU_TILES:-?} tiles (the pick presses ${MENU_TILE_TYPE:-?} at index ${MENU_TILE_IDX:-none}, the second pick ${MENU_TILE_KB_TYPE:-?} at index ${MENU_TILE_KB_IDX:-none}); the state line before the popover [${MENU_BEFORE:-none}]; with the popover OPEN: Delete -> [${MENU_DEL_LINE:-none}] (window open [${MENU_DEL_OPEN:-none}]), Undo -> [${MENU_UNDO_LINE:-none}] (window open [${MENU_UNDO_OPEN:-none}]), Escape -> [${MENU_ESCAPE_LINE:-none}] (window open [${MENU_ESC_OPEN:-none}]); the POINTER pick of the ${MENU_ENTRY_TILE:-none} at [${MENU_ENTRY_PT:-none}] -> [${MENU_ENTRY:-none}], the line [${MENU_AFTER:-none}], the popover closed [${MENU_ENTRY_CLOSED:-none}]; the second open [${MENU_GEOM2:-none}]; the opening tries [${MENU_TRIES:-none}]; the dock's easing rows before [${MENU_DOCK_BEFORE:-none}] after [${MENU_DOCK_AFTER:-none}]; a right-click on empty plot space at [${MENU_EMPTY:-none}] left on screen [${MENU_EMPTY_WINS:-none}] and left the line [${MENU_NOKEY_LINE:-none}]"
 assert_exists "$SHOTS/graph_probe_12_menu_control_a.png" "the viewport with the keyed layer's curve and the key selected by the press, no menu"
 assert_exists "$SHOTS/graph_probe_13_menu_control_b.png" "the same state a second time, as the control"
-assert_exists "$SHOTS/graph_probe_14_menu_open.png" "the root window with the application's key menu open on the key"
-assert_exists "$SHOTS/graph_probe_15_menu_after.png" "the viewport after choosing an easing from the menu"
+assert_exists "$SHOTS/graph_probe_14_menu_open.png" "the root window with the application's easing picker open on the key"
+assert_exists "$SHOTS/graph_probe_15_menu_after.png" "the viewport after pressing a tile of the picker"
 assert_exists "$SHOTS/graph_probe_16_menu_nokey.png" "the viewport after a right-click on empty plot space"
-assert_exists "$SHOTS/graph_probe_41_key_scan.png" "the root at the point the right-click scan found the key, with the menu its click opened"
+assert_exists "$SHOTS/graph_probe_41_key_scan.png" "the root at the point the right-click scan found the key, with the picker its click opened"
 norm "$SHOTS/graph_probe_12_menu_control_a.png" "$NORM/menu_ctl_a.png"
 norm "$SHOTS/graph_probe_13_menu_control_b.png" "$NORM/menu_ctl_b.png"
 norm "$SHOTS/graph_probe_14_menu_open.png" "$NORM/menu_open.png"
@@ -2805,167 +3078,174 @@ norm "$SHOTS/graph_probe_16_menu_nokey.png" "$NORM/menu_nokey.png"
 # A SCAN THAT CANNOT FIND ITS SUBJECT SAYS SO FIRST, and with its own evidence, because every
 # assertion below is about a point it produces: with no point, they are all cascades, and a
 # cascade hides which one was the first to be false. The trace is every sample as
-# point=new-window - the witness this phase accepts on is the menu's own X window, not a
-# pixel count - so a red run reads the lattice it tried rather than an empty MENU_KEY. The
-# phase does NOT stop here: phases 4b and 3 still run and report their own state.
+# point=picker-window - the witness this phase accepts on is the popup's own X window and what
+# it publishes about itself, not a pixel count and not "a window that did not exist before" -
+# so a red run reads the lattice it tried rather than an empty MENU_KEY. The phase does NOT
+# stop here: phases 4b and 3 still run and report their own state.
 [ -n "${MENU_KEY:-}" ]
-check $? "the right-click scan found a point where the APPLICATION'S MENU WINDOW opened (found [${MENU_KEY:-none}] after ${MENU_SAMPLES:-?} sample(s) of the lattice [${MENU_SCAN_LATTICE:-none}]; every sample, as point=new-window: [${MENU_SCAN_TRACE:-no samples taken}])"
+check $? "the right-click scan found a point where the EASING PICKER'S POPOVER came on screen (found [${MENU_KEY:-none}] after ${MENU_SAMPLES:-?} sample(s) of the lattice [${MENU_SCAN_LATTICE:-none}], with no picker window up before the scan [${MENU_PICK_BASE:-none}]; every sample, as point=picker-window: [${MENU_SCAN_TRACE:-no samples taken}])"
 
 read -r MKX MKY <<< "${MENU_KEY:-0 0}"
 read -r MFX MFY MFW MFH <<< "${MENU_FIT:-0 0 0 0}"
 read -r MWW MWH MWX MWY <<< "${MENU_GEOM:-0 0 0 0}"
-read -r _ R0Y R0W _ <<< "${MENU_ROW0:-0 0 0 0}"
-read -r _ R1Y _ _   <<< "${MENU_ROW1:-0 0 0 0}"
 
-# THE MENU IS THE WINDOW THAT DID NOT EXIST BEFORE. A Qt popup is a top-level window of its
-# own - that is why the pixel rule this phase used to carry could not see it - so the
-# identification is the one AGENTS.md documents for a dialog, and the phase asserts that
-# exactly ONE such window appeared, that it is menu-shaped by its own geometry, and that the
-# application put its origin at the click point (MEASURED: at the point, within 2 px).
-[ -n "${MENU_WIN:-}" ] && [ "${MENU_OPEN_COUNT:-0}" -eq 1 ] && [ "${MWW:-0}" -ge 60 ] && [ "${MWH:-0}" -ge 150 ]
-check $? "the right-click opened exactly ONE new top-level window and it is menu-shaped (window [${MENU_WIN:-none}] [${MENU_GEOM:-none}], new windows ${MENU_OPEN_COUNT:-?}; the menu is not in the accessibility tree - MEASURED - so this window is the menu's only identity)"
+# THE PICKER'S OWN NUMBERS ARE THE PROBE'S FIRST CLAIM ABOUT ITSELF: the window the phase
+# accepts as the popover has to be exactly as wide and as tall as the widget pins itself to,
+# and those numbers are read out of the source rather than remembered. A source change that
+# outdates them is a red assertion here rather than a scan that quietly finds nothing.
+[ -n "${MENU_PICK_W:-}" ] && [ "${MENU_PICK_W:-0}" -gt 0 ] && [ -n "${MENU_PICK_H:-}" ] && [ "${MENU_PICK_H:-0}" -gt 0 ]
+check $? "the picker's own geometry was READ OUT OF ITS SOURCE (width [${MENU_PICK_W:-none}], normal height [${MENU_PICK_H:-none}], custom height [${MENU_PICK_H_CUSTOM:-none}], from src/gui/prop/EasingPickWidget.{h,cpp}) - the window accepted below must have exactly those numbers, so a change to the widget is a red assertion and not a scan that finds nothing"
+# THE POPOVER IS THE WINDOW THAT ANSWERS THE PICKER'S OWN GEOMETRY, and the phase asserts
+# that exactly ONE window did, that its width and height are the picker's own, and that the
+# application put its origin at the click point (popUpAt moves it to the anchor, so the click
+# point is the window's top-left; MEASURED on this build within 2 px).
+[ -n "${MENU_WIN:-}" ] && [ "${MENU_PICKER_COUNT:-0}" -eq 1 ] && [ "${MWW:-0}" -eq "${MENU_PICK_W:-0}" ] && { [ "${MWH:-0}" -eq "${MENU_PICK_H:-0}" ] || [ "${MWH:-0}" -eq "${MENU_PICK_H_CUSTOM:-0}" ]; }
+check $? "the right-click put exactly ONE window on screen that answers the picker's own geometry (window [${MENU_WIN:-none}] [${MENU_GEOM:-none}], ${MENU_PICKER_COUNT:-?} such window(s) - the width and both heights are the widget's own source constants, so a menu-shaped rectangle of another size is NOT accepted here)"
+# AND IT IS A Qt::Popup BY WHAT THE X SERVER SAYS, not by assumption: the phase reads the
+# window's own report - viewable, and OVERRIDE-REDIRECT, which is how Qt creates a Qt::Popup
+# (X11BypassWindowManagerHint) and is not how the application's normal window is created.
+win_says() { case "${MENU_WIN_INFO:-}" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
+win_says "Map State: IsViewable" && win_says "Override Redirect State: yes"
+check $? "and the window itself reports what a Qt::Popup is (the picker's own window answered [${MENU_WIN_INFO:-none}]): on screen, and OVERRIDE REDIRECT - unmanaged, which is the Qt::Popup flag and not the application window's shape"
+echo "phase 4: RECORDED, NOT ASSERTED - the popover window's _NET_WM_WINDOW_TYPE is [${MENU_WIN_TYPE:-none}]. Qt's automatic selection covers Tool, ToolTip, Dialog and Splash but not Popup, so a Qt::Popup carries no popup atom here and the type is evidence only of what Qt does put there."
 [ "${MWX:-0}" -ge $((MKX - 2)) ] && [ "${MWX:-0}" -le $((MKX + 2)) ] && [ "${MWY:-0}" -ge $((MKY - 2)) ] && [ "${MWY:-0}" -le $((MKY + 2)) ]
 check $? "and the application put it AT THE CLICK POINT (window origin ${MWX:-none},${MWY:-none} against the point [${MENU_KEY:-none}])"
-# AND IT IS A MENU BY ITS OWN CONTENT, not by assumption: its rows are read back from the
-# menu's own highlight (hovering an entry lights up exactly one row rectangle), one pitch
-# apart, and the window's own height holds exactly the entries the application's easing table
-# has. The entries' IDENTITY is then asserted by the two picks below, whose only source is
-# the shared display order: row 3 is Sine, and two Downs reach Round.
-[ "${R0W:-0}" -gt 0 ] && [ "$((R1Y - R0Y))" -gt 0 ] && [ "${R0Y:-0}" -ge "${MWY:-0}" ]
-check $? "and its own ROWS tile it: hovering the first entry lights [${MENU_ROW0:-none}] and the second [${MENU_ROW1:-none}], one row rectangle each, ${MENU_ITEM_W:-none} px wide and ${MENU_ITEM_H:-none} px apart - so its content is a list of rows and not a painted block"
-[ "${MWH:-0}" -ge 150 ] && [ "$((MWH - 2 * (R0Y - MWY)))" -eq "$(( (R1Y - R0Y) * MENU_ENTRY_ROWS ))" ]
-check $? "and the window holds exactly the ${MENU_ENTRY_ROWS:-?} easing entries of util::Easing's shared display order minus Custom at that pitch (height ${MWH:-none}, ${MENU_ENTRY_ROWS:-?} x ${MENU_ITEM_H:-none} rows with the same ${MENU_ROW_TOP:-none}-px inset at each end)"
 # THE SELECTION, BOTH HALVES, each from a reading the phase made EMPTY first with the graph's
 # own deselect gesture (a Ctrl-press in the plot on no key and no band, which the graph OWNS,
 # so it reaches no viewport tool and changes no document byte). The right-click that opened
-# the menu selects the key it lands on - the overlay's openKeyMenuAt makes its key the
-# selection, exactly as the timeline's own menu does - and the press that follows is the
-# editor's own gesture. Asserting the empty reading in each case is what makes "it moved" a
-# statement about the gesture rather than about the scan.
+# the popover selects the key it lands on - the overlay's openKeyMenuAt calls selectKey before
+# it hands the selection on - and the press that follows is the editor's own gesture.
+# Asserting the empty reading in each case is what makes "it moved" a statement about the
+# gesture rather than about the scan.
 [ -n "${MENU_STATE_BEFORE:-}" ] && [ -z "${MENU_SEL_BEFORE:-}" ]
 check $? "the selection was cleared before the scan, by the graph's own Ctrl-press gesture in the plot at [${MENU_DESELECT:-none}]: the panel's state line [${MENU_STATE_BEFORE:-none}] carries NO selected-key half (and it IS a state line, so the panel was there to be read)"
 [ -n "${MENU_SEL_AFTER:-}" ] && [ "${MENU_SEL_AFTER:-}" != "${MENU_SEL_BEFORE:-}" ]
-check $? "and the RIGHT-CLICK that opened the menu SELECTED the key it landed on: the panel's state line's selected-key half MOVED, from [${MENU_SEL_BEFORE:-empty}] to [${MENU_SEL_AFTER:-none}]"
+check $? "and the RIGHT-CLICK that opened the popover SELECTED the key it landed on: the panel's state line's selected-key half MOVED, from [${MENU_SEL_BEFORE:-empty}] to [${MENU_SEL_AFTER:-none}]"
 [ -z "${MENU_SEL_BEFORE2:-}" ] && [ -n "${MENU_SEL_AFTER2:-}" ] && [ "${MENU_SEL_AFTER2:-}" != "${MENU_SEL_BEFORE2:-}" ]
 check $? "and a LEFT press at the same point SELECTED the key too, from a selection emptied again first ([${MENU_SEL_BEFORE2:-empty}] -> [${MENU_SEL_AFTER2:-none}]; that deselect is at [${MENU_DESELECT:-none}])"
 [ -n "${MENU_KEY:-}" ] \
     && [ "$MKX" -ge "$MFX" ] && [ "$MKX" -le $((MFX + MFW)) ] \
     && [ "$MKY" -ge "$MFY" ] && [ "$MKY" -le $((MFY + MFH)) ]
-check $? "and the point the scan found is INSIDE the panel's own published fit rect (found [${MENU_KEY:-none}] in ${MENU_FIT:-none}) - and it is NOT asserted to be at that rect's centre: where the key sits inside the plot is the fit policy's business (the frame half of fitAll is what the user asked to change this round), while the phase's business is that the point is on the key the panel DRAWS, which is what the menu opening there and the panel's own selection both answer"
+check $? "and the point the scan found is INSIDE the panel's own published fit rect (found [${MENU_KEY:-none}] in ${MENU_FIT:-none}) - and it is NOT asserted to be at that rect's centre: where the key sits inside the plot is the fit policy's business (the frame half of fitAll is what the user asked to change this round), while the phase's business is that the point is on the key the panel DRAWS, which is what the popover opening there and the panel's own selection both answer"
 has "${MENU_BEFORE:-}" "Rotate Linear"
 check $? "and that key's easing is the param's own default, Linear ([${MENU_BEFORE:-none}])"
 
-# THE EFFECT: the POINTER pick wrote the easing the state line then names, and the entry it
-# took is the one the shared display order puts at that row (Sine is index 3, i.e. the menu's
-# FOURTH row). The line is built from the DOCUMENT - the selected target's key - so this is a
-# statement about the document, not about the menu's return value.
+# THE EFFECT, and it is the assertion that FAILS IF THE PICK DOES NOTHING: the pointer pressed
+# the picker's SINE tile ([${MENU_ENTRY_TILE:-none}]) and the dismissal that followed it
+# committed that draft to the DOCUMENT, which is what the panel's own state line names. The
+# line is built from the document (the selected target's key), not from the picker's return
+# value, and the type named is the one kTileOrder puts on the tile the phase derived the index
+# of - so a press that landed on no tile, on another tile, or that never committed, all make
+# this red.
 has "${MENU_AFTER:-}" "Sine"
-check $? "choosing the menu's FOURTH row with the real pointer ([${MENU_ENTRY_PT:-none}], inside the menu window [${MENU_GEOM:-none}]) changed the selected key's easing to exactly that entry: the state line now reads [${MENU_AFTER:-none}], and it read [${MENU_BEFORE:-none}] before"
+check $? "pressing the picker's ${MENU_ENTRY_TILE:-?} tile with the real pointer at [${MENU_ENTRY_PT:-none}] (inside the popup window [${MENU_GEOM:-none}]) and dismissing it changed the selected key's easing to exactly that tile's type: the state line now reads [${MENU_AFTER:-none}], and it read [${MENU_BEFORE:-none}] before"
 ! has "${MENU_BEFORE:-}" "Sine"
-check $? "and the key was not already carrying it, so the line moved for the menu and not for a no-op (before [${MENU_BEFORE:-none}])"
+check $? "and the key was not already carrying it, so the line moved for the pick and not for a no-op (before [${MENU_BEFORE:-none}])"
 [ "${MENU_ENTRY_CLOSED:-}" = "no" ]
-check $? "and the menu closed on that choice, by its own window ([${MENU_WIN:-none}] open: [${MENU_ENTRY_CLOSED:-none}])"
+check $? "and the popover closed on that dismissal, by its own window ([${MENU_WIN:-none}] on screen: [${MENU_ENTRY_CLOSED:-none}])"
 
-# THE MENU CLOSED AGAIN on the choice: the capture with the menu open and the capture after
-# it differ by the menu's own pixels (the panel underneath was redrawn in the same place).
+# THE POPOVER CLOSED AGAIN on the pick: the capture with it up and the capture after it differ
+# by the popup's own pixels (the panel underneath was redrawn in the same place). The bar is
+# derived from the popup's OWN measured rectangle rather than remembered.
 d_menu_gone=$(ae_diff "$NORM/menu_open.png" "$NORM/menu_after.png")
-[ "$d_menu_gone" -gt 2000 ]
-check $? "and the menu left the screen with it ($d_menu_gone px changed, bar 2000: the menu's own ${MWW:-?}x${MWH:-?} rectangle is $((MWW * MWH)) px)"
+[ "$d_menu_gone" -gt $((MWW * MWH / 2)) ]
+check $? "and the popover left the screen with it ($d_menu_gone px changed, bar $((MWW * MWH / 2)) = half the popup's own ${MWW:-?}x${MWH:-?} = $((MWW * MWH)) px rectangle)"
 
 d_menu_ctl=$(ae_diff "$NORM/menu_ctl_a.png" "$NORM/menu_ctl_b.png")
 [ "$d_menu_ctl" -eq 0 ]
 check $? "the panel does not repaint on its own between the two control captures (control $d_menu_ctl px)"
 
-# THE NEGATIVE, as the TRUE claim: a right-click that hits no key opens NO WINDOW at all. The
-# point is 60 px along the frame axis from the key and inside the plot, so it is on no key and
-# on no drawn band (a one-key map draws no polyline), and the reading is the WINDOW LIST - the
-# same witness the scan accepts on - plus the panel's own line.
+# THE NEGATIVE, as the TRUE claim: a right-click that hits no key leaves NO picker window on
+# screen. The point is 60 px along the frame axis from the key and inside the plot, so it is on
+# no key and on no drawn band (a one-key map draws no polyline), and the reading is the WINDOW
+# LIST - the same witness the scan accepts on - plus the panel's own line.
 [ -z "${MENU_EMPTY_WINS:-}" ]
-check $? "a right-click that hits NO key opened no window at all (at [${MENU_EMPTY:-none}]: new top-level windows [${MENU_EMPTY_WINS:-none}])"
+check $? "a right-click that hits NO key left no picker window on screen (at [${MENU_EMPTY:-none}]: windows answering the picker's geometry [${MENU_EMPTY_WINS:-none}])"
 [ "${MENU_NOKEY_LINE:-}" = "${MENU_BEFORE:-}" ] && [ -n "${MENU_BEFORE:-}" ]
-check $? "and the panel's own state line is unchanged by it ([${MENU_NOKEY_LINE:-none}], the line the menu was opened from)"
+check $? "and the panel's own state line is unchanged by it ([${MENU_NOKEY_LINE:-none}], the line the popover was opened from)"
 
-# ---- (d) THE MENU'S KEYBOARD, AND THE APPLICATION'S KEYS BESIDE IT ----
-# Two claims, and they are the two halves of the menu's own modality (see the phase's own
-# comments): while the menu is OPEN its window has the input, so the application's own key
-# commands do not reach the timeline; while it is CLOSED they do. Both are read from the
-# DOCUMENT through the panel's own state line, and the menu's side is read from the X window
-# list - its own existence - never from a pixel bar. The menu's keyboard is Qt's own for a
-# QMenu: Down moves its row highlight and Return activates the row the arrows reached, and the
-# highlight is measured inside the menu's own window.
-assert_exists "$SHOTS/graph_probe_32_menu_delete.png" "the root with the key menu open and the Delete key command pressed at it"
-assert_exists "$SHOTS/graph_probe_33_menu_escape.png" "the root after Escape was pressed with the key menu open"
-assert_exists "$SHOTS/graph_probe_34_menu_reopen.png" "the key menu open again at the same key, after Escape closed it"
-assert_exists "$SHOTS/graph_probe_35_menu_kb_open.png" "the key menu open for the keyboard: the arrows and Return"
-assert_exists "$SHOTS/graph_probe_36_menu_down.png"   "the same menu after one Down arrow"
-assert_exists "$SHOTS/graph_probe_37_menu_kb_after.png" "the viewport after Return activated the entry the arrows reached"
-assert_exists "$SHOTS/graph_probe_38_appkey_undo.png" "the viewport after ctrl+Z with the menu closed"
+# ---- (d) THE POPOVER'S MODALITY, AND THE APPLICATION'S KEYS BESIDE IT ----
+# Two claims, and they are the two halves of the popup's own modality (see the phase's own
+# comments): while the popover is OPEN its window has the keyboard, so the application's own
+# key commands do not reach the timeline; while it is CLOSED they do. Both are read from the
+# DOCUMENT through the panel's own state line, and the popup's side is read from the window
+# list - its own viewability - never from a pixel bar. The tile press is measured in pixels
+# below, INSIDE the popup's own window, since a popover has no row highlight to measure.
+assert_exists "$SHOTS/graph_probe_32_menu_delete.png" "the root with the easing picker open and the Delete key command pressed at it"
+assert_exists "$SHOTS/graph_probe_33_menu_escape.png" "the root after Escape was pressed with the easing picker open"
+assert_exists "$SHOTS/graph_probe_34_menu_reopen.png" "the easing picker open again at the same key, after Escape closed it"
+assert_exists "$SHOTS/graph_probe_35_menu_kb_open.png" "the easing picker open a third time, for the second pick"
+assert_exists "$SHOTS/graph_probe_36_picker_tile.png"  "the same popover after the second pick's TILE was pressed"
+assert_exists "$SHOTS/graph_probe_37_picker_after.png" "the viewport after that pick was committed by the dismissal"
+assert_exists "$SHOTS/graph_probe_38_appkey_undo.png" "the viewport after ctrl+Z with the popover closed"
 norm "$SHOTS/graph_probe_32_menu_delete.png"   "$NORM/menu_delete.png"
 norm "$SHOTS/graph_probe_33_menu_escape.png"   "$NORM/menu_escape.png"
 norm "$SHOTS/graph_probe_34_menu_reopen.png"   "$NORM/menu_reopen.png"
 norm "$SHOTS/graph_probe_35_menu_kb_open.png"  "$NORM/menu_kb_open.png"
-norm "$SHOTS/graph_probe_36_menu_down.png"     "$NORM/menu_down.png"
-norm "$SHOTS/graph_probe_37_menu_kb_after.png" "$NORM/menu_kb_after.png"
+norm "$SHOTS/graph_probe_36_picker_tile.png"   "$NORM/picker_tile.png"
+norm "$SHOTS/graph_probe_37_picker_after.png"  "$NORM/picker_after.png"
 norm "$SHOTS/graph_probe_38_appkey_undo.png"   "$NORM/appkey_undo.png"
 
-# THE KEYS THE MENU ACTS ON ARE THE MENU'S. Delete is an application command
-# (gui::KeyCommandMap: "Delete selected key(s)"), and it would remove exactly the key this
-# menu was opened on: a menu that did not consume it would show it in the line below. The
-# window list is the second half of the claim: the menu has to be STILL UP after both keys.
+# THE KEYS THE PICKER ACTS ON ARE THE PICKER'S. Delete is an application command
+# (gui::KeyCommandMap: "Delete selected key(s)"), and it would remove exactly the key the
+# popover was opened on: a popup that did not consume it would show it in the line below. The
+# window list is the second half of the claim: the popover has to be STILL ON SCREEN after both
+# keys.
 [ "${MENU_DEL_LINE:-}" = "${MENU_BEFORE:-}" ] && [ "${MENU_DEL_OPEN:-}" = "yes" ]
-check $? "with the key menu OPEN the application's own Delete command does NOT reach the timeline, and the menu stays up (the line is unchanged: [${MENU_DEL_LINE:-none}], and its window [${MENU_WIN:-none}] is still there [${MENU_DEL_OPEN:-none}])"
+check $? "with the easing picker OPEN the application's own Delete command does NOT reach the timeline, and the popover stays up (the line is unchanged: [${MENU_DEL_LINE:-none}], and its window [${MENU_WIN:-none}] is still on screen [${MENU_DEL_OPEN:-none}])"
 [ "${MENU_UNDO_LINE:-}" = "${MENU_BEFORE:-}" ] && [ "${MENU_UNDO_OPEN:-}" = "yes" ]
-check $? "and with it OPEN the application's own Undo key command does not reach the timeline either (the line is unchanged: [${MENU_UNDO_LINE:-none}], its window still there [${MENU_UNDO_OPEN:-none}])"
-
-# ESCAPE CLOSES THE MENU AND CHANGES NOTHING. Two halves, because "closed" and "did not change
-# the easing" are two different facts: the line must be EXACTLY what it was before the menu was
-# opened, and the menu's own window must be GONE. The identity half is the WINDOW LIST (the
-# same witness the scan uses); the pixel half beside it is the corroboration, with a bar of
-# half the menu's own measured rectangle - the popup is opaque, so its disappearance moves
-# about that much.
+check $? "and with it OPEN the application's own Undo key command does not reach the timeline either (the line is unchanged: [${MENU_UNDO_LINE:-none}], its window still on screen [${MENU_UNDO_OPEN:-none}]; the picker's own session-undo filter consumes that key, with an empty history here, so nothing commits)"
+# ESCAPE CLOSES THE POPOVER AND CHANGES NOTHING. Two halves, because "closed" and "did not
+# change the easing" are two different facts: the line must be EXACTLY what it was before the
+# popover was opened, and the popover's own window must be GONE (no longer viewable) - which is
+# also the failure check for the dismissal every pick below depends on. The identity half is
+# the WINDOW LIST (the same witness the scan uses); the pixel half beside it is the
+# corroboration, with a bar of half the popup's own measured rectangle.
 [ "${MENU_ESCAPE_LINE:-}" = "${MENU_BEFORE:-}" ] && [ -n "${MENU_BEFORE:-}" ]
-check $? "Escape closed the key menu WITHOUT changing anything: the panel's state line still reads [${MENU_ESCAPE_LINE:-none}], exactly the pre-menu [${MENU_BEFORE:-none}]"
+check $? "Escape closed the easing picker WITHOUT changing anything: the panel's state line still reads [${MENU_ESCAPE_LINE:-none}], exactly the pre-popover [${MENU_BEFORE:-none}] - the draft was never edited, so the close committed nothing"
 [ "${MENU_ESC_OPEN:-}" = "no" ]
-check $? "and the menu's own window is gone ([${MENU_WIN:-none}] open: [${MENU_ESC_OPEN:-none}], read from the root window's children)"
+check $? "and the popover's own window is off the screen ([${MENU_WIN:-none}] on screen: [${MENU_ESC_OPEN:-none}], read from the root window's children)"
 d_menu_esc=$(ae_diff "$NORM/menu_delete.png" "$NORM/menu_escape.png")
 [ "$d_menu_esc" -ge $((MWW * MWH / 2)) ]
-check $? "and its pixels stopped being drawn ($d_menu_esc px changed between the two captures, bar $((MWW * MWH / 2)) = half the menu's own $((MWW * MWH)) px rectangle)"
+check $? "and its pixels stopped being drawn ($d_menu_esc px changed between the two captures, bar $((MWW * MWH / 2)) = half the popup's own $((MWW * MWH)) px rectangle)"
 
-# AND THE MENU IS USABLE AGAIN, twice over: the pointer pick above ran against a fresh opening
-# at the same point, and the keyboard opening below is a third one. Both report the SAME
-# geometry, which is what "the point is still on the drawn key" means for this menu - its
-# origin IS the click point, so a different answer would mean the point had moved.
+# AND THE POPOVER IS USABLE AGAIN, twice over: the pointer pick above ran against a fresh
+# opening at the same point, and the pick below is a third one. Both report the SAME geometry,
+# which is what "the point is still on the drawn key" means for this popover - its origin IS the
+# anchor, so a different answer would mean the point had moved (or that the window the phase
+# accepted was another one).
 [ -n "${MENU_GEOM2:-}" ] && [ "${MENU_GEOM2:-}" = "${MENU_GEOM:-}" ]
-check $? "the menu was reopened after Escape closed it, at the same key and the same place ([${MENU_GEOM2:-none}] against the first [${MENU_GEOM:-none}]) - which is what the pointer pick above was a click INTO"
+check $? "the popover came back after Escape closed it, at the same key and the same place ([${MENU_GEOM2:-none}] against the first [${MENU_GEOM:-none}]) - which is what the pointer pick above was a press INTO"
 [ -n "${MENU_KB_GEOM:-}" ] && [ "${MENU_KB_GEOM:-}" = "${MENU_GEOM:-}" ]
-check $? "and a third opening, for the keyboard, landed there too ([${MENU_KB_GEOM:-none}])"
+check $? "and a third opening, for the second pick, landed there too ([${MENU_KB_GEOM:-none}])"
 
-# THE ARROWS DRAW AND MOVE THE MENU'S OWN HIGHLIGHT, inside its own window, and Return
-# activates the row the arrows reached. MEASURED: the first Down lights the FIRST row and each
-# further Down the next one, so the ${MENU_KB_STEPS:-?} Downs below reach Round - the SECOND
-# entry of the shared display order - which the panel's own line then names. That pairing of a
-# measured row rectangle with an entry the application's easing table holds is what makes this
-# the menu's content and not a painted block.
+# THE TILE PRESS DRAWS INSIDE THE POPUP, and the second pick then COMMITS. The pixel half is
+# the picker's own: the two captures are taken with the pointer parked and the popover up, so
+# what moved is what the press drew on the popup's own surface - the checked tile's accent fill
+# and glyph. The changed region is required to lie INSIDE the popup's own rectangle, which is
+# what makes this the picker the press landed on rather than a neighbour of it. The picker's
+# motion-preview bar animates between ANY two captures, so this is a claim about the surface,
+# not about the tile's fill alone; WHICH entry was pressed is the state line's job.
 read -r HW HH HX HY <<< "$(printf "%s" "${MENU_KB_HL_BB:-0x0+0+0}" | tr "x+" "  ")"
 [ "${MENU_KB_HL:-0}" -gt 200 ] && [ "${HW:-0}" -gt 0 ] && [ "${HH:-0}" -gt 0 ] \
     && [ "${HX:-0}" -ge $((MWX - 2)) ] && [ "${HY:-0}" -ge $((MWY - 2)) ] \
     && [ $((HX + HW)) -le $((MWX + MWW + 2)) ] && [ $((HY + HH)) -le $((MWY + MWH + 2)) ]
-check $? "the Down arrow drew the menu's own entry highlight INSIDE its window (${MENU_KB_HL:-0} px changed, [${MENU_KB_HL_BB:-none}], inside the menu's [${MENU_GEOM:-none}])"
+check $? "pressing the ${MENU_KB_TILE:-?} changed pixels INSIDE the popover's own window (${MENU_KB_HL:-0} px changed, region [${MENU_KB_HL_BB:-none}], inside [${MENU_GEOM:-none}]) - so the pointer landed on the picker's own surface, where a user clicks a tile"
 has "${MENU_KB_LINE:-}" "Round"
-check $? "and Return activated the entry the arrows reached: ${MENU_KB_STEPS:-?} Downs then Return put the panel's line on Round, the SECOND entry of the menu's own display order ([${MENU_KB_LINE:-none}], which read [${MENU_AFTER:-none}] before the keyboard)"
+check $? "and the pick COMMITTED on the dismissal that followed: the second pick's tile (${MENU_KB_TILE:-?}) put the panel's line on Round ([${MENU_KB_LINE:-none}], which read [${MENU_AFTER:-none}] before it)"
 [ "${MENU_KB_CLOSED:-}" = "no" ]
-check $? "and the menu closed on that activation too ([${MENU_WIN:-none}] open: [${MENU_KB_CLOSED:-none}])"
+check $? "and the popover closed on that dismissal too ([${MENU_WIN:-none}] on screen: [${MENU_KB_CLOSED:-none}])"
 
-# THE REGRESSION, and the half that matters most: with the menu CLOSED the application's own
-# key command works exactly as it did before this menu existed. The last edit at this point is
-# the keyboard pick above, so ctrl+Z has to undo it, and the panel's own state line has to move
-# back to what it read before that pick. (It is also what leaves the key carrying Sine, which
-# is what phase 4b below re-shapes.)
+# THE REGRESSION, and the half that matters most: with the popover CLOSED the application's own
+# key command works exactly as it did before this control existed. The last edit at this point is
+# the second pick above, so ctrl+Z has to undo it, and the panel's own state line has to move
+# back to what it read before that pick. (It is also what leaves the key carrying Sine, which is
+# what phase 4b below re-shapes.)
 [ "${MENU_APPKEY_LINE:-}" = "${MENU_AFTER:-}" ] && [ -n "${MENU_AFTER:-}" ] && [ "${MENU_KB_LINE:-}" != "${MENU_AFTER:-}" ]
-check $? "with the key menu CLOSED the application's own Undo key command DOES reach the timeline: the line went from the keyboard's [${MENU_KB_LINE:-none}] back to [${MENU_APPKEY_LINE:-none}], the state before it"
+check $? "with the easing picker CLOSED the application's own Undo key command DOES reach the timeline: the line went from the second pick's [${MENU_KB_LINE:-none}] back to [${MENU_APPKEY_LINE:-none}], the state before it"
 
 # ---- (d2) PHASE 4b: THE CURVE - THE ONLY PLACE THE EASING IS DRAWN, AND SO THE ONLY
-# PIXEL-LEVEL PROOF THAT THE MENU'S CHOICE REACHED THE PANEL ----
+# PIXEL-LEVEL PROOF THAT THE PICKER'S PICK REACHED THE PANEL ----
 # WHY THE STATE LINE WAS NOT ENOUGH, MEASURED. The panel draws its summary line only while
 # the model is EMPTY (ImGuiOverlay.cpp:843); with curves present the line exists in the
 # accessibility tree alone. So every assertion above is invisible on screen, and the easing
@@ -2973,28 +3253,30 @@ check $? "with the key menu CLOSED the application's own Undo key command DOES r
 # key does not have (graph::Curve::buildPolyline emits nothing for it). MEASURED here on the
 # one-key panel: changing the easing changed 0 pixels, because there was no curve to change.
 # So phase 4b builds the segment - a second key one frame later carrying a DIFFERENT value -
-# and then the assertions below are about the curve's own pixels, with the menu closed in
+# and then the assertions below are about the curve's own pixels, with the popover closed in
 # every capture they compare:
 #   * the segment appears when the second key does (the one-key panel drew no curve at all);
-#   * re-shaping it with the menu's Linear moves the curve's pixels (the key carried Sine);
-#   * and picking the SAME easing a second time moves nothing - which is what makes the line
-#     above about the EASING rather than about the menu having been used.
+#   * re-shaping it with the picker's Linear tile moves the curve's pixels (the key carried
+#     Sine);
+#   * and picking the SAME tile a second time moves nothing - which is what makes the line
+#     above about the EASING rather than about the picker having been used.
 # The route is asserted as well as the effect: the dock's knob row says the playhead moved
 # (a channel shows its rows only while a key exists at the current frame), the knob's press
 # says the key was added, and the Angle field's own Value interface says the value it was
 # given - which is what makes the segment non-flat.
-# AND THE MENU IS DRIVEN BY ITS OWN KEYBOARD HERE TOO (three Downs then Return reach row 2 of
-# the shared display order, Linear - see phase 4 for the measured row map), so these two picks
-# also assert that a menu opened at phase 4's point keeps landing at that same point.
+# AND THE PICKER IS DRIVEN THROUGH ITS OWN TILE HERE TOO (Linear is kTileOrder index 0, derived
+# from the source, and the tile is pressed with the pointer plus dismissed with Escape), so
+# these two picks also assert that a popover opened at phase 4's point keeps landing at that
+# same point.
 # THE TYPED WRITE IS ALSO THE INSTRUMENT FOR A DEFECT THE IMGUI PHASE RECORDED and which this
-# menu cannot reproduce: typing into the dock's Angle field used to stop committing once the
+# control cannot reproduce: typing into the dock's Angle field used to stop committing once the
 # key menu had been used, because the ImGui popup's nav flag was still holding the keyboard.
-# This write happens after five menu openings and is asserted to commit.
-assert_exists "$SHOTS/graph_probe_26_curve_sine.png"            "the viewport with the segment shaped by the easing the menu chose"
-assert_exists "$SHOTS/graph_probe_27_menu_linear_open.png"      "the same panel with the key menu open again, on the same key"
-assert_exists "$SHOTS/graph_probe_28_curve_linear.png"          "the viewport after choosing Linear for that key"
-assert_exists "$SHOTS/graph_probe_29_menu_linear_again_open.png" "the key menu open a third time, for the same choice"
-assert_exists "$SHOTS/graph_probe_30_curve_linear_again.png"    "the viewport after picking the same easing again"
+# This write happens after five popover openings and is asserted to commit.
+assert_exists "$SHOTS/graph_probe_26_curve_sine.png"            "the viewport with the segment shaped by the easing the picker's pick chose"
+assert_exists "$SHOTS/graph_probe_27_menu_linear_open.png"      "the same panel with the easing picker open again, on the same key"
+assert_exists "$SHOTS/graph_probe_28_curve_linear.png"          "the viewport after pressing the picker's Linear tile for that key"
+assert_exists "$SHOTS/graph_probe_29_menu_linear_again_open.png" "the easing picker open a third time, for the same tile"
+assert_exists "$SHOTS/graph_probe_30_curve_linear_again.png"    "the viewport after pressing the same tile again"
 norm "$SHOTS/graph_probe_26_curve_sine.png"             "$NORM/curve_sine.png"
 norm "$SHOTS/graph_probe_27_menu_linear_open.png"       "$NORM/menu_linear_open.png"
 norm "$SHOTS/graph_probe_28_curve_linear.png"           "$NORM/curve_linear.png"
@@ -3004,33 +3286,33 @@ crop "$NORM/curve_sine.png"          "$NORM/c_curve_sine.png"
 crop "$NORM/curve_linear.png"        "$NORM/c_curve_linear.png"
 crop "$NORM/curve_linear_again.png"  "$NORM/c_curve_linear_again.png"
 
-echo "phase 4b: the second key's angle, seeded [${ANGLE_2ND_SEEDED:-unreadable}] at [${ANGLE_2ND_RECT:-none}], typed [${NEWDEG:-none}] in ${ANGLE_2ND_TRIES:-0} attempt(s), the field value read [${ANGLE_2ND_TYPED_TEXT:-unreadable}] and its line edit [${ANGLE_2ND_EDIT_TEXT:-unreadable}] while the edit was open, and [${ANGLE_2ND_WRITTEN:-unreadable}] after the commit key; the focus holders [${DOCK_FOCUS_BEFORE:-none}] before the click into the field, [${DOCK_FOCUS_CLICK:-none}] after it and [${DOCK_FOCUS_AFTER:-none}] after the commit key; the panel's own legend names [${DOCK_TARGET_BEFORE:-none}] before and [${DOCK_TARGET_AFTER:-none}] after; the knob row at the next frame [${KNOB_2ND:-none}] and after the press [${KNOB_2ND_AFTER:-none}]; the Linear menu [${MENU2_GEOM:-none}] entry [${MENU2_ENTRY:-none}], the state line then [${MENU2_LINE:-none}]; the same pick again: menu [${MENU3_GEOM:-none}] entry [${MENU3_ENTRY:-none}], line [${MENU3_LINE:-none}]"
+echo "phase 4b: the second key's angle, seeded [${ANGLE_2ND_SEEDED:-unreadable}] at [${ANGLE_2ND_RECT:-none}], typed [${NEWDEG:-none}] in ${ANGLE_2ND_TRIES:-0} attempt(s), the field value read [${ANGLE_2ND_TYPED_TEXT:-unreadable}] and its line edit [${ANGLE_2ND_EDIT_TEXT:-unreadable}] while the edit was open, and [${ANGLE_2ND_WRITTEN:-unreadable}] after the commit key; the focus holders [${DOCK_FOCUS_BEFORE:-none}] before the click into the field, [${DOCK_FOCUS_CLICK:-none}] after it and [${DOCK_FOCUS_AFTER:-none}] after the commit key; the panel's own line (its shown count and focused channel) [${DOCK_TARGET_BEFORE:-none}] before and [${DOCK_TARGET_AFTER:-none}] after; the knob row at the next frame [${KNOB_2ND:-none}] and after the press [${KNOB_2ND_AFTER:-none}]; the Linear menu [${MENU2_GEOM:-none}] entry [${MENU2_ENTRY:-none}], the state line then [${MENU2_LINE:-none}]; the same pick again: menu [${MENU3_GEOM:-none}] entry [${MENU3_ENTRY:-none}], line [${MENU3_LINE:-none}]"
 
 [ -n "${KNOB_2ND:-}" ]
 check $? "the playhead moved one frame right through the app's own key command: the dock's Rotate knob row is back, i.e. this frame carries no key ([${KNOB_2ND:-none}]; Ctrl+Right = MoveRight, MainWindow.cpp:885)"
 awk -v a="${ANGLE_2ND_SEEDED:-}" 'BEGIN { exit !(a != "") }'
 check $? "and pressing that knob added the second key there: the channel rows are readable (the Angle field answers [${ANGLE_2ND_SEEDED:-unreadable}] at [${ANGLE_2ND_RECT:-none}]), which is what a key at this frame turns on - the knob row's own presence in the tree is NOT the signal, MEASURED: it reports the same rect before and after the press" 
 read -r M2W M2H M2X M2Y <<< "${MENU2_GEOM:-0 0 0 0}"
-[ "${M2W:-0}" -gt 60 ] && [ "${M2H:-0}" -ge 150 ]
-check $? "the key menu opened AGAIN on the same key for the Linear pick ([${MENU2_GEOM:-none}], i.e. the point the scan found is still on the drawn key - the menu opens only within ctrl::graph::kKeyHitRadius of a key)"
+[ "${M2W:-0}" -eq "${MENU_PICK_W:-0}" ] && { [ "${M2H:-0}" -eq "${MENU_PICK_H:-0}" ] || [ "${M2H:-0}" -eq "${MENU_PICK_H_CUSTOM:-0}" ]; }
+check $? "the easing picker came back on the same key for the Linear pick, with the picker's own measured geometry ([${MENU2_GEOM:-none}] against the source's ${MENU_PICK_W:-?}x${MENU_PICK_H:-?}/${MENU_PICK_H_CUSTOM:-?}, i.e. the point the scan found is still on the drawn key - the popover opens only within ctrl::graph::kKeyHitRadius of a key)"
 [ "$((M2X - MWX))" -ge -2 ] && [ "$((M2X - MWX))" -le 2 ] && [ "$((M2Y - MWY))" -ge -2 ] && [ "$((M2Y - MWY))" -le 2 ]
-check $? "and it landed where the first menu did, i.e. the same point is still on the same key ([${MENU2_GEOM:-none}] against phase 4's [${MENU_GEOM:-none}]; a Qt popup is placed at its anchor, so a different answer would mean the key had moved)"
+check $? "and it landed where the first popover did, i.e. the same point is still on the same key ([${MENU2_GEOM:-none}] against phase 4's [${MENU_GEOM:-none}]; popUpAt places it at the anchor, so a different answer would mean the key had moved)"
 awk -v a="${ANGLE_2ND_WRITTEN:-}" -v b="${NEWDEG:-}" 'BEGIN { exit !(a != "" && b != "" && (a + 0) == (b + 0)) }'
 check $? "the dock's Angle field took the value it was typed, read back through the field's own Value interface (seeded [${ANGLE_2ND_SEEDED:-unreadable}], typed [${NEWDEG:-none}], reads [${ANGLE_2ND_WRITTEN:-unreadable}])"
 awk -v a="${ANGLE_2ND_WRITTEN:-}" -v b="${ANGLE_2ND_SEEDED:-}" 'BEGIN { exit !(a != "" && b != "" && (a + 0) != (b + 0)) }'
 check $? "and it differs from the value the knob seeded, which is what makes the segment not flat (${ANGLE_2ND_SEEDED:-?} -> ${ANGLE_2ND_WRITTEN:-?} degrees)"
 # THE TYPED WRITE IS ALSO THE INSTRUMENT FOR THE DEFECT THE IMGUI PHASE RECORDED: typing into
 # this field used to stop committing once the key menu had been used (the ImGui popup's nav
-# flag was still holding the keyboard). This write happens AFTER the menu was opened five
+# flag was still holding the keyboard). This write happens AFTER the picker was opened five
 # times, so the pair of readings above - what the field held while the edit was open, and what
 # it committed - is the answer, and the assertion that the committed value equals what was
 # typed is the claim that the defect is gone.
 [ -n "${ANGLE_2ND_TYPED_TEXT:-}" ] && [ -n "${ANGLE_2ND_WRITTEN:-}" ]
-check $? "and the write still COMMITS after the key menu has been used (the field read [${ANGLE_2ND_TYPED_TEXT:-unreadable}] while the edit was open and [${ANGLE_2ND_WRITTEN:-unreadable}] after the commit key; the dock's Angle row is the one this phase wrote through five menu openings ago)"
+check $? "and the write still COMMITS after the easing picker has been used (the field read [${ANGLE_2ND_TYPED_TEXT:-unreadable}] while the edit was open and [${ANGLE_2ND_WRITTEN:-unreadable}] after the commit key; the dock's Angle row is the one this phase wrote through five popover openings ago)"
 
-# THE PIXELS. Every one of these captures is taken with the menu CLOSED (pick_linear opens,
-# picks and waits, and the capture runs after it), so none of them is a measurement of the
-# menu's own rectangle: they are the panel the menu changed.
+# THE PIXELS. Every one of these captures is taken with the popover CLOSED (pick_linear opens,
+# presses the tile, dismisses and waits, and the capture runs after it), so none of them is a
+# measurement of the popup's own rectangle: they are the panel the pick changed.
 crop "$NORM/menu_after.png" "$NORM/c_menu_after.png"
 d_segment=$(ae_diff "$NORM/c_menu_after.png" "$NORM/c_curve_sine.png")
 p_segment=$(pct "$d_segment" "$CROP_AREA")
@@ -3042,17 +3324,17 @@ p_ease=$(pct "$d_ease" "$CROP_AREA")
 check $? "and re-shaping that segment moves the CURVE's own pixels: Linear where the key carried Sine ($d_ease px = ${p_ease}% of the crop changed, bar $EASE_PIXELS; the panel draws no summary line while a curve exists, so this change is the polyline and the tick/label layout it lives in)"
 d_ease_same=$(ae_diff "$NORM/c_curve_linear.png" "$NORM/c_curve_linear_again.png")
 [ "$d_ease_same" -eq 0 ]
-check $? "while picking the SAME easing a second time moves nothing at all ($d_ease_same px against the capture taken before that menu was opened)"
+check $? "while pressing the SAME tile a second time moves nothing at all ($d_ease_same px against the capture taken before that popover was opened)"
 # THE LINE, CONTAINED rather than suffixed: these checks used a case pattern of the form
 # `*" Lin"`, which requires the whole line to END with " Lin" and therefore never matched a
 # line that goes on - "selected key: Rotate Linear" does - so five assertions in this phase
 # could not pass whatever the application did. `has` is the containment test they meant.
 has "${MENU2_LINE:-}" "Linear"
-check $? "and the panel's own line agrees with the entry the menu's keyboard reached ([${MENU2_LINE:-none}], which read [${MENU_AFTER:-none}] before)"
+check $? "and the panel's own line agrees with the tile the pointer pressed ([${MENU2_LINE:-none}], which read [${MENU_AFTER:-none}] before)"
 has "${MENU3_LINE:-}" "Linear"
-check $? "and it still reads the same after the second, identical choice ([${MENU3_LINE:-none}])"
+check $? "and it still reads the same after the second, identical press ([${MENU3_LINE:-none}])"
 [ -n "${MENU2_GEOM:-}" ] && [ "${MENU2_GEOM:-}" = "${MENU_GEOM:-}" ] && [ -n "${MENU3_GEOM:-}" ] && [ "${MENU3_GEOM:-}" = "${MENU_GEOM:-}" ]
-check $? "and both of those picks opened the menu at the same key and the same place ([${MENU2_GEOM:-none}] and [${MENU3_GEOM:-none}] against phase 4's [${MENU_GEOM:-none}])"
+check $? "and both of those picks put the popover back at the same key and the same place ([${MENU2_GEOM:-none}] and [${MENU3_GEOM:-none}] against phase 4's [${MENU_GEOM:-none}])"
 
 # ---- (e) PHASE 3: THE TARGET THAT GETS DELETED WHILE THE PANEL IS SHOWING IT ----
 # WHAT THIS GATE IS FOR. ctrl::GraphEditor holds its targets as RAW core::ObjectNode*
@@ -3065,7 +3347,7 @@ check $? "and both of those picks opened the menu at the same key and the same p
 # curve's pixels gone from the crop. The first assertion here is the one that would fire
 # if the ordering ever broke: a use-after-free in the panel's draw is a dead process, and
 # a dead process is not something AT-SPI can report - every later call would just time out.
-echo "phase 3: deleted layer [$DEL_LAYER] as the tree row [$DEL_ROW]; the menu it opened [$DEL_POPUP] [$DEL_POPUP_INFO] with the input focus moved to [$DEL_FOCUS]; process alive [$DEL_ALIVE] (pid [${AE_PID:-?}]); the row after [$DEL_ROW_AFTER], cells now [${DEL_CELLS:-none}]; the panel's sentences: empty [$DEL_EMPTY] no-keys [$DEL_NOKEYS] all-hidden [$DEL_ALLHID]; legend rows after [${DEL_LEGEND:-none}]"
+echo "phase 3: deleted layer [$DEL_LAYER] as the tree row [$DEL_ROW]; the menu it opened [$DEL_POPUP] [$DEL_POPUP_INFO] with the input focus moved to [$DEL_FOCUS]; process alive [$DEL_ALIVE] (pid [${AE_PID:-?}]); the row after [$DEL_ROW_AFTER], cells now [${DEL_CELLS:-none}]; the panel's sentences: empty [$DEL_EMPTY] no-keys [$DEL_NOKEYS] all-hidden [$DEL_ALLHID]; the panel's channel control after the deletion: '1 channel(s)' [$DEL_LEGEND] and '0 of 1' [${DEL_CHAN_HIDDEN:-none}]"
 
 assert_exists "$SHOTS/graph_probe_17_pre_delete_a.png" "the viewport with the keyed layer's curve, before the deletion"
 assert_exists "$SHOTS/graph_probe_18_pre_delete_b.png" "the same state a second time, as the control"
@@ -3096,18 +3378,18 @@ check $? "and the row is gone from the object tree (a cell named [$DEL_LAYER] an
 # THE PANEL'S OWN WORDS. The model publishes one of three sentences for an empty target
 # list, and which one the deleted layer leaves behind is the model's business; what is
 # asserted is that ONE OF THEM IS BACK - the panel must not go on describing a layer that
-# no longer exists. The rendered legend is asserted empty beside it: the model's list of
-# channels to draw is exactly what buildEntries() produced, so an empty legend is the
-# model saying it no longer has that curve.
+# no longer exists. The panel's own channel CONTROL is asserted gone beside it: the model's
+# list of channels to draw is exactly what buildEntries() produced, so the control (which the
+# model publishes only while there is a channel to list) disappearing is the model saying it
+# no longer has that curve.
 DEL_SAID=""
 [ -n "${DEL_EMPTY:-}" ]  && DEL_SAID="Select a layer to show its curves"
 [ -n "${DEL_NOKEYS:-}" ] && DEL_SAID="${DEL_SAID:+$DEL_SAID / }No keys on the selected layers"
 [ -n "${DEL_ALLHID:-}" ] && DEL_SAID="${DEL_SAID:+$DEL_SAID / }All channels of the selected layers are hidden"
 [ -n "$DEL_SAID" ]
 check $? "the panel falls back to one of the model's own empty-state sentences after the deletion ([$DEL_SAID]; rects: empty [$DEL_EMPTY], no-keys [$DEL_NOKEYS], all-hidden [$DEL_ALLHID])"
-DEL_ROWS=$(printf '%s' "${DEL_LEGEND:-}" | tr ';' '\n' | grep -c .)
-[ "$DEL_ROWS" -eq 0 ]
-check $? "and the model lists no curve for the deleted layer any more ($DEL_ROWS legend rows: [${DEL_LEGEND:-none}])"
+[ -z "${DEL_LEGEND:-}" ] && [ -z "${DEL_CHAN_HIDDEN:-}" ]
+check $? "and the model lists no curve for the deleted layer any more: the panel publishes NO channel control at all, under either name its count can take ('1 channel(s)' -> [${DEL_LEGEND:-none}], '0 of 1' -> [${DEL_CHAN_HIDDEN:-none}])"
 
 # THE PIXELS, with the control first: the two captures taken before the deletion, with
 # nothing forced between them, are the same state, so the change below can only be the
