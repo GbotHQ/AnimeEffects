@@ -280,7 +280,6 @@ int main(int argc, char** argv) {
             // it at the range's floor, 0, so the handle is flat instead.
             {make(true, -1.0f, 2.0f, false, 0, 0), 0.0f, 0.5f, "clamped start"},
         };
-        const int numCases = int(sizeof(cases) / sizeof(cases[0]));
 
         for (const HandleCase& c : cases) {
             float y1 = 0.0f, y2 = 0.0f;

@@ -39,11 +39,6 @@ void notchOut(ctrl::time::Scaler& aScale, int aCount = 1) {
         aScale.update(120);
 }
 
-void notchIn(ctrl::time::Scaler& aScale, int aCount = 1) {
-    for (int i = 0; i < aCount; ++i)
-        aScale.update(-120);
-}
-
 } // namespace
 
 int main() {

@@ -561,7 +561,7 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
         second.radius = ctrl::graph::kHandleRadius;
         a.handles = {first, second};
     }
-    a.color = aTheme.keyColor(kTypeA);
+    a.color = aTheme.channelColor(kTypeA, 0);
     a.channelRow = 0;
     // The name CHIP, at a box inside the plot whose own ink is measurable ALONE: it is
     // clear of every other element (nothing of curve A reaches past x=300 and its
@@ -575,21 +575,25 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     const KeyFixture bKeys[] = {keyAt(170, 140), keyAt(290, 130)};
     gui::PanelCurve b;
     b.node = nullptr;
-    b.channel = ctrl::graph::Channel(kTypeB, 0);
+    b.channel = ctrl::graph::Channel(kTypeB, 1);
     b.points = {QPointF(110, 120), QPointF(170, 140), QPointF(230, 100), QPointF(290, 130)};
     b.keys = {bKeys[0].hit, bKeys[1].hit};
     b.keyDots = {bKeys[0].dot, bKeys[1].dot};
     b.keyFrames = {core::Frame(170), core::Frame(290)};
     b.keySelected = {false, false};
     b.keySiblingSelected = {false, false};
-    b.color = aTheme.keyColor(kTypeB);
+    // The SECOND component: under the channel hue table this is the Y axis (green),
+    // so the fixture has one X channel and one Y channel - two hues the ink can tell
+    // apart, which is what the marker passes need (two first components now share X
+    // red by design; section 7's group, not the hue, tells those apart).
+    b.color = aTheme.channelColor(kTypeB, 1);
     b.channelRow = 1;
     // This curve leaves the window at (290,130), 10px left of its own chip box, so the
     // box is COMPLETELY clear of every other element: "a chip is drawn only for a curve
     // in play" is asserted on it (zero ink while the curve is dimmed, the chip's own
     // backing while it is in play).
     b.chip = QRect(300, 100, 72, 14);
-    b.chipText = QStringLiteral("Scale X");
+    b.chipText = QStringLiteral("Scale Y");
 
     model.curves = {a, b};
 
@@ -651,7 +655,7 @@ gui::GraphPanelModel makeClipModel(const theme::Graph& aTheme) {
     // 650px above and 230px below a 240px-tall plot: the two steep segments leave
     // the plot's y range immediately, and the third runs across its middle.
     curve.points = {QPointF(110, -500), QPointF(150, 150), QPointF(250, 150), QPointF(290, 500)};
-    curve.color = aTheme.keyColor(kTypeA);
+    curve.color = aTheme.channelColor(kTypeA, 0);
     curve.channelRow = -1;
     model.curves = {curve};
     // A second in-plot ink source that ALSO leaves the plot on every side: the editor
@@ -696,7 +700,7 @@ gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
     // The curve's own stroke, well clear of both dots and both stems (y=150 against
     // their y>=240), so nothing but a handle can ink the pixels read below.
     curve.points = {QPointF(120, 150), QPointF(200, 150)};
-    curve.color = aTheme.keyColor(kTypeA);
+    curve.color = aTheme.channelColor(kTypeA, 0);
     curve.channelRow = -1;
 
     gui::PanelHandle stored;
@@ -729,9 +733,10 @@ gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
 // drawn on two channels: "the marker of the same key that is not selected keeps a faint
 // ring and its curve stays at full strength - one key, two channels, both in play"
 // (index.html:244-245). A SIBLING is another component of the same key, so the pair has to
-// be one type's two components, and the model's own colour rule makes them one hue
-// (PanelCurve::color == theme::Graph::keyColor(channel.type()) - the panel colours a
-// channel by its KEY TYPE, which is exactly why a key's two markers look alike).
+// be one type's two components - but they are NOT one hue: under the channel hue table the
+// first component is X (red) and the second Y (green), so each marker's fill is its OWN
+// channel's hue (PanelCurve::color == theme::Graph::channelColor(type, component)). That is
+// what makes the per-curve "nearer its own channel than the other" claims meaningful.
 //
 // The markers sit 100px apart, each on the middle of its own horizontal stroke, so no
 // probe about one can reach the other's ink: the ring probes below reach 7px, the stroke
@@ -747,7 +752,6 @@ gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNod
     model.valueColumn = kValueColumn;
     model.rulerBandTop = kPlot.top(); // no occluded top: the band starts at the plot
 
-    const QColor hue = aTheme.keyColor(kTypeA);
     for (int component = 0; component < 2; ++component) {
         const int y = (component == 0) ? kMarkerYTop : kMarkerYBottom;
         const KeyFixture key = keyAt(kMarkerX, y);
@@ -763,7 +767,7 @@ gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNod
         // one flag each assertion is about.
         curve.keySelected = {false};
         curve.keySiblingSelected = {false};
-        curve.color = hue;
+        curve.color = aTheme.channelColor(kTypeA, component);
         curve.channelRow = component;
         model.curves.append(curve);
     }
@@ -773,13 +777,14 @@ gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNod
     rowA.channel = model.curves.at(0).channel;
     rowA.layer = aLayerX->name();
     rowA.name = QStringLiteral("Move X");
-    rowA.color = hue;
+    rowA.color = model.curves.at(0).color;
     rowA.visible = true;
     gui::PanelChannelRow rowB = rowA;
     rowB.node = aLayerY;
     rowB.channel = model.curves.at(1).channel;
     rowB.layer = aLayerY->name();
     rowB.name = QStringLiteral("Move Y");
+    rowB.color = model.curves.at(1).color;
     model.channels = {rowA, rowB};
     return model;
 }
@@ -1245,15 +1250,15 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 // keySiblingSelected) - and NOT the pick square.
 //
 // EXTRACTION: drawPanel paints a key with AddCircleFilled + AddCircle(keyEdge) about the
-// marker centre, and PanelCurve::color is theme::Graph::keyColor(channel.type()) - the
+// marker centre, and PanelCurve::color is theme::Graph::channelColor(type, component) - the
 // same colour the curve is stroked in, its chip's text is drawn in and its channel row
-// carries (the model documents them
-// as one). So the marker's CENTRE pixel is compared to its own key colour and the
-// pixel one ring-width inside its edge to keyEdge, and - because "the key is tinted
-// by its channel" is a statement about a RELATION - each centre is also required to
-// be nearer its own channel's colour than the other curve's, with the two channels'
-// colours asserted distinguishable first. A single hardcoded ink cannot satisfy that:
-// it is the two-channels-at-once check.
+// carries (the model documents them as one). So the marker's CENTRE pixel is compared to
+// its own channel colour and the pixel one ring-width inside its edge to keyEdge, and -
+// because "the key is tinted by its channel" is a statement about a RELATION - each centre
+// is also required to be nearer its own channel's colour than the other curve's, with the
+// two channels' colours asserted distinguishable first (which is why the fixture uses one
+// X component and one Y component: two first components now share the X hue by design). A
+// single hardcoded ink cannot satisfy that: it is the two-channels-at-once check.
 //
 // THE MARKER'S STRENGTH IS THE SELECTION'S (gui::curveStrength, off the model's own
 // marker flags): the fill and the floor ring both take the channel's strength, so each of
@@ -1361,15 +1366,23 @@ bool checkKeys(
     const Rendered& aSelectedLast, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
 ) {
     REQUIRE(aModel.curves.size() == 2, "precondition: the key assertion needs the two curves of the full model");
-    const QColor colourA = aTheme.keyColor(aModel.curves.at(0).channel.type());
-    const QColor colourB = aTheme.keyColor(aModel.curves.at(1).channel.type());
+    // The channel hue table: the fixture's two channels are an X component and a Y
+    // component, so their hues are the axis red and green - the SAME table the
+    // timeline reads. Per-channel, not per-type: two first components would share
+    // the X hue by design, which is why the fixture uses one of each.
+    const QColor colourA = aTheme.channelColor(
+        aModel.curves.at(0).channel.type(), aModel.curves.at(0).channel.component()
+    );
+    const QColor colourB = aTheme.channelColor(
+        aModel.curves.at(1).channel.type(), aModel.curves.at(1).channel.component()
+    );
     // THE KEYFRAME HIGHLIGHT, as this layer reads it: theme::Graph::axisText(), the
     // palette's own brightest panel ink (see the marker rule in GraphPanelFrame.cpp for why
     // the mock's literal white is not used).
     const QColor highlight = aTheme.axisText();
     REQUIRE(
         colourDistance(colourA, colourB) > kFillTol,
-        "precondition: the two channels' key colours are indistinguishable (rgb=%s and rgb=%s, distance %d)",
+        "precondition: the two channels' hues are indistinguishable (rgb=%s and rgb=%s, distance %d)",
         hex(colourA).c_str(), hex(colourB).c_str(), colourDistance(colourA, colourB)
     );
     REQUIRE(
@@ -1403,7 +1416,7 @@ bool checkKeys(
     int tintedByOwn = 0;
     for (int c = 0; c < aModel.curves.size(); ++c) {
         const gui::PanelCurve& curve = aModel.curves.at(c);
-        const QColor own = aTheme.keyColor(curve.channel.type());
+        const QColor own = aTheme.channelColor(curve.channel.type(), curve.channel.component());
         const QColor other = (c == 0) ? colourB : colourA;
         // The pass in which THIS curve's channel is in play - its first key is the one
         // that pass names as selected (see main) - and the x that names that key.
@@ -1507,8 +1520,8 @@ bool checkKeys(
             );
 
             std::printf(
-                "MEASURED key channel_type=%d dot=(%d,%d) hit_rect=(%d,%d %dx%d) centre_rgb=%s keyColor=%s d=%d"
-                " other_keyColor=%s d=%d ring=(%d,%d) ring_rgb=%s keyEdge=%s d_ring_to_edge=%d d_ring_to_fill=%d"
+                "MEASURED key channel_type=%d dot=(%d,%d) hit_rect=(%d,%d %dx%d) centre_rgb=%s channel_hue=%s d=%d"
+                " other_channel_hue=%s d=%d ring=(%d,%d) ring_rgb=%s keyEdge=%s d_ring_to_edge=%d d_ring_to_fill=%d"
                 " width_x=%d (%d/%d) width_y=%d (%d/%d) dot_radius=%d ring_step=%d hit_corner_ink=%d"
                 " selected=%d in_play_centre_rgb=%s d_in_play_to_fill=%d d_in_play_to_highlight=%d"
                 " in_play_ring_rgb=%s d_in_play_ring_to_edge=%d outer_ring=(%d,%d) outer_ring_rgb=%s"
@@ -1719,9 +1732,10 @@ bool checkKeys(
 //     against the unflagged pass, and the ring's probe carries NOTHING.
 //
 // The colour of the ring is also why this needs a fixture whose two curves are ONE key TYPE's
-// two components: a sibling is another component of the same key, so both markers carry the
-// same hue (the panel colours a channel by KEY TYPE), and "nearer its own hue than the
-// highlight" is a claim about a channel the two curves share.
+// two components: a sibling is another component of the same key. They do NOT share one hue -
+// the channel hue table gives component 0 the X axis hue and component 1 the Y axis hue - so
+// each "nearer its own hue than the highlight" claim is read against THAT component's hue,
+// and "the two inks are distinguishable" is a precondition of the fixture.
 bool checkMarkerStates(
     const Rendered& aSelected, const Rendered& aHovered, const Rendered& aPlain,
     const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
@@ -1733,14 +1747,24 @@ bool checkMarkerStates(
                 && aModel.curves.at(1).keySiblingSelected.at(0),
             "precondition: the model this reads is not the selected/sibling state");
 
-    const QColor hue = aTheme.keyColor(kTypeA);
+    // Each component carries its OWN channel hue (X red for component 0, Y green for
+    // component 1) - the one table the timeline and the panel share.
+    const QColor hue[2] = {
+        aTheme.channelColor(aModel.curves.at(0).channel.type(), aModel.curves.at(0).channel.component()),
+        aTheme.channelColor(aModel.curves.at(1).channel.type(), aModel.curves.at(1).channel.component()),
+    };
     const QColor highlight = aTheme.axisText();
-    REQUIRE(hue == aModel.curves.at(0).color && hue == aModel.curves.at(1).color,
-            "precondition: the fixture's two components do not carry their type's own hue");
+    REQUIRE(hue[0] == aModel.curves.at(0).color && hue[1] == aModel.curves.at(1).color,
+            "precondition: the fixture's components do not carry their own channel hue");
     REQUIRE(
-        colourDistance(highlight, hue) > 2 * kFillTol,
-        "precondition: the keyframe highlight rgb=%s is not distinguishable from the channel hue rgb=%s",
-        hex(highlight).c_str(), hex(hue).c_str()
+        colourDistance(hue[0], hue[1]) > kFillTol,
+        "precondition: the fixture's two components do not carry distinguishable channel hues (rgb=%s / rgb=%s)",
+        hex(hue[0]).c_str(), hex(hue[1]).c_str()
+    );
+    REQUIRE(
+        colourDistance(highlight, hue[0]) > 2 * kFillTol && colourDistance(highlight, hue[1]) > 2 * kFillTol,
+        "precondition: the keyframe highlight rgb=%s is not distinguishable from the channel hues rgb=%s / rgb=%s",
+        hex(highlight).c_str(), hex(hue[0]).c_str(), hex(hue[1]).c_str()
     );
 
     // The detached ring's own reading, out of the two rows a 1px stroke at that radius can
@@ -1771,7 +1795,7 @@ bool checkMarkerStates(
             hex(plainCentre[c]).c_str(), hex(hoverCentre[c]).c_str(), hex(ringPixel[c]).c_str(),
             hex(plainRing[c]).c_str(), hex(hoverRing[c]).c_str(), colourDistance(centrePixel[c], highlight),
             colourDistance(plainCentre[c], highlight), colourDistance(hoverCentre[c], highlight),
-            colourDistance(ringPixel[c], highlight), colourDistance(ringPixel[c], hue), clearDistance(ringPixel[c])
+            colourDistance(ringPixel[c], highlight), colourDistance(ringPixel[c], hue[c]), clearDistance(ringPixel[c])
         );
         // The two surrounding passes are the pair the state claims rest on: NEITHER of them
         // may put ink at the ring radius, and the unflagged pass is what the fills are
@@ -1799,11 +1823,11 @@ bool checkMarkerStates(
             "the SELECTED marker paints nothing at its ring probe: rgb=%s", hex(ringPixel[0]).c_str()
         );
         REQUIRE(
-            colourDistance(ringPixel[0], highlight) < colourDistance(ringPixel[0], hue),
+            colourDistance(ringPixel[0], highlight) < colourDistance(ringPixel[0], hue[0]),
             "the SELECTED marker's ring pixel rgb=%s is not nearer the keyframe highlight rgb=%s than its"
             " channel's hue rgb=%s (%d against %d)",
-            hex(ringPixel[0]).c_str(), hex(highlight).c_str(), hex(hue).c_str(),
-            colourDistance(ringPixel[0], highlight), colourDistance(ringPixel[0], hue)
+            hex(ringPixel[0]).c_str(), hex(highlight).c_str(), hex(hue[0]).c_str(),
+            colourDistance(ringPixel[0], highlight), colourDistance(ringPixel[0], hue[0])
         );
     }
 
@@ -1824,11 +1848,11 @@ bool checkMarkerStates(
             colourDistance(ringPixel[0], highlight)
         );
         REQUIRE(
-            colourDistance(ringPixel[1], hue) < colourDistance(ringPixel[1], highlight),
+            colourDistance(ringPixel[1], hue[1]) < colourDistance(ringPixel[1], highlight),
             "the SIBLING marker's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
             " highlight rgb=%s (%d against %d)",
-            hex(ringPixel[1]).c_str(), hex(hue).c_str(), hex(highlight).c_str(),
-            colourDistance(ringPixel[1], hue), colourDistance(ringPixel[1], highlight)
+            hex(ringPixel[1]).c_str(), hex(hue[1]).c_str(), hex(highlight).c_str(),
+            colourDistance(ringPixel[1], hue[1]), colourDistance(ringPixel[1], highlight)
         );
         REQUIRE(
             clearDistance(ringPixel[1]) < clearDistance(ringPixel[0]),
@@ -1838,13 +1862,13 @@ bool checkMarkerStates(
             clearDistance(ringPixel[0])
         );
         REQUIRE(
-            colourDistance(centrePixel[1], hue) <= kFillTol,
+            colourDistance(centrePixel[1], hue[1]) <= kFillTol,
             "the SIBLING marker's centre rgb=%s is not its channel's hue rgb=%s (distance %d > %d): a marker"
             " whose key is selected elsewhere keeps the unselected fill",
-            hex(centrePixel[1]).c_str(), hex(hue).c_str(), colourDistance(centrePixel[1], hue), kFillTol
+            hex(centrePixel[1]).c_str(), hex(hue[1]).c_str(), colourDistance(centrePixel[1], hue[1]), kFillTol
         );
         REQUIRE(
-            colourDistance(centrePixel[1], hue) < colourDistance(centrePixel[0], hue),
+            colourDistance(centrePixel[1], hue[1]) < colourDistance(centrePixel[0], hue[0]),
             "the SIBLING marker's fill moved as far from its channel's hue as the SELECTED one's did: only the"
             " selected marker's fill brightens"
         );
@@ -3948,7 +3972,7 @@ gui::GraphPanelModel makeInkModel(const theme::Graph& aTheme) {
         curve.points = aPoints;
         // ONE colour for all five: the regions are disjoint, so the ink's identity is
         // never in question, and the measurements below are all against this token.
-        curve.color = aTheme.keyColor(kTypeA);
+        curve.color = aTheme.channelColor(kTypeA, 0);
         curve.channelRow = -1;
         return curve;
     };
@@ -3975,7 +3999,7 @@ gui::GraphPanelModel makeDenseModel(const theme::Graph& aTheme) {
     gui::PanelCurve curve;
     curve.node = nullptr;
     curve.channel = ctrl::graph::Channel(kTypeA, 0);
-    curve.color = aTheme.keyColor(kTypeA);
+    curve.color = aTheme.channelColor(kTypeA, 0);
     curve.channelRow = -1;
     for (int i = 0; i <= 144; ++i) {
         const double x = 92.0 + 2.0 * i;
@@ -4235,7 +4259,7 @@ std::vector<double> columnInk(const Rendered& aRendered, const InkProbe& aProbe,
 bool checkStrokeAngle(const Rendered& aAfter, const Rendered& aBefore, const theme::Graph& aTheme) {
     REQUIRE(gui::stroke::isReady(), "precondition: the coverage pass must be built for this assertion");
 
-    const InkProbe probe = InkProbe::make(aTheme.keyColor(kTypeA));
+    const InkProbe probe = InkProbe::make(aTheme.channelColor(kTypeA, 0));
     // The stroke's own body level, MEASURED off the grid-aligned run instead of assumed: every
     // pass here is drawn with an EMPTY selection, so every curve is at the design's dimmed
     // strength (kUnselectedAlpha, GraphPanelFrame.cpp). The whole-pixel metric below counts
@@ -4373,7 +4397,7 @@ bool checkStrokeEdges(
     // while no channel owns a selected key.
     constexpr double kDimmedStrength = 0.45;
 
-    const InkProbe probe = InkProbe::make(aTheme.keyColor(kTypeA));
+    const InkProbe probe = InkProbe::make(aTheme.channelColor(kTypeA, 0));
     int firstRow = 0;
     int lastRow = 0;
     profileRows(kPhaseA.y(), firstRow, lastRow);
@@ -4495,7 +4519,7 @@ bool checkStrokeEdges(
 bool checkStrokeJoin(const Rendered& aAfter, const Rendered& aBefore, const theme::Graph& aTheme) {
     REQUIRE(gui::stroke::isReady(), "precondition: the coverage pass must be built for this assertion");
 
-    const InkProbe probe = InkProbe::make(aTheme.keyColor(kTypeA));
+    const InkProbe probe = InkProbe::make(aTheme.channelColor(kTypeA, 0));
     // The curve's strength, MEASURED off its own body rather than assumed: the pixels along
     // arm A's centreline are fully covered, so their coverage IS the strength.
     double body = 0.0;
@@ -4606,7 +4630,7 @@ bool checkStrokeJoin(const Rendered& aAfter, const Rendered& aBefore, const them
 bool checkStrokePosition(const Rendered& aAfter, const Rendered& aBefore, const theme::Graph& aTheme) {
     REQUIRE(gui::stroke::isReady(), "precondition: the coverage pass must be built for this assertion");
 
-    const InkProbe probe = InkProbe::make(aTheme.keyColor(kTypeA));
+    const InkProbe probe = InkProbe::make(aTheme.channelColor(kTypeA, 0));
 
     // The stroke's own body level, MEASURED off the fully covered horizontal run instead of
     // assumed: the emphasis gives a curve that owns no selected key the design's dimmed
@@ -5373,11 +5397,11 @@ int main(int argc, char** argv) {
 
     const theme::Graph palette = theme::Graph::from(theme::Colors::current());
     std::printf(
-        "INFO palette halo=%s axisText=%s gridMajor=%s axisLine=%s selected=%s keyEdge=%s moveKey=%s"
-        " scaleKey=%s marqueeFill=%s marqueeEdge=%s menuBody=%s menuHover=%s menuHoverText=%s clear=%s\n",
+        "INFO palette halo=%s axisText=%s gridMajor=%s axisLine=%s selected=%s keyEdge=%s channelA=%s"
+        " channelB=%s marqueeFill=%s marqueeEdge=%s menuBody=%s menuHover=%s menuHoverText=%s clear=%s\n",
         hex(palette.halo()).c_str(), hex(palette.axisText()).c_str(), hex(palette.gridMajor()).c_str(),
         hex(palette.axisLine()).c_str(), hex(palette.selected()).c_str(), hex(palette.keyEdge()).c_str(),
-        hex(palette.keyColor(kTypeA)).c_str(), hex(palette.keyColor(kTypeB)).c_str(),
+        hex(palette.channelColor(kTypeA, 0)).c_str(), hex(palette.channelColor(kTypeB, 1)).c_str(),
         hex(palette.marqueeFill()).c_str(), hex(palette.marqueeEdge()).c_str(), hex(palette.menuBody()).c_str(),
         hex(palette.menuHover()).c_str(), hex(palette.menuHoverText()).c_str(), hex(kClear).c_str()
     );
@@ -5387,9 +5411,9 @@ int main(int argc, char** argv) {
     {
         const QColor painted[] = {
             palette.halo(), palette.axisText(), palette.gridMajor(), palette.axisLine(), palette.selected(),
-            palette.keyEdge(), palette.keyColor(kTypeA), palette.keyColor(kTypeB), palette.marqueeFill(),
-            palette.marqueeEdge(), palette.menuBody(), palette.menuText(), palette.menuHover(),
-            palette.menuHoverText(), palette.menuSeparator(),
+            palette.keyEdge(), palette.channelColor(kTypeA, 0), palette.channelColor(kTypeB, 1),
+            palette.marqueeFill(), palette.marqueeEdge(), palette.menuBody(), palette.menuText(),
+            palette.menuHover(), palette.menuHoverText(), palette.menuSeparator(),
         };
         for (const QColor& color : painted) {
             if (clearDistance(color) <= 60) {
@@ -5490,7 +5514,7 @@ int main(int argc, char** argv) {
     gui::PanelFocus inkDimmed;
     inkDimmed.valid = true;
     inkDimmed.node = nullptr;
-    inkDimmed.channel = ctrl::graph::Channel(kTypeB, 0);
+    inkDimmed.channel = ctrl::graph::Channel(kTypeB, 1);
     const Rendered inkFringe = renderPass(ink, palette, focus, "curve_ink_fringe");
     const Rendered inkFringeDimmed = renderPass(ink, palette, inkDimmed, "curve_ink_fringe_dimmed");
     // Assertion 27's stem, drawn by ImGui's own AddLine: the before half of the stem

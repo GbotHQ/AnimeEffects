@@ -124,8 +124,8 @@ void GraphPanelWidget::initializeGL() {
 
     if (!acquirePanelContext(*this)) {
         // The backend refused. The page still exists and still paints its floor; the
-        // panel is simply not drawn, which is the same degradation the viewport overlay
-        // has when a context cannot host ImGui.
+        // panel is simply not drawn, which is the degradation the panel always had on a
+        // context that cannot host ImGui.
         return;
     }
 
@@ -135,9 +135,9 @@ void GraphPanelWidget::initializeGL() {
 
 //-------------------------------------------------------------------------------------------------
 void GraphPanelWidget::paintGL() {
-    // THE FLOOR FIRST, and always. The panel draws no background of its own - its ink
-    // must leave the artwork showing through where it overlays the viewport - so behind
-    // THIS panel there is only what this widget paints, and it has to paint something:
+    // THE FLOOR FIRST, and always. The panel draws no background of its own (it is a
+    // model and a draw list; there is no fill anywhere in drawPanel), so behind THIS panel
+    // there is only what this widget paints, and it has to paint something:
     // a QOpenGLWidget is composited over the window and the widgets beside it do not
     // show through it (qopenglwidget.html, "Putting other widgets underneath and making
     // the QOpenGLWidget transparent will not lead to the expected results"). The colour
@@ -201,6 +201,17 @@ void GraphPanelWidget::paintGL() {
 void GraphPanelWidget::hideEvent(QHideEvent* aEvent) {
     QOpenGLWidget::hideEvent(aEvent);
 
+    // A GESTURE LEFT OPEN GOES NO FURTHER. The tab can be switched away from with a key
+    // move, a handle drag, a marquee or a pan in flight (the release usually beats the
+    // click, but not always), and a gesture kept open would coalesce the next edit into a
+    // command whose geometry nobody can see any more - so the editor drops it here
+    // (ctrl::GraphEditor::panelHidden: endDrag(), and nothing else). The keys, the
+    // selection and the scale are kept, so the page coming back is the panel as it was,
+    // and the command a dropped gesture had already pushed stays on the undo stack -
+    // dropping the gesture is not an undo.
+    if (ctrl::GraphEditor* editor = graphEditor())
+        editor->panelHidden();
+
     // Another page of the dock is current: the panel is not on screen, and the ONE
     // accessibility publication has to say so rather than leave the tree showing the last
     // frame of a hidden tab - the installation is this widget's for the process, so this
@@ -239,13 +250,12 @@ void GraphPanelWidget::routeCursor() {
     if (!editor || !panelTakesCursor())
         return; // this point is nobody's (or the panel is gone): nothing acts on it
 
-    // THE EDITOR ITSELF, not ctrl::Driver::updateCursor: the Driver routes the
-    // VIEWPORT's events and gates that routing on GraphEditor::isVisible(), which is the
-    // viewport overlay's own Tools toggle. This page is the panel whenever its tab is
-    // current, so the toggle must not decide whether its gestures work - and with the
-    // toggle OFF the Driver would route the event to the viewport's TOOL editor, which
-    // has no camera here (see panelCamera()). The editor's own contract is unchanged:
-    // ownsCursor above is its arbitration, updateCursor its pass.
+    // THE EDITOR ITSELF, and not through the viewport: ctrl::Driver routes the viewport's
+    // events to the tools and no longer arbitrates the panel at all, and ctrl::GraphEditor
+    // has no shown/hidden flag left to gate on - this page IS the panel while its tab is
+    // current, which is the only "visible" there is. The editor's own contract is
+    // unchanged: ownsCursor above is its arbitration, updateCursor its pass, and the camera
+    // it is handed is this widget's (see panelCamera()).
     if (editor->updateCursor(panelCamera(), mCursor))
         this->update(); // the editor reports it changed something (selection, window, document)
 }
@@ -364,12 +374,11 @@ void GraphPanelWidget::wheelEvent(QWheelEvent* aEvent) {
 
     editor->setModifiers(aEvent->modifiers());
 
-    // THE ZOOM DIRECTION is the dock's own setting, not the viewport's. The panel takes
-    // the wheel while it is up, and it takes the direction of the SURFACE it is drawn
-    // on: the viewport overlay reads the main view's ("Inverse canvas scrolling"),
-    // because it covers the canvas - this page covers the TIMELINE's body, and zooms the
-    // graph the way the timeline's own wheel zooms it (gui::TimeLineEditorWidget reads
-    // invertTimeLineScaling), so one wheel in one body cannot turn the frame axis two
+    // THE ZOOM DIRECTION is the dock's own setting. The panel takes the wheel while its
+    // tab is current, and it takes the direction of the SURFACE it is drawn on: this page
+    // covers the TIMELINE's body, so it zooms the graph the way the timeline's own wheel
+    // zooms it (gui::TimeLineEditorWidget reads invertTimeLineScaling), and one wheel in
+    // one body cannot turn the frame axis two
     // ways. The setting is read from the application's settings here (the same file
     // gui::GeneralSettingDialog writes and gui::ViaPoint's live copy is kept in step
     // with), because this host is handed neither.
@@ -581,11 +590,10 @@ void GraphPanelWidget::openChannelMenuAt(const QPoint& aPos) {
     if (!display)
         return; // no viewport in this window (a harness): no menu to show
 
-    // THE LIST IS THE APPLICATION'S OWN, exactly as it is for the viewport overlay: the
-    // rows travel to gui::MainDisplayWidget, which builds and pops a real QMenu and whose
-    // actions toggle a channel's visibility and focus it. The overlay draws no popup and
-    // measures none, and neither does this - there is one list of channels in the
-    // application.
+    // THE LIST IS THE APPLICATION'S OWN: the rows travel to gui::MainDisplayWidget, which
+    // builds and pops a real QMenu and whose actions toggle a channel's visibility and
+    // focus it. This page draws no popup and measures none - there is one list of channels
+    // in the application.
     //
     // AND THE POSITION IS MAPPED INTO IT. showGraphChannelMenu anchors the menu at
     // aWidgetPos IN ITS OWN COORDINATES (it is the object that calls mapToGlobal), and

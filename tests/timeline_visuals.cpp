@@ -26,15 +26,19 @@
 //     flood token (selection, the accent at 0.40) are distinct, the pair is
 //     told apart by the same comparison the band uses, and the band's own
 //     brush - the tint the tree restates - is pinned in section 1.
-//   2 THE KEY FILL AND THE RING. An unfocused key is drawn in its own type
-//     colour; a focused one brightens its fill toward the keyframe highlight
+//   2 THE KEY FILL AND THE RING. An unfocused key is drawn in its own channel
+//     hue; a focused one brightens that fill toward the keyframe highlight
 //     (the mock's mixWhite at 0.45 - white, the value of --key-highlight) and
-//     gains a 1px ring clear of the marker. No size change: the ring does not
-//     touch the marker's centre pixel, which is only the fill. The ring is
-//     asserted as a pair: its arc pixels exist around the focused key and the
-//     identical window around the unfocused key is clean band. The states are
-//     told apart by their centres: the mock's mix replaces the old
-//     .lighter(150) fill outright.
+//     gains a 1px ring clear of the marker. A key belongs to the TYPE, so its
+//     channel hue is the type's FIRST component through THE CHANNEL HUE TABLE
+//     (theme::Colors): the X axis colour for Move/Scale/Image/Blur, the type's
+//     own hue for a channel with no axis. The axis rule itself is asserted here
+//     too: two components of one type differ, and a no-axis type keeps its hue.
+//     No size change: the ring does not touch the marker's centre pixel, which
+//     is only the fill. The ring is asserted as a pair: its arc pixels exist
+//     around the focused key and the identical window around the unfocused key
+//     is clean band. The states are told apart by their centres: the mock's mix
+//     replaces the old .lighter(150) fill outright.
 //   3 THE LABEL INK. A lane's name is drawn in its channel's hue at 0.42, one
 //     step quieter than the keys: the label's ink is closer to the hue's 0.42
 //     composite than to the old neutral text composite, and it is still nearer
@@ -364,13 +368,29 @@ int main(int argc, char** argv) {
     // unfocused key keeps its type colour, and the focused key gains the ring.
     {
         const QImage image = renderTimeline(editor, theme);
-        const Rgb moveKey = rgbOf(colors.moveKey);
+        // The channel hue table (design section 7) on the TIMELINE: a Move key
+        // belongs to the type, so it takes the type's first component's hue -
+        // the X axis colour - not the old per-type indigo moveKey.
+        const Rgb moveKey = rgbOf(theme::channelColor(colors, core::TimeKeyType_Move, 0));
+        CHECK(chebyshev(moveKey, rgbOf(colors.axisX)) == 0);
+        CHECK(chebyshev(moveKey, rgbOf(colors.moveKey)) > 0); // the old type hue is gone from this key
         const Rgb brightened = towardHighlight(moveKey, kSelectFillMix);
+
+        // The axis rule itself, read off the same table both views read: the two
+        // components of one type DIFFER (X vs Y), and a channel with no axis keeps
+        // its type's hue.
+        const Rgb moveX = rgbOf(theme::channelColor(colors, core::TimeKeyType_Move, 0));
+        const Rgb moveY = rgbOf(theme::channelColor(colors, core::TimeKeyType_Move, 1));
+        CHECK(chebyshev(moveX, moveY) > 0);
+        CHECK(chebyshev(moveY, rgbOf(colors.axisY)) == 0);
+        CHECK(chebyshev(rgbOf(theme::channelColor(colors, core::TimeKeyType_Scale, 0)), moveX) == 0);
+        CHECK(chebyshev(rgbOf(theme::channelColor(colors, core::TimeKeyType_Opa, 0)), rgbOf(colors.opaKey)) == 0);
+        CHECK(chebyshev(rgbOf(theme::channelColor(colors, core::TimeKeyType_Rotate, 0)), rgbOf(colors.rotateKey)) == 0);
         // The band the ring is drawn on (row A is the selected row).
         const Rgb bandA = pixelAt(image, kBandProbeX, keyRowAY);
 
-        // The focused marker's centre is the brightened composite: the type
-        // colour mixed toward the keyframe highlight at the mock's own 0.45.
+        // The focused marker's centre is the brightened composite: the channel
+        // hue mixed toward the keyframe highlight at the mock's own 0.45.
         // Equality to that mix is what pins the mix TARGET and its step - the
         // first wave's "the centre is the plain hue" is exactly what this
         // replaces.
@@ -378,7 +398,7 @@ int main(int argc, char** argv) {
         CHECK(chebyshev(pixelAt(image, keyFocusedX, keyRowAY), moveKey) > 20); // the two states are far apart
         // No size change at the centre: the ring sits keyRadius+2.6 out and
         // never covers the marker's own fill.
-        // The unfocused marker is the plain type colour, un-brightened.
+        // The unfocused marker is the plain channel hue, un-brightened.
         CHECK(chebyshev(pixelAt(image, keyAx, keyRowAY), moveKey) <= 1);
         CHECK(chebyshev(pixelAt(image, keyAx, keyRowAY), brightened) > 20);
 

@@ -37,22 +37,17 @@ public:
     void renderGL(const core::RenderInfo& aRenderInfo, core::ObjectNode* aGridTarget) const;
     void renderQt(const core::RenderInfo& aRenderInfo, QPainter& aPainter) const;
 
-    // The animation graph overlay. The Driver owns it for the same reason it owns
-    // the tools: the viewport's overlay pass and its cursor both live here.
-    void setGraphEditorVisible(bool aVisible);
+    // The animation graph editor. The Driver owns it for the same reason it owns
+    // the tools (one owner per project), but nothing of the panel's is routed
+    // through here: the panel's dock page (gui::GraphPanelWidget) feeds it its own
+    // page's cursor and wheel events, and these setters are the non-event state the
+    // window feeds in - the shown targets and the modifier state.
     void setGraphTargets(const QVector<core::ObjectNode*>& aTargets);
     // The modifier state the panel's own gestures read. The widget feeds it in
     // before it routes a cursor or wheel event, because neither
     // core::AbstractCursor nor the panel's own updateCursor signature carries
     // modifiers (see GraphEditor::setModifiers for what each one means).
     void setGraphModifiers(Qt::KeyboardModifiers aModifiers);
-    // aInvertScaling is the user's zoom direction for the MAIN VIEW (the panel
-    // takes the wheel from it while it is up), applied to both of the panel's
-    // axes - see GraphEditor::updateWheel, which is the only reader.
-    bool updateGraphWheel(
-        const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
-        bool aInvertScaling
-    );
     GraphEditor* graphEditor() { return mGraphEditor.data(); }
 
     void updateParam(const SRTParam& aParam);

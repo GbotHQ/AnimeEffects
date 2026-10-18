@@ -341,21 +341,29 @@ void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRo
         rows.append(target);
     }
 
-    QString layer;
+    // THE LEGEND IS GROUPED (design section 7): one group per (layer, key type),
+    // headed by the property and its components - "line · Move [X][Y]",
+    // "line · Opa [Opacity]" - with one row per component inside it. The heading
+    // is a disabled row, so it is structure and not a control; the hue on the rows
+    // says the AXIS, and the group says the property, so two red X curves (Move X
+    // and Scale X) are still told apart by the heading over them. The model
+    // publishes the group on every row (PanelChannelRow::group) and guarantees its
+    // rows are contiguous, so this walk only has to notice the boundary.
+    QString group;
     for (int i = 0; i < aRows.size(); ++i) {
         const PanelChannelRow& row = aRows.at(i);
         if (!row.node)
             continue;
 
-        // The layer heading: a disabled row, so the list reads as one group per layer
-        // and the heading is not itself a control (the reference's own .gp-chlayer).
-        // It carries the sentinel index -1 so the hover handler below can tell it from
-        // a channel row (an action with NO data would read back as index 0, i.e. as
-        // the first channel).
-        if (row.layer != layer) {
-            layer = row.layer;
-            QAction* heading = menu->addAction(layer);
+        const QString headingText =
+            row.group.isEmpty() ? row.layer : row.layer + QStringLiteral(" · ") + row.group;
+        if (headingText != group) {
+            group = headingText;
+            QAction* heading = menu->addAction(headingText);
             heading->setEnabled(false);
+            // The sentinel index -1 so the hover handler below can tell the
+            // heading from a channel row (an action with NO data would read back
+            // as index 0, i.e. as the first channel).
             heading->setData(-1);
         }
 
@@ -394,7 +402,7 @@ void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRo
             return;
         const int index = aAction->data().toInt();
         if (index < 0 || index >= rows.size())
-            return; // a layer heading, which carries no index
+            return; // a group heading, which carries no index
         ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
         const ChannelRowTarget& row = rows.at(index);
         if (!channelRowNodeAlive(editor, row.node))

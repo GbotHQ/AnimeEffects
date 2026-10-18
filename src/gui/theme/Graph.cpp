@@ -84,15 +84,16 @@ void Graph::assignFrom(const Colors& aColors) {
 
     mOutline = paletteColor(kTailwindRows[kTailwindNeutralRow][kNeutralBlackStep]);
 
-    // Fallback curve color, i.e. the generic line for a type keyColor() does
-    // not name: the bright brand edge, the same family the playhead and the
-    // selection read as.
+    // Fallback curve color, i.e. the generic line for a type channelColor()
+    // does not name: the bright brand edge, the same family the playhead and
+    // the selection read as.
     mCurve = aColors.accentBright;
 
     // Key markers: the channel's own hue as the fill (the drawing layer paints
-    // curve.color, which is keyColor(type)) inside a floor-coloured ring, so a key
-    // stays visible on top of any curve hue - including its own. The selected key is
-    // the brand edge, fill and ring alike.
+    // curve.color, which is channelColor(channel.type(), channel.component()))
+    // inside a floor-coloured ring, so a key stays visible on top of any curve
+    // hue - including its own. The selected key is the brand edge, fill and ring
+    // alike.
     mKeyEdge = aColors.base;
     mSelected = aColors.accentBright;
 
@@ -118,36 +119,56 @@ void Graph::assignFrom(const Colors& aColors) {
     mHandleEdge = aColors.floaterEdge;
     mHandleLine = aColors.textMuted;
 
-    // Per-type curve colors are the timeline's key hues, so a curve on the
-    // graph and its keys on the timeline read as the same feature. EVERY key
-    // type takes its own token from the palette's key table (Colors.h, one
-    // Tailwind row per type), which is the table the timeline's own key pass
-    // switches over (ctrl/time/time_Renderer.cpp drawKeys): bone, pose, mesh and
-    // FFD used to share baseKey, so this table called those four features one
-    // colour while the timeline drew their keys in lime, green, emerald and cyan.
+    // The channel hue table (theme::Colors, THE CHANNEL HUE TABLE): the axis
+    // cells, and each key type's own hue for a channel with no axis. Both the
+    // panel and the timeline read the one table in Colors.h; this copy exists
+    // so the panel's paint path does no palette lookup per curve.
+    mAxisColors[kChannelAxisX] = aColors.axisX;
+    mAxisColors[kChannelAxisY] = aColors.axisY;
+    mAxisColors[kChannelAxisZ] = aColors.axisZ;
+
+    // Only the GRAPHABLE types can reach the panel, and their component count is
+    // what proves it: ctrl::graph::Channel::componentCount() returns 0 for Bone,
+    // Pose, Mesh and FFD (graph_Channel.cpp:22-40), and Channel::graphableTypes()
+    // is the filter that walks componentCount() > 0 (graph_Channel.cpp:50-63) -
+    // so buildChannels (GraphPanelModel.cpp) can never publish a row or curve for
+    // them. They are therefore NOT in this table (design section 7: "should be
+    // DELETED rather than coloured"; section 8's one-line row still says they
+    // "keep their hues", which is unreachable code - section 7's own reasoning
+    // wins here); the TIMELINE still draws their keys, so
+    // theme::Colors keeps their tokens and keyTypeColor() still names them.
     // baseKey stays the palette's neutral key tone, not a family's.
     mKeyColors[core::TimeKeyType_Move] = aColors.moveKey;
     mKeyColors[core::TimeKeyType_Rotate] = aColors.rotateKey;
     mKeyColors[core::TimeKeyType_Scale] = aColors.scaleKey;
     mKeyColors[core::TimeKeyType_Depth] = aColors.depthKey;
     mKeyColors[core::TimeKeyType_Opa] = aColors.opaKey;
-    mKeyColors[core::TimeKeyType_Bone] = aColors.boneKey;
-    mKeyColors[core::TimeKeyType_Pose] = aColors.poseKey;
-    mKeyColors[core::TimeKeyType_Mesh] = aColors.meshKey;
-    mKeyColors[core::TimeKeyType_FFD] = aColors.FFDKey;
     mKeyColors[core::TimeKeyType_Image] = aColors.imageKey;
     mKeyColors[core::TimeKeyType_HSV] = aColors.HSVKey;
     mKeyColors[core::TimeKeyType_Blur] = aColors.blurKey;
 }
 
-QColor Graph::keyColor(core::TimeKeyType aType) const {
+QColor Graph::channelColor(core::TimeKeyType aType, int aComponent) const {
     // TimeKeyType_TERM is the sentinel, never a real key's type, and a value
     // past it is not a type this palette names: both fall back to the generic
-    // curve color.
+    // curve color, exactly as keyColor() always has.
     const int type = (int)aType;
     if (type < 0 || type >= core::TimeKeyType_TERM)
         return mCurve;
-    return mKeyColors[type];
+    const int axis = channelAxis(aType, aComponent);
+    if (axis >= 0 && axis < kChannelAxisCount)
+        return mAxisColors[axis];
+    // Bone/Pose/Mesh/FFD are graphable by no caller (see above), so an index
+    // here is either a graphable type's own hue or an unnamed fallback.
+    const QColor hue = mKeyColors[type];
+    return hue.isValid() ? hue : mCurve;
+}
+
+QColor Graph::keyColor(core::TimeKeyType aType) const {
+    // A timeline key belongs to the TYPE, so it takes the type's first
+    // component's hue from the same table: X red for Move/Scale/Image/Blur,
+    // its own hue otherwise (Opa amber, Rotate purple, ...).
+    return channelColor(aType, 0);
 }
 
 } // namespace theme

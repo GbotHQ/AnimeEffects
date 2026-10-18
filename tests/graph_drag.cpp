@@ -114,14 +114,18 @@
 // currency are the same for all of them - which is what the stack probes below
 // measure: after each gesture, the FIRST undo must be that gesture.
 //
-// THE PANEL'S SWITCH is asserted in BOTH directions rather than assumed - the show
-// below, the hide at the end of main. setVisible() is the one state the rest of
-// the application reads before it lets the panel see anything (ctrl::Driver routes
-// a cursor or a wheel event to the editor only while isVisible() answers true), so
-// a switch that quietly did not take would leave the panel dead in the running
-// application while every assertion in this file - which drives the editor
-// directly, and refits the axis from setTargets() as well - still passed. The gate
-// belongs in this headless suite and not only in the application-level probe.
+// THE PANEL'S SWITCH is gone with the viewport overlay it belonged to: the editor
+// has no shown/hidden state (the dock's Graph page IS the panel while its tab is
+// current, so no flag inside the editor could describe it, and nothing in the
+// application routes by one any more - gui::GraphPanelWidget owns its page's events
+// and hands them straight to the editor). What a hide still does is the ONE side
+// effect hiding ever had, through its own door: GraphEditor::panelHidden() drops a
+// gesture in flight. The last section drives exactly that, with a key move open, and
+// pins that the dropped gesture's command stays on the stack (dropping the gesture is
+// NOT an undo) and that no later move can rewrite it. The SHOW half has no state to
+// assert any more; the path that matters now is the one the application really uses -
+// the object tree's selection handed in through setTargets(), which is also what fits
+// the value window BEFORE the page is ever shown (section 0 asserts that fit).
 //
 // TARGET LIFETIME, which every section that declares its own layer must honour:
 // ctrl::GraphEditor holds the target list as RAW pointers and never owns them, so
@@ -479,13 +483,13 @@ int main(int argc, char** argv) {
 
     NullLogger logger;
     ctrl::GraphEditor editor(project, logger);
-    // The POST-CONDITION of the show, asserted where the panel is first driven:
-    // a setVisible() that did not take would leave the editor hidden for the whole
-    // run - every section below drives it directly, so none of them would notice -
-    // and the panel would be dead in the running application, where the Driver's
-    // routing is a read of exactly this state.
-    editor.setVisible(true);
-    CHECK(editor.isVisible());
+    // The show this file rides on is the surviving path the application uses: the
+    // editor has no shown/hidden state any more (the dock's Graph page IS the panel
+    // while its tab is current), so what used to be asserted here - the editor is
+    // not inert - is asserted right below as the FIT: with the targets set and no
+    // cursor event ever reaching the editor, the value window must leave the
+    // scaler's seed 0..1 (section 0's own precondition, which is what a setVisible
+    // that silently did not take used to make a run fail loudly for).
     editor.setTargets({ &node });
 
     // --- 0: the value axis is FITTED to the shown curves, on the paths the
@@ -2158,11 +2162,12 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 22: the MIDDLE button pans the GRAPH. While the panel is up the middle
-    // drag moves the panel's window on both axes and never the canvas camera
-    // (ctrl::MainDisplayWidget does not hand a middle drag to ctrl::CanvasMover
-    // while this panel is visible). A pan is a pure pixel offset: the window
-    // SPAN is untouched, so a pan cannot zoom.
+    // --- 22: the MIDDLE button pans the GRAPH. The middle drag moves the panel's
+    // window on both axes and never a canvas camera: the panel's page hands the event
+    // to this editor (gui::GraphPanelWidget) and the viewport no longer has a panel in
+    // it - ctrl::MainDisplayWidget has nothing to withhold from ctrl::CanvasMover any
+    // more, because the middle drag over the dock page never reaches the viewport. A
+    // pan is a pure pixel offset: the window SPAN is untouched, so a pan cannot zoom.
     {
         core::TestNode panNode;
         core::RotateKey* p0 = new core::RotateKey();
@@ -3410,24 +3415,97 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 24: the switch's OTHER direction - the half the show at the top of this
-    // file cannot cover - and it sits last so nothing above or below runs against
-    // a panel that was hidden out from under it. Hiding is what hands the pointer
-    // and the wheel back to the canvas (the Driver consults isVisible() before it
-    // routes anything), so a setVisible(false) that did not take would leave the
-    // panel owning a viewport the user asked it to leave. The round trip is
-    // asserted as one - hidden really answers false, and shown really answers true
-    // again - so the editor is left in the state every section above drove it in.
-    editor.setVisible(false);
-    CHECK(!editor.isVisible());
-    editor.setVisible(true);
-    CHECK(editor.isVisible());
+    // --- 24: THE PANEL GOING AWAY. The editor has no shown/hidden state any more -
+    // the dock's Graph page IS the panel while its tab is current, so nothing in
+    // this class could describe it, and the Driver's viewport routing no longer asks
+    // - and this sits last so nothing above or below runs against a panel that went
+    // away. What a hide still has to do is the ONE side effect hiding ever had,
+    // through its own door: GraphEditor::panelHidden(), which
+    // gui::GraphPanelWidget::hideEvent calls. It DROPS the gesture in flight, and
+    // this section drives it with a key move actually open, then pins what the drop
+    // must NOT do: undo it (the command stays on the stack, the keys stay where the
+    // drag left them) or leave it rewritable (a further move, with the button still
+    // down as far as this synthetic cursor knows, changes nothing).
+    {
+        core::TestNode awayNode;
+        core::RotateKey* aw0 = new core::RotateKey();
+        aw0->setRotate(0.0f);
+        setup.push(awayNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, aw0));
+        // TWO keys, and the second one is not decoration: fitAll() fits the FRAME
+        // axis to the SHOWN keys (fitFrameAxis: the span of their frames, plus a
+        // tenth of it, at least one frame each side), and a ONE-key channel fits
+        // frames -1..1 - so the frames this drag crosses (0 -> 4 -> 9) would not be
+        // in the plot at all and the preconditions below would be about a pixel the
+        // section never draws. The second key gives the fit the span the section
+        // needs, and it doubles as the "the key the press did not select is
+        // untouched" check.
+        core::RotateKey* aw1 = new core::RotateKey();
+        aw1->setRotate(60.0f);
+        setup.push(awayNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 12, aw1));
+        CHECK(awayNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 2);
+
+        editor.setTargets({ &awayNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        project.commandStack().clear();
+
+        const Scaler& awayScale = editor.scale();
+        const QPoint awayFrom(awayScale.pixelX(core::Frame(0)), awayScale.pixelY(0.0f));
+        const QPoint awayTo(awayScale.pixelX(core::Frame(4)), awayScale.pixelY(0.0f));
+        const QPoint awayFurther(awayScale.pixelX(core::Frame(9)), awayScale.pixelY(0.0f));
+        for (const QPoint& pixel : { awayFrom, awayTo, awayFurther }) {
+            CHECK(awayScale.plotRect().contains(pixel));
+        }
+        const int awayStep = awayScale.frameAt(awayTo.x()).get() - awayScale.frameAt(awayFrom.x()).get();
+        CHECK(awayStep == 4);
+
+        core::AbstractCursor awayCur;
+        CHECK(sendPress(editor, camera, awayCur, awayFrom));
+        CHECK(sendMove(editor, camera, awayCur, awayTo));
+        CHECK(editor.isMovingKeys()); // a key move is in flight ...
+        CHECK(editor.keyMoveFrameDelta() == awayStep);
+        CHECK(aw0->frame() == awayStep);
+        CHECK(!awayNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+
+        // ... and the page going away drops it.
+        editor.panelHidden();
+        CHECK(!editor.isMovingKeys());
+        CHECK(editor.keyMoveFrameDelta() == 0);
+        CHECK(editor.keyMoveValueDelta() == 0.0f);
+        CHECK(!editor.hasMarquee());
+        CHECK(!editor.isPanning());
+
+        // The drop is NOT an undo: the keys are where the drag left them, the
+        // command is still the stack's one entry, and no later move can rewrite it.
+        sendMove(editor, camera, awayCur, awayFurther);
+        CHECK(aw0->frame() == awayStep);
+        CHECK(awayNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, awayStep));
+        CHECK(!editor.isMovingKeys());
+
+        bool undoneAway = false;
+        CHECK(!stack.undo(&undoneAway).isEmpty()); // the whole gesture, in ONE undo
+        CHECK(undoneAway);
+        CHECK(awayNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(aw0->frame() == 0);
+        CHECK(aw1->frame() == 12); // the key the press did not select never moved
+        bool undoneAwayAgain = true;
+        CHECK(stack.undo(&undoneAwayAgain).isEmpty()); // and nothing sits behind it
+        CHECK(!undoneAwayAgain);
+
+        std::printf(
+            "[Z] panelHidden(): a key move open (frame 0 -> %d) was dropped - not moving, both deltas 0, the "
+            "keys left where the drag put them - and its ONE command still undid the whole gesture\n",
+            awayStep
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
 
     std::printf(
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
         "at the pixel it points to; the value axis is fitted to the shown curves where the panel is "
         "opened or re-selected, and a manual, wheeled or panned window survives every cursor pass; "
-        "the fullscreen panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
+        "the panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
         "selects and drags, Ctrl on a curve's band inserts, everything else marquees) and the middle "
         "button (a pan), or mid-gesture - a press outside the plot, and every hover, stays the "
         "viewport tools'; the selection is a set of MARKERS - one press selects the one component "

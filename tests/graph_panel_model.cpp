@@ -5,7 +5,9 @@
 // then) draws the graph panel from, so what is pinned below is the geometry a
 // drawing layer would consume: the panel/plot/value-column rectangles, the two
 // SHORT tick axes with their label rects, the curves with their keys, the channel
-// list with its rows, the panel's one control (the channel button), the selection
+// list with its rows (grouped per layer and key type, each row carrying its
+// channel hue from the one table both views read), the panel's one control (the
+// channel button), the selection
 // hull with its count, the playhead, and the empty state. Every assertion prints
 // the value it measured.
 //
@@ -374,15 +376,16 @@ int main(int argc, char** argv) {
 
     NullLogger logger;
     ctrl::GraphEditor editor(project, logger);
-    // The show the whole file rides on, with its POST-CONDITION asserted: every
-    // model built below assumes the panel is up (and the fit that fills the value
-    // window is one of the things setVisible(true) does), so a setVisible() that
-    // silently did not take would leave this file measuring a hidden editor while
-    // the application routes nothing to it at all. Asserted here, at the one call
-    // site that shows it.
-    editor.setVisible(true);
-    CHECK(editor.isVisible());
+    // The show the whole file rides on is the surviving path the application uses:
+    // the editor has no shown/hidden state any more (the dock's Graph page IS the
+    // panel while its tab is current), and the fit that fills the value window is
+    // one of the things setTargets() does - the application hands the panel its
+    // targets when the document opens and whenever the tree selection changes, so
+    // every model built below measures a FITTED editor. Its POST-CONDITION is
+    // asserted right here: the window must leave the scaler's seed 0..1, which is
+    // what a hand-in that did not take used to make a run fail loudly for.
     editor.setTargets({ &nodeA, &nodeB });
+    CHECK(editor.scale().valueMin() != 0.0f || editor.scale().valueMax() != 1.0f);
 
     const QVector<core::ObjectNode*> targets = { &nodeA, &nodeB };
     const QVector<Pair> pairs = expectedPairs(targets);
@@ -839,6 +842,97 @@ int main(int argc, char** argv) {
         CHECK(model.channels.size() == pairs.size());
         CHECK(badRows == 0);
 
+        // THE GROUPED LEGEND AND THE CHANNEL HUE TABLE (design section 7).
+        //
+        // The list is grouped one group per (layer, key type) - the group naming
+        // the property and its components, with one row per component inside it -
+        // and each row's colour is the channel's hue from the ONE table both views
+        // read (theme::Colors, THE CHANNEL HUE TABLE): axis where the component
+        // lies on an axis (X red, Y green), the type's own hue otherwise. This
+        // pins the grouping and the per-component hue, so the panel's curve/marker/
+        // chip ink cannot drift from the timeline's key and lane ink.
+        {
+            const theme::Colors& colors = theme::Colors::current();
+
+            // The four keys this document has: A's Move (X, Y) and Rotate, then
+            // B's Opa - target order, then the timeline's own type order.
+            CHECK(model.channels.size() == 4);
+            CHECK(model.channels.at(0).channel == ctrl::graph::Channel(core::TimeKeyType_Move, 0));
+            CHECK(model.channels.at(1).channel == ctrl::graph::Channel(core::TimeKeyType_Move, 1));
+            CHECK(model.channels.at(2).channel == ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
+            CHECK(model.channels.at(3).channel == ctrl::graph::Channel(core::TimeKeyType_Opa, 0));
+
+            // ONE GROUP PER (layer, key type), naming the property and every
+            // component - the design's "line · Move [X][Y]" / "line · Opa [Opacity]".
+            CHECK(model.channels.at(0).group == QStringLiteral("Move [X][Y]"));
+            CHECK(model.channels.at(1).group == QStringLiteral("Move [X][Y]"));
+            CHECK(model.channels.at(2).group == QStringLiteral("Rotate [Angle]"));
+            CHECK(model.channels.at(3).group == QStringLiteral("Opa [Opacity]"));
+            // A group's rows are contiguous: the same (layer, type) never returns
+            // after another group has started, or the menu's boundary walk would
+            // open a second heading for one property.
+            for (int i = 1; i < model.channels.size(); ++i) {
+                const gui::PanelChannelRow& previous = model.channels.at(i - 1);
+                const gui::PanelChannelRow& row = model.channels.at(i);
+                const bool sameGroup = previous.node == row.node && previous.channel.type() == row.channel.type();
+                CHECK(sameGroup ? previous.group == row.group : previous.group != row.group);
+            }
+
+            // THE PER-COMPONENT HUE. X and Y of one type differ; a channel with no
+            // axis keeps its type's hue.
+            CHECK(model.channels.at(0).color == colors.axisX);
+            CHECK(model.channels.at(1).color == colors.axisY);
+            CHECK(model.channels.at(0).color != model.channels.at(1).color);
+            CHECK(model.channels.at(2).color == colors.rotateKey); // angle: no axis
+            CHECK(model.channels.at(3).color == colors.opaKey);    // opacity: no axis
+
+            // THE NO-AXIS GUARD: an axis must never be silently assigned to Depth
+            // (the design leaves it on its type's hue) or to an angle, and HSV's
+            // three values have no axis either. Both the classifier and the colour
+            // are pinned, so a future axis added for one of them fails here.
+            CHECK(theme::channelAxis(core::TimeKeyType_Depth, 0) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_Rotate, 0) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_Opa, 0) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_HSV, 0) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_HSV, 1) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_HSV, 2) < 0);
+            CHECK(theme::channelAxis(core::TimeKeyType_Blur, 2) < 0); // Blur's angle
+            // ...while Blur's two RADII are its X/Y axes, the interpretation that
+            // makes its three channels distinguishable (the section's own defect
+            // list names 'Blur's three' as sharing one hue).
+            CHECK(theme::channelAxis(core::TimeKeyType_Blur, 0) == theme::kChannelAxisX);
+            CHECK(theme::channelAxis(core::TimeKeyType_Blur, 1) == theme::kChannelAxisY);
+            CHECK(theme::channelColor(colors, core::TimeKeyType_Depth, 0) == colors.depthKey);
+            CHECK(theme::channelColor(colors, core::TimeKeyType_HSV, 0) == colors.HSVKey);
+            CHECK(theme::channelColor(colors, core::TimeKeyType_HSV, 1) == colors.HSVKey);
+            CHECK(theme::channelColor(colors, core::TimeKeyType_HSV, 2) == colors.HSVKey);
+            CHECK(theme::channelColor(colors, core::TimeKeyType_Blur, 2) == colors.blurKey);
+            // The panel and the timeline read the SAME answer: the model row's hue
+            // is theme::channelColor, and the timeline's key/lane hue for the type
+            // is channelColor(type, 0).
+            CHECK(model.channels.at(0).color == theme::channelColor(colors, core::TimeKeyType_Move, 0));
+            CHECK(model.channels.at(1).color == theme::channelColor(colors, core::TimeKeyType_Move, 1));
+            CHECK(palette.keyColor(core::TimeKeyType_Move) == model.channels.at(0).color);
+            CHECK(palette.keyColor(core::TimeKeyType_Opa) == model.channels.at(3).color);
+            CHECK(palette.channelColor(core::TimeKeyType_Move, 1) == model.channels.at(1).color);
+
+            // THE UNREACHABLE TYPES, proven rather than assumed: componentCount()
+            // is 0 for all four, and graphableTypes() - the filter buildChannels
+            // walks - never yields them, so no row and no curve can name them. This
+            // is why their entries were deleted from the panel's table; the
+            // timeline still draws their keys, so Colors keeps their tokens.
+            CHECK(ctrl::graph::Channel::componentCount(core::TimeKeyType_Bone) == 0);
+            CHECK(ctrl::graph::Channel::componentCount(core::TimeKeyType_Pose) == 0);
+            CHECK(ctrl::graph::Channel::componentCount(core::TimeKeyType_Mesh) == 0);
+            CHECK(ctrl::graph::Channel::componentCount(core::TimeKeyType_FFD) == 0);
+            CHECK(!ctrl::graph::Channel::graphableTypes().contains(core::TimeKeyType_Bone));
+            CHECK(!ctrl::graph::Channel::graphableTypes().contains(core::TimeKeyType_Pose));
+            CHECK(!ctrl::graph::Channel::graphableTypes().contains(core::TimeKeyType_Mesh));
+            CHECK(!ctrl::graph::Channel::graphableTypes().contains(core::TimeKeyType_FFD));
+            for (const gui::PanelChannelRow& row : model.channels)
+                CHECK(ctrl::graph::Channel::componentCount(row.channel.type()) > 0);
+        }
+
         int chips = 0;
         int emptyChips = 0;
         int badChipText = 0;
@@ -951,8 +1045,8 @@ int main(int argc, char** argv) {
             const gui::PanelChannelRow& row = crampedModel.channels.at(i);
             const gui::PanelChannelRow& full = model.channels.at(i);
             if (row.node != full.node || row.channel != full.channel || row.name != full.name ||
-                row.layer != full.layer || row.color != full.color || row.visible != full.visible ||
-                row.focused != full.focused)
+                row.layer != full.layer || row.group != full.group || row.color != full.color ||
+                row.visible != full.visible || row.focused != full.focused)
                 ++identityLost; // a row the panel cannot DRAW is still the same row
         }
 

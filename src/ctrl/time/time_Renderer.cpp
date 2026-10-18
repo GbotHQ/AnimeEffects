@@ -40,28 +40,15 @@ namespace time {
     constexpr int kSelectRingAlpha = 217; // 0.85
     constexpr double kSelectRingRadius = keyRadius + 2.6;
 
-    // The channel hue of a key type: the timeline's own per-type key colours
-    // (theme::Colors kKeyColorRow at the theme's key column). One lookup for
-    // both the keys and their lane's label, so a band's name can never
-    // disagree with the keys under it.
+    // The channel hue of a key type: THE CHANNEL HUE TABLE in theme::Colors
+    // (design section 7). A timeline key belongs to the TYPE, not to one
+    // component, so it takes the type's FIRST component's hue - which is the
+    // X axis colour for Move, Scale, Image and Blur, and the type's own hue for
+    // a type with no axis (Opa amber, Rotate purple, ...). One lookup for the
+    // keys, their lane's label and the graph panel's curves, so the two views
+    // can never disagree about a channel's colour.
     static QColor keyColor(TimeKeyType aType) {
-        const theme::Colors& c = theme::Colors::current();
-        switch (aType) {
-            case TimeKeyType_Move: return c.moveKey;
-            case TimeKeyType_Rotate: return c.rotateKey;
-            case TimeKeyType_Scale: return c.scaleKey;
-            case TimeKeyType_Depth: return c.depthKey;
-            case TimeKeyType_Opa: return c.opaKey;
-            case TimeKeyType_Bone: return c.boneKey;
-            case TimeKeyType_Pose: return c.poseKey;
-            case TimeKeyType_Mesh: return c.meshKey;
-            case TimeKeyType_FFD: return c.FFDKey;
-            case TimeKeyType_Image: return c.imageKey;
-            case TimeKeyType_HSV: return c.HSVKey;
-            case TimeKeyType_Blur: return c.blurKey;
-            case TimeKeyType_TERM: break;
-        }
-        return c.baseKey; // the neutral key, drawn plain in every state
+        return theme::channelColor(theme::Colors::current(), aType, 0);
     }
 
     Renderer::Renderer(QPainter& aPainter, const CameraInfo& aCamera, const theme::TimeLine& aTheme):

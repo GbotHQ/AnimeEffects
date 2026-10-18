@@ -254,18 +254,37 @@ void buildChannels(
             if (timeLine->map(type).isEmpty())
                 continue; // no keys: nothing to draw and nothing to toggle
 
-            for (const ctrl::graph::Channel& channel : ctrl::graph::Channel::channelsOf(type)) {
+            // The rows of one type are one LEGEND GROUP (design section 7): the
+            // type names the property and each component gets its own bracket -
+            // "Move [X][Y]", "Opa [Opacity]" - the form the design's legend uses.
+            // Built from the same Channel table the rows are enumerated by, so the
+            // heading and its entries cannot disagree, and written once per
+            // (layer, type) as PanelChannelRow::group.
+            const QVector<ctrl::graph::Channel> channels = ctrl::graph::Channel::channelsOf(type);
+            QString group = core::TimeLine::getTimeKeyName(type) + QLatin1Char(' ');
+            for (int i = 0; i < channels.size(); ++i) {
+                group += QLatin1Char('[');
+                group += channels.at(i).componentName();
+                group += QLatin1Char(']');
+            }
+
+            for (const ctrl::graph::Channel& channel : channels) {
                 gui::PanelChannelRow row;
                 row.node = node;
                 row.channel = channel;
                 row.layer = node->name();
+                row.group = group;
                 // A one-component type has no sibling to be told apart from, so the
                 // component word is noise: "Opa", not "Opa Opacity" (the reference
                 // draws exactly this chip, mock-graph.js's _curveLabels).
-                row.name = ctrl::graph::Channel::componentCount(type) > 1
+                row.name = channels.size() > 1
                                ? channel.name()
                                : core::TimeLine::getTimeKeyName(type);
-                const QColor color = aTheme.keyColor(channel.type());
+                // The one channel hue table: axis where the component lies on an
+                // axis, the type's own hue otherwise. The curve, its key markers,
+                // its chip and the list's swatch all read this one answer, and the
+                // timeline reads the same table for the type's keys and lane label.
+                const QColor color = aTheme.channelColor(channel.type(), channel.component());
                 row.color = color.isValid() ? color : aTheme.curve();
                 row.visible = aEditor.isChannelVisible(*node, channel);
                 row.focused = node == focusedNode && channel == focusedChannel;

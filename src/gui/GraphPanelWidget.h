@@ -51,11 +51,12 @@ class MainDisplayWidget;
 // so a theme change needs no signal. NOTHING ELSE is drawn: no title (the tab names
 // the page), no header row of its own (the panel's one control sits in its ruler band,
 // which the model lays out for GraphPanelHost::Dock) and no scrim (an opaque floor has
-// nothing to sit on, so the overlay's contrast-outline composite is NOT run here).
+// nothing to sit on, so the contrast-outline composite gui::outline offers - the pass the
+// removed overlay host ran - is NOT run here).
 //
 // ONE FRAME AXIS, ONE CURRENT FRAME, TWO VIEWS. The editor this host draws from is the
-// SAME ctrl::GraphEditor the viewport overlay draws from - the driver owns it - and it
-// already carries the timeline's shared state (MainDisplayWidget::
+// ONE ctrl::GraphEditor the driver owns, and it already carries the timeline's shared
+// state (MainDisplayWidget::
 // syncGraphPanelSharedState wired the frame window, the selection source and the two
 // horizontal delegates). What a HOST must still do is pin the mapping to its own
 // geometry: the frame window is mapped in pixels, computed from the plot's width, so
@@ -64,17 +65,17 @@ class MainDisplayWidget;
 // same reason. Nothing here sets the frame window or the selection.
 //
 // INTERACTION. Every Qt event goes to the panel's own gui::ImGuiInputBridge first
-// (ImGuiIO), exactly as the overlay does, and the bridge's answer is the panel's key
-// routing rule: a rebindable command must not fire while
-// gui::ImGuiInputBridge::keyboardCaptured() is true, and that flag is read off the ONE
-// ImGui context, so the two hosts of one panel cannot disagree about who has the
-// keyboard. The panel's own gestures then go to the EDITOR - ctrl::GraphEditor::
-// ownsCursor/updateCursor/updateWheel through the driver's graphEditor() - and NOT
-// through ctrl::Driver::updateCursor: the Driver routes the VIEWPORT's cursor and gates
-// it on GraphEditor::isVisible(), which is the viewport overlay's own toggle, and this
-// page is the panel whether that toggle is on or off. The two controls the panel opens
-// (the channel list and the timeline's easing picker) are the application's own QMenus,
-// which live in gui::MainDisplayWidget - see appDisplay() below.
+// (ImGuiIO), and the bridge's answer is the panel's key routing rule: a rebindable
+// command must not fire while gui::ImGuiInputBridge::keyboardCaptured() is true, and that
+// flag is read off the ONE ImGui context, so a text field anywhere in the application
+// holds the keyboard for this page too. The panel's own gestures then go to the EDITOR -
+// ctrl::GraphEditor::ownsCursor/updateCursor/updateWheel, reached through the driver's
+// graphEditor() - and not through the viewport at all: ctrl::Driver no longer routes a
+// panel event (the viewport's cursor, wheel and keys are the tools' alone), and the
+// editor has no shown/hidden flag left to gate on, because THIS PAGE is the panel
+// whenever its tab is current. The two controls the panel opens (the channel list and the
+// timeline's easing picker) are the application's own QMenus, which live in
+// gui::MainDisplayWidget - see appDisplay() below.
 //
 // THE PANEL'S TWO KEYS. Ctrl+A selects every marker of the shown channels and Escape
 // clears the selection - ctrl::GraphEditor::selectAllMarkers / clearSelection, the
@@ -213,8 +214,7 @@ private:
     // nothing floats over the dock's page.
     PanelFrameState mFrame;
     // The Qt mouse stream in the editor's own currency (ctrl::GraphEditor reads
-    // screenPoint()), fed from the events and pinned to panelCamera(). One per host:
-    // the overlay's host owns its own, built from the viewport's camera.
+    // screenPoint()), fed from this page's events and pinned to panelCamera().
     core::AbstractCursor mCursor;
     bool mReady;
 };

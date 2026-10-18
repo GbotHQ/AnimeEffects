@@ -16,12 +16,14 @@ namespace theme {
 // theme::Colors, so an accent or light/dark change is one rebuild (Graph::from)
 // and never a per-widget color.
 //
-// Curves are colored by KEY TYPE through keyColor(), i.e. the same hues the
-// timeline draws its keys in: a curve on the graph and its keys on the timeline
-// read as the same feature. A KEY MARKER on the panel carries that hue too (its
-// fill), so the curve, its key squares and its legend swatch are one colour, and
-// the only thing the palette names for every key besides it is the edge that keeps
-// the fill legible over arbitrary artwork.
+// Curves are colored by CHANNEL through channelColor(), i.e. by the one hue
+// table in theme::Colors (design section 7: "axis where there is an axis, type
+// otherwise"), the same table the timeline draws its keys and lane labels from:
+// a curve on the graph and its keys on the timeline read as the same feature. A
+// KEY MARKER on the panel carries that hue too (its fill), so the curve, its key
+// squares and its legend swatch are one colour, and the only thing the palette
+// names for every key besides it is the edge that keeps the fill legible over
+// arbitrary artwork.
 class Graph {
 public:
     Graph();
@@ -53,7 +55,7 @@ public:
     QColor outline() const { return mOutline; }
     QColor curve() const { return mCurve; }          // fallback curve color
     // The key marker's edge: the ring around a key square, and the ring around a
-    // legend swatch. The FILL is the channel's own colour (keyColor), which is what
+    // legend swatch. The FILL is the channel's own colour (channelColor), which is what
     // makes a key read as the feature it belongs to - see the class comment.
     QColor keyEdge() const { return mKeyEdge; }
     QColor selected() const { return mSelected; }    // selected key / handle
@@ -104,8 +106,17 @@ public:
     float menuPadY() const { return kMenuPadY; }
     float menuItemPadX() const { return kMenuItemPadX; }
 
-    // The key-type's own color (the timeline's per-key hues). Falls back to
-    // curve() for a type the palette does not name.
+    // The hue of ONE graph channel: the shared table in theme::Colors (THE
+    // CHANNEL HUE TABLE), i.e. the axis hue where the component lies on an axis
+    // and the key type's own hue otherwise. Falls back to curve() for a type the
+    // palette does not name. The panel's curve stroke, key-marker fill and chip
+    // text all read this one answer.
+    QColor channelColor(core::TimeKeyType aType, int aComponent) const;
+
+    // The hue a TYPE's timeline key and lane label are drawn in: the type's
+    // first component through the same table (the X axis hue where that
+    // component lies on X - Move/Scale/Image/Blur - its own hue otherwise).
+    // Falls back to curve() for an unnamed type.
     QColor keyColor(core::TimeKeyType aType) const;
 
 private:
@@ -143,6 +154,9 @@ private:
     QColor mMenuHover;
     QColor mMenuHoverText;
     QColor mMenuSeparator;
+    // The channel hue table's axis cells, from theme::Colors, so channelColor()
+    // needs no palette lookup per paint.
+    QColor mAxisColors[kChannelAxisCount];
     QColor mKeyColors[core::TimeKeyType_TERM];
 };
 

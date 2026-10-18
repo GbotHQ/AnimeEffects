@@ -138,16 +138,26 @@ public:
     void setTargets(const QVector<core::ObjectNode*>& aTargets);
     const QVector<core::ObjectNode*>& targets() const { return mTargets; }
 
-    // Shown/hidden. Hidden keeps every state (selection, scale, hidden channels)
-    // so the panel comes back as it was.
-    void setVisible(bool aVisible);
-    bool isVisible() const { return mVisible; }
+    // THE PANEL GOING AWAY (its dock page is no longer current): drop whatever
+    // gesture is in flight - a key move, a handle drag, a marquee, a pan.
+    //
+    // This is the ONE side effect hiding ever had, and it is still wanted: the
+    // panel can be switched away from with a gesture open (the release usually beats
+    // the tab click, but not always), and a gesture left open would keep coalescing
+    // the next edit into a command whose geometry nobody can see any more. The
+    // selection, the scale and the hidden channels are kept, so the page coming back
+    // restores the panel as it was - and the editor has NO other shown/hidden state:
+    // the dock's page IS the panel while its tab is current, so no flag here could
+    // describe it, and nothing in this class may gate itself on one (the viewport's
+    // routing no longer asks; gui::GraphPanelWidget owns its page's events).
+    void panelHidden();
 
     // The panel rect for a viewport of this size, in viewport pixels: the WHOLE
-    // viewport. The panel is a fullscreen overlay drawn over the animation with
-    // no background of its own, so this is not a band and there is no inset or
-    // height to clamp. Still a pure function of the size: no camera, no layout
-    // pass.
+    // surface the panel is handed - the dock page's viewport, which is what the
+    // panel's host measures and passes in. There is no band, no inset and no height
+    // to clamp, because the panel's own surface is opaque in the dock: it is not an
+    // overlay over the animation any more. Still a pure function of the size: no
+    // camera, no layout pass.
     static QRect panelRect(const QSize& aViewportSize);
 
     // Cursor handling, the IEditor::updateCursor shape: returns true when the
@@ -828,7 +838,11 @@ private:
     // Fits the value axis only when the shown curves CHANGED since the last fit,
     // by comparing the (node, channel) basis below; it also drops a focus that
     // left the shown set. This is the fit the non-const paths call: setTargets,
-    // setVisible(true), setProject and updateCursor.
+    // setProject and updateCursor - and setTargets is also the path that covers
+    // what the deleted setVisible(true) used to fit for: the application hands the
+    // panel its targets when the document opens and whenever the tree selection
+    // changes, so the window is fitted BEFORE the dock's page is ever shown, and a
+    // page switch alone shows curves whose fit is already the one they got.
     // The paths that must NOT run it: a paint no longer exists in this class
     // (the panel is drawn from the model), and updateWheel is not one either:
     // zooming changes no curve, so the user's window has to survive it.
@@ -951,7 +965,6 @@ private:
     time::Selection mOwnSelection;
     time::Selection* mSelection;
     graph::Scaler mScale;
-    bool mVisible;
 
     // The shared frame window (see setFrameWindow): the flag says a timeline owns the
     // panel's frame axis, the window is what it pushed (kept so the mapping can be

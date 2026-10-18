@@ -88,9 +88,9 @@ QString graphPanelTr(const char* aSourceText, int aN);
 // application's own QMenu (gui::MainDisplayWidget::showGraphChannelMenu), a
 // native window this drawing layer neither draws nor measures - the same rule
 // the key menu already follows. What a consumer gets here is the row's DATA: the
-// layer it is grouped under, its name, its hue and its two states. A row is
-// NEVER dropped for want of room: the menu scrolls, so every keyed channel is
-// listed whatever the panel's size.
+// layer it belongs to, its legend group (layer and key type), its name, its hue
+// and its two states. A row is NEVER dropped for want of room: the menu scrolls,
+// so every keyed channel is listed whatever the panel's size.
 struct PanelChannelRow {
     // The target the row acts on. NON-CONST on purpose: the two actions a row
     // performs go through the editor, and both of those take a mutable node
@@ -100,10 +100,21 @@ struct PanelChannelRow {
     // it is compared against is const (focusedNode()), and that is a comparison.
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
-    QString layer;      // the target's own name: the heading the row is grouped under
+    QString layer;      // the target's own name: the group heading is layer · group
+                        // ("line · Move [X][Y]"), see MainDisplayWidget::showGraphChannelMenu
     QString name;       // the channel's label for a list row or a chip ("Move X"), or
                         // the bare type name for a one-component type ("Opa") - see CHIPS
-    QColor color;       // theme::Graph::keyColor(channel.type()), theme::Graph::curve() when unnamed
+    // THE LEGEND GROUP this row belongs to (design section 7): one group per
+    // (layer, key type), naming the PROPERTY and its components - "Move [X][Y]",
+    // "Opa [Opacity]". The group carries the structure (which property); the row's
+    // `color` carries only the axis, so two red X curves are told apart by their
+    // group, not by a hue that cannot encode it. Built once per (layer,type) from
+    // the same Channel table that names the components, so the heading and the rows
+    // inside it cannot disagree. Rows of one group are CONTIGUOUS in `channels`.
+    QString group;
+    QColor color;       // theme::Graph::channelColor(channel.type(), channel.component()):
+                        // the one hue table, theme::Colors (axis where there is an
+                        // axis, type otherwise), theme::Graph::curve() when unnamed
     bool visible = true;  // == GraphEditor::isChannelVisible
     bool focused = false; // == the editor's sticky focus (focusedNode()/focusedChannel())
 };
@@ -484,8 +495,9 @@ enum class GraphPanelHost {
 //   layer clips (the overlay's plot clip covers the handles like everything
 //   else), and a handle the user can grab off the plot's edge must still be
 //   published for the highlight to name it.
-//   color: theme::Graph::keyColor(channel.type()), which falls back to
-//   theme::Graph::curve() for a type the palette does not name.
+//   color: theme::Graph::channelColor(channel.type(), channel.component()) - the
+//   one channel hue table (axis where there is an axis, type otherwise), which
+//   falls back to theme::Graph::curve() for a type the palette does not name.
 //   chip/chipText: the curve's own NAME, IN PLACE.
 //   chip is the box the name sits in: it is anchored at the plot's RIGHT edge
 //   (kChipRightGap = 8px inside it) and vertically centred on the value the
@@ -516,10 +528,14 @@ enum class GraphPanelHost {
 //   channels: one row per (target, channel) with keys, in target then channel
 //   order - the same order as the curves, and the same set the editor builds
 //   entries for. A hidden channel keeps its row with visible == false: that is
-//   how the user sees what is hidden. The list is the application's own QMenu,
-//   so NO row geometry is published (see PanelChannelRow): the menu is a native
-//   window the drawing layer neither draws nor measures, exactly like the key
-//   menu, and it can scroll, so no row is ever dropped for want of room.
+//   how the user sees what is hidden. The rows are GROUPED FOR THE LEGEND: one
+//   group per (layer, key type) - PanelChannelRow::group, e.g. "Move [X][Y]" -
+//   with one row per component inside it, and the rows of a group are
+//   contiguous. The group names the property; the row's colour carries only the
+//   axis (design section 7). The list is the application's own QMenu, so NO row
+//   geometry is published (see PanelChannelRow): the menu is a native window the
+//   drawing layer neither draws nor measures, exactly like the key menu, and it
+//   can scroll, so no row is ever dropped for want of room.
 //
 // CHANNELS BUTTON
 //   channelsButton/channelsButtonText: the panel's ONE control - the button that

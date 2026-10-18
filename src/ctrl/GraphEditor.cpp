@@ -217,7 +217,6 @@ namespace ctrl {
         mOwnSelection(),
         mSelection(&mOwnSelection),
         mScale(),
-        mVisible(false),
         mFrameWindowShared(false),
         mFrameWindowLo(0.0),
         mFrameWindowHi(0.0),
@@ -255,10 +254,12 @@ namespace ctrl {
         mMoveKeys(),
         mMoveMembers(),
         mAxisFps(0) {
-        // The graph starts HIDDEN. The Driver routes every cursor and wheel
-        // event to the tools while isVisible() is false, so a panel nobody asked
-        // for cannot take the cursor on the first frame; a user shows it and the
-        // state below comes back with it.
+        // The frame axis' ladder is seeded from the project's fps and range here,
+        // so the first geometry the host asks for is already against the right
+        // ruler. There is no shown/hidden state to seed: the panel's dock page is
+        // the panel whenever its tab is current, and the window itself is fitted
+        // when the application hands the editor its targets (see the
+        // syncValueAxis note).
         syncFrameAxis();
     }
 
@@ -320,37 +321,28 @@ namespace ctrl {
         syncValueAxis();
     }
 
-    void GraphEditor::setVisible(bool aVisible) {
-        if (mVisible == aVisible)
-            return;
-
-        mVisible = aVisible;
-
-        if (!aVisible) {
-            // Hiding drops a drag in flight. The panel is gone, so the pixels a
-            // further move would be measured against are gone too, and a gesture
-            // left open would keep coalescing the next edit into a command whose
-            // geometry nobody can see. The selection, the scale and the hidden
-            // channels are kept, so showing the panel again restores it as it
-            // was.
-            endDrag();
-        } else {
-            // Becoming visible SHOWS the data, and the application toggles the
-            // panel on without a cursor event ever reaching it - so the fit
-            // cannot be left to updateCursor alone: this is the one path that
-            // must fit on its own, or the first paint of an opened panel would
-            // draw the seed window around a layer whose values live elsewhere.
-            syncValueAxis();
-        }
+    void GraphEditor::panelHidden() {
+        // The panel's dock page is no longer current. Nothing here describes a
+        // shown/hidden state any more - the page IS the panel while its tab is
+        // current, and nothing in this class may gate itself on a flag for it (the
+        // viewport's routing no longer asks; gui::GraphPanelWidget owns its page's
+        // events). What a hide still has to do is the ONE side effect hiding ever
+        // had: drop a gesture in flight. The panel is off screen, so the pixels a
+        // further move would be measured against are gone too, and a gesture left
+        // open would keep coalescing the next edit into a command whose geometry
+        // nobody can see. The selection, the scale and the hidden channels are
+        // kept, so the page coming back restores the panel as it was - and the
+        // command a dropped gesture pushed stays on the stack (dropping the
+        // gesture is not an undo).
+        endDrag();
     }
 
     //-------------------------------------------------------------------------------------------------
     QRect GraphEditor::panelRect(const QSize& aViewportSize) {
-        // The panel is a fullscreen overlay drawn over the animation with no
-        // background of its own: the WHOLE viewport, with no band, no inset and
-        // no clamped height. It cannot own the pointer by rectangle for exactly
-        // that reason - a rect that contains everything would swallow every
-        // event the viewport tools need - so ownership is hit-based instead, see
+        // The panel's own surface: the WHOLE of it, with no band, no inset and no
+        // clamped height. It cannot own the pointer by rectangle for exactly that
+        // reason - a rect that contains everything the host hands it would make
+        // every point the panel's - so ownership is hit-based instead, see
         // ownsCursor. Still a pure function of the size: no camera, no layout
         // pass.
         return QRect(QPoint(0, 0), aViewportSize);
