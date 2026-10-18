@@ -16,6 +16,9 @@
 
 namespace ctrl {
 class Driver;
+namespace time {
+class Selection;
+}
 }
 
 namespace gui {
@@ -121,6 +124,14 @@ private:
     // write, and refresh() writes nothing, so neither can feed back into the other.
     util::SlotId mDocumentSlot;
     util::SlotId mAttributeSlot;
+    // The shared KEY SELECTION's change (ctrl::time::Selection::onChanged). The panel and
+    // the timeline are two views of ONE set of keys, so a selection made in either view
+    // changes what the panel draws - the channels at full strength, the hull, the count -
+    // and nothing else announces it. The set belongs to the timeline's editor, so it is
+    // connected where that editor is handed over (setDriver), re-wired when the editor is
+    // replaced, and disconnected in the destructor and when no project is open.
+    util::SlotId mSelectionChangedSlot;
+    ctrl::time::Selection* mSelectionSource;
 #endif
     TimeLineHeader* mHeader;
     PlayBackWidget* mPlayBack;

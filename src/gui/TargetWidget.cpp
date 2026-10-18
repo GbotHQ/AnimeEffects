@@ -8,6 +8,7 @@
 #include "cmnd/BasicCommands.h"
 #include "cmnd/ScopedMacro.h"
 #include "ctrl/CmndName.h"
+#include "ctrl/TimeLineEditor.h"
 #include "core/ProjectEvent.h"
 #include <QDialog>
 #include <QHBoxLayout>
@@ -31,6 +32,8 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mSelectionSlot(),
     mDocumentSlot(),
     mAttributeSlot(),
+    mSelectionChangedSlot(),
+    mSelectionSource(nullptr),
 #endif
     mHeader(nullptr),
     mSuspendCount(0) {
@@ -143,6 +146,10 @@ TargetWidget::~TargetWidget() {
         mProject->onTimeLineModified.disconnect(mDocumentSlot);
         mProject->onProjectAttributeModified.disconnect(mAttributeSlot);
     }
+    // The selection lives in the timeline's editor, which is a child destroyed after this
+    // body: drop the last connection here for the same reason as the others.
+    if (mSelectionSource)
+        mSelectionSource->onChanged.disconnect(mSelectionChangedSlot);
 #endif
 }
 
@@ -210,6 +217,40 @@ void TargetWidget::setDriver(ctrl::Driver* aDriver) {
     // viewport and the tool widget, so the docked panel and the overlay read the ONE
     // editor of the project on screen (see MainWindow::resetProjectRefs).
     mGraphPanel->setDriver(aDriver);
+
+    // THE SHARED SELECTION. ctrl::GraphEditor writes and reads the TIMELINE editor's
+    // one time::Selection (MainDisplayWidget::syncGraphPanelSharedState hands it over),
+    // so a selection change is a change to what this panel draws - which channels'
+    // markers are at full strength, the hull, "N key(s)", and (with Ctrl+A) every marker
+    // of every shown channel - and nothing else announces it. The chip in the dock's
+    // header reads the same set through the same notifier (TimeLineEditorWidget:147).
+    //
+    // ORDERING: Selection::rebuildFocus() is what fires onChanged, and every mutator
+    // calls it AFTER writing mItems (ctrl/time/time_Selection.h: "the two always travel
+    // together: a mutator that changed the set reaches both, one that did not has already
+    // returned false"). So the set the model reads when the repaint happens is the new
+    // one, and a press that selected nothing emits nothing. refresh() is only update(),
+    // so it cannot re-enter the selection: no loop.
+    //
+    // LIFECYCLE: the set belongs to the TIMELINE's editor, not to the driver - the editor
+    // survives a project change - so the slot is re-wired here, where the driver (and
+    // with it the panel's editor) is handed over: disconnected from the old set, connected
+    // to the current one, and disconnected again when no project is open. The destructor
+    // drops the last one before the timeline is destroyed.
+    ctrl::TimeLineEditor* timelineEditor = (aDriver && mTimeLine) ? mTimeLine->editor() : nullptr;
+    ctrl::time::Selection* selection = timelineEditor ? &timelineEditor->selection() : nullptr;
+    if (selection != mSelectionSource) {
+        if (mSelectionSource)
+            mSelectionSource->onChanged.disconnect(mSelectionChangedSlot);
+        mSelectionSource = selection;
+        if (mSelectionSource) {
+            mSelectionChangedSlot = mSelectionSource->onChanged.connect([this] {
+                if (mGraphPanel)
+                    mGraphPanel->refresh();
+            });
+        }
+    }
+
     // A new editor is a new panel: the view it draws is built from it, so re-read it
     // now rather than on the next frame that happens to repaint.
     mGraphPanel->refresh();
