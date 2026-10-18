@@ -45,54 +45,48 @@ class TimeLineEvent;
 
 namespace gui {
 
-// What the drawing layer reads off the editor: the STICKY FOCUS and the SELECTION,
-// passed in rather than read here, so the drawing stays a pure function of its inputs
-// (and a headless pixel gate can hand over a synthetic one).
+// What the drawing layer reads off the editor: the STICKY FOCUS, and nothing else.
+// Passed in rather than read here, so the drawing stays a pure function of its
+// inputs (and a headless pixel gate can hand over a synthetic one).
 //
-// The two answer different questions and are not interchangeable:
-//   * EMPHASIS is the SELECTION's (selectedKeys): a curve whose channel owns a
-//     selected key is drawn at full strength and every other curve at 45%, with an
-//     empty selection dimming every curve - the design's decision table, "Curve
-//     emphasis". The sticky focus used to dim, and it no longer does.
-//   * EACH CURVE'S TANGENT HANDLES are still the FOCUS's (node/channel/valid): the
-//     panel draws them for one channel at a time because they cost ~52 of the ~68
-//     vertices a key spends (the measured rule in ImGuiOverlay.cpp), and the editor's
-//     hit-test focuses a channel on a handle press.
+// THE SELECTION IS NOT HERE, and that is deliberate: which marker is selected, and
+// which marker's key has a selected sibling, are published per key by the MODEL
+// (PanelCurve::keySelected / keySiblingSelected), straight from the editor's own
+// two queries. A list of selected keys here would be a SECOND source of the same
+// fact - one that had to be matched back to a marker by pixel x, and that could
+// silently disagree with the flags the model just published.
+//
+// The one thing the focus still decides is EACH CURVE'S TANGENT HANDLES
+// (node/channel/valid): the panel draws them for one channel at a time because they
+// cost ~52 of the ~68 vertices a key spends (the measured rule in ImGuiOverlay.cpp),
+// and the editor's hit-test focuses a channel on a handle press. The curve EMPHASIS
+// is the selection's, and it comes from the model's marker flags.
 struct PanelFocus {
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
     bool valid = false;
-
-    // One key the editor's selection carries, in the currency the drawing needs:
-    // the key TYPE names the curve it belongs to and the pixel X is where that
-    // key's MARKER is centred. PanelCurve::keyDots publishes those centres (and
-    // PanelCurve::keyFrames their frames), and ctrl::graph::keyDot is the same
-    // mapping the editor's hit-test measures from, so the pixel X is the whole
-    // identity a key marker can be matched by - both to ring it (drawPanel) and to
-    // decide whose curve is at full strength (curveStrength). The caller maps the
-    // selection through the editor's own scaler, with the model's panel.
-    struct SelectedKey {
-        core::TimeKeyType type = core::TimeKeyType_TERM;
-        int x = 0;
-    };
-    QVector<SelectedKey> selectedKeys;
 };
 
 // Draws the panel into aDrawList: the short ticks (in the numbers' own token, each
 // frame mark at the tier's alpha the model publishes for it - one ink for the ruler,
 // the timeline's rule), the labels with their
 // halo, the zero rule, the curves (clipped to the plot; the channels that own a
-// selected key at full colour and every other curve dimmed - see PanelFocus), the key
-// markers (a filled
-// dot of radius ctrl::graph::kKeyDotRadius about each key's centre, ringed in
-// theme::Graph::keyEdge()), every segment's tangent handles (a stored pair filled, an
+// selected marker, or the SIBLING of one, at full colour and every other curve dimmed -
+// see curveStrength), the key
+// markers (a filled dot of radius ctrl::graph::kKeyDotRadius about each key's centre,
+// ringed in theme::Graph::keyEdge(), in one of the THREE states the model classifies:
+// a selected marker brightens its fill and takes a 1px ring clear of the marker, a
+// marker whose key has a selected sibling keeps the faint ring, and the marker under
+// the pointer brightens its fill alone - see the marker pass), every segment's tangent
+// handles (a stored pair filled, an
 // Auto segment's derived pair hollow; the grabbed one highlighted from io.MousePos),
 // the playhead, the box-select marquee, the selection HULL and its count label, the
 // name CHIP of every curve in play, the panel's one control (the channel button), and
 // the empty state. It keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
-// but the handle highlight and the hovered-curve chip DO read
+// but the marker hover (gui::panelKeyAt), the handle highlight and the
+// hovered-curve chip DO read
 // ImGui::GetIO().MousePos, so a caller must own a context: the overlay's frame and
 // the headless pixel gate both do.
 //
@@ -138,6 +132,34 @@ constexpr bool kDrawTextHalo = false;
 // the drawn gutter against THIS number, so the bar and the drawing cannot drift (the
 // same reason kDrawTextHalo lives here).
 constexpr int kValueLabelGap = 8;
+
+// How far past a key marker's own radius its SELECTION ring's centre sits, in pixels:
+// the ring the design asks for, "a 1px ring 1px clear of the marker"
+// (index.html:279-280 and :302-303, quoted in full in ImGuiOverlay.cpp's marker rule).
+//
+// WHY 2.6 AND NOT 1.5. A literal reading - the ring's stroke 1px wide, its inner edge
+// 1px clear of the marker's own edge - puts the ring's centre at radius + 1.5, and at
+// that radius the dark SLEEVE the reference draws under the highlight ink (mock-graph.js
+// strokes 2.6px at this same radius, "the ring reads on any artwork") would reach
+// 0.2px INSIDE the marker's edge and paint the clear gap black. The reference's own
+// radius is `KEY_R + 2.6` (mock-graph.js:865-876) and it is taken as it stands: the
+// highlight stroke is 1px as the design says, its centre is 2.6px out, and the whole
+// band's inner edge - the sleeve's - then sits 1.3px clear of the marker, which is the
+// design's "1px clear" at the scale it means (the marker's own radius, not a hairline).
+//
+// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp has to
+// find the ring's pixels to read their ink, and a bar that moved would move every probe
+// with it (the same reason kDrawTextHalo and kValueLabelGap live here).
+constexpr float kKeyRingOffsetPx = 2.6f;
+
+// The air between the pointer and the DRAG READOUT's first glyph (GraphPanelModel's
+// PanelKeyDrag): the key move's live numbers are written at the pointer, and the glyphs
+// start this far right and below it so the cursor itself never covers them.
+//
+// Declared here for the same reason as the two above: tests/graph_panel_pixels.cpp has to
+// find the readout's glyphs to assert that a live drag paints them and a still panel
+// paints nothing, and a gap that moved would move the probe with it.
+constexpr int kReadoutGapPx = 12;
 
 // The contrast outline and composite: ONE full-screen pass that rings panel ink
 // whose own colour is too close to the artwork underneath it, and then composites

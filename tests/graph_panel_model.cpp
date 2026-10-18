@@ -2031,6 +2031,317 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
+    // 15. THE MARKER STATE: which marker is selected, and whether the key it belongs
+    // to has a selected SIBLING. The drawing layer's three marker states are drawn
+    // from exactly these two flags (see gui::drawPanel's marker pass), and the pair is
+    // the design's "one key, two channels, both in play" rule: selecting ONE component
+    // of a two-component key leaves the other component's marker unselected - its curve
+    // still at full strength, its marker ringed faintly - and never selected.
+    //
+    // The editor is the oracle and the model is read: every flag below is compared
+    // against editor.isMarkerSelected/hasSelectedSiblingMarker asked on the key the
+    // model published (node, channel type and component, frame), and the two state
+    // vectors are asserted parallel to the geometry they classify.
+    {
+        // THE VIEW, set to a known window. Blocks [11] and [12] drive the editor's own
+        // scaler (a wheel zoom, pans, cursor gestures), and this block needs every key of
+        // BOTH components of the Move key inside the plot at once - the two markers of one
+        // key are what the sibling flag is about. The editor's own fit is the way back to
+        // a window that covers the keys (nothing here sets a window by hand); the panel
+        // rect goes into the scaler first, because a fit maps into the scaler's PLOT and
+        // this file's own panel rect is the geometry every other block uses.
+        editor.setTargets({ &nodeA, &nodeB });
+        editor.scale().setRect(panel);
+        editor.clearSelection();
+        editor.fitAll();
+
+        // One curve of the model, by the identity a channel is named by, or nullptr.
+        const auto curveFor = [](const gui::GraphPanelModel& aModel, core::ObjectNode* aNode,
+                                 const ctrl::graph::Channel& aChannel) -> const gui::PanelCurve* {
+            for (const gui::PanelCurve& curve : aModel.curves) {
+                if (curve.node == aNode && curve.channel == aChannel)
+                    return &curve;
+            }
+            return nullptr;
+        };
+        // One flag of the key at aFrame, with aFound false when the model publishes no
+        // marker for that key at all (it is outside the plot's window) - the honest
+        // answer, and the one that keeps a malformed index from being read as a state.
+        const auto flagOf = [](const QVector<bool>& aFlags, const gui::PanelCurve& aCurve, core::Frame aFrame,
+                               bool& aFound) {
+            const int i = aCurve.keyFrames.indexOf(aFrame);
+            aFound = 0 <= i && i < aFlags.size();
+            return aFound && aFlags.at(i);
+        };
+        // One curve's whole state, key by key: 'S' selected, 's' the SIBLING state
+        // (not selected, its key selected on another component), '.' neither - the three
+        // states the drawing layer draws, composed exactly as its marker pass composes
+        // them from the two published flags.
+        const auto statesOf = [](const gui::PanelCurve& aCurve) {
+            QString out;
+            for (int i = 0; i < aCurve.keySelected.size() && i < aCurve.keySiblingSelected.size(); ++i) {
+                out += aCurve.keySelected.at(i) ? QLatin1Char('S')
+                                                : aCurve.keySiblingSelected.at(i) ? QLatin1Char('s')
+                                                                                  : QLatin1Char('.');
+            }
+            return out;
+        };
+        // The model against the editor, cell for cell, over every curve it published.
+        struct MarkerTally {
+            int keys = 0;           // markers the model classified
+            int wider = 0;          // curves whose state vectors are not parallel to the geometry
+            int wrongSelected = 0;  // cells where the model and the editor disagree
+            int wrongSibling = 0;
+        };
+        const auto tally = [](const gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor) {
+            MarkerTally out;
+            for (const gui::PanelCurve& curve : aModel.curves) {
+                if (curve.keySelected.size() != curve.keyDots.size()
+                    || curve.keySiblingSelected.size() != curve.keyDots.size()
+                    || curve.keyDots.size() != curve.keyFrames.size()) {
+                    ++out.wider;
+                }
+                for (int i = 0; i < curve.keyFrames.size(); ++i) {
+                    const core::Frame frame = curve.keyFrames.at(i);
+                    const bool selected = aEditor.isMarkerSelected(*curve.node, curve.channel, frame);
+                    const bool sibling = aEditor.hasSelectedSiblingMarker(*curve.node, curve.channel, frame);
+                    ++out.keys;
+                    if (i >= curve.keySelected.size() || curve.keySelected.at(i) != selected)
+                        ++out.wrongSelected;
+                    if (i >= curve.keySiblingSelected.size() || curve.keySiblingSelected.at(i) != sibling)
+                        ++out.wrongSibling;
+                }
+            }
+            return out;
+        };
+        // How many cells a model flags at all, either way round: the "nothing is flagged"
+        // half of the pair below.
+        const auto flaggedCount = [](const gui::GraphPanelModel& aModel) {
+            int on = 0;
+            for (const gui::PanelCurve& curve : aModel.curves) {
+                for (const bool flag : curve.keySelected)
+                    on += flag ? 1 : 0;
+                for (const bool flag : curve.keySiblingSelected)
+                    on += flag ? 1 : 0;
+            }
+            return on;
+        };
+
+        const ctrl::graph::Channel moveX(core::TimeKeyType_Move, 0);
+        const ctrl::graph::Channel moveY(core::TimeKeyType_Move, 1);
+        const ctrl::graph::Channel rotate(core::TimeKeyType_Rotate, 0);
+        const ctrl::graph::Channel opa(core::TimeKeyType_Opa, 0);
+
+        // ---- NOTHING SELECTED: neither flag on any marker of any curve.
+        const gui::GraphPanelModel none = gui::buildGraphPanelModel(editor, viewport, palette);
+        const MarkerTally noneTally = tally(none, editor);
+        std::printf(
+            "[15] no selection: markers=%d parallel_mismatches=%d flag_mismatches=%d/%d flagged=%d\n",
+            noneTally.keys, noneTally.wider, noneTally.wrongSelected, noneTally.wrongSibling,
+            flaggedCount(none)
+        );
+        CHECK(noneTally.keys > 0); // the fixture's premise: there are markers to classify
+        CHECK(noneTally.wider == 0);
+        CHECK(noneTally.wrongSelected == 0);
+        CHECK(noneTally.wrongSibling == 0);
+        CHECK(flaggedCount(none) == 0); // and that is what the assertion is about
+
+        // ---- ONE MARKER of a TWO-component key: Move X at frame 0. The other component
+        // of the same key is NOT selected and carries the sibling flag; the key at frame
+        // 20 of that same type, and the other target's key, are neither.
+        CHECK(editor.selectMarker(nodeA, moveX, core::Frame(0)));
+        const gui::GraphPanelModel one = gui::buildGraphPanelModel(editor, viewport, palette);
+        const MarkerTally oneTally = tally(one, editor);
+        const gui::PanelCurve* oneX = curveFor(one, &nodeA, moveX);
+        const gui::PanelCurve* oneY = curveFor(one, &nodeA, moveY);
+        const gui::PanelCurve* oneRotate = curveFor(one, &nodeA, rotate);
+        const gui::PanelCurve* oneOpa = curveFor(one, &nodeB, opa);
+        bool x0 = false;
+        bool y0 = false;
+        bool x20 = false;
+        bool y20 = false;
+        const bool oneX0 = oneX && flagOf(oneX->keySelected, *oneX, core::Frame(0), x0);
+        const bool oneY0 = oneY && flagOf(oneY->keySelected, *oneY, core::Frame(0), y0);
+        const bool oneXSib0 = oneX && flagOf(oneX->keySiblingSelected, *oneX, core::Frame(0), x0);
+        const bool oneYSib0 = oneY && flagOf(oneY->keySiblingSelected, *oneY, core::Frame(0), y0);
+        const bool oneX20 = oneX && flagOf(oneX->keySelected, *oneX, core::Frame(20), x20);
+        const bool oneY20 = oneY && flagOf(oneY->keySelected, *oneY, core::Frame(20), y20);
+        const bool oneXSib20 = oneX && flagOf(oneX->keySiblingSelected, *oneX, core::Frame(20), x20);
+        const bool oneYSib20 = oneY && flagOf(oneY->keySiblingSelected, *oneY, core::Frame(20), y20);
+        std::printf(
+            "[15] Move X at frame 0 selected: markers=%d parallel_mismatches=%d flag_mismatches=%d/%d"
+            "  Move X=[%s]  Move Y=[%s]  Rotate=[%s]  Opa=[%s]  (frame0 published X/Y=%d/%d,"
+            " frame20 X/Y=%d/%d)\n",
+            oneTally.keys, oneTally.wider, oneTally.wrongSelected, oneTally.wrongSibling,
+            oneX ? qUtf8Printable(statesOf(*oneX)) : "<missing>",
+            oneY ? qUtf8Printable(statesOf(*oneY)) : "<missing>",
+            oneRotate ? qUtf8Printable(statesOf(*oneRotate)) : "<missing>",
+            oneOpa ? qUtf8Printable(statesOf(*oneOpa)) : "<missing>", int(x0), int(y0), int(x20), int(y20)
+        );
+        CHECK(oneX && oneY && oneRotate && oneOpa); // the model draws every channel of both targets
+        CHECK(oneTally.wider == 0);
+        CHECK(oneTally.wrongSelected == 0); // the model IS the editor's answer, cell for cell
+        CHECK(oneTally.wrongSibling == 0);
+        CHECK(x0 && y0 && x20 && y20); // every Move key is inside the fitted window
+        // The shape of that answer, stated on the two components of one key:
+        CHECK(oneX0);        // the marker the press named is selected
+        CHECK(!oneXSib0);    // ... with no sibling of its own
+        CHECK(!oneY0);       // the sibling NEVER takes the selection
+        CHECK(oneYSib0);     // ... and it is exactly what the sibling flag is for
+        // The second key of the same type is nobody's: neither of its components.
+        CHECK(!oneX20 && !oneXSib20);
+        CHECK(!oneY20 && !oneYSib20);
+        // A ONE-component key can have no sibling at all (the engine's own rule: another
+        // COMPONENT of the same key, which Rotate has none of), and a Move selection does
+        // not reach another target's Opa key either.
+        CHECK(oneRotate->keySiblingSelected.count(true) == 0);
+        CHECK(oneOpa->keySelected.count(true) == 0 && oneOpa->keySiblingSelected.count(true) == 0);
+        CHECK(flaggedCount(one) == 2); // exactly the selected marker and its one sibling
+
+        // ---- THE WHOLE KEY: the timeline's own gesture (and the panel's marquee and
+        // ctrl+A) selects every component of a key, so BOTH markers are selected. The
+        // engine's sibling query is the RAW one - an entry naming a different marker
+        // counts, and a key-level entry names all of them - so both report a sibling too;
+        // the drawing layer reaches the faint-ring state by ANDing the two flags
+        // (`!selected && sibling`), which is false here. That composition is why the flags
+        // are published as the engine states them and not pre-combined.
+        CHECK(editor.selectKey(nodeA, moveX, core::Frame(0)));
+        const gui::GraphPanelModel whole = gui::buildGraphPanelModel(editor, viewport, palette);
+        const gui::PanelCurve* wholeX = curveFor(whole, &nodeA, moveX);
+        const gui::PanelCurve* wholeY = curveFor(whole, &nodeA, moveY);
+        std::printf(
+            "[15] whole key selected: Move X=[%s]  Move Y=[%s]  editor answers X=%d/%d  Y=%d/%d"
+            "  (selected/sibling)  faint_ring_cells=%d\n",
+            wholeX ? qUtf8Printable(statesOf(*wholeX)) : "<missing>",
+            wholeY ? qUtf8Printable(statesOf(*wholeY)) : "<missing>",
+            int(editor.isMarkerSelected(nodeA, moveX, core::Frame(0))),
+            int(editor.hasSelectedSiblingMarker(nodeA, moveX, core::Frame(0))),
+            int(editor.isMarkerSelected(nodeA, moveY, core::Frame(0))),
+            int(editor.hasSelectedSiblingMarker(nodeA, moveY, core::Frame(0))),
+            [&whole] {
+                int faint = 0;
+                for (const gui::PanelCurve& curve : whole.curves) {
+                    for (int i = 0; i < curve.keySelected.size() && i < curve.keySiblingSelected.size(); ++i) {
+                        if (!curve.keySelected.at(i) && curve.keySiblingSelected.at(i))
+                            ++faint;
+                    }
+                }
+                return faint;
+            }()
+        );
+        CHECK(wholeX && wholeY);
+        bool wx0 = false;
+        bool wy0 = false;
+        CHECK(wholeX && flagOf(wholeX->keySelected, *wholeX, core::Frame(0), wx0));
+        CHECK(wholeY && flagOf(wholeY->keySelected, *wholeY, core::Frame(0), wy0));
+        CHECK(wx0 && wy0); // one key lights BOTH its markers
+        CHECK(!wholeX->keySiblingSelected.isEmpty() && !wholeY->keySiblingSelected.isEmpty());
+        CHECK(tally(whole, editor).wrongSelected == 0);
+
+        // ---- AND CLEARED AGAIN: the flags follow the selection rather than latch it.
+        editor.clearSelection();
+        const gui::GraphPanelModel cleared = gui::buildGraphPanelModel(editor, viewport, palette);
+        const MarkerTally clearedTally = tally(cleared, editor);
+        std::printf(
+            "[15] cleared again: parallel_mismatches=%d flag_mismatches=%d/%d flagged=%d\n", clearedTally.wider,
+            clearedTally.wrongSelected, clearedTally.wrongSibling, flaggedCount(cleared)
+        );
+        CHECK(clearedTally.wider == 0);
+        CHECK(clearedTally.wrongSelected == 0);
+        CHECK(clearedTally.wrongSibling == 0);
+        CHECK(flaggedCount(cleared) == 0);
+
+        // ---- THE DRAG READOUT's passthrough (the model half of the pixel gate's
+        // assertion 30). The numbers are the EDITOR's, so the assertion is an EQUALITY
+        // with what the editor publishes, read while a real key move is driven through
+        // the editor's own cursor path - a press on a key, then a move. Three states are
+        // read: a press that has not moved (no step accepted yet, so NOT moving), a
+        // dragged step (moving, with the deltas the gesture applied), and the release
+        // (nothing in flight). The model never differences the pointer; the editor's own
+        // numbers are what it republishes, which is the whole point of the field.
+        {
+            const gui::PanelCurve* liveX = curveFor(cleared, &nodeA, moveX);
+            CHECK(liveX != nullptr && !liveX->keyDots.isEmpty());
+            if (liveX && !liveX->keyDots.isEmpty()) {
+                const QPointF dot = liveX->keyDots.at(0);
+                const QPoint pressPoint(int(dot.x()), int(dot.y()));
+                const QPoint movePoint(pressPoint.x() + 40, pressPoint.y() - 30);
+                CHECK(cleared.plot.contains(pressPoint) && cleared.plot.contains(movePoint));
+
+                core::CameraInfo camera;
+                camera.setScreenSize(viewport);
+                core::AbstractCursor cursor;
+                QMouseEvent press(
+                    QEvent::MouseButtonPress, pressPoint, pressPoint, pressPoint, Qt::LeftButton, Qt::LeftButton,
+                    Qt::NoModifier
+                );
+                QMouseEvent move(
+                    QEvent::MouseMove, movePoint, movePoint, movePoint, Qt::NoButton, Qt::LeftButton, Qt::NoModifier
+                );
+                QMouseEvent release(
+                    QEvent::MouseButtonRelease, movePoint, movePoint, movePoint, Qt::LeftButton, Qt::NoButton,
+                    Qt::NoModifier
+                );
+                // The modifier state the widget feeds in: a PLAIN press selects the marker
+                // under the pointer and arms the move (Ctrl would insert, Shift extend).
+                editor.setModifiers(Qt::NoModifier);
+                const bool pressed = cursor.setMousePress(&press, camera) && editor.updateCursor(camera, cursor);
+                const gui::GraphPanelModel afterPress = gui::buildGraphPanelModel(editor, viewport, palette);
+                const bool dragged = cursor.setMouseMove(&move, camera) && editor.updateCursor(camera, cursor);
+                const gui::GraphPanelModel afterDrag = gui::buildGraphPanelModel(editor, viewport, palette);
+                // THE EDITOR'S OWN NUMBERS ARE READ HERE, while the gesture is still in
+                // flight: the release RESETS them (the engine's own rule - a delta only
+                // describes the document while the command the drag pushed is still the
+                // stack's modifiable one - pinned by tests/graph_drag.cpp's section 23f), so
+                // reading them after the release would compare the model's live numbers
+                // against a zeroed editor and fail for the wrong reason. The model is built
+                // BEFORE the release too, so this is one instant read twice.
+                const bool dragLive = editor.isMovingKeys();
+                const int dragFrameDelta = editor.keyMoveFrameDelta();
+                const float dragValueDelta = editor.keyMoveValueDelta();
+                cursor.setMouseRelease(&release, camera);
+                editor.updateCursor(camera, cursor);
+                const gui::GraphPanelModel afterRelease = gui::buildGraphPanelModel(editor, viewport, palette);
+
+                std::printf(
+                    "[15] key drag: pressed=%d dragged=%d  after_press live=%d  after_drag live=%d frame=%d value=%g"
+                    " (editor at that build %d/%d/%g)  after_release live=%d frame=%d value=%g"
+                    " (editor now %d/%d/%g)\n",
+                    int(pressed), int(dragged), int(afterPress.keyDrag.live), int(afterDrag.keyDrag.live),
+                    afterDrag.keyDrag.frameDelta, double(afterDrag.keyDrag.valueDelta), int(dragLive), dragFrameDelta,
+                    double(dragValueDelta), int(afterRelease.keyDrag.live), afterRelease.keyDrag.frameDelta,
+                    double(afterRelease.keyDrag.valueDelta), int(editor.isMovingKeys()), editor.keyMoveFrameDelta(),
+                    double(editor.keyMoveValueDelta())
+                );
+                CHECK(pressed);
+                CHECK(dragged);
+                // A press alone has accepted no step, so there is no delta to describe the
+                // document and the readout is not live.
+                CHECK(!afterPress.keyDrag.live);
+                CHECK(afterDrag.keyDrag.live == dragLive);
+                CHECK(afterDrag.keyDrag.frameDelta == dragFrameDelta);
+                CHECK(afterDrag.keyDrag.valueDelta == dragValueDelta);
+                // ...and the step was a real one: a diagonal drag with no modifier moves
+                // both halves (a zero here would make the equality above vacuous).
+                CHECK(afterDrag.keyDrag.live);
+                CHECK(afterDrag.keyDrag.frameDelta != 0);
+                CHECK(afterDrag.keyDrag.valueDelta != 0.0f);
+                // THE RELEASE: the editor zeroes both deltas and stops moving, and the model
+                // built after it says exactly that - a published readout that kept the last
+                // drag's numbers would be claiming a gesture that is over.
+                CHECK(!editor.isMovingKeys() && editor.keyMoveFrameDelta() == 0
+                      && editor.keyMoveValueDelta() == 0.0f);
+                CHECK(!afterRelease.keyDrag.live);
+                CHECK(afterRelease.keyDrag.frameDelta == 0 && afterRelease.keyDrag.valueDelta == 0.0f);
+            }
+        }
+
+        // The editor is left as the blocks before this one left it: no selection, the
+        // two targets, the panel's own rect in the scaler.
+        editor.clearSelection();
+    }
+
+    // -------------------------------------------------------------------------
     // read-only probe: a build must not move the editor or the document
     {
         editor.setProject(&project);

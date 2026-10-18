@@ -29,12 +29,14 @@
 //     editor's pick geometry - the corners of the key's 2*kKeyRadius HIT square
 //     carry no ink, which is what fails if the drawn marker is ever the pick
 //     rectangle again. The marker's own colour is read in BOTH states of the
-//     emphasis decision (gui::curveStrength, from three passes of one model that
-//     differ only in the selection): with NOTHING selected every marker is dimmed -
-//     still tinted by its own channel, but not the undimmed token - and in the pass
-//     that puts its channel in play it IS the opaque token the decision gives it
-//     (the channel's own colour, or theme::Graph::selected() for the selected key
-//     itself, ring included).
+//     emphasis decision (gui::curveStrength, off the model's marker flags, from
+//     passes of one model that differ only in those flags): with NOTHING selected
+//     every marker is dimmed - still tinted by its own channel, but not the
+//     undimmed token - and in the pass that puts its channel in play it IS the
+//     channel's own colour, except for the marker the pass SELECTS, whose fill
+//     moves toward the keyframe highlight (theme::Graph::axisText()) and which
+//     alone carries the detached 1px ring. Item 29 is the three marker states side
+//     by side; item 30 is the key drag's readout at the pointer.
 //   4 the label halo, behind gui::kDrawTextHalo (SHIPPED OFF): with the flag on, a
 //     pixel 1-2px outside the advance box is inked and is closer to
 //     theme::Graph::halo() than to theme::Graph::axisText(), so it is the halo and
@@ -176,7 +178,20 @@
 //     The two implementations are driven out of ONE process: the ink model is rendered
 //     with the pass unbuilt (BEFORE: ImDrawList::AddPolyline) and with it built (AFTER),
 //     and the crops under build/shots/graph_ink/ are those same two frames magnified
-//     with no resampling.
+//     with no resampling;
+//      29 THE THREE MARKER STATES, on one key's two components: the SELECTED marker's
+//         fill moves toward the keyframe highlight and its detached 1px ring is drawn
+//         in that highlight ink; the SIBLING marker (its key selected on the other
+//         component) keeps a FAINT ring at the same radius that is not the selection's
+//         ink and a fill that did not brighten; the HOVERED marker brightens and adds
+//         NO ring. Read against an unflagged pass of the same model, so each claim is
+//         about the state and not about the fixture;
+//      30 THE DRAG READOUT: with a key move in flight the model's two numbers are
+//         painted at the pointer (the panel's own label ink), and with no move in
+//         flight the same model, focus and pointer paint nothing at all there. The
+//         numbers themselves are the editor's and are gated where the gesture is
+//         (tests/graph_drag.cpp); what this asserts is that they reach the screen at
+//         the pointer or not at all.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
 // (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's mSelectEasing), a
@@ -250,6 +265,12 @@
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 #include "ctrl/graph/graph_Geometry.h"
+// The marker fixture's two LAYERS: the marker hover is answered by gui::panelKeyAt, which
+// names a key by (node, channel, frame), so a hand-built model that leaves `node` null
+// cannot be hovered (the model a real build makes never does: its rows come from the
+// editor's own targets). A FolderNode is the cheapest concrete ObjectNode in the tree and
+// nothing here renders it - only its address is compared.
+#include "core/FolderNode.h"
 
 // The ctrl/core archives this target links reference the GUI
 // AudioPlaybackWidget::deserialize (core::Project.cpp uses it for a .aemus
@@ -514,6 +535,11 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     a.keys = {aKeys[0].hit, aKeys[1].hit};
     a.keyDots = {aKeys[0].dot, aKeys[1].dot};
     a.keyFrames = {core::Frame(150), core::Frame(250)};
+    // The marker state, parallel to the geometry as buildGraphPanelModel publishes it - all
+    // false here (a panel with nothing selected), which is what makes the emphasis passes
+    // the ONLY difference between the frames this file renders (each sets one flag).
+    a.keySelected = {false, false};
+    a.keySiblingSelected = {false, false};
     // Two tangent handles, as a Custom segment's pair. Their bases sit ON the
     // curve (a real handle's base is the key it belongs to, but a base on a key
     // centre would put the stem's own 1px over that key's sampled centre and
@@ -554,6 +580,8 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     b.keys = {bKeys[0].hit, bKeys[1].hit};
     b.keyDots = {bKeys[0].dot, bKeys[1].dot};
     b.keyFrames = {core::Frame(170), core::Frame(290)};
+    b.keySelected = {false, false};
+    b.keySiblingSelected = {false, false};
     b.color = aTheme.keyColor(kTypeB);
     b.channelRow = 1;
     // This curve leaves the window at (290,130), 10px left of its own chip box, so the
@@ -689,6 +717,70 @@ gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
 
     curve.handles = {stored, ghost};
     model.curves = {curve};
+    return model;
+}
+
+//-------------------------------------------------------------------------------------------------
+// The marker model: the TWO COMPONENTS OF ONE KEY, one marker each, and nothing else that
+// paints (no ticks, no labels, no chips, no hull, no button, no handles) - so the pixels
+// about each dot are that marker's own ink and nothing else.
+//
+// WHY THE TWO CURVES SHARE A KEY TYPE. The design's three marker states are about ONE KEY
+// drawn on two channels: "the marker of the same key that is not selected keeps a faint
+// ring and its curve stays at full strength - one key, two channels, both in play"
+// (index.html:244-245). A SIBLING is another component of the same key, so the pair has to
+// be one type's two components, and the model's own colour rule makes them one hue
+// (PanelCurve::color == theme::Graph::keyColor(channel.type()) - the panel colours a
+// channel by its KEY TYPE, which is exactly why a key's two markers look alike).
+//
+// The markers sit 100px apart, each on the middle of its own horizontal stroke, so no
+// probe about one can reach the other's ink: the ring probes below reach 7px, the stroke
+// reaches 1px either side of its own row.
+constexpr int kMarkerX = 200;
+constexpr int kMarkerYTop = 120;
+constexpr int kMarkerYBottom = 220;
+
+gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNode* aLayerX, core::ObjectNode* aLayerY) {
+    gui::GraphPanelModel model;
+    model.panel = kPanel;
+    model.plot = kPlot;
+    model.valueColumn = kValueColumn;
+    model.rulerBandTop = kPlot.top(); // no occluded top: the band starts at the plot
+
+    const QColor hue = aTheme.keyColor(kTypeA);
+    for (int component = 0; component < 2; ++component) {
+        const int y = (component == 0) ? kMarkerYTop : kMarkerYBottom;
+        const KeyFixture key = keyAt(kMarkerX, y);
+        gui::PanelCurve curve;
+        curve.node = (component == 0) ? aLayerX : aLayerY;
+        curve.channel = ctrl::graph::Channel(kTypeA, component);
+        curve.points = {QPointF(kMarkerX - 60, y), QPointF(kMarkerX + 60, y)};
+        curve.keys = {key.hit};
+        curve.keyDots = {key.dot};
+        curve.keyFrames = {core::Frame(7)}; // ONE key, shared by both components
+        // Both curves publish the marker state as the editor would: THIS fixture leaves it
+        // unflagged (a panel with nothing selected), and the passes built from it set the
+        // one flag each assertion is about.
+        curve.keySelected = {false};
+        curve.keySiblingSelected = {false};
+        curve.color = hue;
+        curve.channelRow = component;
+        model.curves.append(curve);
+    }
+
+    gui::PanelChannelRow rowA;
+    rowA.node = aLayerX;
+    rowA.channel = model.curves.at(0).channel;
+    rowA.layer = aLayerX->name();
+    rowA.name = QStringLiteral("Move X");
+    rowA.color = hue;
+    rowA.visible = true;
+    gui::PanelChannelRow rowB = rowA;
+    rowB.node = aLayerY;
+    rowB.channel = model.curves.at(1).channel;
+    rowB.layer = aLayerY->name();
+    rowB.name = QStringLiteral("Move Y");
+    model.channels = {rowA, rowB};
     return model;
 }
 
@@ -1148,14 +1240,14 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 }
 
 // 3: the key MARKERS - a dot of radius ctrl::graph::kKeyDotRadius about
-// PanelCurve::keyDots, tinted by its channel, ringed in theme::Graph::keyEdge(), and
-// NOT the pick square.
+// PanelCurve::keyDots, tinted by its channel, ringed in theme::Graph::keyEdge(), in one
+// of the three states the MODEL classifies (PanelCurve::keySelected /
+// keySiblingSelected) - and NOT the pick square.
 //
-// EXTRACTION: drawPanel paints a key with AddCircleFilled(curve.color) +
-// AddCircle(theme::Graph::keyEdge(), thickness 1) about the marker centre, and
-// PanelCurve::color is theme::Graph::keyColor(channel.type()) - the same colour the
-// curve is stroked in, its chip's text is drawn in and its channel row carries (the
-// model documents them
+// EXTRACTION: drawPanel paints a key with AddCircleFilled + AddCircle(keyEdge) about the
+// marker centre, and PanelCurve::color is theme::Graph::keyColor(channel.type()) - the
+// same colour the curve is stroked in, its chip's text is drawn in and its channel row
+// carries (the model documents them
 // as one). So the marker's CENTRE pixel is compared to its own key colour and the
 // pixel one ring-width inside its edge to keyEdge, and - because "the key is tinted
 // by its channel" is a statement about a RELATION - each centre is also required to
@@ -1163,13 +1255,15 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 // colours asserted distinguishable first. A single hardcoded ink cannot satisfy that:
 // it is the two-channels-at-once check.
 //
-// THE MARKER'S STRENGTH IS THE SELECTION'S (gui::curveStrength): the fill and the ring
-// both take the channel's strength, so each of these claims is measured in a pass where
-// the marker is STRONG enough to read - the no-selection pass shows every key dimmed at
-// kUnselectedAlpha (still tinted by its own channel, but not the undimmed token), and the
-// two selection passes each put one channel in play, where its markers are the opaque
-// tokens: the channel's own colour, or theme::Graph::selected() for the key itself and
-// its ring. See checkKeys for which claim is read where, and the file header's item 3/5.
+// THE MARKER'S STRENGTH IS THE SELECTION'S (gui::curveStrength, off the model's own
+// marker flags): the fill and the floor ring both take the channel's strength, so each of
+// these claims is measured in a pass where the marker is STRONG enough to read - the
+// no-selection pass shows every key dimmed at kUnselectedAlpha (still tinted by its own
+// channel, but not the undimmed token), and the selection passes put one channel in play,
+// where its markers are the channel's own colour at full strength. The SELECTED marker's
+// own ink is the one that changes (its fill moves toward the keyframe highlight and it
+// gains a detached 1px ring), and it is read from the selection passes: see the state
+// assertions in checkKeys, and assertion 29 for the three states side by side on one key.
 //
 // AND THE MARKER IS NOT THE PICK AREA (the model's visual/hit split). Three
 // measurements say so, on the geometry the model still publishes for both:
@@ -1181,6 +1275,10 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 //   * the ring pixel's COLOUR is the edge token, not the fill - which is also what
 //     the ring is for: a same-hue key on a same-hue stroke would otherwise vanish
 //     into it.
+// ALL THREE are measured in a pass where that key carries NO selection ring (see the
+// geometry pass selection in checkKeys): the ring is detached BY DESIGN (its ink starts
+// ~5px out), so a width taken through the centre of a ringed marker would measure the
+// marker AND its ring and say nothing about either one's size.
 //
 // The marker's ink width along a line through its centre: the furthest inked step on
 // each side, so the caller can assert both the width AND that the ink is centred.
@@ -1202,22 +1300,73 @@ int inkWidthThrough(
     return negative + positive + 1;
 }
 
-// 3: the key markers, in BOTH states the emphasis decision has.
+// The pixel carrying the DETACHED ring's ink, out of the two rows a 1px stroke at
+// ctrl::graph::kKeyDotRadius + gui::kKeyRingOffsetPx can land in, read on the VERTICAL
+// axis (a marker sits on its own curve, so the horizontal neighbour of a key pixel is the
+// stroke, while the row below/above it is clear).
 //
-// The marker's fill and ring take the same strength as their curve (gui::curveStrength):
-// a channel that owns a SELECTED key is drawn at full strength, every other channel is
-// dimmed to kUnselectedAlpha, and with an EMPTY selection every channel is dimmed. The
-// no-selection pass (`aRendered`) therefore shows the dimmed state of every key, and the
-// two selection passes (`aFirstSelected`/`aSecondSelected`) each put one channel in play,
-// so every key can also be read at full strength. All three render the SAME model with the
-// same invalid focus, so the selection is the only difference between them.
+// WHY TWO ROWS AND NOT ONE. ImGui's AddCircle strokes a POLYLINE of few segments (its own
+// auto-segment count for this radius is single digits), so the drawn band is centred on the
+// CHORD, which sits up to ~0.6px inside the nominal radius depending on where the probe's
+// angle falls between two vertices - and the band is 1px wide in the ink plus its AA. A
+// single-row probe that assumed the exact nominal radius would read the clearance between
+// the stroke's chord and its neighbour and could come back with 25% coverage of the ink
+// (MEASURED: the old single-step probe read rgb=#953c95, a sleeve-and-floor blend, where
+// the stroke's own ink is #f5f5f5-family). The reading therefore takes the stronger of the
+// two rows - which is the ring's own ink if the ring is there at all - and the claims built
+// on it are about WHICH TOKEN that ink is, never about one nominal pixel.
+//
+// The pixel is reported in aPixel so a failure can name it.
+QColor detachedRingInk(const QImage& aImage, const QPoint& aCentre, QPoint& aPixel) {
+    const int first = int(std::lround(double(ctrl::graph::kKeyDotRadius) + double(gui::kKeyRingOffsetPx))); // 6
+    const QPoint rows[2] = {
+        QPoint(aCentre.x(), aCentre.y() - first), QPoint(aCentre.x(), aCentre.y() - first - 1)
+    };
+    aPixel = rows[0];
+    QColor best = pixelAt(aImage, rows[0].x(), rows[0].y());
+    int bestDistance = clearDistance(best);
+    const QColor beyond = pixelAt(aImage, rows[1].x(), rows[1].y());
+    if (clearDistance(beyond) > bestDistance) {
+        best = beyond;
+        aPixel = rows[1];
+    }
+    return best;
+}
+
+// 3: the key markers, in BOTH states the emphasis decision has, plus the two the marker
+// rule adds.
+//
+// THE EMPHASIS PAIR. The marker's fill and floor ring take the same strength as their curve
+// (gui::curveStrength): a channel that owns a SELECTED marker - or the same key on a
+// sibling channel - is drawn at full strength, every other channel is dimmed to
+// kUnselectedAlpha, and with an EMPTY selection every channel is dimmed. The no-selection
+// pass (`aRendered`) therefore shows the dimmed state of every key, and the three
+// selection passes each put one channel in play, so every key can also be read at full
+// strength. All of them render the SAME model (a hand-built copy with the marker flags
+// set: this file has no editor) with the same invalid focus, so the flags are the only
+// difference between them.
+//
+// THE GEOMETRIC PASS, and why there are THREE selection passes. These are:
+//   * `aFirstSelected`  - the first curve's first key selected;
+//   * `aSecondSelected` - the second curve's first key selected;
+//   * `aSelectedLast`   - BOTH curves' LAST key selected.
+// The size, the centring and the corner claims are read in the pass where the key under
+// test is IN PLAY and UNRINGED: the first key of a curve is unringed in `aSelectedLast`
+// (its curve is in play because its last key is selected) and every later key is unringed
+// in its own curve's pass. Without that third pass the first key of each curve would only
+// ever be measured with its selection ring on - and the ring's ink reaches 7.65px from the
+// centre, past the hit square's own corners.
 bool checkKeys(
     const Rendered& aRendered, const Rendered& aFirstSelected, const Rendered& aSecondSelected,
-    const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
+    const Rendered& aSelectedLast, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
 ) {
     REQUIRE(aModel.curves.size() == 2, "precondition: the key assertion needs the two curves of the full model");
     const QColor colourA = aTheme.keyColor(aModel.curves.at(0).channel.type());
     const QColor colourB = aTheme.keyColor(aModel.curves.at(1).channel.type());
+    // THE KEYFRAME HIGHLIGHT, as this layer reads it: theme::Graph::axisText(), the
+    // palette's own brightest panel ink (see the marker rule in ImGuiOverlay.cpp for why
+    // the mock's literal white is not used).
+    const QColor highlight = aTheme.axisText();
     REQUIRE(
         colourDistance(colourA, colourB) > kFillTol,
         "precondition: the two channels' key colours are indistinguishable (rgb=%s and rgb=%s, distance %d)",
@@ -1229,17 +1378,18 @@ bool checkKeys(
         "precondition: a key colour is not distinguishable from theme::Graph::keyEdge() rgb=%s",
         hex(aTheme.keyEdge()).c_str()
     );
-    // The selected marker's ring pixel is read RELATIVELY (see the ring assertions below):
-    // it is a 1px ANTIALIASED stroke, so it is a partial-coverage blend and never the token
-    // itself, and the claim is which token it is made of. That reading needs the two tokens
-    // it is compared against - theme::Graph::selected() and theme::Graph::keyEdge() - to be
-    // far enough apart for a fringe-sized blend to name one of them.
+    // The markers' state ink is read RELATIVELY (see the state assertions below): a 1px
+    // ANTIALIASED ring is a partial-coverage blend and never the token itself, and the
+    // claims are which token a pixel is made of and which way a fill moved. That reading
+    // needs the tokens it compares to be far enough apart for a fringe-sized blend to name
+    // one of them - the keyframe highlight, the floor ring and the two channel colours.
     REQUIRE(
-        colourDistance(aTheme.selected(), aTheme.keyEdge()) > 2 * kFillTol,
-        "precondition: theme::Graph::selected() rgb=%s is not distinguishable from theme::Graph::keyEdge() rgb=%s"
-        " (distance %d <= %d): a blended selected ring pixel could not be read against them",
-        hex(aTheme.selected()).c_str(), hex(aTheme.keyEdge()).c_str(),
-        colourDistance(aTheme.selected(), aTheme.keyEdge()), 2 * kFillTol
+        colourDistance(highlight, aTheme.keyEdge()) > 2 * kFillTol
+            && colourDistance(highlight, colourA) > 2 * kFillTol
+            && colourDistance(highlight, colourB) > 2 * kFillTol,
+        "precondition: the keyframe highlight rgb=%s is not distinguishable from keyEdge rgb=%s or the key"
+        " colours rgb=%s/rgb=%s: a blended marker pixel could not be read against them",
+        hex(highlight).c_str(), hex(aTheme.keyEdge()).c_str(), hex(colourA).c_str(), hex(colourB).c_str()
     );
 
     // The marker's own two bounds, from the constant the drawing layer uses:
@@ -1264,6 +1414,12 @@ bool checkKeys(
             "precondition: a curve's keyDots/keyFrames are not parallel to its keys (%d/%d/%d)",
             int(curve.keys.size()), int(curve.keyDots.size()), int(curve.keyFrames.size())
         );
+        REQUIRE(
+            curve.keySelected.size() == curve.keyDots.size()
+                && curve.keySiblingSelected.size() == curve.keyDots.size(),
+            "precondition: a curve's marker state is not parallel to its keyDots (%d/%d/%d)",
+            int(curve.keyDots.size()), int(curve.keySelected.size()), int(curve.keySiblingSelected.size())
+        );
         for (int i = 0; i < curve.keyDots.size(); ++i) {
             const QPointF& dot = curve.keyDots.at(i);
             const QRect& hit = curve.keys.at(i);
@@ -1284,19 +1440,27 @@ bool checkKeys(
             const QPoint ringPixel(centre.x() + ringStep, centre.y());
             const QColor ring = pixelAt(aRendered.image, ringPixel.x(), ringPixel.y());
             // ...and the full-strength state, from the pass that puts this key's channel
-            // in play. Every geometric claim below (the marker's size, its centring, the
-            // clear hit-square corners) is measured THERE, where the marker is opaque -
-            // which is what those numbers were measured at.
+            // in play.
             const QColor inPlayInner = pixelAt(inPlay.image, centre.x(), centre.y());
             const QColor inPlayRing = pixelAt(inPlay.image, ringPixel.x(), ringPixel.y());
             const bool selectedInPlay = int(dot.x()) == selectedX;
+            // THE DETACHED RING's own reading (the outermost state ink), out of the two rows
+            // a 1px stroke at that radius can land in - see detachedRingInk for why one
+            // nominal pixel is not enough. The probe is VERTICAL: the marker sits on its
+            // curve, so the pixel 6-7 columns to its right lands on the stroke itself, while
+            // 6-7 ROWS away is clear of a stroke that can only reach 2px from its centreline.
+            QPoint outerRingPixel;
+            const QColor inPlayOuterRing = detachedRingInk(inPlay.image, centre, outerRingPixel);
+            // THE GEOMETRIC PASS for this key: its curve in play and this marker UNRINGED
+            // (see checkKeys' comment) - the pass its size, centring and corners are read in.
+            const Rendered& geometric = (i == 0) ? aSelectedLast : inPlay;
 
             int negX = 0;
             int posX = 0;
             int negY = 0;
             int posY = 0;
-            const int widthX = inkWidthThrough(inPlay.image, centre, 1, 0, 12, negX, posX);
-            const int widthY = inkWidthThrough(inPlay.image, centre, 0, 1, 12, negY, posY);
+            const int widthX = inkWidthThrough(geometric.image, centre, 1, 0, 12, negX, posX);
+            const int widthY = inkWidthThrough(geometric.image, centre, 0, 1, 12, negY, posY);
             // THE HIT SQUARE'S CORNERS. A key sits ON its curve, so a corner within the
             // stroke's reach of the polyline carries the CURVE's ink and says nothing
             // about the marker: those corners are excluded, and the ones the model's own
@@ -1331,7 +1495,7 @@ bool checkKeys(
                     continue; // the curve inks there; the marker cannot be read
                 }
                 ++cornerProbed;
-                if (clearDistance(pixelAt(inPlay.image, corner.x(), corner.y())) > kInkMin) {
+                if (clearDistance(pixelAt(geometric.image, corner.x(), corner.y())) > kInkMin) {
                     ++cornerInk;
                 }
             }
@@ -1346,15 +1510,19 @@ bool checkKeys(
                 "MEASURED key channel_type=%d dot=(%d,%d) hit_rect=(%d,%d %dx%d) centre_rgb=%s keyColor=%s d=%d"
                 " other_keyColor=%s d=%d ring=(%d,%d) ring_rgb=%s keyEdge=%s d_ring_to_edge=%d d_ring_to_fill=%d"
                 " width_x=%d (%d/%d) width_y=%d (%d/%d) dot_radius=%d ring_step=%d hit_corner_ink=%d"
-                " selected=%d in_play_centre_rgb=%s d_in_play=%d in_play_ring_rgb=%s d_in_play_ring=%d\n",
+                " selected=%d in_play_centre_rgb=%s d_in_play_to_fill=%d d_in_play_to_highlight=%d"
+                " in_play_ring_rgb=%s d_in_play_ring_to_edge=%d outer_ring=(%d,%d) outer_ring_rgb=%s"
+                " d_outer_to_highlight=%d d_outer_to_fill=%d\n",
                 int(curve.channel.type()), centre.x(), centre.y(), hit.left(), hit.top(), hit.width(),
                 hit.height(), hex(inner).c_str(), hex(own).c_str(), colourDistance(inner, own), hex(other).c_str(),
                 colourDistance(inner, other), ringPixel.x(), ringPixel.y(), hex(ring).c_str(),
                 hex(aTheme.keyEdge()).c_str(), colourDistance(ring, aTheme.keyEdge()),
                 colourDistance(ring, own), widthX, negX, posX, widthY, negY, posY, dotRadius, ringStep, cornerInk,
-                int(selectedInPlay), hex(inPlayInner).c_str(),
-                colourDistance(inPlayInner, selectedInPlay ? aTheme.selected() : own), hex(inPlayRing).c_str(),
-                colourDistance(inPlayRing, selectedInPlay ? aTheme.selected() : aTheme.keyEdge())
+                int(selectedInPlay), hex(inPlayInner).c_str(), colourDistance(inPlayInner, own),
+                colourDistance(inPlayInner, highlight), hex(inPlayRing).c_str(),
+                colourDistance(inPlayRing, aTheme.keyEdge()), outerRingPixel.x(), outerRingPixel.y(),
+                hex(inPlayOuterRing).c_str(), colourDistance(inPlayOuterRing, highlight),
+                colourDistance(inPlayOuterRing, own)
             );
 
             REQUIRE(
@@ -1381,17 +1549,24 @@ bool checkKeys(
                 hex(inner).c_str(), hex(own).c_str(), int(curve.channel.type()), colourDistance(inner, own), kFillTol
             );
             // FULL STRENGTH (the pass that puts this key's channel in play): the marker is
-            // opaque, so the pixel IS the token the emphasis decision gives it - the
-            // selected marker is theme::Graph::selected(), every other marker of a channel
-            // in play is the channel's own colour (the equality this assertion always
-            // wanted, read where the design now draws that ink).
+            // opaque, so the pixel IS the ink the marker rule gives it - the channel's own
+            // colour for a marker with no state, or the channel colour mixed toward the
+            // keyframe highlight for the marker this pass selects.
             if (selectedInPlay) {
+                // "THE FILL BRIGHTENS TOWARD THE KEYFRAME HIGHLIGHT" (index.html:279-280), read
+                // as the relation it is: the selected marker's centre is NEARER the highlight
+                // than its own channel colour, which is exactly what mixing toward the
+                // highlight by any amount past a half does (the drawing layer's 0.6), and what
+                // a marker still painted in the channel's colour fails. The old ink - the
+                // brand accent fill - is gone with the design's "no accent ring", so the
+                // assertion is not an equality to a token any more: it is the direction of the
+                // shift, on a fully covered pixel.
                 REQUIRE(
-                    colourDistance(inPlayInner, aTheme.selected()) <= kFillTol,
-                    "the selected key's centre rgb=%s is not theme::Graph::selected() rgb=%s (distance %d > %d):"
-                    " a selected marker is not drawn in the selected token",
-                    hex(inPlayInner).c_str(), hex(aTheme.selected()).c_str(),
-                    colourDistance(inPlayInner, aTheme.selected()), kFillTol
+                    colourDistance(inPlayInner, highlight) < colourDistance(inPlayInner, own),
+                    "the selected key's centre rgb=%s is not nearer the keyframe highlight rgb=%s than its"
+                    " channel's colour rgb=%s (%d against %d): a selected marker's fill does not brighten",
+                    hex(inPlayInner).c_str(), hex(highlight).c_str(), hex(own).c_str(),
+                    colourDistance(inPlayInner, highlight), colourDistance(inPlayInner, own)
                 );
             } else {
                 REQUIRE(
@@ -1403,49 +1578,57 @@ bool checkKeys(
                     colourDistance(inPlayInner, own), kFillTol
                 );
             }
-            // The RING: the pixel one ring-width inside the marker's edge is nearer
-            // theme::Graph::keyEdge() than the key's own fill - the 1px circle stroke
-            // sits at radius-1..radius, so that pixel is mostly the edge colour over
-            // the fill's own inner part. "Nearer the edge than the fill" is the whole
-            // claim (a missing ring would make it pure fill, which fails it), and it is
-            // asserted in the full-strength pass, where the ring's own alpha is the token's
-            // (at a DIMMED strength the ring cannot out-weigh the fully covered body pixel,
-            // so the same claim does not hold there - see the directional one below).
+            // The FLOOR RING (the palette's own, drawn for every marker whether or not it is
+            // in a state): the pixel one ring-width inside the marker's edge is nearer
+            // theme::Graph::keyEdge() than the key's own colour - the 1px circle stroke sits
+            // at radius-1..radius, so that pixel is mostly the edge colour over the fill's own
+            // inner part. "Nearer the edge than the fill" is the whole claim (a missing ring
+            // would make it pure fill, which fails it), and it holds in BOTH states now: the
+            // selected marker's fill is the highlight mix rather than the accent, and the
+            // edge still outweighs it at that pixel (the drawing layer draws the floor ring
+            // first, and the state ink is detached - it starts 5px out, past this probe).
             REQUIRE(
                 clearDistance(ring) > kInkMin,
                 "the key marker at (%d,%d) has no ink at its ring pixel (%d,%d)", centre.x(), centre.y(),
                 ringPixel.x(), ringPixel.y()
             );
-            if (selectedInPlay) {
-                // A selected marker is ringed in the selected token too (drawPanel rings it
-                // with the same colour it fills it). The ring is a 1px stroke at a
-                // fractional radius, so that pixel is a PARTIAL-COVERAGE blend of the token
-                // with what is behind it - a blend cannot be an equality, and for a selected
-                // marker the ring and the body are the SAME colour, so "some ink is on this
-                // pixel at all" is the ink bar above. What the pixel does say is WHICH token
-                // it is made of: it is nearer theme::Graph::selected() than
-                // theme::Graph::keyEdge() - the token an UNselected marker's ring paints
-                // there, and the one this marker's ring would carry if the selection stopped
-                // reaching it (the precondition above keeps the two tokens far enough apart
-                // for a fringe-sized blend to name one of them). Both distances are in the
-                // failure message.
-                const int toSelected = colourDistance(inPlayRing, aTheme.selected());
+            {
                 const int toEdge = colourDistance(inPlayRing, aTheme.keyEdge());
+                const int toFill = colourDistance(inPlayRing, own);
                 REQUIRE(
-                    toSelected < toEdge,
-                    "the selected key's ring pixel rgb=%s is not nearer theme::Graph::selected() rgb=%s than"
-                    " theme::Graph::keyEdge() rgb=%s (%d against %d): a selected marker's ring is not the selected"
-                    " token",
-                    hex(inPlayRing).c_str(), hex(aTheme.selected()).c_str(), hex(aTheme.keyEdge()).c_str(),
-                    toSelected, toEdge
+                    toEdge < toFill,
+                    "the key's ring pixel rgb=%s (selected=%d) is nearer its own fill rgb=%s than"
+                    " theme::Graph::keyEdge() rgb=%s (%d against %d): the marker has no floor edge ring",
+                    hex(inPlayRing).c_str(), int(selectedInPlay), hex(own).c_str(), hex(aTheme.keyEdge()).c_str(),
+                    toFill, toEdge
+                );
+            }
+            // THE DETACHED RING - the marker rule's own ink, and the pair this assertion is
+            // about: the pass that SELECTS a key paints a ring at the ring radius (the
+            // highlight's 1px ink over its dark sleeve), and the pass that puts the same
+            // channel in play without selecting THAT key paints NOTHING there (the marker's
+            // own ink ends ~2px short of these rows). So the ring is the selection's mark
+            // and not a bigger marker.
+            if (selectedInPlay) {
+                REQUIRE(
+                    clearDistance(inPlayOuterRing) > kInkMin,
+                    "the selected key at (%d,%d) has no ink at the ring probe (%d,%d): a selected marker must"
+                    " carry its 1px ring %.1fpx clear of the marker",
+                    centre.x(), centre.y(), outerRingPixel.x(), outerRingPixel.y(), double(gui::kKeyRingOffsetPx)
+                );
+                REQUIRE(
+                    colourDistance(inPlayOuterRing, highlight) < colourDistance(inPlayOuterRing, own),
+                    "the selected key's ring pixel rgb=%s is not nearer the keyframe highlight rgb=%s than its"
+                    " channel's colour rgb=%s (%d against %d): the selection ring is not the highlight ink",
+                    hex(inPlayOuterRing).c_str(), hex(highlight).c_str(), hex(own).c_str(),
+                    colourDistance(inPlayOuterRing, highlight), colourDistance(inPlayOuterRing, own)
                 );
             } else {
                 REQUIRE(
-                    colourDistance(inPlayRing, aTheme.keyEdge()) < colourDistance(inPlayRing, own),
-                    "the key ring pixel rgb=%s is nearer its own fill rgb=%s than theme::Graph::keyEdge() rgb=%s"
-                    " (%d against %d): the marker has no edge ring",
-                    hex(inPlayRing).c_str(), hex(own).c_str(), hex(aTheme.keyEdge()).c_str(),
-                    colourDistance(inPlayRing, own), colourDistance(inPlayRing, aTheme.keyEdge())
+                    clearDistance(inPlayOuterRing) <= kInkMin,
+                    "the key at (%d,%d) paints rgb=%s at the ring probe (%d,%d) although it is NOT selected:"
+                    " only a selected marker carries the 1px ring",
+                    centre.x(), centre.y(), hex(inPlayOuterRing).c_str(), outerRingPixel.x(), outerRingPixel.y()
                 );
             }
             // The ring of a DIMMED marker, where the 1px ring carries the marker's strength
@@ -1512,6 +1695,215 @@ bool checkKeys(
     std::printf(
         "MEASURED key_tint key_colours=%s/%s keys=%d tinted_by_own_channel=%d\n", hex(colourA).c_str(),
         hex(colourB).c_str(), keys, tintedByOwn
+    );
+    return true;
+}
+
+// 29: THE THREE MARKER STATES, side by side on ONE KEY's two components.
+//
+// The model classifies each marker (PanelCurve::keySelected / keySiblingSelected) and
+// gui::drawPanel inks the states. What this asserts is that the three inks are the three
+// the design names, and that they are told apart from each other:
+//
+//   * SELECTED - the fill brightens toward the keyframe highlight AND a 1px ring sits
+//     clear of the marker. Read as: the centre moved TOWARD the highlight against the same
+//     marker's unflagged fill, the ring's probe carries ink, and that ink is nearer the
+//     highlight than the channel's colour.
+//   * SIBLING (not selected, its key selected on the other component) - the FAINT ring,
+//     and a fill that is NOT brightened. Read as: the ring's probe carries ink at the same
+//     radius, that ink is clearly NOT the selection's (farther from the highlight than the
+//     selected marker's ring pixel, and NEARER the channel's own hue), it is fainter (nearer
+//     the clear colour) than the selection ring, and the centre is still the channel's own
+//     colour exactly - the "no brighter fill" half of the mock's rule.
+//   * HOVERED - the fill brightens, no ring. Read as: the centre moved toward the highlight
+//     against the unflagged pass, and the ring's probe carries NOTHING.
+//
+// The colour of the ring is also why this needs a fixture whose two curves are ONE key TYPE's
+// two components: a sibling is another component of the same key, so both markers carry the
+// same hue (the panel colours a channel by KEY TYPE), and "nearer its own hue than the
+// highlight" is a claim about a channel the two curves share.
+bool checkMarkerStates(
+    const Rendered& aSelected, const Rendered& aHovered, const Rendered& aPlain,
+    const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
+) {
+    REQUIRE(aModel.curves.size() == 2, "precondition: the marker assertion needs the two components of one key");
+    REQUIRE(aModel.curves.at(0).keySelected.size() == 1 && aModel.curves.at(1).keySelected.size() == 1,
+            "precondition: the marker fixture must carry one key per component");
+    REQUIRE(aModel.curves.at(0).keySelected.at(0) && !aModel.curves.at(1).keySelected.at(0)
+                && aModel.curves.at(1).keySiblingSelected.at(0),
+            "precondition: the model this reads is not the selected/sibling state");
+
+    const QColor hue = aTheme.keyColor(kTypeA);
+    const QColor highlight = aTheme.axisText();
+    REQUIRE(hue == aModel.curves.at(0).color && hue == aModel.curves.at(1).color,
+            "precondition: the fixture's two components do not carry their type's own hue");
+    REQUIRE(
+        colourDistance(highlight, hue) > 2 * kFillTol,
+        "precondition: the keyframe highlight rgb=%s is not distinguishable from the channel hue rgb=%s",
+        hex(highlight).c_str(), hex(hue).c_str()
+    );
+
+    // The detached ring's own reading, out of the two rows a 1px stroke at that radius can
+    // land in (see detachedRingInk), for the three passes this assertion compares.
+    QColor ringPixel[2];
+    QColor plainRing[2];
+    QColor hoverRing[2];
+    QColor centrePixel[2];
+    QColor plainCentre[2];
+    QColor hoverCentre[2];
+    QPoint ringProbe[2];
+    for (int c = 0; c < 2; ++c) {
+        const QPointF& dot = aModel.curves.at(c).keyDots.at(0);
+        const QPoint centre(int(dot.x()), int(dot.y()));
+        centrePixel[c] = pixelAt(aSelected.image, centre.x(), centre.y());
+        plainCentre[c] = pixelAt(aPlain.image, centre.x(), centre.y());
+        hoverCentre[c] = pixelAt(aHovered.image, centre.x(), centre.y());
+        ringPixel[c] = detachedRingInk(aSelected.image, centre, ringProbe[c]);
+        QPoint ignored;
+        plainRing[c] = detachedRingInk(aPlain.image, centre, ignored);
+        hoverRing[c] = detachedRingInk(aHovered.image, centre, ignored);
+        std::printf(
+            "MEASURED marker_state curve=%d dot=(%d,%d) ring_probe=(%d,%d) centre_rgb=%s plain_centre_rgb=%s"
+            " hover_centre_rgb=%s ring_rgb=%s plain_ring_rgb=%s hover_ring_rgb=%s d_centre_to_highlight=%d"
+            " d_plain_to_highlight=%d d_hover_to_highlight=%d d_ring_to_highlight=%d d_ring_to_hue=%d"
+            " d_ring_to_clear=%d\n",
+            c, centre.x(), centre.y(), ringProbe[c].x(), ringProbe[c].y(), hex(centrePixel[c]).c_str(),
+            hex(plainCentre[c]).c_str(), hex(hoverCentre[c]).c_str(), hex(ringPixel[c]).c_str(),
+            hex(plainRing[c]).c_str(), hex(hoverRing[c]).c_str(), colourDistance(centrePixel[c], highlight),
+            colourDistance(plainCentre[c], highlight), colourDistance(hoverCentre[c], highlight),
+            colourDistance(ringPixel[c], highlight), colourDistance(ringPixel[c], hue), clearDistance(ringPixel[c])
+        );
+        // The two surrounding passes are the pair the state claims rest on: NEITHER of them
+        // may put ink at the ring radius, and the unflagged pass is what the fills are
+        // compared against.
+        REQUIRE(
+            clearDistance(plainRing[c]) <= kInkMin && clearDistance(hoverRing[c]) <= kInkMin,
+            "precondition: the marker fixture inks the ring probe (%d,%d) with no state set: the probe is not"
+            " reading the state rings alone",
+            ringProbe[c].x(), ringProbe[c].y()
+        );
+    }
+
+    // ---- THE SELECTED MARKER (curve 0): brightened fill, and a ring in the highlight ink.
+    {
+        const int toHighlight = colourDistance(centrePixel[0], highlight);
+        const int plainToHighlight = colourDistance(plainCentre[0], highlight);
+        REQUIRE(
+            toHighlight < plainToHighlight,
+            "the SELECTED marker's centre rgb=%s is not nearer the keyframe highlight rgb=%s than the same"
+            " marker unflagged (%d against %d): a selected marker's fill does not brighten",
+            hex(centrePixel[0]).c_str(), hex(highlight).c_str(), toHighlight, plainToHighlight
+        );
+        REQUIRE(
+            clearDistance(ringPixel[0]) > kInkMin,
+            "the SELECTED marker paints nothing at its ring probe: rgb=%s", hex(ringPixel[0]).c_str()
+        );
+        REQUIRE(
+            colourDistance(ringPixel[0], highlight) < colourDistance(ringPixel[0], hue),
+            "the SELECTED marker's ring pixel rgb=%s is not nearer the keyframe highlight rgb=%s than its"
+            " channel's hue rgb=%s (%d against %d)",
+            hex(ringPixel[0]).c_str(), hex(highlight).c_str(), hex(hue).c_str(),
+            colourDistance(ringPixel[0], highlight), colourDistance(ringPixel[0], hue)
+        );
+    }
+
+    // ---- THE SIBLING MARKER (curve 1): a faint ring that is NOT the selection's, and a fill
+    // that is NOT brightened.
+    {
+        REQUIRE(
+            clearDistance(ringPixel[1]) > kInkMin,
+            "the SIBLING marker paints nothing at its ring probe: rgb=%s - a key in play must keep its faint"
+            " ring",
+            hex(ringPixel[1]).c_str()
+        );
+        REQUIRE(
+            colourDistance(ringPixel[1], highlight) > colourDistance(ringPixel[0], highlight),
+            "the SIBLING marker's ring pixel rgb=%s is as near the keyframe highlight rgb=%s as the SELECTED"
+            " marker's ring is (%d against %d): the faint ring took the selection's ink",
+            hex(ringPixel[1]).c_str(), hex(highlight).c_str(), colourDistance(ringPixel[1], highlight),
+            colourDistance(ringPixel[0], highlight)
+        );
+        REQUIRE(
+            colourDistance(ringPixel[1], hue) < colourDistance(ringPixel[1], highlight),
+            "the SIBLING marker's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
+            " highlight rgb=%s (%d against %d)",
+            hex(ringPixel[1]).c_str(), hex(hue).c_str(), hex(highlight).c_str(),
+            colourDistance(ringPixel[1], hue), colourDistance(ringPixel[1], highlight)
+        );
+        REQUIRE(
+            clearDistance(ringPixel[1]) < clearDistance(ringPixel[0]),
+            "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
+            " marker's (rgb=%s, %d): the two rings are the same ink",
+            hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
+            clearDistance(ringPixel[0])
+        );
+        REQUIRE(
+            colourDistance(centrePixel[1], hue) <= kFillTol,
+            "the SIBLING marker's centre rgb=%s is not its channel's hue rgb=%s (distance %d > %d): a marker"
+            " whose key is selected elsewhere keeps the unselected fill",
+            hex(centrePixel[1]).c_str(), hex(hue).c_str(), colourDistance(centrePixel[1], hue), kFillTol
+        );
+        REQUIRE(
+            colourDistance(centrePixel[1], hue) < colourDistance(centrePixel[0], hue),
+            "the SIBLING marker's fill moved as far from its channel's hue as the SELECTED one's did: only the"
+            " selected marker's fill brightens"
+        );
+    }
+
+    // ---- THE HOVERED MARKER (curve 0, unflagged model, the pointer on its dot): the fill
+    // brightens and NOTHING is added at the ring radius.
+    {
+        const int toHighlight = colourDistance(hoverCentre[0], highlight);
+        const int plainToHighlight = colourDistance(plainCentre[0], highlight);
+        REQUIRE(
+            toHighlight < plainToHighlight,
+            "the HOVERED marker's centre rgb=%s is not nearer the keyframe highlight rgb=%s than it is with the"
+            " pointer elsewhere (%d against %d): a hovered marker's fill does not brighten",
+            hex(hoverCentre[0]).c_str(), hex(highlight).c_str(), toHighlight, plainToHighlight
+        );
+        REQUIRE(
+            clearDistance(hoverRing[0]) <= kInkMin,
+            "the HOVERED marker painted a ring: a hover brightens the fill and adds no ring (rgb=%s at the"
+            " ring probe (%d,%d))",
+            hex(hoverRing[0]).c_str(), ringProbe[0].x(), ringProbe[0].y()
+        );
+    }
+
+    return true;
+}
+
+// 30: THE DRAG READOUT - the key move's two numbers, at the pointer, and NOTHING when no
+// move is in flight.
+//
+// The numbers are the MODEL's (PanelKeyDrag, from the editor's own gesture state), and what
+// this asserts is that they reach the screen at the pointer and only then: the same model,
+// the same pointer and the same invalid focus, with `live` the only difference between the
+// two passes. The box read is the glyphs' own: the text starts kReadoutGapPx right of and
+// below the pointer, and the probe is generous in width so a font difference cannot move the
+// claim off the ink.
+bool checkDragReadout(const Rendered& aDrawn, const Rendered& aStill, const ImVec2& aPointer) {
+    const QRect probe(
+        int(aPointer.x) + gui::kReadoutGapPx - 2, int(aPointer.y) + gui::kReadoutGapPx - 2,
+        200, 30
+    );
+    const int drawnInk = inkCount(aDrawn.image, probe);
+    const int stillInk = inkCount(aStill.image, probe);
+    std::printf(
+        "MEASURED drag_readout pointer=(%.0f,%.0f) probe=(%d,%d %dx%d) ink_live=%d ink_still=%d\n",
+        double(aPointer.x), double(aPointer.y), probe.x(), probe.y(), probe.width(), probe.height(), drawnInk,
+        stillInk
+    );
+    REQUIRE(
+        drawnInk > 0,
+        "a key move in flight painted nothing in the %dx%d box at the pointer (%d,%d): the drag's numbers are"
+        " not drawn",
+        probe.width(), probe.height(), probe.x(), probe.y()
+    );
+    REQUIRE(
+        stillInk == 0,
+        "the panel painted %d pixels in the readout's box with NO key move in flight: the readout must be"
+        " nothing at all while no drag is in hand",
+        stillInk
     );
     return true;
 }
@@ -5120,10 +5512,13 @@ int main(int argc, char** argv) {
     inkFull.curves[1].keys = {QRect(295, 195, 2 * ctrl::graph::kKeyRadius, 2 * ctrl::graph::kKeyRadius)};
     inkFull.curves[1].keyDots = {QPointF(300, 200)};
     inkFull.curves[1].keyFrames = {core::Frame(1)};
-    gui::PanelFocus inkFullFocus;
-    inkFullFocus.valid = false; // the handles are the focus's; the emphasis is the selection's
-    inkFullFocus.selectedKeys = {{kTypeA, 300}};
-    const Rendered inkCoverageFull = renderPass(inkFull, palette, inkFullFocus, "curve_ink_coverage_full");
+    // The marker STATE is the model's now (PanelCurve::keySelected), so the key this
+    // addition carries is named SELECTED there - with no sibling, which is the single
+    // marker of a one-component key. The focus stays invalid for the same reason as
+    // `inkCoverage`'s: the handles are the focus's, the emphasis is the marker flags'.
+    inkFull.curves[1].keySelected = {true};
+    inkFull.curves[1].keySiblingSelected = {false};
+    const Rendered inkCoverageFull = renderPass(inkFull, palette, focus, "curve_ink_coverage_full");
     // The same developer aid the panel pass gets, for the two stroke geometries: the ink
     // model's own frame, per curve, through the model's geometry.
     dumpInkCrops(inkFringe, ink, QStringLiteral("ink_before"));
@@ -5174,27 +5569,104 @@ int main(int argc, char** argv) {
         ImVec2(float(pointerDot.x()), float(pointerDot.y()))
     );
 
-    // THE EMPHASIS PASSES. A channel is at full strength when it OWNS a selected key
-    // (gui::curveStrength), so each of these is `rendered`'s SAME model and SAME invalid
-    // focus with ONE key named as selected - the selection is the only difference, and
-    // the invalid focus keeps the handles drawn exactly as `rendered` draws them. One
-    // pass per channel, so every key marker has a pass in which its own channel is in
-    // play (see checkKeys); the selection names that curve's first key, the identity the
-    // panel matches by (ctrl::graph::Channel::type() + the marker's own pixel x).
+    // THE EMPHASIS PASSES. A channel is at full strength when it OWNS a selected marker,
+    // or the same KEY is selected on a sibling channel (gui::curveStrength, off the
+    // model's own PanelCurve::keySelected / keySiblingSelected). So each of these is
+    // `rendered`'s SAME model and SAME invalid focus with ONE of its curves' first marker
+    // flagged SELECTED - the flag is the only difference, and the invalid focus keeps the
+    // handles drawn exactly as `rendered` draws them. One pass per curve, so every key
+    // marker has a pass in which its own channel is in play (see checkKeys).
+    //
+    // THE FLAGS ARE THE SAME TWO VECTORS THE EDITOR FILLS (PanelCurve::keySelected is
+    // ctrl::GraphEditor::isMarkerSelected per key), which is why this file can drive them
+    // by hand: it has no editor (see the file header), and the model's contract is that a
+    // dot's state travels with the dot.
     if (full.curves.size() < 2 || full.curves.at(0).keyDots.isEmpty() || full.curves.at(1).keyDots.isEmpty()) {
         std::printf("FAIL: the full model publishes no key markers to select\n");
         return 1;
     }
-    const auto selectedKeyFocus = [&full](int aCurve) {
-        gui::PanelFocus selection;
-        selection.valid = false; // the focus is `rendered`'s; only the selection differs
-        selection.selectedKeys = {
-            {full.curves.at(aCurve).channel.type(), int(full.curves.at(aCurve).keyDots.at(0).x())}
-        };
-        return selection;
+    const auto selectedMarkerModel = [&full](int aCurve) {
+        gui::GraphPanelModel model = full;
+        gui::PanelCurve& curve = model.curves[aCurve];
+        // Every key of every curve starts unflagged (the fixture publishes none), and the
+        // one marker this pass is about is the curve's first.
+        for (gui::PanelCurve& each : model.curves) {
+            each.keySelected.fill(false, int(each.keyDots.size()));
+            each.keySiblingSelected.fill(false, int(each.keyDots.size()));
+        }
+        curve.keySelected[0] = true;
+        return model;
     };
-    const Rendered selectedFirst = renderPass(full, palette, selectedKeyFocus(0), "full_model_selected_first_curve");
-    const Rendered selectedSecond = renderPass(full, palette, selectedKeyFocus(1), "full_model_selected_second_curve");
+    const Rendered selectedFirst = renderPass(
+        selectedMarkerModel(0), palette, focus, "full_model_selected_first_curve"
+    );
+    const Rendered selectedSecond = renderPass(
+        selectedMarkerModel(1), palette, focus, "full_model_selected_second_curve"
+    );
+    // THE GEOMETRIC PASS: both curves' LAST key selected, so each curve is in play with its
+    // first marker UNRINGED - the state the marker's size, centring and hit-square corners
+    // are measured in (see checkKeys). Without it the first key of each curve could only be
+    // measured with its selection ring on, and the ring's ink sits where the hit square's
+    // corners are.
+    const Rendered selectedLast = renderPass(
+        [&full] {
+            gui::GraphPanelModel model = full;
+            for (gui::PanelCurve& curve : model.curves) {
+                curve.keySelected.fill(false, int(curve.keyDots.size()));
+                curve.keySiblingSelected.fill(false, int(curve.keyDots.size()));
+                if (!curve.keySelected.isEmpty()) {
+                    curve.keySelected.last() = true;
+                }
+            }
+            return model;
+        }(),
+        palette, focus, "full_model_selected_last_curve"
+    );
+
+    // THE THREE MARKER STATES (assertion 29), on the ONE-KEY fixture: the same model, the
+    // same invalid focus, and only the marker flags (and the pointer) differing between the
+    // four passes. `markerSelected` is the editor's own state for "the Move X marker of one
+    // key is selected": that marker selected, the OTHER COMPONENT of the same key in play as
+    // its sibling.
+    //
+    // The two LAYERS are real ObjectNodes (the cheapest concrete one in the tree): the marker
+    // hover is answered by gui::panelKeyAt, which names a key by (node, channel, frame), and a
+    // model whose curves leave `node` null cannot be hovered at all. Nothing renders them -
+    // only their addresses are compared.
+    core::FolderNode markerLayerX(QStringLiteral("A"));
+    core::FolderNode markerLayerY(QStringLiteral("B"));
+    const gui::GraphPanelModel marker = makeMarkerModel(palette, &markerLayerX, &markerLayerY);
+    if (marker.curves.size() != 2 || marker.curves.at(0).keyDots.size() != 1
+        || marker.curves.at(1).keyDots.size() != 1) {
+        std::printf("FAIL: the marker fixture does not publish the two components of one key\n");
+        return 1;
+    }
+    const QPoint markerDot(
+        int(marker.curves.at(0).keyDots.at(0).x()), int(marker.curves.at(0).keyDots.at(0).y())
+    );
+    gui::GraphPanelModel markerSelectedModel = marker;
+    markerSelectedModel.curves[0].keySelected = {true};
+    markerSelectedModel.curves[0].keySiblingSelected = {false};
+    markerSelectedModel.curves[1].keySelected = {false};
+    markerSelectedModel.curves[1].keySiblingSelected = {true};
+    const Rendered markerPlain = renderPass(marker, palette, focus, "marker_plain");
+    const Rendered markerSelected = renderPass(markerSelectedModel, palette, focus, "marker_selected");
+    // The hover pass: the UNFLAGGED model with the pointer on the first marker, so the only
+    // difference from `markerPlain` is io.MousePos.
+    const Rendered markerHover = renderPass(
+        marker, palette, focus, "marker_hover", ImVec2(float(markerDot.x()), float(markerDot.y()))
+    );
+
+    // THE DRAG READOUT (assertion 30): the same fixture with the editor's key-move numbers
+    // published, once live and once not, with the pointer somewhere clear of both curves -
+    // the only difference between the two passes is `keyDrag.live`.
+    gui::GraphPanelModel markerDrag = marker;
+    markerDrag.keyDrag.live = true;
+    markerDrag.keyDrag.frameDelta = 3;
+    markerDrag.keyDrag.valueDelta = -0.25f;
+    const ImVec2 readoutPointer(float(kMarkerX), float(kPlot.top() + 24));
+    const Rendered readoutDrawn = renderPass(markerDrag, palette, focus, "marker_readout", readoutPointer);
+    const Rendered readoutStill = renderPass(marker, palette, focus, "marker_no_readout", readoutPointer);
 
     if (rendered.vtx <= 0) {
         std::printf("FAIL: the full model emitted no vertices at all\n");
@@ -5215,8 +5687,16 @@ int main(int argc, char** argv) {
         std::printf("FAILED: curve stroke\n");
         return 1;
     }
-    if (!checkKeys(rendered, selectedFirst, selectedSecond, full, palette)) {
+    if (!checkKeys(rendered, selectedFirst, selectedSecond, selectedLast, full, palette)) {
         std::printf("FAILED: key squares\n");
+        return 1;
+    }
+    if (!checkMarkerStates(markerSelected, markerHover, markerPlain, markerSelectedModel, palette)) {
+        std::printf("FAILED: the marker states\n");
+        return 1;
+    }
+    if (!checkDragReadout(readoutDrawn, readoutStill, readoutPointer)) {
+        std::printf("FAILED: the drag readout\n");
         return 1;
     }
     if (!checkLabelHalo(rendered, full, palette)) {

@@ -163,6 +163,36 @@ struct PanelCurve {
     // not an index into the curve's own key list, which is exactly the desync a
     // consumer must not be trusted to reconstruct for itself.
     QVector<core::Frame> keyFrames;
+    // THE MARKER STATE of each of those keys, same order and same length as
+    // `keys`/`keyDots`/`keyFrames`: whether THAT marker is selected, and whether the
+    // key it belongs to has a selected SIBLING (another component of it, or the key as
+    // a whole). They are the editor's own two queries, per key, published BESIDE the
+    // geometry they describe so the drawn marker and the state it is drawn in come out
+    // of one call: ctrl::GraphEditor::isMarkerSelected and
+    // hasSelectedSiblingMarker - the SAME pair the editor's press reads to decide what
+    // a selection is, and the same node/type/frame triple `keyFrames` names.
+    //
+    // A CLASSIFICATION, not ink: the model says WHICH of the three states a marker is
+    // in, and the drawing layer decides what each state looks like (see the marker
+    // rule in ctrl/GraphEditor.h's SELECTION note, and gui::drawPanel, which owns the
+    // fill's brightening and both rings). The two flags are NOT mutually exclusive as
+    // the engine answers them - a whole-key entry makes a key's every marker selected
+    // AND every one of them see a sibling - so the states are:
+    //   * SELECTED            : keySelected[i]                          (its own ring)
+    //   * SIBLING IN PLAY     : !keySelected[i] && keySiblingSelected[i] (the faint ring)
+    //   * NEITHER             : !keySelected[i] && !keySiblingSelected[i]
+    // and a consumer that wants the second one to mean "the OTHER component is
+    // selected" must AND the two flags exactly as written here. That composition is
+    // the drawing layer's (it is the "which marker gets which ring" decision); what
+    // the model owes it is the two facts the engine states, unmodified, so a consumer
+    // can also ask the raw question ("is this key half in play?") without it being
+    // pre-chewed.
+    //
+    // A key that publishes no dot (its rect lies entirely outside the plot) publishes
+    // no entry here either, exactly as it publishes no keyFrame: the three vectors are
+    // appended in one step.
+    QVector<bool> keySelected;
+    QVector<bool> keySiblingSelected;
     QVector<PanelHandle> handles; // every segment's tangent handles, in segment order
     QColor color;            // == channels[channelRow].color; the drawing layer paints
                              // this curve's stroke, its key markers' FILL, its chip's
@@ -184,6 +214,36 @@ struct PanelCurve {
 struct PanelLabel {
     QRect rect;
     QString text;
+};
+
+// THE DRAG READOUT: the live numbers of a KEY MOVE in flight, as the editor publishes
+// them. Design section 4's strip row moves them out of the panel's strip and onto the
+// pointer ("the live numbers (Δframe, Δvalue, a tangent's x/y) are drawn at the pointer
+// instead, so the strip stops moving while a drag is in flight"), and this is the
+// key-drag case of that: the frame delta and the value delta, and nothing about a
+// tangent yet.
+//
+// WHY THE NUMBERS COME FROM THE EDITOR AND NOT FROM THE POINTER. The gesture applies
+// a QUANTIZED, REFUSED-STEP-AWARE delta: the frame half moves in whole frames, a
+// destination frame another key owns refuses the WHOLE step (the keys stay where they
+// were while the pointer moved), a Shift-constrained gesture zeroes one axis, and a
+// key's own setter may clamp the value it takes. A readout that differenced two pointer
+// positions would print numbers the document does not have - and would print them
+// during a refused step, when nothing moved at all. So the model publishes the
+// editor's own answers (ctrl::GraphEditor::isMovingKeys / keyMoveFrameDelta /
+// keyMoveValueDelta) and the drawing layer prints them.
+//
+// CLASSIFICATION, NOT INK: where the readout goes (the pointer) and how it is written
+// are the drawing layer's - the model does not know the pointer, and the panel's text
+// ink is the layer's business (see gui::drawPanel). Two behaviours the editor documents
+// are carried through unchanged: `live` is false until the first step is ACCEPTED (an
+// armed press that has not crossed a pixel has no delta to report), and valueDelta is
+// the GESTURE's delta, which a key's own setter may have clamped - one number cannot be
+// every key's outcome, and the readout is not the place to guess.
+struct PanelKeyDrag {
+    bool live = false;     // == ctrl::GraphEditor::isMovingKeys()
+    int frameDelta = 0;    // == keyMoveFrameDelta(), the delta the gesture ACCEPTED
+    float valueDelta = 0.0f; // == keyMoveValueDelta(), the delta it last WROTE
 };
 
 // WHICH FLOOR THE PANEL IS ON - the dock's Graph tab or the fullscreen overlay.
@@ -369,6 +429,13 @@ enum class GraphPanelHost {
 //   timeline's own triple). Published beside `keys` rather than reconstructed by
 //   the consumer: an empty rect is dropped, so an index into `keys` is not an
 //   index into the curve's key list.
+//   keySelected/keySiblingSelected: the MARKER STATE of those same keys, one
+//   bool each, same order and same length - the editor's own two queries
+//   (isMarkerSelected, hasSelectedSiblingMarker) asked per key as the curve is
+//   built. They are the classification the three marker states are drawn from
+//   (see the struct's comment for the three and for why the sibling flag is
+//   published raw). The model names the state and the drawing layer names the
+//   ink: no colour, alpha or ring is published here.
 //   handles: one PanelHandle pair per segment of the curve HAVE handles, in
 //   segment order (segment 0's two handles, then segment 1's, ...). base is the
 //   key the handle belongs to, mapped through the scaler (handle 0's base is the
@@ -540,6 +607,15 @@ enum class GraphPanelHost {
 //   the hidden rows and emptyState names the state: an empty panel must say why
 //   it is empty.
 //
+// DRAG READOUT
+//   keyDrag is the live key-move gesture's two numbers (see PanelKeyDrag): the frame
+//   delta the move has ACCEPTED and the value delta it last wrote, both read off the
+//   editor's own gesture state, plus `live` - false whenever no move is in flight, and
+//   then the two numbers are 0 and nothing may be drawn for them. The model publishes
+//   the numbers and NOT the readout: the pointer the readout sits at is read by the
+//   drawing layer (gui::drawPanel), which also owns the ink it is written in - the
+//   panel's own label ink, the same the frame and value numbers use.
+//
 // READ-ONLY
 //   buildGraphPanelModel() takes the editor by non-const reference only because
 //   GraphEditor's own accessors are split that way (curves(), targets() and
@@ -577,6 +653,10 @@ struct GraphPanelModel {
     // The number of keys that hull encloses (ctrl::GraphEditor::selectionCount()),
     // 0 with nothing selected.
     int selectionCount = 0;
+    // THE DRAG READOUT's numbers: a key move in flight, as the editor publishes it (see
+    // PanelKeyDrag). `live` false is the model's whole "draw nothing" signal, and then
+    // the two deltas are 0.
+    PanelKeyDrag keyDrag;
     // The one place this model writes that number as words - "3 keys" - and the box
     // it goes in, above the hull. EMPTY while nothing is selected.
     PanelLabel selectionLabel;

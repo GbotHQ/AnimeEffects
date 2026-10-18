@@ -280,9 +280,12 @@ public:
     // way and the code below never branches on which it is.
     //
     // The selection is what removeSelectedKey and setSelectedKeysEasing act on,
-    // and it is what the drawing layer highlights (gui::PanelFocus::selectedKeys).
-    // It is NOT touched by anything else: a plain hover and every press outside
-    // the plot leave it alone.
+    // and it is what the drawing layer highlights: the MODEL classifies each
+    // marker it publishes against this ONE set (gui::PanelCurve::keySelected and
+    // keySiblingSelected, filled from isMarkerSelected / hasSelectedSiblingMarker
+    // below), so the ring a marker is drawn with is this set's answer and not a
+    // second copy of it. It is NOT touched by anything else: a plain hover and
+    // every press outside the plot leave it alone.
     bool retrieveSelection(core::TimeLineEvent& aOut) const;
     // --- the panel's two keyboard actions ---
     //
@@ -419,6 +422,39 @@ public:
     // True while a middle-button pan is in flight.
     bool isPanning() const { return mPanning; }
 
+    // --- the live numbers of a key drag (the panel's pointer readout) ---
+    //
+    // While a key move is in flight the panel draws the numbers AT the pointer, and
+    // they must be the deltas the gesture APPLIED, not the pointer's own
+    // displacement: a refused step (a destination another key owns) leaves the keys
+    // where they were while the pointer moves on, so a pointer difference would be
+    // wrong by construction (see the MOVE note's refusal rule). These three are
+    // exactly that, read off the gesture's own state - pure, no allocation, no
+    // document walk.
+    //
+    // "IS A MOVE IN FLIGHT" IS ANSWERED BY THE GESTURE'S COMMAND: true exactly while
+    // the stack still holds the command this drag pushed as its MODIFIABLE one,
+    // which is the same condition as "the document holds the deltas below". An
+    // armed press that has not crossed a pixel yet (no command yet) and a drag
+    // whose command an undo dropped (the keys are back at the press) therefore
+    // both read NOT MOVING - the honest answer, because in neither state does a
+    // delta describe the document. The move is one cmnd::Gesture<KeyMoveCommand>,
+    // so the whole question is one pointer comparison.
+    bool isMovingKeys() const;
+    // The FRAME delta the move has ACCEPTED so far: the gesture's frame cursor
+    // minus the frame the pressed key held at the press. The cursor only advances
+    // on an ACCEPTED step, so a refused step reads as "not moved", and a mid-drag
+    // read always equals the shift the keys themselves show. 0 when no key move is
+    // in flight.
+    int keyMoveFrameDelta() const;
+    // The VALUE delta the move last WROTE: the delta every member's component was
+    // given in that step (a key's own setter may then clamp it - one number cannot
+    // be every key's outcome, so this is the GESTURE's delta, the one number the
+    // readout has). A step that left the values alone stores the value it wrote,
+    // which is 0 there; the number never comes from the pointer. 0 when no key move
+    // is in flight.
+    float keyMoveValueDelta() const;
+
     // --- the three key edits: add, move, remove ---
     //
     // The panel's document-mutating gestures, next to the handle drag below.
@@ -545,6 +581,11 @@ public:
     //     the key the press hit; if that key is gone (an undo or another view
     //     removed it) the gesture stops and says so, like the handle drag's
     //     anchor check.
+    //
+    // THE DELTAS THE GESTURE APPLIED are published while it is in flight - see
+    // isMovingKeys / keyMoveFrameDelta / keyMoveValueDelta above, which the panel's
+    // pointer readout draws from. Both are the ACCEPTED step's, so they hold their
+    // last accepted value across a refusal instead of following the pointer.
     //
     // REMOVE. Removes every key the panel's CURRENT selection names through
     // TimeLine::createRemover, inside ONE notifier + macro route, so a
@@ -1010,6 +1051,16 @@ private:
     // the press - which is the movement the user actually made.
     core::Frame mMovePointerFrame;
     QPoint mMovePressPos;
+    // The PRESSED key's frame at the press and the value delta the gesture last
+    // WROTE: the two numbers the pointer readout reports are differences against
+    // these (see isMovingKeys / keyMoveFrameDelta / keyMoveValueDelta). The frame
+    // is the base the ACCEPTED frame delta is measured from - mMoveFrame is the
+    // same gesture's cursor and advances only on an accepted step, so a refused
+    // step leaves the difference where it was - and the value delta is stored
+    // rather than recomputed, because the pointer's row is NOT what the document
+    // was given.
+    core::Frame mMovePressFrame;
+    float mMoveValueDelta;
 
     // THE FRAME HALF'S units: ONE entry per KEY the panel's SELECTION named when
     // the press armed the move, deduplicated by the key itself - two selected

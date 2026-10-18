@@ -415,10 +415,12 @@ void buildSelection(
 // The curves: one per visible channel row, sampled and mapped through the scaler
 // (Curve::buildPolyline over the plot's frame window, then Scaler::pixelXOfFrame
 // / Scaler::pixelY), with the keys and every segment's tangent handles as the
-// shared hit-test geometry (ctrl/graph/graph_Geometry.h), and the chip that names
-// the curve in place.
+// shared hit-test geometry (ctrl/graph/graph_Geometry.h), the MARKER STATE of every
+// key (the editor's own two queries - see PanelCurve::keySelected), and the chip
+// that names the curve in place.
 void buildCurves(
-    gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics
+    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const ctrl::graph::Scaler& aScale,
+    const QFontMetrics& aMetrics
 ) {
     // The drawing layer inks a curve's tangent handles ONLY for the FOCUSED channel
     // (ImGuiOverlay's drawsHandles: with no focus it draws every curve's; with one it
@@ -509,6 +511,19 @@ void buildCurves(
                 out.keys.append(rect);
                 out.keyFrames.append(frame);
                 out.keyDots.append(ctrl::graph::keyDot(aScale, frame, value));
+                // THE MARKER STATE, in the same step as the geometry it belongs to, so
+                // the three vectors cannot desync: the editor is asked about THIS key of
+                // THIS curve - the node by identity, the channel's type and component,
+                // and the frame just published - which is the same triple (node, channel,
+                // frame) the drawing layer and the hit-test name a key by. Both answers
+                // are the engine's own, unmodified: `keySelected` is
+                // isMarkerSelected (an entry for this marker, or a whole-key entry that
+                // covers it) and `keySiblingSelected` is hasSelectedSiblingMarker (an
+                // entry naming a DIFFERENT component, or the key as a whole), which is
+                // true even when this marker is selected too - see the header for the
+                // composition that is deliberately left to the drawing layer.
+                out.keySelected.append(aEditor.isMarkerSelected(*row.node, row.channel, frame));
+                out.keySiblingSelected.append(aEditor.hasSelectedSiblingMarker(*row.node, row.channel, frame));
             }
         }
 
@@ -684,6 +699,17 @@ namespace gui {
         // second derivation of it.
         model.marquee = aEditor.marqueeRect();
 
+        // The drag READOUT's numbers, from the gesture that owns them and not from the
+        // pointer (see PanelKeyDrag): the editor answers whether a KEY MOVE is in flight,
+        // and the two deltas it has applied. `live` false is the whole "draw nothing"
+        // signal, and the numbers are read only then - a gesture that is not in flight
+        // could not describe the document even if it reported one.
+        model.keyDrag.live = aEditor.isMovingKeys();
+        if (model.keyDrag.live) {
+            model.keyDrag.frameDelta = aEditor.keyMoveFrameDelta();
+            model.keyDrag.valueDelta = aEditor.keyMoveValueDelta();
+        }
+
         if (model.plot.isEmpty()) {
             // Nothing to lay an axis on. The panel, the band, the playhead, the marquee
             // (the editor's own rect, empty unless a drag is live) and the reason are
@@ -702,7 +728,7 @@ namespace gui {
         buildFrameAxis(model, scale, metrics);
         buildValueAxis(model, scale, metrics);
         buildChannels(model, aEditor, aTheme, metrics, aHost);
-        buildCurves(model, scale, metrics);
+        buildCurves(model, aEditor, scale, metrics);
         buildSelection(model, aEditor, scale, metrics);
         buildEmptyState(model, aEditor);
 

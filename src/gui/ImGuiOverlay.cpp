@@ -330,35 +330,82 @@ void drawLabel(
     addHaloedText(aDrawList, aFont, aFontSize, ImVec2(x, y), aColor, aHalo, utf8.constData());
 }
 
-// Whether a key MARKER is one the editor's selection carries. The model publishes
-// the marker centres without their frames (PanelCurve::keyDots) and the focus's
-// own SelectedKey carries the same pixel from ctrl::graph::keyDot through the
-// same scaler, so the marker's x is the whole identity available here.
-bool isKeySelected(const PanelFocus& aFocus, core::TimeKeyType aType, const QPointF& aDot) {
-    if (aFocus.selectedKeys.isEmpty())
-        return false;
+// THE MARKER RULE's ink tokens, and where each comes from.
+//
+// The MODEL classifies (PanelCurve::keySelected / keySiblingSelected: which of the
+// three states a marker is in) and this layer decides what each state LOOKS like -
+// the split every token below lives on the ink side of. The reference is the mock's
+// key pass (assets/mock-graph.js's _keys, its `on`/`hov`/`sibling` lines), which the
+// design's section 4 quotes:
+//
+//   * the SELECTED marker brightens its fill toward the keyframe highlight and takes
+//     a 1px ring clear of the marker (index.html:279-280, "the fill brightens toward
+//     the keyframe highlight and a 1px ring sits 1px clear of the marker; the size
+//     never changes"), and the mock mixes the channel hue toward its highlight ink at
+//     0.6 for it (lighten(hue, 0.6));
+//   * a hovered marker brightens the same way at the mock's lighter step
+//     (lighten(hue, 0.4)) and takes NO ring ("hover and selection brighten the fill
+//     toward the keyframe highlight (no size change, no accent ring)",
+//     index.html:302-303 - and the design says outright that the app has no hover
+//     state today and this is what it should be);
+//   * a marker whose key has a selected SIBLING keeps a FAINT ring - the mock's own
+//     precedent, `hexA(hue, 0.35)` at the same radius as the selection ring, 1px,
+//     with no brightened fill ("not selected, but its key is: a faint ring, no
+//     brighter fill", mock-graph.js:859-860) - while its CURVE stays at full
+//     strength (its channel is in play, _live()).
+//
+// THE HIGHLIGHT INK IS theme::Graph::axisText(), and that needs saying because the
+// mock's token is literally `#ffffff` (assets/proposal.css:63's --key-highlight, the
+// target its lighten() mixes toward). A hardcoded white is a palette colour this
+// layer does not own, and it is wrong on the light palette, where the floor is near
+// white: the mock is dark-only. axisText() is the palette's own "brightest panel ink"
+// cell - Colors::text, the very token the design's section 6 asks the panel's ruler
+// and its numbers to share - so the mix is "toward this palette's strongest ink" on
+// both polarities, which is the design's sentence read against a palette instead of
+// against the mock's one.
+//
+// THE RING'S SLEEVE. The mock's selection ring is TWO strokes at one radius: a dark
+// edge (hexA('#0a0a0a', 0.55), 2.6px) under the 1px highlight ink, because "the ring
+// reads on any artwork". The dark is theme::Graph::outline() - the app's own #0a0a0a,
+// the one token the palette keeps black on both polarities for exactly this job
+// (Graph.h). The sibling ring has NO sleeve: it is the faint, in-play mark, and it
+// must not read as strongly as the selection ring.
+constexpr float kKeySelectedFillMix = 0.6f;   // mock-graph.js lighten(hue, 0.6)
+constexpr float kKeyHoverFillMix = 0.4f;      // mock-graph.js lighten(hue, 0.4)
+constexpr float kKeySiblingRingAlpha = 0.35f; // mock-graph.js hexA(hue, 0.35)
+constexpr float kKeyRingWidth = 1.0f;         // the 1px ring of the design's sentence
+constexpr float kKeyRingSleeveWidth = 2.6f;   // mock-graph.js's dark edge (2.6)
+constexpr float kKeyRingSleeveAlpha = 0.55f;  // ... at 0.55
+constexpr float kKeyRingAlpha = 0.95f;        // ... under the highlight at 0.95
 
-    const int x = int(aDot.x());
-    for (const PanelFocus::SelectedKey& key : aFocus.selectedKeys) {
-        if (key.type == aType && key.x == x)
-            return true;
-    }
-    return false;
+// A channel colour moved toward the highlight ink, channel-wise in sRGB - the mock's
+// own lighten(): `c + (255 - c) * t` per channel, opaque. A mix on the encoded values
+// rather than in linear light is the reference's arithmetic, and it is what keeps this
+// layer's "brighter" step identical to the mock's rather than merely similar.
+QColor mixedToward(const QColor& aColour, const QColor& aToward, float aMix) {
+    const float t = qBound(0.0f, aMix, 1.0f);
+    const auto step = [t](int aFrom, int aTo) {
+        return int(std::lround(double(aFrom) + (double(aTo) - double(aFrom)) * double(t)));
+    };
+    return QColor(step(aColour.red(), aToward.red()), step(aColour.green(), aToward.green()),
+                  step(aColour.blue(), aToward.blue()));
 }
 
 // The curve's INK STRENGTH: the SELECTION's, not the sticky focus's (the design's
 // decision table, "Curve emphasis": full strength for the channels that own a
 // selected key, 0.45 for the rest, and all of them dimmed when nothing is selected).
-// "Owns" is isKeySelected() over the curve's own key markers - the same identity the
-// selected marker's ring uses (key type + pixel x) - which also gives the design's
-// sibling rule for free: one TimeKeyType_Move key is shared by the Move X and Move Y
-// components, so both curves are in play and both stay at full strength
-// (mock-graph.js's _live() states the same rule). Its one limit is the model's: a key
-// the model published no dot for (its hit rect lies entirely outside the plot) cannot
-// put its channel in play here, and nothing else in the model names a key.
-float curveStrength(const PanelFocus& aFocus, const PanelCurve& aCurve) {
-    for (const QPointF& dot : aCurve.keyDots) {
-        if (isKeySelected(aFocus, aCurve.channel.type(), dot))
+// The model publishes the fact this folds over - a channel is IN PLAY when it owns a
+// SELECTED marker, or the same KEY is selected on a sibling channel (one Move key
+// holds both components, so selecting Move X alone keeps Move Y at full strength:
+// mock-graph.js's _live(), and the design's "the marker of the same key that is not
+// selected keeps a faint ring and its curve stays at full strength", index.html:244).
+// Both flags already mean "in play" for a dot: a sibling flag is set exactly when
+// another marker of that key is selected. What this layer decides is the one thing
+// the model does not publish - that "in play" is 1.0 and everything else 0.45.
+float curveStrength(const PanelCurve& aCurve) {
+    const int count = std::min(aCurve.keySelected.size(), aCurve.keySiblingSelected.size());
+    for (int i = 0; i < count; ++i) {
+        if (aCurve.keySelected.at(i) || aCurve.keySiblingSelected.at(i))
             return 1.0f;
     }
     return kUnselectedAlpha;
@@ -1388,9 +1435,10 @@ void drawPanel(
     for (const PanelLabel& label : aModel.frameLabels)
         drawLabel(aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre, axisText, halo);
 
-    // The curves. Clipped to the plot (above); the channels that own a SELECTED key
-    // at full colour, every other curve dimmed - and with an empty selection every
-    // curve is dimmed (curveStrength).
+    // The curves. Clipped to the plot (above); the channels that own a SELECTED
+    // marker - or the same key on a sibling channel - at full colour, every other
+    // curve dimmed, and with an empty selection every curve is dimmed
+    // (curveStrength).
     //
     // THE SHIPPING STROKE IS gui::stroke's (see the header): one draw-list callback per
     // curve, carrying the polyline, the colour and the strength, so the ink is measured
@@ -1403,7 +1451,7 @@ void drawPanel(
         if (curve.points.size() < 2)
             continue; // identity and colour but no geometry: the keys are outside the window
 
-        const float strength = curveStrength(aFocus, curve);
+        const float strength = curveStrength(curve);
 
         if (stroke::isReady()) {
             addInkCallback(aDrawList, curve.points, curve.color, strength, kCurveWidth * 0.5f);
@@ -1429,7 +1477,28 @@ void drawPanel(
     // colour its curve is stroked in and its chip's text drawn in), inside the
     // palette's floor-coloured ring, which is what keeps a key visible on top of the
     // curve that carries it (a same-hue key on a same-hue stroke would otherwise
-    // disappear into it). The editor's selection turns both into the selected token.
+    // disappear into it).
+    //
+    // THE THREE STATES, in the model's own classification (PanelCurve::keySelected /
+    // keySiblingSelected) and with the ink this layer gives each (see the marker
+    // rule's tokens above for where every one of them comes from):
+    //   * SELECTED - the fill brightens toward the keyframe highlight and a 1px ring
+    //     sits clear of the marker, in that highlight ink over a dark sleeve. The
+    //     marker's own SIZE and the floor ring around it do not change: it keeps the
+    //     radius and the keyEdge() circle every marker already has.
+    //   * SIBLING (not selected, its key selected on another component) - the faint
+    //     ring alone, at the SAME radius as the selection ring, in the channel's own
+    //     hue at 0.35 and with no sleeve, and the fill is left exactly as an
+    //     unselected marker's is (that channel is in play, so it is at full
+    //     strength). One key, two channels, both in play - but the selection ring is
+    //     never on the marker that is not selected.
+    //   * HOVERED (the marker gui::panelKeyAt names under the pointer, and not
+    //     selected) - the fill brightens at the mock's lighter step and NO ring is
+    //     added. Hover COMPOSES with the sibling state (the mock draws both: the
+    //     faint ring stays, the fill brightens), and it loses to selection, which is
+    //     the mock's own order.
+    // The marker's floor ring (keyEdge) is drawn for every marker whether or not the
+    // pointer is on it - the pointer never changes a marker's SIZE or its edges.
     //
     // THE MARKER IS NOT THE PICK AREA, and that is the timeline's own rule for a
     // small element ("hit testing and visuals are two separate things"): the editor
@@ -1438,19 +1507,63 @@ void drawPanel(
     // drawn where a 7.5px dot belongs - 2.3x the timeline's key area. The ink here
     // is the marker; the hit stays where the editor's hit-test puts it.
     const float dotRadius = float(ctrl::graph::kKeyDotRadius);
-    const ImU32 selectedKey = toImU32(aTheme.selected());
+    const float ringRadius = dotRadius + kKeyRingOffsetPx;
+    const QColor highlightInk = aTheme.axisText();
+    const ImU32 highlightRing = toImU32Strength(highlightInk, kKeyRingAlpha);
+    const ImU32 ringSleeve = toImU32Strength(aTheme.outline(), kKeyRingSleeveAlpha);
+    // THE HOVER, by the ONE shared hit test: gui::panelKeyAt answers with the
+    // (node, channel, frame) triple the panel names a key by - the same rule (and the
+    // same kKeyHitRadius) both hosts open the key menu with - and it reads the model's
+    // own keyDots/keyFrames, so the marker the pointer finds and the marker this pass
+    // inks are the same key by construction. Under the pointer AND not selected, the
+    // three conditions the mock's `hov` line states.
+    core::ObjectNode* hoverNode = nullptr;
+    ctrl::graph::Channel hoverChannel;
+    core::Frame hoverFrame;
+    const ImVec2 pointer = ImGui::GetIO().MousePos;
+    const bool hovered = panelKeyAt(
+        aModel, QPoint(int(pointer.x), int(pointer.y)), hoverNode, hoverChannel, hoverFrame
+    );
     for (const PanelCurve& curve : aModel.curves) {
         // The markers follow their own curve's emphasis (curveStrength): a channel
-        // that owns a selected key draws its dots at full strength, every other
-        // channel's are dimmed.
-        const float strength = curveStrength(aFocus, curve);
+        // that owns a selected marker, or a selected sibling of one, draws its dots at
+        // full strength - every other channel's are dimmed.
+        const float strength = curveStrength(curve);
         const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
-        for (const QPointF& dot : curve.keyDots) {
-            const bool selected = isKeySelected(aFocus, curve.channel.type(), dot);
+        const ImU32 siblingRing = toImU32Strength(curve.color, kKeySiblingRingAlpha);
+        const int keys = int(curve.keyDots.size());
+        for (int k = 0; k < keys; ++k) {
+            const QPointF& dot = curve.keyDots.at(k);
+            // The flags are published beside the geometry and are the same length (see
+            // the header), but a hand-built model - a pixel gate's, or a caller that
+            // only carries geometry - may publish the dots alone: a missing flag is
+            // "neither state", which is what a model that says nothing about the
+            // selection means.
+            const bool selected = k < curve.keySelected.size() && curve.keySelected.at(k);
+            const bool sibling = k < curve.keySiblingSelected.size() && curve.keySiblingSelected.at(k);
+            const bool hoveredHere = hovered && !selected && k < curve.keyFrames.size()
+                && curve.node == hoverNode && curve.channel == hoverChannel
+                && curve.keyFrames.at(k) == hoverFrame;
             const ImVec2 centre(float(dot.x()), float(dot.y()));
-            aDrawList.AddCircleFilled(centre, dotRadius, selected ? selectedKey : fill);
-            aDrawList.AddCircle(centre, dotRadius, selected ? selectedKey : edge, 0, 1.0f);
+            aDrawList.AddCircleFilled(
+                centre, dotRadius,
+                selected ? toImU32(mixedToward(curve.color, highlightInk, kKeySelectedFillMix))
+                         : hoveredHere ? toImU32(mixedToward(curve.color, highlightInk, kKeyHoverFillMix))
+                                       : fill
+            );
+            aDrawList.AddCircle(centre, dotRadius, edge, 0, 1.0f);
+            if (sibling && !selected) {
+                // The faint ring, at the selection ring's own radius: the same
+                // geometry, so the two can only be told apart by their ink.
+                aDrawList.AddCircle(centre, ringRadius, siblingRing, 0, kKeyRingWidth);
+            }
+            if (selected) {
+                // The 1px ring, 1px clear of the marker, in the highlight ink over the
+                // dark sleeve that makes it read on any artwork.
+                aDrawList.AddCircle(centre, ringRadius, ringSleeve, 0, kKeyRingSleeveWidth);
+                aDrawList.AddCircle(centre, ringRadius, highlightRing, 0, kKeyRingWidth);
+            }
         }
     }
 
@@ -1649,7 +1762,8 @@ void drawPanel(
     // WHICH curves are in play is EMPHASIS, and emphasis is this layer's decision
     // (the model publishes a chip for every curve - see its CHIPS note): a curve is
     // in play when curveStrength() gives it full strength, i.e. when its channel owns
-    // a selected key, which is the reference's own _live() rule - plus the hovered
+    // a selected marker OR the same key is selected on a sibling channel, which is the
+    // reference's own _live() rule - plus the hovered
     // one, which is not a selection fact at all. With an EMPTY selection no curve is
     // in play and no chip is drawn, exactly as every curve is dimmed then.
     //
@@ -1693,7 +1807,7 @@ void drawPanel(
         QVector<QRect> boxes(aModel.curves.size()); // indexed BY CURVE, so the sort below can look one up
         for (int c = 0; c < aModel.curves.size(); ++c) {
             const PanelCurve& curve = aModel.curves.at(c);
-            if (curve.chip.isEmpty() || (c != hovered && curveStrength(aFocus, curve) < 1.0f))
+            if (curve.chip.isEmpty() || (c != hovered && curveStrength(curve) < 1.0f))
                 continue;
             chips.append(c);
             boxes[c] = curve.chip;
@@ -1741,7 +1855,7 @@ void drawPanel(
             // A channel that owns a selected key reads at full strength even while the
             // pointer is on it; only a chip that is there because of the POINTER is
             // dimmed (the reference's own order: live wins over hover).
-            const float strength = curveStrength(aFocus, curve) >= 1.0f ? 1.0f : kChipHoverAlpha;
+            const float strength = curveStrength(curve) >= 1.0f ? 1.0f : kChipHoverAlpha;
             drawLabel(
                 aDrawList, font, fontSize, box, curve.chipText, LabelAlign::Centre,
                 toImU32Strength(curve.color, strength), halo
@@ -1803,6 +1917,51 @@ void drawPanel(
             aDrawList, font, fontSize, aModel.channelsButton, aModel.channelsButtonText, LabelAlign::Centre,
             axisText, halo
         );
+    }
+
+    // THE DRAG READOUT: the two numbers of a key move in flight, at the POINTER - the
+    // gesture's own deltas, so the panel's strip has nothing live to say while a drag is
+    // in hand (design section 4's strip row). The numbers are the MODEL's (PanelKeyDrag,
+    // straight from the editor's gesture state: the delta the move ACCEPTED and the one
+    // it last wrote - this layer never differences the pointer, which is the whole point
+    // of publishing them); what this layer decides is where they sit (at the pointer, the
+    // one thing the model cannot know) and how they are written: the panel's own label
+    // ink, `axisText` with the same halo every other label gets (shipped off; the
+    // contrast outline pass is what rings ink that would otherwise be lost), in the
+    // drawing font.
+    //
+    // DRAWN LAST, so nothing the panel paints can cover it: it is the one element that
+    // follows the pointer, and a readout under a curve would be exactly as useful as none.
+    // NOTHING IS DRAWN while no move is in flight - `live` false is the model's signal,
+    // and then there is no number to print at all.
+    if (aModel.keyDrag.live) {
+        const ImVec2 pointer = ImGui::GetIO().MousePos;
+        // The signs are explicit: "which way" is half of what a delta says, and a delta
+        // of +3 must not read as 3. The value's own format is the value axis'
+        // (ctrl::graph::Scaler::valueAxisText), so the readout's number and the numbers
+        // beside the axis are written the same way.
+        const QString frameText = (aModel.keyDrag.frameDelta > 0 ? QStringLiteral("+") : QString())
+            + QString::number(aModel.keyDrag.frameDelta);
+        const QString valueText = (aModel.keyDrag.valueDelta > 0 ? QStringLiteral("+") : QString())
+            + ctrl::graph::Scaler::valueAxisText(aModel.keyDrag.valueDelta);
+        const QString text =
+            trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "Δframe %1   Δvalue %2")).arg(frameText, valueText);
+
+        const QByteArray utf8 = text.toUtf8();
+        const ImVec2 size = measureText(font, fontSize, utf8.constData());
+        // The box is the text's own, kept inside the panel: the pointer can leave the plot
+        // mid-drag (and the panel is the whole viewport), and a number drawn off the panel
+        // is a number the user cannot read. The gap (gui::kReadoutGapPx) keeps the glyphs
+        // clear of the cursor itself.
+        const float x = ImMin(
+            ImMax(pointer.x + float(kReadoutGapPx), float(aModel.panel.left())),
+            ImMax(float(aModel.panel.right() + 1) - size.x, float(aModel.panel.left()))
+        );
+        const float y = ImMin(
+            ImMax(pointer.y + float(kReadoutGapPx), float(aModel.panel.top())),
+            ImMax(float(aModel.panel.bottom() + 1) - size.y, float(aModel.panel.top()))
+        );
+        addHaloedText(aDrawList, font, fontSize, ImVec2(x, y), axisText, halo, utf8.constData());
     }
 }
 
@@ -1868,8 +2027,17 @@ float nextDeltaTime(QElapsedTimer& aTimer, bool& aStarted) {
     return float(qBound(qint64(1000000), nanoseconds, qint64(100000000))) / 1.0e9f;
 }
 
-// The editor's sticky focus plus its selection, in the currency drawPanel uses.
-PanelFocus buildFocus(ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel) {
+// The editor's sticky FOCUS, in the currency drawPanel uses - and nothing else.
+//
+// It used to carry the selection too, as a list of (key type, pixel x) pairs matched
+// back to a marker. That list is gone: the MODEL now publishes which marker is
+// selected and which marker's key has a selected sibling (PanelCurve::keySelected /
+// keySiblingSelected, read from this same editor in buildGraphPanelModel), and a
+// second copy of the same fact here - mapped by hand through the scaler, one entry
+// per selected target, with the model's panel re-applied to the editor's scaler -
+// was a copy that could disagree with the flags the model had just published. The
+// focus stays because the handles are still the focus's rule (see PanelFocus).
+PanelFocus buildFocus(ctrl::GraphEditor& aEditor) {
     PanelFocus focus;
 
     if (aEditor.hasFocus() && aEditor.focusedNode()) {
@@ -1878,26 +2046,6 @@ PanelFocus buildFocus(ctrl::GraphEditor& aEditor, const GraphPanelModel& aModel)
         focus.valid = true;
     }
 
-    core::TimeLineEvent selection;
-    if (!aEditor.retrieveSelection(selection))
-        return focus;
-
-    // A selected key has to be found among the model's key MARKER centres
-    // (PanelCurve::keyDots), which carry no frame. ctrl::graph::keyDot puts the
-    // centre exactly on the mapped point, so the frame's pixel x is what identifies
-    // it - and it is the editor's own scaler with the MODEL's panel, i.e. the same
-    // mapping the model copied, so the two agree by construction rather than by
-    // coincidence.
-    ctrl::graph::Scaler scale = aEditor.scale();
-    scale.setRect(aModel.panel);
-    for (const core::TimeLineEvent::Target& target : selection.targets()) {
-        if (target.pos.isNull())
-            continue;
-        PanelFocus::SelectedKey key;
-        key.type = target.pos.type();
-        key.x = scale.pixelX(core::Frame(target.pos.index()));
-        focus.selectedKeys.append(key);
-    }
     return focus;
 }
 
@@ -2281,7 +2429,7 @@ ImDrawData* runPanelFrame(
     const bool panelDrawn = aVisible && aEditor && drawList;
     if (panelDrawn) {
         model = buildGraphPanelModel(*aEditor, viewport, palette, aState.topInset, aHostStyle);
-        drawPanel(*drawList, model, palette, buildFocus(*aEditor, model));
+        drawPanel(*drawList, model, palette, buildFocus(*aEditor));
     }
 
     // Published whether or not anything was drawn: the host's own hits and the

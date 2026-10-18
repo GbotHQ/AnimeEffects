@@ -250,6 +250,8 @@ namespace ctrl {
         mMoveFrame(),
         mMovePointerFrame(),
         mMovePressPos(),
+        mMovePressFrame(),
+        mMoveValueDelta(0.0f),
         mMoveKeys(),
         mMoveMembers(),
         mAxisFps(0) {
@@ -1533,6 +1535,27 @@ namespace ctrl {
     }
 
     //-------------------------------------------------------------------------------------------------
+    // The live numbers of a key drag: see the header for what each one means and
+    // why "in flight" is the gesture's own command rather than the armed flag.
+    bool GraphEditor::isMovingKeys() const { return mKeyMoveGesture.continues(); }
+
+    int GraphEditor::keyMoveFrameDelta() const {
+        if (!mKeyMoveGesture.continues()) {
+            return 0; // no command the stack still owns: no delta describes the document
+        }
+        // The gesture's frame cursor minus the press-time base. Both advance only
+        // on an ACCEPTED step, so a refused one is "not moved" by construction.
+        return mMoveFrame.get() - mMovePressFrame.get();
+    }
+
+    float GraphEditor::keyMoveValueDelta() const {
+        if (!mKeyMoveGesture.continues()) {
+            return 0.0f;
+        }
+        return mMoveValueDelta; // the last delta this gesture WROTE
+    }
+
+    //-------------------------------------------------------------------------------------------------
     void GraphEditor::beginKeyMove(const Hit& aHit, const QVector<Entry>& aItems, const QPoint& aPressPos) {
         if (!mProject)
             return;
@@ -1564,6 +1587,12 @@ namespace ctrl {
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
         mMoveFrame = aHit.keyFrame;
+        // The readout's base: the frame this key is at NOW (the cursor the frame
+        // delta is measured from), and the value delta of the gesture that was
+        // open before this press - there is none, so the two numbers a readout
+        // would draw start at "not moved" rather than at the last drag's.
+        mMovePressFrame = aHit.keyFrame;
+        mMoveValueDelta = 0.0f;
         // Where the pointer was, in PIXELS: both axes follow the pointer's own
         // delta from here, so a press up to the key radius off the key's centre
         // does not make the key jump by that offset on the first move. The value
@@ -1731,6 +1760,9 @@ namespace ctrl {
 
             if (valueMoves) {
                 mKeyMoveGesture.command()->modifyValues(valueDelta);
+                // The readout's value half: what this step WROTE (not the
+                // pointer's row, which a refusal may have moved past).
+                mMoveValueDelta = valueDelta;
             }
 
             // ONE notification per step, as the timeline emits one per gesture
@@ -1794,6 +1826,10 @@ namespace ctrl {
             command->addValue(*member.key, member.target.pos.type(), member.component, member.baseValue);
         }
         command->modifyValues(valueDelta);
+        // The readout's value half: the delta this first commit wrote into every
+        // member's component. A gesture with NO value member (a frame-only
+        // selection) writes none, so its value delta stays 0.
+        mMoveValueDelta = mMoveMembers.isEmpty() ? 0.0f : valueDelta;
 
         // ONE command in ONE gesture inside ONE macro: the whole selection's move
         // is a single stack entry, and continues() above rewrites exactly it.
@@ -1945,6 +1981,10 @@ namespace ctrl {
         mMoveFrame = core::Frame();
         mMovePointerFrame = core::Frame();
         mMovePressPos = QPoint();
+        // ...and the readout's two numbers: a finished gesture has no delta, which
+        // is also what the getters answer once its command is closed.
+        mMovePressFrame = core::Frame();
+        mMoveValueDelta = 0.0f;
     }
 
     //-------------------------------------------------------------------------------------------------
