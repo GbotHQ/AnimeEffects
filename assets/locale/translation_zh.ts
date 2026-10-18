@@ -4,15 +4,23 @@
 <context>
     <name>AnimeEffects.Dialogs</name>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="57"/>
         <source>Animation settings</source>
-        <translation>动画设置</translation>
+        <translation type="vanished">动画设置</translation>
     </message>
     <message>
-        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="107"/>
         <location filename="../../src/gui/qml/ProjectSettingDialog.qml" line="255"/>
         <source>Loop animation</source>
         <translation>循环动画</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="57"/>
+        <source>Playback settings</source>
+        <translation>播放设置</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="107"/>
+        <source>Loop playback</source>
+        <translation>循环播放</translation>
     </message>
     <message>
         <location filename="../../src/gui/qml/AnimationSettingDialog.qml" line="138"/>
@@ -759,172 +767,172 @@
         <translation>删除帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="258"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="290"/>
         <source>Update default movement key</source>
         <translation>更新默认移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="259"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
         <source>Update movement key</source>
         <translation>更新移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="269"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="301"/>
         <source>Update default rotation key</source>
         <translation>更新默认旋转帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="270"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
         <source>Update rotation key</source>
         <translation>更新旋转帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="280"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="312"/>
         <source>Update default scaling key</source>
         <translation>更新默认缩放帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="281"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
         <source>Update scaling key</source>
         <translation>更新缩放帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="291"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="323"/>
         <source>Update default depth key</source>
         <translation>更新默认深度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="292"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
         <source>Update depth key</source>
         <translation>更新深度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="302"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="334"/>
         <source>Update default opacity key</source>
         <translation>更新默认不透明度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="303"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
         <source>Update opacity key</source>
         <translation>更新不透明度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="313"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="345"/>
         <source>Update default HSV key</source>
         <translation>更新默认HSV帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="314"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
         <source>Update HSV key</source>
         <translation>更新HSV帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="324"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="356"/>
         <source>Update default blur key</source>
         <translation>更新默认模糊帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="325"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="357"/>
         <source>Update blur key</source>
         <translation>更新模糊帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="335"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="367"/>
         <source>Update default pose key</source>
         <translation>更新默认姿势帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="336"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="368"/>
         <source>Update pose key</source>
         <translation>更新姿势帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="346"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="378"/>
         <source>Update default FFD key</source>
         <translation>更新默认自由变形帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="347"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="379"/>
         <source>Update FFD key</source>
         <translation>更更新自由变形帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="359"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="391"/>
         <source>Update default image resource key</source>
         <translation>更新默认图形资料帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="360"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="392"/>
         <source>update image resource key</source>
         <translation>更新图形资料帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="380"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="412"/>
         <source>Update the image&apos;s default offset key</source>
         <translation>更新图像默认移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="381"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="413"/>
         <source>Update the image&apos;s offset key</source>
         <translation>更新图片偏移帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="400"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="432"/>
         <source>Update the default mesh size key</source>
         <translation>更新默认网格尺寸帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="401"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="433"/>
         <source>Update mesh size key</source>
         <translation>更新网格尺寸帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="450"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="482"/>
         <source>Add new movement key</source>
         <translation>新增移动帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="454"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="486"/>
         <source>Add new rotation key</source>
         <translation>新增旋转帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="459"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="491"/>
         <source>Add new scaling key</source>
         <translation>新增缩放帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="463"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="495"/>
         <source>Add new depth key</source>
         <translation>新增深度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="467"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="499"/>
         <source>Add new opacity key</source>
         <translation>新增不透明度帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="471"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="503"/>
         <source>Add new HSV key</source>
         <translation>新增HSV帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="475"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="507"/>
         <source>Add new blur key</source>
         <translation>新增模糊帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="481"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="513"/>
         <source>Add new pose key</source>
         <translation>新增姿势帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="488"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="520"/>
         <source>Add new FFD key</source>
         <translation>新增自由变形帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="493"/>
+        <location filename="../../src/ctrl/TimeLineUtil.cpp" line="525"/>
         <source>Add new image key</source>
         <translation>新增图形帧</translation>
     </message>
@@ -1037,92 +1045,102 @@
         <translation>更改动画设置</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1077"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1483"/>
         <source>move a key</source>
-        <translation type="unfinished"></translation>
+        <translation>移动关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1162"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1573"/>
         <source>change a key easing</source>
-        <translation type="unfinished"></translation>
+        <translation>更改关键帧缓和</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1299"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1726"/>
         <source>remove a key</source>
-        <translation type="unfinished"></translation>
+        <translation>删除关键帧</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1828"/>
+        <source>change key easing</source>
+        <translation>更改关键帧缓和</translation>
     </message>
 </context>
 <context>
     <name>EasingName</name>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="59"/>
+        <location filename="../../src/util/Easing.cpp" line="67"/>
         <source>Floor</source>
         <translation>向下取整</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="61"/>
+        <location filename="../../src/util/Easing.cpp" line="69"/>
         <source>Linear</source>
         <translation>线性</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="63"/>
+        <location filename="../../src/util/Easing.cpp" line="71"/>
         <source>Sine</source>
         <translation>正弦曲线</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="65"/>
+        <location filename="../../src/util/Easing.cpp" line="73"/>
         <source>Quad</source>
         <translation>二次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <location filename="../../src/util/Easing.cpp" line="75"/>
         <source>Cubic</source>
         <translation>三次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
         <source>Quart</source>
         <translation>四次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
         <source>Quint</source>
         <translation>五次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
         <source>Expo</source>
         <translation>指数</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
         <source>Circ</source>
         <translation>圆形</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
         <source>Back</source>
         <translation>回弹</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <location filename="../../src/util/Easing.cpp" line="87"/>
         <source>Elastic</source>
         <translation>伸缩</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <location filename="../../src/util/Easing.cpp" line="89"/>
         <source>Bounce</source>
         <translation>弹跳</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <location filename="../../src/util/Easing.cpp" line="91"/>
         <source>Custom</source>
         <translation>自定义</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <location filename="../../src/util/Easing.cpp" line="93"/>
         <source>Round</source>
         <translation>四舍五入</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="95"/>
+        <source>Auto</source>
+        <translation>自动</translation>
     </message>
 </context>
 <context>
@@ -2626,24 +2644,24 @@ The %2 encoder could not be opened either (%3).</source>
 <context>
     <name>GraphPanel</name>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="317"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="379"/>
         <source>No keys on the selected layers</source>
-        <translation type="unfinished"></translation>
+        <translation>所选图层上没有关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="318"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="380"/>
         <source>Select a layer to show its curves</source>
-        <translation type="unfinished"></translation>
+        <translation>选择一个图层以显示其曲线</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="321"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="383"/>
         <source>All channels of the selected layers are hidden</source>
-        <translation type="unfinished"></translation>
+        <translation>所选图层的所有通道均已隐藏</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="369"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="455"/>
         <source>No room for the graph in this viewport</source>
-        <translation type="unfinished"></translation>
+        <translation>此视口放不下曲线图</translation>
     </message>
 </context>
 <context>
@@ -2982,124 +3000,124 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">需要 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1421"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1484"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1584"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1629"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1679"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1706"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1737"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1430"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1493"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1593"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1638"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1688"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1715"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1746"/>
         <source>Export Error</source>
         <translation>导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1422"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1431"/>
         <source>Unknown export destination: %1</source>
         <translation>未知的导出目的地：%1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1513"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1522"/>
         <source>File exists</source>
         <translation>文件已存在</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1514"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1523"/>
         <source>The file &quot;%1&quot; already exists. Overwrite?</source>
         <translation>文件“%1”已存在。要覆盖吗？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1585"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1594"/>
         <source>%1 caps the file size, which means encoding it more than once, and that needs all %2 frames in memory (~%3 MB). Export fewer frames, or choose a destination without a size limit.</source>
         <translation>%1限制了文件大小，这意味着需要多次编码，而这需要把全部%2帧都放在内存中（约%3 MB）。请减少导出帧数，或选择没有体积限制的目的地。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1603"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1612"/>
         <source>Fitting under %1&apos;s %2 KB limit...</source>
         <translation>正在适配%1的%2 KB上限...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1616"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1625"/>
         <source>Export Canceled</source>
         <translation>导出已取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1617"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1626"/>
         <source>The export was stopped while fitting under %1&apos;s size limit. The file already written is the last attempt, and may exceed the limit.</source>
         <translation>在适配%1的体积上限时导出被中止。已写入的文件是最后一次尝试的结果，可能超出该上限。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1630"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1639"/>
         <source>%1 caps the file at %2 KB and even the smallest setting did not fit it (%3 KB).
 %4</source>
         <translation>%1把文件限制在%2 KB以内，而即使最小的设置也放不进（%3 KB）。
 %4</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1638"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1647"/>
         <source>Fitted to %1 bytes in %2 attempts (%3x%4).</source>
         <translation>经过%2次尝试后适配到%1字节（%3x%4）。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="132"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="216"/>
         <source>Y</source>
-        <translation type="unfinished"></translation>
+        <translation>Y</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="132"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="216"/>
         <source>X</source>
-        <translation type="unfinished">X</translation>
+        <translation>X</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="134"/>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="142"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="218"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="226"/>
         <source>Angle</source>
-        <translation type="unfinished"></translation>
+        <translation>角度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="136"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="220"/>
         <source>Depth</source>
-        <translation type="unfinished">深度</translation>
+        <translation>深度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="138"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="222"/>
         <source>Opacity</source>
-        <translation type="unfinished">不透明度</translation>
+        <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="141"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="225"/>
         <source>Radius Y</source>
-        <translation type="unfinished"></translation>
+        <translation>半径 Y</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="143"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="227"/>
         <source>Radius X</source>
-        <translation type="unfinished"></translation>
+        <translation>半径 X</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="147"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="231"/>
         <source>Saturation</source>
-        <translation type="unfinished">饱和度</translation>
+        <translation>饱和度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="148"/>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="154"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="232"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="238"/>
         <source>Value</source>
-        <translation type="unfinished">明度： </translation>
+        <translation>明度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="149"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="233"/>
         <source>Hue</source>
-        <translation type="unfinished">色相</translation>
+        <translation>色相</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1020"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1375"/>
         <source>The animation graph stopped moving: the dragged key changed.</source>
-        <translation type="unfinished"></translation>
+        <translation>动画曲线图已停止移动：被拖动的关键帧已改变。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1123"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1534"/>
         <source>The animation graph stopped editing: the dragged key changed.</source>
-        <translation type="unfinished"></translation>
+        <translation>动画曲线图已停止编辑：被拖动的关键帧已改变。</translation>
     </message>
 </context>
 <context>
@@ -4358,43 +4376,58 @@ Check FFmpeg palette generation 🗸</source>
 <context>
     <name>gui::ImGuiOverlay</name>
     <message>
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="810"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2183"/>
         <source>shown</source>
-        <translation type="unfinished"></translation>
+        <translation>已显示</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="811"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2184"/>
         <source>hidden</source>
-        <translation type="unfinished"></translation>
+        <translation>已隐藏</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="825"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2198"/>
         <source>%n channel(s) shown</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%n 个通道已显示</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="829"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2202"/>
         <source>%1, focused: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1，聚焦：%2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2229"/>
+        <source>%1, selected key: %2</source>
+        <translation>%1，选中的关键帧：%2</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="837"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2241"/>
         <source>%1 (%n more channel(s) not listed: no room in the panel)</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%1（另有 %n 个通道未列出：面板中没有空间）</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="860"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2264"/>
         <source>Fit graph</source>
-        <translation type="unfinished"></translation>
+        <translation>适配曲线图</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="861"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2265"/>
         <source>double-click the plot</source>
-        <translation type="unfinished"></translation>
+        <translation>双击绘图区</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2281"/>
+        <source>Key menu</source>
+        <translation>关键帧菜单</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2282"/>
+        <source>right-click the key</source>
+        <translation>右键点击关键帧</translation>
     </message>
 </context>
 <context>
@@ -4926,90 +4959,90 @@ If we forgot to include you please let us know or open a PR!</source>
         <translation type="vanished">工具库</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="623"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="632"/>
         <source>Theme changed</source>
         <translation>主题已更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="625"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="634"/>
         <source>There may be visual artifacts after changing themes, we recommend you restart the application.</source>
         <translation>更换主题后可能会出现视觉障碍，建议重新启动应用程序。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="846"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="855"/>
         <source> has been modified. Save changes?</source>
         <translation> 已改动。保存变动？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="848"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="857"/>
         <source>Some projects have been modified. Save changes?</source>
         <translation>一些项目已被修改。保存修改？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="856"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="865"/>
         <source>Save Changes</source>
         <translation>保存更改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="857"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="866"/>
         <source>Discard Changes</source>
         <translation>放弃修改</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="858"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="867"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="879"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="888"/>
         <source>Undone : </source>
         <translation>撤消 : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="942"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="951"/>
         <source>Redone : </source>
         <translation>重置 : </translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="994"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1054"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1083"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1152"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1003"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1063"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1092"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1161"/>
         <source>Loading Error</source>
         <translation>加载错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1031"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1040"/>
         <source>Open File</source>
         <translation>打开文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1166"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1175"/>
         <source>Save File</source>
         <translation>保存文件</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1815"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1824"/>
         <source>Exported %1 (%2 KB)</source>
         <translation>已导出 %1（%2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1825"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1834"/>
         <source> (%1 of %2 KB allowed for %3)</source>
         <translation> （%1，%3 的上限为 %2 KB）</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1830"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1839"/>
         <source>; OVER THE LIMIT, it will be rejected</source>
         <translation>；已超出上限，将被拒收</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1869"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1878"/>
         <source>All files (*)</source>
         <translation>所有文件 (*)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1870"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1879"/>
         <source>%1 files (*.%2)</source>
         <translation>%1 文件 (*.%2)</translation>
     </message>
@@ -5083,12 +5116,12 @@ In the following screen you can instruct AnimeEffects to download and install it
         <translation>工具</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1103"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1112"/>
         <source>Recover unsaved project?</source>
         <translation>恢复未保存的项目？</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1104"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1113"/>
         <source>AnimeEffects found an unsaved project from a previous session:
 %1
 
@@ -5179,8 +5212,8 @@ Open it?</source>
         <translation type="vanished">标签图片</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1863"/>
-        <location filename="../../src/gui/MainWindow.cpp" line="1942"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1872"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1951"/>
         <source>Export Folder</source>
         <translation>导出文件</translation>
     </message>
@@ -5197,7 +5230,7 @@ Open it?</source>
         <translation type="vanished">导出错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/MainWindow.cpp" line="1871"/>
+        <location filename="../../src/gui/MainWindow.cpp" line="1880"/>
         <source>Export File</source>
         <translation>导出文件</translation>
     </message>
@@ -5439,7 +5472,7 @@ The log is available below.</source>
     <message>
         <location filename="../../src/gui/PlayBackWidget.cpp" line="49"/>
         <location filename="../../src/gui/PlayBackWidget.cpp" line="79"/>
-        <location filename="../../src/gui/PlayBackWidget.cpp" line="149"/>
+        <location filename="../../src/gui/PlayBackWidget.cpp" line="151"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
@@ -5455,13 +5488,21 @@ The log is available below.</source>
     </message>
     <message>
         <location filename="../../src/gui/PlayBackWidget.cpp" line="52"/>
-        <source>Loop animation</source>
-        <translation>循环动画</translation>
+        <source>Loop playback</source>
+        <translation>循环播放</translation>
     </message>
     <message>
         <location filename="../../src/gui/PlayBackWidget.cpp" line="54"/>
+        <source>Playback settings</source>
+        <translation>播放设置</translation>
+    </message>
+    <message>
+        <source>Loop animation</source>
+        <translation type="vanished">循环动画</translation>
+    </message>
+    <message>
         <source>Animation settings</source>
-        <translation>动画设置</translation>
+        <translation type="vanished">动画设置</translation>
     </message>
     <message>
         <source>Loop</source>
@@ -5474,7 +5515,7 @@ The log is available below.</source>
     </message>
     <message>
         <location filename="../../src/gui/PlayBackWidget.cpp" line="79"/>
-        <location filename="../../src/gui/PlayBackWidget.cpp" line="143"/>
+        <location filename="../../src/gui/PlayBackWidget.cpp" line="145"/>
         <source>Pause</source>
         <translation>停止</translation>
     </message>
@@ -5944,7 +5985,7 @@ The log is available below.</source>
         <location filename="../../src/gui/ToolWidget.cpp" line="164"/>
         <location filename="../../src/gui/ToolWidget.cpp" line="176"/>
         <source>Show animation graph</source>
-        <translation type="unfinished"></translation>
+        <translation>显示动画曲线图</translation>
     </message>
 </context>
 <context>
@@ -5981,38 +6022,38 @@ The log is available below.</source>
 <context>
     <name>gui::prop::BlurKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="304"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="314"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="309"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="319"/>
         <source>Blur</source>
         <translation>模糊</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="326"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="331"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="367"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="373"/>
         <source>Amount</source>
         <translation>数量</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="368"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="374"/>
         <source>Directional</source>
         <translation>方向性</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="369"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="375"/>
         <source>Blur X</source>
         <translation>模糊 X</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="370"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="376"/>
         <source>Blur Y</source>
         <translation>模糊 Y</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="371"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="377"/>
         <source>Angle</source>
         <translation>角度</translation>
     </message>
@@ -6048,12 +6089,12 @@ The log is available below.</source>
 <context>
     <name>gui::prop::CurrentKeyPanel</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="690"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="699"/>
         <source>Max text width</source>
         <translation>最大文本宽度 :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="672"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="681"/>
         <source>Current Keys</source>
         <translation>当前键</translation>
     </message>
@@ -6123,18 +6164,18 @@ The log is available below.</source>
 <context>
     <name>gui::prop::DepthKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="198"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="199"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="201"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="202"/>
         <source>Depth</source>
         <translation>深度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="211"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="214"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="220"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="224"/>
         <source>Position</source>
         <translation>位置 :</translation>
     </message>
@@ -6142,22 +6183,22 @@ The log is available below.</source>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="540"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="550"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="549"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="559"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="803"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="814"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="806"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="817"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
@@ -6165,13 +6206,13 @@ The log is available below.</source>
 <context>
     <name>gui::prop::FFDKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="552"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="553"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="560"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="561"/>
         <source>FFD</source>
         <translation>自由变形</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="565"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="573"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
@@ -6179,33 +6220,33 @@ The log is available below.</source>
 <context>
     <name>gui::prop::HSVKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="428"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="436"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="434"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="442"/>
         <source>HSV</source>
         <translation>HSV</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="448"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="454"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="475"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="482"/>
         <source>Hue</source>
         <translation>色相</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="476"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="483"/>
         <source>Saturation</source>
         <translation>饱和度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="477"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="484"/>
         <source>Value</source>
         <translation>明度： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="478"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="485"/>
         <source>Absolute color</source>
         <translation>绝对颜色：</translation>
     </message>
@@ -6213,23 +6254,23 @@ The log is available below.</source>
 <context>
     <name>gui::prop::ImageKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="595"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="603"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="604"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="612"/>
         <source>Image</source>
         <translation>图像</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="622"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="631"/>
         <source>Asset</source>
         <translation>素材</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="628"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="637"/>
         <source>Center</source>
         <translation>中心 :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="634"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="643"/>
         <source>Cell size</source>
         <translation>区块尺寸 :</translation>
     </message>
@@ -6248,17 +6289,17 @@ The log is available below.</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="50"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="51"/>
         <source>Spline</source>
         <translation>样条 :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="56"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="57"/>
         <source>Position</source>
         <translation>位置 :</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="62"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="63"/>
         <source>Centroid</source>
         <translation>中心 :</translation>
     </message>
@@ -6266,18 +6307,18 @@ The log is available below.</source>
 <context>
     <name>gui::prop::OpaKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="248"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="254"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="252"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="258"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="266"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="270"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="276"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="281"/>
         <source>Rate</source>
         <translation>值 :</translation>
     </message>
@@ -6285,13 +6326,13 @@ The log is available below.</source>
 <context>
     <name>gui::prop::PoseKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="509"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="510"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="516"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="517"/>
         <source>Pose</source>
         <translation>姿势</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="522"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="529"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
@@ -6299,18 +6340,18 @@ The log is available below.</source>
 <context>
     <name>gui::prop::RotateKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="92"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="94"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="93"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="95"/>
         <source>Rotate</source>
         <translation>旋转</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="106"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="107"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="120"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="122"/>
         <source>Angle</source>
         <translation>角度 :</translation>
     </message>
@@ -6318,18 +6359,18 @@ The log is available below.</source>
 <context>
     <name>gui::prop::ScaleKeyGroup</name>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="148"/>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="149"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="150"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="151"/>
         <source>Scale</source>
         <translation>尺度</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="161"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="163"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="170"/>
+        <location filename="../../src/gui/prop/prop_CurrentKeyPanel.cpp" line="173"/>
         <source>Rate</source>
         <translation>值 :</translation>
     </message>

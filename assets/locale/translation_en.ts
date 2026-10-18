@@ -4,19 +4,19 @@
 <context>
     <name>gui::ImGuiOverlay</name>
     <message numerus="yes">
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="825"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2198"/>
         <source>%n channel(s) shown</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>1 channel shown</numerusform>
+            <numerusform>%n channels shown</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/ImGuiOverlay.cpp" line="837"/>
+        <location filename="../../src/gui/ImGuiOverlay.cpp" line="2241"/>
         <source>%1 (%n more channel(s) not listed: no room in the panel)</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
+        <translation>
+            <numerusform>%1 (1 more channel not listed: no room in the panel)</numerusform>
+            <numerusform>%1 (%n more channels not listed: no room in the panel)</numerusform>
         </translation>
     </message>
 </context>
