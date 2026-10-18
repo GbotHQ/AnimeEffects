@@ -1,6 +1,7 @@
 #include "gui/TargetWidget.h"
 #include "gui/AnimationSettingDialog.h"
 #include "gui/MainMenuBar.h"
+#include "gui/TimeLineHeader.h"
 #include "cmnd/BasicCommands.h"
 #include "cmnd/ScopedMacro.h"
 #include "ctrl/CmndName.h"
@@ -8,6 +9,7 @@
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QScopedPointer>
+#include <QVBoxLayout>
 
 namespace gui {
 
@@ -17,6 +19,7 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mViaPoint(aViaPoint),
     mSizeHint(aSizeHint),
     mHorizontalSplitter(nullptr),
+    mHeader(nullptr),
     mSuspendCount(0) {
     mHorizontalSplitter = new ThinSplitter(Qt::Horizontal, this);
     // The hitbox grab area sits 2px into the object tree / 10px into the
@@ -25,9 +28,9 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mHorizontalSplitter->setHitBoxOffset(4);
     mObjTree = new ObjectTreeWidget(aViaPoint, aResources, mHorizontalSplitter);
     mTimeLine = new TimeLineWidget(aResources, aViaPoint, *this, mHorizontalSplitter);
-    // The playback bar is a fixed-width toolbar: it lives next to the
-    // splitter, not inside it, so there is no draggable boundary and the
-    // buttons can never be resized.
+    // The transport is a fixed-size group of buttons; it belongs to the header
+    // bar's own layout (not to the splitter, and no longer to a column beside
+    // it), so it can never be resized and the lanes get the dock's full width.
     mPlayBack = new PlayBackWidget(aResources, this, *mProject);
 
     mHorizontalSplitter->addWidget(mObjTree);
@@ -36,11 +39,22 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mHorizontalSplitter->setCollapsible(1, false);
 
 
-    auto* lay = new QHBoxLayout(this);
+    // The dock's header: the 40px bar the transport moved into, above the
+    // splitter, spanning the dock. The row below it is the one the dock has
+    // always had - object tree | timeline - now without the transport column.
+    mHeader = new TimeLineHeader(aResources, mPlayBack, this);
+    mHeader->setTimeLineWidget(mTimeLine);
+
+    auto* row = new QHBoxLayout();
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(0);
+    row->addWidget(mHorizontalSplitter, 1);
+
+    auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
-    lay->addWidget(mHorizontalSplitter, 1);
-    lay->addWidget(mPlayBack);
+    lay->addWidget(mHeader);
+    lay->addLayout(row, 1);
 
     mPlayBack->setPushDelegate([=](PlayBackWidget::PushType aType) { this->onPlayBackButtonPushed(aType); });
 }
@@ -51,6 +65,9 @@ void TargetWidget::setProject(core::Project* aProject) {
     mObjTree->setProject(aProject);
     mTimeLine->setProject(aProject);
     mPlayBack->aProject = aProject;
+    // The frame range the readout names is the editor's own, so re-read it now
+    // that the project (or no project at all) is behind it.
+    mHeader->refreshFrame();
 }
 
 core::Frame TargetWidget::currentFrame() const { return mTimeLine->currentFrame(); }
@@ -194,6 +211,9 @@ void TargetWidget::refreshAnimationSettings() {
     }
     // FPS changes the ruler strings (relative-to-FPS / timecode formats).
     mTimeLine->triggerOnTimeFormatChanged();
+    // The frame range is one of the two numbers the header reads, and this popup
+    // edits it without any frame report from the timeline: re-read it here.
+    mHeader->refreshFrame();
 }
 
 } // namespace gui

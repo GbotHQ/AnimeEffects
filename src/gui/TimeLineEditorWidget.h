@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QAction>
 #include <QTreeWidgetItem>
+#include <functional>
 #include "core/TimeLineEvent.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/ViaPoint.h"
@@ -12,6 +13,8 @@
 #include "KeyCommandMap.h"
 
 namespace gui {
+
+namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
 
 class TimeCursor: public QWidget {
     Q_OBJECT
@@ -83,15 +86,35 @@ public:
     // The controller the surface renders; TimeRuler drives it through the
     // same updateCursor entry point as the track input path.
     ctrl::TimeLineEditor* editor() const { return mEditor.data(); }
-    // Shows the application's own KEY EASING MENU at aGlobalPos, for the keys
+    // Shows the application's own KEY EASING PICKER at aGlobalPos, for the keys
     // aTargets names (the caller's current selection, in the timeline's
     // currency). This is the entry point for callers that are not the timeline's
     // own context-menu handler - the animation graph panel's right-click - and it
-    // reuses the menu this widget already builds and populates, so the two routes
-    // cannot offer different easing lists or take different edit paths. Nothing
-    // here depends on the panel: a caller with a selection and a screen position
-    // gets the menu, and an EMPTY target list shows nothing.
-    void showKeyContextMenu(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos);
+    // is the SAME picker the header's easing chip opens (that popover is this
+    // widget's single instance), so the two anchors cannot offer different
+    // easings or take different edit paths. Nothing here depends on the panel: a
+    // caller with a selection and a screen position gets the picker, and an EMPTY
+    // target list shows nothing.
+    void showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos);
+    // The easing control the header hosts (prop::EasingItem). This widget is the
+    // one place the picker is opened and the one place a committed edit lands, so
+    // the control itself holds no model; the header sets it once, and clears it
+    // when it goes away (null is a valid, inert state). The chip's state is
+    // PUSHED to it (see pushEasingChipState), not asked for: this surface is where
+    // the shared key selection is re-read, and the header has no other way to learn
+    // that another view changed it.
+    void setEasingItemHost(prop::EasingItem* aHost);
+    // Opens THAT picker for the keys aTargets names, anchored at aGlobalAnchor:
+    // under the header's chip, or at the pointer a right-click on a key landed at.
+    // The
+    // targets are held for the open's lifetime, so every edit the picker commits
+    // applies to exactly the keys it was opened for (a right-click on an unselected
+    // key lends it a temporary selection - see ctrl::TimeLineEditor::selectKeysAt -
+    // and it outlives this call, until the popover closes).
+    //
+    // False when nothing opened (no host, no targets, or no key of a type that
+    // carries an easing): the caller's temporary selection is then its own to end.
+    bool openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor);
     // The MoveCanvas key (space by default) is held: the ruler lets a
     // left-press propagate to the timeline's pan instead of seeking.
     void setPanKeyHeld(bool aHeld) {
@@ -146,8 +169,20 @@ private:
     void onPasteKeyTriggered(bool);
     void onDeleteKeyTriggered(bool);
     void onSelectSpacingTriggered();
-    void onSelectEasingTriggered(int easingType);
     void onSelectRangeTriggered(int rangeType);
+    // Applies aNext to the easing of every key the current open named and commits
+    // the results as ONE undo step (one macro, one notification naming every key
+    // written). A key whose type carries no easing is skipped, and so is one whose
+    // value aNext would not change, so an edit that changes nothing leaves no
+    // history entry behind. This is the picker's commit path and the range menu's.
+    void assignEasingToTargets(const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
+    // Hands the header's chip what it names: one easing per SELECTED key, in
+    // selection order, plus the Auto context of the key the chip shows (the first),
+    // so its glyph is the curve that key plays rather than a shape no key has. Keys
+    // of a type that carries no easing (bone, mesh) contribute nothing. Called from
+    // the paint (see paintEvent) - the moment this widget re-reads the selection it
+    // renders - and when a host is attached or the picker opens.
+    void pushEasingChipState();
 
     ViaPoint& mViaPoint;
     util::LinkPointer<core::Project> mProject;
@@ -170,8 +205,10 @@ private:
     QAction* mPasteKey;
     QAction* mDeleteKey;
     QAction* mSelectSpacing;
-    QMenu* mSelectEasing;
     QMenu* mSelectRange;
+    // The header's easing control, if a header hosts one: it owns the single
+    // picker popover this widget opens (see openEasingPicker).
+    prop::EasingItem* mEasingHost;
     core::TimeLineEvent mTargets;
     core::TimeLineEvent mCopyTargets;
     QPoint mPastePos;

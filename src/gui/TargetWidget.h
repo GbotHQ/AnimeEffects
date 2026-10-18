@@ -7,6 +7,7 @@
 #include "gui/TimeLineWidget.h"
 #include "gui/GUIResources.h"
 #include "gui/PlayBackWidget.h"
+#include "gui/TimeLineHeader.h"
 #include "gui/ViaPoint.h"
 #include "core/Project.h"
 #include "core/Animator.h"
@@ -29,6 +30,13 @@ public:
 
     PlayBackWidget& playBackWidget() { return *mPlayBack; }
     const PlayBackWidget& playBackWidget() const { return *mPlayBack; }
+
+    // The dock's 40px header bar (the transport, the frame readout, the easing
+    // chip's reserved slot and the zoom group). The chip's own unit reaches the
+    // slot and the header's signal through this, rather than through the dock's
+    // layout.
+    TimeLineHeader& timeLineHeader() { return *mHeader; }
+    const TimeLineHeader& timeLineHeader() const { return *mHeader; }
 
     // from Animator
     virtual core::Frame currentFrame() const;
@@ -56,6 +64,7 @@ private:
     ThinSplitter* mHorizontalSplitter;
     ObjectTreeWidget* mObjTree;
     TimeLineWidget* mTimeLine;
+    TimeLineHeader* mHeader;
     PlayBackWidget* mPlayBack;
     AnimationSettingDialog* mAnimSettings = nullptr;
     int mLastAnimFps = 0;

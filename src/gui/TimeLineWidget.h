@@ -75,12 +75,12 @@ public:
     // ->selection()) is the set the panel shares, and its scale is what
     // visibleFrameRange() below is derived from.
     ctrl::TimeLineEditor* editor() const;
-    // Shows the application's own key EASING MENU at aGlobalPos for the keys
-    // aTargets names - the panel's right-click route to the timeline's menu (see
-    // TimeLineEditorWidget::showKeyContextMenu, which is where the menu and its
-    // action live). aGlobalPos is in GLOBAL (screen) coordinates, and an empty
-    // target list shows nothing.
-    void showKeyContextMenu(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos);
+    // Shows the application's own key EASING PICKER at aGlobalPos for the keys
+    // aTargets names - the animation graph panel's right-click route to the
+    // timeline's one picker (see TimeLineEditorWidget::showKeyEasingPicker, which
+    // is where it opens and where a committed edit lands). aGlobalPos is in GLOBAL
+    // (screen) coordinates, and an empty target list shows nothing.
+    void showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos);
     // The frames this widget is showing right now: the visible window on the
     // content axis, in frames, derived through the editor's own scale (the same
     // mapping every input path here converts a pixel with). This is what the

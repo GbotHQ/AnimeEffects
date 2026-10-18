@@ -339,24 +339,19 @@ namespace prop {
 
     //-------------------------------------------------------------------------------------------------
 
-    util::Easing::AutoContext KeyAccessor::autoContext(core::TimeKeyType aType) const {
-        util::Easing::AutoContext context;
-        if (!isValid())
-            return context;
+    util::Easing::AutoContext autoContextOf(const core::TimeLineEvent::Target& aTarget, const core::TimeKey& aKey) {
+        const core::TimeLine* line = aTarget.pos.line();
+        if (!line)
+            return util::Easing::AutoContext();
 
-        const int frame = getFrame();
-        const core::TimeLine::MapType& map = mTarget->timeLine()->map(aType);
-
-        // The easing panel edits the key AT the current frame, and that key's
-        // easing shapes the segment starting at it - so the segment's far end is
-        // its successor in the map. A key with no successor has no segment.
-        auto from = map.constFind(frame);
+        const core::TimeLine::MapType& map = line->map(aTarget.pos.type());
+        auto from = map.constFind(aKey.frame());
         if (from == map.constEnd())
-            return context;
+            return util::Easing::AutoContext();
         auto to = from;
         ++to;
         if (to == map.constEnd())
-            return context;
+            return util::Easing::AutoContext(); // a lane's last key has no segment to shape
 
         const core::TimeKey* prev = nullptr;
         if (from != map.constBegin()) {
@@ -365,11 +360,12 @@ namespace prop {
             prev = p.value();
         }
         const core::TimeKey* next = nullptr;
-        auto n = to;
-        ++n;
-        if (n != map.constEnd())
-            next = n.value();
-
+        {
+            auto n = to;
+            ++n;
+            if (n != map.constEnd())
+                next = n.value();
+        }
         return core::autoEasingContext(*from.value(), *to.value(), prev, next);
     }
 

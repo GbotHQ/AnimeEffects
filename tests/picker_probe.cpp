@@ -324,8 +324,8 @@ int main(int argc, char** argv) {
         fprintf(stderr,
                 "#10 tile catalog: %d tile(s) reach %d of the %d offered easings "
                 "(missing=%d extra=%d, none is Custom=%d) -> %s\n",
-                tileCount, reachable.size(), expected.size(),
-                (expected - reachable).size(), (reachable - expected).size(),
+                tileCount, int(reachable.size()), int(expected.size()),
+                int((expected - reachable).size()), int((reachable - expected).size()),
                 (int)allTilesClick, verdict(complete));
     }
 

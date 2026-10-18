@@ -163,7 +163,11 @@ MainWindow::MainWindow(ctrl::System& aSystem, GUIResources& aResources, LocalePa
         dockWidget->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
         this->addDockWidget(Qt::BottomDockWidgetArea, dockWidget);
 
-        mTarget = new TargetWidget(mViaPoint, mGUIResources, dockWidget, QSize(256, 256));
+        // 296 rather than the 256 this dock used before the header bar: the bar
+        // is 40px of fixed height above the surface, and the design's own budget
+        // is that the DOCK gains that height (the ruler, the lanes and the tree
+        // keep theirs) rather than the timeline losing it.
+        mTarget = new TargetWidget(mViaPoint, mGUIResources, dockWidget, QSize(256, 296));
         dockWidget->setWidget(mTarget);
         // The asset removal path reaches the object tree through ViaPoint to
         // delete the layers that reference a removed asset in ONE undo step.

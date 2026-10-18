@@ -1,7 +1,10 @@
 /*
  *  Playback widget stylesheet (breeze_dark).
  *
- *  Same tokens as the tool dock: 4px controls, feedback via background.
+ *  Shared by the transport group (PlayBackWidget) and the dock header bar it
+ *  sits in (TimeLineHeader, which loads the same file for the bar's own frame
+ *  readout): one 28px button box, feedback via background. Same tokens as the
+ *  tool dock.
  */
 
 QPushButton {
@@ -9,12 +12,12 @@ QPushButton {
     background-color: transparent;
     border: none;
     border-radius: 0.25em;
-    /* width/height pin the box: these buttons are positioned with
-       setGeometry(24, 24), but theme restyles resize absolute children to
-       the style's sizeFromContents (icon 18px + button margins = 29px),
-       so without an explicit size they come out 24x29 */
-    width: 24px;
-    height: 24px;
+    /* width/height pin the box: these buttons are positioned with setGeometry()
+       on the header's 28px grid (20px icons), but theme restyles resize
+       absolute children to the style's sizeFromContents (icon + button margins
+       = 29px), so without an explicit size they come out 28x29 */
+    width: 28px;
+    height: 28px;
     padding: 0;
     min-width: 0;
     min-height: 0;
@@ -49,4 +52,24 @@ QPushButton:checked:hover {
 QPushButton:disabled {
     color: @textDisabled@;
     background-color: transparent;
+}
+
+/* The timeline header's frame readout ("120 / 660"): the frame a key will land
+   on, then the range the playhead is clamped to beside it, in one row of two
+   inks. The frame carries the text color at 13px/600, the slash and the range's
+   end the muted token at 11px. The digits are tabular in the application font
+   (the bundled Geist, see Main.cpp), so a changing number never reflows the bar
+   - no font-feature rule is needed for it. */
+QLabel#frameCurrent {
+    background-color: transparent;
+    color: @text@;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#frameSep,
+QLabel#frameEnd {
+    background-color: transparent;
+    color: @textMuted@;
+    font-size: 11px;
 }

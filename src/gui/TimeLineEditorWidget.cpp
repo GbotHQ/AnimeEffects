@@ -7,9 +7,14 @@
 #include "core/TimeKeyExpans.h"
 #include "core/BlurKey.h"
 #include "core/TimeFormat.h"
+#include "cmnd/BasicCommands.h"
+#include "cmnd/ScopedMacro.h"
+#include "ctrl/CmndName.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/MouseSetting.h"
 #include "gui/obj/obj_Item.h"
+#include "gui/prop/prop_Items.h"
+#include "gui/prop/prop_KeyAccessor.h"
 #include "qapplication.h"
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -116,6 +121,7 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     mCopyKey(),
     mPasteKey(),
     mDeleteKey(),
+    mEasingHost(),
     mTargets(),
     mCopyTargets(),
     mPastePos(),
@@ -152,24 +158,6 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
             mCopyToClipboard, &QAction::triggered, this, &TimeLineEditorWidget::onCopyCBTriggered
         );
 
-        // Entries bind their easing type explicitly so the menu order is free
-        // to group the stepped holds apart from the serialized enum order.
-        mSelectEasing = new QMenu(tr("Change key(s) easing to"), this);
-        {
-            // The entries come from util::Easing's shared display-order table
-            // and their labels from getTypeName (one translation source).
-            // Custom is set through the spline dialog, so it is skipped here.
-            for (int i = 0; i < util::Easing::displayCount(); ++i) {
-                const auto type = util::Easing::typeAtDisplayIndex(i);
-                if (type == util::Easing::Type_Custom)
-                    continue;
-                auto* action = new QAction(util::Easing::getTypeName(type), this);
-                mSelectEasing->addAction(action);
-                mSelectEasing->connect(action, &QAction::triggered, [this, type] {
-                    onSelectEasingTriggered(static_cast<int>(type));
-                });
-            }
-        }
         mSelectRange = new QMenu(tr("Change key(s) range to"), this);
         {
             auto* in = new QAction(tr("In"), this);
@@ -258,6 +246,9 @@ void TimeLineEditorWidget::setProject(core::Project* aProject) {
     // camera update.
     if (mTimeRuler)
         mTimeRuler->update();
+    // The keys went with the old project too: ctrl::TimeLineEditor::setProject
+    // clears the selection (clearRows), and the repaint above is what re-reads it
+    // for the header's chip.
 }
 
 void TimeLineEditorWidget::setFrame(core::Frame aFrame) {
@@ -353,6 +344,9 @@ bool TimeLineEditorWidget::updateCursor(const core::AbstractCursor& aCursor, Qt:
 
     if (flags & ctrl::TimeLineEditor::UpdateFlag_ModView) {
         updateTimeCursorPos();
+        // The repaint re-reads the selection for the header's chip (see
+        // paintEvent): ModView is the editor's own "the selection and its
+        // highlight changed" report, and every selection mutator sets it.
         this->update();
     }
     return (flags & ctrl::TimeLineEditor::UpdateFlag_ModFrame);
@@ -424,6 +418,16 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
         painter.drawLine(0, ctrl::TimeLineEditor::kHeaderHeight, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
     }
     painter.end();
+
+    // The paint is where this widget re-reads the selection it renders, and the
+    // header's chip names that same selection. It is also the ONLY report of a
+    // selection this widget did not make: the animation graph panel shares the set
+    // (see ctrl::time::Selection) and announces a change by asking this widget to
+    // repaint (gui::MainDisplayWidget::updateCursor), not through a signal - so a
+    // chip refreshed anywhere else would lag a key selected in the panel. The chip
+    // ignores a state equal to the one it holds, so a repaint that changed nothing
+    // costs one compare.
+    pushEasingChipState();
 }
 
 void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo) {
@@ -440,6 +444,9 @@ void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool 
         (aEvent.type() == core::TimeLineEvent::Type_PushKey || aEvent.type() == core::TimeLineEvent::Type_CopyKey)) {
         mEditor->selectCreatedKeys(aEvent);
     }
+    // A modification can move, drop or re-ease the keys under the selection (an
+    // undo, a delete, or the picker's own commit); the repaint re-reads them for
+    // the header's chip.
     this->update();
 }
 
@@ -494,13 +501,20 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
 
     // The key menu applies when the click is on a key or when there is a
     // current selection, so keys stay operable from anywhere once selected.
+    //
+    // The easing is ONE entry that opens the picker, not a flat submenu of 14
+    // rows: the header's chip opens the same popover (design section 2), so there
+    // is one list of easings in one visual language, and it is opened AFTER the
+    // menu closes (see below) rather than from inside it.
+    bool pickEasing = false;
     if (clickedOnKey || mEditor->retrieveSelectionTargets(mTargets)) {
         menu.addAction(mCopyKey);
         menu.addAction(mCopyToClipboard);
         menu.addAction(mPasteKey);
         menu.addSeparator();
         menu.addAction(mSelectSpacing);
-        menu.addMenu(mSelectEasing);
+        QAction* easing = menu.addAction(tr("Change key(s) easing..."));
+        easing->connect(easing, &QAction::triggered, [&pickEasing]() { pickEasing = true; });
         menu.addMenu(mSelectRange);
         menu.addSeparator();
         menu.addAction(mDeleteKey);
@@ -508,10 +522,17 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
         menu.addAction(mPasteKey);
     }
     menu.exec(this->mapToGlobal(aPos));
+    // The popover opens once the menu is gone: two nested grabs (an open QMenu
+    // and a Qt::Popup) would fight over the same press, and the picker would
+    // close on the release that dismissed the menu. It is anchored AT the
+    // pointer, which is where the menu was.
+    if (pickEasing && openEasingPicker(mTargets, this->mapToGlobal(aPos)))
+        return;
     // A right-click on an unselected key lent it a temporary selection for
     // this menu only; the previous selection is not restored, so drop the
     // temporary selection now that the interaction is over, then repaint so
-    // the highlight clears.
+    // the highlight clears. A popover open keeps it (it is the popover's
+    // targets) and ends it when it closes - see setEasingItemHost.
     mEditor->endTemporarySelection();
     this->update();
 }
@@ -745,98 +766,106 @@ void TimeLineEditorWidget::onPasteKeyTriggered(bool) {
     mOnPasting = false;
 }
 
-// It's called easingType, but it can also be Range depending on the function that calls it
-void assignEasing(const util::LinkPointer<core::Project>& mProject, int easingType,
-    const core::TimeLineEvent::Target* target, const core::TimeKey* key, int frame, bool assignEasing){
-    XC_PTR_ASSERT(key);
-    switch(key->type()) {
-    case core::TimeKeyType_Move: {
-        auto newData =  dynamic_cast<const core::MoveKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignMoveKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Rotate: {
-        auto newData =  dynamic_cast<const core::RotateKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignRotateKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Scale:{
-        auto newData =  dynamic_cast<const core::ScaleKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignScaleKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Depth:{
-        auto newData =  dynamic_cast<const core::DepthKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignDepthKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Opa:{
-        auto newData =  dynamic_cast<const core::OpaKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignOpaKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Pose:{
-        auto newData =  dynamic_cast<const core::PoseKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignPoseKeyEasing(*mProject, *target->node, frame, newData.easing());
-    }
-        break;
-    case core::TimeKeyType_FFD: {
-        auto newData =  dynamic_cast<const core::FFDKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignFFDKeyEasing(*mProject, *target->node, frame, newData.easing());
-    }
-        break;
-    case core::TimeKeyType_HSV:{
-        auto newData =  dynamic_cast<const core::HSVKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignHSVKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
-    case core::TimeKeyType_Blur:{
-        auto newData =  dynamic_cast<const core::BlurKey*>(key)->data();
-        if(assignEasing) { newData.easing().type = static_cast<util::Easing::Type>(easingType); }
-        else { newData.easing().range = static_cast<util::Easing::Range>(easingType); }
-        ctrl::TimeLineUtil::assignBlurKeyData(*mProject, *target->node, frame, newData);
-    }
-        break;
+// The easing a timeline key carries, BY REFERENCE: the picker reads it (the
+// header chip's state) and writes it (a commit), so there is one per-type table
+// here rather than a reader and a writer that can drift apart.
+//
+// Null for a type that carries no easing at all (bone, mesh) and for an image
+// key, whose offset is step-held - playback never consults its param, and the
+// timeline's easing edit has never covered it (see core/AutoEasing.h's note on
+// image keys). Pose and FFD are NOT in that group: their easing shapes the
+// interval playback plays, so they are edited here like any other.
+util::Easing::Param* keyEasingOf(core::TimeKey& aKey, core::TimeKeyType aType) {
+    switch (aType) {
+    case core::TimeKeyType_Move:
+        return &static_cast<core::MoveKey&>(aKey).data().easing();
+    case core::TimeKeyType_Rotate:
+        return &static_cast<core::RotateKey&>(aKey).data().easing();
+    case core::TimeKeyType_Scale:
+        return &static_cast<core::ScaleKey&>(aKey).data().easing();
+    case core::TimeKeyType_Depth:
+        return &static_cast<core::DepthKey&>(aKey).data().easing();
+    case core::TimeKeyType_Opa:
+        return &static_cast<core::OpaKey&>(aKey).data().easing();
+    case core::TimeKeyType_Pose:
+        return &static_cast<core::PoseKey&>(aKey).data().easing();
+    case core::TimeKeyType_FFD:
+        return &static_cast<core::FFDKey&>(aKey).data().easing();
+    case core::TimeKeyType_HSV:
+        return &static_cast<core::HSVKey&>(aKey).data().easing();
+    case core::TimeKeyType_Blur:
+        return &static_cast<core::BlurKey&>(aKey).data().easing();
     default:
-        qDebug("You somehow tried to modify an unsupported key, you absolute fool!");
+        return nullptr;
     }
 }
 
-void TimeLineEditorWidget::onSelectEasingTriggered(const int easingType) {
-    for(auto target: mTargets.targets()) {
-        auto type = target.pos.key()->type();
-        if(type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image){
-            int frame = target.pos.key()->frame();
-            auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
-            assignEasing(mProject, easingType, &target, key, frame, true);
-        }
+void TimeLineEditorWidget::assignEasingToTargets(
+    const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext) {
+    if (!mProject)
+        return;
+
+    // WHAT CAN BE WRITTEN, collected BEFORE the macro is opened: cmnd::Stack
+    // appends a macro even when it holds no command and counts it as an edit, so an
+    // edit that found nothing to write must not open one (the same guard the graph
+    // panel's own selection-easing action carries).
+    struct Edit {
+        util::Easing::Param* param;
+        util::Easing::Param next;
+        core::ObjectNode* node;
+        core::TimeKeyType type;
+        int frame;
+    };
+    QVector<Edit> edits;
+    for (const core::TimeLineEvent::Target& target : mTargets.targets()) {
+        // The selection is iterated by CONST reference, but TimeKeyPos::key() is a
+        // non-const member (it hands out the mutable key), so the position is taken
+        // by value and asked there: three words of copy, no cast, and the key it
+        // names is the document's own.
+        core::TimeKeyPos pos = target.pos;
+        core::TimeKey* key = pos.key();
+        if (!key || !target.node)
+            continue; // a stale selection names a key that is not in the document
+        util::Easing::Param* param = keyEasingOf(*key, pos.type());
+        if (!param)
+            continue; // a key of a type that carries no easing
+        const util::Easing::Param next = aNext(*param);
+        if (next == *param)
+            continue; // nothing would change: no history entry for a non-change
+        edits.push_back({param, next, target.node, target.pos.type(), key->frame()});
+    }
+    if (edits.isEmpty())
+        return;
+
+    // ONE macro and ONE notifier for the whole selection, so a multi-key edit is
+    // ONE entry in the history - the picker commits a whole session at once, and
+    // the keys it was opened for must not need one undo per key. The shape is the
+    // graph panel's own selection-easing action
+    // (ctrl::GraphEditor::setSelectedKeysEasing), and the command per key is the
+    // one the timeline's per-key route pushes (TimeLineUtil::assignKeyEasing: a
+    // cmnd::Assign of the key's util::Easing::Param plus a Type_ChangeKeyValue
+    // notifier). That per-key helper CANNOT be called in this loop: it opens a
+    // macro of its own, and cmnd::Stack::beginMacro asserts on a nested one.
+    cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("Change key(s) easing"));
+    auto* notifier = new ctrl::TimeLineUtil::Notifier(*mProject);
+    notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
+    macro.grabListener(notifier);
+    for (const Edit& edit : edits) {
+        notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
+        mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.param, edit.next));
     }
 }
+
 void TimeLineEditorWidget::onSelectRangeTriggered(int rangeType) {
-    for(auto target: mTargets.targets()) {
-        auto type = target.pos.key()->type();
-        if(type != core::TimeKeyType_Bone && type != core::TimeKeyType_Mesh && type != core::TimeKeyType_Image){
-            int frame = target.pos.key()->frame();
-            auto key = target.pos.line()->timeKey(target.pos.key()->type(), frame);
-            assignEasing(mProject, rangeType, &target, key, frame, false);
-        }
-    }
+    // The entry names a range; everything else about the key's easing stays as it
+    // is, so each key's own param is read and only its range replaced - the same
+    // read-modify-write the flat menu's range submenu did, now as one undo step.
+    const auto range = static_cast<util::Easing::Range>(rangeType);
+    assignEasingToTargets([range](const util::Easing::Param& aParam) {
+        util::Easing::Param next = aParam;
+        next.range = range;
+        return next;
+    });
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
@@ -1062,31 +1091,117 @@ void TimeLineEditorWidget::setTrackSeperatorColor(const QColor& trackSeperatorCo
 }
 
 //-------------------------------------------------------------------------------------------------
-void TimeLineEditorWidget::showKeyContextMenu(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos) {
-    // THE APPLICATION'S OWN ENTRY POINT for "change the easing of these keys".
-    // The menu is the one built above (mSelectEasing, from util::Easing's display
-    // table) and the action is onSelectEasingTriggered, which reads mTargets - so
-    // a caller from outside the timeline (the animation graph panel's right-click)
-    // gets the same list, the same labels, the same translations and the same
-    // edit path as a right-click in the timeline itself: there is no second menu
-    // to keep in step, and nothing here depends on the panel being up.
+void TimeLineEditorWidget::showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos) {
+    // THE APPLICATION'S OWN ENTRY POINT for "change the easing of these keys":
+    // the ONE easing picker, at the pointer. A caller from outside the timeline
+    // (the animation graph panel's right-click) gets the same control, the same
+    // list of easings and the same edit path as the header's chip, because
+    // there is one picker and this is where it opens - nothing here depends on the
+    // panel being up, and there is no second list to keep in step.
     //
     // aTargets is the caller's current selection in the timeline's own currency
     // (ctrl::GraphEditor::retrieveSelection hands one out, and
     // ctrl::TimeLineEditor::retrieveSelectionTargets hands out the same one when
     // the two share their selection). It is stored in mTargets, which is what the
-    // menu's actions act on, exactly as onContextMenuRequested stores what it
+    // picker's commits act on, exactly as onContextMenuRequested stores what it
     // resolved from the click.
-    //
-    // popup() rather than exec(): the caller may be inside a paint or a press
-    // handler (the panel's right-click is the latter), and a nested event loop
-    // there could re-enter the code that is asking for the menu. The menu's
-    // actions fire from the event loop like any other popup's.
-    if (aTargets.targets().isEmpty())
-        return; // nothing to change the easing of
+    openEasingPicker(aTargets, aGlobalPos);
+}
+
+//-------------------------------------------------------------------------------------------------
+void TimeLineEditorWidget::pushEasingChipState() {
+    if (!mEasingHost)
+        return;
+
+    QVector<util::Easing::Param> values;
+    util::Easing::AutoContext autoContext;
+    if (mEditor) {
+        const ctrl::time::Selection& selection = mEditor->selection();
+        bool haveShown = false;
+        for (const ctrl::time::Selection::Item& item : selection.items()) {
+            if (!item.key)
+                continue;
+            const util::Easing::Param* value = keyEasingOf(*item.key, item.target.pos.type());
+            if (!value)
+                continue;
+            values.push_back(*value);
+            // The chip SHOWS the first key's easing (see prop::EasingChip), so that
+            // is the one whose neighbours shape its glyph - the key's own Auto
+            // context, which is a document fact (prop::autoContextOf).
+            if (!haveShown) {
+                autoContext = prop::autoContextOf(item.target, *item.key);
+                haveShown = true;
+            }
+        }
+    }
+    mEasingHost->setSelection(values, autoContext);
+}
+
+//-------------------------------------------------------------------------------------------------
+void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
+    if (mEasingHost) {
+        // The host is going away (or being replaced): its callbacks capture this
+        // widget, so they must not outlive it.
+        mEasingHost->onEasingApplied = nullptr;
+        mEasingHost->onPickerClosed = nullptr;
+    }
+    mEasingHost = aHost;
+    if (!mEasingHost)
+        return;
+
+    // The one commit path: the control hands every edit the picker commits here,
+    // and this widget writes the keys the open named.
+    mEasingHost->onEasingApplied = [this](util::Easing::Param aEasing) {
+        assignEasingToTargets([aEasing](const util::Easing::Param&) { return aEasing; });
+    };
+    // The popover is gone, so a right-click's temporary selection ends with it:
+    // those keys were lent for the open, and the open is over.
+    mEasingHost->onPickerClosed = [this]() {
+        mEditor->endTemporarySelection();
+        this->update(); // repaints, which re-reads the selection for the chip
+    };
+    pushEasingChipState();
+}
+
+//-------------------------------------------------------------------------------------------------
+bool TimeLineEditorWidget::openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor) {
+    if (aTargets.targets().isEmpty() || !mEasingHost)
+        return false; // nothing to change the easing of (or no header hosts a picker)
+
+    // What the picker opens on: the FIRST key the open names, with the Auto
+    // context that key's own neighbours give it (prop::autoContextOf - an Auto key
+    // stores no control points, so without them the tile would draw a shape no key
+    // plays). A key of a type that carries no easing is skipped; a target list of
+    // only those opens nothing, which is what the flat menu did too.
+    util::Easing::Param shown;
+    util::Easing::AutoContext autoContext;
+    bool hasShown = false;
+    for (const core::TimeLineEvent::Target& target : aTargets.targets()) {
+        // By value, for the same reason as in assignEasingToTargets: the target list
+        // is const here and TimeKeyPos::key() is not a const member.
+        core::TimeKeyPos pos = target.pos;
+        core::TimeKey* key = pos.key();
+        if (!key)
+            continue;
+        const util::Easing::Param* easing = keyEasingOf(*key, pos.type());
+        if (easing) {
+            shown = *easing;
+            autoContext = prop::autoContextOf(target, *key);
+            hasShown = true;
+            break;
+        }
+    }
+    if (!hasShown)
+        return false;
 
     mTargets = aTargets;
-    mSelectEasing->popup(aGlobalPos);
+    // The chip names the same keys the popover edits, so the two must agree the
+    // moment it opens - the anchor may be a right-click in the animation graph
+    // panel, which changed the shared selection and whose repaint of this surface
+    // may not have happened yet.
+    pushEasingChipState();
+    mEasingHost->openPicker(aGlobalAnchor, this, shown, autoContext);
+    return true;
 }
 
 } // namespace gui

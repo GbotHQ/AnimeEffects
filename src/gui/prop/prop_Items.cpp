@@ -5,13 +5,9 @@
 #include <QPixmap>
 #include <QFontMetrics>
 #include <QAbstractButton>
-#include <QTimer>
 #include <QHeaderView>
 #include <QStandardItem>
 #include <QApplication>
-#include <QScreen>
-#include <QGuiApplication>
-#include <QWindow>
 #include <cstdio>
 #include "util/SelectArgs.h"
 #include "cmnd/ScopedMacro.h"
@@ -226,106 +222,200 @@ namespace prop {
         if (blendShow) aOutDelta = QString::number(qRound(aValue.weight * 100.0f)) + "%";
     }
 
+    // The chip's geometry: the mock's own numbers (mock.css .ease-chip). A 24px
+    // chip in the header's 40px bar, 4px corners, a 1px edge, 6px between every
+    // slot, and the two muted slots' fixed widths (38 / 46) - the fixed slots are
+    // the whole point: the selection's name and count change, and the bar beside
+    // the chip must not.
+    const int kHeight = 24;
+    const int kRadius = 4;
+    const int kBorder = 1;
+    const int kPadL = 6;
+    const int kPadR = 7;
+    const int kGap = 6;
+    const int kGlyph = 18;
+    const int kCaret = 12;
+    const int kRangeW = 38;
+    const int kCountW = 46;
+    const int kNameFontSize = 12;
+    const int kMetaFontSize = 11;
+    constexpr qreal kStroke = 1.5;
+    constexpr qreal kDisabledOpacity = 0.45;
+
+    // The chip is handed its state on every repaint of the timeline surface (see
+    // TimeLineEditorWidget::pushEasingChipState), so an unchanged state must cost
+    // nothing: a compare, not a repaint.
+    bool sameAutoKey(const util::Easing::AutoKey& aLhs, const util::Easing::AutoKey& aRhs) {
+        return aLhs.valid == aRhs.valid && aLhs.frame == aRhs.frame && aLhs.value == aRhs.value;
+    }
+
     // -------------------------------------------------------------------------
-    // EasingChip — the key-easing summary as ONE self-painting button. The old
-    // chip was a QToolButton used as a container holding four child widgets
-    // (a CurveGlyph, two QLabels, and a hand-painted caret) over the QSS
-    // surface, which split the same control's look across QSS, a raw-painted
-    // caret, and a per-render glyph-color setter. This paints the glyph, name,
-    // delta, and a theme-tinted caret in a single paintEvent; the surface
-    // (fill/border/radius + hover/pressed/disabled) still comes from the
-    // `#easingChip` QSS rule (the stylesheet engine paints it because the
-    // widget sets WA_StyledBackground).
+    // EasingChip — the selection's easing as ONE self-painting button, filling
+    // the timeline header's fixed 196px slot (design section 1). It replaced the
+    // per-key row the Current Keys panel carried: a row named one key's easing,
+    // which is not what an easing describes, and the header names the selection's
+    // instead - so the one control that opens the picker is also the one that
+    // says what it will edit.
+    //
+    // Every part sits in a FIXED slot (the mock's .ease-chip): glyph, name
+    // (elastic, elided), range/blend, count, caret. Only the name gives up space,
+    // so a longer easing name or a count cannot re-flow the bar beside the chip.
+    // The surface is painted here too (fill/border/radius + hover/pressed/
+    // disabled), so the control carries its whole look into any host and needs no
+    // stylesheet rule of its own - the mock's own values, from the live palette.
     // -------------------------------------------------------------------------
-    class EasingChip : public QAbstractButton {
-    public:
-        explicit EasingChip(GUIResources* aRes, QWidget* aParent = nullptr)
-            : QAbstractButton(aParent), mRes(aRes) {
-            setObjectName("easingChip");
-            setCursor(Qt::PointingHandCursor);
-            setToolTip(QCoreApplication::tr("Easing"));
-            setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            setFixedHeight(kHeight);
-            setFocusPolicy(Qt::NoFocus);
-            setAttribute(Qt::WA_Hover);
-            setAttribute(Qt::WA_StyledBackground); // let QSS paint the surface
-            reloadCaret();
+    EasingChip::EasingChip(GUIResources* aRes, QWidget* aParent):
+        QAbstractButton(aParent), mRes(aRes), mValues(), mAuto(), mCaret() {
+        setObjectName("easingChip");
+        setCursor(Qt::PointingHandCursor);
+        setToolTip(QCoreApplication::tr("Easing"));
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setFixedHeight(kHeight);
+        setFocusPolicy(Qt::NoFocus);
+        setAttribute(Qt::WA_Hover);
+        reloadCaret();
+        // "Select keys" until a selection says otherwise: the chip is the
+        // picker's only entry point, and it must not open on nothing.
+        setEnabled(false);
+    }
+
+    void EasingChip::setValues(const QVector<util::Easing::Param>& aValues,
+                               const util::Easing::AutoContext& aAutoContext) {
+        const bool sameAuto =
+            sameAutoKey(mAuto.prev, aAutoContext.prev) && sameAutoKey(mAuto.next, aAutoContext.next);
+        if (mValues == aValues && sameAuto)
+            return;
+        mValues = aValues;
+        mAuto = aAutoContext;
+        setEnabled(!mValues.isEmpty());
+        update();
+    }
+
+    void EasingChip::setDraft(const util::Easing::Param& aDraft) {
+        for (util::Easing::Param& value : mValues)
+            value = aDraft;
+        update();
+    }
+
+    void EasingChip::reloadCaret() {
+        mCaret = (mRes ? mRes->icon("caret-down").pixmap(kCaret, kCaret) : QPixmap());
+        update();
+    }
+
+    QSize EasingChip::sizeHint() const {
+        // The header's slot is the fixed width (TimeLineHeader's kEaseSlotWidth);
+        // this is the same box the mock's .ease-chip carries, so the two agree
+        // without the chip knowing where it is hosted.
+        return QSize(196, kHeight);
+    }
+
+    void EasingChip::paintEvent(QPaintEvent*) {
+        const theme::Colors& c = theme::Colors::current();
+        const bool enabled = isEnabled();
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        // The surface: the mock's .ease-chip. Its rest is the recessed surface
+        // with a hairline edge, its hover raises the fill and lights the edge with
+        // the outline token, and a press is the active fill - the same three steps
+        // the QSS rule this chip used to read spelled.
+        QColor fill = c.recessed;
+        QColor edge = c.hairline;
+        if (enabled && isDown()) {
+            fill = c.active;
+            edge = c.active;
+        } else if (enabled && underMouse()) {
+            fill = c.raised;
+            edge = c.outline;
         }
+        QPainterPath surface;
+        surface.addRoundedRect(QRectF(0.5, 0.5, width() - 1.0, height() - 1.0), kRadius, kRadius);
+        p.fillPath(surface, fill);
+        p.setPen(QPen(edge, 1.0));
+        p.drawPath(surface);
 
-        void setParam(const util::Easing::Param& aValue) {
-            if (mValue == aValue) return;
-            mValue = aValue;
-            update();
-        }
+        // The fixed slots, right to left: caret, count, range/blend; then the
+        // name takes what is left after the glyph. A hidden part still holds its
+        // width - that is what "fixed slots" buys.
+        const int caretX = width() - kBorder - kPadR - kCaret;
+        const int caretY = (height() - kCaret) / 2;
+        const int countRight = caretX - kGap;
+        const int rangeRight = countRight - kCountW - kGap;
+        const int nameLeft = kBorder + kPadL + kGlyph + kGap;
+        const int nameRight = rangeRight - kRangeW - kGap;
 
-        // The neighbouring keys a Type_Auto value is shaped by, so the chip's
-        // glyph is the curve the key actually plays (see EasingItem).
-        void setAutoContext(const util::Easing::AutoContext& aContext) {
-            mAuto = aContext;
-            update();
-        }
-
-        // Re-tint the caret pixmap after an appearance change.
-        void reloadCaret() {
-            mCaret = (mRes ? mRes->icon("caret-down").pixmap(kCaret, kCaret) : QPixmap());
-            update();
-        }
-
-    protected:
-        QSize sizeHint() const override { return QSize(120, kHeight); }
-
-        void paintEvent(QPaintEvent*) override {
-            const theme::Colors& c = theme::Colors::current();
-            QPainter p(this);
-            p.setRenderHint(QPainter::Antialiasing, true);
-
-            // Curve glyph, left; caret, right; name (+ delta) between.
-            const int gy = (height() - kGlyph) / 2;
-            paintEasingCurve(p, QRectF(kMarginL, gy, kGlyph, kGlyph), mValue, c.accentBright, kStroke, &mAuto);
-
-            const int caretX = width() - kMarginR - kCaret;
-            const int caretY = (height() - kCaret) / 2;
-            if (!mCaret.isNull()) p.drawPixmap(caretX, caretY, mCaret);
-
-            QString name, delta;
-            chipText(mValue, name, delta);
-            QFontMetrics fm(font());
-            // Reserve the delta's span (right-aligned before the caret) so a
-            // long name is elided instead of drawing over it.
-            const int textLeft = kMarginL + kGlyph + kGap;
-            const int deltaW = delta.isEmpty() ? 0 : fm.horizontalAdvance(delta) + kGap;
-            QRect nameRect(textLeft, 0, qMax(0, caretX - kGap - deltaW - textLeft), height());
-            p.setPen(c.text);
-            p.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft,
-                       fm.elidedText(name, Qt::ElideRight, nameRect.width()));
-            if (!delta.isEmpty()) {
-                const int dw = fm.horizontalAdvance(delta);
-                QRect deltaRect(caretX - kGap - dw, 0, dw, height());
-                p.setPen(c.textMuted);
-                p.drawText(deltaRect, Qt::AlignVCenter | Qt::AlignLeft, delta);
+        QString name;
+        QString range;
+        QString count;
+        if (mValues.isEmpty()) {
+            name = QCoreApplication::tr("Select keys");
+        } else {
+            const util::Easing::Param& first = mValues.first();
+            bool agree = true;
+            for (const util::Easing::Param& value : mValues) {
+                if (value.type != first.type) {
+                    agree = false;
+                    break;
+                }
             }
+            if (agree) {
+                chipText(first, name, range);
+            } else {
+                name = QCoreApplication::tr("Mixed");
+            }
+            if (mValues.size() > 1)
+                count = QCoreApplication::tr("%n key(s)", nullptr, mValues.size());
         }
 
-    private:
-        static const int kMarginL = 6, kMarginR = 8, kGap = 8;
-        static const int kGlyph = 20, kCaret = 10, kHeight = 24;
-        static constexpr qreal kStroke = 1.5;
+        // The glyph is the shown key's easing, shaped by its own neighbours (see
+        // EasingChip::setValues), so an Auto selection draws the curve the
+        // document plays rather than a shape no key has.
+        if (!mValues.isEmpty()) {
+            const int glyphY = (height() - kGlyph) / 2;
+            paintEasingCurve(p, QRectF(kBorder + kPadL, glyphY, kGlyph, kGlyph), mValues.first(),
+                             enabled ? c.accentBright : c.textDisabled, kStroke, &mAuto);
+        }
 
-        GUIResources* mRes;
-        util::Easing::Param mValue;
-        util::Easing::AutoContext mAuto;
-        QPixmap mCaret;
-    };
+        if (!mCaret.isNull()) {
+            // The caret pixmap is tinted for the active theme only, so a disabled
+            // chip fades it rather than re-loading a second tint of the same glyph.
+            if (!enabled)
+                p.setOpacity(kDisabledOpacity);
+            p.drawPixmap(caretX, caretY, mCaret);
+            p.setOpacity(1.0);
+        }
+
+        QFont nameFont = font();
+        nameFont.setPixelSize(kNameFontSize);
+        nameFont.setWeight(QFont::Medium);
+        const QFontMetrics nameMetrics(nameFont);
+        p.setFont(nameFont);
+        p.setPen(enabled ? c.text : c.textDisabled);
+        const QRect nameRect(nameLeft, 0, qMax(0, nameRight - nameLeft), height());
+        p.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft,
+                   nameMetrics.elidedText(name, Qt::ElideRight, nameRect.width()));
+
+        // The range/blend and the count: the mock's .erange / .eid, one step
+        // smaller and muted. The app font's figures are tabular (see
+        // TimeLineHeader), so a changing count cannot shift the two slots.
+        QFont metaFont = font();
+        metaFont.setPixelSize(kMetaFontSize);
+        const QFontMetrics metaMetrics(metaFont);
+        p.setFont(metaFont);
+        p.setPen(enabled ? c.textMuted : c.textDisabled);
+        const QRect rangeRect(rangeRight - kRangeW, 0, kRangeW, height());
+        p.drawText(rangeRect, Qt::AlignVCenter | Qt::AlignRight,
+                   metaMetrics.elidedText(range, Qt::ElideRight, kRangeW));
+        const QRect countRect(countRight - kCountW, 0, kCountW, height());
+        p.drawText(countRect, Qt::AlignVCenter | Qt::AlignRight, count);
+    }
 
     //-------------------------------------------------------------------------------------------------
-    EasingItem::EasingItem(QWidget* aParent, GUIResources* mGUIResources):
-        mChip(), mPicker(), mStamp(), mGUIResources(mGUIResources) {
-        // A chip (glyph + name + delta + caret) that opens the shape-first
-        // picker popover. Exposed as itemWidget() so the KeyGroup row caps it
-        // at 70% of the field column like the sibling combo/integer rows (a
-        // full-column itemLayout avoided that cap and read too wide). Height
-        // matches the field-row standard: the combo/spin siblings settle at
-        // 24px (propertywidget.ssa), so 30px was a row taller than its peers.
+    EasingItem::EasingItem(QWidget* aParent, GUIResources* aResources):
+        mChip(), mPicker(), mGUIResources(aResources), mThemeSlot() {
+        // The chip, for the host to place (the header's 196px easing slot).
+        // Its click belongs to the host: it opens the picker for the keys the
+        // chip names, which only the timeline knows (see EasingItem::openPicker).
         mChip = new EasingChip(mGUIResources, aParent);
 
         // The picker popover: a floating Qt::Popup (top-level native window).
@@ -335,45 +425,48 @@ namespace prop {
         // either by DWM (11 22H2+) or by the paintEvent mask. The widget itself
         // sets the flags in its ctor (see EasingPickWidget), so setting them
         // here too is a no-op.
-        mPicker = new EasingPickWidget(mStamp);
+        mPicker = new EasingPickWidget(util::Easing::Param());
         mPicker->setWindowFlags(mPicker->windowFlags() | Qt::Popup | Qt::FramelessWindowHint);
         mPicker->setAttribute(Qt::WA_TranslucentBackground, true);
         mPicker->hide();
 
-        mChip->connect(mChip, &QAbstractButton::clicked, [this] { openPopover(); });
         // EasingItem is not a QObject, so use the functor form (connection is
         // tied to the sender's lifetime, and mPicker is deleted in ~EasingItem).
         //
         // Live-apply split (see EasingPickWidget):
         //   changed  — the draft changed live; re-render the chip so it tracks
-        //              the menu as it is edited. Does not touch the model.
-        //   applied  — a gesture committed to the model; forward to the model
-        //              (onValueUpdated) and store the committed value in mStamp.
-        //   dismissed— user closed the menu (✕); just hide it (the popup is a
-        //              Qt::Popup, so an outside click hides it on its own).
+        //              the picker as it is edited. Does not touch the model.
+        //   applied  — a gesture committed; hand it to the host, which owns the
+        //              keys an open acts on and writes them.
+        //   dismissed— the user closed the popup (✕); just hide it (the popup is
+        //              a Qt::Popup, so an outside click hides it on its own).
+        //   closed   — the popup went away (✕ or an outside click); the host
+        //              ends the right-click's temporary selection on it.
         mPicker->connect(mPicker, &EasingPickWidget::changed,
-                         [this](util::Easing::Param aLive) { updateChip(aLive); });
+                         [this](util::Easing::Param aLive) { onDraftChanged(aLive); });
         mPicker->connect(mPicker, &EasingPickWidget::applied,
                          [this](util::Easing::Param aNext) {
-                             if (this->onValueUpdated)
-                                 this->onValueUpdated(this->mStamp, aNext);
-                             this->mStamp = aNext;
-                             this->updateChip(this->mStamp);
+                             if (this->onEasingApplied)
+                                 this->onEasingApplied(aNext);
                          });
         mPicker->connect(mPicker, &EasingPickWidget::dismissed, [this] {
             this->mPicker->hide();
+        });
+        mPicker->connect(mPicker, &EasingPickWidget::closed, [this] {
+            if (this->onPickerClosed)
+                this->onPickerClosed();
         });
 
         mThemeSlot = mGUIResources->onThemeChanged.connect([this](theme::Theme&) {
             refreshIcon();
         });
-        updateChip();
+        mChip->setValues(QVector<util::Easing::Param>(), util::Easing::AutoContext());
     }
 
     EasingItem::~EasingItem() {
-        // The item outlives its widgets in the KeyGroup teardown, but the
-        // GUIResources signer outlives the whole dock; drop the slot so a
-        // later theme change never reaches a destroyed item.
+        // The host outlives this control, but the GUIResources signer outlives the
+        // whole dock; drop the slot so a later theme change never reaches a
+        // destroyed item.
         if (mGUIResources) {
             mGUIResources->onThemeChanged.disconnect(mThemeSlot);
         }
@@ -386,141 +479,29 @@ namespace prop {
         // re-load for the new appearance; the glyph/text pick up the theme on
         // repaint.
         mChip->reloadCaret();
-        updateChip();
     }
 
-    void EasingItem::updateChip() {
-        updateChip(mStamp);
+    void EasingItem::setSelection(const QVector<util::Easing::Param>& aValues,
+                                  const util::Easing::AutoContext& aAutoContext) {
+        mChip->setValues(aValues, aAutoContext);
     }
 
-    void EasingItem::setAutoContextProvider(std::function<util::Easing::AutoContext()> aProvider) {
-        mAutoProvider = std::move(aProvider);
-        refreshAutoContext();
+    void EasingItem::onDraftChanged(const util::Easing::Param& aDraft) {
+        // Live: the picker edits every key it was opened for, so the chip shows
+        // the draft for all of them while the edit is in flight. The model is
+        // written once, on close (see EasingPickWidget), and the truth arrives
+        // back as the host's next setSelection - so nothing is cached here.
+        mChip->setDraft(aDraft);
     }
 
-    void EasingItem::refreshAutoContext() {
-        // Re-read on every refresh rather than cached: the neighbours move
-        // whenever a key of the same channel is added, removed, moved or
-        // revalued, and an Auto curve that lagged them would draw a shape the
-        // document does not play.
-        const util::Easing::AutoContext context =
-            mAutoProvider ? mAutoProvider() : util::Easing::AutoContext();
-        mChip->setAutoContext(context);
-        mPicker->setAutoContext(context);
-    }
-
-    void EasingItem::updateChip(const util::Easing::Param& aValue) {
-        // The chip renders itself from a value; this is how it tracks the menu
-        // live. The picker emits changed(v) on every edit and we pass the live
-        // v here (not mStamp, which only advances on a commit).
-        refreshAutoContext();
-        mChip->setParam(aValue);
-    }
-
-    void EasingItem::openPopover() {
-        // 0-opacity first-frame trick: the Popup's live height is DPI-correct
-        // only after its native window is realized (a hidden popup's
-        // heightForWidth/sizeHint is stale — hidden 477 vs live 488 on this
-        // host; user saw 407→489). Show the tall Custom at opacity 0 for one
-        // frame so Qt sizes the native window live, then flip back to the
-        // requested mode at opacity 1. At that point liveCustomHeight() ==
-        // geometry().height() is authoritative — use it to reserve Custom
-        // height once, nudge up if it would clip, and let Custom grow down in
-        // place. (The popup opens flush at chip.bottom, gap 0.)
-        const util::Easing::Param requested = mStamp;
-        const bool wasCustom = requested.type == util::Easing::Type_Custom;
-        if (!wasCustom) {
-            util::Easing::Param c = requested;
-            c.type = util::Easing::Type_Custom;
-            mPicker->setValue(c);
-        } else {
-            mPicker->setValue(requested);
-        }
-        const QPoint anchor = mChip->mapToGlobal(QPoint(0, mChip->height()));
-        const QScreen* scr = mChip->screen();
-        if (!scr) scr = QGuiApplication::primaryScreen();
-        const QRect avail = scr ? scr->availableGeometry() : QRect();
-        int left = anchor.x();
-        if (!avail.isNull()) {
-            const int w = mPicker->width() > 0 ? mPicker->width() : 300;
-            if (left + w > avail.right() + 1) left = avail.right() + 1 - w;
-            if (left < avail.left()) left = avail.left();
-        }
-        // Realize the native window at the tall Custom height (0 opacity).
-        mPicker->setWindowOpacity(0.0);
-        // Treat the popup as a transient child of the app window. A popup with
-        // no transient parent is left to the WM/compositor, which will nudge a
-        // growing popup to keep it on-screen — that is the "menu nudges to the
-        // right on mode switch" drift (the chip sits near the right screen
-        // edge, so a rightward slide is the closest on-screen adjustment). On
-        // X11 the popup is still override-redirect (unmanaged, so this is a
-        // no-op there); on Wayland it stops the compositor relocating it.
-        mPicker->winId();
-        if (auto* ph = mPicker->windowHandle()) {
-            if (auto* top = mChip->window()) {
-                if (auto* wh = top->windowHandle())
-                    ph->setTransientParent(wh);
-            }
-        }
-        mPicker->move(left, anchor.y());
-        mPicker->show();
-        mPicker->raise();
-        // Two ticks: the live geometry is realized by then. We are STILL in
-        // Custom here, so reserve the Custom (tallest) height — reading it
-        // after flipping back to the requested mode gave the normal height and
-        // let the tall Custom panel clip off the bottom of the screen.
-        QTimer::singleShot(0, mPicker, [this, requested, wasCustom, avail, left, anchor]() {
-            if (!mPicker->isVisible()) return;
-            QTimer::singleShot(0, mPicker, [this, requested, wasCustom, avail, left, anchor]() {
-                if (!mPicker->isVisible()) return;
-                // Reserve the tallest (Custom) height so the popup never needs
-                // to be relocated when switching to Custom. The height is a
-                // KNOWN constant, not a measured one — the previous measurement
-                // (liveCustomHeight / heightForWidth / sizeHint) oscillated
-                // 476/478/510 and was nowhere near the real ~489. Use the
-                // deterministic constant and let the popup grow down in place.
-                const int reserveH = EasingPickWidget::kCustomHeight;
-                int top = anchor.y();
-                if (!avail.isNull() && reserveH > 0) {
-                    if (top + reserveH > avail.bottom() + 1)
-                        top = qMax(avail.top(), avail.bottom() + 1 - reserveH);
-                }
-                // Now flip back to the requested mode (sizes the normal panel).
-                if (!wasCustom) mPicker->setValue(requested);
-                QTimer::singleShot(0, mPicker, [this, left, top]() {
-                    if (!mPicker->isVisible()) return;
-                    // Pin the anchor once; every later refit re-asserts it so
-                    // the popup can never drift to the right on a mode switch.
-                    // top is reserved for the tallest (Custom) height, so
-                    // switching to Custom grows the popup down in place.
-                    mPicker->move(left, top);
-                    mPicker->setAnchorPoint(QPoint(left, top));
-                    mPicker->setWindowOpacity(1.0);
-                });
-            });
-        });
-    }
-
-    void EasingItem::setItemEnabled(bool aEnable) {
-        mChip->setEnabled(aEnable);
-        mItemEnabled = aEnable;
-    }
-
-    void EasingItem::setItemVisible(bool aVisible) {
-        mChip->setVisible(aVisible);
-    }
-
-    QWidget* EasingItem::itemWidget() { return mChip; }
-
-    util::Easing::Param EasingItem::value() const {
-        return mStamp;
-    }
-
-    void EasingItem::setValue(util::Easing::Param aValue, bool aSignal) {
-        Q_UNUSED(aSignal); // the picker applies only on user Apply
-        mStamp = aValue;
-        mPicker->setValue(aValue);
-        updateChip();
+    void EasingItem::openPicker(const QPoint& aGlobalAnchor, const QWidget* aAnchorWidget,
+                                const util::Easing::Param& aShown,
+                                const util::Easing::AutoContext& aAutoContext) {
+        // The one place the popover is opened, whatever opened it. EasingPickWidget
+        // owns the placement (the 0-opacity realize dance, the screen clamp and the
+        // anchor it re-asserts on every refit) and needs the anchor's widget only
+        // for its screen and its transient parent.
+        mPicker->popUpAt(aGlobalAnchor, aAnchorWidget, aShown, aAutoContext);
     }
 
     //-------------------------------------------------------------------------------------------------

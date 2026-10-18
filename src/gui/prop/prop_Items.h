@@ -7,10 +7,13 @@
 #include <functional>
 #include <array>
 #include <QPushButton>
+#include <QAbstractButton>
+#include <QPixmap>
 #include <QComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QVector2D>
+#include <QVector>
 #include <QHBoxLayout>
 #include <QTreeView>
 #include <QCheckBox>
@@ -140,43 +143,101 @@ namespace prop {
     };
 
     //-------------------------------------------------------------------------------------------------
-    class EasingItem: public ItemBase {
+    // The easing chip: the timeline header's easing control (design section 1),
+    // one self-painting button filling that bar's fixed 196px slot. It names the
+    // timeline's KEY SELECTION, which is what the picker edits - not one key:
+    //
+    //   * nothing selected    -> disabled, "Select keys", no glyph;
+    //   * one easing for all  -> its glyph, name, range and blend, the same
+    //                            strings the Current Keys panel's row showed
+    //                            (see chipText);
+    //   * several keys        -> the count, in its own slot;
+    //   * disagreeing types   -> "Mixed".
+    //
+    // Every part sits in a FIXED slot (glyph, name, range/blend, count, caret),
+    // so a change of selection can never re-flow the bar beside it; a long name
+    // elides instead of pushing the count. It paints its own surface (fill,
+    // border, radius, hover/pressed/disabled) from the live palette, so it reads
+    // the mock's chip in any host without a stylesheet rule of its own.
+    class EasingChip: public QAbstractButton {
     public:
-        typedef std::function<void(util::Easing::Param, util::Easing::Param)> UpdateType;
+        explicit EasingChip(GUIResources* aResources, QWidget* aParent = nullptr);
 
-        EasingItem(QWidget* aParent, GUIResources* mGUIResources);
-        virtual ~EasingItem();
+        // What the chip names: one easing per selected key - empty is the
+        // disabled "Select keys" - plus the Auto context of the key the chip
+        // SHOWS (the first), so its glyph is the curve that key plays rather than
+        // a shape no key has.
+        void setValues(const QVector<util::Easing::Param>& aValues,
+                       const util::Easing::AutoContext& aAutoContext);
 
-        util::Easing::Param value() const;
-        void setValue(util::Easing::Param aValue, bool aSignal);
+        // A live edit of the whole selection: the picker edits every key it was
+        // opened for, so the chip shows the draft for all of them until the
+        // committed easing comes back through setValues (see EasingPickWidget's
+        // live-apply split).
+        void setDraft(const util::Easing::Param& aDraft);
 
-        virtual QWidget* itemWidget() override;
-        virtual void setItemEnabled(bool aEnable) override;
-        virtual void setItemVisible(bool aVisible) override;
-        // Re-render the chip glyph/name after a theme change.
-        void refreshIcon();
+        // Re-tint the caret pixmap after an appearance change.
+        void reloadCaret();
 
-        // Where a Type_Auto draft's neighbouring keys come from. The item has no
-        // timeline of its own; its owner (a key group, which has the accessor)
-        // supplies them, and they are re-read on every refresh so an Auto chip
-        // follows its neighbours instead of freezing at the shape it first saw.
-        void setAutoContextProvider(std::function<util::Easing::AutoContext()> aProvider);
-
-        UpdateType onValueUpdated;
+    protected:
+        QSize sizeHint() const override;
+        void paintEvent(QPaintEvent*) override;
 
     private:
-        void updateChip();
-        void updateChip(const util::Easing::Param& aValue); // render the chip from an explicit value (live)
-        void refreshAutoContext();
-        void openPopover();
+        GUIResources* mRes;
+        QVector<util::Easing::Param> mValues;
+        util::Easing::AutoContext mAuto;
+        QPixmap mCaret;
+    };
+
+    //-------------------------------------------------------------------------------------------------
+    // The easing control the timeline header hosts: the chip above and the ONE
+    // easing picker it opens. It replaced the Current Keys panel's per-group
+    // "Easing" row - that row named one key's easing, which is not what an easing
+    // describes (it shapes the interval between two keys) - so the picker has one
+    // home and one list of easings, reached from the chip and from the timeline's
+    // key menu at the pointer.
+    //
+    // It owns no model: the timeline surface drives it. The surface hands it the
+    // chip's state (setSelection), opens it for the keys an edit acts on
+    // (openPicker) and receives every committed edit through onEasingApplied.
+    class EasingItem {
+    public:
+        EasingItem(QWidget* aParent, GUIResources* aResources);
+        ~EasingItem();
+
+        // The chip, for the host to place in its slot.
+        QWidget* itemWidget() { return mChip; }
+        // The same widget, typed: the host connects its click.
+        EasingChip* chip() { return mChip; }
+
+        void setSelection(const QVector<util::Easing::Param>& aValues,
+                          const util::Easing::AutoContext& aAutoContext);
+
+        // Re-read the theme's chip ink (the chip paints from the live palette).
+        void refreshIcon();
+
+        // THE single popover: opens at aGlobalAnchor - the bottom-left of the
+        // chip, or the pointer a key menu was opened at - showing aShown.
+        void openPicker(const QPoint& aGlobalAnchor, const QWidget* aAnchorWidget,
+                        const util::Easing::Param& aShown,
+                        const util::Easing::AutoContext& aAutoContext);
+
+        // Every edit the picker commits, in the editor's own currency. The host
+        // (the timeline surface, which knows the keys the open acts on) is the
+        // only writer: the control itself never touches the document.
+        std::function<void(util::Easing::Param)> onEasingApplied;
+        // The popover went away (its close button, an outside click, Escape). The
+        // host uses this to end a right-click's temporary selection.
+        std::function<void()> onPickerClosed;
+
+    private:
+        void onDraftChanged(const util::Easing::Param& aDraft);
 
         EasingChip* mChip;
         EasingPickWidget* mPicker;
-        util::Easing::Param mStamp;
-        std::function<util::Easing::AutoContext()> mAutoProvider;
         GUIResources* mGUIResources;
         util::SlotId mThemeSlot;
-        bool mItemEnabled = true;
     };
 
     //-------------------------------------------------------------------------------------------------

@@ -6,6 +6,8 @@
 #include <QKeyEvent>
 #include <QAbstractSpinBox>
 #include <QLineEdit>
+#include <QScreen>
+#include <QWindow>
 #include <QStyleOptionSlider>
 #include <functional>
 #include <QLinearGradient>
@@ -1137,6 +1139,10 @@ void EasingPickWidget::hideEvent(QHideEvent* aEvent) {
     mUndo.clear();
     mRedo.clear();
     mGestureActive = false;
+
+    // And the popup is gone: whoever lent it a temporary selection ends it now
+    // (after the commit above, so the commit still saw the keys it was for).
+    emit closed();
 }
 
 void EasingPickWidget::animStep() {
@@ -1165,6 +1171,96 @@ void EasingPickWidget::setAnchorPoint(const QPoint& aPoint) {
     mHasAnchor = true;
 }
 
+void EasingPickWidget::popUpAt(const QPoint& aGlobalAnchor, const QWidget* aAnchorWidget,
+                               const util::Easing::Param& aShown,
+                               const util::Easing::AutoContext& aAutoContext) {
+    // 0-opacity first-frame trick: the Popup's live height is DPI-correct
+    // only after its native window is realized (a hidden popup's
+    // heightForWidth/sizeHint is stale — hidden 477 vs live 488 on this
+    // host; user saw 407→489). Show the tall Custom at opacity 0 for one
+    // frame so Qt sizes the native window live, then flip back to the
+    // requested mode at opacity 1. At that point liveCustomHeight() ==
+    // geometry().height() is authoritative — use it to reserve Custom
+    // height once, nudge up if it would clip, and let Custom grow down in
+    // place. (The popup opens flush at the anchor, gap 0.)
+    //
+    // The Auto context is installed before the first paint: the tile, the
+    // blend thumbnails and the motion preview derive their curves from the
+    // neighbours of the key this open names.
+    setAutoContext(aAutoContext);
+
+    const util::Easing::Param requested = aShown;
+    const bool wasCustom = requested.type == util::Easing::Type_Custom;
+    if (!wasCustom) {
+        util::Easing::Param c = requested;
+        c.type = util::Easing::Type_Custom;
+        setValue(c);
+    } else {
+        setValue(requested);
+    }
+    const QScreen* scr = aAnchorWidget ? aAnchorWidget->screen() : nullptr;
+    if (!scr) scr = QGuiApplication::primaryScreen();
+    const QRect avail = scr ? scr->availableGeometry() : QRect();
+    int left = aGlobalAnchor.x();
+    if (!avail.isNull()) {
+        const int w = width() > 0 ? width() : kPopoverWidth;
+        if (left + w > avail.right() + 1) left = avail.right() + 1 - w;
+        if (left < avail.left()) left = avail.left();
+    }
+    // Realize the native window at the tall Custom height (0 opacity).
+    setWindowOpacity(0.0);
+    // Treat the popup as a transient child of the app window. A popup with
+    // no transient parent is left to the WM/compositor, which will nudge a
+    // growing popup to keep it on-screen — that is the "menu nudges to the
+    // right on mode switch" drift. On X11 the popup is still
+    // override-redirect (unmanaged, so this is a no-op there); on Wayland it
+    // stops the compositor relocating it.
+    winId();
+    if (auto* ph = windowHandle()) {
+        if (auto* top = aAnchorWidget ? aAnchorWidget->window() : nullptr) {
+            if (auto* wh = top->windowHandle())
+                ph->setTransientParent(wh);
+        }
+    }
+    move(left, aGlobalAnchor.y());
+    show();
+    raise();
+    // Two ticks: the live geometry is realized by then. We are STILL in
+    // Custom here, so reserve the Custom (tallest) height — reading it
+    // after flipping back to the requested mode gave the normal height and
+    // let the tall Custom panel clip off the bottom of the screen.
+    QTimer::singleShot(0, this, [this, requested, wasCustom, avail, left, aGlobalAnchor]() {
+        if (!this->isVisible()) return;
+        QTimer::singleShot(0, this, [this, requested, wasCustom, avail, left, aGlobalAnchor]() {
+            if (!this->isVisible()) return;
+            // Reserve the tallest (Custom) height so the popup never needs
+            // to be relocated when switching to Custom. The height is a
+            // KNOWN constant, not a measured one — the previous measurement
+            // (liveCustomHeight / heightForWidth / sizeHint) oscillated
+            // 476/478/510 and was nowhere near the real ~489. Use the
+            // deterministic constant and let the popup grow down in place.
+            const int reserveH = kCustomHeight;
+            int top = aGlobalAnchor.y();
+            if (!avail.isNull() && reserveH > 0) {
+                if (top + reserveH > avail.bottom() + 1)
+                    top = qMax(avail.top(), avail.bottom() + 1 - reserveH);
+            }
+            // Now flip back to the requested mode (sizes the normal panel).
+            if (!wasCustom) this->setValue(requested);
+            QTimer::singleShot(0, this, [this, left, top]() {
+                if (!this->isVisible()) return;
+                // Pin the anchor once; every later refit re-asserts it so
+                // the popup can never drift to the right on a mode switch.
+                // top is reserved for the tallest (Custom) height, so
+                // switching to Custom grows the popup down in place.
+                this->move(left, top);
+                this->setAnchorPoint(QPoint(left, top));
+                this->setWindowOpacity(1.0);
+            });
+        });
+    });
+}
+
 int EasingPickWidget::liveCustomHeight() const {
     if (!isVisible()) return -1;
     return geometry().height();
@@ -1189,7 +1285,7 @@ int EasingPickWidget::maxContentHeight() {
     // Cheap hidden estimate for reasoning/tests before the native window
     // exists. The authoritative live height is geometry().height() after show
     // (see liveCustomHeight and the 0-opacity first-frame trick in
-    // EasingItem::openPopover). The estimate forces Custom visible, reads
+    // EasingPickWidget::popUpAt). The estimate forces Custom visible, reads
     // sizeHint/heightForWidth, then restores the caller's mode; a hidden
     // popup's heightForWidth can be -1 or stale, so fall back to minimum.
     if (isVisible()) return geometry().height();

@@ -51,6 +51,7 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     NewProjectDialog.cpp NewProjectDialog.h
     AppStyle.cpp AppStyle.h
     ObjectTreeWidget.cpp ObjectTreeWidget.h
+    TimeLineHeader.cpp TimeLineHeader.h
     PlayBackWidget.cpp PlayBackWidget.h
     ProjectHook.cpp ProjectHook.h
     ProjectTabBar.cpp ProjectTabBar.h

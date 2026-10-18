@@ -156,6 +156,20 @@ public:
     void setAnchorPoint(const QPoint& aPoint);
     QPoint anchorPoint() const { return mAnchorPoint; }
 
+    // Open the picker anchored AT aGlobalAnchor - the bottom-left of the control
+    // it belongs to (the header's easing chip) or the pointer a key menu was
+    // opened at - showing aShown and shaping its Auto tile with aAutoContext.
+    // aAnchorWidget is the widget the anchor belongs to: it supplies the screen
+    // the popup is clamped into and the window it is made a transient child of
+    // (both needed for a stable position; see the definition).
+    //
+    // The placement lives here rather than in each caller because there is ONE
+    // picker: it is opened from two anchors, and a second copy of the realize/
+    // clamp/anchor dance would be a second popover's worth of drift.
+    void popUpAt(const QPoint& aGlobalAnchor, const QWidget* aAnchorWidget,
+                 const util::Easing::Param& aShown,
+                 const util::Easing::AutoContext& aAutoContext);
+
 signals:
     // Live draft change (fires on every user edit, including each tick of a
     // continuous drag, and on session undo/redo). The owner uses it to update
@@ -165,6 +179,11 @@ signals:
     // (dismiss ✕ or an outside click), only if the draft changed since open.
     void applied(util::Easing::Param aParam);
     void dismissed();
+    // The popup went away - the ✕, an outside click or Escape - after any commit
+    // the close carried (applied fires first). The owner of a TEMPORARY selection
+    // (the key menu's right-click) ends it here: the selection the popup edits must
+    // outlive the open, not the menu that led to it.
+    void closed();
 
 protected:
     void paintEvent(QPaintEvent*) override;
