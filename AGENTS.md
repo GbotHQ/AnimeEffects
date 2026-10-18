@@ -423,9 +423,12 @@ Family status, measured:
 - srt: no harness; hit rule is `srt_Symbol::findFocus` around the object's SRT symbol.
 - ffd: no harness; its focuser is a GL transform-feedback task run through `DriverResources`.
 
-## The animation graph overlay (Dear ImGui)
+## The animation graph panel (Dear ImGui), and its overlay host
 
-The panel is a **fullscreen overlay drawn by Dear ImGui 1.92.7**, pinned by a
+The panel is **drawn by Dear ImGui 1.92.7** and has TWO hosts since the dock round: the fullscreen
+viewport overlay this section measures, and the timeline dock's `Graph` tab (`gui::GraphPanelWidget`),
+which is the design's end state and is described in "The redesign as it now stands" below; the
+overlay hosting is removed once the docked tab is proven live. Pinned by a
 `FetchContent` declaration in the root `CMakeLists.txt` behind
 `AE_ENABLE_IMGUI` (default ON). The sources are NOT in this repository: they are
 fetched into `build/_deps`. `-DFETCHCONTENT_SOURCE_DIR_IMGUI=<an existing
@@ -473,23 +476,35 @@ failure otherwise):
   is created per draw.
 
 **The panel's design, as implemented** (`src/ctrl/GraphEditor.h` and
-`src/gui/GraphPanelModel.h` are the two durable specs):
+`src/gui/GraphPanelModel.h` are the two durable specs). The bullets below describe the OVERLAY host;
+the docked host keeps every rule except the two marked:
 - fullscreen over the animation, **no background and no grid**: short tick marks
-  and labels only, so the artwork stays readable through the panel;
+  and labels only, so the artwork stays readable through the panel (OVERLAY
+  only: the docked host clears an OPAQUE floor of its own before the frame, so
+  there is nothing to read through - `GraphPanelWidget.cpp:132-150`);
 - text carries a **halo**, which is what keeps it legible over arbitrary pixels;
 - **hit-only ownership**: the graph takes the pointer only on a curve, a key or a
   handle (or while a drag is in flight), so the viewport tools keep working while
-  the panel covers everything. The WHEEL is the exception, and deliberately so:
-  while the graph is visible it zooms the graph; hiding the graph gives the wheel
-  back to the canvas;
+  the panel covers everything (OVERLAY only: the docked page IS the dock's surface
+  for its tab and takes its presses directly). The WHEEL is the exception at the
+  overlay, and deliberately so: while the graph is visible it zooms the graph;
+  hiding the graph gives the wheel back to the canvas. The docked page reads
+  `invertTimeLineScaling` rather than the main view's, because it sits on the
+  timeline's own body;
 - a **sticky focus** marks one channel (a press that hits a curve sets it, a press
-  on empty space leaves it alone). The value axis follows the focus, and the fit
-  it implies is **pending**: it is applied when the gesture is over, never
-  mid-press - otherwise the key or handle the user just grabbed slides out from
-  under the pointer, and a drag would start from geometry the fit invalidated;
+  on empty space leaves it alone). It is emphasis only, and SUPERSEDED as such:
+  since the selection round the INK follows the SELECTION (full strength for a
+  channel that owns a selected marker, 0.45 for the rest, everything dimmed with
+  nothing selected - see "The redesign as it now stands" below), and the focus
+  keeps two roles, which channel's tangent handles are drawn and what the
+  accessibility summary says. The value axis does not follow the focus and its fit
+  is not pending either: a fit happens when the SHOWN SET changes or on an
+  explicit route (see "Selecting never moves the view" further down);
 - double-click on the plot fits both axes (`GraphEditor::fitAll`); the graph's
   frame axis is its OWN `ctrl::time::Scaler` (by value in `graph::Scaler`), so
-  fitting it moves the graph's window and not the timeline's.
+  fitting it moves the graph's window and not the timeline's - while a timeline
+  owns the frame axis (`setFrameWindow`) the frame half of a fit does NOTHING, so
+  the two views cannot disagree about frames.
 
 **The units and their gates.** `gui::GraphPanelModel` is the panel's content as
 engine-neutral geometry (it makes no appearance decisions and mutates nothing);
@@ -611,7 +626,10 @@ LOSE.* Its plot covers most of the viewport, and the viewport's own handles live
 there, so a PLAIN left press in the plot has to stay the tools' - the graph takes a
 plot press only with **Ctrl**, and then the curve's band decides which of its two
 meanings it gets: on a band it inserts the key the curve already passes through, off
-every band it opens the marquee. Claiming plain presses there instead stops every
+every band it opens the marquee. (SUPERSEDED 2026-10-14: the timeline's convention
+won for the overlay too - a PLAIN press inside the plot is the key press or the
+marquee, and Ctrl on a curve's band is still the insert; see `graph_drag`'s summary
+line in the second-view section.) Claiming plain presses there instead stops every
 tool gesture while the panel is up; that is a constraint, not a preference. Alt is
 not available as the modifier either: the compositor grabs Alt+drag to move windows,
 and the application binds `Alt+E`, `Alt+Q`, `Alt+1`, `Alt+3`.
@@ -892,9 +910,13 @@ of testing the drawn rect. `kKeyRadius`/`keyRect` are documented as HIT geometry
 publishes the circles. MEASURED before: the panel painted a 10px square, 1.33x the timeline's key body across
 and 2.3x its area.
 
-**The key menu is the application's own `QMenu`.** `gui::TimeLineEditorWidget::showKeyContextMenu(targets, globalPos)`
-- the same `mSelectEasing` menu the timeline's right-click builds - reached from the panel as
-`ImGuiOverlay::openKeyMenuAt` -> `MainDisplayWidget::showGraphKeyMenu`. The ImGui popup, its
+**The key menu is the application's own `QMenu`.** SUPERSEDED (2026-10-17): the panel's right-click now
+opens the EASING PICKER at the pointer, not a menu - `gui::TimeLineWidget::showKeyEasingPicker(targets,
+globalPos)` (`TimeLineWidget.cpp:756-761`), reached from the panel as `ImGuiOverlay::openKeyMenuAt` ->
+`MainDisplayWidget::showGraphKeyMenu` (`MainDisplayWidget.cpp:377-381`), and the 14-row flat
+`mSelectEasing` QMenu the timeline's right-click used to build is DELETED with it (see "The redesign as
+it now stands"). What the QMenu paragraph below established still holds for the two menus that remain
+(the channel list and, in it, the same route). The ImGui popup, its
 `ImGuiConfigFlags_NavEnableKeyboard` toggle, `SetNextFrameWantCaptureKeyboard` and the Qt focus take/hand-back
 are DELETED (grep returns 0). An ImGui popup can never look like a `QMenu`, and its keyboard capture was also
 what broke typing into the dock after the menu had been used ("phase 4b"): that defect is gone with it. Two
@@ -962,6 +984,310 @@ coverage pass splits a boundary line 0.500/0.500 into two grey columns. The gate
 **`outline::kMinContrast` reads INVERTED:** the shader rings where contrast is BELOW the constant, so a higher
 number rings MORE. It is 2.0f now (was 3.0f) because the user's report was the opposite of what the name
 suggests - the ring was showing up everywhere.
+
+## The redesign as it now stands: the dock header, the Graph tab, the marker selection (2026-10-18)
+
+Ten commits (`7f683ba3..9ba5edbc`) landed the approved timeline + animation-panel redesign. Where a
+line above describes the overlay-only world, this section is the current one and the older line is
+marked SUPERSEDED in place.
+
+**The dock header is 40px and ACROSS the dock** (`gui::TimeLineHeader`, `TimeLineHeader.cpp:25`
+`kHeaderHeight`), above the ruler and spanning tree + surface:
+`tabs | transport | frame readout | easing chip | stretch | zoom` (`TimeLineHeader.h:36-38`), with a
+1x16 rule between three of the groups. The transport is the existing eight-button `PlayBackWidget`
+group moved out of its fixed 32px column, at 28px buttons with 20px icons (the column's 24px/18px read
+small in a horizontal bar: when the buttons were stacked, the button was the whole target); the QSS
+pins the same 28px box, because a restyle resizes absolute children. The frame readout is `120 / 660`
+- the frame a key lands on and the range it is clamped to - tabular 13px bold / 11px muted. Zoom is
+- / + / fit driving `ctrl::time::Scaler`'s own ladder, so a button and a wheel notch are the same call
+on the same rung, and the fit composes the timeline's own primitives (`indexForRate`,
+`zoomFramesAbout`, `scrollFramesBy`) because the frame axis has no fit of its own. The DOCK gains the
+bar's height rather than the lanes losing it: 296 instead of the old 256 (`MainWindow.cpp:165-175`),
+with the ruler at 22px, a lane band at 22px and the tree column unchanged.
+
+**What the header deliberately does NOT hold**: the panel's channel chips (the mock's first draft put
+them beside the zoom group) and any graph toggle - the toggle would repeat the dock's own tab and the
+chips duplicated the panel's grouped legend, so one control lives in one place
+(`TimeLineHeader.cpp:190-192` records the trim). The panel's OWN control (the "N channels" button) is
+not here either: the docked panel draws it in its own ruler band (`TimeLineHeader.h:41-44`).
+
+**`Timeline | Graph` is a real `QTabBar`** in the header's first group, whose tab order IS
+`Surface`'s own (Timeline, Graph), so an index maps back by position and the two cannot drift
+(`TimeLineHeader.cpp:120-133`): keyboard left/right, hover and the selected state all come from Qt.
+ONE dock, two tabs, ONE header - the transport, readout, chip and zoom stay put in both, and the tab
+names the page, so the Graph page carries no title and no header row of its own. `TargetWidget` keeps
+`ObjectTree | QStackedWidget` (`TargetWidget.cpp:44-57`): the TREE stays in both tabs, because it
+names the layers and picks whose channels the graph draws. Becoming visible is the one moment the
+panel re-reads the document and the frame (`TargetWidget.cpp:127-136`; Qt lays out and paints only
+the current page). With `AE_ENABLE_IMGUI=OFF` there is no graph page, no Graph tab and no accessor a
+caller could use - the whole panel unit set is registered inside `if(AE_ENABLE_IMGUI)`
+(`src/gui/CMakeLists.txt:230-233`), and the header simply has no tabs.
+
+**The docked panel is the SAME panel, on a SECOND host.** `gui::GraphPanelWidget` is a
+`QOpenGLWidget` pinned over the dock's opaque floor (`theme::Colors::base`, cleared per frame -
+`GraphPanelWidget.cpp:132-150`); the model lays out for `GraphPanelHost::Dock`, which is what puts
+its one control in the plot's corner and suppresses the overlay's contrast-outline composite.
+NOTHING about the panel is re-implemented: `ImGuiOverlay::paint` used to BE the frame and is now one
+host among two, and both call `gui::runPanelFrame(...)` (`ImGuiOverlay.h:433-460`) - the ONE ImGui
+context + GL3 backend + Qt font atlas (refcounted; the LAST release tears them down with a current
+context), each frame setting `io.DisplaySize`/`DisplayFramebufferScale` from THIS host's size and
+DPR and running `ImGui_ImplOpenGL3_NewFrame -> NewFrame -> stroke::init -> buildGraphPanelModel ->
+drawPanel -> ImGui::Render` (`ImGuiOverlay.cpp:2382-2441`). The hosts differ in exactly one place:
+the docked widget renders the returned draw data straight into its framebuffer, the overlay draws it
+behind its contrast-outline composite. The atlas is built from whichever host acquires first, so
+both draw the application face. `PanelFrameState` is per host, so a host's own hit tests and the
+accessible items are tested against the geometry THAT host drew (`ImGuiOverlay.h:396-416`).
+
+**The GL/ImGui sharing is CHECKED, not assumed.** Both pages are children of `MainWindow`, so Qt puts
+them in one context group sharing one default format (`QSurfaceFormat::setDefaultFormat`,
+`MainWindow.cpp:73`); `acquirePanelContext` keeps the first host's `QOpenGLContext` and, for a later
+host, calls `QOpenGLContext::areSharing(gPanelOwnerContext, aHost.context())`, warning with the cause
+and the fix when it is false (`ImGuiOverlay.cpp:2263-2285`). There is deliberately NO fallback - a
+second context would be a second backend, which the design refuses - so the diagnosis is the whole
+of the fix.
+
+**The selection is the CHANNEL MARKER, and that is the user's ruling** (see the contradictions
+section below). `ctrl::time::Selection` carries both granularities in ONE container
+(`time_Selection.h:15-46`): an entry names either a WHOLE key (`kKeyLevel` - every timeline gesture,
+the marquee and ctrl+A write these, and such an entry covers EVERY marker its key owns) or ONE
+component (`>= 0` - what a press on one curve writes). One identity - `(line, type, frame)` plus the
+component - rather than two sets that would have to agree, and `assign()` still emits ONE target per
+key, so every existing consumer (the picker, the timeline's key commands) keeps writing each key
+once.
+
+- A plain press selects the marker under the pointer, Shift adds one, Ctrl toggles. The marquee
+  keeps its rule but writes whole keys, and under Shift it first collapses an enclosed key's partial
+  entries, so an enclosed key becomes whole (`GraphEditor.h:250-270`).
+- THE DRAG SPLITS BY AXIS. Horizontal moves each selected key ONCE - the frame is shared across a
+  key's components, so a diagonal drag on both of a Scale key's markers moves the frame by ONE
+  delta, not two (`tests/graph_drag.cpp`'s section 23e is the gate). Vertical writes every selected
+  marker on ITS OWN component: a marker that was not selected receives no member and comes out
+  untouched, so selecting `Scale X` alone and dragging up moves X and leaves Y. Still one
+  `cmnd::Gesture<KeyMoveCommand>` per gesture, so still one undo step (`GraphEditor.h:47,56,123,531`).
+- Ctrl+A (`selectAllMarkers`) selects every marker of the SHOWN channels' keys, written as one
+  whole-key entry per key so a type whose two components are both shown cannot double it; Escape
+  (`clearSelection`) empties the set. Both ANSWER whether they acted (`GraphEditor.h:305-324`). THE
+  KEYS ARE NOT BOUND IN THIS TREE: this class is fed cursor and wheel events only, and its two
+  keyboard actions are called by whatever owns the application's key map (`GraphEditor.h:275-300`);
+  `selectAllMarkers` has no caller outside the editor and `tests/graph_drag.cpp:3262`.
+- The selection ANNOUNCES itself (`Selection::onChanged`, `time_Selection.h:33-35,65,124-127`). The
+  header chip subscribes to it, replacing the 200 ms polling timer it had been given as a workaround,
+  so the chip no longer depends on the timeline surface painting to stay current (verified: no QTimer
+  and no `kChipSyncIntervalMs` left in `TimeLineEditorWidget.cpp`).
+
+**Emphasis follows the SELECTION, not the sticky focus.** A channel that owns at least one selected
+marker draws at full strength, every other curve at 0.45, and with an EMPTY selection everything is
+dimmed (`curveStrength`, `ImGuiOverlay.cpp:395-412`, `kUnselectedAlpha` `:158`). The model publishes
+the fact this folds over: a channel is IN PLAY when it owns a SELECTED marker or the same KEY is
+selected on a sibling channel (`keySelected`/`keySiblingSelected`, `GraphPanelModel.h:181-195`),
+which is what keeps `Scale Y` at full strength when only `Scale X` is selected. The sticky focus
+still decides which channel's tangent handles are drawn (the panel's cost rule) and what the a11y
+summary says - it no longer decides the ink.
+
+**The ruler is ONE ink with ALPHA TIERS, and the MODEL carries each tick's level.** The panel used to
+draw hairline ticks under text numbers in two different tokens; it now takes the timeline's rule: ONE
+token, prominence by ALPHA (0.85 major / 0.60 intermediate / 0.20 minor), one length for every tier
+(`ImGuiOverlay.cpp:113-136`). The tier is NOT recovered from a pixel measurement: the model carries
+each frame tick's own `ctrl::time::Scaler::TickLevel` (`time_Scaler.h:21`) in `frameTickLevel`,
+alongside its position, same order and same length (`GraphPanelModel.h:316-322,635-638`), so the
+drawing layer applies the tier it is told.
+
+**The painted legend is gone: a chip per live/hovered curve, and one channels control.** The stacked
+bottom-left box (10px swatch, `"layer : channel"`) overlapped the value labels and the zero rule. Its
+replacement is a chip at each curve's own end in the channel's hue, for the channels that own a
+selected key AND for whatever the pointer is over - the subset being edited, and nothing else
+(`ImGuiOverlay.cpp:1806-1837`). ONE "N channels" button opens the list for visibility and focus
+through the application's own QMenu (the key menu's route), with a hue swatch per row; its label is
+the total while every channel is shown and `shown of total` once one is hidden, and with no channels
+there is no control (`GraphPanelModel.cpp:288-305`). The control has TWO placements chosen by
+`GraphPanelHost`: in the overlay 8px inside the PANEL's right edge (the reference's floating rule);
+docked, 8px inside the PLOT's right edge, because the docked page is drawn edge to edge and its own
+surface is the plot (`GraphPanelModel.cpp:316-340`). Either way it hangs BELOW the band's whole block
+(the `kFrameTickLength` tick rows plus the numbers' line), with a model-level precondition that the
+box and the band cannot intersect (`GraphPanelModel.cpp:342-350`).
+
+**The selection's HULL and COUNT.** `GraphEditor::selectionHull()` returns the convex outline of
+every selected key in DATA space, collinear points dropped and empty with nothing selected
+(`GraphEditor.cpp:2037`); `selectionCount()` is the live count (`GraphEditor.cpp:2070`). The caller
+maps them through the same Scaler the curves and the hit test use, so a hull drawn from them cannot
+desync from the markers it encloses (`GraphPanelModel.cpp:359-397`). The drawing layer strokes the
+CLOSED outline in the panel's selection accent through the coverage pass - nothing is drawn while the
+hull is empty, which IS the "nothing is selected" signal - and prints the count in the box the model
+measured (`ImGuiOverlay.cpp:1676-1720`).
+
+**Auto's GHOST handles.** Auto's control points are derived, not stored, so
+`Curve::ghostHandles(key)` returns the pair `Easing::autoHandles` computes (x = 1/3 and 2/3 -
+`graph_Curve.cpp:362`) and `graph::handlePointAt` is the ONE mapping from a normalized pair to
+pixels, shared with the stored handles, so a ghost cannot drift from a stored one. The drawing layer
+paints them HOLLOW in the channel's hue (`ImGuiOverlay.cpp:1633-1660`); a drag on one writes
+`Type_Custom` seeded with the derived third-points inside the drag's existing Gesture, so converting
+a segment is one undo step (`GraphEditor.cpp:1893-1916`), and the stored `x1,y1,x2,y2` convention is
+untouched. They are published only for the row whose handles the drawing layer INKS (the focused
+channel, or every row while there is no focus - `GraphPanelModel.cpp:544-545`), and the hit-test
+derivation is culled EXACTLY: the two third-point x-pixels are computed before the derivation, and a
+segment whose both x's are further from the pointer than `kHandleHitRadius` is skipped without it
+(`GraphEditor.cpp:1221-1250`), so the cursor path no longer scales with the key count.
+
+**The easing picker moved into the header chip: ONE popover, TWO anchors.** The chip fills the
+header's fixed 196px slot at 24px (`TimeLineHeader.cpp:41`; `prop_Items.cpp:230,309`) with fixed
+slots for glyph, name, range/blend and count, so a selection change cannot re-flow the bar beside it.
+Its three states: disabled "Select keys" with an empty selection, "Mixed" when the selection
+disagrees, the count when it holds several (`prop_Items.cpp:341-358`). ONE `EasingPickWidget` serves
+TWO anchors through ONE entry point - the chip's bottom-left and the pointer of the timeline's key
+context menu (now `TimeLineWidget::showKeyEasingPicker`, `TimeLineWidget.cpp:756-761`, reached from
+the panel as `MainDisplayWidget::showGraphKeyMenu` -> that call, `MainDisplayWidget.cpp:377-381`) -
+because a second copy of the realize/clamp/anchor dance would be a second popover's worth of drift
+(`EasingPickWidget.h:159-168`). The chip is DISABLED with no selection and enabled by the first one,
+because the picker must not open on nothing (`prop_Items.cpp:276-283,286-290`).
+A multi-key picker session is ONE undo step (one scoped macro, one notifier, one Assign per key),
+where the old menu pushed one command per key.
+
+## Where the redesign contradicts itself, and which side won (2026-10-18)
+
+Four places the design document disagrees with itself. Each was decided; the reason is the deciding
+fact.
+
+- **The selection's granularity.** s4's caption: "A KEY belongs to the type, so `Move X` and
+  `Move Y` share their frames, their easing and their selection - one selection lights both markers."
+  s4's gesture row: "The selection is the channel marker, not the key: `Scale X` and `Scale Y` of one
+  keyframe are two things you can select." THE ROW WON, and the user ruled for it: "the marker of the
+  same key that is not selected keeps a faint ring and its curve stays at full strength ... but it
+  never takes the selection ring". A caption cannot override the gesture the user drives, and the row
+  is the half the reference mock implements. The container still holds whole-key entries, which is
+  what keeps the timeline's own gestures and the picker unchanged (`time_Selection.h:15-46`).
+- **The channel control's placement.** s1's own table removes the header chips ("one control, one
+  place") while s1's text lists them as header content, and s4's last cell says both that "the
+  panel's ruler band carries one small `6 channels` control" and that the control "sits with the
+  other view controls: in the dock's header when the panel sits in the dock's header with the other
+  view controls, never in the ruler band". The ROW'S RULE won, read as "never INSIDE the band": the
+  docked panel keeps the control in its own band's corner, hanging BELOW the band's tick-and-number
+  block, and the header does not carry it (`TimeLineHeader.h:41-44`, `GraphPanelModel.cpp:296-350`).
+  The mock's hosted variant has no app-side host and is not implemented.
+- **The four not-graphable types.** s7's note: the Bone/Pose/Mesh/FFD panel entries are unreachable
+  (`componentCount()` is 0) and "should be deleted rather than coloured". s8's row: they "keep their
+  hues". s8 WON - the per-type table still colours them (`theme/Graph.cpp:134-137`) - because the
+  colours are one table shared with the timeline and the entries are dead but harmless; deleting them
+  is a decision nobody made.
+- **The lane curves.** s1 offers two opt-in lane-curve modes (selected object only / every lane) and
+  calls them off by default. THE USER'S RULING: the timeline's lanes NEVER draw curves. Nothing in
+  this wave added one - `ctrl::time::Renderer` has no lane-easing pass (the fill, the separators,
+  the labels, the seams, the range markers, the keys and the marquee, and nothing else), and the
+  header's chip is what names an easing instead.
+
+## Traps this redesign paid for (measured, 2026-10-18)
+
+Each of these cost a defect that was invisible in the code that caused it.
+
+- **ImGui's 1px path shifts its geometry by (+0.5,+0.5), so the panel's 1px strokes go through the
+  coverage pass.** `AddLine`/`AddPolyline` move their geometry half a pixel on each axis
+  (`imgui_draw.cpp`, the 1px rasterization convention). MEASURED on the handle stem: 0.68-0.76px
+  off-position against -0.01/-0.00/+0.01px for `gui::stroke` (`ImGuiOverlay.cpp:1650-1662`). The same
+  rule puts the selection hull's closed 1px
+  outline in the pass, which would otherwise spill across two half-covered rows instead of one whole
+  one (`ImGuiOverlay.cpp:1676-1698`). The INTEGER-positioned chrome (the playhead, the frame and
+  value ticks, the zero rule) is the exception and MUST stay out: at a whole-column position the pass
+  splits a 0.500/0.500 boundary into two grey columns, and the gate asserts both directions.
+- **A packed `ImU32` handed to a `const QColor&` swaps R and B, and it COMPILES.** `ImU32` and
+  `QRgb` are both `unsigned int`; ImGui packs `IM_COL32` as `A<<24|B<<16|G<<8|R` while
+  `QColor(QRgb)` reads `A<<24|R<<16|G<<8|B`. The stem-ink callback took the packed token, which was
+  invisible on the stored stem (the palette's neutral `textMuted`, R == G == B) and visible the
+  moment ghosts were drawn in the channel's own hue. Both branches now pass the QColor and carry the
+  alpha through the strength (`ImGuiOverlay.cpp:1636-1652`).
+- **`ctrl::time::Selection`'s stored key pointer is only ever COMPARED, never dereferenced.** The
+  header states it (`time_Selection.h:104-108`), and the chip's state push violated it: it
+  dereferenced `item.key` and passed `*item.key` to the Auto-context walk, from `paintEvent` - so an
+  entry that outlived its key was a USE-AFTER-FREE on a paint path. The chip now RESOLVES the key
+  from the document by `(line, type, frame)`, the pattern every other new reader uses, and skips a
+  stale entry (`TimeLineEditorWidget.cpp:1134-1158`).
+- **`gui::a11y` is ONE installation for ONE widget, and a hand-over race silently caches the docked
+  widget plain.** The overlay's first-frame `install()` was ENDING the dock's constructor-time
+  `installFactoryOnly()` installation; a client that asked Qt about the dock inside that window
+  cached the widget's own interface permanently, and a later install cannot be reached for it (the
+  stale entry is deliberately left in place - an id is an AT-SPI path - and the situation is REPORTED,
+  `ImGuiA11y.h:100-130`, `ImGuiA11y.cpp:462-476`). The dock now declares itself at construction
+  (`declarePanelDockHost`, `GraphPanelWidget.cpp:54-63`; `ImGuiOverlay.cpp:2446-2458`), the overlay's
+  publication YIELDS to it (`ImGuiOverlay.cpp:2464-2480`), and the dock's first frame re-installs for
+  the SAME widget - same interface, same id, only the callback changes. In this transitional build
+  the overlay's own a11y publication is therefore yielded; the design's end state has only the dock.
+  A hidden tab publishes the EMPTY model rather than its last frame (`ImGuiOverlay.cpp:2465-2472`),
+  and `buildAccessibilityModel` now assigns `Model::summary`, which it never had - the panel's root
+  was published UNNAMED even for the overlay, against ImGuiA11y's own contract (the Pane's name IS
+  the summary).
+- **The chip reserved EMPTY slots and elided its own label: 43px for a 66.9px word.** The 196px slot
+  was handing over the full width, but the chip's interior reserved glyph/range/count boxes in every
+  state, leaving the name 43px for "Select keys" - 66.9px against the bundled font. The interior now
+  reserves a slot only when it carries something (the EXTERIOR stays fixed, so the bar beside it
+  cannot move); the empty state's name box goes 43 -> 163px, the count grows rather than elides, and
+  the name elides last (`prop_Items.cpp:369-380`).
+- **The channels control STARTED INSIDE the ruler band.** Its box was placed at
+  `rulerBandTop + kChannelsButtonTopGap` (8), and `rulerBandTop` is where the band's content BEGINS,
+  so the box started 8px into the band and covered the frame-number row (and in the overlay host its
+  0.55-alpha backing, `kChannelsButtonAlpha`, was painted over the numbers). It now hangs below the
+  band's whole block - `top = rulerBandTop + kFrameTickLength + 1 + textHeight +
+  kChannelsButtonTopGap` - with a precondition that the box and the band cannot intersect, stated in
+  the BAND's own measures so it cannot drift when the band moves down under a widget floating above
+  the panel or when a font changes the number row's height (`GraphPanelModel.cpp:294-350`).
+- **The chip de-collide pushed chips OUT of the plot instead of dropping them.** The top-to-bottom
+  push is the reference's own, but it only ever moves a chip DOWN, so a crowded selection left the
+  last names past `plot.bottom()`, where the plot clip cut them. A chip that no longer fits is now
+  DROPPED for the frame - and the survivors keep the positions the full list gave them, so the column
+  cannot shift from frame to frame as names appear and disappear - which is what the mock does: it
+  skips an item within 6px of the edge and never moves one back in. The header's "pushed apart
+  vertically ... and clamped into the plot" was wrong about both the code and the mock and was
+  corrected to the drop (`ImGuiOverlay.cpp:1817-1845`).
+
+## How to verify this area now (2026-10-18)
+
+HEADLESS GATES, all registered in `tests/CMakeLists.txt` and discovered by `scripts/run_suites.sh`:
+`timeline_visuals` (the timeline's ink rules, driven through the real `ctrl::TimeLineEditor::render()`
+into an offscreen QImage with the geometry read off the editor's own public mapping, so a change to
+the scale cannot silently move it), `graph_panel_model` (the model's content and geometry),
+`graph_panel_pixels` (drawPanel's ink), `graph_drag` (the press/marquee/marker-drag/command rules),
+`graph_curve` (the panel's own curve, incl. Auto's ghost pair) and `time_scaler` (the ladder,
+`indexForRate`, `tickStride` against `attribute`). The last full-suite figure recorded in this arc is
+46 pass / 0 fail on the dock wave's tree (`a55dfb2a`); the marker-ink wave that followed had its two
+pixel gates red when this was written.
+
+PROBES (live, under Xvfb, `scripts/gui/run_probes.sh`, each assertion naming the number it
+measured): **`probe_timeline_ink.sh` PASSES, 31/31** - the selected tree row's 2px rail and its
+disappearance, the lane band's accent@0.06 tint measured against BOTH composites with a share bound
+the old 0.40 flood is 2.7x past, the focused key's ring 0 -> 20-25 -> 0 accent pixels in a 5..8px
+annulus while its centre goes to the 0.45 highlight mix, the lane label's 0.42 ink present with the
+playhead away and absent when it is parked on the label, and the ruler number yielding its column to
+the pill and coming back. Its shared helper is `scripts/gui/ae_ink.py` (modal colour of a box, counts
+within a tolerance, x/y runs of inked columns and rows, an annulus count). The two PANEL probes still
+drive the VIEWPORT overlay host: `probe_graph_ink.sh` fails one claim of its own - it finds channel
+hues on the timeline but 0 pure-hue pixels in the plot, while the overlay path is intact (its
+`paint()` still reaches `runPanelFrame`), so that zero is the probe's measurement - and
+`probe_graph_overlay.sh`'s key-menu phase was re-aimed in this wave: it recognises the picker by its
+OWN source constants, asserts the window is override-redirect and viewable, presses a tile at
+coordinates derived from the tile order and reads the commit off the application's own state line,
+with the assertions that cannot survive a widget popover dropped and their reason recorded in the
+file. Both are being RETARGETED AT THE DOCK, which is where the panel now lives; whether they have
+landed is not verified here.
+
+TWO LIVE CHECKS FOUND REAL DEFECTS in this wave, and each is worth re-running:
+
+- **The `ae dump` a11y check.** After the dock's declaration fix, the Graph page is a named `panel`
+  with a `label` and `button | Fit graph` under it; "Fit graph" appears EXACTLY ONCE (so the two
+  hosts are not double-publishing) and the ordering warning - `gui::a11y: the viewport was queried
+  for accessibility before install(), so Qt's cache answers for it with the widget's own interface`
+  (`ImGuiA11y.cpp:468-476`) - is 0. This is the check that RECOGNISED the docked page publishing
+  nothing while the same panel published fine under the overlay, which is what led to the
+  one-installation hand-over above.
+- **The header screenshot.** The only way the chip's states were ever read. It showed the disabled
+  chip elided to "Selec..." (the 43px/66.9px reservation above); after the fix it reads
+  `Timeline | Graph`, transport, `1 / 600`, the chip's "Select keys" IN FULL, zoom - exactly the
+  design's header, and the dock's size hint keeps the bar's height without the lanes losing theirs.
+
+WHAT IS NOT VERIFIED. The catalogs: the wave's OWN user-visible strings - the chip's `Select keys`,
+`Mixed` and `%n key(s)`, and the channels button's `%n channel(s)` and `%1 of %2` - are absent from
+ALL SIX `assets/locale/translation_*.ts` (checked as source entries), so they render in English in
+every locale until the next lupdate/lrelease; the strings the preceding i18n commit in the series did
+add (`%n channel(s) shown`, `%1 (%n more channel(s) not listed: no room in the panel)`) are in all
+six, under the `gui::ImGuiOverlay` context. Also not re-tested here: the 2026-10-14 residual (a
+Ctrl-press deselect in the plot followed by a typed dock write) - the press routing that paragraph
+blames was rewritten by the marker-selection commit, but no run here exercised it.
 
 ## When a `bash -c '...'` probe dies silently, count the ARGV words (measured 2026-10-14)
 
@@ -1176,9 +1502,10 @@ easing is stored as the ENUM ID (`int(typeAtDisplayIndex(index))`), so an old se
 meaning what it meant. The DISPLAY order is a separate table and puts Auto at index 13, immediately
 before Custom -> **14 pickable entries** (the menu skips Custom). Anything that counted 13 had to
 move, and each of those was silent: `scripts/gui/probe_graph_overlay.sh`'s `MENU_ENTRY_ROWS`/
-`MENU_ITEM_ROWS` (the menu is one row per entry, so a stale count fails the height identity),
-`tests/golden/easing_picker_geometry.json` (it enumerated `tile-0..12` only - the 14th tile now wraps
-into the second row at `229,133`), and `grep -rn '"13"' tests/`.
+`MENU_ITEM_ROWS` (the menu was one row per entry, so a stale count failed the height identity - BOTH
+constants went with the 14-row menu when the picker replaced it, and the probe reads the tile catalog
+instead), `tests/golden/easing_picker_geometry.json` (it enumerated `tile-0..12` only - the 14th tile
+now wraps into the second row at `229,133`), and `grep -rn '"13"' tests/`.
 
 **A trap worth its own line: `Type_Sine <= type && type < Type_Custom` is an ORDINAL test**, used by
 the chip's name and by `calculate`'s weight blending. It reads "the analytic curves with a direction
@@ -1214,4 +1541,7 @@ Custom exactly once (remove one from `kTileOrder` and it reports `missing=1` - m
 `tests/easing_picker_layout.cpp` + the golden pin the tile wrap; `tests/general_setting_form.cpp`
 asserts the combo IS the table (count, order, index-as-value); `tests/anim_setting_i18n.cpp` and a
 manual `QTranslator` pass cover the catalogs; `scripts/gui/probe_graph_overlay.sh` is the end-to-end
-one (the app's own key menu, its 14 rows, and row 3 = Sine / two Downs = Round as display indices).
+one - since the picker replaced the key menu it recognises the picker by its OWN source constants
+(`kTileOrder`), opens it from the timeline's key context menu, presses a tile at a coordinate derived
+from the tile order and reads the commit off the application's own state line (there is no 14-row
+menu left to count: 14 display-order entries now means 14 TILES).
