@@ -245,43 +245,98 @@ public:
 
     // --- the selection, in the timeline's own currency ---
     //
-    // SELECTION. The panel selects KEYS, and it can select MORE THAN ONE: the
-    // selection is the timeline's own time::Selection, one entry per selected
-    // key, so a multi-key selection is the same list the timeline itself
-    // carries. A press chooses between the three plain behaviours by the
-    // modifier the widget fed in:
-    //   * a plain press on a key REPLACES the selection with that one key;
-    //   * Shift-press on a key ADDS it if it is not already there (an existing
-    //     entry is left alone - Shift extends, it does not toggle);
-    //   * Ctrl-press on a key TOGGLES it (in when out, out when in).
+    // SELECTION. The panel selects MARKERS - one COMPONENT of one key, the dot on
+    // one curve - and it can select more than one: the selection is the timeline's
+    // own time::Selection, whose entries name either a whole KEY (what every
+    // timeline gesture writes: such an entry covers every component the key owns)
+    // or one component of it (what a press here writes). A press chooses between
+    // the three plain behaviours by the modifier the widget fed in:
+    //   * a plain press on a key REPLACES the selection with the one marker it
+    //     hit, so the OTHER component of that key is not selected (its curve stays
+    //     at full strength and the drawing layer gives it the faint ring - see
+    //     isMarkerSelected and hasSelectedSiblingMarker);
+    //   * Shift-press on a key ADDS that one marker if it is not already covered
+    //     (an entry that is there is left alone - Shift extends, it does not
+    //     toggle), which is how a key's two markers are selected together;
+    //   * Ctrl-press on a key TOGGLES it: in when out, out when in, where "in"
+    //     means the marker is covered by an entry - its own, or a whole-key entry.
     // A MARQUEE - a PLAIN press in the plot on a point that is neither a key nor
     // a handle (Ctrl on a curve's band inserts instead, see insertKeyAt) -
-    // dragged before it is released, replaces the selection with every key whose
-    // drawn square falls inside the dragged rectangle, or, with Shift held at the
-    // press, adds those keys to the selection. It is drawn as a live rectangle
-    // while the drag is in flight (marqueeRect).
+    // dragged before it is released, replaces the selection with EVERY MARKER of
+    // every key whose drawn square falls inside the dragged rectangle, or, with
+    // Shift held at the press, adds those keys to the selection. It is drawn as a
+    // live rectangle while the drag is in flight (marqueeRect). Ctrl+A
+    // (selectAllMarkers) is the keyboard form of the same bulk rule over the shown
+    // channels, and Escape clears (clearSelection).
     //
     // ONE SET, ONE HIGHLIGHT. The set an edit here writes is the live selection
     // of the timeline the panel is a view of (see setSelectionSource): writing it
     // is what makes the timeline's renderer highlight those keys (time::Selection
-    // rebuilds every member key's focus on every change, and that focus IS the
-    // highlight), and a selection made in the timeline is what this panel reads
-    // and acts on. With no timeline attached - the unit tests, and the frame
-    // before the window wires one in - the panel uses a private instance of the
-    // same type, so there is exactly one set either way and the code below never
-    // branches on which it is.
+    // rebuilds every member key's focus on every change - a marker entry focuses
+    // its KEY - and that focus IS the highlight), and a selection made in the
+    // timeline is what this panel reads and acts on. With no timeline attached -
+    // the unit tests, and the frame before the window wires one in - the panel
+    // uses a private instance of the same type, so there is exactly one set either
+    // way and the code below never branches on which it is.
     //
     // The selection is what removeSelectedKey and setSelectedKeysEasing act on,
     // and it is what the drawing layer highlights (gui::PanelFocus::selectedKeys).
     // It is NOT touched by anything else: a plain hover and every press outside
     // the plot leave it alone.
     bool retrieveSelection(core::TimeLineEvent& aOut) const;
-    void clearSelection();
-    // Replaces the whole selection with this one key.
-    void selectKey(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame);
-    // Adds (aAdd == true) or removes (aAdd == false) this key. Adding a key
+    // --- the panel's two keyboard actions ---
+    //
+    // WHERE THE KEYS COME FROM. This class is fed cursor and wheel events only, and
+    // its KEYS are routed by whatever owns the application's key map - the same
+    // split removeSelectedKey documents ("wiring a key press to it belongs to
+    // whatever owns the key map, not to this class"). In the running application
+    // that is gui::MainWindow's key map: gui::GraphPanelWidget's key handler hands
+    // an event it does not consume on to the main window, which is where the
+    // application's keys have always been routed. So these two are the ACTIONS, and
+    // the surface that receives the key calls them.
+    //
+    // ESCAPE BELONGS TO WHOEVER CONSUMED IT. The key is only this panel's when
+    // nothing else took it: a picker or a menu that is up owns its own dismissal
+    // (the timeline's easing picker is a Qt::Popup and holds the keyboard while it
+    // is open - a Qt::ApplicationShortcut does not even fire then), and so does an
+    // ImGui text field (gui::ImGuiInputBridge::keyboardCaptured gates the
+    // application's own commands on exactly that). The rule cannot be decided HERE -
+    // it is decided by the consumer that receives the QKeyEvent, after every other
+    // consumer has had it - so the action ANSWERS what it did and the caller calls
+    // it only once the event reached it unconsumed.
+    //
+    // ESCAPE: empties the selection. True when there was something to clear (and
+    // false when the set was already empty, so a caller can tell "I acted" from "I
+    // did not").
+    bool clearSelection();
+    // SELECT ALL (ctrl+A): every marker of every key of the SHOWN channels - every
+    // visible channel of every target (buildEntries), each of its curves' keys -
+    // replaces the selection, which is exactly the set a marquee over the whole plot
+    // would leave. Written as one whole-key entry per key: such an entry IS every
+    // marker its key owns, so a channel that appears twice (two visible components
+    // of one type) cannot double it, and the timeline's own reading of the set is
+    // the same keys it would have had. True when the selection changed; with no
+    // shown channel there is nothing to select, so the set is emptied (and only then
+    // does this answer true).
+    bool selectAllMarkers();
+    // Replaces the whole selection with this one key: the KEY, not a marker of it,
+    // so every component it owns is selected (the timeline's own unit - a caller
+    // that names a whole key).
+    bool selectKey(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame);
+    // Replaces the whole selection with this one MARKER: the component of the key
+    // aChannel names, so the key's other components are left out (the press's own
+    // gesture).
+    bool selectMarker(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame);
+    // Adds (aAdd == true) or removes (aAdd == false) this one marker. Adding a
+    // marker the selection already covers, or removing one it does not, changes
+    // nothing. Removing takes out what covers the marker - its own entry, or a
+    // whole-key entry, which names it among every other component of its key.
+    bool modifyMarkerSelection(
+        core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd
+    );
+    // Adds (aAdd == true) or removes (aAdd == false) this whole KEY. Adding a key
     // already in the selection, or removing one that is not, changes nothing.
-    void modifySelection(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd);
+    bool modifySelection(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd);
     // Attaches the selection this editor writes to aSelection - the timeline's
     // own live set (ctrl::TimeLineEditor::selection()) - or, with nullptr, back
     // to the private instance this editor starts on. The caller owns the
@@ -293,28 +348,65 @@ public:
     time::Selection& selection() { return *mSelection; }
     const time::Selection& selection() const { return *mSelection; }
 
-    // --- the selection's HULL and COUNT ---
+    // --- the selection's HULL, COUNT and MARKER STATES ---
     //
     // The selection as the panel's own drawing pass needs it, in DATA space (frame
     // and value), never in pixels: the mapping to pixels is the caller's, through
     // the same Scaler the curves and the hit-test go through, so a hull drawn from
     // this cannot desync from the markers it encloses.
     //
-    // HULL: the convex outline of every SELECTED KEY - their corners, in order,
-    // with collinear points dropped - as (frame, value) points. The value is read
-    // on the FIRST graphable component of the key's own type: the selection is the
-    // timeline's own currency and names a key by (line, type, frame), so it does
-    // not carry the component a key was clicked on, and the first component is the
-    // one a type's row leads with. A key whose type is not graphable contributes
+    // HULL: the convex outline of every SELECTED MARKER - their corners, in order,
+    // with collinear points dropped - as (frame, value) points. The value of an
+    // entry that names one component is read on THAT component (it is the marker
+    // the user sees selected), and a whole-key entry contributes every graphable
+    // component of its type, because such an entry IS every marker of its key (see
+    // time::Selection::kKeyLevel). A key whose type is not graphable contributes
     // nothing, and a stale entry (a frame the document no longer holds) is skipped.
     // EMPTY when nothing (live) is selected - and, with fewer than three points,
     // the hull of what is there (a point or a segment), which encloses nothing but
-    // is the honest outline of that many keys.
+    // is the honest outline of that many markers.
     QVector<QPointF> selectionHull() const;
     // The number of KEYS the selection names that the document still holds - the
     // count the header and the marquee label show ("3 keys"). A stale entry is not
-    // a key the user sees selected, so it is not counted.
+    // a key the user sees selected, so it is not counted, and two markers of one
+    // key are ONE key.
     int selectionCount() const;
+
+    // --- the marker states the drawing layer reads ---
+    //
+    // Both are pure reads of the live selection: const, no allocation, and linear
+    // in the (small) selection. Neither dereferences a stored selection pointer -
+    // the node is compared by address, the frame and type by value, exactly the way
+    // every other reader here resolves a key.
+    //
+    // A key's markers are its graphable components; each is drawn as the dot on
+    // that component's curve. "Selected" has two sources, and they must agree with
+    // the set's own rule (time::Selection): an entry that names that exact
+    // component, or a whole-key entry - the timeline selects keys, and a selected
+    // key lights EVERY marker it owns (see the design's "a key owns every
+    // component's marker").
+    bool isMarkerSelected(
+        const core::ObjectNode& aNode, core::TimeKeyType aType, core::Frame aFrame, int aComponent
+    ) const;
+    // The channel form of the same question: aChannel's own component of that key.
+    bool isMarkerSelected(const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame) const;
+    // True when the selection names A DIFFERENT MARKER of the same key than the one
+    // being asked about: another component of it, or the key as a whole (a key-level
+    // entry is all of them). It answers "is this key's other channel in play?" -
+    // precisely what the design's faint ring marks, so a caller draws that ring for
+    // `!isMarkerSelected(...) && hasSelectedSiblingMarker(...)` and for nothing
+    // else: with the asked marker unselected and a sibling selected, the key is
+    // half in play (that marker's curve stays at full strength but never takes the
+    // selection ring), while both selected means no faint ring remains. False when
+    // no other component of that key is selected - which is every key of a
+    // single-component type, so a Rotate key can never have a sibling.
+    bool hasSelectedSiblingMarker(
+        const core::ObjectNode& aNode, core::TimeKeyType aType, core::Frame aFrame, int aComponent
+    ) const;
+    // The channel form of the same question.
+    bool hasSelectedSiblingMarker(
+        const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame
+    ) const;
 
     // True while a marquee drag is in flight.
     bool hasMarquee() const { return mMarqueeArmed; }
@@ -387,31 +479,42 @@ public:
     bool insertKeyAt(const core::CameraInfo& aCamera, const QPoint& aPos);
 
     // MOVE. Pressing a KEY (not a handle) arms a move over the panel's SELECTION:
-    // while the button is down every selected key follows the pointer - each frame
-    // by the pointer's frame delta and each value by the pointer's value delta,
-    // both measured from where the button went down, so grabbing a key off its
-    // centre does not make it jump by the offset - and the whole gesture is ONE
-    // undo step AND one command (KeyMoveCommand). It is driven by updateCursor,
-    // like the handle drag, and the rules are:
-    //   * the members are the keys the selection named when the press armed the
-    //     move (the press wrote that selection: a plain press replaces it, Shift
-    //     extends it, Ctrl toggles it), resolved against the document so a stale
-    //     entry is dropped. A selection of ONE key - the common case, and what a
-    //     plain press leaves - is exactly the single-key move this replaced;
+    // while the button is down the selection follows the pointer - and WHO follows
+    // it in which direction is the design's marker rule, not a whole-key copy:
+    //   * HORIZONTAL moves the FRAME, which one key shares across its components,
+    //     so each selected KEY moves once however many of its markers are
+    //     selected (two markers of one key are one frame, and moving it twice
+    //     would be a double shift). The frame delta is measured from where the
+    //     button went down, so grabbing a key off its centre does not make it jump
+    //     by the offset;
+    //   * VERTICAL moves only the SELECTED MARKERS, each in its OWN channel, by
+    //     the same delta - a marker of another TYPE moves too (its own component,
+    //     its own curve), because what is selected is markers and not one channel.
+    //     So selecting a Scale key's X alone and dragging up changes X and leaves
+    //     Y where it is, and selecting both moves both by the same delta.
+    // The whole gesture is ONE undo step AND one command (KeyMoveCommand). It is
+    // driven by updateCursor, like the handle drag, and the rules are:
+    //   * the members are the markers the selection named when the press armed the
+    //     move (the press wrote that selection: a plain press replaces it with the
+    //     pressed marker, Shift adds one, Ctrl toggles it), resolved against the
+    //     document so a stale entry is dropped. A whole-key entry (the timeline's
+    //     own selection) names every component its key owns, so it becomes one
+    //     member per graphable component of its type; a marker that is NOT
+    //     selected is not a member, and comes out of the gesture untouched;
     //   * the first ACCEPTED move builds ONE commit: a TimeLineUtil::MoveFrameOfKey
     //     over every member's FRAME (it already moves a whole core::TimeLineEvent,
     //     so the selection moves as one unit by one delta with its own conflict
-    //     rule) and one cmnd::AssignKeyValue<T> per VALUE the drag writes, wrapped
-    //     in ONE KeyMoveCommand pushed by ONE cmnd::Gesture inside ONE
+    //     rule - the frame half therefore carries each KEY once) and one
+    //     cmnd::AssignKeyValue<T> per VALUE the drag writes, wrapped in ONE
+    //     KeyMoveCommand pushed by ONE cmnd::Gesture inside ONE
     //     cmnd::ScopedMacro carrying ONE TimeLineUtil::Notifier. Every later move
     //     rewrites that command (modifyMove/modifyValues), so a drag cannot push
     //     one command per move;
-    //   * WHICH VALUES MOVE. The value delta is written on the members whose type
-    //     is the PRESSED channel's type, on the pressed channel's own component;
-    //     a member of another type moves its frame only. The selection is named by
-    //     (line, type, frame) and carries no component, so a component the press
-    //     did not name cannot be a component the drag writes - and a component
-    //     written on a type it does not belong to would be a second guess;
+    //   * WHICH VALUES MOVE. Every member is a (key, component) pair, so every
+    //     member's value half is written on its own component - the pressed one and
+    //     the ones Shift added alike - and a member's value is always the base it
+    //     held at the press plus the gesture's value delta. A key whose type is not
+    //     graphable has no component, so it is a frame-half member only;
     //   * the value command writes that ONE component through graph::Channel - a
     //     copy with one field replaced - so every component the graph does not
     //     draw (a Move key's centroid, an HSV key's absolute flag, an Image key's
@@ -474,9 +577,11 @@ public:
     //
     // WHICH KEYS IT WRITES. The selection is the timeline's own currency
     // (retrieveSelection; selectKey sets it, and a right-click on a key in the
-    // panel sets it the same way the timeline's key menu does). A target whose
-    // frame holds no key any more is skipped - a stale selection names a key that
-    // is not in the document - and so is a key whose type carries no easing
+    // panel sets it the same way the timeline's key menu does). retrieveSelection
+    // hands the set out ONE TARGET PER KEY, markers included - a key a user selected
+    // in both of its components is one key here - so no key is written twice. A
+    // target whose frame holds no key any more is skipped - a stale selection names
+    // a key that is not in the document - and so is a key whose type carries no easing
     // (graph::Curve::easingOf answers null) and a key whose easing type is
     // ALREADY aType, so a menu entry that changes nothing leaves no history entry
     // behind. Nothing else is dropped silently: the ones that are written all
@@ -705,10 +810,22 @@ private:
     // the window alone when nothing it covers has a key.
     void applyValueFit(const QVector<Entry>& aItems);
 
-    // The index of the selection target naming (aNode, aFrame) of aChannel's
-    // type, or -1. Pointer identity plus the type and the frame, which is the
-    // triple the timeline names a key by - the same triple selectKey writes.
-    int selectionIndexOf(const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame) const;
+    // The index of the selection entry that COVERS (aNode, aFrame) of aChannel's
+    // type at aChannel's component - the entry naming that exact marker, or a
+    // whole-key entry, which covers every one of them - or -1. Pointer identity
+    // plus the type, the frame and the component, which is the quadruple a marker
+    // is named by: the same quadruple selectMarker writes, and the same rule
+    // isMarkerSelected publishes.
+    int markerIndexOf(
+        const core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame
+    ) const;
+    // The target naming (aNode, aChannel's type, aFrame): the KEY half of a marker's
+    // name, in the timeline's own currency. Its pos is null when the node owns no
+    // timeline (a folder, or a node kind that holds no keys), which is the "nothing
+    // to name" answer every caller tests before it writes a selection.
+    static core::TimeLineEvent::Target markerTarget(
+        core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame
+    );
 
     // --- marquee ---
     // Begins the marquee a PLAIN press in the plot opens on a point that is no key,
@@ -717,10 +834,13 @@ private:
     // the "clear the selection" gesture for that press.
     void beginMarquee(const QPoint& aPos);
     void updateMarquee(const QPoint& aPos);
-    // Applies the marquee to the selection: every key whose drawn square's centre
-    // falls inside the rectangle, replacing the selection (or added to it, when
-    // mAddToSelection - the Shift state the press recorded). Then clears the
-    // marquee state.
+    // Applies the marquee to the selection: every MARKER of every key whose drawn
+    // square's centre falls inside the rectangle - written as one whole-key entry
+    // per key, which IS all of its markers - replacing the selection (or added to
+    // it, when mAddToSelection - the Shift state the press recorded). A Shift-marquee
+    // over a key that was selected in ONE component therefore makes it WHOLE: the
+    // partial entry is taken out and the whole-key one put in its place. Then clears
+    // the marquee state.
     void endMarquee();
 
     // --- middle-button pan ---
@@ -876,15 +996,12 @@ private:
     // the press hit rather than the position of a rebuilt list. The frame and
     // value DELTAS the whole gesture applies are measured from this key's press
     // (mMoveFrame here is the anchor the anchor-check and the notification name).
+    // The COMPONENT the press landed on is not kept here: it is the marker's own
+    // half of the name, and every member carries its own (MoveMember::component),
+    // the pressed one included.
     core::ObjectNode* mMoveLine;
     core::ObjectNode* mMoveNode;
     core::TimeKeyType mMoveType;
-    // The graphable COMPONENT of the key the drag moves (Photoshop's "X"), which
-    // is the half of a graph::Channel that says which field of the key's Data the
-    // value half of the gesture writes. It is ONE component for the whole
-    // selection: the component the press's own channel names, written on every
-    // selected key of the PRESSED TYPE (a key of another type has no such field).
-    int mMoveComponent;
     core::Frame mMoveFrame;
     // The pointer's frame as of the last accepted step, and the pointer pixels
     // the press went down at: every key follows the pointer's frame DELTA from the
@@ -894,16 +1011,31 @@ private:
     core::Frame mMovePointerFrame;
     QPoint mMovePressPos;
 
-    // The keys the move carries: ONE entry per key the panel's SELECTION named
-    // when the press armed the move (the press that armed it wrote that selection,
-    // so this is every key the user sees highlighted). The whole selection moves
-    // by the same frame delta; the value delta is written on the members whose
-    // type is mMoveType (mKey == nullptr means "frame only"). The frame the key
-    // held at the press is the base both deltas are added to, so the gesture is
-    // one absolute function of the pointer and cannot accumulate a key's clamp.
+    // THE FRAME HALF'S units: ONE entry per KEY the panel's SELECTION named when
+    // the press armed the move, deduplicated by the key itself - two selected
+    // markers of one key are one frame, and moving it twice would be a double
+    // shift. TimeLineUtil::MoveFrameOfKey is handed exactly these targets, one per
+    // key, so its own conflict rule and its own sort stay valid. A key whose type
+    // is not graphable appears here and in no member below: a frame is the only
+    // thing the panel can move for it.
+    struct MoveKey {
+        core::TimeLineEvent::Target target; // node + (line, type, frame) at the press
+        core::TimeKey* key;                 // the key, compared only (never dereferenced)
+    };
+    QVector<MoveKey> mMoveKeys;
+
+    // THE VALUE HALF'S units: ONE entry per MARKER the panel's SELECTION named when
+    // the press armed the move - a (key, component) pair, so a whole-key entry (the
+    // timeline's own selection) contributes one member per graphable component of
+    // its type. Every member is written on its own component; the frame it held at
+    // the press is the base the gesture's one value delta is added to, so the
+    // gesture is one absolute function of the pointer and cannot accumulate a key's
+    // clamp. A marker that was NOT selected has no member here and comes out of the
+    // gesture untouched.
     struct MoveMember {
         core::TimeLineEvent::Target target; // node + (line, type, frame) at the press
-        core::TimeKey* key;                 // the value half's key, or null (frame only)
+        core::TimeKey* key;                 // the marker's own key
+        int component;                      // the component of that key this marker is
         float baseValue;                    // the value it held at the press
     };
     QVector<MoveMember> mMoveMembers;

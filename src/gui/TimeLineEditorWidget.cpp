@@ -22,23 +22,9 @@
 #include <QClipboard>
 #include <QDialogButtonBox>
 #include <QMimeData>
-#include <QTimer>
 #include "gui/theme/Colors.h"
 
 namespace gui {
-
-// How often the header's chip reconciles itself with the live key selection when
-// nothing has pushed it. The chip mirrors a selection another view can change (the
-// animation graph panel shares it, see ctrl::time::Selection), and the only
-// announcement of such a change is a repaint request
-// (gui::MainDisplayWidget::updateCursor -> `mTimeLine->update()`) - which Qt DROPS
-// while a widget is hidden or has its updates disabled (QWidget::update), i.e.
-// exactly while the dock's surface is hidden, collapsed or not yet laid out. The
-// event loop is therefore the one source that exists whether or not anything paints.
-// A coarse tick is invisible next to the chip's own equality check: prop::EasingChip
-// ignores a state equal to the one it holds, so a tick that changed nothing costs one
-// compare (see pushEasingChipState).
-constexpr int kChipSyncIntervalMs = 200;
 
 //-------------------------------------------------------------------------------------------------
 TimeCursor::TimeCursor(QWidget* aParent):
@@ -137,7 +123,6 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     mPasteKey(),
     mDeleteKey(),
     mEasingHost(),
-    mChipSyncTimer(),
     mTargets(),
     mCopyTargets(),
     mPastePos(),
@@ -149,14 +134,17 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     this->setMouseTracking(true);
     this->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    // The header's chip is kept in step without a paint (see kChipSyncIntervalMs):
-    // this timer is that source, and it runs only while a header hosts a chip
-    // (setEasingItemHost). The push it drives is idempotent, so it can afford to
-    // ask every tick.
-    mChipSyncTimer = new QTimer(this);
-    mChipSyncTimer->setInterval(kChipSyncIntervalMs);
-    mChipSyncTimer->setTimerType(Qt::CoarseTimer);
-    this->connect(mChipSyncTimer, &QTimer::timeout, this, [this]() { pushEasingChipState(); });
+    // THE CHIP FOLLOWS THE SELECTION, NOT THE EVENT LOOP. A selection another view
+    // makes is announced by the set itself (ctrl::time::Selection::onChanged): the
+    // animation graph panel writes the very same set (the panel shares it - see
+    // ctrl::time::Selection and ctrl::GraphEditor::setSelectionSource), and the only
+    // other announcement it used to have was a repaint request, which Qt DROPS while
+    // this widget is hidden, collapsed or not yet laid out. The notification has no
+    // such gap, so there is nothing left for a reconcile timer to cover - and one
+    // source for one fact is the point (see pushEasingChipState). The push is
+    // idempotent (prop::EasingChip ignores a state equal to the one it holds), so a
+    // change the chip does not show costs one compare.
+    mEditor->selection().onChanged.connect(this, &TimeLineEditorWidget::pushEasingChipState);
 
     // The ruler strip: own paint and own input, over the track surface and
     // under the playhead (raised below so its pill overlays the window pills).
@@ -445,14 +433,12 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
     painter.end();
 
     // The paint is where this widget re-reads the selection it renders, and the
-    // header's chip names that same selection - so the repaint is the cheap
-    // RECONCILIATION of the chip's state, not its only source: the animation graph
-    // panel shares the set (see ctrl::time::Selection) and announces a change by
-    // asking this widget to repaint (gui::MainDisplayWidget::updateCursor), which Qt
-    // drops while the widget is hidden - so the chip is also pushed by the reconcile
-    // timer (see kChipSyncIntervalMs) and by a document modification (see
-    // onTimeLineModified). The chip ignores a state equal to the one it holds, so a
-    // repaint that changed nothing costs one compare.
+    // header's chip names that same selection - so the repaint is a cheap
+    // RECONCILIATION of the chip's state, not its only source: the set announces
+    // every change itself (ctrl::time::Selection::onChanged, connected in the
+    // constructor), whichever view made it, and a document modification pushes too
+    // (see onTimeLineModified). The chip ignores a state equal to the one it holds,
+    // so a repaint that changed nothing costs one compare.
     pushEasingChipState();
 }
 
@@ -1148,7 +1134,8 @@ void TimeLineEditorWidget::pushEasingChipState() {
     if (mEditor) {
         const ctrl::time::Selection& selection = mEditor->selection();
         bool haveShown = false;
-        for (const ctrl::time::Selection::Item& item : selection.items()) {
+        for (int i = 0; i < selection.items().size(); ++i) {
+            const ctrl::time::Selection::Item& item = selection.items()[i];
             // The key is resolved FROM THE DOCUMENT, never taken off the stored
             // pointer: a selection entry outlives the key it names (an undo, a
             // deletion, a project reload), and ctrl::time::Selection documents that
@@ -1165,6 +1152,20 @@ void TimeLineEditorWidget::pushEasingChipState() {
             core::TimeKey* key = line->timeKey(target.pos.type(), target.pos.index());
             if (!key)
                 continue; // a stale entry names a key the document no longer holds
+            // ONE EASING PER KEY. The selection names markers, and a key that is
+            // selected in both of its components is one key with one easing - the
+            // chip names keys, so the second entry for it is not a second value.
+            bool alreadyNamed = false;
+            for (int j = 0; j < i; ++j) {
+                const core::TimeLineEvent::Target& earlier = selection.items()[j].target;
+                if (earlier.node == target.node && earlier.pos.type() == target.pos.type()
+                    && earlier.pos.index() == target.pos.index()) {
+                    alreadyNamed = true;
+                    break;
+                }
+            }
+            if (alreadyNamed)
+                continue;
             const util::Easing::Param* value = keyEasingOf(*key, target.pos.type());
             if (!value)
                 continue;
@@ -1191,8 +1192,9 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
     }
     mEasingHost = aHost;
     if (!mEasingHost) {
-        // No chip to keep in step: the reconcile has nothing to push to.
-        mChipSyncTimer->stop();
+        // No chip to keep in step. Nothing to tear down either: the selection's own
+        // notification is what pushes it, and pushEasingChipState is a no-op while
+        // no host is attached (so a selection made with no chip costs one test).
         return;
     }
 
@@ -1202,16 +1204,14 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
         assignEasingToTargets([aEasing](const util::Easing::Param&) { return aEasing; });
     };
     // The popover is gone, so a right-click's temporary selection ends with it:
-    // those keys were lent for the open, and the open is over.
+    // those keys were lent for the open, and the open is over. Clearing the
+    // selection is itself a change, so it announces the chip's new state by the
+    // same route every other change takes.
     mEasingHost->onPickerClosed = [this]() {
         mEditor->endTemporarySelection();
         this->update(); // repaints, which re-reads the selection for the chip
-        pushEasingChipState(); // and the same reading, without waiting for the paint
     };
     pushEasingChipState();
-    // From here the chip follows the selection on its own, paint or no paint (see
-    // kChipSyncIntervalMs).
-    mChipSyncTimer->start();
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -12,8 +12,6 @@
 #include "gui/TimeRuler.h"
 #include "KeyCommandMap.h"
 
-class QTimer;
-
 namespace gui {
 
 namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
@@ -188,9 +186,10 @@ private:
     // holds, so an extra call costs one compare.
     //
     // Called from the paint (see paintEvent), when a host is attached or the picker
-    // opens, on a document modification (see onTimeLineModified), and by the
-    // reconcile timer below - which is what keeps the chip right when none of those
-    // paints or signals reaches a hidden surface.
+    // opens, on a document modification (see onTimeLineModified), and - the source
+    // that closes the last gap - by the selection's own change notification
+    // (ctrl::time::Selection::onChanged), which fires whichever view made the
+    // selection and needs nothing to be visible or painted.
     void pushEasingChipState();
 
     ViaPoint& mViaPoint;
@@ -218,12 +217,6 @@ private:
     // The header's easing control, if a header hosts one: it owns the single
     // picker popover this widget opens (see openEasingPicker).
     prop::EasingItem* mEasingHost;
-    // Drives pushEasingChipState() on a coarse timer so the chip follows the key
-    // selection even when nothing paints: a selection made in the animation graph
-    // panel is announced to this widget only by a repaint request, which Qt drops
-    // while the widget is hidden (see kChipSyncIntervalMs in the .cpp). Runs only
-    // while mEasingHost is set.
-    QTimer* mChipSyncTimer;
     core::TimeLineEvent mTargets;
     core::TimeLineEvent mCopyTargets;
     QPoint mPastePos;

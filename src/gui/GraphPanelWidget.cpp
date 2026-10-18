@@ -54,6 +54,13 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     // publication (gui::publishPanelAccessibility, from this host's first frame) would
     // find nothing to take over. It needs no GL context and no model.
     a11y::installFactoryOnly(*this);
+    // AND THIS HOST IS THE PANEL'S PUBLISHER, declared in the same breath and for the
+    // same reason: the a11y installation is one per process and its factory answers for
+    // one widget, so the announcement has to be made before anything can ask Qt about
+    // either host's widget - see gui::declarePanelDockHost. Its own install lands on the
+    // installation this line's predecessor just made (one installation, one interface,
+    // one id).
+    declarePanelDockHost(*this);
 
     // The floor colour and the panel's palette are read per frame from
     // theme::Colors::current(), so a theme change needs no cached state - only a frame,

@@ -2049,6 +2049,16 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
         }
     }
 
+    // THE PANEL'S NAME, which is the same line: gui::a11y's Model carries the summary
+    // as the ROOT Pane's Name (ImGuiA11y.h: "the Model itself -> the viewport widget's
+    // interface: QAccessible::Pane ..., its Name is Model::summary"), and that is what a
+    // client reads as the region's label before it walks the children. The previous
+    // caller never assigned it, so the panel was published as an UNNAMED pane and the
+    // summary was only reachable as the StaticText item below; both places say the same
+    // thing on purpose, exactly as tests/imgui_a11y.cpp asserts (a named root whose
+    // childCount is the item count).
+    published.summary = summary;
+
     a11y::Item summaryItem;
     summaryItem.role = a11y::Item::StaticText;
     summaryItem.id = kPanelSummaryItemId;
@@ -2285,6 +2295,18 @@ ImDrawData* runPanelFrame(
 }
 
 //-------------------------------------------------------------------------------------------------
+void declarePanelDockHost(QWidget& aHost) {
+    // The whole of the declaration: from here on the panel is published from aHost and
+    // the viewport overlay never installs (see publishPanelAccessibility, and the header
+    // for why the moment has to be this one). The a11y installation itself was taken by
+    // the caller's own installFactoryOnly(), from the same constructor, BEFORE anything
+    // can have asked Qt about either widget - which is what makes the panel's
+    // installation and its first frame ONE installation (a repeat install() for the same
+    // widget keeps the interface and its id and only takes the callback).
+    gPanelDockPublisher = &aHost;
+}
+
+//-------------------------------------------------------------------------------------------------
 void publishPanelAccessibility(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, PanelFrameState& aState,
     void (*aOnAction)(void*, int aId), void* aUser
@@ -2292,28 +2314,27 @@ void publishPanelAccessibility(
     const bool onScreen = aState.editor != nullptr;
 
     if (aHostStyle == GraphPanelHost::Dock) {
-        if (onScreen) {
-            // The dock's Graph tab is on screen: from here on it is the panel's
-            // publisher, and the overlay stops publishing (the branch below).
-            gPanelDockPublisher = &aHost;
-        } else if (gPanelA11yHost != &aHost) {
-            // Not on screen, and never has been: there is no panel to publish and no
-            // installation to take. (A host that WAS drawing publishes the empty model
-            // below instead - the tree is told the panel is gone rather than being left
-            // with the last frame of a hidden tab.)
+        if (!onScreen && gPanelA11yHost != &aHost) {
+            // Not on screen, and this host has never published: there is no panel to
+            // publish and no installation to take. (A host that HAS published - which is
+            // every host that ever drew a visible frame - publishes the empty model
+            // below instead, so the tree is told the panel is gone rather than being
+            // left with the last frame of a hidden tab.)
             return;
         }
     } else if (gPanelDockPublisher) {
-        // The panel is published from the dock (see the header): the overlay draws and
-        // hit-tests as it always did, but it neither publishes nor re-takes the
-        // installation.
+        // The panel is published from the dock (declarePanelDockHost, from the docked
+        // host's constructor): the overlay draws and hit-tests as it always did, but it
+        // neither publishes nor takes an installation of its own.
         return;
     }
 
     // ONE installation (gui::a11y): the first publish of a host takes it for that
-    // host's widget, and a host that already owns it only refreshes the callback when
-    // that changes. Nothing here ever ends an installation that belongs to the other
-    // host's widget.
+    // host's widget - for the docked host that is a REPEAT install for the widget its
+    // constructor already installed for, so the interface and its id stay, and only the
+    // callback is taken over - and a host that already owns it refreshes the callback
+    // when that changes. Nothing here ever ends an installation that belongs to the
+    // other host's widget.
     if (gPanelA11yHost != &aHost || gPanelA11yAction != aOnAction || gPanelA11yUser != aUser) {
         a11y::install(aHost, [aOnAction, aUser](int aId) { aOnAction(aUser, aId); });
         gPanelA11yHost = &aHost;

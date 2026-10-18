@@ -334,16 +334,6 @@ namespace prop {
         p.setPen(QPen(edge, 1.0));
         p.drawPath(surface);
 
-        // The fixed slots, right to left: caret, count, range/blend; then the
-        // name takes what is left after the glyph. A hidden part still holds its
-        // width - that is what "fixed slots" buys.
-        const int caretX = width() - kBorder - kPadR - kCaret;
-        const int caretY = (height() - kCaret) / 2;
-        const int countRight = caretX - kGap;
-        const int rangeRight = countRight - kCountW - kGap;
-        const int nameLeft = kBorder + kPadL + kGlyph + kGap;
-        const int nameRight = rangeRight - kRangeW - kGap;
-
         QString name;
         QString range;
         QString count;
@@ -367,10 +357,50 @@ namespace prop {
                 count = QCoreApplication::tr("%n key(s)", nullptr, mValues.size());
         }
 
+        QFont nameFont = font();
+        nameFont.setPixelSize(kNameFontSize);
+        nameFont.setWeight(QFont::Medium);
+        const QFontMetrics nameMetrics(nameFont);
+        QFont metaFont = font();
+        metaFont.setPixelSize(kMetaFontSize);
+        const QFontMetrics metaMetrics(metaFont);
+
+        // The slots, right to left: the caret is always there (it is the affordance),
+        // then the count, then the range/blend - each ONLY when it carries something -
+        // and the name takes what is left after the glyph. The chip's EXTERIOR is what
+        // is fixed (the header's 196px slot owns it, so the bar beside the chip never
+        // moves); its interior adapts, because reserving empty boxes for a state that
+        // has no glyph, no range/blend and no count was what squeezed the disabled
+        // "Select keys" - 66.9px of text - into the 43px left over.
+        const bool showGlyph = !mValues.isEmpty();
+        const bool showRange = !range.isEmpty();
+        const bool showCount = !count.isEmpty();
+        // The count is the state's identity, so its slot keeps the mock's 46px and
+        // grows only if a long count would not fit it (the name elides instead, which
+        // is the trade the design asks for).
+        const int countW = showCount
+                               ? qMax(kCountW, metaMetrics.horizontalAdvance(count))
+                               : 0;
+        int slotRight = width() - kBorder - kPadR - kCaret;
+        int countX = slotRight;
+        if (showCount) {
+            slotRight -= kGap + countW;
+            countX = slotRight;
+        }
+        int rangeX = slotRight;
+        if (showRange) {
+            slotRight -= kGap + kRangeW;
+            rangeX = slotRight;
+        }
+        int nameLeft = kBorder + kPadL;
+        if (showGlyph)
+            nameLeft += kGlyph + kGap;
+        const QRect nameRect(nameLeft, 0, qMax(0, slotRight - kGap - nameLeft), height());
+
         // The glyph is the shown key's easing, shaped by its own neighbours (see
         // EasingChip::setValues), so an Auto selection draws the curve the
         // document plays rather than a shape no key has.
-        if (!mValues.isEmpty()) {
+        if (showGlyph) {
             const int glyphY = (height() - kGlyph) / 2;
             paintEasingCurve(p, QRectF(kBorder + kPadL, glyphY, kGlyph, kGlyph), mValues.first(),
                              enabled ? c.accentBright : c.textDisabled, kStroke, &mAuto);
@@ -381,33 +411,30 @@ namespace prop {
             // chip fades it rather than re-loading a second tint of the same glyph.
             if (!enabled)
                 p.setOpacity(kDisabledOpacity);
-            p.drawPixmap(caretX, caretY, mCaret);
+            const int caretX = width() - kBorder - kPadR - kCaret;
+            p.drawPixmap(caretX, (height() - kCaret) / 2, mCaret);
             p.setOpacity(1.0);
         }
 
-        QFont nameFont = font();
-        nameFont.setPixelSize(kNameFontSize);
-        nameFont.setWeight(QFont::Medium);
-        const QFontMetrics nameMetrics(nameFont);
         p.setFont(nameFont);
         p.setPen(enabled ? c.text : c.textDisabled);
-        const QRect nameRect(nameLeft, 0, qMax(0, nameRight - nameLeft), height());
         p.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft,
                    nameMetrics.elidedText(name, Qt::ElideRight, nameRect.width()));
 
         // The range/blend and the count: the mock's .erange / .eid, one step
         // smaller and muted. The app font's figures are tabular (see
         // TimeLineHeader), so a changing count cannot shift the two slots.
-        QFont metaFont = font();
-        metaFont.setPixelSize(kMetaFontSize);
-        const QFontMetrics metaMetrics(metaFont);
         p.setFont(metaFont);
         p.setPen(enabled ? c.textMuted : c.textDisabled);
-        const QRect rangeRect(rangeRight - kRangeW, 0, kRangeW, height());
-        p.drawText(rangeRect, Qt::AlignVCenter | Qt::AlignRight,
-                   metaMetrics.elidedText(range, Qt::ElideRight, kRangeW));
-        const QRect countRect(countRight - kCountW, 0, kCountW, height());
-        p.drawText(countRect, Qt::AlignVCenter | Qt::AlignRight, count);
+        if (showRange) {
+            const QRect rangeRect(rangeX, 0, kRangeW, height());
+            p.drawText(rangeRect, Qt::AlignVCenter | Qt::AlignRight,
+                       metaMetrics.elidedText(range, Qt::ElideRight, kRangeW));
+        }
+        if (showCount) {
+            const QRect countRect(countX, 0, countW, height());
+            p.drawText(countRect, Qt::AlignVCenter | Qt::AlignRight, count);
+        }
     }
 
     //-------------------------------------------------------------------------------------------------

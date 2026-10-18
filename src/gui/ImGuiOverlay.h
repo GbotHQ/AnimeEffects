@@ -442,18 +442,18 @@ ImDrawData* runPanelFrame(
 // published model), so the panel - one panel, two hosts - can be published exactly
 // once, and two hosts calling sync() would fight for it: the second host's model
 // would be published with rects in the FIRST host's widget coordinates. The rule
-// here is therefore: a host publishes while it is ON SCREEN, and the DOCKED host
-// wins - it is where the design puts the panel, so from the first frame it draws the
-// dock owns the publication and the viewport overlay yields to it for good. "For
-// good" is deliberate: ending an installation and re-installing for the same widget
-// is the one thing gui::a11y documents as unrecoverable (the viewport's cache entry
-// can be rebuilt by Qt with the widget's own interface while no factory is
-// installed, and install() then publishes nothing), so the publication is handed
-// over ONCE and never back.
+// here is therefore: the DOCKED host is the panel's publisher, and it says so from its
+// constructor (declarePanelDockHost below); the viewport overlay never publishes once
+// that has happened. It is not a matter of taste: a single installation means whichever
+// widget is NOT the installed one gets Qt's ordinary interface cached the first time
+// anything asks about it, so a hand-over between the two hosts has to happen ONCE, at a
+// moment when neither widget can have been asked yet - and the only such moment is the
+// docked host's construction. See declarePanelDockHost for the measured failure this
+// rule replaces.
 //
 // A host that is not on screen publishes the EMPTY model - the panel is not on
 // screen, and the tree says so rather than showing the last frame of a hidden tab.
-// The installation is kept either way (see above).
+// The installation stays with the docked host either way.
 //
 // aOnAction(aUser, aId) is the host's own handler for the ids below, called
 // synchronously from the accessibility call that activated the item.
@@ -461,6 +461,34 @@ void publishPanelAccessibility(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, PanelFrameState& aState,
     void (*aOnAction)(void* aUser, int aId), void* aUser
 );
+
+// The docked host ANNOUNCES ITSELF, from its CONSTRUCTOR and before anything can ask
+// Qt for either widget's accessible interface.
+//
+// WHY A DECLARATION AND NOT A SIDE EFFECT OF THE FIRST FRAME. gui::a11y keeps ONE
+// installation and its factory answers for ONE widget: installFactoryOnly() from a
+// constructor is what makes the entry Qt creates for that widget ours, and every OTHER
+// widget the factory is asked about falls through to Qt, which then caches that
+// widget's ORDINARY interface - permanently (gui/ImGuiA11y.h, "WHERE TO CALL IT"; the
+// same reason it says a host "relies on the constructor-time install still being in
+// place, not on a re-install after uninstall()"). So an install for the viewport's
+// widget at ANY time after the docked host's constructor ran ENDS the docked
+// installation, and a query Qt or a client makes about the docked widget in that window
+// leaves that widget with its own interface and no way back: the docked panel draws,
+// synces, and nothing reaches the tree. Measured exactly that way: the docked page node
+// came out as Qt's plain `unknown` node with no children while the panel was on screen.
+//
+// Declaring here makes the docked host the panel's publisher FOR GOOD, from the moment
+// it exists, so the viewport overlay never installs at all (see
+// publishPanelAccessibility) and the docked host's own install() on its first frame is
+// a REPEAT install for the SAME widget - the constructor-time installation and the
+// first frame are one installation, exactly as gui/ImGuiA11y.h describes for a single
+// host.
+//
+// The construction order this rests on (verified): MainWindow builds the viewport's
+// central widget first and the dock's TargetWidget second, so the surviving
+// constructor-time installation is the docked one.
+void declarePanelDockHost(QWidget& aHost);
 
 // The panel's accessible item ids. No item is a row index (the channel list and the
 // key menu are the application's own QMenus, not in the tree - see the class comment),

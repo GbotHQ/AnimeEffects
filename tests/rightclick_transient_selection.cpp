@@ -15,6 +15,14 @@
 // (easing type/range, HSV, ...) keep every entry; moved keys are followed;
 // removed keys drop out.
 //
+// The set announces its own changes (S7): ctrl::time::Selection::onChanged fires
+// on every mutation that changes the set and on no other, which is what the
+// timeline header's chip follows instead of the 200ms reconcile timer it used to
+// run. The entries these paths write are KEY-LEVEL (component ==
+// ctrl::time::Selection::kKeyLevel): this view selects KEYS, and such an entry
+// covers every marker its key owns - the graph panel's finer, per-component
+// entries are what the same set carries when the panel writes it.
+//
 // Plus the context-menu coordinate contract: rows live in model space and
 // customContextMenuRequested delivers surface coordinates, so the widget
 // maps through CameraInfo::toWorldPos before calling selectKeysAt (the
@@ -312,6 +320,81 @@ int main(int argc, char** argv) {
         notifyTimelineModified(editor);
         core::TimeLineEvent gone;
         CHECK(!editor.retrieveSelectionTargets(gone)); // the drop is the contract
+    }
+
+    // --- S7: THE SELECTION ANNOUNCES ITS OWN CHANGES. The set is the one thing
+    // EVERY view of the timeline writes (the timeline's own gestures, and the
+    // animation graph panel's markers - see ctrl::time::Selection), so a change is
+    // NOTICED rather than polled: every mutation that changes the set fires
+    // onChanged, and one that changes nothing stays silent. Both halves are the
+    // contract the timeline header's chip runs on (it used to poll the set on a
+    // 200ms timer), and they are pinned here. The entries this view's paths write
+    // are KEY-LEVEL - a timeline selection is a KEY, whatever the panel selects of
+    // its components - which is what makes one key one thing on this side.
+    {
+        int changes = 0;
+        // The slot captures this block's local, and the editor is main-scope, so it
+        // is dropped again before the block ends (see the disconnect below).
+        const util::SlotId changeSlot =
+            editor.selection().onChanged.connect([&changes]() { ++changes; });
+
+        // The lane this section drives: one fresh key at frame 12 on the node the
+        // row already names (S6 removed both of the original pair).
+        auto* keyC = new core::MoveKey();
+        stack.push(node.timeLine()->createPusher(core::TimeKeyType_Move, 12, keyC));
+        const QPoint posC(frameX(12), laneY);
+        editor.endTemporarySelection();
+        editor.selection().clear();
+        const int afterClear = changes;
+
+        // A right-click on an unselected key lends the selection: a change, and it
+        // says so. The entry it wrote is a WHOLE KEY: no component is named, which
+        // is the timeline's own form of a selection (the panel's marker entries name
+        // one component - see ctrl::time::Selection::kKeyLevel).
+        core::TimeLineEvent targets;
+        CHECK(editor.selectKeysAt(targets, posC));
+        CHECK(singleTargetIs(targets, keyC));
+        CHECK(changes > afterClear);
+        CHECK(editor.selection().items().size() == 1);
+        CHECK(editor.selection().items().front().component == ctrl::time::Selection::kKeyLevel);
+        CHECK(editor.selection().items().front().target.pos.index() == 12);
+
+        // A NO-OP is not a change: lending the same key again leaves the set exactly
+        // as it was (Selection::set answers false and announces nothing).
+        const int afterLend = changes;
+        CHECK(editor.selectKeysAt(targets = core::TimeLineEvent(), posC));
+        CHECK(changes == afterLend);
+
+        // ...and neither is a timeline notification that changes nothing, which is
+        // what updateKey() runs on every data-only edit: refresh() finds every entry
+        // exactly where it was.
+        editEasingLikeTheMenuWould(keyC);
+        notifyTimelineModified(editor);
+        CHECK(changes == afterLend);
+
+        // A key that MOVED is a change: the entry follows it to its new frame.
+        CHECK(node.timeLine()->overwriteMove(core::TimeKeyType_Move, 12, 16));
+        notifyTimelineModified(editor);
+        CHECK(changes > afterLend);
+        core::TimeLineEvent followed;
+        CHECK(editor.retrieveSelectionTargets(followed));
+        CHECK(singleTargetIs(followed, keyC));
+        CHECK(followed.targets().front().pos.index() == 16);
+
+        // ...and a key that is GONE is a change too: the entry is dropped.
+        const int afterFollow = changes;
+        stack.push(node.timeLine()->createRemover(core::TimeKeyType_Move, 16, false));
+        notifyTimelineModified(editor);
+        CHECK(changes > afterFollow);
+        core::TimeLineEvent gone;
+        CHECK(!editor.retrieveSelectionTargets(gone));
+
+        // The set answers whether a call changed it, which is the same fact from the
+        // caller's side: clearing an empty set changes nothing and says so.
+        CHECK(!editor.selection().clear());
+        CHECK(editor.selection().empty());
+
+        editor.selection().onChanged.disconnect(changeSlot);
     }
 
     std::printf("rightclick_transient_selection: all checks passed\n");

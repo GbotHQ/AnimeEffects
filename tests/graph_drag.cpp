@@ -45,12 +45,21 @@
 // the ImGui cutover and the panel is drawn from gui::GraphPanelModel, whose own
 // gate pins that building it writes nothing back.)
 //
-// The panel's SELECTION is pinned at the end of the file too: a plain press
-// replaces the selection with one key, Shift-press extends it, Ctrl-press toggles
-// one key, and a MARQUEE - a PLAIN press in the plot (Ctrl on a curve's band
-// inserts instead), dragged and released - replaces it with every key inside the
-// dragged rectangle (adding, under Shift),
-// with the rectangle published live by marqueeRect().
+// The panel's SELECTION is pinned at the end of the file too, and it is a
+// selection of MARKERS - one COMPONENT of one key, the dot on one curve. A plain
+// press replaces the selection with the marker it hit (so a Scale key's X alone
+// can be selected), Shift-press adds one more (which is how both of a key's
+// markers are selected together), Ctrl-press toggles one, and a MARQUEE - a PLAIN
+// press in the plot (Ctrl on a curve's band inserts instead), dragged and
+// released - replaces it with EVERY MARKER of every key inside the dragged
+// rectangle (adding, under Shift), with the rectangle published live by
+// marqueeRect(). Ctrl+A (selectAllMarkers) is the same bulk rule over the shown
+// channels from the keyboard, Escape clears (clearSelection), and the set
+// announces every change of its own (time::Selection::onChanged) - which is what
+// the timeline header's chip reads instead of a reconcile timer. A KEY-LEVEL
+// entry - what the timeline's own gestures, a marquee and ctrl+A write - is every
+// marker its key owns, which is why the timeline keeps highlighting a key the
+// panel selected one component of.
 //
 // The panel's three KEY EDITS are pinned the same way (sections 16-18), on one
 // layer of their own:
@@ -132,8 +141,8 @@
 // own stack holds nothing but the graph's edits and every undo probe below is
 // about the drag.
 //
-// THE MULTI-KEY MOVE, the HULL and the GHOST HANDLES are pinned in sections
-// 23b-23d:
+// THE MULTI-KEY MOVE, the HULL, the GHOST HANDLES and the MARKER are pinned in
+// sections 23b-23e:
 //
 //   * 23b - the move carries the panel's WHOLE SELECTION: a two-key selection is
 //     dragged and BOTH keys move by the same frame AND value delta, the whole
@@ -152,6 +161,15 @@
 //     radius of the pointer (an exact cull on the segment's own arithmetic), so
 //     the cursor path cannot pay a derivation per segment: 8px from the dot still
 //     grabs it, 30px away does not.
+//   * 23e - THE MARKER, on a Scale key (two components): a plain press selects ONE
+//     component and leaves its sibling with the faint ring's predicate; with both
+//     selected, ONE diagonal drag moves the key's FRAME ONCE and moves BOTH
+//     components by the same delta, each in its own channel - and the unselected
+//     sibling of an X-only selection comes out bit-identical. A whole-key entry
+//     (the timeline's own, a marquee, ctrl+A) is every marker of its key, so a
+//     vertical drag moves both components; ctrl+A selects the shown channels' keys
+//     as one entry per key and Escape clears; and the set announces every change
+//     of its own, and only the changes.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -174,6 +192,7 @@
 #include "core/PoseKey.h"
 #include "core/Project.h"
 #include "core/RotateKey.h"
+#include "core/ScaleKey.h"
 #include "core/TimeKey.h"
 #include "core/TimeKeyType.h"
 #include "core/TimeLine.h"
@@ -2996,6 +3015,287 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
+    // --- 23e: THE MARKER. A key's COMPONENTS are things a user selects one at a
+    // time - "The selection is the channel marker, not the key" - so the panel's
+    // selection names (key, component) and the drag follows it: HORIZONTAL moves
+    // the frame, which one key shares across its components, so each selected key
+    // moves ONCE; VERTICAL moves every selected MARKER in its OWN channel, by the
+    // same delta. A Scale key has exactly two components, so "X alone" and "X and
+    // Y" are two different selections with two different drags - which is what
+    // this section pins, on the public surface only:
+    //   * what a press selects (the panel's isMarkerSelected/hasSelectedSiblingMarker
+    //     per component, and selectionCount/the key-level retrieveSelection for the
+    //     other reading),
+    //   * what a drag does to the SELECTED marker and to the sibling it did not
+    //     select (the document: the key's own scale() pair),
+    //   * ONE command per gesture, whatever it moved,
+    //   * the bulk rules: a marquee and ctrl+A write WHOLE-KEY entries (every marker
+    //     of those keys), Escape clears, and the set announces every change of its
+    //     own and only the changes.
+    {
+        core::TestNode markerNode;
+        core::ScaleKey* mk0 = new core::ScaleKey();
+        mk0->setScale(QVector2D(20.0f, 30.0f));
+        setup.push(markerNode.timeLine()->createPusher(core::TimeKeyType_Scale, 5, mk0));
+        core::ScaleKey* mk1 = new core::ScaleKey();
+        mk1->setScale(QVector2D(60.0f, 80.0f));
+        setup.push(markerNode.timeLine()->createPusher(core::TimeKeyType_Scale, 25, mk1));
+        CHECK(markerNode.timeLine()->map(core::TimeKeyType_Scale).size() == 2);
+
+        // The pair the whole section rests on: two components, so "X alone" is a
+        // selection that leaves something out.
+        const Channel markerX(core::TimeKeyType_Scale, 0);
+        const Channel markerY(core::TimeKeyType_Scale, 1);
+        CHECK(Channel::componentCount(core::TimeKeyType_Scale) == 2);
+        CHECK(markerX.value(*mk0) == 20.0f && markerY.value(*mk0) == 30.0f);
+
+        editor.setTargets({ &markerNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        // Every pixel below comes from the editor's OWN live scale, so the press
+        // lands on the marker the drawing layer draws (the two are ~80px apart at
+        // this window's span, far outside the 10px hit radius - a press can only
+        // mean the marker it is on).
+        const Scaler& markerScale = editor.scale();
+        const QPoint px05(markerScale.pixelX(core::Frame(5)), markerScale.pixelY(20.0f));
+        const QPoint py05(markerScale.pixelX(core::Frame(5)), markerScale.pixelY(30.0f));
+        const QPoint px25(markerScale.pixelX(core::Frame(25)), markerScale.pixelY(60.0f));
+        for (const QPoint& pixel : { px05, py05, px25 }) {
+            CHECK(markerScale.plotRect().contains(pixel));
+        }
+        CHECK(std::abs(px05.y() - py05.y()) > int(ctrl::graph::kKeyHitRadius));
+
+        // THE SET ANNOUNCES ITSELF: what the timeline header's chip reads instead
+        // of the reconcile timer it used to run. The slot goes with this block (see
+        // the disconnect below): the editor and its set outlive every section here.
+        int selectionChanges = 0;
+        const util::SlotId changeSlot =
+            editor.selection().onChanged.connect([&selectionChanges]() { ++selectionChanges; });
+
+        // (a) A PLAIN PRESS SELECTS THE MARKER UNDER THE POINTER, not the key: the
+        // other component is left out - unselected, but the SIBLING of one that is
+        // (which is what the drawing layer's faint ring is for).
+        core::AbstractCursor markerCur;
+        CHECK(sendPress(editor, camera, markerCur, px05));
+        CHECK(sendRelease(editor, camera, markerCur, px05));
+        CHECK(selectionChanges > 0); // the press changed the selection, so it said so
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(!editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(!editor.hasSelectedSiblingMarker(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.hasSelectedSiblingMarker(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.selection().count() == 1); // ONE ENTRY: the marker the press hit
+        CHECK(editor.selectionCount() == 1);    // ...which is ONE KEY (a marker is not one)
+        // The KEY still carries the timeline's highlight: a marker entry focuses its
+        // key, so the panel's finer selection is visible in the coarse view too.
+        CHECK(markerNode.timeLine()->timeKey(core::TimeKeyType_Scale, 5)->isFocused());
+        CHECK(!markerNode.timeLine()->timeKey(core::TimeKeyType_Scale, 25)->isFocused());
+        // The timeline's own reading of that selection: the key it belongs to.
+        core::TimeLineEvent markerTargets;
+        CHECK(editor.retrieveSelection(markerTargets));
+        CHECK(markerTargets.targets().size() == 1);
+        CHECK(markerTargets.targets()[0].node == &markerNode);
+        CHECK(markerTargets.targets()[0].pos.type() == core::TimeKeyType_Scale);
+        CHECK(markerTargets.targets()[0].pos.index() == 5);
+
+        // (b) SHIFT ADDS THE SECOND MARKER of the same key: two entries, ONE key.
+        const int changesBeforeShift = selectionChanges;
+        CHECK(sendPress(editor, camera, markerCur, py05, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, markerCur, py05, Qt::ShiftModifier));
+        CHECK(selectionChanges > changesBeforeShift);
+        CHECK(editor.selection().count() == 2); // two markers...
+        CHECK(editor.selectionCount() == 1);    // ...of one key
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.hasSelectedSiblingMarker(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.hasSelectedSiblingMarker(markerNode, markerY, core::Frame(5)));
+        // The key-level reading is still ONE target: the two entries name one key.
+        CHECK(editor.retrieveSelection(markerTargets = core::TimeLineEvent()));
+        CHECK(markerTargets.targets().size() == 1);
+        CHECK(markerTargets.targets()[0].pos.index() == 5);
+
+        // (c) THE DRAG WITH BOTH MARKERS SELECTED. The grab is a SHIFT-press on a
+        // marker that is already covered (Shift is also the axis lock for the drag
+        // below, where it is re-read per move), so the selection the gesture carries
+        // is the two markers; then the pointer goes up and right.
+        const QPoint bothFrom(markerScale.pixelX(core::Frame(5)), markerScale.pixelY(30.0f));
+        const QPoint bothTo(markerScale.pixelX(core::Frame(9)), markerScale.pixelY(30.0f) - 24);
+        const int bothStep = markerScale.frameAt(bothTo.x()).get() - markerScale.frameAt(bothFrom.x()).get();
+        const float bothDelta = markerScale.valueAt(bothTo.y()) - markerScale.valueAt(bothFrom.y());
+        CHECK(bothStep == 4);            // the pixels name the frames they map to
+        CHECK(bothDelta > 1.0f);         // and a real, upward value move
+        CHECK(sendPress(editor, camera, markerCur, bothFrom, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, markerCur, bothTo));
+        CHECK(sendRelease(editor, camera, markerCur, bothTo));
+
+        // HORIZONTAL: the key's frame moves ONCE - the frame is one thing the two
+        // selected markers share, so it cannot move by two steps' worth.
+        CHECK(!markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 5));
+        CHECK(!markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 5 + bothStep * 2));
+        CHECK(markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 5 + bothStep));
+        CHECK(markerNode.timeLine()->timeKey(core::TimeKeyType_Scale, 5 + bothStep) == mk0);
+        // VERTICAL: BOTH components move by the same delta, each in its own channel.
+        CHECK(mk0->scale().x() == 20.0f + bothDelta);
+        CHECK(mk0->scale().y() == 30.0f + bothDelta);
+        // ...and the key that was not selected is untouched, both components of it.
+        CHECK(markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 25));
+        CHECK(mk1->scale().x() == 60.0f && mk1->scale().y() == 80.0f);
+
+        // ONE COMMAND for the whole two-marker drag: one undo restores the frame and
+        // BOTH components, and a second finds nothing behind it.
+        bool undoneBoth = false;
+        CHECK(!stack.undo(&undoneBoth).isEmpty());
+        CHECK(undoneBoth);
+        CHECK(markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 5));
+        CHECK(!markerNode.timeLine()->hasTimeKey(core::TimeKeyType_Scale, 5 + bothStep));
+        CHECK(mk0->scale().x() == 20.0f && mk0->scale().y() == 30.0f);
+        bool undoneBothAgain = true;
+        CHECK(stack.undo(&undoneBothAgain).isEmpty());
+        CHECK(!undoneBothAgain);
+        std::printf(
+            "[K] marker drag: both markers of one Scale key moved frame %+d / value %+.3f in ONE command "
+            "(X 20 -> %.3f, Y 30 -> %.3f); one undo restored frame and both components, a second found "
+            "nothing\n",
+            bothStep, bothDelta, 20.0f + bothDelta, 30.0f + bothDelta
+        );
+
+        // (d) X ALONE, DRAGGED UP: X follows the pointer and the Y marker - not
+        // selected, but the sibling of one that is - keeps its value BIT-identical.
+        // The pointer moves in x by nothing at all, so no frame can be owed either.
+        CHECK(sendPress(editor, camera, markerCur, px05));
+        CHECK(sendRelease(editor, camera, markerCur, px05));
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(!editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.hasSelectedSiblingMarker(markerNode, markerY, core::Frame(5)));
+
+        const QPoint xFrom(markerScale.pixelX(core::Frame(5)), markerScale.pixelY(20.0f));
+        const QPoint xTo(xFrom.x(), xFrom.y() - 30);
+        const float xDelta = markerScale.valueAt(xTo.y()) - markerScale.valueAt(xFrom.y());
+        CHECK(xDelta > 1.0f);
+        CHECK(sendPress(editor, camera, markerCur, xFrom));
+        CHECK(sendMove(editor, camera, markerCur, xTo));
+        CHECK(sendRelease(editor, camera, markerCur, xTo));
+        CHECK(mk0->frame() == 5);               // a vertical-only drag moves no frame
+        CHECK(mk0->scale().x() == 20.0f + xDelta); // the SELECTED marker followed the pointer
+        CHECK(mk0->scale().y() == 30.0f);          // the unselected sibling: untouched, bit-identical
+        bool undoneAlone = false;
+        CHECK(!stack.undo(&undoneAlone).isEmpty());
+        CHECK(undoneAlone);
+        CHECK(mk0->scale().x() == 20.0f && mk0->scale().y() == 30.0f);
+        bool undoneAloneAgain = true;
+        CHECK(stack.undo(&undoneAloneAgain).isEmpty());
+        CHECK(!undoneAloneAgain);
+
+        // (e) THE BULK RULES WRITE WHOLE-KEY ENTRIES, and such an entry IS every
+        // marker of its key - which is the other half of the design: a key the
+        // timeline selected (or a marquee enclosed, or ctrl+A took) lights all of
+        // its components. The marquee first, because it is the pointer gesture.
+        editor.clearSelection();
+        const QPoint boxOrigin(markerScale.plotRect().left() + 2, markerScale.plotRect().bottom() - 2);
+        const QPoint boxEnd(markerScale.plotRect().right() - 2, markerScale.plotRect().top() + 2);
+        CHECK(sendPress(editor, camera, markerCur, boxOrigin));
+        CHECK(editor.hasMarquee());
+        CHECK(sendMove(editor, camera, markerCur, boxEnd));
+        CHECK(sendRelease(editor, camera, markerCur, boxEnd));
+        CHECK(!editor.hasMarquee());
+        CHECK(editor.selection().count() == 2); // ONE ENTRY PER KEY, not per marker
+        CHECK(editor.selectionCount() == 2);
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(25)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(25)));
+        CHECK(editor.hasSelectedSiblingMarker(markerNode, markerY, core::Frame(5)));
+
+        // A vertical drag on that selection moves EVERY component of every key it
+        // names, each in its own channel - the whole key is selected, and a whole
+        // key's value is every channel it has.
+        const QPoint allFrom(markerScale.pixelX(core::Frame(25)), markerScale.pixelY(60.0f));
+        const QPoint allTo(allFrom.x(), allFrom.y() - 20);
+        const float allDelta = markerScale.valueAt(allTo.y()) - markerScale.valueAt(allFrom.y());
+        CHECK(allDelta > 1.0f);
+        CHECK(sendPress(editor, camera, markerCur, allFrom, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, markerCur, allTo));
+        CHECK(sendRelease(editor, camera, markerCur, allTo));
+        CHECK(mk0->frame() == 5 && mk1->frame() == 25); // no frame moved: the pointer did not move in x
+        CHECK(mk0->scale().x() == 20.0f + allDelta);
+        CHECK(mk0->scale().y() == 30.0f + allDelta);
+        CHECK(mk1->scale().x() == 60.0f + allDelta);
+        CHECK(mk1->scale().y() == 80.0f + allDelta);
+        // Two keys, four components, ONE command.
+        bool undoneAll = false;
+        CHECK(!stack.undo(&undoneAll).isEmpty());
+        CHECK(undoneAll);
+        CHECK(mk0->scale().x() == 20.0f && mk0->scale().y() == 30.0f);
+        CHECK(mk1->scale().x() == 60.0f && mk1->scale().y() == 80.0f);
+        bool undoneAllAgain = true;
+        CHECK(stack.undo(&undoneAllAgain).isEmpty());
+        CHECK(!undoneAllAgain);
+
+        // A SHIFT-MARQUEE OVER A PARTIALLY SELECTED KEY MAKES IT WHOLE: the box names
+        // every marker of every key it encloses, so the marker entry of an enclosed
+        // key is replaced by a whole-key one rather than left beside it.
+        editor.clearSelection();
+        CHECK(sendPress(editor, camera, markerCur, px05)); // the frame-5 key's X alone
+        CHECK(sendRelease(editor, camera, markerCur, px05));
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(!editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(sendPress(editor, camera, markerCur, boxOrigin, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, markerCur, boxEnd, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, markerCur, boxEnd, Qt::ShiftModifier));
+        CHECK(editor.selection().count() == 2); // both keys, each as one whole-key entry
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5))); // the sibling joined
+
+        // (f) CTRL+A: every marker of every key of the SHOWN channels, as ONE ENTRY
+        // PER KEY (a type whose two components are both drawn is not doubled), and
+        // Escape clears. Both actions answer what they did, which is what a key
+        // handler needs to know whether to consume the key.
+        editor.clearSelection();
+        CHECK(editor.selectAllMarkers());
+        CHECK(editor.selection().count() == 2); // the two keys, one entry each
+        CHECK(editor.selectionCount() == 2);
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(25)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(25)));
+        CHECK(!editor.selectAllMarkers()); // already exactly that selection: nothing changed
+        const int changesBeforeEscape = selectionChanges;
+        CHECK(editor.clearSelection());    // ESCAPE
+        CHECK(editor.selection().empty());
+        CHECK(editor.selectionCount() == 0);
+        CHECK(selectionChanges > changesBeforeEscape);
+        CHECK(!editor.clearSelection());   // nothing left to clear, and the action says so
+
+        // (g) THE TIMELINE'S OWN FORM, on the same set: a KEY-LEVEL entry (what the
+        // timeline's gestures write - the panel's own modifySelection is that
+        // currency) carries NO component, and it covers both of the key's markers.
+        // An empty set is not changed by removing a key from it, and the set says so.
+        CHECK(!editor.modifySelection(markerNode, markerX, core::Frame(5), false));
+        CHECK(editor.modifySelection(markerNode, markerX, core::Frame(5), true));
+        CHECK(editor.selection().count() == 1);
+        CHECK(editor.selection().items().front().component == ctrl::time::Selection::kKeyLevel);
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(editor.selectionCount() == 1); // one key, at its own frame
+        CHECK(editor.modifySelection(markerNode, markerX, core::Frame(5), false));
+        CHECK(editor.selection().empty());
+
+        std::printf(
+            "[X] markers: a plain press selected Scale X alone (Y left with the sibling ring), Shift added "
+            "Scale Y, and the set announced %d changes; ctrl+A took the shown channels' keys as 2 whole-key "
+            "entries and Escape cleared it\n",
+            selectionChanges
+        );
+
+        // The counter's slot goes with the counter: it captures this block's local,
+        // and the editor's set outlives the block.
+        editor.selection().onChanged.disconnect(changeSlot);
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
     // --- 24: the switch's OTHER direction - the half the show at the top of this
     // file cannot cover - and it sits last so nothing above or below runs against
     // a panel that was hidden out from under it. Hiding is what hands the pointer
@@ -3016,8 +3316,13 @@ int main(int argc, char** argv) {
         "the fullscreen panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
         "selects and drags, Ctrl on a curve's band inserts, everything else marquees) and the middle "
         "button (a pan), or mid-gesture - a press outside the plot, and every hover, stays the "
-        "viewport tools'; the selection takes one key by a plain press, extends on Shift, toggles on "
-        "Ctrl and replaces on a marquee over empty plot space; the focus moves NO window (a click "
+        "viewport tools'; the selection is a set of MARKERS - one press selects the one component "
+        "under the pointer (Scale X alone, its Y sibling left with the faint-ring predicate), Shift "
+        "adds a second marker, Ctrl toggles one, a marquee and ctrl+A take every marker of every key "
+        "they enclose as one whole-key entry, Escape clears, and the set announces every change of its "
+        "own and only the changes; a drag of that selection moves one key's frame ONCE and every "
+        "selected marker in its OWN channel by the same delta, so a key's unselected component comes "
+        "out of the gesture bit-identical, all inside ONE command; the focus moves NO window (a click "
         "does not zoom); the wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value), and its "
         "DIRECTION is the caller's invert setting - the one the canvas takes - applied to both axes before "
         "the frame half is delegated, so the canvas, the timeline and the panel never zoom against each "
