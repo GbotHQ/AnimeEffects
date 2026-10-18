@@ -2,6 +2,7 @@
 #define GUI_CONTROLWIDGET_H
 
 #include <QWidget>
+#include <QStackedWidget>
 #include "gui/ThinSplitter.h"
 #include "gui/ObjectTreeWidget.h"
 #include "gui/TimeLineWidget.h"
@@ -13,14 +14,28 @@
 #include "core/Animator.h"
 #include "util/Range.h"
 
+namespace ctrl {
+class Driver;
+}
+
 namespace gui {
 
 class AnimationSettingDialog;
+#ifdef AE_ENABLE_IMGUI
+class GraphPanelWidget;
+#endif
 
 class TargetWidget: public QWidget, public core::Animator {
 public:
     TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidget* aParent, const QSize& aSizeHint);
     void setProject(core::Project* aProject);
+
+    // The project's driver - the object that owns ctrl::GraphEditor - or null while no
+    // project is open. MainWindow hands it over beside the viewport's and the tool
+    // widget's own setDriver, from the same per-project creation, so the dock's Graph
+    // tab (when the graph panel is built) and the viewport's overlay read the ONE
+    // editor of the project being edited.
+    void setDriver(ctrl::Driver* aDriver);
 
     ObjectTreeWidget& objectTreeWidget() { return *mObjTree; }
     const ObjectTreeWidget& objectTreeWidget() const { return *mObjTree; }
@@ -28,13 +43,24 @@ public:
     TimeLineWidget& timeLineWidget() { return *mTimeLine; }
     const TimeLineWidget& timeLineWidget() const { return *mTimeLine; }
 
+#ifdef AE_ENABLE_IMGUI
+    // The Graph tab: the animation graph panel, docked (design section 5). The SAME
+    // component as the viewport's overlay, drawn on the dock's floor at the dock's
+    // size, with no scrim - the tree beside it stays, because the tree is what names
+    // the layers and picks whose channels the panel draws. Not declared in a build
+    // without the panel (AE_ENABLE_IMGUI off): there is no graph surface to ask for.
+    GraphPanelWidget& graphPanelWidget() { return *mGraphPanel; }
+    const GraphPanelWidget& graphPanelWidget() const { return *mGraphPanel; }
+#endif
+
     PlayBackWidget& playBackWidget() { return *mPlayBack; }
     const PlayBackWidget& playBackWidget() const { return *mPlayBack; }
 
-    // The dock's 40px header bar (the transport, the frame readout, the easing
-    // chip's reserved slot and the zoom group). The chip's own unit reaches the
-    // slot and the header's signal through this, rather than through the dock's
-    // layout.
+    // The dock's 40px header bar (the dock's tabs when the graph panel is built, the
+    // transport, the frame readout, the easing chip's reserved slot and the zoom
+    // group). The chip's own unit reaches the slot and the header's signal through
+    // this, rather than through the dock's layout, and the header's tab signal is
+    // what this dock's surface stack follows.
     TimeLineHeader& timeLineHeader() { return *mHeader; }
     const TimeLineHeader& timeLineHeader() const { return *mHeader; }
 
@@ -49,6 +75,13 @@ private:
     virtual QSize sizeHint() const { return mSizeHint; }
 
     void onPlayBackButtonPushed(PlayBackWidget::PushType aType);
+#ifdef AE_ENABLE_IMGUI
+    // The header's tab: the dock's body shows that view of the ONE dock. The tree
+    // is not switched - it is the splitter's first widget and neither tab touches it
+    // - and the ruler and the playhead stay the timeline's own either way. A lean
+    // build has one surface and no tab bar, so there is nothing to switch.
+    void onSurfaceChanged(TimeLineHeader::Surface aSurface);
+#endif
     void openAnimationSettings();
     // Live, non-undoable re-sync: apply the current dialog state to the project
     // attribute (which drives onProjectAttributeModified) and let the timeline
@@ -63,7 +96,16 @@ private:
     const QSize mSizeHint;
     ThinSplitter* mHorizontalSplitter;
     ObjectTreeWidget* mObjTree;
+    // The dock's views, stacked in the splitter's second pane: the timeline's own
+    // surface and, when the graph panel is part of the build, the animation graph
+    // panel. The splitter keeps the SHAPE it has always had - tree | surface - so the
+    // tree is on screen whichever view is up, and the stack is what swaps the surface
+    // under it. Without the panel the stack holds the one (timeline) page.
+    QStackedWidget* mSurfaceStack;
     TimeLineWidget* mTimeLine;
+#ifdef AE_ENABLE_IMGUI
+    GraphPanelWidget* mGraphPanel;
+#endif
     TimeLineHeader* mHeader;
     PlayBackWidget* mPlayBack;
     AnimationSettingDialog* mAnimSettings = nullptr;

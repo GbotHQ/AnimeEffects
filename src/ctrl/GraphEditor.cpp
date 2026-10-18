@@ -1141,10 +1141,35 @@ namespace ctrl {
                 // only difference is what a drag on one does (see updateDrag: a
                 // ghost drag converts the easing to Custom first). Every other
                 // easing exposes no handle at all.
+                //
+                // THE DERIVATION IS CULLED FIRST, AND THE CULL IS EXACT. This
+                // loop runs on the CURSOR path (ownsCursor hits on every move, over
+                // every visible segment), and a derivation is a map lookup plus a
+                // neighbour walk - so paying it for a handle the pointer cannot
+                // reach scales the cursor path with the KEY COUNT instead of with
+                // the pointer. A ghost handle's x, though, comes from the segment
+                // alone (the thirds of its frame span: the automatic handle's whole
+                // definition), so the two x-pixels are computed with handlePointAt's
+                // own expression BEFORE the derivation, and a segment whose two
+                // ghost x-pixels are both further from the pointer than the grab
+                // radius is skipped without it. An x gap bigger than the radius
+                // cannot be made up by the y, so the cull can never drop a handle
+                // the distance test below would have taken - the derivation follows
+                // the reach instead of preceding it.
                 const bool custom = curve.isCustom(segment);
-                const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
-                if (!custom && ghosts.size() != 2)
-                    continue;
+                QVector<QPointF> ghosts;
+                if (!custom) {
+                    const double frameSpan = static_cast<double>(segment.to->frame() - segment.from->frame());
+                    const double fromFrame = static_cast<double>(segment.from->frame());
+                    const double firstX = aScale.pixelXOfFrame(fromFrame + (1.0 / 3.0) * frameSpan);
+                    const double secondX = aScale.pixelXOfFrame(fromFrame + (2.0 / 3.0) * frameSpan);
+                    if (graph::kHandleHitRadius < std::fabs(firstX - pos.x())
+                        && graph::kHandleHitRadius < std::fabs(secondX - pos.x()))
+                        continue;
+                    ghosts = curve.ghostHandles(*segment.from);
+                    if (ghosts.size() != 2)
+                        continue;
+                }
 
                 for (int h = 0; h < 2; ++h) {
                     const QPointF normalized = custom ? graph::Curve::handle(segment, h) : ghosts[h];

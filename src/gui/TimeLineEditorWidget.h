@@ -12,6 +12,8 @@
 #include "gui/TimeRuler.h"
 #include "KeyCommandMap.h"
 
+class QTimer;
+
 namespace gui {
 
 namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
@@ -179,9 +181,16 @@ private:
     // Hands the header's chip what it names: one easing per SELECTED key, in
     // selection order, plus the Auto context of the key the chip shows (the first),
     // so its glyph is the curve that key plays rather than a shape no key has. Keys
-    // of a type that carries no easing (bone, mesh) contribute nothing. Called from
-    // the paint (see paintEvent) - the moment this widget re-reads the selection it
-    // renders - and when a host is attached or the picker opens.
+    // of a type that carries no easing (bone, mesh) contribute nothing, and so does a
+    // selection entry whose key the document no longer holds - the key is resolved
+    // from the document, as ctrl::time::Selection's contract requires (see the
+    // definition). IDEMPOTENT: prop::EasingChip ignores a state equal to the one it
+    // holds, so an extra call costs one compare.
+    //
+    // Called from the paint (see paintEvent), when a host is attached or the picker
+    // opens, on a document modification (see onTimeLineModified), and by the
+    // reconcile timer below - which is what keeps the chip right when none of those
+    // paints or signals reaches a hidden surface.
     void pushEasingChipState();
 
     ViaPoint& mViaPoint;
@@ -209,6 +218,12 @@ private:
     // The header's easing control, if a header hosts one: it owns the single
     // picker popover this widget opens (see openEasingPicker).
     prop::EasingItem* mEasingHost;
+    // Drives pushEasingChipState() on a coarse timer so the chip follows the key
+    // selection even when nothing paints: a selection made in the animation graph
+    // panel is announced to this widget only by a repaint request, which Qt drops
+    // while the widget is hidden (see kChipSyncIntervalMs in the .cpp). Runs only
+    // while mEasingHost is set.
+    QTimer* mChipSyncTimer;
     core::TimeLineEvent mTargets;
     core::TimeLineEvent mCopyTargets;
     QPoint mPastePos;

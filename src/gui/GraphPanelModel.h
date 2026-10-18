@@ -186,6 +186,28 @@ struct PanelLabel {
     QString text;
 };
 
+// WHICH FLOOR THE PANEL IS ON - the dock's Graph tab or the fullscreen overlay.
+// The panel is ONE component on either floor (design section 5: "one dock, two
+// tabs", the Graph tab being the same panel), and the whole of what the model
+// does differently for the two is the home of its ONE control: the dock's Graph
+// tab draws the panel edge to edge on the dock's floor, so the control belongs to
+// the PLOT the panel owns and is placed inside the plot's own right edge; the
+// overlay floats the panel over the viewport with no chrome of its own above it,
+// so the control keeps the panel's own top-right corner (see CHANNELS BUTTON
+// below). Either way it hangs clear of the ruler band's tick-and-number block.
+//
+// It is a flag on the BUILD, not a second code path: one model, one
+// channelsButton rect, published into whichever geometry this host places it in -
+// so a drawing layer draws and hit-tests the same field on both floors. The model
+// republishes the flag it was built with (`host`), so an ink rule that differs by
+// host (the overlay's control floats over the artwork and carries its own
+// translucent backing; the docked one reads on the opaque dock floor) can read the
+// placement it was actually given rather than re-deriving it from the box's x.
+enum class GraphPanelHost {
+    Overlay,
+    Dock,
+};
+
 // The panel's complete description for one frame.
 //
 // GEOMETRY
@@ -370,6 +392,16 @@ struct PanelLabel {
 //   radius is ctrl::graph::kHandleRadius (the dot's drawn radius); the grab
 //   radius is the larger ctrl::graph::kHandleHitRadius, and the two are
 //   deliberately different (the same visual/hit split as a key's).
+//   A CURVE CARRIES ITS PAIRS ONLY WHILE THE DRAWING LAYER WOULD INK THEM. The
+//   layer draws tangent handles for the FOCUSED channel alone - and for every
+//   channel while nothing is focused, which is the same rule it applies to a curve
+//   crossing another - so with a focus set, only that row's curve publishes
+//   `handles` and every other curve's vector is EMPTY. The predicate is the model's
+//   own rows (PanelChannelRow::focused, taken from the same editor state the layer's
+//   focus comes from) for a reason: an Auto segment's pair is DERIVED from the key's
+//   neighbours, and deriving it for a row nobody draws is the expensive half of this
+//   builder. A consumer that needs a handle's geometry for a curve outside that rule
+//   reads it from ctrl::GraphEditor (its hit-test geometry) rather than from here.
 //   A pair is published whether or not it lies inside the plot: the drawing
 //   layer clips (the overlay's plot clip covers the handles like everything
 //   else), and a handle the user can grab off the plot's edge must still be
@@ -413,17 +445,39 @@ struct PanelLabel {
 //
 // CHANNELS BUTTON
 //   channelsButton/channelsButtonText: the panel's ONE control - the button that
-//   opens the channel list - and the words on it. It sits in the panel's
-//   top-right corner, kChannelsButtonGap (8px) inside the PANEL's right edge and
-//   kChannelsButtonTopGap (8px) below rulerBandTop, so it stays clear of the
-//   ruler band and cannot be read as part of the scale (the reference's own
-//   placement: `right: 8px; top: 30px` of the panel root, 30 being the band's 22
-//   plus this 8 while nothing occludes the band). The box is the text's advance plus the button's own padding
-//   (kChannelsButtonPadX/Y, the reference's 6px/2px), and it is EMPTY when it
-//   would not fit inside the plot - a control that cannot be drawn must not be
-//   hit-tested either. It is EMPTY too while the panel has no channel at all
-//   (channelsButtonText is empty with it): there is no list to open, and an empty
-//   panel's own reason is what says why it is empty.
+//   opens the channel list - and the words on it. The box is the text's advance
+//   plus the button's own padding (kChannelsButtonPadX/Y, the reference's 6px/2px),
+//   and it is EMPTY when it would not fit inside the plot - a control that cannot
+//   be drawn must not be hit-tested either. It is EMPTY too while the panel has no
+//   channel at all (channelsButtonText is empty with it): there is no list to
+//   open, and an empty panel's own reason is what says why it is empty.
+//   WHERE THE BOX IS depends on which floor the panel is on (GraphPanelHost, which
+//   the model publishes as `host` beside it), and it is the same ONE rect either
+//   way - a drawing layer reads channelsButton and draws and hit-tests that,
+//   whichever host built the model:
+//     * VERTICALLY, both homes agree, and the rule is the BAND'S own: the box hangs
+//       below the whole block the band carries - its kFrameTickLength tick rows and
+//       the one line of frame numbers under them (buildFrameAxis's labelTop) - by
+//       kChannelsButtonTopGap. The control is a VIEW control and the design keeps it
+//       out of the ruler band ("never in the ruler band", index.html:328-329); a
+//       box inside those rows would paint the button's own backing over a number.
+//       The reference's `top: 30px` of the panel is exactly this offset while
+//       nothing occludes the band (its 22px band: a 4px tick row and an 18px line
+//       of numbers, plus this 8); stating it in the band's terms is what keeps it
+//       true when the band moves down under a widget floating above the panel.
+//     * HORIZONTALLY, the two homes measure from different edges: the OVERLAY's
+//       button keeps kChannelsButtonGap (8px) inside the PANEL's right edge (the
+//       reference's floating rule, mock.css's .gp-chbtn:not(.hosted), `right: 8px`
+//       of the panel root); the DOCKED panel is drawn edge to edge inside the dock,
+//       so the surface it owns is its plot and its control sits the same 8px inside
+//       the PLOT's right edge - under the band's right end, among the curves' chips,
+//       not in the panel's own margin. The reference's hosted button carries no
+//       placement of its own (mock.css's .gp-chbtn.hosted) for the same reason: the
+//       host places it.
+//   The box is asserted clear of the band's tick-and-number block (XC_ASSERT in
+//   buildChannels): the geometry above is derived from the band's own measures, and
+//   a future placement that crept back into the band fails loudly instead of
+//   painting over the ruler's numbers.
 //   The TEXT is "6 channels" while every channel of the panel is shown, and
 //   "4 of 6" once one is hidden: the count is the state the button changes, so
 //   the button states it. It is translated here (the model is where the panel's
@@ -531,6 +585,10 @@ struct GraphPanelModel {
     bool projectLoop = false;
     util::Range projectLoopRange;
     QVector<PanelChannelRow> channels;
+    // The floor this model was built for, republished so a drawing layer can read
+    // the placement it actually got (see GraphPanelHost): it decides which of the
+    // two homes the control below is in, and nothing else in the model.
+    GraphPanelHost host = GraphPanelHost::Overlay;
     // The panel's ONE control: the button that opens the channel list, and the
     // words on it. Both empty/empty-rect when the button would not fit inside the
     // plot (see CHANNELS BUTTON), and then there is no control to draw or to hit.
@@ -544,9 +602,12 @@ struct GraphPanelModel {
 // aTheme is the palette the curves and swatches take their colours from; aTopInset is
 // how many LOGICAL pixels of that viewport's top a widget floating above it covers (0
 // when nothing does), which moves the ruler band and nothing else - see THE OCCLUDED
-// TOP above.
+// TOP above; and aHost is the floor the panel is on, which decides the home of its
+// ONE control (the overlay's own top-right corner, or the docked page's plot
+// corner) and nothing else - see GraphPanelHost and CHANNELS BUTTON above.
 GraphPanelModel buildGraphPanelModel(
-    ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0
+    ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0,
+    GraphPanelHost aHost = GraphPanelHost::Overlay
 );
 
 } // namespace gui

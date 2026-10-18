@@ -1,5 +1,8 @@
 #include "gui/TargetWidget.h"
 #include "gui/AnimationSettingDialog.h"
+#ifdef AE_ENABLE_IMGUI
+#include "gui/GraphPanelWidget.h"
+#endif
 #include "gui/MainMenuBar.h"
 #include "gui/TimeLineHeader.h"
 #include "cmnd/BasicCommands.h"
@@ -19,6 +22,12 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     mViaPoint(aViaPoint),
     mSizeHint(aSizeHint),
     mHorizontalSplitter(nullptr),
+    mObjTree(nullptr),
+    mSurfaceStack(nullptr),
+    mTimeLine(nullptr),
+#ifdef AE_ENABLE_IMGUI
+    mGraphPanel(nullptr),
+#endif
     mHeader(nullptr),
     mSuspendCount(0) {
     mHorizontalSplitter = new ThinSplitter(Qt::Horizontal, this);
@@ -27,23 +36,49 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
     // the boundary.
     mHorizontalSplitter->setHitBoxOffset(4);
     mObjTree = new ObjectTreeWidget(aViaPoint, aResources, mHorizontalSplitter);
-    mTimeLine = new TimeLineWidget(aResources, aViaPoint, *this, mHorizontalSplitter);
+
+    // The dock's body, as ONE pane with the views stacked in it (design section 5):
+    // the timeline's own surface and, when the graph panel is part of the build, the
+    // animation graph panel. The tab in the header is what swaps them; the TREE stays
+    // the splitter's first widget in both, so it is on screen either way. A
+    // QStackedWidget rather than hide/show by hand: the layout of the hidden page is
+    // not computed, and the surface the user sees is the one Qt sizes and shows.
+    mSurfaceStack = new QStackedWidget(mHorizontalSplitter);
+    mTimeLine = new TimeLineWidget(aResources, aViaPoint, *this, mSurfaceStack);
+#ifdef AE_ENABLE_IMGUI
+    // The Graph tab is the SAME panel the viewport's overlay draws, docked: it is the
+    // panel's own widget (gui::GraphPanelWidget), pinned over the dock's floor at the
+    // dock's size - no scrim, because that floor is already opaque.
+    mGraphPanel = new GraphPanelWidget(aResources, mSurfaceStack);
+#endif
+    mSurfaceStack->addWidget(mTimeLine);
+#ifdef AE_ENABLE_IMGUI
+    mSurfaceStack->addWidget(mGraphPanel);
+#endif
+    mSurfaceStack->setCurrentWidget(mTimeLine);
+
     // The transport is a fixed-size group of buttons; it belongs to the header
     // bar's own layout (not to the splitter, and no longer to a column beside
     // it), so it can never be resized and the lanes get the dock's full width.
     mPlayBack = new PlayBackWidget(aResources, this, *mProject);
 
     mHorizontalSplitter->addWidget(mObjTree);
-    mHorizontalSplitter->addWidget(mTimeLine);
+    mHorizontalSplitter->addWidget(mSurfaceStack);
     mHorizontalSplitter->setCollapsible(0, false);
     mHorizontalSplitter->setCollapsible(1, false);
 
 
     // The dock's header: the 40px bar the transport moved into, above the
     // splitter, spanning the dock. The row below it is the one the dock has
-    // always had - object tree | timeline - now without the transport column.
+    // always had - object tree | surface - now without the transport column.
     mHeader = new TimeLineHeader(aResources, mPlayBack, this);
     mHeader->setTimeLineWidget(mTimeLine);
+#ifdef AE_ENABLE_IMGUI
+    // The header's tab is the dock's view switch, for the whole life of the dock: the
+    // tab names the page, so the panel needs no title of its own and both pages keep
+    // the one header's transport, readout, chip and zoom.
+    connect(mHeader, &TimeLineHeader::surfaceChanged, this, &TargetWidget::onSurfaceChanged);
+#endif
 
     auto* row = new QHBoxLayout();
     row->setContentsMargins(0, 0, 0, 0);
@@ -68,7 +103,42 @@ void TargetWidget::setProject(core::Project* aProject) {
     // The frame range the readout names is the editor's own, so re-read it now
     // that the project (or no project at all) is behind it.
     mHeader->refreshFrame();
+    // The Graph tab's panel (when the panel is part of the build) is NOT re-read
+    // here: it reads the document through the driver, and this call comes BEFORE
+    // MainWindow hands the new one over - the previous project's driver is already
+    // destroyed at this point, so a refresh here would read a dead editor.
+    // setDriver() itself re-reads the panel, in the same resetProjectRefs pass, and a
+    // tab switch re-reads it again.
 }
+
+void TargetWidget::setDriver(ctrl::Driver* aDriver) {
+#ifdef AE_ENABLE_IMGUI
+    // The driver owns ctrl::GraphEditor, and it is created and destroyed with the
+    // project: MainWindow hands it over from the same call site that hands it to the
+    // viewport and the tool widget, so the docked panel and the overlay read the ONE
+    // editor of the project on screen (see MainWindow::resetProjectRefs).
+    mGraphPanel->setDriver(aDriver);
+    // A new editor is a new panel: the view it draws is built from it, so re-read it
+    // now rather than on the next frame that happens to repaint.
+    mGraphPanel->refresh();
+#else
+    // No graph surface in this build: the dock has nothing that reads the driver
+    // (the viewport's overlay and the tool widget have their own setDriver).
+    (void)aDriver;
+#endif
+}
+
+#ifdef AE_ENABLE_IMGUI
+void TargetWidget::onSurfaceChanged(TimeLineHeader::Surface aSurface) {
+    const bool graph = aSurface == TimeLineHeader::Surface::Graph;
+    mSurfaceStack->setCurrentWidget(graph ? static_cast<QWidget*>(mGraphPanel) : static_cast<QWidget*>(mTimeLine));
+    // Becoming visible is the one moment the panel has to re-read the document and
+    // the frame it is shown at: it is not repainted while the timeline tab is up
+    // (Qt lays out and paints only the current page).
+    if (graph)
+        mGraphPanel->refresh();
+}
+#endif
 
 core::Frame TargetWidget::currentFrame() const { return mTimeLine->currentFrame(); }
 

@@ -147,7 +147,11 @@
 //   * 23d - a drag on an Auto segment's GHOST handle (Curve::ghostHandles, the
 //     derived pair) WRITES Type_Custom carrying that pair at (1/3, y1) and
 //     (2/3, y2), inside the drag's own Gesture: one undo brings the Auto easing
-//     back whole, and a drag away then moves only the grabbed handle.
+//     back whole, and a drag away then moves only the grabbed handle. The hit
+//     test DERIVES that pair only for a segment whose ghost x is within the grab
+//     radius of the pointer (an exact cull on the segment's own arithmetic), so
+//     the cursor path cannot pay a derivation per segment: 8px from the dot still
+//     grabs it, 30px away does not.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -2957,6 +2961,37 @@ int main(int argc, char** argv) {
             ghosts[0].y(), ghosts[1].y(), a0->data().easing().cubicBezier.x1,
             a0->data().easing().cubicBezier.y1
         );
+
+        // (c) THE CULL. The hit test derives a segment's ghost pair only when one
+        // of the pair's x-pixels is within the grab radius of the pointer (see
+        // GraphEditor::hitTest: the x is the segment's own arithmetic, so the cull
+        // is exact and costs no map lookup). Both sides of that decision must
+        // behave exactly as they did before it existed: a ghost dot 8px away is
+        // STILL grabbed - an inexact cull would silently drop a handle the pointer
+        // is on - and a point 30px away grabs nothing at all, so it opens the
+        // marquee like any empty plot press.
+        a0->data().easing().type = util::Easing::Type_Auto; // the ghost state again: a document write, not a gesture
+
+        const QPoint ghostNear(ghostGrab.x() + 8, ghostGrab.y());
+        // The precondition the grab below rests on: 8px in x, plus the dot's own
+        // sub-pixel rounding, is inside kHandleHitRadius - so it MUST be grabbed.
+        CHECK(std::fabs(ghostDot.x() - static_cast<double>(ghostNear.x())) <= 9.0);
+        CHECK(sendPress(editor, camera, ghostCur, ghostNear));
+        CHECK(editor.ownsCursor(camera, ghostCur));
+        CHECK(a0->data().easing().type == util::Easing::Type_Auto); // the press alone still edits nothing
+        CHECK(sendMove(editor, camera, ghostCur, ghostNear));
+        CHECK(sendRelease(editor, camera, ghostCur, ghostNear));
+        CHECK(a0->data().easing().type == util::Easing::Type_Custom); // the reachable ghost WAS grabbed
+        CHECK(!editor.hasMarquee());
+
+        a0->data().easing().type = util::Easing::Type_Auto; // ...and once more for the far case
+        const QPoint ghostFar(ghostGrab.x() + 30, ghostGrab.y());
+        CHECK(sendPress(editor, camera, ghostCur, ghostFar));
+        CHECK(editor.hasMarquee()); // no handle within reach: the plain plot press marquees
+        CHECK(editor.marqueeRect().isEmpty()); // with nothing dragged yet
+        CHECK(a0->data().easing().type == util::Easing::Type_Auto); // nothing grabbed, nothing written
+        CHECK(sendRelease(editor, camera, ghostCur, ghostFar));
+        CHECK(!editor.hasMarquee());
 
         editor.setTargets({}); // drop the target before its owner dies
     }

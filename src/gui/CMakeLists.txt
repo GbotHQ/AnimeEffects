@@ -230,6 +230,7 @@ endif()
 if(AE_ENABLE_IMGUI)
     target_sources(${PROJECT_NAME} PRIVATE
         ImGuiOverlay.cpp ImGuiOverlay.h
+        GraphPanelWidget.cpp GraphPanelWidget.h
         ImGuiGLBackend.cpp ImGuiGLBackend.h
         ImGuiInputBridge.cpp ImGuiInputBridge.h
         ImGuiQtFontLoader.cpp ImGuiQtFontLoader.h

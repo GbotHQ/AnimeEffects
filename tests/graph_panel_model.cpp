@@ -1460,6 +1460,90 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
+    // 10b. AND ONLY THE DRAWING LAYER'S OWN ROW CARRIES THEM. The pairs exist to be
+    // INKED, and the panel inks a curve's tangent handles for the FOCUSED channel
+    // alone (with no focus, for every curve) - so a pair built for any other row is
+    // work nobody reads, and half of that work is the expensive kind: an Auto
+    // segment's pair is DERIVED by Curve::ghostHandles from the key's neighbours.
+    // This pins the publication rule on the model's own rows (PanelChannelRow::
+    // focused): with a focus, the focused row keeps its derived pair and every other
+    // row publishes NO handle; clearing the focus puts them all back. Nothing else
+    // moves - not the curves, not the keys.
+    {
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+
+        // The Auto easing again: its pair is the DERIVED one, so the rows whose
+        // handles are dropped are exactly the rows that would have recomputed a
+        // tangent nobody inks.
+        util::Easing::Param automatic;
+        automatic.type = util::Easing::Type_Auto;
+        move0->data().easing() = automatic;
+
+        const gui::GraphPanelModel unfocused = gui::buildGraphPanelModel(editor, viewport, palette);
+        int unfocusedPairs = 0;
+        for (const gui::PanelCurve& curve : unfocused.curves)
+            unfocusedPairs += isz(curve.handles);
+        CHECK(unfocusedPairs == 4); // no focus: the two Auto rows publish their pairs (as in [10])
+
+        const ctrl::graph::Channel moveX(core::TimeKeyType_Move, 0); // Move X of target A
+        editor.setFocusedChannel(nodeA, moveX);
+        CHECK(editor.hasFocus());
+
+        const gui::GraphPanelModel focused = gui::buildGraphPanelModel(editor, viewport, palette);
+        int focusedRows = 0;
+        for (const gui::PanelChannelRow& row : focused.channels)
+            focusedRows += int(row.focused);
+
+        int focusedCurveHandles = 0;
+        int focusedCurveGhosts = 0;
+        int otherCurves = 0;
+        int handlesOnOtherCurves = 0;
+        for (const gui::PanelCurve& curve : focused.curves) {
+            if (curve.node == &nodeA && curve.channel == moveX) {
+                focusedCurveHandles = isz(curve.handles);
+                for (const gui::PanelHandle& handle : curve.handles)
+                    focusedCurveGhosts += int(handle.ghost);
+                continue;
+            }
+            ++otherCurves;
+            handlesOnOtherCurves += isz(curve.handles);
+        }
+        std::printf(
+            "[10b] focus on A/Move-x: rows_focused=%d  focused curve handles=%d (ghosts=%d)  other curves=%d"
+            "  handles they published=%d  (with no focus: %d handles over %d curves)\n",
+            focusedRows, focusedCurveHandles, focusedCurveGhosts, otherCurves, handlesOnOtherCurves,
+            unfocusedPairs, isz(focused.curves)
+        );
+        CHECK(focusedRows == 1);                // the focus is on the panel's own rows
+        CHECK(otherCurves > 0);                 // the fixture's premise: there are other rows
+        CHECK(focusedCurveHandles == 2);        // the row the layer inks keeps its pair...
+        CHECK(focusedCurveGhosts == 2);
+        CHECK(handlesOnOtherCurves == 0);       // ...and no other row pays for a pair nobody inks
+        CHECK(focused.curves.size() == unfocused.curves.size()); // the curves themselves are untouched
+
+        // Clearing the focus is the no-focus ink: every handle-bearing row publishes
+        // again, and the count is exactly the one measured before the focus.
+        editor.clearFocus();
+        const gui::GraphPanelModel cleared = gui::buildGraphPanelModel(editor, viewport, palette);
+        int clearedPairs = 0;
+        for (const gui::PanelCurve& curve : cleared.curves)
+            clearedPairs += isz(curve.handles);
+        CHECK(!editor.hasFocus());
+        CHECK(clearedPairs == unfocusedPairs);
+
+        // Leave the document as section 10 left it: the trace handle is the only
+        // thing this block moved.
+        util::Easing::Param custom;
+        custom.type = util::Easing::Type_Custom;
+        custom.cubicBezier.x1 = 0.4f;
+        custom.cubicBezier.y1 = 0.1f;
+        custom.cubicBezier.x2 = 0.6f;
+        custom.cubicBezier.y2 = 0.9f;
+        move0->data().easing() = custom;
+    }
+
+    // -------------------------------------------------------------------------
     // 11. the ruler's reserved band, and the live box-select marquee. Both are two
     // halves of one story the drawing layer cannot finish alone: the model RESERVES
     // the space a frame number is allowed to occupy, and it publishes the marquee a

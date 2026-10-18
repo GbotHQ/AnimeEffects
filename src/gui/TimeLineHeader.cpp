@@ -11,6 +11,9 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
+#ifdef AE_ENABLE_IMGUI
+#include <QTabBar>
+#endif
 #include <algorithm>
 
 namespace {
@@ -36,6 +39,16 @@ const int kFrameMinWidth = 96;
 // The easing chip's reserved width. Fixed on purpose: the chip's content changes
 // with the key selection, and a control that resizes re-flows the bar beside it.
 const int kEaseSlotWidth = 196;
+#ifdef AE_ENABLE_IMGUI
+// The tab strip: the mock's own numbers for a tab (.tl-tabs button - 11px text,
+// 3px/8px of padding, a 4px radius) and the bar it sits in (a 2px gap between the
+// two tabs, and the 1x16 rule the mock's border-right draws between the strip and
+// the transport is the header's own Hairline widget, as for every other group).
+const int kTabFontSize = 11;
+const int kTabPadX = 8;
+const int kTabPadY = 3;
+const int kTabRadius = 4;
+#endif
 // One wheel notch, in the units ctrl::time::Scaler::update() is called with: the
 // angleDelta of one detent, which is the scaler's own kWheelValue. A press is one
 // notch, so a button and a wheel step land on the same rung.
@@ -77,6 +90,9 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     QWidget(aParent),
     mGUIResources(aResources),
     mTransport(aTransport),
+#ifdef AE_ENABLE_IMGUI
+    mTabs(nullptr),
+#endif
     mTimeLine(nullptr),
     mInner(nullptr),
     mFrameConnection(),
@@ -92,6 +108,31 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     auto* lay = new QHBoxLayout(this);
     lay->setContentsMargins(kHeaderPad, 0, kHeaderPad, 0);
     lay->setSpacing(kGroupGap);
+
+#ifdef AE_ENABLE_IMGUI
+    // The dock's views, as the bar's FIRST group (the mock's .tl-tabs): the tab
+    // names the page, so the Graph page carries no title and no header row of its
+    // own - the panel is one component on two floors (design section 5). The control
+    // is a real QTabBar, the application's own tab control (gui::ProjectTabBar is one
+    // too): keyboard left/right, hover and the selected state all come from Qt, and
+    // the mock's border-right between the strip and the transport is the header's own
+    // rule, like every other group's.
+    mTabs = new QTabBar(this);
+    mTabs->setDrawBase(false);
+    mTabs->setExpanding(false);
+    mTabs->setUsesScrollButtons(false);
+    mTabs->setFocusPolicy(Qt::NoFocus);
+    mTabs->setMouseTracking(true);
+    mTabs->addTab(tr("Timeline"));
+    mTabs->addTab(tr("Graph"));
+    // The tab order IS Surface's own (Timeline, Graph): onTabChanged maps an index
+    // back by position, so the two cannot drift.
+    mTabs->setCurrentIndex(static_cast<int>(Surface::Timeline));
+    this->refreshTabStyle();
+    connect(mTabs, &QTabBar::currentChanged, this, &TimeLineHeader::onTabChanged);
+    lay->addWidget(mTabs, 0, Qt::AlignVCenter);
+    this->addHairline(*lay);
+#endif
 
     // The transport, moved out of its old column: a fixed-size group, centered in
     // the bar.
@@ -321,9 +362,56 @@ void TimeLineHeader::refreshZoomIcons() {
     }
 }
 
+#ifdef AE_ENABLE_IMGUI
+void TimeLineHeader::onTabChanged(int aIndex) {
+    // The tab order is Surface's own (see the constructor), so an index maps back by
+    // position. An index Qt has no tab for is no view at all: nothing is reported,
+    // and the dock's body stays where it is.
+    if (aIndex < static_cast<int>(Surface::Timeline) || static_cast<int>(Surface::Graph) < aIndex)
+        return;
+    emit surfaceChanged(static_cast<Surface>(aIndex));
+}
+
+void TimeLineHeader::refreshTabStyle() {
+    // The strip's own ink, built from the application's LIVE tokens rather than from
+    // a stylesheet asset (the header owns none: playbackwidget.ssa styles the bar's
+    // buttons, not a QTabBar, and this bar is not the place to add one). The roles
+    // are the ones the application's own tab bar is written against (ProjectTabBar's
+    // modetabbar.ssa): muted text at rest, `raised` under the pointer, and the ACCENT
+    // fill - with the accent's own content colour - for the selected tab; the strip
+    // itself is transparent, because it sits on the header's own floor (the dock's
+    // base) and not on a surface of its own. The numbers are the mock's .tl-tabs.
+    const theme::Colors& colors = theme::Colors::current();
+    mTabs->setStyleSheet(
+        QStringLiteral(
+            "QTabBar { background: transparent; }"
+            "QTabBar::tab { color: %1; background: transparent; border: none;"
+            " border-radius: %2px; padding: %3px %4px; margin: 0; font-size: %5px; }"
+            "QTabBar::tab:selected { color: %6; background: %7; }"
+            "QTabBar::tab:hover:!selected { color: %8; background: %9; }"
+        )
+            .arg(colors.textMuted.name())
+            .arg(kTabRadius)
+            .arg(kTabPadY)
+            .arg(kTabPadX)
+            .arg(kTabFontSize)
+            .arg(colors.accentText.name())
+            .arg(colors.accent.name())
+            .arg(colors.text.name())
+            .arg(colors.raised.name())
+    );
+    mTabs->update();
+}
+#endif
+
 void TimeLineHeader::onThemeUpdated(theme::Theme& aTheme) {
     this->setStyleSheet(aTheme.loadStylesheet("playbackwidget.ssa"));
     this->refreshZoomIcons();
+#ifdef AE_ENABLE_IMGUI
+    // The strip's ink is built from the tokens, not from a sheet: re-build it here so
+    // an accent change (which re-applies the app's palette) re-inks the tabs too.
+    this->refreshTabStyle();
+#endif
     // The chip paints from the live palette, but its caret pixmap is tinted through
     // the icon pipeline and must be re-loaded for the new appearance.
     mEasing->refreshIcon();

@@ -4,6 +4,7 @@
 #include <QFontMetrics>
 #include <algorithm>
 
+#include "XCAssert.h"
 #include "core/Frame.h"
 #include "core/ObjectNode.h"
 #include "core/TimeKey.h"
@@ -45,12 +46,17 @@ constexpr int kLabelPad = 2;
 constexpr int kChipRightGap = 8;
 constexpr int kChipPadX = 6;
 
-// The panel's ONE control (see CHANNELS BUTTON in the header): its inset from the
-// PANEL's right edge and below the ruler band, and its padding around its text.
-// The reference floats it at the panel's top-right corner, 8px inside the edge and
-// 30px from the top - which is kChannelsButtonTopGap below the band while nothing
-// occludes it - padded 6px/2px, "clear of the ruler band so it cannot read as part
-// of the scale" (mock.css, .gp-chbtn:not(.hosted)).
+// The panel's ONE control (see CHANNELS BUTTON in the header): its horizontal inset -
+// from the PANEL's right edge on the overlay's floor, from the PLOT's on the dock's -
+// the air under the ruler band it hangs in, and its padding around its text. The
+// reference floats it at the panel's top-right corner, 8px inside the edge and 30px
+// from the top - which is kChannelsButtonTopGap below the band's whole block (its
+// kFrameTickLength tick rows plus the numbers' own line) while nothing occludes the
+// band - padded 6px/2px, "clear of the ruler band so it cannot read as part of the
+// scale" (mock.css, .gp-chbtn:not(.hosted)). That clearance holds in BOTH homes,
+// the docked one included: the reference's hosted button carries no placement of its
+// own (mock.css, .gp-chbtn.hosted) because the host places it, and the panel's band is
+// the ruler's own ink either way.
 constexpr int kChannelsButtonGap = 8;
 constexpr int kChannelsButtonTopGap = 8;
 constexpr int kChannelsButtonPadX = 6;
@@ -225,9 +231,11 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
 //
 // The same walk also lays out the panel's ONE control, the button that opens that
 // list: its text states the shown/total count and its box is the text plus the
-// button's padding, in the plot's top-right corner and clear of the ruler band.
+// button's padding, below the ruler band's own block and in the corner its host owns
+// (see CHANNELS BUTTON and GraphPanelHost).
 void buildChannels(
-    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const theme::Graph& aTheme, const QFontMetrics& aMetrics
+    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const theme::Graph& aTheme, const QFontMetrics& aMetrics,
+    gui::GraphPanelHost aHost
 ) {
     // focusedNode() hands out a CONST pointer (GraphEditor.h), and this model only
     // ever COMPARES it with the targets' own (non-const) pointers - it never mutates
@@ -287,20 +295,57 @@ void buildChannels(
                   .arg(shown)
                   .arg(total);
 
-    // The button's box, in the plot's top-right corner: the text's advance plus the
-    // button's own padding, kChannelsButtonGap (8px) inside the PANEL's right edge -
-    // the frame the reference floats it in (mock.css: `right: 8px` of the panel) -
-    // and kChannelsButtonTopGap below the ruler band, which is the reference's own
-    // 30px from the panel's top while nothing occludes the band. A button that does
-    // not fit inside the plot publishes NO box - the drawing layer draws nothing and
-    // hit-tests nothing, the model's own truthful signal (the same rule every rect
-    // here follows).
+    // The button's box. It hangs BELOW the band's whole block in BOTH homes: the tick
+    // rows and the frame numbers' line are the ruler's own ink, and the panel's one
+    // control is a view control, which the design keeps out of it ("never in the ruler
+    // band", index.html:328-329) - a 0.55-alpha backing painted over a number is
+    // exactly the defect that rule exists to prevent. The offset is stated in the
+    // BAND'S own terms rather than as the reference's magic 30, so it cannot drift when
+    // the band moves down under a widget floating above the panel or when a font
+    // changes the number row's height:
+    //
+    //   top == rulerBandTop + kFrameTickLength + 1 + textHeight + kChannelsButtonTopGap
+    //
+    // i.e. the ticks' kFrameTickLength rows, the one line of numbers under them
+    // (buildFrameAxis's labelTop == rulerBandTop + kFrameTickLength + 1) and
+    // kChannelsButtonTopGap of air. The reference's 30px from the panel's top is
+    // exactly this while nothing occludes the band: its band is 22px - a 4px tick row
+    // and an 18px line of numbers - plus this 8.
+    //
+    // WHERE IT SITS HORIZONTALLY is the one thing the two hosts place differently, and
+    // it is what GraphPanelHost names - ONE box either way, so a drawing layer draws
+    // and hit-tests channelsButton whichever floor it is drawing:
+    //
+    //   OVERLAY (kChannelsButtonGap 8px inside the PANEL's right edge): the reference's
+    //   own floating rule (mock.css, .gp-chbtn:not(.hosted): `right: 8px` of the panel).
+    //
+    //   DOCK (the same 8px inside the PLOT's right edge): the docked page is drawn edge
+    //   to edge inside the dock, so the surface the panel owns is its PLOT, and its one
+    //   control sits in that surface's corner - under the band's right end, among the
+    //   curves' chips - rather than in the panel's own 4px margin (Scaler::kMargin).
+    //
+    // A button that does not fit inside the plot publishes NO box - the drawing layer
+    // draws nothing and hit-tests nothing, the model's own truthful signal (the same
+    // rule every rect here follows).
+    const int textHeight = aMetrics.height();
     const int width = aMetrics.horizontalAdvance(aModel.channelsButtonText) + 2 * kChannelsButtonPadX;
-    const int height = aMetrics.height() + 2 * kChannelsButtonPadY;
-    const QRect button(
-        aModel.panel.right() + 1 - kChannelsButtonGap - width, aModel.rulerBandTop + kChannelsButtonTopGap, width,
-        height
+    const int height = textHeight + 2 * kChannelsButtonPadY;
+    const int right = aHost == gui::GraphPanelHost::Dock ? aModel.plot.right() + 1 : aModel.panel.right() + 1;
+    const int top = aModel.rulerBandTop + kFrameTickLength + 1 + textHeight + kChannelsButtonTopGap;
+    const QRect button(right - kChannelsButtonGap - width, top, width, height);
+
+    // THE BAND BELONGS TO THE RULER, so the control may not sit in it - in either home.
+    // Stated as a precondition on the geometry rather than left to the two expressions
+    // above being right: the box is derived from the band's own measures, and this is
+    // the guarantee a future placement change has to keep, failing loudly instead of
+    // painting over the frame numbers. The band's block is the tick rows (drawn down
+    // from rulerBandTop, kFrameTickLength of them) and the numbers' row under them,
+    // inside the plot's own width - which is the region the ink covers.
+    const QRect band(
+        aModel.plot.left(), aModel.rulerBandTop, aModel.plot.width(), kFrameTickLength + 1 + textHeight
     );
+    XC_ASSERT(!band.intersects(button));
+
     if (aModel.plot.contains(button))
         aModel.channelsButton = button;
 }
@@ -375,6 +420,31 @@ void buildSelection(
 void buildCurves(
     gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics
 ) {
+    // The drawing layer inks a curve's tangent handles ONLY for the FOCUSED channel
+    // (ImGuiOverlay's drawsHandles: with no focus it draws every curve's; with one it
+    // draws that curve's alone), so a pair built for any other row is work nobody
+    // reads - and half of it is the expensive kind: an Auto segment's pair is DERIVED
+    // by Curve::ghostHandles from the key's neighbours. The rows already carry the
+    // predicate (PanelChannelRow::focused, filled by buildChannels from the same editor
+    // state the drawing layer reads), so it costs one walk of the rows to know whether
+    // any of them is the focused one.
+    //
+    // WHY THE ROWS AND NOT aEditor.hasFocus(): they agree. buildChannels takes its
+    // focused node as null when the editor has no focus, so no row can be focused while
+    // the editor reports none - anyFocused implies the focus the drawing layer will call
+    // valid, and with that focus it draws exactly the curve whose row is focused. The
+    // converse is deliberately the SAFE side: an editor focus that matches no row (a
+    // hidden channel, or a node that is not among the targets) leaves anyFocused false,
+    // so every row publishes its pairs - which is more than the drawing layer uses,
+    // never less.
+    bool anyFocused = false;
+    for (const gui::PanelChannelRow& row : aModel.channels) {
+        if (row.focused) {
+            anyFocused = true;
+            break;
+        }
+    }
+
     for (int i = 0; i < aModel.channels.size(); ++i) {
         const gui::PanelChannelRow& row = aModel.channels[i];
         if (!row.visible)
@@ -453,35 +523,43 @@ void buildCurves(
         // draws it hollow (a drag on it converts the key to Custom).
         // Published whether or not the pair lies inside the plot: the drawing layer
         // clips, and a handle off the plot's edge is still one the user can grab.
-        const int handleSegments = curve.segmentCount();
-        for (int s = 0; s < handleSegments; ++s) {
-            const ctrl::graph::Curve::Segment segment = curve.segment(s);
-            if (!segment.from || !segment.to)
-                continue;
+        //
+        // Only for the curve the drawing layer INKS them on (see anyFocused above):
+        // the pairs exist for the handle pass and its hover, both of which skip every
+        // curve a focus excludes, so a pair built for another row would be a derived
+        // tangent nobody reads - an empty `handles` is what the layer sees for those
+        // rows. No focus means every row publishes, which is the layer's no-focus ink.
+        if (!anyFocused || row.focused) {
+            const int handleSegments = curve.segmentCount();
+            for (int s = 0; s < handleSegments; ++s) {
+                const ctrl::graph::Curve::Segment segment = curve.segment(s);
+                if (!segment.from || !segment.to)
+                    continue;
 
-            const bool custom = curve.isCustom(segment);
-            // The derived pair, when this is an Auto segment and there is something
-            // to derive from (a last key in the channel has none, and neither has a
-            // type that carries no easing at all): empty otherwise.
-            const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
-            if (!custom && ghosts.size() != 2)
-                continue; // the analytic easings expose no handle to drag at all
+                const bool custom = curve.isCustom(segment);
+                // The derived pair, when this is an Auto segment and there is something
+                // to derive from (a last key in the channel has none, and neither has a
+                // type that carries no easing at all): empty otherwise.
+                const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
+                if (!custom && ghosts.size() != 2)
+                    continue; // the analytic easings expose no handle to drag at all
 
-            const core::TimeKey* owners[2] = { segment.from, segment.to };
-            const float ownerValues[2] = { segment.fromValue, segment.toValue };
-            for (int h = 0; h < 2; ++h) {
-                gui::PanelHandle handle;
-                handle.segment = s;
-                handle.index = h;
-                handle.base = QPointF(
-                    aScale.pixelXOfFrame(static_cast<double>(owners[h]->frame())),
-                    static_cast<double>(aScale.pixelY(ownerValues[h]))
-                );
-                handle.dot = custom ? ctrl::graph::handlePoint(aScale, segment, h)
-                                    : ctrl::graph::handlePointAt(aScale, segment, ghosts.at(h));
-                handle.radius = ctrl::graph::kHandleRadius;
-                handle.ghost = !custom;
-                out.handles.append(handle);
+                const core::TimeKey* owners[2] = { segment.from, segment.to };
+                const float ownerValues[2] = { segment.fromValue, segment.toValue };
+                for (int h = 0; h < 2; ++h) {
+                    gui::PanelHandle handle;
+                    handle.segment = s;
+                    handle.index = h;
+                    handle.base = QPointF(
+                        aScale.pixelXOfFrame(static_cast<double>(owners[h]->frame())),
+                        static_cast<double>(aScale.pixelY(ownerValues[h]))
+                    );
+                    handle.dot = custom ? ctrl::graph::handlePoint(aScale, segment, h)
+                                        : ctrl::graph::handlePointAt(aScale, segment, ghosts.at(h));
+                    handle.radius = ctrl::graph::kHandleRadius;
+                    handle.ghost = !custom;
+                    out.handles.append(handle);
+                }
             }
         }
 
@@ -554,9 +632,15 @@ namespace gui {
 
     //-------------------------------------------------------------------------------------------------
     GraphPanelModel buildGraphPanelModel(
-        ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset
+        ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset,
+        GraphPanelHost aHost
     ) {
         GraphPanelModel model;
+
+        // The floor this model is for: it is republished (see GraphPanelHost) and it
+        // places the panel's ONE control, which is the whole of what the two hosts
+        // change inside this model.
+        model.host = aHost;
 
         // The panel rect is the editor's own, whatever it is: the fullscreen
         // graph view over the animation. Nothing here hardcodes a size, and
@@ -617,7 +701,7 @@ namespace gui {
 
         buildFrameAxis(model, scale, metrics);
         buildValueAxis(model, scale, metrics);
-        buildChannels(model, aEditor, aTheme, metrics);
+        buildChannels(model, aEditor, aTheme, metrics, aHost);
         buildCurves(model, scale, metrics);
         buildSelection(model, aEditor, scale, metrics);
         buildEmptyState(model, aEditor);
