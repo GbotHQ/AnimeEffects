@@ -65,15 +65,19 @@ public:
     // both its frame axis and its selection.
     void setTimeLineWidget(TimeLineWidget* aTimeLine);
     // The timeline wired in above, for callers that need the timeline itself (the
-    // panel's right-click reaches the application's easing menu through it; see
+    // panel's right-click reaches the application's key menu through it; see
     // showGraphKeyMenu).
     TimeLineWidget* timeLineWidget() const { return mTimeLine; }
-    // Shows the application's own key EASING MENU for aTargets (the panel's
-    // current selection, in the timeline's currency) at aWidgetPos IN THIS
-    // WIDGET'S COORDINATES - the docked panel's own pixels are not this widget's, so
-    // its host maps the position here before it calls (gui::GraphPanelWidget). Does
-    // nothing when no timeline is wired or the target list is empty.
-    void showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos);
+    // Opens the application's own KEY MENU - the one a right-click in the timeline
+    // builds - for the key aPressedKey names, at aGlobalPos, which is a GLOBAL (screen)
+    // position: the docked panel (gui::GraphPanelWidget) and this widget are SIBLINGS,
+    // so the panel maps its own pointer with its own QWidget::mapToGlobal() and no
+    // coordinate of the panel is ever read as a position in this widget. The menu acts
+    // on the shared key selection, and aPressedKey's relationship to it decides
+    // whether it is lent to the menu (see TimeLineWidget::openKeyMenu - the whole
+    // rule, including the loan's drop, is the timeline's). False when nothing opened
+    // (no timeline wired, or the key is not one the document holds).
+    bool showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos);
     // Shows the application's own CHANNEL LIST - the animation graph panel's ONE
     // control, which the user's design moved into the DOCK HEADER's channels button -
     // for the rows the panel's model published. aWidgetPos is the ANCHOR's BOTTOM-RIGHT

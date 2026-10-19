@@ -16,10 +16,9 @@
 // WHAT IT PINS, and why each assertion is a regression gate:
 //   1 no grid, no background. A rect inside the plot that holds none of the
 //     model's geometry (verified against EVERY tick, label, curve sample, key,
-//     playhead, zero rule, name chip, selection hull and channel button the model
-//     publishes, each grown to its own ink bound) must come back byte-identical to
-//     the clear colour. If a background or a grid line is ever added, this is the
-//     assertion that fails.
+//     playhead, zero rule and name chip the model publishes, each grown to its own
+//     ink bound) must come back byte-identical to the clear colour. If a background
+//     or a grid line is ever added, this is the assertion that fails.
 //   2 the curve stroke lands where the model says: sampled points along the
 //     synthetic polylines - including one between two key squares - carry ink.
 //   3 the key MARKERS are painted, and their colours are the palette's own
@@ -36,7 +35,7 @@
 //     channel's own colour, except for the marker the pass SELECTS, whose fill
 //     moves toward the keyframe highlight (theme::Graph::axisText()) and which
 //     alone carries the detached 1px ring. Item 29 is the three marker states side
-//     by side; item 30 is the key drag's readout at the pointer.
+//     by side.
 //   4 the label halo, behind gui::kDrawTextHalo (SHIPPED OFF): with the flag on, a
 //     pixel 1-2px outside the advance box is inked and is closer to
 //     theme::Graph::halo() than to theme::Graph::axisText(), so it is the halo and
@@ -48,20 +47,11 @@
 //   7 the plot clip: a curve that leaves the value window in y paints NOTHING
 //     outside the plot - not into the value column, not below the panel.
 //   8 the zero rule: present at zeroY, absent at zeroY == -1.
-//   9 the panel's NEW CHROME, on the model's own geometry: the channels BUTTON is
-//     drawn in its published box and only there (an empty box draws nothing - the
-//     panel has no control then), a curve's name CHIP is drawn ONLY while that curve
-//     is in play (the channels that own a selected key - the pair is the empty-
-//     selection pass, where no chip is drawn at all - plus whatever the pointer is
-//     over), the selection HULL is stroked through the model's own points in
-//     theme::Graph::marqueeEdge() AT THE STROKE'S OWN COVERAGE - gui::stroke::init() runs
-//     before every model pass in main, so the passes this file reads are all coverage
-//     renders, and a 1px stroke whose centreline is the model's own integer coordinate
-//     paints the HALF-coverage composite on both straddled pixels (checkSelectionHull
-//     states that arithmetic) - with a callback count proving the outline is drawn at all
-//     and its count label in the panel's text ink, and
-//     an Auto segment's GHOST handle is drawn HOLLOW in its channel's hue where a
-//     Custom one's dot is filled in theme::Graph::handleFill().
+//   9 the panel's CHROME, on the model's own geometry: a curve's name CHIP is drawn
+//     ONLY while that curve is in play (the channels that own a selected key - the
+//     pair is the empty-selection pass, where no chip is drawn at all - plus whatever
+//     the pointer is over), and an Auto segment's GHOST handle is drawn HOLLOW in its
+//     channel's hue where a Custom one's dot is filled in theme::Graph::handleFill().
 //  10 the Custom tangent handles: each handle's stem carries ink at its own
 //     midpoint and each dot is theme::Graph::handleFill() at its own coordinates;
 //     with io.MousePos on one dot (a second pass that differs ONLY in the pointer)
@@ -194,7 +184,7 @@
 //         the pointer or not at all.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
-// (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's mSelectEasing), a
+// (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's key menu), a
 // native popup window drawn by Qt outside this framebuffer: there is no ImGui popup
 // left to open, measure or click here, and the pixel gate owns no widget, no
 // timeline and no document to build one from. What it can still say about the menu
@@ -290,7 +280,7 @@ bool AudioPlaybackWidget::deserialize(const QJsonObject&, std::vector<audioConfi
 // the widget when the overlay host was removed), so the stubs are there to keep a future
 // reference from failing this target's LINK quietly.
 #include "gui/MainDisplayWidget.h"
-void gui::MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent&, const QPoint&) {}
+bool gui::MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target&, const QPoint&) { return false; }
 void gui::MainDisplayWidget::showGraphChannelMenu(const QVector<gui::PanelChannelRow>&, const QPoint&) {}
 
 namespace {
@@ -639,25 +629,6 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     rowB.focused = false;
 
     model.channels = {rowA, rowB};
-
-    // The panel's ONE control, in a box inside the plot and clear of every other
-    // element (the real model floats it in the plot's top-right corner with the text's
-    // advance plus 6px of padding on each side; this gate places it where its own ink
-    // can be read alone, with the same padding, so the backing is measurable beside the
-    // label at this font). Its text is empty only when the panel has no channel at all -
-    // the empty-state models below are that case.
-    model.channelsButton = QRect(280, 56, 84, 20);
-    model.channelsButtonText = QStringLiteral("2 channels");
-
-    // The selection HULL the editor states as an outline: a RECTANGLE in the plot's
-    // upper-left middle - axis-aligned on purpose, so the 1px stroke's own pixels along
-    // its edges can be read exactly - clear of every other element and of the gate's own
-    // probe rects. The count the model writes beside it goes in a box above the hull's
-    // top edge: its glyph box is inked by those glyphs and nothing else (the frame
-    // labels' band ends at y=54, the value ticks reach x=94).
-    model.selectionHull = {QPointF(100, 90), QPointF(150, 90), QPointF(150, 140), QPointF(100, 140)};
-    model.selectionCount = 3;
-    model.selectionLabel = {QRect(95, 70, 50, 14), QStringLiteral("3 keys")};
     return model;
 }
 
@@ -706,9 +677,9 @@ gui::GraphPanelModel makeEmptyModel() {
 }
 
 // The ghost model: ONE curve that carries BOTH kinds of handle pair, and nothing else
-// that paints (no ticks, no labels, no keys, no chips, no hull, no button) - so the
-// pixels at the two dots are the handles' own ink and nothing else. The stored pair is
-// a Custom segment's (the document holds it); the ghost pair is an Auto segment's
+// that paints (no ticks, no labels, no keys, no chips) - so the pixels at the two dots
+// are the handles' own ink and nothing else. The stored pair is a Custom segment's (the
+// document holds it); the ghost pair is an Auto segment's
 // DERIVED handles (PanelHandle::ghost), which the drawing layer must show hollow.
 gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
     gui::GraphPanelModel model;
@@ -749,8 +720,8 @@ gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
 
 //-------------------------------------------------------------------------------------------------
 // The marker model: the TWO COMPONENTS OF ONE KEY, one marker each, and nothing else that
-// paints (no ticks, no labels, no chips, no hull, no button, no handles) - so the pixels
-// about each dot are that marker's own ink and nothing else.
+// paints (no ticks, no labels, no chips, no handles) - so the pixels about each dot are
+// that marker's own ink and nothing else.
 //
 // WHY THE TWO CURVES SHARE A KEY TYPE. The design's three marker states are about ONE KEY
 // drawn on two channels: "the marker of the same key that is not selected keeps a faint
@@ -1089,37 +1060,16 @@ std::vector<Geom> geometryOf(
             out.push_back({"handle_dot", grow(dot, 2)});
         }
     }
-    // The panel's CHROME, on the model's own geometry. The channels button and the
-    // selection label are drawn outside the plot clip but inside the plot, and a chip
-    // is drawn only while its curve is in play: the geometry set carries every box a
-    // pass in this file could draw, so "no ink outside the geometry" stays a statement
-    // about the panel rather than about the passes that happened not to draw one.
-    if (!aModel.channelsButton.isEmpty()) {
-        out.push_back({"channels_button", grow(aModel.channelsButton, 2)});
-        out.push_back(
-            {"channels_button_label",
-             grow(glyphBox(aModel.channelsButton, aModel.channelsButtonText, aFont, aFontSize, Align::Centre), 2)}
-        );
-    }
+    // The panel's CHROME, on the model's own geometry: a chip is drawn only while its
+    // curve is in play, and the geometry set carries every box a pass in this file could
+    // draw, so "no ink outside the geometry" stays a statement about the panel rather
+    // than about the passes that happened not to draw one.
     for (const gui::PanelCurve& curve : aModel.curves) {
         if (curve.chip.isEmpty()) {
             continue;
         }
         out.push_back({"chip", grow(curve.chip, 2)});
         out.push_back({"chip_text", grow(glyphBox(curve.chip, curve.chipText, aFont, aFontSize, Align::Centre), 2)});
-    }
-    if (aModel.selectionHull.size() >= 2) {
-        QRect hull;
-        for (const QPointF& point : aModel.selectionHull) {
-            hull = hull.united(QRect(int(point.x()), int(point.y()), 1, 1));
-        }
-        out.push_back({"selection_hull", grow(hull, 2)}); // the closed 1px stroke about the points
-    }
-    if (!aModel.selectionLabel.rect.isEmpty()) {
-        out.push_back(
-            {"selection_label",
-             grow(glyphBox(aModel.selectionLabel.rect, aModel.selectionLabel.text, aFont, aFontSize, Align::Centre), 2)}
-        );
     }
     if (!aModel.emptyState.isEmpty()) {
         out.push_back(
@@ -2024,42 +1974,6 @@ bool checkMarkerStates(
     return true;
 }
 
-// 30: THE DRAG READOUT - the key move's two numbers, at the pointer, and NOTHING when no
-// move is in flight.
-//
-// The numbers are the MODEL's (PanelKeyDrag, from the editor's own gesture state), and what
-// this asserts is that they reach the screen at the pointer and only then: the same model,
-// the same pointer and the same invalid focus, with `live` the only difference between the
-// two passes. The box read is the glyphs' own: the text starts kReadoutGapPx right of and
-// below the pointer, and the probe is generous in width so a font difference cannot move the
-// claim off the ink.
-bool checkDragReadout(const Rendered& aDrawn, const Rendered& aStill, const ImVec2& aPointer) {
-    const QRect probe(
-        int(aPointer.x) + gui::kReadoutGapPx - 2, int(aPointer.y) + gui::kReadoutGapPx - 2,
-        200, 30
-    );
-    const int drawnInk = inkCount(aDrawn.image, probe);
-    const int stillInk = inkCount(aStill.image, probe);
-    std::printf(
-        "MEASURED drag_readout pointer=(%.0f,%.0f) probe=(%d,%d %dx%d) ink_live=%d ink_still=%d\n",
-        double(aPointer.x), double(aPointer.y), probe.x(), probe.y(), probe.width(), probe.height(), drawnInk,
-        stillInk
-    );
-    REQUIRE(
-        drawnInk > 0,
-        "a key move in flight painted nothing in the %dx%d box at the pointer (%d,%d): the drag's numbers are"
-        " not drawn",
-        probe.width(), probe.height(), probe.x(), probe.y()
-    );
-    REQUIRE(
-        stillInk == 0,
-        "the panel painted %d pixels in the readout's box with NO key move in flight: the readout must be"
-        " nothing at all while no drag is in hand",
-        stillInk
-    );
-    return true;
-}
-
 // 4: the label, and the halo behind gui::kDrawTextHalo.
 //
 // The halo is SHIPPED OFF, so what this asserts in the shipping configuration is
@@ -2345,73 +2259,6 @@ bool checkRulerReserve(
     return true;
 }
 
-// 9a: the CHANNELS BUTTON, the panel's ONE control (GraphPanelModel's CHANNELS
-// BUTTON). EXTRACTION: drawPanel fills the box the model published with
-// theme::Graph::halo() at kChannelsButtonAlpha and centres the model's words in it in
-// theme::Graph::axisText() - so an interior pixel clear of the glyphs is that composite
-// on the clear colour, and the glyph box the file rebuilds carries the label's ink.
-// The box's own contract is asserted too: it is inside the plot, and the model
-// publishes it only when it fits - an empty box means NO button, which is the
-// empty-state models' case below (they carry no channel rows either, so the real model
-// publishes no words for one).
-bool checkChannelsButton(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
-    // The drawing layer's own tone (GraphPanelFrame.cpp's kChannelsButtonAlpha). It is
-    // file-static there, so it is restated here with its home named - the same move
-    // kDrawnTickLength below makes.
-    constexpr float kButtonToneAlpha = 0.55f;
-
-    REQUIRE(aRendered.font != nullptr, "the draw list carried no font: the button's label cannot be described");
-    REQUIRE(!aModel.channelsButton.isEmpty(), "precondition: the full model must publish the channels button");
-    REQUIRE(!aModel.channelsButtonText.isEmpty(), "precondition: the button must carry its words");
-    REQUIRE(kPlot.contains(aModel.channelsButton), "precondition: the button's box is outside the plot");
-    REQUIRE(!aModel.channels.isEmpty(), "precondition: the model must carry the channel rows the button opens");
-
-    const int area = aModel.channelsButton.width() * aModel.channelsButton.height();
-    const int ink = inkCount(aRendered.image, aModel.channelsButton);
-    const QRect glyph = glyphBox(
-        aModel.channelsButton, aModel.channelsButtonText, aRendered.font, aRendered.fontSize, Align::Centre
-    );
-    REQUIRE(
-        !glyph.isEmpty(), "precondition: the button's label '%s' has empty metrics",
-        qPrintable(aModel.channelsButtonText)
-    );
-    const int labelInk = inkCount(aRendered.image, glyph);
-
-    // A pixel inside the box and clear of the glyphs: the backing alone. Two pixels in
-    // from the box's edge, so it is past the rounded corner's fringe as well.
-    const QPoint backing(aModel.channelsButton.left() + 2, aModel.channelsButton.center().y());
-    REQUIRE(!glyph.contains(backing), "precondition: the backing probe lands under the button's own glyphs");
-    QColor tone = aTheme.halo();
-    tone.setAlphaF(tone.alphaF() * kButtonToneAlpha);
-    const QColor expected = over(tone, kClear);
-    const QColor got = pixelAt(aRendered.image, backing.x(), backing.y());
-    const int distance = colourDistance(got, expected);
-
-    std::printf(
-        "MEASURED channels_button box=(%d,%d %dx%d) text=%s ink_pixels=%d of %d label_glyph=(%d,%d %dx%d)"
-        " label_ink=%d backing=(%d,%d) rgb=%s halo_at_%.2f_over_clear=%s d=%d tolerance=%d\n",
-        aModel.channelsButton.left(), aModel.channelsButton.top(), aModel.channelsButton.width(),
-        aModel.channelsButton.height(), qPrintable(aModel.channelsButtonText), ink, area, glyph.left(), glyph.top(),
-        glyph.width(), glyph.height(), labelInk, backing.x(), backing.y(), hex(got).c_str(),
-        double(kButtonToneAlpha), hex(expected).c_str(), distance, kFillTol
-    );
-    // The backing covers everything but the rounded corners, and the glyphs are inside
-    // it: the box is the control the model named.
-    REQUIRE(
-        ink >= (area * 8) / 10,
-        "the channels button painted %d of its %d box pixels: the control is not drawn where the model put it",
-        ink, area
-    );
-    REQUIRE(labelInk > 0, "the channels button painted nothing in its own label's glyph box");
-    REQUIRE(
-        distance <= kFillTol,
-        "the button's backing rgb=%s is not theme::Graph::halo() composited at %.2f on the clear colour rgb=%s"
-        " (distance %d > %d)",
-        hex(got).c_str(), double(kButtonToneAlpha), hex(expected).c_str(), distance, kFillTol
-    );
-    return true;
-}
-
 // 9b: the name CHIPS, as a pair per curve - the emphasis rule the key markers are read
 // under, on the other ink it decides. A chip is drawn while its curve is in play (it owns
 // a selected key) OR while the POINTER is within kChipHoverDistance (6px) of the curve at
@@ -2509,258 +2356,13 @@ bool checkChips(
 // One capsule's own coverage at a distance, in the pass's OWN arithmetic (src/gui/GraphPanelFrame.h's
 // HOW IT DRAWS: a one-DEVICE-PIXEL box filter about the nominal edge, so the 50% crossing sits
 // exactly on it), with the filter from the pass's own constant and halfWidth the stroke's drawn
-// width / 2. It is DEFINED HERE because the hull assertion below is its first reader; assertion 27
-// states the same arithmetic for the panel's other 1px lines, and the BEFORE stroke's distance from
-// this bound IS its defect. aHalfWidth defaults to the panel's own stroke, so a 1px hairline passes
-// 0.5.
+// width / 2. Assertion 27 states the same arithmetic for the panel's other 1px lines, and the
+// BEFORE stroke's distance from this bound IS its defect. aHalfWidth defaults to the panel's own
+// stroke, so a 1px hairline passes 0.5.
 double capsuleCoverage(double aDistancePx, double aStrength, double aHalfWidth = double(gui::stroke::kWidthPx) * 0.5) {
     const double filter = double(gui::stroke::kFilterPx);
     const double cov = std::min(1.0, std::max(0.0, (aHalfWidth + 0.5 * filter - aDistancePx) / filter));
     return cov * aStrength;
-}
-
-// The number of stroke callbacks in the frame that was JUST rendered: ImGui::GetDrawData()
-// is that frame and only that frame, so a caller reads this immediately after its own
-// renderPass call (checkStrokeGuestState counts the same commands inline, to find the first
-// of them).
-int strokeCallbackCount() {
-    ImDrawData* data = ImGui::GetDrawData();
-    if (!data) {
-        return -1;
-    }
-    int callbacks = 0;
-    for (int i = 0; i < data->CmdListsCount; ++i) {
-        const ImDrawList* list = data->CmdLists[i];
-        for (int c = 0; c < list->CmdBuffer.Size; ++c) {
-            if (list->CmdBuffer[c].UserCallback == gui::stroke::drawListCallback) {
-                ++callbacks;
-            }
-        }
-    }
-    return callbacks;
-}
-
-// 9c: the SELECTION HULL and its count, and the EMPTY case as a pair.
-//
-// WHICH PASS THIS READS, AND WHY. gui::stroke::init() runs before the first model pass in
-// main, so EVERY pass here has the coverage pass ready and this check reads `aRendered`
-// (the model the pair's model is one field away from). The hull is stroked through that
-// pass - addInkCallback, one callback carrying the closed point list, the colour
-// theme::Graph::marqueeEdge() and the token's own alpha as the strength - so the ink is
-// that pass's arithmetic and NOT ImGui's AddPolyline fallback. THE COMPOSITE IS THEREFORE
-// THE COVERAGE'S, and for a 1px stroke (halfWidth 0.5px) it is not the token's own
-// composite: the model's coordinates are INTEGERS, i.e. the boundary between two pixel
-// rows/columns, so both straddling pixels sit 0.5px from the centreline and take
-// capsuleCoverage(0.5px, alphaF, 0.5px) = 0.5 * alphaF (measured: the full-coverage
-// composite is 62 away from what the pass paints at every vertex, while the half-coverage
-// one is where the ink is). The claims below are that arithmetic plus the position it
-// implies: at each edge's midpoint the two straddled pixels are the half-coverage
-// composite and the rows/columns beyond them are clear.
-//
-// WHAT IS STRUCTURAL. The outline must be DRAWN at all, which is a different failure from
-// being drawn at the wrong coverage: the hull's pass carries ONE MORE stroke callback than
-// the pair's (the curves' callbacks are in both), and the pair draws strictly fewer
-// vertices (the count label's glyphs are the difference, since the hull itself is a
-// callback rather than list geometry).
-//
-// THE COUNT is drawn by the label pass (not by the stroke), so its glyph box is asserted
-// directly, and the SAME box in the pair's pass carries nothing - the rule the deleted
-// legend's "row with no room" assertion was about, stated on the ink: geometry the model
-// does not publish is not drawn.
-bool checkSelectionHull(
-    const Rendered& aRendered, const Rendered& aHullLess, int aHullCallbacks, int aHullLessCallbacks,
-    const gui::GraphPanelModel& aModel, const gui::GraphPanelModel& aHullLessModel, const theme::Graph& aTheme
-) {
-    REQUIRE(aRendered.font != nullptr, "the draw list carried no font: the count label cannot be described");
-    REQUIRE(aModel.selectionHull.size() >= 4, "precondition: the full model must publish the hull's own points");
-    REQUIRE(!aModel.selectionLabel.rect.isEmpty(), "precondition: the full model must publish the count label");
-    REQUIRE(aHullLessModel.selectionHull.isEmpty(), "precondition: the pair's model must have no hull");
-    REQUIRE(aModel.selectionHull.size() % 2 == 0, "precondition: the gate's hull is a rectangle of even sides");
-
-    // ---- 1: the outline is drawn at all, and as a stroke callback ----
-    std::printf("MEASURED selection_hull stroke_callbacks hull=%d hull_less=%d\n", aHullCallbacks, aHullLessCallbacks);
-    REQUIRE(
-        aHullCallbacks > aHullLessCallbacks,
-        "the hull's pass carries %d stroke callbacks and the pair's %d: the outline added no callback, so it is not"
-        " drawn through the coverage pass",
-        aHullCallbacks, aHullLessCallbacks
-    );
-
-    // ---- 2: the ink, at the pass's own coverage arithmetic ----
-    const QColor edge = aTheme.marqueeEdge();
-    QColor half = edge;
-    half.setAlphaF(float(capsuleCoverage(0.5, edge.alphaF(), 0.5))); // == 0.5 * alphaF
-    const QColor expected = over(half, kClear);
-    int edges = 0;
-    for (int i = 0; i < aModel.selectionHull.size(); ++i) {
-        const QPointF& from = aModel.selectionHull.at(i);
-        const QPointF& to = aModel.selectionHull.at((i + 1) % aModel.selectionHull.size());
-        REQUIRE(
-            from.x() == to.x() || from.y() == to.y(),
-            "precondition: hull edge %d runs from (%d,%d) to (%d,%d) - not axis-aligned, so its straddled pixels"
-            " cannot be named",
-            i, int(from.x()), int(from.y()), int(to.x()), int(to.y())
-        );
-        const int mx = (int(from.x()) + int(to.x())) / 2;
-        const int my = (int(from.y()) + int(to.y())) / 2;
-        // The two pixels the centreline divides (the model's coordinate is their shared
-        // corner) and the two it never reaches: 0.5px out either side.
-        QPoint first;
-        QPoint second;
-        QPoint beyondFirst;
-        QPoint beyondSecond;
-        if (from.y() == to.y()) { // horizontal: the centreline is the row boundary at my
-            first = QPoint(mx, my - 1);
-            second = QPoint(mx, my);
-            beyondFirst = QPoint(mx, my - 2);
-            beyondSecond = QPoint(mx, my + 1);
-        } else { // vertical: the centreline is the column boundary at mx
-            first = QPoint(mx - 1, my);
-            second = QPoint(mx, my);
-            beyondFirst = QPoint(mx - 2, my);
-            beyondSecond = QPoint(mx + 1, my);
-        }
-        for (const QPoint& p : {first, second, beyondFirst, beyondSecond}) {
-            REQUIRE(kPlot.contains(p), "precondition: the hull edge probe (%d,%d) is outside the plot", p.x(), p.y());
-        }
-        const QColor firstPixel = pixelAt(aRendered.image, first.x(), first.y());
-        const QColor secondPixel = pixelAt(aRendered.image, second.x(), second.y());
-        const int firstDistance = colourDistance(firstPixel, expected);
-        const int secondDistance = colourDistance(secondPixel, expected);
-        const int clearFirst = clearDistance(pixelAt(aRendered.image, beyondFirst.x(), beyondFirst.y()));
-        const int clearSecond = clearDistance(pixelAt(aRendered.image, beyondSecond.x(), beyondSecond.y()));
-        std::printf(
-            "MEASURED selection_hull edge=%d mid=(%d,%d) straddled=(%d,%d)=%s d=%d (%d,%d)=%s d=%d"
-            " beyond=(%d,%d) clear=%d (%d,%d) clear=%d expected=%s tolerance=%d\n",
-            i, mx, my, first.x(), first.y(), hex(firstPixel).c_str(), firstDistance, second.x(), second.y(),
-            hex(secondPixel).c_str(), secondDistance, beyondFirst.x(), beyondFirst.y(), clearFirst,
-            beyondSecond.x(), beyondSecond.y(), clearSecond, hex(expected).c_str(), kFillTol
-        );
-        REQUIRE(
-            firstDistance <= kFillTol && secondDistance <= kFillTol,
-            "hull edge %d's straddled pixels (%d,%d)/(%d,%d) are %d/%d away from theme::Graph::marqueeEdge() at the"
-            " stroke's own coverage rgb=%s (tolerance %d): the outline is not stroked through the model's points",
-            i, first.x(), first.y(), second.x(), second.y(), firstDistance, secondDistance, hex(expected).c_str(),
-            kFillTol
-        );
-        REQUIRE(
-            clearFirst <= kInkMin && clearSecond <= kInkMin,
-            "hull edge %d paints beyond its own 1px stroke: (%d,%d) %d and (%d,%d) %d away from the clear colour",
-            i, beyondFirst.x(), beyondFirst.y(), clearFirst, beyondSecond.x(), beyondSecond.y(), clearSecond
-        );
-        ++edges;
-    }
-    REQUIRE(edges == 4, "expected the gate's rectangle to have four edges, walked %d", edges);
-
-    // ---- 3: what the outline painted, window by window, and the backdrop it sits on ----
-    const QPointF& vertex = aModel.selectionHull.first();
-    const QPoint vertexPixel(int(std::lround(vertex.x())), int(std::lround(vertex.y())));
-    const QRect window(vertexPixel.x() - 3, vertexPixel.y() - 3, 7, 7);
-    REQUIRE(kPlot.contains(window), "precondition: the first hull vertex's window is outside the plot");
-    const auto windowText = [](const QImage& aImage, const QRect& aWindow) {
-        QString text;
-        std::vector<std::pair<QRgb, int>> seen;
-        for (int y = aWindow.top(); y <= aWindow.bottom(); ++y) {
-            for (int x = aWindow.left(); x <= aWindow.right(); ++x) {
-                const QRgb key = pixelAt(aImage, x, y).rgb();
-                bool found = false;
-                for (std::pair<QRgb, int>& entry : seen) {
-                    if (entry.first == key) {
-                        ++entry.second;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    seen.push_back({key, 1});
-                }
-            }
-        }
-        for (const std::pair<QRgb, int>& entry : seen) {
-            text += QStringLiteral("%1%2x%3").arg(text.isEmpty() ? QString() : QStringLiteral(" "),
-                                                 QColor(entry.first).name(), QString::number(entry.second));
-        }
-        return text;
-    };
-    int windowDiff = 0;
-    for (int y = window.top(); y <= window.bottom(); ++y) {
-        for (int x = window.left(); x <= window.right(); ++x) {
-            if (pixelAt(aRendered.image, x, y) != pixelAt(aHullLess.image, x, y)) {
-                ++windowDiff;
-            }
-        }
-    }
-    const int windowInk = inkCount(aRendered.image, window);
-    const int windowInkNoHull = inkCount(aHullLess.image, window);
-    std::printf(
-        "MEASURED selection_hull window vertex=(%d,%d) rect=(%d,%d %dx%d) hull_ink=%d hull_less_ink=%d"
-        " differing_pixels=%d hull_colours=[%s] hull_less_colours=[%s]\n",
-        vertexPixel.x(), vertexPixel.y(), window.left(), window.top(), window.width(), window.height(), windowInk,
-        windowInkNoHull, windowDiff, qPrintable(windowText(aRendered.image, window)),
-        qPrintable(windowText(aHullLess.image, window))
-    );
-    REQUIRE(windowInk > 0, "the first hull vertex's window holds no ink at all");
-    REQUIRE(
-        windowDiff > 0,
-        "the hull's own window is byte-identical in the model that publishes no hull: nothing was painted for the"
-        " outline"
-    );
-    // The backdrop the composite above is read against: the pair's window is the clear
-    // colour, so `expected` is marqueeEdge() over the clear and not over another element.
-    REQUIRE(
-        windowInkNoHull == 0,
-        "the first hull vertex's window is not the clear colour in the pair's pass (%d inked pixels): the window is"
-        " not a statement about the hull alone",
-        windowInkNoHull
-    );
-    // The corner itself: three of the four pixels around the vertex are straddled by one of
-    // the two edges (the fourth is the diagonal the segments' ends leave at 0.293 coverage).
-    int cornerInk = 0;
-    for (const QPoint& p :
-         {vertexPixel, QPoint(vertexPixel.x() - 1, vertexPixel.y()), QPoint(vertexPixel.x(), vertexPixel.y() - 1),
-          QPoint(vertexPixel.x() - 1, vertexPixel.y() - 1)}) {
-        if (clearDistance(pixelAt(aRendered.image, p.x(), p.y())) > kInkMin) {
-            ++cornerInk;
-        }
-    }
-    REQUIRE(cornerInk >= 3, "only %d of the 4 pixels around the hull's first vertex carry ink", cornerInk);
-
-    // The count: the glyph box the panel's own placement produces carries ink, and the
-    // SAME box in the pair's pass carries none.
-    const QRect glyph = glyphBox(
-        aModel.selectionLabel.rect, aModel.selectionLabel.text, aRendered.font, aRendered.fontSize, Align::Centre
-    );
-    REQUIRE(!glyph.isEmpty(), "precondition: the count '%s' has empty metrics", qPrintable(aModel.selectionLabel.text));
-    const int labelInk = inkCount(aRendered.image, glyph);
-    const int labelInkNoHull = inkCount(aHullLess.image, glyph);
-    std::printf(
-        "MEASURED selection_label text=%s box=(%d,%d %dx%d) glyph=(%d,%d %dx%d) ink=%d ink_without_hull=%d"
-        " count=%d vtx_with_hull=%d vtx_without=%d delta_vtx=%d\n",
-        qPrintable(aModel.selectionLabel.text), aModel.selectionLabel.rect.left(), aModel.selectionLabel.rect.top(),
-        aModel.selectionLabel.rect.width(), aModel.selectionLabel.rect.height(), glyph.left(), glyph.top(),
-        glyph.width(), glyph.height(), labelInk, labelInkNoHull, aModel.selectionCount, aRendered.vtx,
-        aHullLess.vtx, aRendered.vtx - aHullLess.vtx
-    );
-    REQUIRE(
-        labelInk > 0, "the count '%s' painted nothing in its own glyph box", qPrintable(aModel.selectionLabel.text)
-    );
-    REQUIRE(
-        labelInkNoHull == 0,
-        "the count's glyph box carries %d pixels in the model with NO hull and NO label: geometry the model does not"
-        " publish must not be drawn",
-        labelInkNoHull
-    );
-    REQUIRE(
-        aHullLess.vtx < aRendered.vtx,
-        "the hull and its count contributed no geometry at all: %d vertices against %d",
-        aHullLess.vtx, aRendered.vtx
-    );
-    // The count the model publishes is the FACT the label spells out: a consumer that
-    // shows it elsewhere reads the number, so the two are asserted together.
-    REQUIRE(
-        aModel.selectionCount == 3, "precondition: the gate's hull encloses three keys"
-    );
-    return true;
 }
 
 // 6: the empty state.
@@ -2816,8 +2418,8 @@ bool checkClip(const Rendered& aRendered, const gui::GraphPanelModel& aModel) {
     REQUIRE(!aModel.isEmpty(), "precondition: the clip model must not be an empty state");
     REQUIRE(
         aModel.valueLabels.isEmpty() && aModel.frameLabels.isEmpty() && aModel.frameTickX.isEmpty()
-            && aModel.valueTickY.isEmpty() && aModel.channels.isEmpty() && aModel.channelsButton.isEmpty()
-            && aModel.selectionHull.isEmpty() && aModel.playheadX < 0 && aModel.zeroY < 0,
+            && aModel.valueTickY.isEmpty() && aModel.channels.isEmpty()
+            && aModel.playheadX < 0 && aModel.zeroY < 0,
         "precondition: the clip model must hold nothing but the curve and the marquee, or 'no ink outside the"
         " plot' would have to allow for the value column's own labels"
     );
@@ -4148,8 +3750,7 @@ bool checkOutlineRestoresBindings(OutlineHarness& aHarness) {
 // ONE MODEL, FIVE RUNS, TWO STROKE GEOMETRIES. The runs below are chosen so that EVERY
 // measurement points at a region no other run's ink can reach, and the model publishes
 // nothing else at all - no ticks, no labels, no zero rule, no playhead, no keys, no
-// handles, no chips, no hull, no channels button - so the ink in a region is that run's
-// ink. The same model is then
+// handles, no chips - so the ink in a region is that run's ink. The same model is then
 // rendered twice out of ONE process: with the pass built (AFTER) and before it is built
 // (BEFORE), which is what makes the two implementations comparable number for number
 // rather than across two runs of the gate.
@@ -5726,15 +5327,6 @@ int main(int argc, char** argv) {
     fullNoFrame.playheadPill = QRect();
     fullNoFrame.playheadLineTop = -1;
 
-    // The same model with NO selection hull and no count label: the ONLY difference is
-    // those two pieces of geometry, which is what makes assertion 9c a pair - the
-    // other model publishes an outline through its points and the words beside it,
-    // and this one publishes neither, so nothing of either may be painted.
-    gui::GraphPanelModel hullLess = full;
-    hullLess.selectionHull.clear();
-    hullLess.selectionCount = 0;
-    hullLess.selectionLabel = gui::PanelLabel();
-
     // A model whose one curve carries BOTH a stored handle pair and a derived (ghost)
     // one, and nothing else that paints: the two dots' own pixels are the pair
     // assertion 9d reads.
@@ -5831,16 +5423,7 @@ int main(int argc, char** argv) {
     const Rendered emptyRendered = renderPass(empty, palette, focus, "empty_state");
     const Rendered clipRendered = renderPass(clip, palette, focus, "clip");
     const Rendered noRuleRendered = renderPass(fullNoRule, palette, focus, "full_model_zeroY_off");
-    const Rendered hullLessRendered = renderPass(hullLess, palette, focus, "full_model_no_hull");
     const Rendered ghostRendered = renderPass(ghost, palette, focus, "ghost_handle");
-    // The hull's ink is ONE stroke callback while the coverage pass is ready (it is: init()
-    // ran above), so "the outline is drawn at all" is a count of callbacks in the frame each
-    // model just submitted. ImGui::GetDrawData() is that frame and only that frame, so each
-    // count is read immediately after its own render (see checkSelectionHull).
-    renderPass(full, palette, focus, "hull_commands");
-    const int hullCallbacks = strokeCallbackCount();
-    renderPass(hullLess, palette, focus, "hull_less_commands");
-    const int hullLessCallbacks = strokeCallbackCount();
     const Rendered marqueeRendered = renderPass(fullMarquee, palette, focus, "full_model_marquee");
     const Rendered overflowRendered = renderPass(overflow, palette, focus, "value_label_overflow");
 
@@ -5965,16 +5548,8 @@ int main(int argc, char** argv) {
         marker, palette, focus, "marker_hover", ImVec2(float(markerDot.x()), float(markerDot.y()))
     );
 
-    // THE DRAG READOUT (assertion 30): the same fixture with the editor's key-move numbers
-    // published, once live and once not, with the pointer somewhere clear of both curves -
-    // the only difference between the two passes is `keyDrag.live`.
-    gui::GraphPanelModel markerDrag = marker;
-    markerDrag.keyDrag.live = true;
-    markerDrag.keyDrag.frameDelta = 3;
-    markerDrag.keyDrag.valueDelta = -0.25f;
-    const ImVec2 readoutPointer(float(kMarkerX), float(kPlot.top() + 24));
-    const Rendered readoutDrawn = renderPass(markerDrag, palette, focus, "marker_readout", readoutPointer);
-    const Rendered readoutStill = renderPass(marker, palette, focus, "marker_no_readout", readoutPointer);
+    // THE DRAG READOUT (assertion 30) IS GONE, with the ink it read: the panel prints no
+    // gesture numbers any more, so there is no box at the pointer to measure.
 
     if (rendered.vtx <= 0) {
         std::printf("FAIL: the full model emitted no vertices at all\n");
@@ -6003,10 +5578,6 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the marker states\n");
         return 1;
     }
-    if (!checkDragReadout(readoutDrawn, readoutStill, readoutPointer)) {
-        std::printf("FAILED: the drag readout\n");
-        return 1;
-    }
     if (!checkLabelHalo(rendered, full, fullBareRendered, palette)) {
         std::printf("FAILED: label halo\n");
         return 1;
@@ -6015,18 +5586,8 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the frame number's reserved band\n");
         return 1;
     }
-    if (!checkChannelsButton(rendered, full, palette)) {
-        std::printf("FAILED: the channels button\n");
-        return 1;
-    }
     if (!checkChips(rendered, selectedFirst, selectedSecond, full, palette)) {
         std::printf("FAILED: the name chips\n");
-        return 1;
-    }
-    if (!checkSelectionHull(
-            rendered, hullLessRendered, hullCallbacks, hullLessCallbacks, full, hullLess, palette
-        )) {
-        std::printf("FAILED: the selection hull and its count\n");
         return 1;
     }
     if (!checkGhostHandle(ghostRendered, ghost, palette)) {

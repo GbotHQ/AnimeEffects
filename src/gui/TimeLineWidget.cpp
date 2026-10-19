@@ -753,12 +753,12 @@ void TimeLineWidget::keyPressEvent(QKeyEvent* aEvent) {
 
 ctrl::TimeLineEditor* TimeLineWidget::editor() const { return mInner ? mInner->editor() : nullptr; }
 
-void TimeLineWidget::showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos) {
-    // The picker's route for a caller that is not the timeline's own context-menu
-    // handler (see TimeLineEditorWidget::showKeyEasingPicker). An empty selection
-    // is the caller's to filter - the widget's method is the one that decides, so
-    // both routes agree on it.
-    mInner->showKeyEasingPicker(aTargets, aGlobalPos);
+bool TimeLineWidget::openKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {
+    // The key menu's route for a caller that is not the timeline's own context-menu
+    // handler (see TimeLineEditorWidget::openKeyMenu, which owns the menu, the
+    // selection rule and the loan). Forwarded whole: the caller passes a key, not a
+    // selection, so nothing is filtered out on the way.
+    return mInner->openKeyMenu(aPressedKey, aGlobalPos);
 }
 
 util::Range TimeLineWidget::visibleFrameRange() const {

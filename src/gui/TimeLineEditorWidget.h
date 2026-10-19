@@ -12,6 +12,8 @@
 #include "gui/TimeRuler.h"
 #include "KeyCommandMap.h"
 
+class QMenu;
+
 namespace gui {
 
 namespace prop { class EasingItem; } // the header's easing control (prop_Items.h)
@@ -86,16 +88,26 @@ public:
     // The controller the surface renders; TimeRuler drives it through the
     // same updateCursor entry point as the track input path.
     ctrl::TimeLineEditor* editor() const { return mEditor.data(); }
-    // Shows the application's own KEY EASING PICKER at aGlobalPos, for the keys
-    // aTargets names (the caller's current selection, in the timeline's
-    // currency). This is the entry point for callers that are not the timeline's
-    // own context-menu handler - the animation graph panel's right-click - and it
-    // is the SAME picker the header's easing chip opens (that popover is this
-    // widget's single instance), so the two anchors cannot offer different
-    // easings or take different edit paths. Nothing here depends on the panel: a
-    // caller with a selection and a screen position gets the picker, and an EMPTY
-    // target list shows nothing.
-    void showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos);
+    // Opens the application's own KEY MENU at aGlobalPos, for the key aPressedKey
+    // names under the caller's pointer: the menu a right-click in the timeline
+    // itself builds (see buildKeyMenu), so both views offer the same items through
+    // the same code and there is no second menu to keep in step.
+    //
+    // THE SET THE ITEMS ACT ON is the shared live selection, read here with the
+    // timeline's own right-click rule (the one tests/rightclick_transient_selection.cpp
+    // pins): a pressed key the selection already holds keeps the WHOLE selection, so
+    // a menu opened on one key of a multi-key selection still names every selected
+    // key; any other pressed key is lent a temporary selection for the menu's
+    // lifetime, which is dropped when the menu closes (the previous selection is NOT
+    // restored). This is the entry point for callers whose pointer is in THEIR own
+    // space - the animation graph panel resolves the key with its own hit test,
+    // gui::panelKeyAt - so the rule is applied here, on the shared selection, by key
+    // identity: ctrl::TimeLineEditor::selectKeysAt resolves a click in the timeline's
+    // own pixels and cannot be reached from another view's geometry.
+    //
+    // The menu's paste entry anchors at aPressedKey's frame. False when there is no
+    // menu to open: no editor, or aPressedKey is not a key the document holds.
+    bool openKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos);
     // The easing control the header hosts (prop::EasingItem). This widget is the
     // one place the picker is opened and the one place a committed edit lands, so
     // the control itself holds no model; the header sets it once, and clears it
@@ -104,16 +116,15 @@ public:
     // the shared key selection is re-read, and the header has no other way to learn
     // that another view changed it.
     void setEasingItemHost(prop::EasingItem* aHost);
-    // Opens THAT picker for the keys aTargets names, anchored at aGlobalAnchor:
-    // under the header's chip, or at the pointer a right-click on a key landed at.
-    // The
+    // Opens THAT picker for the keys aTargets names, anchored at aGlobalAnchor -
+    // which is the header's chip (gui::TimeLineHeader::onEasingChipClicked, the one
+    // caller): the picker is a popover of the header's easing control, and the key
+    // menus carry no easing entry, so this is not reached from a key at all. The
     // targets are held for the open's lifetime, so every edit the picker commits
-    // applies to exactly the keys it was opened for (a right-click on an unselected
-    // key lends it a temporary selection - see ctrl::TimeLineEditor::selectKeysAt -
-    // and it outlives this call, until the popover closes).
+    // applies to exactly the keys it was opened for, until the popover closes.
     //
     // False when nothing opened (no host, no targets, or no key of a type that
-    // carries an easing): the caller's temporary selection is then its own to end.
+    // carries an easing).
     bool openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor);
     // The MoveCanvas key (space by default) is held: the ruler lets a
     // left-press propagate to the timeline's pan instead of seeking.
@@ -164,6 +175,15 @@ private:
     void onTreeRestructured(core::ObjectTreeEvent& aEvent, bool aUndo);
     void onProjectAttributeModified(core::ProjectEvent& aEvent, bool aUndo);
     void onContextMenuRequested(const QPoint& aPos);
+    // THE KEY MENU ITSELF, built once for both routes: the timeline's own right-click
+    // (onContextMenuRequested) and the animation graph panel's (openKeyMenu). The
+    // items act on mTargets - the whole selection, one target per key - so a
+    // multi-key selection is one edit per item, not one key's; the paste entry is
+    // enabled by what has been copied (mCopyTargets), and anchors at mPastePos,
+    // which each caller sets to the frame the menu was opened on. An EMPTY mTargets
+    // is the paste-only menu the timeline shows when a right-click names no key and
+    // nothing is selected.
+    void buildKeyMenu(QMenu& aMenu);
     void onCopyKeyTriggered(bool);
     void onCopyCBTriggered(bool);
     void onPasteKeyTriggered(bool);

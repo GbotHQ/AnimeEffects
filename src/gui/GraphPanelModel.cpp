@@ -46,9 +46,6 @@ namespace {
 // COLUMN in graph_Scaler.h) and Scaler::kAxisLabelPad from the scaler,
 // ctrl::graph::kKeyDotRadius from graph_Geometry.h.
 //
-// Horizontal padding of a text box around its glyphs, the renderer's own
-// `horizontalAdvance(text) + 4`.
-constexpr int kLabelPad = 2;
 // The chip that names a curve IN PLACE (see CHIPS in the header): the box's own
 // padding around the text and its inset from the plot's right edge. The numbers
 // are the reference's - mock-graph.js right-aligns the text 8px inside the plot
@@ -56,25 +53,6 @@ constexpr int kLabelPad = 2;
 // grown by (6, 8)).
 constexpr int kChipRightGap = 8;
 constexpr int kChipPadX = 6;
-
-// The panel's ONE control (see CHANNELS BUTTON in the header): its horizontal inset -
-// from the PANEL's right edge on the overlay's floor, from the PLOT's on the dock's -
-// the air under the ruler band it hangs in, and its padding around its text. The
-// reference floats it at the panel's top-right corner, 8px inside the edge and 30px
-// from the top - which is kChannelsButtonTopGap below the band's whole block (the
-// timeline's 22px header) while nothing occludes the band - padded 6px/2px, "clear of
-// the ruler band so it cannot read as part of the scale" (mock.css,
-// .gp-chbtn:not(.hosted)). That clearance holds in BOTH homes, the docked one
-// included: the reference's hosted button carries no placement of its own (mock.css,
-// .gp-chbtn.hosted) because the host places it, and the panel's band is the ruler's
-// own ink either way.
-constexpr int kChannelsButtonGap = 8;
-constexpr int kChannelsButtonTopGap = 8;
-constexpr int kChannelsButtonPadX = 6;
-constexpr int kChannelsButtonPadY = 2;
-
-// The gap between the selection label's box and the hull's own bounding box.
-constexpr int kSelectionLabelGap = 2;
 
 // The sampling budget of a curve: one point per ~2px of plot width, bounded so a
 // dense key set does not explode the point count and a single long segment
@@ -427,15 +405,11 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
 // and no row), in target then channel order, hidden channels included. The row's
 // colour is the curve's colour, so the list's swatch and its curve always read as
 // one feature. No row GEOMETRY is laid out: the list is the application's own
-// QMenu (see the header's CHANNEL LIST).
-//
-// The same walk also lays out the panel's ONE control, the button that opens that
-// list: its text states the shown/total count and its box is the text plus the
-// button's padding, below the ruler band's own block and in the corner its host owns
-// (see CHANNELS BUTTON and GraphPanelHost).
+// QMenu (see the header's CHANNEL LIST), and the button that opens it is the DOCK
+// HEADER's own control - the panel publishes no control of its own and no words for
+// one.
 void buildChannels(
-    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const theme::Graph& aTheme, const QFontMetrics& aMetrics,
-    gui::GraphPanelHost aHost
+    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const theme::Graph& aTheme
 ) {
     // focusedNode() hands out a CONST pointer (GraphEditor.h), and this model only
     // ever COMPARES it with the targets' own (non-const) pointers - it never mutates
@@ -492,139 +466,6 @@ void buildChannels(
             }
         }
     }
-
-    // The button's label: the total while every channel is shown ("6 channels"),
-    // and the shown count out of the total once one is hidden ("4 of 6") - the
-    // count IS the state the button changes. With NO channels there is no list to
-    // open, so there is no control either: nothing is published (an empty panel's
-    // reason already says why it is empty, and a button that opens nothing would be
-    // a hit target with no action behind it).
-    int shown = 0;
-    for (const gui::PanelChannelRow& row : aModel.channels) {
-        if (row.visible)
-            ++shown;
-    }
-    const int total = aModel.channels.size();
-    if (total <= 0)
-        return;
-    aModel.channelsButtonText =
-        shown == total
-            ? gui::graphPanelTr(QT_TRANSLATE_N_NOOP("GraphPanel", "%n channel(s)"), total)
-            : QCoreApplication::translate("GraphPanel", QT_TRANSLATE_NOOP("GraphPanel", "%1 of %2"))
-                  .arg(shown)
-                  .arg(total);
-
-    // The button's box. It hangs BELOW the band's whole block in BOTH homes: the band
-    // (ticks and numbers alike) is the ruler's own ink, and the panel's one control is
-    // a view control, which the design keeps out of it ("never in the ruler band",
-    // index.html:328-329) - a 0.55-alpha backing painted over a number is exactly the
-    // defect that rule exists to prevent. The offset is stated in the BAND'S own
-    // terms rather than as the reference's magic 30, so it cannot drift when the band
-    // moves down under a widget floating above the panel:
-    //
-    //   top == rulerBandTop + frameRuler::kBandHeight + kChannelsButtonTopGap
-    //
-    // i.e. the whole timeline header (22px: the number row and the tick row) and
-    // kChannelsButtonTopGap of air. The reference's 30px from the panel's top is
-    // exactly this while nothing occludes the band.
-    //
-    // WHERE IT SITS HORIZONTALLY is the one thing the two hosts place differently, and
-    // it is what GraphPanelHost names - ONE box either way, so a drawing layer draws
-    // and hit-tests channelsButton whichever floor it is drawing:
-    //
-    //   OVERLAY (kChannelsButtonGap 8px inside the PANEL's right edge): the reference's
-    //   own floating rule (mock.css, .gp-chbtn:not(.hosted): `right: 8px` of the panel).
-    //
-    //   DOCK (the same 8px inside the PLOT's right edge): the docked page is drawn edge
-    //   to edge inside the dock, so the surface the panel owns is its PLOT, and its one
-    //   control sits in that surface's corner - under the band's right end, among the
-    //   curves' chips - rather than in the panel's own 4px margin (Scaler::kMargin).
-    //
-    // A button that does not fit inside the plot publishes NO box - the drawing layer
-    // draws nothing and hit-tests nothing, the model's own truthful signal (the same
-    // rule every rect here follows).
-    const int textHeight = aMetrics.height();
-    const int width = aMetrics.horizontalAdvance(aModel.channelsButtonText) + 2 * kChannelsButtonPadX;
-    const int height = textHeight + 2 * kChannelsButtonPadY;
-    const int right = aHost == gui::GraphPanelHost::Dock ? aModel.plot.right() + 1 : aModel.panel.right() + 1;
-    const int top = aModel.rulerBandTop + gui::frameRuler::kBandHeight + kChannelsButtonTopGap;
-    const QRect button(right - kChannelsButtonGap - width, top, width, height);
-
-    // THE BAND BELONGS TO THE RULER, so the control may not sit in it - in either home.
-    // Stated as a precondition on the geometry rather than left to the two expressions
-    // above being right: the box is derived from the band's own measures, and this is
-    // the guarantee a future placement change has to keep, failing loudly instead of
-    // painting over the frame numbers. The band's block is the whole 22px ruler header
-    // (its number row and its tick baseline) across the plot's own width.
-    const QRect band(
-        aModel.plot.left(), aModel.rulerBandTop, aModel.plot.width(), gui::frameRuler::kBandHeight
-    );
-    XC_ASSERT(!band.intersects(button));
-
-    if (aModel.plot.contains(button))
-        aModel.channelsButton = button;
-}
-
-// The selection's HULL and its count, in the same pixels as everything else: the
-// editor states the outline in (frame, value) - never in pixels, so it cannot
-// desync from the markers it encloses - and this maps every point through the SAME
-// Scaler the curves go through.
-//
-// Nothing is published while nothing is selected (ctrl::GraphEditor::
-// selectionHull() is empty then, and so is the hull here): an empty hull IS the
-// signal to draw nothing, exactly as an empty marquee is.
-void buildSelection(
-    gui::GraphPanelModel& aModel, ctrl::GraphEditor& aEditor, const ctrl::graph::Scaler& aScale,
-    const QFontMetrics& aMetrics
-) {
-    aModel.selectionCount = aEditor.selectionCount();
-
-    const QVector<QPointF> hull = aEditor.selectionHull();
-    if (hull.isEmpty())
-        return;
-
-    aModel.selectionHull.reserve(hull.size());
-    int left = 0;
-    int top = 0;
-    int right = 0;
-    for (int i = 0; i < hull.size(); ++i) {
-        const QPointF point(
-            aScale.pixelXOfFrame(hull.at(i).x()), static_cast<double>(aScale.pixelY(float(hull.at(i).y())))
-        );
-        aModel.selectionHull.append(point);
-        const int x = int(point.x());
-        const int y = int(point.y());
-        if (i == 0) {
-            left = right = x;
-            top = y;
-            continue;
-        }
-        left = std::min(left, x);
-        right = std::max(right, x);
-        top = std::min(top, y);
-    }
-
-    // The count label, in the panel's own label currency: centred on the hull's own
-    // bounding box, just above its top edge - and just INSIDE it when the hull
-    // reaches the plot's top edge, so the label is never pushed out of the plot.
-    // A box that does not fit is not published (see the header's SELECTION HULL).
-    const QString text =
-        gui::graphPanelTr(QT_TRANSLATE_N_NOOP("GraphPanel", "%n key(s)"), aModel.selectionCount);
-    const int width = aMetrics.horizontalAdvance(text) + 2 * kLabelPad;
-    const int height = aMetrics.height();
-    if (aModel.plot.width() < width || aModel.plot.height() < height)
-        return; // the box could not be clamped into the plot, so there is none
-    const int left2 = std::clamp((left + right + 1) / 2 - width / 2, aModel.plot.left(), aModel.plot.right() - width + 1);
-    int top2 = top - height - kSelectionLabelGap;
-    if (top2 < aModel.plot.top())
-        top2 = top + kSelectionLabelGap; // no room above the hull: sit just inside its top edge
-    top2 = std::clamp(top2, aModel.plot.top(), aModel.plot.bottom() - height + 1);
-
-    const QRect box(left2, top2, width, height);
-    if (!aModel.plot.contains(box))
-        return;
-    aModel.selectionLabel.rect = box;
-    aModel.selectionLabel.text = text;
 }
 
 // The curves: one per visible channel row, sampled and mapped through the scaler
@@ -853,23 +694,15 @@ namespace gui {
     }
 
     //-------------------------------------------------------------------------------------------------
-    QString graphPanelTr(const char* aSourceText, int aN) {
-        // The plural half of the pair above: the same context, resolved through
-        // Qt's plural form, and the call site carries the same literal in
-        // QT_TRANSLATE_N_NOOP("GraphPanel", ...) for the extractor.
-        return QCoreApplication::translate("GraphPanel", aSourceText, nullptr, aN);
-    }
-
-    //-------------------------------------------------------------------------------------------------
     GraphPanelModel buildGraphPanelModel(
         ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset,
         GraphPanelHost aHost
     ) {
         GraphPanelModel model;
 
-        // The floor this model is for: it is republished (see GraphPanelHost) and it
-        // places the panel's ONE control, which is the whole of what the two hosts
-        // change inside this model.
+        // The floor this model is for: republished as the classification it is (see
+        // GraphPanelHost). It places nothing - the panel's ONE control lives in the
+        // dock header now.
         model.host = aHost;
 
         // The panel rect is the editor's own, whatever it is: the fullscreen
@@ -929,16 +762,10 @@ namespace gui {
         // second derivation of it.
         model.marquee = aEditor.marqueeRect();
 
-        // The drag READOUT's numbers, from the gesture that owns them and not from the
-        // pointer (see PanelKeyDrag): the editor answers whether a KEY MOVE is in flight,
-        // and the two deltas it has applied. `live` false is the whole "draw nothing"
-        // signal, and the numbers are read only then - a gesture that is not in flight
-        // could not describe the document even if it reported one.
-        model.keyDrag.live = aEditor.isMovingKeys();
-        if (model.keyDrag.live) {
-            model.keyDrag.frameDelta = aEditor.keyMoveFrameDelta();
-            model.keyDrag.valueDelta = aEditor.keyMoveValueDelta();
-        }
+        // The number of keys the live selection names - a DOCUMENT fact like the
+        // playhead, so it is read before the plot's own guards: the panel publishes it
+        // to the accessibility tree and draws nothing for it (see SELECTION COUNT).
+        model.selectionCount = aEditor.selectionCount();
 
         if (model.plot.isEmpty()) {
             // Nothing to lay an axis on. The panel, the band, the playhead, the marquee
@@ -957,9 +784,8 @@ namespace gui {
 
         buildFrameAxis(model, scale, metrics, format, aEditor.timeFormatType(), aEditor.frameRange());
         buildValueAxis(model, scale, metrics);
-        buildChannels(model, aEditor, aTheme, metrics, aHost);
+        buildChannels(model, aEditor, aTheme);
         buildCurves(model, aEditor, scale, metrics);
-        buildSelection(model, aEditor, scale, metrics);
         buildEmptyState(model, aEditor);
 
         return model;

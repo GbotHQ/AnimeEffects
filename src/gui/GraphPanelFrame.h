@@ -78,9 +78,8 @@ struct PanelFocus {
 // the pointer brightens its fill alone - see the marker pass), every segment's tangent
 // handles (a stored pair filled, an
 // Auto segment's derived pair hollow; the grabbed one highlighted from io.MousePos),
-// the playhead, the box-select marquee, the selection HULL and its count label, the
-// name CHIP of every curve in play, the panel's one control (the channel button), and
-// the empty state. It keeps no state - which
+// the playhead, the box-select marquee, the name CHIP of every curve in play, and the
+// empty state. It keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
 // but the marker hover (gui::panelKeyAt), the handle highlight and the
@@ -89,8 +88,7 @@ struct PanelFocus {
 // the headless pixel gate both do.
 //
 // It draws the MODEL and nothing else: every rect it uses comes out of aModel
-// (or is derived from the draw list's own font, for the chips' text boxes and the
-// hull's count label, whose models are rects the drawing layer puts glyphs in). No
+// (or is derived from the draw list's own font, for the chips' text boxes). No
 // background and no grid are drawn - the model publishes none, and the panel
 // must leave the artwork showing through (a plot area with nothing in it is
 // therefore untouched by this function).
@@ -149,15 +147,6 @@ constexpr int kValueLabelGap = 8;
 // find the ring's pixels to read their ink, and a bar that moved would move every probe
 // with it (the same reason kDrawTextHalo and kValueLabelGap live here).
 constexpr float kKeyRingOffsetPx = 2.6f;
-
-// The air between the pointer and the DRAG READOUT's first glyph (GraphPanelModel's
-// PanelKeyDrag): the key move's live numbers are written at the pointer, and the glyphs
-// start this far right and below it so the cursor itself never covers them.
-//
-// Declared here for the same reason as the two above: tests/graph_panel_pixels.cpp has to
-// find the readout's glyphs to assert that a live drag paints them and a still panel
-// paints nothing, and a gap that moved would move the probe with it.
-constexpr int kReadoutGapPx = 12;
 
 // The contrast outline and composite: ONE full-screen pass that rings panel ink
 // whose own colour is too close to the artwork underneath it, and then composites
@@ -441,12 +430,12 @@ bool panelContextReady();
 // is the CALLER's duty in 1.92 and is what creates its device objects), the curve
 // ink's pass, the model, drawPanel and ImGui::Render().
 //
-// aHostStyle is the host's own kind (gui::GraphPanelHost): it is what places the
-// model's one control - the docked button sits in the ruler band, the overlay's (which
-// only the pixel gate builds now) floats below it. aEditor is the panel's editor
-// (ctrl::Driver::graphEditor()) and aVisible whether the panel is up at all: with false
-// the frame draws nothing but still drains ImGuiIO's queue, and aState comes back with
-// an empty model and a null editor.
+// aHostStyle is the host's own kind (gui::GraphPanelHost): it is republished in the
+// model as the classification of which floor the panel is on (it places nothing - the
+// panel's one control, the channels button, belongs to the dock's header). aEditor is
+// the panel's editor (ctrl::Driver::graphEditor()) and aVisible whether the panel is up
+// at all: with false the frame draws nothing but still drains ImGuiIO's queue, and
+// aState comes back with an empty model and a null editor.
 //
 // It also guards the CONTEXT: a frame whose host draws with a context other than the one
 // the panel's GL objects were created against re-creates them on that context first (see
@@ -457,12 +446,14 @@ bool panelContextReady();
 // rect in the model and in the draw list. The panel paints when its host asks for a frame
 // (a docked page gets one when something it draws changed, not at the input event rate),
 // and Dear ImGui trickles its input queue across NewFrame() calls, so io.MousePos can lag
-// the pointer that the host itself is tracking - measured: in the docked host a key-move
-// readout was drawn a whole drag behind the pointer, at the press position, in the same
-// frame whose model carried the final deltas. The pointer is therefore passed in from the
-// host that sees every event, and the frame makes it the io.MousePos the drawing layer
-// reads (the panel has no ImGui window, so nothing else in the frame reads it). A host
-// without a pointer passes a point outside the panel and nothing hovers.
+// the pointer that the host itself is tracking - measured: in the docked host a readout
+// that followed the pointer was drawn a whole drag behind it, at the press position (that
+// readout is gone, but the hovered chip and the marker the pointer lights still read
+// io.MousePos, so the pointer still has to come from the host that sees every event).
+// The pointer is therefore passed in from the host that sees every event, and the frame
+// makes it the io.MousePos the drawing layer reads (the panel has no ImGui window, so
+// nothing else in the frame reads it). A host without a pointer passes a point outside
+// the panel and nothing hovers.
 //
 // The frame's vertices are NOT drawn here. The returned draw data is rendered into the
 // host's own framebuffer - the dock's page with ImGui_ImplOpenGL3_RenderDrawData and
@@ -501,7 +492,6 @@ void publishPanelAccessibility(
 constexpr int kPanelSummaryItemId = -1;
 constexpr int kPanelFitItemId = -2;
 constexpr int kPanelKeyMenuItemId = -3;
-constexpr int kPanelChannelsItemId = -4;
 
 // The drawn marker of the one key aTargets names, in the model's own pixels: the
 // (node, channel type, frame) triple - the timeline's own name for a key - looked up
@@ -537,9 +527,9 @@ bool panelKeyAt(
 // means one GL context, which is also what the per-context guard above exists for). What
 // remains here is everything the ONE host and the headless pixel gate still share:
 //
-//   * the panel's INK: gui::drawPanel and its helpers (labels, curves, markers, chips,
-//     the marquee and the hull, the panel's one control), which draw a model into a draw
-//     list and read no font off the current context;
+//   * the panel's INK: gui::drawPanel and its helpers (labels, curves, markers, chips
+//     and the marquee), which draw a model into a draw list and read no font off the
+//     current context;
 //   * the model's PIXEL-LEVEL palette decisions: gui::kDrawTextHalo and
 //     gui::kValueLabelGap, here rather than in the .cpp because the gate asserts against
 //     them;

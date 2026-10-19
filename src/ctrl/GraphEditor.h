@@ -362,28 +362,13 @@ public:
     time::Selection& selection() { return *mSelection; }
     const time::Selection& selection() const { return *mSelection; }
 
-    // --- the selection's HULL, COUNT and MARKER STATES ---
+    // --- the selection's COUNT and MARKER STATES ---
     //
-    // The selection as the panel's own drawing pass needs it, in DATA space (frame
-    // and value), never in pixels: the mapping to pixels is the caller's, through
-    // the same Scaler the curves and the hit-test go through, so a hull drawn from
-    // this cannot desync from the markers it encloses.
-    //
-    // HULL: the convex outline of every SELECTED MARKER - their corners, in order,
-    // with collinear points dropped - as (frame, value) points. The value of an
-    // entry that names one component is read on THAT component (it is the marker
-    // the user sees selected), and a whole-key entry contributes every graphable
-    // component of its type, because such an entry IS every marker of its key (see
-    // time::Selection::kKeyLevel). A key whose type is not graphable contributes
-    // nothing, and a stale entry (a frame the document no longer holds) is skipped.
-    // EMPTY when nothing (live) is selected - and, with fewer than three points,
-    // the hull of what is there (a point or a segment), which encloses nothing but
-    // is the honest outline of that many markers.
-    QVector<QPointF> selectionHull() const;
-    // The number of KEYS the selection names that the document still holds - the
-    // count the header and the marquee label show ("3 keys"). A stale entry is not
-    // a key the user sees selected, so it is not counted, and two markers of one
-    // key are ONE key.
+    // The number of KEYS the selection names that the document still holds. A stale
+    // entry is not a key the user sees selected, so it is not counted, and two
+    // markers of one key are ONE key. It is a FACT about the live selection and not
+    // a drawing: the panel publishes it to the accessibility tree (", %n key(s)
+    // selected" on its summary), and nothing inks it.
     int selectionCount() const;
 
     // --- the marker states the drawing layer reads ---
@@ -433,38 +418,17 @@ public:
     // True while a middle-button pan is in flight.
     bool isPanning() const { return mPanning; }
 
-    // --- the live numbers of a key drag (the panel's pointer readout) ---
-    //
-    // While a key move is in flight the panel draws the numbers AT the pointer, and
-    // they must be the deltas the gesture APPLIED, not the pointer's own
-    // displacement: a refused step (a destination another key owns) leaves the keys
-    // where they were while the pointer moves on, so a pointer difference would be
-    // wrong by construction (see the MOVE note's refusal rule). These three are
-    // exactly that, read off the gesture's own state - pure, no allocation, no
-    // document walk.
+    // --- is a key move in flight? ---
     //
     // "IS A MOVE IN FLIGHT" IS ANSWERED BY THE GESTURE'S COMMAND: true exactly while
-    // the stack still holds the command this drag pushed as its MODIFIABLE one,
-    // which is the same condition as "the document holds the deltas below". An
+    // the stack still holds the command this drag pushed as its MODIFIABLE one. An
     // armed press that has not crossed a pixel yet (no command yet) and a drag
     // whose command an undo dropped (the keys are back at the press) therefore
     // both read NOT MOVING - the honest answer, because in neither state does a
-    // delta describe the document. The move is one cmnd::Gesture<KeyMoveCommand>,
-    // so the whole question is one pointer comparison.
+    // step describe the document. The move is one cmnd::Gesture<KeyMoveCommand>,
+    // so the whole question is one pointer comparison. Pure, no allocation, no
+    // document walk.
     bool isMovingKeys() const;
-    // The FRAME delta the move has ACCEPTED so far: the gesture's frame cursor
-    // minus the frame the pressed key held at the press. The cursor only advances
-    // on an ACCEPTED step, so a refused step reads as "not moved", and a mid-drag
-    // read always equals the shift the keys themselves show. 0 when no key move is
-    // in flight.
-    int keyMoveFrameDelta() const;
-    // The VALUE delta the move last WROTE: the delta every member's component was
-    // given in that step (a key's own setter may then clamp it - one number cannot
-    // be every key's outcome, so this is the GESTURE's delta, the one number the
-    // readout has). A step that left the values alone stores the value it wrote,
-    // which is 0 there; the number never comes from the pointer. 0 when no key move
-    // is in flight.
-    float keyMoveValueDelta() const;
 
     // --- the three key edits: add, move, remove ---
     //
@@ -593,10 +557,10 @@ public:
     //     removed it) the gesture stops and says so, like the handle drag's
     //     anchor check.
     //
-    // THE DELTAS THE GESTURE APPLIED are published while it is in flight - see
-    // isMovingKeys / keyMoveFrameDelta / keyMoveValueDelta above, which the panel's
-    // pointer readout draws from. Both are the ACCEPTED step's, so they hold their
-    // last accepted value across a refusal instead of following the pointer.
+    // WHETHER A MOVE IS IN FLIGHT is read off the gesture itself while the drag is
+    // open - see isMovingKeys above - so a caller can tell a held key move from a
+    // finished one, and a refused step leaves that answer untouched (the command is
+    // still the stack's modifiable one; only the KEYS did not move).
     //
     // REMOVE. Removes every key the panel's CURRENT selection names through
     // TimeLine::createRemover, inside ONE notifier + macro route, so a
@@ -1078,17 +1042,6 @@ private:
     // the press - which is the movement the user actually made.
     core::Frame mMovePointerFrame;
     QPoint mMovePressPos;
-    // The PRESSED key's frame at the press and the value delta the gesture last
-    // WROTE: the two numbers the pointer readout reports are differences against
-    // these (see isMovingKeys / keyMoveFrameDelta / keyMoveValueDelta). The frame
-    // is the base the ACCEPTED frame delta is measured from - mMoveFrame is the
-    // same gesture's cursor and advances only on an accepted step, so a refused
-    // step leaves the difference where it was - and the value delta is stored
-    // rather than recomputed, because the pointer's row is NOT what the document
-    // was given.
-    core::Frame mMovePressFrame;
-    float mMoveValueDelta;
-
     // THE FRAME HALF'S units: ONE entry per KEY the panel's SELECTION named when
     // the press armed the move, deduplicated by the key itself - two selected
     // markers of one key are one frame, and moving it twice would be a double

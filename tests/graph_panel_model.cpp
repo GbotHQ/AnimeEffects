@@ -304,9 +304,6 @@ QVector<QRect> publishedRects(const gui::GraphPanelModel& aModel) {
         // the drawing layer to write a name in.
         rects.append(curve.chip);
     }
-    if (!aModel.selectionLabel.rect.isEmpty())
-        rects.append(aModel.selectionLabel.rect);
-    rects.append(aModel.channelsButton);
     rects.append(aModel.marquee);
     return rects;
 }
@@ -1074,24 +1071,11 @@ int main(int argc, char** argv) {
         CHECK(badChipText == 0);
         CHECK(outsideChips == 0);
         CHECK(offCurveChips == 0);
-
-        // The panel's ONE control: the channel button, in the plot's top-right
-        // corner, clear of the ruler band and INSIDE the plot - or an empty box when
-        // there is no room for it (block [8]).
-        std::printf("[4] channelsButton (%d,%d,%dx%d) text=\"%s\"  plot.right=%d rulerBandTop=%d\n",
-                    model.channelsButton.x(), model.channelsButton.y(), model.channelsButton.width(),
-                    model.channelsButton.height(), qUtf8Printable(model.channelsButtonText), model.plot.right(),
-                    model.rulerBandTop);
-        CHECK(!model.channelsButtonText.isEmpty());
-        CHECK(model.plot.contains(model.channelsButton));
-        CHECK(model.channelsButton.right() < model.plot.right());
-        CHECK(model.channelsButton.top() >= model.rulerBandTop);
     }
 
     // -------------------------------------------------------------------------
-    // 8. NO LEGEND: the names live at their curves, and the panel's one control is
-    // the button that opens the channel list. Three things are pinned, and none of
-    // them is cosmetic:
+    // 8. NO LEGEND: the names live at their curves. Two things are pinned, and
+    // neither is cosmetic:
     //   1. nothing names a channel in the plot's bottom-left corner any more - the
     //      legend stack is gone and not orphaned, and every chip the model publishes
     //      is anchored at the plot's RIGHT edge (so not one of them can sit where the
@@ -1099,7 +1083,7 @@ int main(int argc, char** argv) {
     //   2. a cramped viewport changes the LIST not at all - every row is still
     //      published, because the list is the application's own QMenu and a menu
     //      scrolls - while the geometry the panel DRAWS gives up rather than leaving
-    //      the plot: a chip with no room is an empty rect, and so is a button;
+    //      the plot: a chip with no room is an empty rect;
     //   3. every chip the cramped model does publish is still inside the plot, so a
     //      box that exists is always a box the drawing layer can draw.
     {
@@ -1114,18 +1098,15 @@ int main(int argc, char** argv) {
                 ++chipsOutsidePlot;
         }
         std::printf("[8] full viewport: chips=%d  chips left of the plot's centre (where the legend was)=%d  "
-                    "chips outside the plot=%d  button (%d,%d,%dx%d) in the top half=%d\n",
+                    "chips outside the plot=%d\n",
                     [&model] {
                         int n = 0;
                         for (const gui::PanelCurve& c : model.curves)
                             n += !c.chip.isEmpty();
                         return n;
-                    }(), chipsLeftOfCentre, chipsOutsidePlot, model.channelsButton.x(), model.channelsButton.y(),
-                    model.channelsButton.width(), model.channelsButton.height(),
-                    int(model.channelsButton.center().y() < model.plot.center().y()));
+                    }(), chipsLeftOfCentre, chipsOutsidePlot);
         CHECK(chipsLeftOfCentre == 0);
         CHECK(chipsOutsidePlot == 0);
-        CHECK(model.channelsButton.center().y() < model.plot.center().y());
 
         const QSize cramped(160, 48);
         const gui::GraphPanelModel crampedModel = gui::buildGraphPanelModel(editor, cramped, palette);
@@ -1170,26 +1151,23 @@ int main(int argc, char** argv) {
 
         std::printf("[8] cramped viewport %dx%d -> plot (%d,%d,%dx%d)  channel rows=%d (identity mismatches=%d)  "
                     "published chips=%d  empty chips=%d (of those, ones that WOULD have fitted=%d)  chips outside "
-                    "the plot=%d  button empty=%d\n",
+                    "the plot=%d\n",
                     cramped.width(), cramped.height(), crampedModel.plot.x(), crampedModel.plot.y(),
                     crampedModel.plot.width(), crampedModel.plot.height(), isz(crampedModel.channels), identityLost,
-                    crampedChips, crampedEmptyChips, dishonestEmptyChips, crampedOutsideChips,
-                    int(crampedModel.channelsButton.isEmpty()));
+                    crampedChips, crampedEmptyChips, dishonestEmptyChips, crampedOutsideChips);
 
         CHECK(!crampedModel.plot.isEmpty());
         CHECK(crampedModel.channels.size() == model.channels.size());
         CHECK(identityLost == 0);
         CHECK(crampedOutsideChips == 0);
         CHECK(dishonestEmptyChips == 0);
-        // The button gives up WHOLE: it is inside the plot, or it is not there at all.
-        CHECK(crampedModel.channelsButton.isEmpty() || crampedModel.plot.contains(crampedModel.channelsButton));
 
-        // A plot too small for anything at all: the chips are empty and the button is
-        // no control. The viewport has to leave a NON-EMPTY plot first: the label
-        // column's reserve is the value format's own width (Scaler::axisLabelWidth(),
-        // 68px at the UI font rather than the old 46), so the plot starts 22px further
-        // right and this fixture grew by exactly that much (64 -> 80) to keep the
-        // premise - a plot that exists and is narrower than 16px.
+        // A plot too small for anything at all: every chip is empty. The viewport has
+        // to leave a NON-EMPTY plot first: the label column's reserve is the value
+        // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
+        // than the old 46), so the plot starts 22px further right and this fixture
+        // grew by exactly that much (64 -> 80) to keep the premise - a plot that
+        // exists and is narrower than 16px.
         const QSize tooNarrow(80, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
         int narrowChips = 0;
@@ -1197,18 +1175,14 @@ int main(int argc, char** argv) {
             if (!curve.chip.isEmpty())
                 ++narrowChips;
         }
-        std::printf("[8] narrow viewport %dx%d -> plot width=%d  channel rows=%d  published chips=%d  button "
-                    "(empty=%d)  chip text=\"%s\"\n",
+        std::printf("[8] narrow viewport %dx%d -> plot width=%d  channel rows=%d  published chips=%d  "
+                    "chip text=\"%s\"\n",
                     tooNarrow.width(), tooNarrow.height(), narrowModel.plot.width(), isz(narrowModel.channels),
-                    narrowChips, int(narrowModel.channelsButton.isEmpty()),
+                    narrowChips,
                     narrowModel.curves.isEmpty() ? "" : qUtf8Printable(narrowModel.curves.first().chipText));
         CHECK(narrowModel.plot.width() < 16); // no room for a 12px-chip-plus-text: see the header's CHIPS
         CHECK(narrowModel.channels.size() == model.channels.size());
         CHECK(narrowChips == 0);
-        CHECK(narrowModel.channelsButton.isEmpty()); // a control that cannot be drawn must not be hit
-        // ...and the names were never DROPPED, only their boxes: the list still names
-        // every channel (the button's own words say so).
-        CHECK(!narrowModel.channelsButtonText.isEmpty());
     }
 
     // -------------------------------------------------------------------------
@@ -1403,10 +1377,7 @@ int main(int argc, char** argv) {
         CHECK(emptyModel.curves.isEmpty());
         CHECK(emptyModel.channels.isEmpty());
         CHECK(emptyModel.isEmpty());
-        // An empty panel has no control either: the button's words would name a list
-        // of nothing, and its box would be a hit target with no action behind it.
-        CHECK(emptyModel.channelsButton.isEmpty());
-        CHECK(emptyModel.selectionHull.isEmpty());
+        CHECK(emptyModel.selectionCount == 0);
 
         editor.setTargets({ &nodeA, &nodeB });
         const gui::GraphPanelModel again = gui::buildGraphPanelModel(editor, viewport, palette);
@@ -2199,68 +2170,34 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
-    // 14. THE SELECTION HULL: the editor's own outline, in the model's own pixels.
-    // The editor states it in DATA space (frame, value) - never in pixels, so it
-    // cannot desync from the markers it encloses - and the model maps every point
-    // through the SAME scaler the curves go through. With nothing selected the hull is
-    // EMPTY, which is the model's whole signal to draw nothing (and to publish no
-    // count label with it); with a key selected it is NON-EMPTY, its count is the
-    // editor's own, and the label writes that count.
+    // 14. THE SELECTION COUNT, which the model still publishes and nothing draws.
+    // Its one consumer now is the panel's accessibility summary ("N keys selected",
+    // built by gui::GraphPanelFrame from this field), so what is pinned here is that
+    // the field is the EDITOR's own number and follows the selection: the model is
+    // read against editor.selectionCount(), the file's usual oracle, with nothing
+    // selected, with one key selected, and after the selection is cleared again.
     {
         // Nothing before this block selects a key, and that is stated rather than
-        // assumed: "the hull is empty" is only an assertion if nothing is selected.
+        // assumed: "the count is 0" is only an assertion if nothing is selected.
         editor.clearSelection();
         const gui::GraphPanelModel none = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[14] no selection: hull points=%d  count=%d  label box empty=%d  label text=\"%s\"\n",
-                    isz(none.selectionHull), none.selectionCount, int(none.selectionLabel.rect.isEmpty()),
-                    qUtf8Printable(none.selectionLabel.text));
-        CHECK(none.selectionHull.isEmpty());
+        std::printf("[14] no selection: count=%d\n", none.selectionCount);
         CHECK(none.selectionCount == 0);
-        CHECK(none.selectionLabel.rect.isEmpty());
-        CHECK(none.selectionLabel.text.isEmpty());
 
-        // ONE key: the Move X key at frame 0 of target A. The selection names a key by
-        // (node, type, frame) - the timeline's own triple - and the hull reads that
-        // key's value on the FIRST graphable component of its type.
+        // ONE key: the Move X key at frame 0 of target A, selected by the panel's own
+        // rule (a key is named by node, type and frame - the timeline's triple).
         const ctrl::graph::Channel moveX(core::TimeKeyType_Move, 0);
         editor.selectKey(nodeA, moveX, core::Frame(0));
-
-        ctrl::graph::Scaler hullOracle = editor.scale();
-        hullOracle.setRect(panel);
         const gui::GraphPanelModel one = gui::buildGraphPanelModel(editor, viewport, palette);
-
-        const QVector<QPointF> stated = editor.selectionHull();
-        int offTheEditorsOwnPoints = 0;
-        if (stated.size() != one.selectionHull.size())
-            ++offTheEditorsOwnPoints;
-        for (int i = 0; i < stated.size() && i < one.selectionHull.size(); ++i) {
-            const QPointF expected(
-                hullOracle.pixelXOfFrame(stated.at(i).x()), double(hullOracle.pixelY(float(stated.at(i).y())))
-            );
-            if (one.selectionHull.at(i) != expected)
-                ++offTheEditorsOwnPoints;
-        }
-        std::printf("[14] one key selected: editor selectionCount=%d hull points=%d (editor states %d)  points off "
-                    "the scaler mapping=%d  label box=(%d,%d %dx%d) text=\"%s\"\n",
-                    editor.selectionCount(), isz(one.selectionHull), isz(stated), offTheEditorsOwnPoints,
-                    one.selectionLabel.rect.x(), one.selectionLabel.rect.y(), one.selectionLabel.rect.width(),
-                    one.selectionLabel.rect.height(), qUtf8Printable(one.selectionLabel.text));
-        CHECK(!one.selectionHull.isEmpty());
+        std::printf("[14] one key selected: count=%d (editor states %d)\n", one.selectionCount,
+                    editor.selectionCount());
         CHECK(one.selectionCount == editor.selectionCount());
         CHECK(one.selectionCount == 1);
-        CHECK(offTheEditorsOwnPoints == 0);
-        CHECK(!one.selectionLabel.rect.isEmpty());
-        CHECK(!one.selectionLabel.text.isEmpty());
-        CHECK(one.plot.contains(one.selectionLabel.rect));
-        CHECK(one.selectionLabel.text.contains(QString::number(one.selectionCount))); // the label IS the count
 
         editor.clearSelection();
         const gui::GraphPanelModel cleared = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[14] cleared again: hull points=%d  count=%d  label empty=%d\n", isz(cleared.selectionHull),
-                    cleared.selectionCount, int(cleared.selectionLabel.rect.isEmpty()));
-        CHECK(cleared.selectionHull.isEmpty());
+        std::printf("[14] cleared again: count=%d\n", cleared.selectionCount);
         CHECK(cleared.selectionCount == 0);
-        CHECK(cleared.selectionLabel.rect.isEmpty());
     }
 
     // -------------------------------------------------------------------------
@@ -2483,91 +2420,6 @@ int main(int argc, char** argv) {
         CHECK(clearedTally.wrongSelected == 0);
         CHECK(clearedTally.wrongSibling == 0);
         CHECK(flaggedCount(cleared) == 0);
-
-        // ---- THE DRAG READOUT's passthrough (the model half of the pixel gate's
-        // assertion 30). The numbers are the EDITOR's, so the assertion is an EQUALITY
-        // with what the editor publishes, read while a real key move is driven through
-        // the editor's own cursor path - a press on a key, then a move. Three states are
-        // read: a press that has not moved (no step accepted yet, so NOT moving), a
-        // dragged step (moving, with the deltas the gesture applied), and the release
-        // (nothing in flight). The model never differences the pointer; the editor's own
-        // numbers are what it republishes, which is the whole point of the field.
-        {
-            const gui::PanelCurve* liveX = curveFor(cleared, &nodeA, moveX);
-            CHECK(liveX != nullptr && !liveX->keyDots.isEmpty());
-            if (liveX && !liveX->keyDots.isEmpty()) {
-                const QPointF dot = liveX->keyDots.at(0);
-                const QPoint pressPoint(int(dot.x()), int(dot.y()));
-                const QPoint movePoint(pressPoint.x() + 40, pressPoint.y() - 30);
-                CHECK(cleared.plot.contains(pressPoint) && cleared.plot.contains(movePoint));
-
-                core::CameraInfo camera;
-                camera.setScreenSize(viewport);
-                core::AbstractCursor cursor;
-                QMouseEvent press(
-                    QEvent::MouseButtonPress, pressPoint, pressPoint, pressPoint, Qt::LeftButton, Qt::LeftButton,
-                    Qt::NoModifier
-                );
-                QMouseEvent move(
-                    QEvent::MouseMove, movePoint, movePoint, movePoint, Qt::NoButton, Qt::LeftButton, Qt::NoModifier
-                );
-                QMouseEvent release(
-                    QEvent::MouseButtonRelease, movePoint, movePoint, movePoint, Qt::LeftButton, Qt::NoButton,
-                    Qt::NoModifier
-                );
-                // The modifier state the widget feeds in: a PLAIN press selects the marker
-                // under the pointer and arms the move (Ctrl would insert, Shift extend).
-                editor.setModifiers(Qt::NoModifier);
-                const bool pressed = cursor.setMousePress(&press, camera) && editor.updateCursor(camera, cursor);
-                const gui::GraphPanelModel afterPress = gui::buildGraphPanelModel(editor, viewport, palette);
-                const bool dragged = cursor.setMouseMove(&move, camera) && editor.updateCursor(camera, cursor);
-                const gui::GraphPanelModel afterDrag = gui::buildGraphPanelModel(editor, viewport, palette);
-                // THE EDITOR'S OWN NUMBERS ARE READ HERE, while the gesture is still in
-                // flight: the release RESETS them (the engine's own rule - a delta only
-                // describes the document while the command the drag pushed is still the
-                // stack's modifiable one - pinned by tests/graph_drag.cpp's section 23f), so
-                // reading them after the release would compare the model's live numbers
-                // against a zeroed editor and fail for the wrong reason. The model is built
-                // BEFORE the release too, so this is one instant read twice.
-                const bool dragLive = editor.isMovingKeys();
-                const int dragFrameDelta = editor.keyMoveFrameDelta();
-                const float dragValueDelta = editor.keyMoveValueDelta();
-                cursor.setMouseRelease(&release, camera);
-                editor.updateCursor(camera, cursor);
-                const gui::GraphPanelModel afterRelease = gui::buildGraphPanelModel(editor, viewport, palette);
-
-                std::printf(
-                    "[15] key drag: pressed=%d dragged=%d  after_press live=%d  after_drag live=%d frame=%d value=%g"
-                    " (editor at that build %d/%d/%g)  after_release live=%d frame=%d value=%g"
-                    " (editor now %d/%d/%g)\n",
-                    int(pressed), int(dragged), int(afterPress.keyDrag.live), int(afterDrag.keyDrag.live),
-                    afterDrag.keyDrag.frameDelta, double(afterDrag.keyDrag.valueDelta), int(dragLive), dragFrameDelta,
-                    double(dragValueDelta), int(afterRelease.keyDrag.live), afterRelease.keyDrag.frameDelta,
-                    double(afterRelease.keyDrag.valueDelta), int(editor.isMovingKeys()), editor.keyMoveFrameDelta(),
-                    double(editor.keyMoveValueDelta())
-                );
-                CHECK(pressed);
-                CHECK(dragged);
-                // A press alone has accepted no step, so there is no delta to describe the
-                // document and the readout is not live.
-                CHECK(!afterPress.keyDrag.live);
-                CHECK(afterDrag.keyDrag.live == dragLive);
-                CHECK(afterDrag.keyDrag.frameDelta == dragFrameDelta);
-                CHECK(afterDrag.keyDrag.valueDelta == dragValueDelta);
-                // ...and the step was a real one: a diagonal drag with no modifier moves
-                // both halves (a zero here would make the equality above vacuous).
-                CHECK(afterDrag.keyDrag.live);
-                CHECK(afterDrag.keyDrag.frameDelta != 0);
-                CHECK(afterDrag.keyDrag.valueDelta != 0.0f);
-                // THE RELEASE: the editor zeroes both deltas and stops moving, and the model
-                // built after it says exactly that - a published readout that kept the last
-                // drag's numbers would be claiming a gesture that is over.
-                CHECK(!editor.isMovingKeys() && editor.keyMoveFrameDelta() == 0
-                      && editor.keyMoveValueDelta() == 0.0f);
-                CHECK(!afterRelease.keyDrag.live);
-                CHECK(afterRelease.keyDrag.frameDelta == 0 && afterRelease.keyDrag.valueDelta == 0.0f);
-            }
-        }
 
         // The editor is left as the blocks before this one left it: no selection, the
         // two targets, the panel's own rect in the scaler.

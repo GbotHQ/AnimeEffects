@@ -58,45 +58,6 @@ double pixelDistance(const QPointF& aLhs, const QPointF& aRhs) {
     return std::hypot(aLhs.x() - aRhs.x(), aLhs.y() - aRhs.y());
 }
 
-// The convex hull of a point set, in counter-clockwise order (Andrew's monotone
-// chain), with collinear boundary points dropped so the outline's vertices are
-// the corners only. Duplicates are collapsed first, so two points that coincide
-// count once. Fewer than three points cannot enclose an area, so they come back
-// as the hull of themselves (a point or a segment) rather than as an empty
-// outline: the caller gets the same KIND of answer for one selected key as for
-// ten. This is the selection hull's geometry (GraphEditor::selectionHull), and it
-// works in DATA space - the caller maps the points through the Scaler.
-QVector<QPointF> convexHull(QVector<QPointF> aPoints) {
-    std::sort(aPoints.begin(), aPoints.end(), [](const QPointF& aLhs, const QPointF& aRhs) {
-        return aLhs.x() != aRhs.x() ? aLhs.x() < aRhs.x() : aLhs.y() < aRhs.y();
-    });
-    aPoints.erase(std::unique(aPoints.begin(), aPoints.end()), aPoints.end());
-
-    const int count = aPoints.size();
-    if (count <= 2) {
-        return aPoints;
-    }
-
-    const auto cross = [](const QPointF& aO, const QPointF& aA, const QPointF& aB) {
-        return (aA.x() - aO.x()) * (aB.y() - aO.y()) - (aA.y() - aO.y()) * (aB.x() - aO.x());
-    };
-
-    QVector<QPointF> hull(2 * count);
-    int k = 0;
-    for (int i = 0; i < count; ++i) {
-        while (k >= 2 && cross(hull[k - 2], hull[k - 1], aPoints[i]) <= 0.0)
-            --k;
-        hull[k++] = aPoints[i];
-    }
-    for (int i = count - 2, floor = k + 1; i >= 0; --i) {
-        while (k >= floor && cross(hull[k - 2], hull[k - 1], aPoints[i]) <= 0.0)
-            --k;
-        hull[k++] = aPoints[i];
-    }
-    hull.resize(k - 1); // the last vertex repeats the first
-    return hull;
-}
-
 // The inverse of graph::handlePoint for one drag position. aFlatY is what the y
 // component falls back to when the segment's value span is zero: a constant
 // segment has no value axis to normalize across, so the vertical component of
@@ -250,8 +211,6 @@ namespace ctrl {
         mMoveFrame(),
         mMovePointerFrame(),
         mMovePressPos(),
-        mMovePressFrame(),
-        mMoveValueDelta(0.0f),
         mMoveKeys(),
         mMoveMembers(),
         mAxisFps(0),
@@ -1534,25 +1493,9 @@ namespace ctrl {
     }
 
     //-------------------------------------------------------------------------------------------------
-    // The live numbers of a key drag: see the header for what each one means and
-    // why "in flight" is the gesture's own command rather than the armed flag.
+    // Is a key move in flight: see the header for why "in flight" is the gesture's
+    // own command rather than the armed flag.
     bool GraphEditor::isMovingKeys() const { return mKeyMoveGesture.continues(); }
-
-    int GraphEditor::keyMoveFrameDelta() const {
-        if (!mKeyMoveGesture.continues()) {
-            return 0; // no command the stack still owns: no delta describes the document
-        }
-        // The gesture's frame cursor minus the press-time base. Both advance only
-        // on an ACCEPTED step, so a refused one is "not moved" by construction.
-        return mMoveFrame.get() - mMovePressFrame.get();
-    }
-
-    float GraphEditor::keyMoveValueDelta() const {
-        if (!mKeyMoveGesture.continues()) {
-            return 0.0f;
-        }
-        return mMoveValueDelta; // the last delta this gesture WROTE
-    }
 
     //-------------------------------------------------------------------------------------------------
     void GraphEditor::beginKeyMove(const Hit& aHit, const QVector<Entry>& aItems, const QPoint& aPressPos) {
@@ -1586,12 +1529,6 @@ namespace ctrl {
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
         mMoveFrame = aHit.keyFrame;
-        // The readout's base: the frame this key is at NOW (the cursor the frame
-        // delta is measured from), and the value delta of the gesture that was
-        // open before this press - there is none, so the two numbers a readout
-        // would draw start at "not moved" rather than at the last drag's.
-        mMovePressFrame = aHit.keyFrame;
-        mMoveValueDelta = 0.0f;
         // Where the pointer was, in PIXELS: both axes follow the pointer's own
         // delta from here, so a press up to the key radius off the key's centre
         // does not make the key jump by that offset on the first move. The value
@@ -1759,9 +1696,6 @@ namespace ctrl {
 
             if (valueMoves) {
                 mKeyMoveGesture.command()->modifyValues(valueDelta);
-                // The readout's value half: what this step WROTE (not the
-                // pointer's row, which a refusal may have moved past).
-                mMoveValueDelta = valueDelta;
             }
 
             // ONE notification per step, as the timeline emits one per gesture
@@ -1825,10 +1759,6 @@ namespace ctrl {
             command->addValue(*member.key, member.target.pos.type(), member.component, member.baseValue);
         }
         command->modifyValues(valueDelta);
-        // The readout's value half: the delta this first commit wrote into every
-        // member's component. A gesture with NO value member (a frame-only
-        // selection) writes none, so its value delta stays 0.
-        mMoveValueDelta = mMoveMembers.isEmpty() ? 0.0f : valueDelta;
 
         // ONE command in ONE gesture inside ONE macro: the whole selection's move
         // is a single stack entry, and continues() above rewrites exactly it.
@@ -1980,10 +1910,6 @@ namespace ctrl {
         mMoveFrame = core::Frame();
         mMovePointerFrame = core::Frame();
         mMovePressPos = QPoint();
-        // ...and the readout's two numbers: a finished gesture has no delta, which
-        // is also what the getters answer once its command is closed.
-        mMovePressFrame = core::Frame();
-        mMoveValueDelta = 0.0f;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -2033,44 +1959,11 @@ namespace ctrl {
 
     bool GraphEditor::clearSelection() { return mSelection->clear(); }
 
-    QVector<QPointF> GraphEditor::selectionHull() const {
-        QVector<QPointF> points;
-
-        for (const time::Selection::Item& item : mSelection->items()) {
-            // A NON-const copy: pos.line()'s non-const overload is how the map
-            // owner comes back, and the selection hands out const items.
-            core::TimeLineEvent::Target target = item.target;
-            core::TimeLine* line = target.pos.line();
-            const int components = line ? graph::Channel::componentCount(target.pos.type()) : 0;
-            if (components <= 0)
-                continue; // not graphable: it has no marker, and no point to outline
-            const core::TimeKey* key = line->timeKey(target.pos.type(), target.pos.index());
-            if (!key)
-                continue; // a stale entry names a key the document no longer holds
-
-            // (frame, value) in the panel's own data space. An entry that names one
-            // component contributes THAT component's marker - the marker the user
-            // sees selected - and a whole-key entry contributes every graphable
-            // component of its type, because such an entry IS every marker of its
-            // key (see the HULL note).
-            const int first = item.component < 0 ? 0 : item.component;
-            const int last = item.component < 0 ? components : item.component + 1;
-            for (int c = first; c < last; ++c) {
-                points.append(
-                    QPointF(static_cast<double>(target.pos.index()),
-                            static_cast<double>(graph::Channel(target.pos.type(), c).value(*key)))
-                );
-            }
-        }
-
-        return convexHull(points);
-    }
-
     int GraphEditor::selectionCount() const {
         // The number of KEYS - two markers of one key are one key, which is what the
-        // count the header shows means ("3 keys"). An entry that names a key the
-        // document no longer holds is not counted: a stale entry is not a key the
-        // user sees selected.
+        // count the panel publishes means ("3 keys", read by the accessibility
+        // summary). An entry that names a key the document no longer holds is not
+        // counted: a stale entry is not a key the user sees selected.
         const QVector<time::Selection::Item>& items = mSelection->items();
         int count = 0;
         for (int i = 0; i < items.size(); ++i) {

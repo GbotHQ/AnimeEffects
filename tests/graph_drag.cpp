@@ -145,18 +145,14 @@
 // own stack holds nothing but the graph's edits and every undo probe below is
 // about the drag.
 //
-// THE MULTI-KEY MOVE, the HULL, the GHOST HANDLES, the MARKER and the POINTER
-// READOUT are pinned in sections 23b-23f:
+// THE MULTI-KEY MOVE, the GHOST HANDLES and the MARKER are pinned in sections
+// 23b-23f:
 //
 //   * 23b - the move carries the panel's WHOLE SELECTION: a two-key selection is
 //     dragged and BOTH keys move by the same frame AND value delta, the whole
 //     gesture is ONE command (KeyMoveCommand), ONE undo restores every frame and
 //     every value, a second undo finds nothing, and ONE redo rebuilds both. The
 //     single-key move is the one-member case of exactly this path.
-//   * 23c - selectionHull() is the convex outline of the selected keys as
-//     (frame, value) points (counter-clockwise, vertices only, empty with no
-//     selection, and the degenerate point/segment for one or two keys), and
-//     selectionCount() is the number of keys the selection names.
 //   * 23d - a drag on an Auto segment's GHOST handle (Curve::ghostHandles, the
 //     derived pair) WRITES Type_Custom carrying that pair at (1/3, y1) and
 //     (2/3, y2), inside the drag's own Gesture: one undo brings the Auto easing
@@ -174,12 +170,6 @@
 //     vertical drag moves both components; ctrl+A selects the shown channels' keys
 //     as one entry per key and Escape clears; and the set announces every change
 //     of its own, and only the changes.
-//   * 23f - the POINTER READOUT's three facts (isMovingKeys / keyMoveFrameDelta /
-//     keyMoveValueDelta): a press alone is not moving; after an accepted step they
-//     read the shift the KEYS show; a refused step (a destination another key
-//     owns) leaves them where the gesture last had them while the pointer moves
-//     on; a frame-only step keeps the last WRITTEN value delta; and a release
-//     reads not-moving with both numbers at 0.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -2760,7 +2750,6 @@ int main(int argc, char** argv) {
         CHECK(editor.selectionCount() == 1);
         CHECK(sendPress(editor, camera, groupCur, pG0, Qt::ShiftModifier));
         CHECK(editor.selectionCount() == 2);
-        CHECK(editor.selectionHull().size() == 2); // two keys are the segment between them
 
         const QPoint groupTo(groupScale.pixelX(core::Frame(5)), groupScale.pixelY(15.0f));
         const int expectedFrameStep = groupScale.frameAt(groupTo.x()).get() - groupScale.frameAt(pG0.x()).get();
@@ -2813,80 +2802,6 @@ int main(int argc, char** argv) {
             "[G] multi-key move: 2 selected keys moved by frame %+d / value %+.3f in ONE command; one undo "
             "restored both frames and both values, a second found nothing, and one redo rebuilt both\n",
             expectedFrameStep, expectedValueDelta
-        );
-
-        editor.setTargets({}); // drop the target before its owner dies
-    }
-
-    // --- 23c: the selection HULL and COUNT. selectionHull() is the convex
-    // outline of the selected keys as frame/value points (the drawing layer maps
-    // it through the same Scaler the curves go through), and selectionCount() is
-    // the "3 keys" the header and the marquee label show.
-    {
-        core::TestNode hullNode;
-        const float kHullValues[3] = { 0.0f, 10.0f, 0.0f };
-        for (int i = 0; i < 3; ++i) {
-            core::RotateKey* key = new core::RotateKey();
-            key->setRotate(kHullValues[i]);
-            setup.push(hullNode.timeLine()->createPusher(core::TimeKeyType_Rotate, i * 10, key));
-        }
-        CHECK(hullNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 3);
-
-        editor.setTargets({ &hullNode });
-        editor.scale().setRect(panel);
-        editor.fitAll();
-        editor.clearSelection();
-        project.commandStack().clear();
-
-        // NOTHING SELECTED: an empty outline and no keys.
-        CHECK(editor.selectionHull().isEmpty());
-        CHECK(editor.selectionCount() == 0);
-
-        const Scaler& hullScale = editor.scale();
-        const QPoint h0(hullScale.pixelX(core::Frame(0)), hullScale.pixelY(0.0f));
-        const QPoint h1(hullScale.pixelX(core::Frame(10)), hullScale.pixelY(10.0f));
-        const QPoint h2(hullScale.pixelX(core::Frame(20)), hullScale.pixelY(0.0f));
-        for (const QPoint& pixel : { h0, h1, h2 }) {
-            CHECK(hullScale.plotRect().contains(pixel));
-        }
-
-        core::AbstractCursor hullCur;
-
-        // ONE key: the hull is that key's own point (fewer than three points
-        // cannot enclose an area, so they come back as the hull of themselves).
-        CHECK(sendPress(editor, camera, hullCur, h1));
-        CHECK(sendRelease(editor, camera, hullCur, h1));
-        CHECK(editor.selectionCount() == 1);
-        const QVector<QPointF> oneHull = editor.selectionHull();
-        CHECK(oneHull.size() == 1);
-        CHECK(oneHull[0] == QPointF(10.0, 10.0));
-
-        // TWO keys: the segment between them, in x order.
-        CHECK(sendPress(editor, camera, hullCur, h0, Qt::ShiftModifier));
-        CHECK(sendRelease(editor, camera, hullCur, h0, Qt::ShiftModifier));
-        CHECK(editor.selectionCount() == 2);
-        const QVector<QPointF> twoHull = editor.selectionHull();
-        CHECK(twoHull.size() == 2);
-        CHECK(twoHull[0] == QPointF(0.0, 0.0));
-        CHECK(twoHull[1] == QPointF(10.0, 10.0));
-
-        // THREE keys: a real outline, counter-clockwise and vertices only. The
-        // frame-10 key is the triangle's apex and the two zero-value keys its
-        // base, so the outline is (0,0) -> (20,0) -> (10,10).
-        CHECK(sendPress(editor, camera, hullCur, h2, Qt::ShiftModifier));
-        CHECK(sendRelease(editor, camera, hullCur, h2, Qt::ShiftModifier));
-        CHECK(editor.selectionCount() == 3);
-        const QVector<QPointF> triangle = editor.selectionHull();
-        CHECK(triangle.size() == 3);
-        CHECK(triangle[0] == QPointF(0.0, 0.0));
-        CHECK(triangle[1] == QPointF(20.0, 0.0));
-        CHECK(triangle[2] == QPointF(10.0, 10.0));
-
-        std::printf(
-            "[H] selection hull: 3 keys at (0,0), (10,10), (20,0) give a %lld-vertex outline "
-            "(%.0f,%.0f) -> (%.0f,%.0f) -> (%.0f,%.0f), count %d\n",
-            triangle.size(), triangle[0].x(), triangle[0].y(), triangle[1].x(), triangle[1].y(),
-            triangle[2].x(), triangle[2].y(), editor.selectionCount()
         );
 
         editor.setTargets({}); // drop the target before its owner dies
@@ -3307,114 +3222,6 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 23f: THE POINTER READOUT'S THREE FACTS. While a key drag is in flight the
-    // panel draws the deltas AT the pointer, and the only honest numbers are the
-    // deltas the gesture APPLIED: a refused step (a destination another key owns)
-    // leaves the keys where they were while the pointer moves on, so a pointer
-    // difference would be wrong by construction. isMovingKeys()/keyMoveFrameDelta()/
-    // keyMoveValueDelta() are exactly that, and this section pins them against the
-    // document: mid-gesture, across a refusal, on a frame-only step, and after the
-    // release.
-    {
-        core::TestNode readNode;
-        core::RotateKey* rd0 = new core::RotateKey();
-        rd0->setRotate(0.0f);
-        setup.push(readNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, rd0));
-        core::RotateKey* rd1 = new core::RotateKey();
-        rd1->setRotate(90.0f);
-        setup.push(readNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, rd1));
-        CHECK(readNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 2);
-
-        editor.setTargets({ &readNode });
-        editor.scale().setRect(panel);
-        editor.fitAll();
-        project.commandStack().clear();
-
-        const Scaler& readScale = editor.scale();
-        const QPoint readFrom(readScale.pixelX(core::Frame(0)), readScale.pixelY(0.0f));
-        const QPoint readTo(readScale.pixelX(core::Frame(5)), readScale.pixelY(30.0f));
-        // rd1's own frame: the destination the step below is refused at.
-        const QPoint readOccupied(readScale.pixelX(core::Frame(20)), readScale.pixelY(30.0f));
-        const QPoint readFree(readScale.pixelX(core::Frame(7)), readScale.pixelY(30.0f));
-        for (const QPoint& pixel : { readFrom, readTo, readOccupied, readFree }) {
-            CHECK(readScale.plotRect().contains(pixel));
-        }
-
-        // The deltas the drag below will apply, computed through the SAME live
-        // scale the editor drags through - so the assertions are about "the number
-        // the keys show", not about a formula copied out of the implementation.
-        const int readFrameStep = readScale.frameAt(readTo.x()).get() - readScale.frameAt(readFrom.x()).get();
-        const int readFreeDelta = readScale.frameAt(readFree.x()).get() - readScale.frameAt(readFrom.x()).get();
-        const float readValueDelta = readScale.valueAt(readTo.y()) - readScale.valueAt(readFrom.y());
-        CHECK(readFrameStep == 5);
-        CHECK(readFreeDelta > readFrameStep); // 5 -> 7: a step forward from where the refusal left it
-        CHECK(readValueDelta > 20.0f && readValueDelta < 40.0f); // a real value move
-
-        core::AbstractCursor readCur;
-
-        // A PRESS alone is not a move: no step has been accepted, so there is no
-        // command to read the numbers off.
-        CHECK(sendPress(editor, camera, readCur, readFrom));
-        CHECK(!editor.isMovingKeys());
-        CHECK(editor.keyMoveFrameDelta() == 0);
-        CHECK(editor.keyMoveValueDelta() == 0.0f);
-
-        // The first ACCEPTED step. The three numbers are the shift the KEYS show.
-        CHECK(sendMove(editor, camera, readCur, readTo));
-        CHECK(editor.isMovingKeys());
-        CHECK(editor.keyMoveFrameDelta() == readFrameStep);
-        CHECK(editor.keyMoveValueDelta() == readValueDelta);
-        CHECK(rd0->frame() == readFrameStep);
-        CHECK(rd0->rotate() == 0.0f + readValueDelta);
-        CHECK(rd1->frame() == 20); // ...and the key the press did not select is untouched
-        CHECK(rd1->rotate() == 90.0f);
-        const int acceptedFrameDelta = editor.keyMoveFrameDelta();
-        const float acceptedValueDelta = editor.keyMoveValueDelta();
-
-        // THE REFUSAL. The pointer moves on to frame 20 - a real 15 frames further,
-        // and a row up - but rd1 owns that frame, so the WHOLE step is refused. The
-        // keys do not move, so the numbers must not either: a pointer difference
-        // would read 20 / +30 here.
-        CHECK(!sendMove(editor, camera, readCur, readOccupied));
-        CHECK(readScale.frameAt(readOccupied.x()) == core::Frame(20)); // the pointer really is there
-        CHECK(editor.isMovingKeys());                                  // the command is still this gesture's
-        CHECK(editor.keyMoveFrameDelta() == readFrameStep);            // ...and the delta says NOT MOVED
-        CHECK(editor.keyMoveValueDelta() == readValueDelta);
-        CHECK(rd0->frame() == readFrameStep);
-        CHECK(rd0->rotate() == 0.0f + readValueDelta);
-        CHECK(rd1->frame() == 20);
-        const int refusedFrameDelta = editor.keyMoveFrameDelta();
-        const float refusedValueDelta = editor.keyMoveValueDelta();
-
-        // A frame-only step from the refusal's own place: the frame cursor moves
-        // (5 -> 7, measured from where the gesture was LEFT, not from the refused
-        // pointer), and the value delta stays the LAST WRITTEN one, because this
-        // step wrote the value it already holds.
-        CHECK(sendMove(editor, camera, readCur, readFree));
-        CHECK(editor.keyMoveFrameDelta() == readFreeDelta);
-        CHECK(editor.keyMoveValueDelta() == readValueDelta);
-        CHECK(rd0->frame() == readFreeDelta); // the number and the key agree
-        CHECK(rd0->rotate() == 0.0f + readValueDelta);
-
-        // The RELEASE: no move in flight, both numbers 0 - the keys stay where the
-        // drag left them, which is what the 0s are allowed to hide.
-        CHECK(sendRelease(editor, camera, readCur, readFree));
-        CHECK(!editor.isMovingKeys());
-        CHECK(editor.keyMoveFrameDelta() == 0);
-        CHECK(editor.keyMoveValueDelta() == 0.0f);
-        CHECK(rd0->frame() == readFreeDelta);
-        CHECK(rd0->rotate() == 0.0f + readValueDelta);
-
-        std::printf(
-            "[R] pointer readout: after an accepted step the deltas read frame %+d / value %+.3f (the keys' own "
-            "shift); a refused step at frame 20 left them at %+d / %+.3f while the pointer had moved 20 frames "
-            "and a row; a release reads not-moving with both at 0\n",
-            acceptedFrameDelta, acceptedValueDelta, refusedFrameDelta, refusedValueDelta
-        );
-
-        editor.setTargets({}); // drop the target before its owner dies
-    }
-
     // --- 24: THE PANEL GOING AWAY. The editor has no shown/hidden state any more -
     // the dock's Graph page IS the panel while its tab is current, so nothing in
     // this class could describe it, and the Driver's viewport routing no longer asks
@@ -3463,15 +3270,12 @@ int main(int argc, char** argv) {
         CHECK(sendPress(editor, camera, awayCur, awayFrom));
         CHECK(sendMove(editor, camera, awayCur, awayTo));
         CHECK(editor.isMovingKeys()); // a key move is in flight ...
-        CHECK(editor.keyMoveFrameDelta() == awayStep);
         CHECK(aw0->frame() == awayStep);
         CHECK(!awayNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
 
         // ... and the page going away drops it.
         editor.panelHidden();
         CHECK(!editor.isMovingKeys());
-        CHECK(editor.keyMoveFrameDelta() == 0);
-        CHECK(editor.keyMoveValueDelta() == 0.0f);
         CHECK(!editor.hasMarquee());
         CHECK(!editor.isPanning());
 
@@ -3493,7 +3297,7 @@ int main(int argc, char** argv) {
         CHECK(!undoneAwayAgain);
 
         std::printf(
-            "[Z] panelHidden(): a key move open (frame 0 -> %d) was dropped - not moving, both deltas 0, the "
+            "[Z] panelHidden(): a key move open (frame 0 -> %d) was dropped - not moving, the "
             "keys left where the drag put them - and its ONE command still undid the whole gesture\n",
             awayStep
         );
@@ -3524,11 +3328,9 @@ int main(int argc, char** argv) {
         "frame), a press on a key plus a 2-axis drag moves its frame AND its value (Shift pins the "
         "dominant axis) and refuses an occupied destination, and removeSelectedKey() removes every "
         "selected key and restores the same key objects on undo; a key drag moves the WHOLE SELECTION "
-        "by one delta as ONE command (one undo, one redo), selectionHull()/selectionCount() report the "
-        "selection's convex outline in frame/value space and how many keys it names, and a drag on an "
-        "Auto segment's ghost handle writes Type_Custom carrying the derived pair at the third points "
-        "as one undo step, and while a drag is in flight isMovingKeys()/keyMoveFrameDelta()/"
-        "keyMoveValueDelta() publish the deltas the gesture APPLIED - unchanged across a refused step; "
+        "by one delta as ONE command (one undo, one redo), selectionCount() reports how many keys the "
+        "selection names, and a drag on an Auto segment's ghost handle writes Type_Custom carrying the "
+        "derived pair at the third points as one undo step; "
         "setSelectedKeysEasing() changes the "
         "easing type of the selected key(s) as ONE undo step on that same route, pushing nothing for "
         "an empty or stale selection, for the step-held image channel or for the type a key already "

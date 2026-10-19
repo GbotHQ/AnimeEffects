@@ -588,10 +588,11 @@ void TimeLineHeader::updateChannelsButton(const QVector<PanelChannelRow>& aRows)
     if (!mChannelsButton)
         return;
 
-    // The panel's own words for its control (GraphPanelModel's channelsButtonText): the
-    // total while every channel is shown, "shown of total" once one is hidden - the
-    // count IS the state the button changes. No rows at all means no list to open, so
-    // the control is disabled rather than opening an empty popup.
+    // The button's words are its own: the total while every channel is shown, "shown of
+    // total" once one is hidden - the count IS the state the button changes. The panel no
+    // longer publishes this control or its text (the button is a header control now). No
+    // rows at all means no list to open, so the control is disabled rather than opening
+    // an empty popup.
     int shown = 0;
     for (const PanelChannelRow& row : aRows) {
         if (row.visible)

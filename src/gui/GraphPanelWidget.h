@@ -51,10 +51,7 @@ class MainDisplayWidget;
 // so a theme change needs no signal. NOTHING ELSE is drawn: no title (the tab names
 // the page), no control of its own - the panel's ONE control (the channel list) is a
 // VIEW action and the design puts it in the DOCK HEADER, beside the zoom group, so
-// this page draws no button and HIT-TESTS none: the model still lays one out for
-// GraphPanelHost::Dock (GraphPanelModel is not this host's to change), and the host
-// drops it from the frame it publishes, which is what keeps the pointer's hits and the
-// accessibility tree free of a control that is no longer drawn here. And no scrim (an
+// this page draws no button and HIT-TESTS none. And no scrim (an
 // opaque floor has nothing to sit on, so the contrast-outline composite gui::outline
 // offers - the pass the removed overlay host ran - is NOT run here).
 //
@@ -79,9 +76,9 @@ class MainDisplayWidget;
 // editor has no shown/hidden flag left to gate on, because THIS PAGE is the panel
 // whenever its tab is current. The two controls the panel's views open - the channel
 // list (now the dock header's button, which hands this page's rows to
-// gui::MainDisplayWidget) and the timeline's easing picker - are opened from
-// gui::MainDisplayWidget, which is the object that has the timeline and the menus; see
-// appDisplay() below.
+// gui::MainDisplayWidget) and the timeline's own key menu (a right-click on a key) -
+// are opened from gui::MainDisplayWidget, which is the object that has the timeline
+// and its menus; see appDisplay() below.
 //
 // THE PANEL'S TWO KEYS. Ctrl+A selects every marker of the shown channels and Escape
 // clears the selection - ctrl::GraphEditor::selectAllMarkers / clearSelection, the
@@ -210,8 +207,13 @@ private:
     // A double-click on the plot: fits both axes (the panel's own gesture). Returns
     // true when it acted.
     bool doubleClickAt(const QPoint& aPos);
-    // The key under aPos by the EDITOR's own distance rule: selects it and opens the
-    // application's easing picker for the selection. Returns true when a key was hit.
+    // The key under aPos by the EDITOR's own distance rule: opens the TIMELINE'S OWN
+    // KEY MENU (the one a right-click on a timeline key builds, through
+    // gui::MainDisplayWidget::showGraphKeyMenu) at that key, in screen coordinates.
+    // The timeline applies its own right-click rule to the pressed key against the one
+    // shared selection, so with several keys selected the menu acts on all of them and
+    // a key that is not selected is lent to the menu for its lifetime. Returns true
+    // when a key was hit and the menu opened.
     bool openKeyMenuAt(const QPoint& aPos);
     // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
     // under the pointer CHANGES, and none for a move that keeps the same target. The
@@ -221,10 +223,12 @@ private:
     // what this compares.
     void updateHoverRepaint();
     // The viewport widget the application's menus live in (see the class comment):
-    // MainDisplayWidget owns the channel list and the timeline's easing picker and is
-    // the object that can map a panel position to a screen position. Asked for through
-    // the window rather than held, because the panel's host interface carries no
-    // reference to it (the dock constructs this widget with a GUIResources and a parent).
+    // MainDisplayWidget owns the channel list, and it is the handle on the timeline
+    // (timeLineWidget()), so the key menu is opened through it. Asked for through the
+    // window rather than held, because the panel's host interface carries no reference
+    // to it (the dock constructs this widget with a GUIResources and a parent). This
+    // widget maps its own points to screen coordinates itself (mapToGlobal): the two are
+    // siblings, so the display cannot map a point out of this widget's space.
     MainDisplayWidget* appDisplay() const;
 
     // Runs the action an accessible item advertises, i.e. the one the pointer performs

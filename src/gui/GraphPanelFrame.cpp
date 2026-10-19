@@ -167,13 +167,6 @@ constexpr float kChipHoverAlpha = 0.75f;
 // 6`, in pixels).
 constexpr double kChipHoverDistance = 6.0;
 
-// The panel's ONE control (GraphPanelModel's CHANNELS BUTTON): a translucent panel
-// tone under its label, the reference's own 'rgba(16,16,16,0.55)' through
-// theme::Graph::halo(), so the button reads over whatever curve crosses it.
-constexpr float kChannelsButtonAlpha = 0.55f;
-// Its corner radius, the reference's own 4px (mock.css, .gp-chbtn: border-radius 4px).
-constexpr float kChannelsButtonRounding = 4.0f;
-
 // TANGENT HANDLES (PanelHandle), in the reference's own ink (mock-graph.js:886-905):
 //
 //   * a STORED (Custom) pair is filled with the raised surface colour and STROKED in
@@ -194,9 +187,9 @@ constexpr float kGhostHandleShrink = 1.5f;
 constexpr float kFallbackFontPixelSize = 13.0f;
 
 // The accessibility ids are the header's (kPanelSummaryItemId, kPanelFitItemId,
-// kPanelKeyMenuItemId, kPanelChannelsItemId): both hosts of the panel dispatch on
-// them through publishPanelAccessibility's callback, so they are not private to this
-// translation unit any more.
+// kPanelKeyMenuItemId): both hosts of the panel dispatch on them through
+// publishPanelAccessibility's callback, so they are not private to this translation
+// unit any more.
 
 // lupdate's context for everything this file says to the user: the class is not a
 // QObject, so there is no tr() member for it to find.
@@ -1622,50 +1615,6 @@ void drawPanel(
         }
     }
 
-    // The selection HULL: the polygon the model mapped from the editor's own
-    // outline (GraphPanelModel::selectionHull), stroked as a closed 1px outline in
-    // theme::Graph::marqueeEdge() - the panel's selection accent, which is the very
-    // ink the marquee's edge uses below, because the hull IS that selection read
-    // around the markers instead of around a drag rectangle. NOTHING is drawn while
-    // the hull is empty: that IS the "nothing is selected" signal, exactly as an
-    // empty marquee is (and with ONE key selected the hull is a single point, which
-    // has no outline to stroke either). The count the model wrote as words - "3
-    // keys" - goes in the box it measured, in the panel's own text ink.
-    //
-    // IT GOES THROUGH THE COVERAGE PASS, like the curve strokes and the handle stems,
-    // and it has to: ImGui's own 1px path shifts its geometry by (+0.5, +0.5)
-    // (imgui_draw.cpp's rasterisation convention - see the stem's own note below), so
-    // a 1px outline asked for at the model's own integer coordinates spills across two
-    // half-covered rows instead of one whole one. The pass measures the distance to
-    // the segment it was handed, so the ink lands ON the model's points - which is
-    // what the gate measures. The point list is CLOSED here (the first vertex
-    // repeated) because the pass strokes the segments it is given, and one list serves
-    // both paths, so the fallback needs no closing flag either.
-    if (aModel.selectionHull.size() >= 2) {
-        QVector<QPointF> outline = aModel.selectionHull;
-        outline.append(aModel.selectionHull.first()); // the closing edge
-        const QColor outlineInk = aTheme.marqueeEdge();
-        if (stroke::isReady()) {
-            // The pass takes the ink's RGB from the colour and its ALPHA from the
-            // strength (it never reads the colour's own alpha - see addInkCallback), so
-            // a token that carries its alpha in the colour passes it as the strength:
-            // marqueeEdge() is accentBright at 230/255, i.e. this outline's own alpha.
-            addInkCallback(aDrawList, outline, outlineInk, float(outlineInk.alphaF()), 0.5f);
-        } else {
-            QVarLengthArray<ImVec2, 8> hull(int(outline.size()));
-            for (int i = 0; i < outline.size(); ++i) {
-                const QPointF& point = outline.at(i);
-                hull[i] = ImVec2(float(point.x()), float(point.y()));
-            }
-            aDrawList.AddPolyline(hull.constData(), int(hull.size()), toImU32(outlineInk), ImDrawFlags_None, 1.0f);
-        }
-    }
-    if (!aModel.selectionLabel.rect.isEmpty())
-        drawLabel(
-            aDrawList, font, fontSize, aModel.selectionLabel.rect, aModel.selectionLabel.text, LabelAlign::Centre,
-            axisText, halo
-        );
-
     // The live box-select marquee, when a drag is in flight. It is the timeline's
     // own gesture and is drawn with the timeline's own colours
     // (theme::Graph::marqueeEdge()/marqueeFill(), ctrl/time/time_Renderer.cpp's
@@ -1862,79 +1811,6 @@ void drawPanel(
             aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo, kValueLabelGap
         );
     aDrawList.PopClipRect();
-
-    // The panel's ONE control, last so it is the topmost ink on the panel: the
-    // "N channels" button, at the box the model laid out for THIS host
-    // (GraphPanelModel's CHANNELS BUTTON), labelled in the panel's text ink. An
-    // EMPTY box means the model found no room for it: nothing is drawn and nothing
-    // is hit-tested (see press()).
-    // Drawn after the plot clip because it is CHROME, not data: a curve crossing it
-    // is simply behind it, and unlike the labels inside the plot it is never cut.
-    //
-    // ITS BACKING IS THE OVERLAY'S. Over the artwork the button carries its own
-    // translucent panel tone (kChannelsButtonAlpha), because there is nothing else
-    // behind the label; on the DOCK's opaque floor (GraphPanelHost::Dock) the model
-    // hosts it in the ruler band and the floor is the backing - so the docked control
-    // is plain text, which is what the reference's own .gp-chbtn.hosted rule is (no
-    // placement and no background, against the floating one's rgba(16,16,16,0.55)).
-    // The model republishes the placement it was built with (`host`, see
-    // GraphPanelModel.h), so this reads the box's home rather than re-deriving it.
-    if (!aModel.channelsButton.isEmpty()) {
-        if (aModel.host != GraphPanelHost::Dock)
-            aDrawList.AddRectFilled(
-                rectMin(aModel.channelsButton), rectMax(aModel.channelsButton),
-                toImU32Strength(aTheme.halo(), kChannelsButtonAlpha), kChannelsButtonRounding
-            );
-        drawLabel(
-            aDrawList, font, fontSize, aModel.channelsButton, aModel.channelsButtonText, LabelAlign::Centre,
-            axisText, halo
-        );
-    }
-
-    // THE DRAG READOUT: the two numbers of a key move in flight, at the POINTER - the
-    // gesture's own deltas, so the panel's strip has nothing live to say while a drag is
-    // in hand (design section 4's strip row). The numbers are the MODEL's (PanelKeyDrag,
-    // straight from the editor's gesture state: the delta the move ACCEPTED and the one
-    // it last wrote - this layer never differences the pointer, which is the whole point
-    // of publishing them); what this layer decides is where they sit (at the pointer, the
-    // one thing the model cannot know) and how they are written: the panel's own label
-    // ink, `axisText` with the same halo every other label gets (shipped off; the
-    // contrast outline pass is what rings ink that would otherwise be lost), in the
-    // drawing font.
-    //
-    // DRAWN LAST, so nothing the panel paints can cover it: it is the one element that
-    // follows the pointer, and a readout under a curve would be exactly as useful as none.
-    // NOTHING IS DRAWN while no move is in flight - `live` false is the model's signal,
-    // and then there is no number to print at all.
-    if (aModel.keyDrag.live) {
-        const ImVec2 pointer = ImGui::GetIO().MousePos;
-        // The signs are explicit: "which way" is half of what a delta says, and a delta
-        // of +3 must not read as 3. The value's own format is the value axis'
-        // (ctrl::graph::Scaler::valueAxisText), so the readout's number and the numbers
-        // beside the axis are written the same way.
-        const QString frameText = (aModel.keyDrag.frameDelta > 0 ? QStringLiteral("+") : QString())
-            + QString::number(aModel.keyDrag.frameDelta);
-        const QString valueText = (aModel.keyDrag.valueDelta > 0 ? QStringLiteral("+") : QString())
-            + ctrl::graph::Scaler::valueAxisText(aModel.keyDrag.valueDelta);
-        const QString text =
-            trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "Δframe %1   Δvalue %2")).arg(frameText, valueText);
-
-        const QByteArray utf8 = text.toUtf8();
-        const ImVec2 size = measureText(font, fontSize, utf8.constData());
-        // The box is the text's own, kept inside the panel: the pointer can leave the plot
-        // mid-drag (and the panel is the whole viewport), and a number drawn off the panel
-        // is a number the user cannot read. The gap (gui::kReadoutGapPx) keeps the glyphs
-        // clear of the cursor itself.
-        const float x = ImMin(
-            ImMax(pointer.x + float(kReadoutGapPx), float(aModel.panel.left())),
-            ImMax(float(aModel.panel.right() + 1) - size.x, float(aModel.panel.left()))
-        );
-        const float y = ImMin(
-            ImMax(pointer.y + float(kReadoutGapPx), float(aModel.panel.top())),
-            ImMax(float(aModel.panel.bottom() + 1) - size.y, float(aModel.panel.top()))
-        );
-        addHaloedText(aDrawList, font, fontSize, ImVec2(x, y), axisText, halo, utf8.constData());
-    }
 }
 
 
@@ -2047,10 +1923,12 @@ QPointer<QWidget> gPanelDockPublisher;
 // The model the panel publishes to the accessibility tree, from the frame's own model
 // and the editor it was built from (null while the panel is not on screen).
 //
-// The panel's ONE control: the button that opens the channel list. It is the only
-// control the panel has, and it is published with the box the model laid out for it -
-// an EMPTY box means the button did not fit, so there is no control on screen to
-// publish.
+// THE PANEL PUBLISHES NO CONTROL OF ITS OWN ANY MORE: the button that opens the channel
+// list is the DOCK HEADER's (TimeLineHeader's own Qt widget, outside this tree's panel),
+// and the design removed the drawn selection count and drag readout as well. What the
+// panel still says is STATE: the summary line below names how many channels are shown,
+// how many keys the live selection names and which channel is focused - plus the two
+// actions it owns (fit, and the key menu for the selected key).
 //
 // AND THE LIST ITSELF IS NOT IN THE TREE, exactly like the key menu: it is the
 // application's own QMenu (a native window). What the tree says instead is the state
@@ -2067,24 +1945,28 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
         return published;
     }
 
-    if (!aModel.channelsButton.isEmpty()) {
-        a11y::Item channelsItem;
-        channelsItem.role = a11y::Item::PushButton;
-        channelsItem.id = kPanelChannelsItemId;
-        channelsItem.name = aModel.channelsButtonText;
-        channelsItem.value = trText(QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "shows the channel list"));
-        channelsItem.rect = aModel.channelsButton;
-        published.items.append(channelsItem);
-    }
-
     // The panel in one line: its own reason while it is empty (the model states it
-    // in words), otherwise how much is shown - plus the focused channel, which is
-    // the one piece of the panel's state with no control of its own.
+    // in words), otherwise how much is shown - plus how many keys the live selection
+    // names (when it names any) and the focused channel, which is the one piece of
+    // the panel's state with no control of its own.
     QString summary;
     if (!aModel.emptyState.isEmpty())
         summary = aModel.emptyState;
     else
         summary = trText(QT_TRANSLATE_N_NOOP("gui::ImGuiOverlay", "%n channel(s) shown"), int(aModel.curves.size()));
+
+    // THE SELECTION'S COUNT, which is the one thing the panel used to DRAW and now
+    // only says: the count label that sat above the selection's hull is gone (design
+    // decision - the panel prints no gesture numbers), so the number reaches assistive
+    // technology from here instead. This is the whole of what a screen reader gets for
+    // it: the sentence rides the summary, which is BOTH the root Pane's Name and the
+    // StaticText item below (see THE PANEL'S NAME), and it is added only while
+    // something IS selected - "0 keys selected" would be a sentence about nothing.
+    if (aModel.selectionCount > 0) {
+        summary = trText(QT_TRANSLATE_N_NOOP("gui::ImGuiOverlay", "%1, %n key(s) selected"), aModel.selectionCount)
+                      .arg(summary);
+    }
+
     if (aEditor->hasFocus() && aEditor->focusedNode()) {
         const QString label =
             aEditor->focusedNode()->name() + QStringLiteral(" : ") + aEditor->focusedChannel().name();
@@ -2382,12 +2264,14 @@ ImDrawData* runPanelFrame(
     // THE POINTER IS THE HOST'S, NOT ImGui's QUEUED INPUT (see the header). This host
     // paints when it is asked to, not once per input event, and Dear ImGui trickles its
     // event queue across NewFrame() calls - so the position the queue hands this frame can
-    // be behind the pointer the host itself has tracked. Measured in the docked host: the
-    // key-move readout was drawn a whole drag behind the pointer, at the press position
-    // (its box at the press + kReadoutGapPx while the pointer had moved 60px), in the very
-    // frame whose model carried the gesture's final deltas. ImGui's own NewFrame() has
-    // already run, so this write is what the drawing layer (and nothing else: the panel
-    // owns no ImGui window) reads as io.MousePos for the frame.
+    // be behind the pointer the host itself has tracked. Measured in the docked host while
+    // the panel still drew a key-move readout: it was drawn a whole drag behind the
+    // pointer, at the press position (its box at the press + 12px while the pointer had
+    // moved 60px), in the frame whose model carried the gesture's final deltas - and what
+    // reads the pointer now (the hovered chip, the marker it lights) can lag the same way.
+    // ImGui's own NewFrame() has already run, so this write is what the drawing layer
+    // (and nothing else: the panel owns no ImGui window) reads as io.MousePos for the
+    // frame.
     io.MousePos = ImVec2(float(aPointer.x()), float(aPointer.y()));
 
     // The curve ink's own pass, built on the current context the first time this runs and
@@ -2398,8 +2282,8 @@ ImDrawData* runPanelFrame(
     stroke::init();
 
     // The model of this frame, and nothing else: the panel's geometry never comes
-    // from a rect computed here. aHostStyle places the model's one control (the
-    // docked host's button sits in the ruler band) and the model republishes it.
+    // from a rect computed here. aHostStyle is republished as the floor the model was
+    // built for; it places nothing (the panel's one control lives in the dock header).
     GraphPanelModel model;
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
     const bool panelDrawn = aVisible && aEditor && drawList;

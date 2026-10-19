@@ -70,17 +70,10 @@ namespace gui {
 // expression at each call site, so they cannot drift - which is what
 // scripts/i18n/check_tr_contexts.py exists to police.
 QString graphPanelTr(const char* aSourceText);
-// The PLURAL half of the same pair: a string carrying %n, which Qt resolves
-// through the plural form of the same context ("3 keys", "1 key"). aN is the
-// count. Only the strings the panel writes as a COUNT use it - the channel
-// button's label and the selection label - and they are marked with
-// QT_TRANSLATE_N_NOOP("GraphPanel", ...) at their call sites, the extractor half
-// of the same pairing.
-QString graphPanelTr(const char* aSourceText, int aN);
 
-// One row of the CHANNEL LIST: a channel of one target, as the panel's one
-// control (the "N channels" button, see CHANNELS BUTTON) lists it. A row exists
-// for every (target, channel) that HAS KEYS, including a channel hidden through
+// One row of the CHANNEL LIST: a channel of one target, as the dock header's one
+// control (the "N channels" button) lists it. A row exists for every (target,
+// channel) that HAS KEYS, including a channel hidden through
 // GraphEditor::setChannelVisible - a hidden channel keeps its row (visible ==
 // false) and contributes no curve, so the user can see what is hidden and turn
 // it back on.
@@ -270,64 +263,26 @@ constexpr int kLineTop = kPillTop + kNumberHeight;
 } // namespace frameRuler
 
 
-// THE DRAG READOUT: the live numbers of a KEY MOVE in flight, as the editor publishes
-// them. Design section 4's strip row moves them out of the panel's strip and onto the
-// pointer ("the live numbers (Δframe, Δvalue, a tangent's x/y) are drawn at the pointer
-// instead, so the strip stops moving while a drag is in flight"), and this is the
-// key-drag case of that: the frame delta and the value delta, and nothing about a
-// tangent yet.
-//
-// WHY THE NUMBERS COME FROM THE EDITOR AND NOT FROM THE POINTER. The gesture applies
-// a QUANTIZED, REFUSED-STEP-AWARE delta: the frame half moves in whole frames, a
-// destination frame another key owns refuses the WHOLE step (the keys stay where they
-// were while the pointer moved), a Shift-constrained gesture zeroes one axis, and a
-// key's own setter may clamp the value it takes. A readout that differenced two pointer
-// positions would print numbers the document does not have - and would print them
-// during a refused step, when nothing moved at all. So the model publishes the
-// editor's own answers (ctrl::GraphEditor::isMovingKeys / keyMoveFrameDelta /
-// keyMoveValueDelta) and the drawing layer prints them.
-//
-// CLASSIFICATION, NOT INK: where the readout goes (the pointer) and how it is written
-// are the drawing layer's - the model does not know the pointer, and the panel's text
-// ink is the layer's business (see gui::drawPanel). Two behaviours the editor documents
-// are carried through unchanged: `live` is false until the first step is ACCEPTED (an
-// armed press that has not crossed a pixel has no delta to report), and valueDelta is
-// the GESTURE's delta, which a key's own setter may have clamped - one number cannot be
-// every key's outcome, and the readout is not the place to guess.
-struct PanelKeyDrag {
-    bool live = false;     // == ctrl::GraphEditor::isMovingKeys()
-    int frameDelta = 0;    // == keyMoveFrameDelta(), the delta the gesture ACCEPTED
-    float valueDelta = 0.0f; // == keyMoveValueDelta(), the delta it last WROTE
-};
-
 // WHICH PLACEMENT THE MODEL PUBLISHES - the dock's Graph tab's, or the viewport
 // overlay's. The panel is ONE component (design section 5: "one dock, two tabs",
-// the Graph tab being the docked panel), and the whole of what the model does
-// differently for the two is the home of its ONE control: the dock's Graph tab
-// draws the panel edge to edge on the dock's floor, so the control belongs to the
-// PLOT the panel owns and is placed inside the plot's own right edge; the overlay
-// floats the panel over the viewport with no chrome of its own above it, so the
-// control keeps the panel's own top-right corner (see CHANNELS BUTTON below).
-// Either way it hangs clear of the ruler band's tick-and-number block.
+// the Graph tab being the docked panel), and this flag names the floor the model was
+// built for.
+//
+// WHAT IT NO LONGER DECIDES. The panel's ONE control - the button that opens the
+// channel list - used to be placed by it (in the plot's corner for the dock, in the
+// panel's own top-right corner for the overlay); the design moved that control into
+// the DOCK HEADER (src/gui/TimeLineHeader.cpp, a Qt control the panel neither draws
+// nor publishes), so nothing in this model is placed by the flag any more. It stays
+// because it is part of the build the host asks for and is republished as the
+// classification it is (see GraphPanelWidget, the dock's Graph tab, which asks for
+// Dock; Overlay is the builder's default, i.e. "no host named").
 //
 // WHERE EACH ONE IS REACHED FROM, now that the application has ONE host. The
 // docked page (gui::GraphPanelWidget, the dock's Graph tab) is the only host the
 // application draws the panel in, and it asks for Dock
-// (src/gui/GraphPanelWidget.cpp). Overlay is not dead: it is the DEFAULT of the
-// builder and of the member below, so it is what every direct consumer of this
-// model gets - the headless pixel gate (tests/graph_panel_pixels.cpp) builds its
-// models that way and asserts the overlay's own ink for the control (the
-// translucent backing drawPanel adds when `host != Dock`, src/gui/GraphPanelFrame
-// .cpp). It is therefore the model's "no host was named" placement rather than a
-// second live floor.
-//
-// It is a flag on the BUILD, not a second code path: one model, one
-// channelsButton rect, published into whichever geometry this host places it in -
-// so a drawing layer draws and hit-tests the same field for either. The model
-// republishes the flag it was built with (`host`), so an ink rule that differs by
-// host (the overlay's control floats over the artwork and carries its own
-// translucent backing; the docked one reads on the opaque dock floor) can read the
-// placement it was actually given rather than re-deriving it from the box's x.
+// (src/gui/GraphPanelWidget.cpp). Overlay is what every direct consumer of this
+// model gets (the headless pixel gate, tests/graph_panel_pixels.cpp, builds its
+// models that way).
 enum class GraphPanelHost {
     Overlay,
     Dock,
@@ -595,64 +550,13 @@ enum class GraphPanelHost {
 //   drawing layer neither draws nor measures, exactly like the key menu, and it
 //   can scroll, so no row is ever dropped for want of room.
 //
-// CHANNELS BUTTON
-//   channelsButton/channelsButtonText: the panel's ONE control - the button that
-//   opens the channel list - and the words on it. The box is the text's advance
-//   plus the button's own padding (kChannelsButtonPadX/Y, the reference's 6px/2px),
-//   and it is EMPTY when it would not fit inside the plot - a control that cannot
-//   be drawn must not be hit-tested either. It is EMPTY too while the panel has no
-//   channel at all (channelsButtonText is empty with it): there is no list to
-//   open, and an empty panel's own reason is what says why it is empty.
-//   WHERE THE BOX IS depends on which floor the panel is on (GraphPanelHost, which
-//   the model publishes as `host` beside it), and it is the same ONE rect either
-//   way - a drawing layer reads channelsButton and draws and hit-tests that,
-//   whichever host built the model:
-//     * VERTICALLY, both homes agree, and the rule is the BAND'S own: the box hangs
-//       below the whole band the ruler owns (frameRuler::kBandHeight - the timeline's
-//       22px header, its number row and its tick row together) by
-//       kChannelsButtonTopGap. The control is a VIEW control and the design keeps it
-//       out of the ruler band ("never in the ruler band", index.html:328-329); a
-//       box inside it would paint the button's own backing over a number.
-//       The reference's `top: 30px` of the panel is exactly this offset while
-//       nothing occludes the band (its 22px band plus this 8); stating it in the
-//       band's terms is what keeps it true when the band moves down under a widget
-//       floating above the panel.
-//     * HORIZONTALLY, the two homes measure from different edges: the OVERLAY's
-//       button keeps kChannelsButtonGap (8px) inside the PANEL's right edge (the
-//       reference's floating rule, mock.css's .gp-chbtn:not(.hosted), `right: 8px`
-//       of the panel root); the DOCKED panel is drawn edge to edge inside the dock,
-//       so the surface it owns is its plot and its control sits the same 8px inside
-//       the PLOT's right edge - under the band's right end, among the curves' chips,
-//       not in the panel's own margin. The reference's hosted button carries no
-//       placement of its own (mock.css's .gp-chbtn.hosted) for the same reason: the
-//       host places it.
-//   The box is asserted clear of the band's tick-and-number block (XC_ASSERT in
-//   buildChannels): the geometry above is derived from the band's own measures, and
-//   a future placement that crept back into the band fails loudly instead of
-//   painting over the ruler's numbers.
-//   The TEXT is "6 channels" while every channel of the panel is shown, and
-//   "4 of 6" once one is hidden: the count is the state the button changes, so
-//   the button states it. It is translated here (the model is where the panel's
-//   words live), and the list itself is built by the application from the rows.
-//
-// SELECTION HULL
-//   selectionHull: the convex outline of the selected keys, in the SAME
-//   viewport pixels as `plot` - ctrl::GraphEditor::selectionHull() is (frame,
-//   value) and this maps every point through the same Scaler the curves use, so
-//   the outline cannot desync from the markers it encloses. Counter-clockwise,
-//   collinear points dropped. EMPTY when nothing is selected, and then nothing
-//   is drawn for it: an empty hull is the signal, exactly as an empty marquee is.
-//   selectionCount is ctrl::GraphEditor::selectionCount(), the number of keys
-//   the hull encloses: the editor's own FACT, published beside the label the way
-//   keyFrames is published beside keyDots, so a consumer that shows the count
-//   somewhere other than this box (a header, a status line) reads the number
-//   rather than the box.
-//   selectionLabel: the one place this model writes it - "3 keys" - in the
-//   panel's own label currency, in a box centred on the hull's bounding box just
-//   above its top edge (and just inside it when the hull touches the plot's top),
-//   clamped into the plot. EMPTY while nothing is selected (the count is 0).
-//   The hull is drawn with the marquee's ink: it is the same selection, read as
-//   an outline around the markers instead of around a drag rectangle.
+// SELECTION COUNT
+//   selectionCount is ctrl::GraphEditor::selectionCount(), the number of keys the
+//   live selection names, 0 with nothing selected. It is published for the
+//   ACCESSIBILITY tree, not for ink: the panel draws no count anywhere (see
+//   gui::GraphPanelFrame's buildAccessibilityModel, which appends ", %n key(s)
+//   selected" to the panel's summary so a screen reader still reads what the drawn
+//   label used to say).
 //
 // PLAYHEAD
 //   playheadX == Scaler::pixelX(aEditor.currentFrame()), or -1 when the editor
@@ -697,15 +601,6 @@ enum class GraphPanelHost {
 //   With targets but every shown channel hidden, the channel list still carries
 //   the hidden rows and emptyState names the state: an empty panel must say why
 //   it is empty.
-//
-// DRAG READOUT
-//   keyDrag is the live key-move gesture's two numbers (see PanelKeyDrag): the frame
-//   delta the move has ACCEPTED and the value delta it last wrote, both read off the
-//   editor's own gesture state, plus `live` - false whenever no move is in flight, and
-//   then the two numbers are 0 and nothing may be drawn for them. The model publishes
-//   the numbers and NOT the readout: the pointer the readout sits at is read by the
-//   drawing layer (gui::drawPanel), which also owns the ink it is written in - the
-//   panel's own label ink, the same the frame and value numbers use.
 //
 // READ-ONLY
 //   buildGraphPanelModel() takes the editor by non-const reference only because
@@ -757,35 +652,20 @@ struct GraphPanelModel {
     // flight (see the MARQUEE note above). The drawing layer paints it inside the
     // plot clip; nothing is drawn for an empty rect.
     QRect marquee;
-    // The live selection's hull in panel pixels, mapped from
-    // ctrl::GraphEditor::selectionHull() through the same Scaler the curves use
-    // (see SELECTION HULL); EMPTY when nothing is selected, and then nothing is
-    // drawn for it and no label is published either.
-    QVector<QPointF> selectionHull;
-    // The number of keys that hull encloses (ctrl::GraphEditor::selectionCount()),
-    // 0 with nothing selected.
+    // The number of keys the live selection names (ctrl::GraphEditor::selectionCount()),
+    // 0 with nothing selected. Published for the ACCESSIBILITY tree and not for ink
+    // (see SELECTION COUNT).
     int selectionCount = 0;
-    // THE DRAG READOUT's numbers: a key move in flight, as the editor publishes it (see
-    // PanelKeyDrag). `live` false is the model's whole "draw nothing" signal, and then
-    // the two deltas are 0.
-    PanelKeyDrag keyDrag;
-    // The one place this model writes that number as words - "3 keys" - and the box
-    // it goes in, above the hull. EMPTY while nothing is selected.
-    PanelLabel selectionLabel;
     QVector<PanelCurve> curves;
     // The project's own loop rule, as the editor reported it, for every curve in this model.
     bool projectLoop = false;
     util::Range projectLoopRange;
     QVector<PanelChannelRow> channels;
-    // The floor this model was built for, republished so a drawing layer can read
-    // the placement it actually got (see GraphPanelHost): it decides which of the
-    // two homes the control below is in, and nothing else in the model.
+    // The floor this model was built for, republished so a consumer can read the
+    // placement it actually got (see GraphPanelHost). Nothing in the model is placed
+    // by it: the panel's ONE control - the channels button - lives in the DOCK
+    // HEADER, not on the panel.
     GraphPanelHost host = GraphPanelHost::Overlay;
-    // The panel's ONE control: the button that opens the channel list, and the
-    // words on it. Both empty/empty-rect when the button would not fit inside the
-    // plot (see CHANNELS BUTTON), and then there is no control to draw or to hit.
-    QRect channelsButton;
-    QString channelsButtonText;
     QString emptyState;
     bool isEmpty() const { return curves.isEmpty() && !emptyState.isEmpty(); }
 };
@@ -794,9 +674,8 @@ struct GraphPanelModel {
 // aTheme is the palette the curves and swatches take their colours from; aTopInset is
 // how many LOGICAL pixels of that viewport's top a widget floating above it covers (0
 // when nothing does), which moves the ruler band and nothing else - see THE OCCLUDED
-// TOP above; and aHost is the floor the panel is on, which decides the home of its
-// ONE control (the overlay's own top-right corner, or the docked page's plot
-// corner) and nothing else - see GraphPanelHost and CHANNELS BUTTON above.
+// TOP above; and aHost is the floor the panel is on, republished in the model and
+// used for no geometry - see GraphPanelHost.
 GraphPanelModel buildGraphPanelModel(
     ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0,
     GraphPanelHost aHost = GraphPanelHost::Overlay

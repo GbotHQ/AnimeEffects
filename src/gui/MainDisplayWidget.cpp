@@ -239,7 +239,7 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
 
     // ONE selection: the panel writes the timeline's live set, which is what the
     // timeline renders its highlights from and what its own gestures (and its
-    // Delete key, its easing menu) read - so a key selected in either view is
+    // Delete key, its key menu) read - so a key selected in either view is
     // selected and highlighted in both.
     editor->setSelectionSource(&timelineEditor->selection());
 
@@ -318,11 +318,18 @@ bool MainDisplayWidget::applyEasingToSelection(util::Easing::Type aEasing) {
     return changed;
 }
 
-void MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos) {
+bool MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {
     if (!mTimeLine)
-        return; // no timeline to open the picker from (and no document to act on)
+        return false; // no timeline to open its menu from (and no document to act on)
 
-    mTimeLine->showKeyEasingPicker(aTargets, this->mapToGlobal(aWidgetPos));
+    // THE TIMELINE'S OWN MENU, opened where the press was: the panel maps its own
+    // pointer to a screen position (QWidget::mapToGlobal) and that is what arrives
+    // here, because the two widgets are siblings - this widget cannot map a point out
+    // of the panel's space, and mapping one INTO its own space would put the menu
+    // wherever the two widgets' origins happen to differ by. Which keys the menu acts
+    // on, and whether the pressed one is lent to it, is the timeline's rule and stays
+    // there (TimeLineWidget::openKeyMenu).
+    return mTimeLine->openKeyMenu(aPressedKey, aGlobalPos);
 }
 
 void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos) {

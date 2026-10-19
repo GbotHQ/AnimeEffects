@@ -24,12 +24,14 @@
 #
 #   2. THE PANEL PUBLISHES ITSELF, BY NAME, ONLY WHILE IT DRAWS. With the Graph tab current the
 #      panel is a named Pane whose name IS the model's summary ("No keys on the selected
-#      layers", "N channel(s) shown", ...) and whose children are its ONE control (the channels
-#      button, while there is one), that summary as a label and "Fit graph"; the fit button
-#      appears EXACTLY ONCE in the whole tree, which is what rules a second publication out (the
-#      docked host takes the panel's ONE accessibility installation - gui::a11y::install is called
-#      for one widget and kept - and two hosts publishing one panel is exactly the bug that would
-#      hide here). With the Timeline tab current the SAME node is still in the tree,
+#      layers", "N channel(s) shown", ...) and whose children are that summary as a label and
+#      "Fit graph" - the panel's ONE control, the channels button, is NOT among them: it lives
+#      in the dock HEADER (TimeLineHeader's own Qt button), so the panel publishes no channel
+#      control of its own; the fit button appears EXACTLY ONCE in the whole tree, which is what
+#      rules a second publication out (the docked host takes the panel's ONE accessibility
+#      installation - gui::a11y::install is called for one widget and kept - and two hosts
+#      publishing one panel is exactly the bug that would hide here). With the Timeline tab
+#      current the SAME node is still in the tree,
 #      unnamed and childless: the hidden page publishes the empty model instead of leaving the
 #      last drawn frame in the tree.
 #
@@ -43,13 +45,13 @@
 #
 #   4. THE KEYED FRAME DRAWS, AND ITS INK IS THE MODEL'S. Two channels of different key TYPES
 #      are coloured differently (theme::Graph::keyColor, the same token the timeline paints
-#      those types with), the panel's ONE control is present and names the count it changes, and
-#      a key DRAG draws its delta readout at the pointer - and nowhere else, before or after the
-#      gesture. The keys come from the application's own routes: "Add default keys" in the
-#      object tree's row menu puts ten channels at frame 0, and the Properties dock's Current
-#      Keys knobs put a key of TWO key TYPES at the frame the playhead has been moved to (a
-#      frame-0 marker is culled at the plot's left edge, so the knobs are what makes the plot
-#      show keys at all).
+#      those types with), the DOCK HEADER's channels control is present and names the count it
+#      changes (the panel no longer draws one, and no longer paints any gesture numbers either -
+#      the drag readout it used to print at the pointer is gone). The keys come from the
+#      application's own routes: "Add default keys" in the object tree's row menu puts ten
+#      channels at frame 0, and the Properties dock's Current Keys knobs put a key of TWO key
+#      TYPES at the frame the playhead has been moved to (a frame-0 marker is culled at the
+#      plot's left edge, so the knobs are what makes the plot show keys at all).
 #
 # WHY THAT FRAME USED TO KILL THE APPLICATION, AND WHAT NOW PINS IT (measured 2026-10-18). The
 # docked host used to abort on the first frame it had to STROKE: gui::GraphPanelWidget::paintGL
@@ -143,22 +145,11 @@ HUE_COLS_MIN=5
 # Two key TYPES are two entries of theme::Graph::keyColor, and the palette's nearest pair is
 # further apart than this. The timeline's own ink probe uses the same bar for the same token.
 HUE_SEP=40
-# THE READOUT'S BOX. The panel draws the readout AT THE POINTER, offset by gui::kReadoutGapPx
-# (12) and clamped inside the panel, so the box starts 8px out - clear of the marker under the
-# pointer, whose ring reaches 6.35px - and is 210x24, wider and taller than the drawn text.
-RO_GAP=8
-RO_W=210
-RO_H=24
-# The readout is THE PANEL'S TEXT INK: neutral (a chromatic curve crossing its box is not text)
-# and far from the floor. The panel's own labels are theme::Graph::axisText == Colors::text;
-# on this palette that is 208 away from the floor rgb 38,38,38, so 100 is half of it, and a
-# channel spread of 24 admits every antialiased glyph pixel while refusing every key hue.
-RO_INK_DIST=100
-RO_INK_CHROMA=24
-# ...and a drawn readout is a sentence: dozens of glyph pixels. The bar is one short word.
-RO_INK_MIN=60
+# The readout's constants (RO_*) went with the readout itself: the panel draws no gesture numbers
+# at the pointer any more (the drag deltas are still computed for the edit - only the printed
+# readout is gone), so there is no box to measure and no bar to compare against.
 export GEOM SCRATCH INK APPLOG DOCK_CHANGE_MIN DOCK_CHANGE_SHARE HUE_TOL HUE_CURVE_MIN \
-       HUE_COLS_MIN HUE_SEP HUE_MIN_PX RO_GAP RO_W RO_H RO_INK_DIST RO_INK_CHROMA RO_INK_MIN
+       HUE_COLS_MIN HUE_SEP HUE_MIN_PX
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   set -u
@@ -335,8 +326,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
     ae dump > "$SCRATCH/dump_graph_keys.txt" 2>/dev/null
     if ! alive; then CRASH="yes"; CRASHROW="$cand"; ROW_A="$cand"; break; fi
     KEYSUM=$(sed -n "s/^ *label *| \([0-9]\{1,\}\) channel(s) shown.*$/\1/p" "$SCRATCH/dump_graph_keys.txt" | head -1)
+    # The "N channel(s)" PUSH BUTTON of the whole tree: the dock header own control (the panel
+    # publishes none - see the channels claim in the reporting half). Read here so the geometry
+    # below is that control own rectangle, not a guess.
     CBTN=$(sed -n "s/^ *button *| \([0-9]\{1,\} channel(s)\)$/\1/p" "$SCRATCH/dump_graph_keys.txt" | head -1)
-    say "candidate [$cand]: the panel publishes [${KEYSUM:-nothing}] channel(s) shown, its control reads [${CBTN:-none}]"
+    say "candidate [$cand]: the model publishes [${KEYSUM:-nothing}] channel(s) shown, the dock header control reads [${CBTN:-none}]"
     if [ -n "${KEYSUM:-}" ]; then
       ROW_A="$cand"
       echo "PANEL_COUNT=\"${KEYSUM}\"" >> "$GEOM"
@@ -442,94 +436,6 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
       echo "PANEL_HUES=\"$(tr "\n" ";" < "$SCRATCH/hues_u.txt")\"" >> "$GEOM"
       echo "PANEL_HUES_ALL=\"$(tr "\n" ";" < "$SCRATCH/hues_cand.txt")\"" >> "$GEOM"
       say "chromatic hues on the panel: curves [$(tr "\n" ";" < "$SCRATCH/hues_u.txt")], all [$(tr "\n" ";" < "$SCRATCH/hues_cand.txt")]"
-
-      # ---- the drag readout, on a key the PANEL ITSELF makes ----
-      # THE INSERT IS THE PANEL OWN GESTURE: a Ctrl-press ON A CURVE inserts a key at that frame
-      # (ctrl::GraphEditor::insertKeyAt, seeded from the curve so the shape does not move) and
-      # SELECTS it, so its position is simply the point that was pressed - and the tree then
-      # publishes it as the "Key menu" button on its own centre, which CONFIRMS the press landed
-      # on a key rather than on empty plot. Nothing here has to guess where a marker is drawn.
-      # The point is read off the panel own ink: a channel hue widest column run is its curve, and
-      # a third of the way into that run is a point on the curve, clear of both ends.
-      # THE POINT HAS TO BE INSIDE THE CURVE OWN BAND. The insert refuses a frame outside
-      # [firstKey, lastKey] (ctrl::GraphEditor::curveBandItem), and the keys the knobs made are at
-      # frame 0 and at the frame the playhead was moved to, so the band is the FIRST STRETCH of the
-      # plot: a point a third of the way along the drawn stroke can already be past the last key,
-      # where the stroke is the loop rule and no key can be inserted. The candidates are
-      # therefore taken near the LEFT END of each channel hue stroke, and the press is repeated
-      # over them until the tree publishes the key it wrote - which is also the confirmation that
-      # the point was on the curve.
-      : > "$SCRATCH/insert.txt"
-      while read -r r g b n ncols left; do
-        [ -n "${left:-}" ] || continue
-        [ "$left" -ge 0 ] || continue
-        # the point: the hue centre of mass over the FIRST columns of its leftmost run, which is on
-        # the stroke as near its left end as the ink allows - inside the band the insert needs
-        C=$(inkpx centroid "$SCRATCH/panel.raw" $PW2 $PH2 "$left" 0 17 $PH2 "$r" "$g" "$b" $HUE_TOL)
-        read -r ccx ccy ccn <<< "$C"
-        [ "${ccx:-none}" != "none" ] || continue
-        [ "${ccn:-0}" -ge "$HUE_MIN_PX" ] || continue
-        printf "%s %s %s %s %s %s\n" "$((PX2 + ccx))" "$((PY2 + ccy))" "$r" "$g" "$b" >> "$SCRATCH/insert.txt"
-      done < "$SCRATCH/hues_cand.txt"
-      INSX=0; INSY=0; KM=""
-      while read -r cx cy cr cg cb; do
-        [ -n "${cx:-}" ] || continue
-        say "trying the panel own Ctrl-insert on the curve rgb $cr,$cg,$cb at $cx,$cy"
-        xdotool mousemove --sync $cx $cy; sleep 0.4
-        xdotool keydown ctrl; sleep 0.15
-        xdotool click 1; sleep 0.15
-        xdotool keyup ctrl; sleep 1.5
-        park
-        KM=$(ae extents "Key menu")
-        if [ -n "$KM" ]; then INSX=$cx; INSY=$cy; break; fi
-      done < "$SCRATCH/insert.txt"
-      echo "INSERT_AT=\"$INSX $INSY\"" >> "$GEOM"
-      if [ "$INSX" -gt 0 ]; then
-        echo "KEYMENU=\"${KM:-}\"" >> "$GEOM"
-        if [ -n "$KM" ]; then
-          read -r MX4 MY4 MW4 MH4 <<< "$KM"
-          DOTX=$((MX4 + MW4 / 2)); DOTY=$((MY4 + MH4 / 2))
-          echo "DOT=\"$DOTX $DOTY\"" >> "$GEOM"
-          # the box the readout will own, at the gesture own end position. THE DRAG GOES UP, not
-          # down: with the key near the plot bottom edge a downward drag would carry the pointer
-          # past the dock (MEASURED: the dot at y=480 with the dock ending at y=495, so the box
-          # landed at y=512..536, outside the page), and the readout is CLAMPED inside the panel -
-          # so the box would be measured where the readout is not.
-          RGX=$((DOTX + 60)); RGY=$((DOTY - 40))
-          echo "RO_BOX=\"$((RGX + RO_GAP)) $((RGY + RO_GAP)) $RO_W $RO_H\"" >> "$GEOM"
-          readout_ink() { # readout_ink <png>
-            raw "$1" "${RO_W}x${RO_H}+$((RGX + RO_GAP))+$((RGY + RO_GAP))" "$SCRATCH/ro.raw"
-            inkpx neutral "$SCRATCH/ro.raw" $RO_W $RO_H 0 0 $RO_W $RO_H "$F1" "$F2" "$F3" \
-                "$RO_INK_DIST" "$RO_INK_CHROMA" | cut -d" " -f1
-          }
-          RO_BEFORE_V=$(readout_ink "$SHOTS/gink_30_dock_graph_keys.png")
-          echo "RO_BEFORE=\"$RO_BEFORE_V\"" >> "$GEOM"
-          # THE DRAG: press on the key and move in STEPS with the button held, so the gesture has an
-          # ACCEPTED delta to report (a press that never crossed a pixel has none, and the model
-          # draws nothing then: that is the readout own "no move in flight" signal).
-          xdotool mousemove --sync $DOTX $DOTY; sleep 0.4
-          xdotool mousedown 1; sleep 0.2
-          i=1
-          while [ "$i" -le 6 ]; do
-            xdotool mousemove --sync $((DOTX + 10 * i)) $((DOTY - 6 * i))
-            sleep 0.15
-            i=$((i + 1))
-          done
-          sleep 0.6
-          import -window root "$SHOTS/gink_31_key_drag.png"
-          RO_DRAG_V=$(readout_ink "$SHOTS/gink_31_key_drag.png")
-          echo "RO_DRAG=\"$RO_DRAG_V\"" >> "$GEOM"
-          xdotool mouseup 1; sleep 1.0
-          import -window root "$SHOTS/gink_32_key_after.png"
-          RO_AFTER_V=$(readout_ink "$SHOTS/gink_32_key_after.png")
-          echo "RO_AFTER=\"$RO_AFTER_V\"" >> "$GEOM"
-          say "readout ink at [${RGX} ${RGY}]+${RO_GAP}: before [${RO_BEFORE_V:-?}] during [${RO_DRAG_V:-?}] after [${RO_AFTER_V:-?}]"
-        else
-          say "no Key menu after the Ctrl-insert at [$INSX $INSY]"
-        fi
-      else
-        say "no curve point was found to insert a key at"
-      fi
   fi
 
   say "body done"
@@ -651,10 +557,10 @@ check $? "and the change is BOUNDED - ink on the dock's page, not a repaint of t
 assert_rendered "${SHOTS}/gink_20_dock_graph.png" "the docked panel's page with the Graph tab up"
 
 # ---- 3. THE KEYED CLAIMS ----
-# The keys, the two key TYPES and the drag are all made by the application's own controls, so the
-# routes are asserted beside the ink: which row was keyed, which two knobs were pressed, and where
-# the marker was found. The crash's own log tail is printed with any failure below, because a host
-# that dies drawing the keyed frame is the defect this phase exists to catch.
+# The keys and the two key TYPES are all made by the application's own controls, so the
+# routes are asserted beside the ink: which row was keyed and which two knobs were pressed. The
+# crash's own log tail is printed with any failure below, because a host that dies drawing the
+# keyed frame is the defect this phase exists to catch.
 KNOB_MOVE=""; KNOB_ROT=""
 for pair in ${KNOBS:-}; do
     case "$pair" in
@@ -671,13 +577,19 @@ check $? "the docked host drew a keyed frame WITHOUT DYING${CRASH:+ (its log end
 check $? "the keys the object tree's own row menu added to [${ROW_A:-none}] reached the panel's model: it publishes [${PANEL_COUNT:-nothing}] channel(s) shown"
 [ -n "${KNOB_MOVE:-}" ] && [ -n "${KNOB_ROT:-}" ]
 check $? "and the Properties dock's CURRENT KEYS knobs put a key of TWO different types at the frame the playhead was moved to: Move [${KNOB_MOVE:-missing}] and Rotate [${KNOB_ROT:-missing}]"
-# THE PANEL'S ONE CONTROL, under the count it changes, once, inside the dock.
-[ -n "${CHBTN:-}" ] && [ "$(grep -c "^ *button *| ${CHBTN}$" "$KEYSLOG" 2>/dev/null)" -eq 1 ]
-check $? "and the panel publishes its ONE control under the count it changes, exactly once ([${CHBTN:-none}])"
+# THE PANEL'S ONE CONTROL IS NOT THE PANEL'S ANY MORE. The design moved it into the dock HEADER
+# (TimeLineHeader's own Qt button), and the panel's accessibility publication carries no channel
+# control at all: the ONE "N channel(s)" push button in the whole tree is therefore the header's
+# own. The dump cannot tell the two apart by name - both read "N channel(s)" - so the count is
+# what separates them: the panel publishing one as well would make this 2, and the rectangle check
+# below places the survivor in the dock's header row rather than in the panel's page.
+CHBTN_LINES=$(grep -c "^ *button *| [0-9]\{1,\} channel(s)$" "$KEYSLOG" 2>/dev/null) || CHBTN_LINES=0
+[ "${CHBTN_LINES:-0}" -eq 1 ]
+check $? "the panel publishes NO channels control of its own: the tree holds exactly ONE \"N channel(s)\" button (${CHBTN_LINES:-0}), and it is the DOCK HEADER's ([${CHBTN:-none}])"
 read -r CX2 CY2 CW2 CH2 <<< "${CHBTN_RECT:-0 0 0 0}"
 awk -v x="$CX2" -v y="$CY2" -v w="$CW2" -v h="$CH2" -v X="$DX" -v Y="$DY" -v W="$DW" -v H="$DH" \
     'BEGIN{ exit !(x >= X && y >= Y && x + w <= X + W && y + h <= Y + H) }'
-check $? "and that control is a real one inside the dock's own rectangle ([${CHBTN_RECT:-none}] in [${DOCK:-none}])"
+check $? "and that header control is a real one inside the dock's own rectangle ([${CHBTN_RECT:-none}] in [${DOCK:-none}])"
 echo "panel: page area [${PANELRECT:-none}], floor [${PANEL_FLOOR:-none}]; the channel hues on it (rgb px columns): [${PANEL_HUES:-none}]"
 # ---- TWO CHANNELS OF DIFFERENT KEY TYPES ARE TWO COLOURS ----
 # The pair is chosen from the hues the panel is DRAWN with, not from a list of tokens: a hue that
@@ -705,27 +617,15 @@ check $? "and two different CHANNELS carry different colours: the two are ${HD:-
 # bone, pose, mesh and FFD are NOT asserted here: they are structural key types and are not
 # graphable at all (ctrl::graph::Channel::componentCount returns 0), so no project can put them in
 # this panel.
-# ---- THE DRAG READOUT, AT THE POINTER ----
-# The key is made by the panel's own insert gesture (Ctrl-press on a curve), which SELECTS it, and
-# the tree publishes a selected key as the "Key menu" button on its own centre: so the dot the drag
-# starts from is read back from the application rather than guessed from ink.
-echo "readout: the Ctrl-insert was made at [${INSERT_AT:-none}] on a drawn curve, the tree published the key it wrote as [${KEYMENU:-none}] so the dot is [${DOT:-none}], the box [${RO_BOX:-none}]: neutral ink in it before [${RO_BEFORE:-?}], during [${RO_DRAG:-?}], after [${RO_AFTER:-?}] (bar ${RO_INK_MIN} during, <= 2 before and after)"
-# THE PRECONDITION FIRST, and it is its own assertion: if no stroke point is found there is nothing
-# to insert into, and the three claims below cannot be made - which is this probe's finding, not the
-# application's. MEASURED: the panel drew N hues on its floor and the probe built N candidate points.
-INS_N=$(grep -c . "$SCRATCH/insert.txt" 2>/dev/null) || INS_N=0
-[ "${INS_N:-0}" -ge 1 ]
-check $? "the probe FOUND a stroke point on the panel's own floor to insert a key at - the precondition of the three readout claims below (chromatic hues found: [${PANEL_HUES_ALL:-none}]; points built: ${INS_N:-0})"
-[ -n "${KEYMENU:-}" ] && [ -n "${DOT:-}" ]
-check $? "and the panel's OWN Ctrl-insert on that stroke wrote a key, with the tree publishing it at its own centre ([${KEYMENU:-none}], pressed at [${INSERT_AT:-none}])"
-[ "${RO_BEFORE:-1}" -le 2 ]
-check $? "and NO delta readout is drawn at the pointer before the drag: ${RO_BEFORE:-?} pixels of the panel's neutral text ink in the ${RO_W}x${RO_H} box the readout will own"
-[ "${RO_DRAG:-0}" -ge "$RO_INK_MIN" ]
-check $? "while the move is in flight the readout IS drawn there: ${RO_DRAG:-0} pixels of the panel's text ink at the pointer (bar ${RO_INK_MIN})"
-[ "${RO_AFTER:-1}" -le 2 ]
-check $? "and the release takes it away again: ${RO_AFTER:-?} pixels in the same box"
-awk -v a="${RO_DRAG:-0}" -v b="${RO_BEFORE:-0}" -v c="${RO_AFTER:-0}" -v m="$RO_INK_MIN" 'BEGIN{ exit !(a > b + c + m) }'
-check $? "so the readout is ink that arrives and leaves with the gesture (${RO_BEFORE:-?} -> ${RO_DRAG:-?} -> ${RO_AFTER:-?})"
+# ---- THE DRAG READOUT IS GONE, WITH ITS INK ----
+# The panel used to draw the key move's live deltas AT the pointer, and this probe used the panel's
+# own Ctrl-insert (Ctrl-press on a curve) to make the key it dragged and measured the text ink in
+# the box the readout would own. The design decision that removed the readout removed the phase
+# with it: there is no number drawn at the pointer any more, so there is nothing to measure and no
+# bar to compare against. The gestalt it leaves behind is still covered above and below: the key
+# the insert writes (and its SELECTION) is what the marker/hue phases read, and the drag's own
+# arithmetic stays gated offscreen (tests/graph_drag.cpp drives the move through the editor's
+# cursor path). Nothing is left to assert about ink the panel no longer paints.
 
 # ---- WHAT IS NOT ASSERTED HERE, AND WHERE IT IS GATED ----
 # The panel's tick ALPHAS and its selection EMPHASIS are deliberately NOT asserted above, and
@@ -746,6 +646,6 @@ check $? "so the readout is ink that arrives and leaves with the gesture (${RO_B
 # tab puts the panel on the dock's own page, that the panel publishes itself exactly once and
 # stops publishing its items when its page is hidden, that its pixels land inside the dock's
 # rectangle, and that a keyed frame draws at all - two key types as two colours on the panel's
-# own floor, and a key drag's readout following the pointer.
+# own floor.
 
 summary probe_graph_ink

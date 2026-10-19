@@ -494,26 +494,18 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
 
     mTargets = core::TimeLineEvent();
     const bool clickedOnKey = mEditor->selectKeysAt(mTargets, worldPos);
+    if (!clickedOnKey) {
+        // Not on a key: the current selection is what the menu acts on ("keys stay
+        // operable from anywhere once selected"). It is empty when nothing is
+        // selected at all, and buildKeyMenu reads that as the paste-only menu.
+        mEditor->retrieveSelectionTargets(mTargets);
+    }
 
     mPastePos = worldPos;
-    mPasteKey->setEnabled(mCopyTargets.hasAnyTargets());
 
-    // The key menu applies when the click is on a key or when there is a
-    // current selection, so keys stay operable from anywhere once selected.
-    // The easing entries are NOT here: easing lives in the dock header's own
-    // chip (its picker is the single easing editor), so a key menu entry would
-    // be a second route to the same edit.
-    if (clickedOnKey || mEditor->retrieveSelectionTargets(mTargets)) {
-        menu.addAction(mCopyKey);
-        menu.addAction(mCopyToClipboard);
-        menu.addAction(mPasteKey);
-        menu.addSeparator();
-        menu.addAction(mSelectSpacing);
-        menu.addSeparator();
-        menu.addAction(mDeleteKey);
-    } else {
-        menu.addAction(mPasteKey);
-    }
+    // Both shapes of the menu are buildKeyMenu's, which is also the graph panel's
+    // route into this menu (see openKeyMenu).
+    buildKeyMenu(menu);
     menu.exec(this->mapToGlobal(aPos));
     // A right-click on an unselected key lent it a temporary selection for
     // this menu only; the previous selection is not restored, so drop the
@@ -521,6 +513,47 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
     // highlight clears (see ctrl::TimeLineEditor::endTemporarySelection).
     mEditor->endTemporarySelection();
     this->update();
+}
+
+//-------------------------------------------------------------------------------------------------
+void TimeLineEditorWidget::buildKeyMenu(QMenu& aMenu) {
+    // ONE BUILDER, TWO CALLERS: the timeline's own right-click above and the
+    // animation graph panel's (openKeyMenu, reached through gui::TimeLineWidget and
+    // gui::MainDisplayWidget). Both hand this the same state - mTargets, the whole
+    // selection in the timeline's currency (one target per KEY), mCopyTargets (what
+    // a paste would drop) and mPastePos (the frame it would land on) - and both get
+    // the same items, the same labels and the same edit path as a result. There is
+    // no second menu to keep in step.
+    //
+    // THE ITEMS ACT ON THE SET. Every action below reads mTargets - the selection the
+    // caller set - and not the one key a press landed on, so with N keys selected an
+    // activation is one edit over all N of them:
+    //   * Copy key: mCopyTargets = mTargets, the whole selection (plus the clipboard
+    //     write when the user's "auto copy to clipboard" setting is on).
+    //   * Copy key to clipboard: the clipboard write over mCopyTargets, which the item
+    //     above has just filled with the whole selection. A STANDALONE activation keeps
+    //     whatever was copied last - onCopyCBTriggered's own long-standing rule, the
+    //     same in the timeline's menu.
+    //   * Paste key: drops mCopyTargets at mPastePos, the frame this menu was opened on
+    //     (the selection supplies the anchor here; what is written is the copied set).
+    //   * Select spacing between keys: one dialog, then every target of mTargets moves.
+    //   * Delete key: one deleteCheckedKeys(mTargets) command over the whole set.
+    // Easing is deliberately absent: it lives in the dock header's own chip
+    // (openEasingPicker), so a menu entry would be a second route to one edit.
+    mPasteKey->setEnabled(mCopyTargets.hasAnyTargets());
+
+    if (mTargets.targets().isEmpty()) {
+        aMenu.addAction(mPasteKey); // no key involved: paste is all there is
+        return;
+    }
+
+    aMenu.addAction(mCopyKey);
+    aMenu.addAction(mCopyToClipboard);
+    aMenu.addAction(mPasteKey);
+    aMenu.addSeparator();
+    aMenu.addAction(mSelectSpacing);
+    aMenu.addSeparator();
+    aMenu.addAction(mDeleteKey);
 }
 
 // Type, frame, easing type, easing range, easing weight.
@@ -1065,21 +1098,78 @@ void TimeLineEditorWidget::setTrackSeperatorColor(const QColor& trackSeperatorCo
 }
 
 //-------------------------------------------------------------------------------------------------
-void TimeLineEditorWidget::showKeyEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalPos) {
-    // THE APPLICATION'S OWN ENTRY POINT for "change the easing of these keys":
-    // the ONE easing picker, at the pointer. A caller from outside the timeline
-    // (the animation graph panel's right-click) gets the same control, the same
-    // list of easings and the same edit path as the header's chip, because
-    // there is one picker and this is where it opens - nothing here depends on the
-    // panel being up, and there is no second list to keep in step.
-    //
-    // aTargets is the caller's current selection in the timeline's own currency
-    // (ctrl::GraphEditor::retrieveSelection hands one out, and
-    // ctrl::TimeLineEditor::retrieveSelectionTargets hands out the same one when
-    // the two share their selection). It is stored in mTargets, which is what the
-    // picker's commits act on, exactly as onContextMenuRequested stores what it
-    // resolved from the click.
-    openEasingPicker(aTargets, aGlobalPos);
+bool TimeLineEditorWidget::openKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {
+    // THE KEY MENU'S ENTRY POINT for a caller whose pointer is in its own space:
+    // the animation graph panel hit-tests the key itself (gui::panelKeyAt, in the
+    // panel's pixels) and hands the triple over - it cannot name a pixel in THIS
+    // widget's lane geometry, so ctrl::TimeLineEditor::selectKeysAt's hit test is
+    // not reachable from it. What that hit test's rule decides is therefore decided
+    // here, on the one shared selection, by key identity:
+    ctrl::time::Selection& selection = mEditor->selection();
+
+    if (!aPressedKey.node || !aPressedKey.pos.isExist())
+        return false; // not a key the document holds (a stale key from the panel's last frame)
+
+    // The pressed key is ALREADY selected: the menu is the SELECTION's, so it acts on
+    // every selected key - that is the multi-key case, and nothing is lent or dropped.
+    // Any other key replaces the selection for the menu's lifetime (the temporary loan
+    // the timeline's own route makes: the pressed key shows as selected while the menu
+    // is up, every action consumes that set, and the previous selection is not
+    // restored).
+    core::TimeKey* lentKey = nullptr;
+    if (!selection.contains(aPressedKey)) {
+        core::TimeLineEvent single;
+        single.pushTarget(*aPressedKey.node, aPressedKey.pos);
+        selection.set(single);
+        lentKey = selection.items().isEmpty() ? nullptr : selection.items().front().key;
+    }
+
+    // WHAT THE ITEMS ACT ON, read AFTER the rule above: the whole selection, one
+    // target per key - the set every item in buildKeyMenu works from. It is non-empty
+    // by construction (the pressed key is a key the document holds, so the loan put it
+    // in, and the other branch left the selection standing), which is what makes this
+    // the key menu and never buildKeyMenu's paste-only shape.
+    mTargets = core::TimeLineEvent();
+    mEditor->retrieveSelectionTargets(mTargets);
+
+    // THE PASTE ANCHOR: the pressed key's frame, in the timeline's own pixel currency -
+    // the same composition the keyboard paste uses for the playhead
+    // (TimeLineEditorWidget's Ctrl+V listener), so a paste from this menu lands where
+    // the key the menu was opened on is.
+    mPastePos = QPoint(
+        mEditor->timeScale().pixelWidth(aPressedKey.pos.index()) + ctrl::TimeLineEditor::kTimeLineMargin, 0
+    );
+
+    QMenu menu(this);
+    buildKeyMenu(menu);
+    // exec(), not popup(): the whole point of this route is that the loan above is
+    // spent by the menu and dropped when it closes - "after the menu" has to be a
+    // line in this function. The panel's right-click is inside a press handler; a
+    // nested event loop there is what the timeline's own context-menu handler runs
+    // too (QMenu owns the interaction either way).
+    menu.exec(aGlobalPos);
+
+    // ...AND THE LOAN IS DROPPED, unless an action replaced the selection with
+    // something else while the menu was up: paste selects the keys it created
+    // (ctrl::TimeLineEditor::selectCreatedKeys) and delete takes its keys out of the
+    // set, so only a selection that still names nothing but the lent key is the loan
+    // left standing (ctrl::TimeLineEditor::endTemporarySelection is the same drop for
+    // the timeline's own route, where the editor holds the flag this widget cannot set).
+    if (lentKey) {
+        const ctrl::time::Selection& after = mEditor->selection();
+        bool stillLent = !after.empty();
+        for (const ctrl::time::Selection::Item& item : after.items()) {
+            if (item.key != lentKey) {
+                stillLent = false;
+                break;
+            }
+        }
+        if (stillLent)
+            mEditor->selection().clear();
+    }
+
+    this->update(); // the selection changed under this widget's own ink
+    return true;
 }
 
 //-------------------------------------------------------------------------------------------------
