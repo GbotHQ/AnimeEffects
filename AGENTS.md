@@ -330,6 +330,15 @@ Measured traps, all of which cost time here:
   Ninja Multi-Config tree the configuration is part of the target name. The `:Release` variant runs
   but prints **no** `Found … source text` summary, so anything you want to quote about extraction
   counts has to come from the `:Debug` target.
+- The **aggregate** has the same trap, from the other side: `ninja -C build all:Debug` builds, and
+  `ninja -C build all:Release` dies in 0.4 s with `ninja: error: 'all:Release' missing and no known
+  rule to make it`. Ninja Multi-Config writes one ninja file **per configuration**, each with its
+  OWN `all` — `build-Debug.ninja`, `build-Release.ninja`, `build-RelWithDebInfo.ninja` — and the root
+  file aliases only a few targets across configurations (`:Release` is carried by 38 targets here,
+  all of them `install`/`clean`). So reach another configuration through the front end or its config
+  file: `cmake --build build --config Release`, or `ninja -C build -f build-Release.ninja all`.
+  Measured on the tree that added this note: Debug `no work to do`, Release **88 steps**,
+  RelWithDebInfo **707** (never configured to completion).
 - **`en` is not a translated language.** It is absent from
   `qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES es ja ko ru zh)` (root `CMakeLists.txt:29`),
   so `translation_en.ts` is the source-language stub. lupdate prints `Updating …/translation_en.ts`
