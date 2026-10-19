@@ -293,17 +293,24 @@ int main(int argc, char** argv) {
             fiH, (int)hasHover, (int)hasFocus, (int)hasPressed, (int)hasBorder,
             verdict(ok));
 
-    // ---- #10 tile catalog: every easing the table lists is REACHABLE ----
+    // ---- #10 tile catalog: every easing the table lists is REACHABLE, at the
+    // table's own position ----
     // The tiles are hand-listed in EasingPickWidget.cpp (kTileOrder) while the
     // offering itself is util::Easing's display table, so a new easing can be added
     // to the table and never appear here - which is invisible: the picker looks
     // complete and the option simply cannot be chosen. Assert the two sets agree
-    // (every display-order type except Custom, exactly once) and that a tile's click
-    // really writes its type into the draft.
+    // (every display-order type except Custom, exactly once) AND that tile-i writes
+    // the table's index-i type: the catalog's order IS the display order, so its head
+    // (Linear, Floor, Round, Auto - the entries that are not curve parameters) is the
+    // table's head and Auto sits at index 3 instead of trailing the catalog. Editing
+    // one order without the other now shows up here rather than in only one of them.
+    // A tile's click must really write its type into the draft.
     {
         QSet<int> reachable;
         bool allTilesClick = true;
+        bool allTilesAtTableIndex = true;
         int tileCount = 0;
+        int autoTileIndex = -1;
         for (int i = 0;; ++i) {
             QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
             if (!tile) break;
@@ -313,6 +320,10 @@ int main(int argc, char** argv) {
             const int got = int(w.value().type);
             reachable.insert(got);
             allTilesClick = allTilesClick && got != int(util::Easing::Type_Custom);
+            allTilesAtTableIndex = allTilesAtTableIndex && i < util::Easing::displayCount() - 1 &&
+                got == int(util::Easing::typeAtDisplayIndex(i));
+            if (got == int(util::Easing::Type_Auto))
+                autoTileIndex = i;
         }
         QSet<int> expected;
         for (int i = 0; i < util::Easing::displayCount(); ++i) {
@@ -327,6 +338,12 @@ int main(int argc, char** argv) {
                 tileCount, int(reachable.size()), int(expected.size()),
                 int((expected - reachable).size()), int((reachable - expected).size()),
                 (int)allTilesClick, verdict(complete));
+        const bool order = allTilesAtTableIndex && autoTileIndex == 3 &&
+            tileCount == util::Easing::displayCount() - 1;
+        fprintf(stderr,
+                "#10 tile order: every tile-i writes the display table's index i (%d tile(s) "
+                "for %d non-Custom entries), Auto's tile is index %d -> %s\n",
+                tileCount, util::Easing::displayCount() - 1, autoTileIndex, verdict(order));
     }
 
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");

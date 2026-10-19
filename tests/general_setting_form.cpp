@@ -90,8 +90,16 @@ int main(int argc, char** argv) {
     // one of these is the widget form's own fallback (GeneralSettingDialog.cpp's read
     // block), so the two forms open identically on a fresh profile.
     check(model.languageIndex() == 0, QStringLiteral("language defaults to 0 (Auto) (%1)").arg(model.languageIndex()));
-    // util::Easing::Type_Linear's display index (Floor, Round, Linear, ...).
-    check(model.easingIndex() == 2, QStringLiteral("easing defaults to Linear (%1)").arg(model.easingIndex()));
+    // The default easing, asserted as the RULE the two forms share, not as a display
+    // position: GeneralSettingViewModel::Init::easingIndex is
+    // util::Easing::displayIndexOf(Type_Linear) and GeneralSettingDialog.cpp's
+    // fresh-profile branch seeds that very expression, so a bare model and the dialog
+    // open on the same easing. It used to read `== 2` ("Linear" only while Linear
+    // happened to sit third; the reorder to Linear, Floor, Round, Auto, ... makes 2
+    // Round), i.e. it re-pinned a display position the table was free to move.
+    check(model.easingIndex() == util::Easing::displayIndexOf(util::Easing::Type_Linear),
+          QStringLiteral("easing defaults to Linear - the display index the dialog seeds (%1)")
+              .arg(model.easingIndex()));
     check(model.rangeIndex() == 2, QStringLiteral("range defaults to 2 (All) (%1)").arg(model.rangeIndex()));
     check(model.timeFormatIndex() == 0, QStringLiteral("timeline format defaults to 0 (Frame number) (%1)").arg(model.timeFormatIndex()));
     check(model.themeKey() == QLatin1String("dark"), QStringLiteral("theme defaults to dark (%1)").arg(model.themeKey()));
@@ -162,10 +170,10 @@ int main(int argc, char** argv) {
     // The model builds this list from util::Easing's own display table and drops
     // Type_Custom (a global default carries no bezier control points), so BOTH the
     // count and the ORDER are the table's, and the shell maps a saved value through
-    // the same index. Asserting the whole list against the table is what keeps a new
-    // easing (Auto was the last appended) from being published out of order - and it
-    // is the reason this target compiles util/Easing.cpp rather than carrying a copy
-    // of the names.
+    // the same index. Asserting the whole list against the table is what keeps an
+    // easing (Auto, or a new one) from being published out of order - and it is the
+    // reason this target compiles util/Easing.cpp rather than carrying a copy of
+    // the names.
     {
         const QVariantList options = model.easingOptions();
         check(options.size() == util::Easing::displayCount() - 1,
@@ -180,8 +188,31 @@ int main(int argc, char** argv) {
                 type != util::Easing::Type_Custom;
         }
         check(ordered, "every entry carries the display index as its value and the table's own name");
-        check(options.last().toMap().value(QStringLiteral("label")).toString() == QStringLiteral("Auto"),
-              QStringLiteral("Auto is the last easing offered (%1)")
+        // Auto is no longer last. It sits at display index 3, with the other three
+        // entries whose shape is not a curve parameter - the straight line, the two
+        // stepped holds - so the combo offers the derived easings together and the
+        // family follows. The picker's tile catalog carries the same head
+        // (tests/picker_probe.cpp #10 pins both tables position by position).
+        const util::Easing::Type kHead[4] = { util::Easing::Type_Linear, util::Easing::Type_Floor,
+                                              util::Easing::Type_Round, util::Easing::Type_Auto };
+        bool head = options.size() >= 4;
+        for (int i = 0; head && i < 4; ++i) {
+            const QVariantMap map = options.at(i).toMap();
+            head = map.value(QStringLiteral("value")).toInt() == i &&
+                map.value(QStringLiteral("label")).toString() == util::Easing::getTypeName(kHead[i]) &&
+                util::Easing::typeAtDisplayIndex(i) == kHead[i];
+        }
+        check(head, "the head is Linear, Floor, Round, Auto - Auto is no longer the last entry");
+        check(util::Easing::displayIndexOf(util::Easing::Type_Auto) == 3,
+              QStringLiteral("Auto sits at display index 3 (%1)")
+                  .arg(util::Easing::displayIndexOf(util::Easing::Type_Auto)));
+        // ... so the entry the combo ends on is the table's last non-Custom entry
+        // (Bounce), and its value is still its display index - what the save path
+        // writes and the read path maps back through typeAtDisplayIndex.
+        check(options.last().toMap().value(QStringLiteral("value")).toInt() == util::Easing::displayCount() - 2 &&
+                  options.last().toMap().value(QStringLiteral("label")).toString() ==
+                      util::Easing::getTypeName(util::Easing::typeAtDisplayIndex(util::Easing::displayCount() - 2)),
+              QStringLiteral("the last offering is the table's last non-Custom entry (%1)")
                   .arg(options.last().toMap().value(QStringLiteral("label")).toString()));
     }
     check(model.rangeOptions().size() == 3, QStringLiteral("three ranges (%1)").arg(model.rangeOptions().size()));

@@ -6,15 +6,25 @@
 
 namespace {
 // Picker display order, mirrored by the Easing::display* helpers. The enum
-// ordinal is serialization order; this is the order pickers show (stepped
-// holds first, then the analytic curves, then the two curve-shaped entries).
+// ordinal is serialization order; this is the order pickers show.
+//
+// The head is the four NON-CURVE entries - the two stepped holds, the straight
+// line, and Automatic, whose shape is derived rather than picked - then the
+// analytic curve family (Cubic, Sine, Quad, ...), then the drawn Custom curve.
+// Auto used to sit last, just before Custom, which read as "the odd one out at
+// the end" while it is really a sibling of Floor/Round/Linear: a type whose
+// shape is not one of the family's parameters. The picker's tile catalog
+// (EasingPickWidget.cpp's kTileOrder) carries the same head and puts its
+// hairline separator right after Auto, so the first tile row is exactly these
+// four and the family follows.
+//
 // Type_Custom stays LAST: the default-easing combo indexes this table directly
 // and excludes the final entry (a custom curve is not a preset it can copy).
 constexpr util::Easing::Type kEasingDisplayOrder[] = {
-    util::Easing::Type_Floor, util::Easing::Type_Round, util::Easing::Type_Linear, util::Easing::Type_Sine,
-    util::Easing::Type_Quad, util::Easing::Type_Cubic, util::Easing::Type_Quart, util::Easing::Type_Quint,
-    util::Easing::Type_Expo, util::Easing::Type_Circ, util::Easing::Type_Back, util::Easing::Type_Elastic,
-    util::Easing::Type_Bounce, util::Easing::Type_Auto, util::Easing::Type_Custom,
+    util::Easing::Type_Linear, util::Easing::Type_Floor, util::Easing::Type_Round, util::Easing::Type_Auto,
+    util::Easing::Type_Cubic, util::Easing::Type_Sine, util::Easing::Type_Quad, util::Easing::Type_Quart,
+    util::Easing::Type_Quint, util::Easing::Type_Expo, util::Easing::Type_Circ, util::Easing::Type_Back,
+    util::Easing::Type_Elastic, util::Easing::Type_Bounce, util::Easing::Type_Custom,
 };
 constexpr int kEasingDisplayOrderCount = int(sizeof(kEasingDisplayOrder) / sizeof(kEasingDisplayOrder[0]));
 } // namespace

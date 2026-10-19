@@ -11,9 +11,19 @@
 // here — no eyeballing. It also writes the rendered widget to
 // easing_picker_layout.png for the record.
 //
+// Beyond the golden's boxes it asserts what a box list cannot see: the tile
+// catalog IS the display table's non-Custom entries position by position (read
+// back by clicking each tile), the hairline separator sits between tile-3 and
+// tile-4 - i.e. right after Auto, closing the four derived entries - and the
+// Auto tile's glyph is NOT the identity curve the Linear tile draws. Those three
+// are computed from live geometry/pixels, so a pure REORDER of the catalog
+// (which leaves every box where it was) is still caught without regenerating the
+// golden.
+//
 // Usage: easing_picker_layout [reference.json] [output.png]
 #include <QApplication>
 #include <QWidget>
+#include <QImage>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -141,6 +151,85 @@ int main(int argc, char** argv) {
                     "FAIL  %-18s got(%4d,%4d,%4d,%4d) ref(%4.1f,%4.1f,%4.1f,%4.1f) tol %.0f   %s%s%s%s\n",
                     qPrintable(name), ax, ay, aw, ah, rx, ry, rw, rh, tol,
                     okX ? "" : " X", okY ? "" : " Y", okW ? "" : " W", okH ? "" : " H");
+        }
+    }
+
+    // ---- tile catalog: the order, the separator, and the Auto tile's own curve ----
+    // Three things the golden cannot see: the tiles' IDENTITY (it records a box at
+    // "tile-i", not which easing tile-i is), the separator (unnamed), and what the Auto
+    // glyph draws. All three matter after the reorder: the picker's catalog is the
+    // display table's non-Custom entries position by position - Linear, Floor, Round,
+    // Auto first - so the hairline closes the four non-curve entries and lands after the
+    // AUTO tile, not after Cubic, and the Auto tile draws the canonical automatic
+    // handle pair instead of collapsing to the identity (Linear) it shows when it is
+    // handed the edited key's empty neighbour context.
+    {
+        // (a) Order: a tile's click writes its type into the draft, so walking the
+        // catalog reads its order back. Restored afterwards so the screenshot below
+        // renders the same draft this gate started on.
+        bool order = true;
+        int catalog = 0;
+        for (int i = 0;; ++i) {
+            QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
+            if (!tile) break;
+            ++catalog;
+            tile->click();
+            app.processEvents();
+            order = order && i < util::Easing::displayCount() - 1 &&
+                int(w.value().type) == int(util::Easing::typeAtDisplayIndex(i));
+        }
+        order = order && catalog == util::Easing::displayCount() - 1;
+        w.setValue(initial); // back to the initial draft (and the initial glyph colours)
+        app.processEvents();
+
+        // (b) The separator: every same-row step is one tile plus one gap (36px); the
+        // step from tile-3 to tile-4 carries the 9px hairline too (49px). Nothing names
+        // the separator, so the step it leaves is the only handle on it.
+        int badSteps = 0;
+        for (int i = 1; i < catalog; ++i) {
+            QToolButton* a = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i - 1));
+            QToolButton* b = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
+            if (!a || !b) { ++badSteps; continue; }
+            const QPoint pa = a->mapTo(&w, QPoint(0, 0)), pb = b->mapTo(&w, QPoint(0, 0));
+            if (pa.y() != pb.y()) continue; // tile-i wrapped onto the next row
+            const int want = (i == 4) ? 49 : 36; // 32px tile + 4px gap (+ 9px separator)
+            if (pb.x() - pa.x() != want) ++badSteps;
+        }
+
+        // (c) The Auto glyph: neither tile is checked here, so both glyphs are painted
+        // the same muted colour and any pixel difference IS the curve.
+        auto grabGlyph = [&w](const char* aTile) {
+            QToolButton* tile = w.findChild<QToolButton*>(QString::fromLatin1(aTile));
+            gui::prop::CurveGlyph* g = tile ? tile->findChild<gui::prop::CurveGlyph*>() : nullptr;
+            return g ? g->grab().toImage() : QImage();
+        };
+        const QImage gLinear = grabGlyph("tile-0");
+        const QImage gAuto = grabGlyph("tile-3");
+        const bool sameSize = !gLinear.isNull() && gLinear.size() == gAuto.size();
+        int glyphDiff = -1;
+        if (sameSize) {
+            glyphDiff = 0;
+            for (int y = 0; y < gLinear.height(); ++y)
+                for (int x = 0; x < gLinear.width(); ++x)
+                    if (gLinear.pixel(x, y) != gAuto.pixel(x, y)) ++glyphDiff;
+        }
+
+        fprintf(stderr,
+                "tile catalog: %d tile(s) for %d non-Custom entries, order=%d, bad column steps=%d "
+                "(want tile+gap, +separator between tile-3 and tile-4), "
+                "Auto-vs-Linear differing glyph pixels=%d\n",
+                catalog, util::Easing::displayCount() - 1, int(order), badSteps, glyphDiff);
+        if (!order) {
+            fprintf(stderr, "FAIL  tile catalog order is not the display table's\n");
+            ++failed;
+        }
+        if (badSteps != 0) {
+            fprintf(stderr, "FAIL  the separator does not sit between tile-3 and tile-4\n");
+            ++failed;
+        }
+        if (!sameSize || glyphDiff <= 0) {
+            fprintf(stderr, "FAIL  the Auto tile's glyph is missing or identical to Linear's\n");
+            ++failed;
         }
     }
 

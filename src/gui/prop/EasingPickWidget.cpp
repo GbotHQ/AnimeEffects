@@ -51,16 +51,48 @@ constexpr int kSliderHead = 18; // knob (14px) + 2px margin top/bottom so its to
 // value-axis headroom (mirrors the mock's VMIN/VMAX)
 constexpr double kVMIN = -0.35, kVMAX = 1.35;
 
-// Picker tile catalog in display order (mock PRIMARY + MORE; the vsep sits
-// between index 3 and 4). Keyed by position, not enum value.
+// Picker tile catalog in display order, keyed by position, not enum value. The
+// head is util::Easing's own display head - Linear, Floor, Round, Auto - so the
+// first tile row is exactly the four entries that are not curve parameters, and
+// the hairline separator is inserted after it (see buildTrow); the analytic
+// family then follows in the table's order. The two tables are asserted equal
+// position by position by tests/picker_probe.cpp #10.
 const util::Easing::Type kTileOrder[] = {
-    util::Easing::Type_Linear, util::Easing::Type_Floor, util::Easing::Type_Round,
-    util::Easing::Type_Cubic,  util::Easing::Type_Sine,  util::Easing::Type_Quad,
-    util::Easing::Type_Quart,  util::Easing::Type_Quint, util::Easing::Type_Expo,
-    util::Easing::Type_Circ,   util::Easing::Type_Back,  util::Easing::Type_Elastic,
-    util::Easing::Type_Bounce, util::Easing::Type_Auto,
+    util::Easing::Type_Linear, util::Easing::Type_Floor,  util::Easing::Type_Round,
+    util::Easing::Type_Auto,   util::Easing::Type_Cubic,  util::Easing::Type_Sine,
+    util::Easing::Type_Quad,   util::Easing::Type_Quart,  util::Easing::Type_Quint,
+    util::Easing::Type_Expo,   util::Easing::Type_Circ,   util::Easing::Type_Back,
+    util::Easing::Type_Elastic, util::Easing::Type_Bounce,
 };
 constexpr int kTileOrderCount = int(sizeof(kTileOrder) / sizeof(kTileOrder[0]));
+
+// The AutoContext the catalog's Auto TILE draws with. A tile is an image of the
+// easing, not a preview of the key being edited: the picker hands it no document,
+// so with the real (empty) context Auto's derived handles collapse to the
+// identity and the tile is indistinguishable from Linear. Give the tile the pair
+// an automatic handle pair IS instead: a neighbour one segment away on each side
+// at the segment's own end values - (frame -1, value 0) before and (frame +2,
+// value 1) after, in the segment widths the glyph evaluates over (d = 1). Both
+// ends sit on their neighbours' plateau there, so the auto-clamped rule pulls
+// both tangents flat and the control points land at (1/3, 0) and (2/3, 1): the
+// canonical ease-in-out an automatic handle pair produces, and clearly not the
+// straight line. The shape is produced by the REAL rule - CurveGlyph paints
+// Type_Auto through Easing::calculate(param, ctx, ...) -> autoHandles - so it
+// follows the derivation rather than a hardcoded path.
+constexpr util::Easing::AutoContext kAutoTileContext = {
+    { true, -1.0f, 0.0f }, // prev: one segment before, at the from key's value
+    { true, 2.0f, 1.0f },  // next: one segment after, at the to key's value
+};
+
+// Which context a glyph draws with. The catalog's Auto tile always uses the
+// canonical pair above; every other glyph (the blend thumbnails, the motion
+// preview, the timeline's chip through prop::EasingItem) draws the real
+// AutoContext of the keys it describes, so a preview stays honest. Only a
+// Type_Auto param reads the context at all.
+const util::Easing::AutoContext& glyphAutoContext(util::Easing::Type aType,
+                                                  const util::Easing::AutoContext& aShown) {
+    return aType == util::Easing::Type_Auto ? kAutoTileContext : aShown;
+}
 
 QString tileName(int aIdx) { return QString::fromLatin1("tile-%1").arg(aIdx); }
 
@@ -664,6 +696,10 @@ QWidget* EasingPickWidget::buildTrow() {
         flow->addWidget(tile);
         mTileBtns.append(tile);
         if (i == 3) {
+            // The hairline closes the derived-easing cluster: the catalog's head
+            // is Linear, Floor, Round, Auto (kTileOrder), so the separator lands
+            // AFTER Auto and the first tile row is exactly those four with the
+            // curve family following.
             QFrame* sep = new QFrame(mTrow);
             sep->setObjectName("vsep");
             sep->setFixedSize(kVsepW, kTile);
@@ -692,7 +728,9 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType) 
     g->setObjectName("t-glyph");
     g->setFixedSize(kTileGlyph, kTileGlyph);
     g->setParam(mkParam(aType, mDraft.range, mDraft.weight));
-    g->setAutoContext(mAuto);
+    // Auto's tile draws the canonical automatic-handle pair, not the edited key's
+    // neighbours (a tile is a catalog image; see kAutoTileContext).
+    g->setAutoContext(glyphAutoContext(aType, mAuto));
     g->setGlyphColor(C().textMutedDim);
     vl->addWidget(g, 0, Qt::AlignCenter);
     connect(tile, &QToolButton::clicked, this, [this, aType] { setType(aType); });
@@ -917,8 +955,10 @@ void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
 
 void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext) {
     // The neighbour keys, not the draft, changed: re-render the curves the popup
-    // derives from them (the tile glyphs, and the motion preview on its next
-    // tick) so an Auto draft is never shown as a shape no key has.
+    // derives from them (the motion preview on its next tick, and the blend
+    // thumbnails) so an Auto draft is never shown as a shape no key has. The
+    // picker's Auto TILE is exempt by design: it is a catalog image and draws the
+    // canonical automatic-handle pair (see kAutoTileContext).
     mAuto = aContext;
     refreshTiles();
 }
@@ -1006,7 +1046,9 @@ void EasingPickWidget::refreshTiles() {
             // palette (it does not repaint on check-state change alone).
             g->setGlyphColor(on ? C().accentBright : C().textMutedDim);
             g->setParam(mkParam(type, mDraft.range, mDraft.weight));
-            g->setAutoContext(mAuto);
+            // Auto keeps its canonical catalog pair here too, so this refresh
+            // cannot turn the Auto tile back into a straight line.
+            g->setAutoContext(glyphAutoContext(type, mAuto));
         }
     }
 }
@@ -1184,9 +1226,10 @@ void EasingPickWidget::popUpAt(const QPoint& aGlobalAnchor, const QWidget* aAnch
     // height once, nudge up if it would clip, and let Custom grow down in
     // place. (The popup opens flush at the anchor, gap 0.)
     //
-    // The Auto context is installed before the first paint: the tile, the
-    // blend thumbnails and the motion preview derive their curves from the
-    // neighbours of the key this open names.
+    // The Auto context is installed before the first paint: the blend
+    // thumbnails and the motion preview derive their curves from the neighbours
+    // of the key this open names (the Auto tile draws the catalog's canonical
+    // pair instead - a tile is an image, not a preview of the user's keys).
     setAutoContext(aAutoContext);
 
     const util::Easing::Param requested = aShown;

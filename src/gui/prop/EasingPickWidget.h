@@ -43,7 +43,10 @@ public:
     explicit CurveGlyph(QWidget* aParent = nullptr);
     void setParam(const util::Easing::Param& aParam);
     // The neighbouring keys an Auto curve is shaped by. Only a Type_Auto param
-    // reads it; an empty context is the neutral (straight) curve.
+    // reads it; an empty context is the neutral (straight) curve. The picker's
+    // Auto TILE is the one caller that hands in a FIXED pair rather than the
+    // document's keys, so the catalog image does not change with the selection
+    // (see kAutoTileContext in EasingPickWidget.cpp).
     void setAutoContext(const util::Easing::AutoContext& aContext);
     void setGlyphColor(const QColor& aColor);
     void setStrokeWidth(double aWidth); // default 1.5
@@ -119,9 +122,11 @@ public:
     // The neighbouring keys an Auto draft is shaped by. The widget cannot know
     // them (they live in the timeline), so its owner hands them in whenever the
     // edited key or its neighbours change; an empty context is correct for every
-    // non-Auto draft. They drive the Auto tile, the blend thumbnails and the
-    // motion preview, so the popup previews the curve the document would play
-    // rather than a shape that belongs to no key.
+    // non-Auto draft. They drive the blend thumbnails and the motion preview, so
+    // the popup previews the curve the document would play rather than a shape
+    // that belongs to no key. The Auto TILE is deliberately NOT one of them: a
+    // tile is a catalog image of the easing, so it always draws the canonical
+    // automatic-handle pair (see kTileOrder's neighbour in the .cpp).
     void setAutoContext(const util::Easing::AutoContext& aContext);
 
     // Segment / tile interactions (public so a harness can drive them).
@@ -158,7 +163,8 @@ public:
 
     // Open the picker anchored AT aGlobalAnchor - the bottom-left of the control
     // it belongs to (the header's easing chip) or the pointer a key menu was
-    // opened at - showing aShown and shaping its Auto tile with aAutoContext.
+    // opened at - showing aShown and shaping its live previews (the blend
+    // thumbnails and the motion bar) with aAutoContext.
     // aAnchorWidget is the widget the anchor belongs to: it supplies the screen
     // the popup is clamped into and the window it is made a transient child of
     // (both needed for a stable position; see the definition).

@@ -99,10 +99,13 @@ public:
 
     static QString getTypeName(Type aType);
     static QString getRangeName(Range aRange);
-    // Picker display order: the stepped holds lead, then the analytic curves,
-    // then the bezier "Custom" entry. Distinct from the enum ordinal (which is
-    // serialization order and must not shift), so pickers build their layouts
-    // from these helpers instead of assuming index == enum ordinal.
+    // Picker display order: Linear, Floor, Round and Auto lead (the entries
+    // whose shape is not one of the family's parameters - a straight line, the
+    // two stepped holds, and Automatic, whose handles are derived), then the
+    // analytic curve family, then the bezier "Custom" entry. Distinct from the
+    // enum ordinal (which is serialization order and must not shift), so
+    // pickers build their layouts from these helpers instead of assuming
+    // index == enum ordinal.
     static int displayIndexOf(Type aType);      // -1 when aType is not listed
     static Type typeAtDisplayIndex(int aIndex); // Type_Linear fallback
     static int displayCount();                  // number of pickable entries
