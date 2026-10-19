@@ -11,32 +11,33 @@ namespace time {
 
     static QColor withAlpha(QColor aColor, int aAlpha) { aColor.setAlpha(aAlpha); return aColor; }
 
-    // The focused key's fill: the type colour mixed toward the keyframe
-    // highlight (design s3 — "the fill brightens toward the keyframe highlight
-    // ... the size never changes"). The mock's own step is
-    // mixWhite(hue, 0.45) = round(c + (255 - c) * 0.45) per channel, i.e. 45%
-    // of the distance to white; its --key-highlight token is #ffffff
-    // (proposal.css), and the app's palette has no pure-white cell, so the mix
-    // target is white itself and the step is 0.45. Hover brightens the same way
-    // in the design; the app still has no hover state, so only focus uses it.
+    // The focused key's fill: the channel hue mixed 0.45 of the way to the
+    // TEXT colour (the user's ruling for both views; the mock mixes toward
+    // its --key-highlight, and the text colour is the app's equivalent
+    // readable ink in either theme). Per channel:
+    // round(hue + (text - hue) * 0.45), alpha carried through unchanged. The
+    // size never changes.
     constexpr double kSelectFillMix = 0.45;
-    static QColor brightenTowardHighlight(const QColor& aColor) {
-        const auto mix = [](int aChannel) {
-            return static_cast<int>(std::lround(aChannel + (255 - aChannel) * kSelectFillMix));
+    static QColor mixTowardText(const QColor& aColor) {
+        const QColor text = theme::Colors::current().text;
+        const auto mix = [](int aChannel, int aTarget) {
+            return static_cast<int>(std::lround(aChannel + (aTarget - aChannel) * kSelectFillMix));
         };
-        return QColor(mix(aColor.red()), mix(aColor.green()), mix(aColor.blue()), aColor.alpha());
+        return QColor(
+            mix(aColor.red(), text.red()),
+            mix(aColor.green(), text.green()),
+            mix(aColor.blue(), text.blue()),
+            aColor.alpha()
+        );
     }
 
     // The lane label's ink: the channel's hue at 0.42 (design s1 — "the ink
     // becomes the channel's hue at 0.42", one step quieter than the keys). The
     // value is the mock's own (hexA(hue, 0.42) in its band-name pass).
     constexpr int kLabelAlpha = 107; // 0.42
-    // The selected key's ring (design s3): 1px wide, clear of the marker, in
-    // the accent — the marker itself keeps its size and its own type colour.
-    // Radius and alpha are the mock's own values for that ring (marker
-    // r=keyRadius, ring r=keyRadius+2.6, at 0.85). The mock paints that ring in
-    // --key-highlight (#ffffff); this pass keeps the app's accentBright, the
-    // token every other focus/selection edge in the app already uses.
+    // The selected key's ring (the user's ruling, both views): 1px wide, in
+    // the key's OWN channel hue at 0.85 alpha, drawn OUTSIDE the marker at
+    // dotRadius + 2.6. The marker itself keeps its size.
     constexpr int kSelectRingAlpha = 217; // 0.85
     constexpr double kSelectRingRadius = keyRadius + 2.6;
 
@@ -260,13 +261,13 @@ namespace time {
                     const bool isFocused = itr.value()->isFocused();
                     const QColor hue = keyColor(itr.value()->type());
                     // Unfocused keys keep their own type colour outright; a
-                    // focused one brightens its fill toward the keyframe
-                    // highlight (above), which is the design's selection
-                    // feedback for the fill — the .lighter(150) body swap and
-                    // the neutral key's polarity inversion (lit when unfocused,
-                    // plain when focused) are both gone.
+                    // focused one mixes its fill 0.45 toward the text colour
+                    // (above), which is the design's selection feedback for
+                    // the fill — the .lighter(150) body swap and the neutral
+                    // key's polarity inversion (lit when unfocused, plain when
+                    // focused) are both gone.
                     mPainter.setPen(QPen(kBrushKeyEdge, 1));
-                    mPainter.setBrush(isFocused ? brightenTowardHighlight(hue) : hue);
+                    mPainter.setBrush(isFocused ? mixTowardText(hue) : hue);
 
                     auto attr = mScale->attribute(itr.key());
                     QPointF pos(left + attr.pos + 0.5, height + 0.5f);
@@ -294,14 +295,12 @@ namespace time {
                     }
 
                     if (isFocused) {
-                        // Design s3: the selected key's 1px accent ring, clear
-                        // of the marker; no size change, so the drawn radius
+                        // The selected key's 1px ring, OUTSIDE the marker, in
+                        // the key's OWN channel hue at 0.85 (the user's ruling,
+                        // both views); no size change, so the drawn radius
                         // stays keyRadius (the hit radius is ~4x it, and no hit
-                        // test keys off the drawn size). It replaces the old
-                        // fill brightening outright.
-                        mPainter.setPen(
-                            QPen(withAlpha(theme::Colors::current().accentBright, kSelectRingAlpha), 1)
-                        );
+                        // test keys off the drawn size).
+                        mPainter.setPen(QPen(withAlpha(hue, kSelectRingAlpha), 1));
                         mPainter.setBrush(Qt::NoBrush);
                         mPainter.drawEllipse(pos, kSelectRingRadius, kSelectRingRadius);
                     }

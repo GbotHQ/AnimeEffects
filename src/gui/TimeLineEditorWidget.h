@@ -169,12 +169,11 @@ private:
     void onPasteKeyTriggered(bool);
     void onDeleteKeyTriggered(bool);
     void onSelectSpacingTriggered();
-    void onSelectRangeTriggered(int rangeType);
     // Applies aNext to the easing of every key the current open named and commits
     // the results as ONE undo step (one macro, one notification naming every key
     // written). A key whose type carries no easing is skipped, and so is one whose
     // value aNext would not change, so an edit that changes nothing leaves no
-    // history entry behind. This is the picker's commit path and the range menu's.
+    // history entry behind. This is the picker's commit path.
     void assignEasingToTargets(const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
     // Hands the header's chip what it names: one easing per SELECTED key, in
     // selection order, plus the Auto context of the key the chip shows (the first),
@@ -213,7 +212,6 @@ private:
     QAction* mPasteKey;
     QAction* mDeleteKey;
     QAction* mSelectSpacing;
-    QMenu* mSelectRange;
     // The header's easing control, if a header hosts one: it owns the single
     // picker popover this widget opens (see openEasingPicker).
     prop::EasingItem* mEasingHost;

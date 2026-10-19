@@ -98,9 +98,10 @@ bool singleTargetIs(core::TimeLineEvent& aEvent, const core::TimeKey* aKey) {
 // What the widget does on every timeline-modified notification.
 void notifyTimelineModified(ctrl::TimeLineEditor& aEditor) { aEditor.updateKey(); }
 
-// What the context-menu easing action does to a key's data, minus the
-// command plumbing: a pure data-only edit.
-void editEasingLikeTheMenuWould(core::TimeKey* aKey) {
+// A pure data-only edit of a key's easing (the header's easing picker is the
+// route that writes this now; the key menus carry no easing entry), minus the
+// command plumbing. The selection must survive it.
+void editKeyEasingDataOnly(core::TimeKey* aKey) {
     static_cast<core::MoveKey*>(aKey)->data().easing().type = util::Easing::Type_Linear;
 }
 
@@ -210,9 +211,9 @@ int main(int argc, char** argv) {
         CHECK(keyA->isFocused());                  // ...which alone carries the highlight
         CHECK(!keyB->isFocused());
 
-        // a menu action fires on the loaned target and notifies the timeline:
-        // the data-only edit keeps the loan alive through updateKey()
-        editEasingLikeTheMenuWould(keyA);
+        // a data-only edit, like the one a menu action would fire on the loaned
+        // target, notifies the timeline: the loan survives updateKey()
+        editKeyEasingDataOnly(keyA);
         CHECK(keyA->data().easing().type == util::Easing::Type_Linear);
         notifyTimelineModified(editor);
         core::TimeLineEvent during;
@@ -296,7 +297,7 @@ int main(int argc, char** argv) {
         CHECK(keyA->isFocused());
 
         // data-only edit (an easing change): the selection must be kept
-        editEasingLikeTheMenuWould(keyA);
+        editKeyEasingDataOnly(keyA);
         notifyTimelineModified(editor);
         CHECK(editor.retrieveSelectionTargets(kept = core::TimeLineEvent()));
         CHECK(singleTargetIs(kept, keyA));
@@ -368,7 +369,7 @@ int main(int argc, char** argv) {
         // ...and neither is a timeline notification that changes nothing, which is
         // what updateKey() runs on every data-only edit: refresh() finds every entry
         // exactly where it was.
-        editEasingLikeTheMenuWould(keyC);
+        editKeyEasingDataOnly(keyC);
         notifyTimelineModified(editor);
         CHECK(changes == afterLend);
 

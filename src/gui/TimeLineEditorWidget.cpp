@@ -171,23 +171,6 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
             mCopyToClipboard, &QAction::triggered, this, &TimeLineEditorWidget::onCopyCBTriggered
         );
 
-        mSelectRange = new QMenu(tr("Change key(s) range to"), this);
-        {
-            auto* in = new QAction(tr("In"), this);
-            auto* out = new QAction(tr("Out"), this);
-            auto* all = new QAction(tr("All"), this);
-
-            QVector<QAction*> ranges{in, out, all};
-            int x = 0;
-            for (auto range: ranges) {
-                mSelectRange->addAction(range);
-                mSelectRange->connect(range, &QAction::triggered, [=] {
-                    onSelectRangeTriggered(x);
-                });
-                x++;
-            }
-        }
-
         mSelectSpacing = new QAction(tr("Select spacing between keys"), this);
         mSelectSpacing->connect(mSelectSpacing, &QAction::triggered, [=] {onSelectSpacingTriggered();});
     }
@@ -517,38 +500,25 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
 
     // The key menu applies when the click is on a key or when there is a
     // current selection, so keys stay operable from anywhere once selected.
-    //
-    // The easing is ONE entry that opens the picker, not a flat submenu of 14
-    // rows: the header's chip opens the same popover (design section 2), so there
-    // is one list of easings in one visual language, and it is opened AFTER the
-    // menu closes (see below) rather than from inside it.
-    bool pickEasing = false;
+    // The easing entries are NOT here: easing lives in the dock header's own
+    // chip (its picker is the single easing editor), so a key menu entry would
+    // be a second route to the same edit.
     if (clickedOnKey || mEditor->retrieveSelectionTargets(mTargets)) {
         menu.addAction(mCopyKey);
         menu.addAction(mCopyToClipboard);
         menu.addAction(mPasteKey);
         menu.addSeparator();
         menu.addAction(mSelectSpacing);
-        QAction* easing = menu.addAction(tr("Change key(s) easing..."));
-        easing->connect(easing, &QAction::triggered, [&pickEasing]() { pickEasing = true; });
-        menu.addMenu(mSelectRange);
         menu.addSeparator();
         menu.addAction(mDeleteKey);
     } else {
         menu.addAction(mPasteKey);
     }
     menu.exec(this->mapToGlobal(aPos));
-    // The popover opens once the menu is gone: two nested grabs (an open QMenu
-    // and a Qt::Popup) would fight over the same press, and the picker would
-    // close on the release that dismissed the menu. It is anchored AT the
-    // pointer, which is where the menu was.
-    if (pickEasing && openEasingPicker(mTargets, this->mapToGlobal(aPos)))
-        return;
     // A right-click on an unselected key lent it a temporary selection for
     // this menu only; the previous selection is not restored, so drop the
-    // temporary selection now that the interaction is over, then repaint so
-    // the highlight clears. A popover open keeps it (it is the popover's
-    // targets) and ends it when it closes - see setEasingItemHost.
+    // temporary selection now that the menu is gone, then repaint so the
+    // highlight clears (see ctrl::TimeLineEditor::endTemporarySelection).
     mEditor->endTemporarySelection();
     this->update();
 }
@@ -870,18 +840,6 @@ void TimeLineEditorWidget::assignEasingToTargets(
         notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
         mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.param, edit.next));
     }
-}
-
-void TimeLineEditorWidget::onSelectRangeTriggered(int rangeType) {
-    // The entry names a range; everything else about the key's easing stays as it
-    // is, so each key's own param is read and only its range replaced - the same
-    // read-modify-write the flat menu's range submenu did, now as one undo step.
-    const auto range = static_cast<util::Easing::Range>(rangeType);
-    assignEasingToTargets([range](const util::Easing::Param& aParam) {
-        util::Easing::Param next = aParam;
-        next.range = range;
-        return next;
-    });
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
@@ -1223,7 +1181,7 @@ bool TimeLineEditorWidget::openEasingPicker(const core::TimeLineEvent& aTargets,
     // context that key's own neighbours give it (prop::autoContextOf - an Auto key
     // stores no control points, so without them the tile would draw a shape no key
     // plays). A key of a type that carries no easing is skipped; a target list of
-    // only those opens nothing, which is what the flat menu did too.
+    // only those opens nothing, and nothing is ever written.
     util::Easing::Param shown;
     util::Easing::AutoContext autoContext;
     bool hasShown = false;

@@ -148,17 +148,19 @@ Rgb over(const QColor& aSrc, double aAlpha, const Rgb& aDst) {
     return {channel(aSrc.red(), aDst.r), channel(aSrc.green(), aDst.g), channel(aSrc.blue(), aDst.b)};
 }
 
-// The focused key's fill (design s3): the type colour mixed toward the
-// keyframe highlight - the mock's mixWhite(hue, t), i.e. t of each channel's
-// distance to white, at the mock's own t. Its --key-highlight token is
-// #ffffff (proposal.css), so the mix target is plain white.
+// The focused key's fill (the user's ruling for both views): the channel hue
+// mixed toward the theme's TEXT colour by 0.45 - the app's readable ink in
+// either palette, in place of the mock's --key-highlight white. The renderer
+// performs the same mix with the same token and amount (time_Renderer.cpp,
+// mixTowardText), so the expectation is the rule rather than a white stand-in.
 constexpr double kSelectFillMix = 0.45;
 
-Rgb towardHighlight(const Rgb& aColor, double aT) {
-    auto mix = [&](int aChannel) {
-        return static_cast<int>(std::lround(aChannel + (255 - aChannel) * aT));
+Rgb towardText(const Rgb& aColor, double aT) {
+    const QColor text = theme::Colors::current().text;
+    auto mix = [&](int aChannel, int aTarget) {
+        return static_cast<int>(std::lround(aChannel + (aTarget - aChannel) * aT));
     };
-    return {mix(aColor.r), mix(aColor.g), mix(aColor.b)};
+    return {mix(aColor.r, text.red()), mix(aColor.g, text.green()), mix(aColor.b, text.blue())};
 }
 
 // The canvas: lane bands span the whole visible width, so the probes need a
@@ -374,7 +376,7 @@ int main(int argc, char** argv) {
         const Rgb moveKey = rgbOf(theme::channelColor(colors, core::TimeKeyType_Move, 0));
         CHECK(chebyshev(moveKey, rgbOf(colors.axisX)) == 0);
         CHECK(chebyshev(moveKey, rgbOf(colors.moveKey)) > 0); // the old type hue is gone from this key
-        const Rgb brightened = towardHighlight(moveKey, kSelectFillMix);
+        const Rgb brightened = towardText(moveKey, kSelectFillMix);
 
         // The axis rule itself, read off the same table both views read: the two
         // components of one type DIFFER (X vs Y), and a channel with no axis keeps
