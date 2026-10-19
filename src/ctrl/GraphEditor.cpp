@@ -6,6 +6,7 @@
 #include <new>
 
 #include <QObject>
+#include <QSettings>
 #include <memory>
 
 #include "cmnd/ScopedMacro.h"
@@ -253,7 +254,13 @@ namespace ctrl {
         mMoveValueDelta(0.0f),
         mMoveKeys(),
         mMoveMembers(),
-        mAxisFps(0) {
+        mAxisFps(0),
+        // The frame-number format, from the SAME key the timeline's editor reads
+        // (ctrl/TimeLineEditor.h:203, and gui/TimeLineWidget.cpp applies it live):
+        // the panel's ruler and the timeline's ruler must write one frame one way.
+        mTimeFormat(static_cast<core::TimeFormatType>(
+            QSettings().value("generalsettings/ui/timeformat", int(core::TimeFormatType_Frames_From0)).toInt()
+        )) {
         // The frame axis' ladder is seeded from the project's fps and range here,
         // so the first geometry the host asks for is already against the right
         // ruler. There is no shown/hidden state to seed: the panel's dock page is
@@ -2344,6 +2351,14 @@ namespace ctrl {
         // frame; -1 is outside the real range (frames start at 1), so it reads as
         // "nothing" without inventing a second type.
         return mProject ? mProject->currentTimeInfo().frame : core::Frame(-1);
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    int GraphEditor::fps() const {
+        // The playback rate the frame-number formats are written at. 60 is the
+        // timeline editor's own pre-project default (ctrl::TimeLineEditor's mFps),
+        // so an empty editor formats exactly as an empty timeline does.
+        return mProject ? mProject->attribute().fps() : 60;
     }
 
 } // namespace ctrl

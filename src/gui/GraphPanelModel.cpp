@@ -7,13 +7,33 @@
 #include "XCAssert.h"
 #include "core/Frame.h"
 #include "core/ObjectNode.h"
+#include "core/TimeFormat.h"
 #include "core/TimeKey.h"
 #include "core/TimeLine.h"
 #include "ctrl/GraphEditor.h"
+#include "ctrl/TimeLineEditor.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
 #include "gui/theme/Graph.h"
+
+// The frame axis is the TIMELINE'S RULER (see THE AXES and LABELS in the header), so
+// its metrics come from the timeline's own homes instead of being restated here: the
+// band, the number row and the playhead pill are ctrl::TimeLineEditor's public
+// constants, re-exported as gui::frameRuler and pinned to them below; the tick length,
+// the 6px-per-character reserve and the 8px number margin are TimeRuler.cpp's local
+// numbers, restated in gui::frameRuler because the model and the drawing layer both
+// read them.
+static_assert(gui::frameRuler::kBandHeight == ctrl::TimeLineEditor::kHeaderHeight,
+              "the graph's ruler band must be the timeline's kHeaderHeight");
+static_assert(gui::frameRuler::kNumberTop == ctrl::TimeLineEditor::kNumberTop,
+              "the graph's number row must start where the timeline's does");
+static_assert(gui::frameRuler::kNumberHeight == ctrl::TimeLineEditor::kNumberHeight,
+              "the graph's number row must be the timeline's kNumberHeight");
+static_assert(gui::frameRuler::kPillPadding == ctrl::TimeLineEditor::kPillPadding,
+              "the graph's playhead pill must use the timeline's padding");
+static_assert(gui::frameRuler::kPillRadius == ctrl::TimeLineEditor::kPillRadius,
+              "the graph's playhead pill must use the timeline's radius");
 
 namespace {
 
@@ -26,15 +46,6 @@ namespace {
 // COLUMN in graph_Scaler.h) and Scaler::kAxisLabelPad from the scaler,
 // ctrl::graph::kKeyDotRadius from graph_Geometry.h.
 //
-// The short tick marks replaced the renderer's full grid lines. Their length is
-// the drawing layer's business (the model publishes positions); 4px is the
-// convention this model documents, and the frame numbers are placed clear of it.
-constexpr int kFrameTickLength = 4;
-// Least gap between the right edge of one frame number's box and the left edge
-// of the next. The renderer leaned on the ladder's 48px major spacing instead,
-// which is a property of the axis rather than of the label; stating it on the
-// boxes keeps two numbers from touching under ANY font metric.
-constexpr int kFrameLabelGap = 8;
 // Horizontal padding of a text box around its glyphs, the renderer's own
 // `horizontalAdvance(text) + 4`.
 constexpr int kLabelPad = 2;
@@ -50,13 +61,13 @@ constexpr int kChipPadX = 6;
 // from the PANEL's right edge on the overlay's floor, from the PLOT's on the dock's -
 // the air under the ruler band it hangs in, and its padding around its text. The
 // reference floats it at the panel's top-right corner, 8px inside the edge and 30px
-// from the top - which is kChannelsButtonTopGap below the band's whole block (its
-// kFrameTickLength tick rows plus the numbers' own line) while nothing occludes the
-// band - padded 6px/2px, "clear of the ruler band so it cannot read as part of the
-// scale" (mock.css, .gp-chbtn:not(.hosted)). That clearance holds in BOTH homes,
-// the docked one included: the reference's hosted button carries no placement of its
-// own (mock.css, .gp-chbtn.hosted) because the host places it, and the panel's band is
-// the ruler's own ink either way.
+// from the top - which is kChannelsButtonTopGap below the band's whole block (the
+// timeline's 22px header) while nothing occludes the band - padded 6px/2px, "clear of
+// the ruler band so it cannot read as part of the scale" (mock.css,
+// .gp-chbtn:not(.hosted)). That clearance holds in BOTH homes, the docked one
+// included: the reference's hosted button carries no placement of its own (mock.css,
+// .gp-chbtn.hosted) because the host places it, and the panel's band is the ruler's
+// own ink either way.
 constexpr int kChannelsButtonGap = 8;
 constexpr int kChannelsButtonTopGap = 8;
 constexpr int kChannelsButtonPadX = 6;
@@ -75,80 +86,269 @@ constexpr int kMaxSamplesPerSegment = 256;
 // ctrl::graph::Scaler::valueAxisText: the label and the column's WIDTH are
 // measured off the SAME strings, so the format must not be restated here.
 
-// The frame axis: the ladder's own ticks, and a number on the majors.
+// The frame axis: THE TIMELINE'S RULER (see THE AXES and LABELS in the header).
 //
-// The frame window is the plot's edges through the frame mapping: a ladder can
-// be far denser than the plot is wide, and only what is visible is published.
-// Ticks are positions, never spans - there is no grid. Each tick's TIER travels
-// beside its position in frameTickLevel (same order, same length): the ladder that
-// decided the tick also said which tier it is, so the classification is read here
-// rather than re-derived by a drawing layer from the tick spacing - and what a tier
-// looks like (its alpha; the length is one for every level) stays that layer's
-// decision, the way the model publishes a position and not a span.
-void buildFrameAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics) {
+// The frame window is the plot's edges through the frame mapping: a ladder can be far
+// denser than the plot is wide, and only what is visible is published. Ticks are
+// positions, never spans - there is no grid. Each tick's TIER travels beside its
+// position in frameTickLevel (same order, same length): the ladder that decided the
+// tick also said which tier it is, so the classification is read here rather than
+// re-derived by a drawing layer from the tick spacing - and what a tier looks like
+// (its alpha; the length is one for every level) stays that layer's decision, the way
+// the model publishes a position and not a span.
+//
+// ONE FORMATTER for the whole axis: every string this function writes - a ladder
+// number, a boundary number and the merged "first-last" label - is
+// core::TimeFormat::frameToString(frame, aFormatType). The timeline's own
+// TimeRuler::renderHeader is the source of the rules below (its first/last boundary
+// labels, its 6px-per-character reserve, its kNumberMargin, its pill-column
+// suppression, and its "number every showNumber tier"), so the two rulers cannot
+// disagree about which frames are numbered or what a frame is called.
+void buildFrameAxis(
+    gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics,
+    const core::TimeFormat& aFormat, core::TimeFormatType aFormatType, const util::Range& aFrameRange
+) {
+    using namespace gui::frameRuler;
     const QRect& plot = aModel.plot;
-    const core::Frame first = aScale.frameAt(plot.left());
-    const core::Frame last = aScale.frameAt(plot.right());
-    const int textHeight = aMetrics.height();
-    // The box sits below the tick marks, below the band the panel's top may use (see
-    // THE OCCLUDED TOP in the header: a widget floating above the viewport moves the
-    // band down, and the numbers with it). Without room for a whole text line under
-    // the marks there is nothing to label.
-    const int labelTop = aModel.rulerBandTop + kFrameTickLength + 1;
-    const bool roomForText = (labelTop + textHeight - 1) <= plot.bottom();
+    if (aModel.rulerBand.isEmpty()) {
+        // No band, no ruler ink. The playhead still exists as a document fact; its
+        // line falls back to the plot's top edge in the drawing layer.
+        if (aModel.playheadX >= 0)
+            aModel.playheadLineTop = plot.top();
+        return;
+    }
 
-    bool anyLabel = false;
-    int lastLabelRight = 0;
+    // THE PLAYHEAD PILL, before the labels, because its width is what suppresses
+    // them: the model writes the frame with the SAME formatter the ruler numbers use
+    // and measures it with the font the label boxes are measured with. (The drawing
+    // layer writes the published string in its own font, exactly as it does for a
+    // label box; the pill is TimeCursor's - 14px in the band's number row.)
+    if (aModel.playheadX >= 0 && !aModel.playheadText.isEmpty()) {
+        const int pillWidth = aMetrics.horizontalAdvance(aModel.playheadText) + 2 * kPillPadding;
+        aModel.playheadPill =
+            QRect(aModel.playheadX - pillWidth / 2, aModel.rulerBand.top() + kPillTop, pillWidth, kNumberHeight);
+        aModel.playheadLineTop = aModel.rulerBand.top() + kLineTop;
+    }
+    // The pill's own half-width, derived exactly as TimeRuler derives it from the
+    // measured string (its kPillPadding either side, the sum halved).
+    const int pillHalf = aModel.playheadPill.width() / 2;
+    const auto underPill = [&aModel, pillHalf](int aCentre) {
+        return pillHalf > 0 && qAbs(aCentre - aModel.playheadX) < pillHalf;
+    };
+
+    const auto numberText = [&aFormat, aFormatType](int aFrame) {
+        return aFormat.frameToString(aFrame, aFormatType);
+    };
+    // The timeline's RESERVE, not a measurement: 6px per character, so a label's slot
+    // is known before the drawing font is (TimeRuler.cpp:108, :267-279).
+    const auto numberWidth = [](const QString& aText) { return kNumberCharWidth * int(aText.size()); };
+    const int labelTop = aModel.rulerBand.top() + kNumberTop;
+    constexpr int margin = kNumberMargin;
 
     // Strided by the finest level the ladder draws (Scaler::tickStride): the window can span
     // viewport / spacing frames at a deep zoom-out, and the drawn ticks are a handful. The start
     // is aligned to the stride, which is what the levels are tested against.
     const double framePpf = aScale.framePpf();
     const int stride = aScale.frameScale().tickStride(framePpf);
-    int frame = first.get();
+    const int firstFrame = aScale.frameAt(plot.left()).get();
+    const int lastFrame = aScale.frameAt(plot.right()).get();
+
+    struct Tick {
+        int frame;
+        int x;
+        int level;
+        bool showNumber;
+    };
+    QVector<Tick> ticks;
+    int frame = firstFrame;
     if (const int rem = frame % stride)
         frame += rem > 0 ? stride - rem : -rem;
-    for (; frame <= last.get(); frame += stride) {
-        const ctrl::time::Scaler::TickLevel level =
-            aScale.frameScale().attributeAt(frame, framePpf).level;
-        if (level == ctrl::time::Scaler::TickLevel::None)
+    for (; frame <= lastFrame; frame += stride) {
+        const ctrl::time::Scaler::Attribute attribute = aScale.frameScale().attributeAt(frame, framePpf);
+        if (attribute.level == ctrl::time::Scaler::TickLevel::None)
             continue; // the ladder says this frame sits too close to its neighbours to mark
-
         const int x = aScale.pixelX(core::Frame(frame));
         // pixelX rounds, so a frame whose mapping falls a pixel outside the plot
         // would otherwise be ticked in the margin.
         if (x < plot.left() || plot.right() < x)
             continue;
-        if (aModel.frameTickX.isEmpty() || aModel.frameTickX.last() != x) {
-            aModel.frameTickX.append(x);
-            // The tier travels with the position, appended in the same step so the two
-            // vectors cannot desync: the model classifies the tick (the ladder's own
-            // TickLevel), and how a tier LOOKS - its alpha, its length - stays the
-            // drawing layer's decision (see THE AXES in the header).
-            aModel.frameTickLevel.append(static_cast<int>(level));
-        }
-
-        if (level != ctrl::time::Scaler::TickLevel::Major || !roomForText)
+        if (!ticks.isEmpty() && ticks.last().x == x)
             continue;
+        // The tier travels with the position, appended in the same step so the two
+        // vectors cannot desync: the model classifies the tick (the ladder's own
+        // TickLevel), and how a tier LOOKS - its alpha, its length - stays the
+        // drawing layer's decision (see THE AXES in the header). `showNumber` is the
+        // ladder's own answer, so every tier that carries it is numbered (a major
+        // always, the intermediate tier once it has 64px of room).
+        ticks.append({frame, x, int(attribute.level), attribute.showNumber});
+    }
 
-        // Only Major frames are numbered. The box is centred on its tick and
-        // then nudged inside the plot, so a number at the window's edge stays
-        // readable instead of being cut off by the panel's border.
-        const QString text = QString::number(frame);
-        const int width = aMetrics.horizontalAdvance(text) + 2 * kLabelPad;
+    // THE BOUNDARY FRAMES: the project's own first and last frames, in view, own their
+    // slots - the timeline's rule (TimeRuler.cpp:139-182). Off-major boundaries get a
+    // Major tick and a number; a window too narrow for both labels collapses them into
+    // one "first-last" label, and the ladder's numbered neighbours yield to whichever
+    // slot the boundary block reserved.
+    const bool hasRange = aFrameRange.min() < aFrameRange.max();
+    const auto levelAt = [&aScale, framePpf](int aFrame) {
+        return int(aScale.frameScale().attributeAt(aFrame, framePpf).level);
+    };
+    const auto inPlot = [&plot](int aX) { return plot.left() <= aX && aX <= plot.right(); };
+    const int firstBoundary = aFrameRange.min();
+    const int lastBoundary = aFrameRange.max();
+    const int firstX = hasRange ? aScale.pixelX(core::Frame(firstBoundary)) : -1;
+    const int lastX = hasRange ? aScale.pixelX(core::Frame(lastBoundary)) : -1;
+    const bool firstInView = hasRange && inPlot(firstX);
+    const bool lastInView = hasRange && inPlot(lastX);
+    const bool firstActive = firstInView && levelAt(firstBoundary) != int(ctrl::time::Scaler::TickLevel::Major);
+    const bool lastActive = lastInView && levelAt(lastBoundary) != int(ctrl::time::Scaler::TickLevel::Major);
+    const QString firstText = firstInView ? numberText(firstBoundary) : QString();
+    const QString lastText = lastInView ? numberText(lastBoundary) : QString();
+    const int firstWidth = numberWidth(firstText);
+    const int lastWidth = numberWidth(lastText);
+    const bool merged = firstInView && lastInView &&
+        (firstX + (firstWidth >> 1) + margin >= lastX - (lastWidth >> 1));
+    const QString mergedText =
+        merged ? firstText + QString::fromUtf8("\u2013") + lastText : QString();
+    const int mergedCentre = merged ? (firstX + lastX) / 2 : 0;
+
+    // A boundary label the loop would otherwise draw is replaced by the boundary
+    // block's own Major tick (the timeline skips the loop's tick in that case, so the
+    // two do not stack). An on-major boundary keeps the loop's tick when the labels
+    // are not merged.
+    const bool drawFirstTick = firstInView && (merged || firstActive);
+    const bool drawLastTick = lastInView && (merged || lastActive);
+    const auto replaceTick = [&ticks](int aFrame, int aX) {
+        for (int i = 0; i < ticks.size(); ++i) {
+            if (ticks.at(i).frame == aFrame) {
+                ticks.removeAt(i);
+                break;
+            }
+        }
+        ticks.append({aFrame, aX, int(ctrl::time::Scaler::TickLevel::Major), true});
+    };
+    if (drawFirstTick)
+        replaceTick(firstBoundary, firstX);
+    if (drawLastTick)
+        replaceTick(lastBoundary, lastX);
+
+    // Ascending, one tick per column (a zoomed-out window can round two frames onto one
+    // pixel; the more prominent tier wins the column).
+    std::sort(ticks.begin(), ticks.end(), [](const Tick& aLhs, const Tick& aRhs) {
+        return aLhs.x != aRhs.x ? aLhs.x < aRhs.x : aLhs.level > aRhs.level;
+    });
+    for (int i = 0; i < ticks.size();) {
+        if (0 < i && ticks.at(i).x == ticks.at(i - 1).x)
+            ticks.removeAt(i);
+        else
+            ++i;
+    }
+
+    // The boxes a boundary label reserves, so a ladder number that would enter one
+    // yields (the timeline's symmetric span test, TimeRuler.cpp:232-262).
+    struct Span {
+        int left;
+        int right;
+    };
+    QVector<Span> reserved;
+    const auto reserve = [&reserved](int aCentre, int aWidth) {
+        reserved.append({aCentre - (aWidth >> 1), aCentre + (aWidth >> 1)});
+    };
+    if (merged) {
+        reserve(mergedCentre, numberWidth(mergedText));
+    } else {
+        if (firstActive)
+            reserve(firstX, firstWidth);
+        if (lastActive)
+            reserve(lastX, lastWidth);
+    }
+
+    // The box every label is drawn in: the reserve centred on the tick and nudged
+    // inside the plot, so a number at the window's edge stays readable instead of
+    // being cut off. The model never publishes a box it cannot clamp.
+    const auto boxFor = [&plot, labelTop](int aCentre, int aWidth) {
+        const int left = std::clamp(aCentre - (aWidth >> 1), plot.left(), plot.right() - aWidth + 1);
+        return QRect(left, labelTop, aWidth, kNumberHeight);
+    };
+    const auto collides = [](const QRect& aBox, const QRect& aOther) {
+        // At least `margin` px of clear gutter between the two boxes.
+        return aBox.left() < aOther.right() + 1 + margin && aOther.left() < aBox.right() + 1 + margin;
+    };
+
+    gui::PanelLabel boundaryFirst;
+    gui::PanelLabel boundaryLast;
+    gui::PanelLabel boundaryMerged;
+    const bool labelBoundaries = aModel.rulerBand.top() + kNumberTop + kNumberHeight - 1 <= plot.bottom();
+    if (labelBoundaries) {
+        if (merged) {
+            const int width = numberWidth(mergedText);
+            if (width <= plot.width() && !underPill(mergedCentre))
+                boundaryMerged = {boxFor(mergedCentre, width), mergedText, firstBoundary, lastBoundary};
+        } else {
+            if (firstActive && !underPill(firstX) && firstWidth <= plot.width())
+                boundaryFirst = {boxFor(firstX, firstWidth), firstText, firstBoundary, -1};
+            if (lastActive && !underPill(lastX) && lastWidth <= plot.width())
+                boundaryLast = {boxFor(lastX, lastWidth), lastText, lastBoundary, -1};
+        }
+    }
+
+    // THE LABELS, in one list: the forced boundary ones first (see below), then the
+    // ladder's numbers - every showNumber tier - each yielding to a boundary slot, to
+    // the pill's column, and to a label already accepted (on the CLAMPED boxes, so the
+    // margin rule holds whatever the plot's edges did to a box).
+    QVector<gui::PanelLabel> labels;
+    const auto accepted = [&labels, &collides](const QRect& aBox) {
+        for (const gui::PanelLabel& label : labels) {
+            if (collides(aBox, label.rect))
+                return true;
+        }
+        return false;
+    };
+    // The boundary labels are accepted FIRST, so the forced first/last number always
+    // wins its slot; the margin test is still applied between them (a clamped pair on a
+    // very narrow plot cannot stack).
+    for (const gui::PanelLabel& boundary : {boundaryFirst, boundaryLast, boundaryMerged}) {
+        if (!boundary.rect.isEmpty() && !accepted(boundary.rect))
+            labels.append(boundary);
+    }
+    for (const Tick& tick : ticks) {
+        if (!tick.showNumber)
+            continue; // the ladder numbers this tier only once it has room
+        if (tick.frame == firstBoundary && (merged || firstActive))
+            continue; // the boundary block writes this one
+        if (tick.frame == lastBoundary && (merged || lastActive))
+            continue;
+        const QString text = numberText(tick.frame);
+        const int width = numberWidth(text);
         if (width > plot.width())
             continue; // the number cannot fit inside the plot at all
+        if (underPill(tick.x))
+            continue; // the pill owns its column
+        bool yields = false;
+        for (const Span& span : reserved) {
+            const int left = tick.x - (width >> 1);
+            const int right = tick.x + (width >> 1);
+            if (left < span.right + margin && right > span.left - margin) {
+                yields = true;
+                break;
+            }
+        }
+        if (yields)
+            continue;
+        const QRect box = boxFor(tick.x, width);
+        if (accepted(box))
+            continue; // this number would touch one already published
+        labels.append({box, text, tick.frame, -1});
+    }
 
-        const int left = std::clamp(x - width / 2, plot.left(), plot.right() - width + 1);
-        if (anyLabel && left < lastLabelRight + kFrameLabelGap)
-            continue; // this number would touch the previous one
-
-        gui::PanelLabel label;
-        label.text = text;
-        label.rect = QRect(left, labelTop, width, textHeight);
-        aModel.frameLabels.append(label);
-        lastLabelRight = left + width;
-        anyLabel = true;
+    std::sort(labels.begin(), labels.end(), [](const gui::PanelLabel& aLhs, const gui::PanelLabel& aRhs) {
+        return aLhs.rect.left() < aRhs.rect.left();
+    });
+    aModel.frameLabels = labels;
+    aModel.frameTickX.clear();
+    aModel.frameTickLevel.clear();
+    for (const Tick& tick : ticks) {
+        aModel.frameTickX.append(tick.x);
+        aModel.frameTickLevel.append(tick.level);
     }
 }
 
@@ -314,22 +514,19 @@ void buildChannels(
                   .arg(shown)
                   .arg(total);
 
-    // The button's box. It hangs BELOW the band's whole block in BOTH homes: the tick
-    // rows and the frame numbers' line are the ruler's own ink, and the panel's one
-    // control is a view control, which the design keeps out of it ("never in the ruler
-    // band", index.html:328-329) - a 0.55-alpha backing painted over a number is
-    // exactly the defect that rule exists to prevent. The offset is stated in the
-    // BAND'S own terms rather than as the reference's magic 30, so it cannot drift when
-    // the band moves down under a widget floating above the panel or when a font
-    // changes the number row's height:
+    // The button's box. It hangs BELOW the band's whole block in BOTH homes: the band
+    // (ticks and numbers alike) is the ruler's own ink, and the panel's one control is
+    // a view control, which the design keeps out of it ("never in the ruler band",
+    // index.html:328-329) - a 0.55-alpha backing painted over a number is exactly the
+    // defect that rule exists to prevent. The offset is stated in the BAND'S own
+    // terms rather than as the reference's magic 30, so it cannot drift when the band
+    // moves down under a widget floating above the panel:
     //
-    //   top == rulerBandTop + kFrameTickLength + 1 + textHeight + kChannelsButtonTopGap
+    //   top == rulerBandTop + frameRuler::kBandHeight + kChannelsButtonTopGap
     //
-    // i.e. the ticks' kFrameTickLength rows, the one line of numbers under them
-    // (buildFrameAxis's labelTop == rulerBandTop + kFrameTickLength + 1) and
+    // i.e. the whole timeline header (22px: the number row and the tick row) and
     // kChannelsButtonTopGap of air. The reference's 30px from the panel's top is
-    // exactly this while nothing occludes the band: its band is 22px - a 4px tick row
-    // and an 18px line of numbers - plus this 8.
+    // exactly this while nothing occludes the band.
     //
     // WHERE IT SITS HORIZONTALLY is the one thing the two hosts place differently, and
     // it is what GraphPanelHost names - ONE box either way, so a drawing layer draws
@@ -350,18 +547,17 @@ void buildChannels(
     const int width = aMetrics.horizontalAdvance(aModel.channelsButtonText) + 2 * kChannelsButtonPadX;
     const int height = textHeight + 2 * kChannelsButtonPadY;
     const int right = aHost == gui::GraphPanelHost::Dock ? aModel.plot.right() + 1 : aModel.panel.right() + 1;
-    const int top = aModel.rulerBandTop + kFrameTickLength + 1 + textHeight + kChannelsButtonTopGap;
+    const int top = aModel.rulerBandTop + gui::frameRuler::kBandHeight + kChannelsButtonTopGap;
     const QRect button(right - kChannelsButtonGap - width, top, width, height);
 
     // THE BAND BELONGS TO THE RULER, so the control may not sit in it - in either home.
     // Stated as a precondition on the geometry rather than left to the two expressions
     // above being right: the box is derived from the band's own measures, and this is
     // the guarantee a future placement change has to keep, failing loudly instead of
-    // painting over the frame numbers. The band's block is the tick rows (drawn down
-    // from rulerBandTop, kFrameTickLength of them) and the numbers' row under them,
-    // inside the plot's own width - which is the region the ink covers.
+    // painting over the frame numbers. The band's block is the whole 22px ruler header
+    // (its number row and its tick baseline) across the plot's own width.
     const QRect band(
-        aModel.plot.left(), aModel.rulerBandTop, aModel.plot.width(), kFrameTickLength + 1 + textHeight
+        aModel.plot.left(), aModel.rulerBandTop, aModel.plot.width(), gui::frameRuler::kBandHeight
     );
     XC_ASSERT(!band.intersects(button));
 
@@ -693,6 +889,14 @@ namespace gui {
         // no inset at all, and the result never leaves the plot.
         const int inset = std::max(0, aTopInset);
         model.rulerBandTop = std::min(model.plot.top() + inset, model.plot.bottom() + 1);
+        // THE RULER BAND itself: one timeline header, inside the plot. It needs the
+        // whole band PLUS the hairline row under it inside the plot; when the plot is
+        // too short (or the top is fully occluded) there is no band, and then no
+        // ruler ink at all - the model's empty rect is the drawing layer's signal.
+        if (!model.plot.isEmpty() && model.rulerBandTop + frameRuler::kBandHeight <= model.plot.bottom()) {
+            model.rulerBand =
+                QRect(model.plot.left(), model.rulerBandTop, model.plot.width(), frameRuler::kBandHeight);
+        }
         // The column's width is the scaler's STABLE reserve for the value format
         // (see THE LABEL COLUMN in graph_Scaler.h) - the width the plot was
         // already inset by - so the column and the plot are one geometry, a
@@ -707,9 +911,16 @@ namespace gui {
         // read before the plot's own guards: a currentFrame() below 0 is "no
         // project", and there is no playhead to place (core frame numbers start
         // at 1, so a negative frame is never a real one).
+        //
+        // Its NUMBER is written here, by the same formatter the ruler labels use and
+        // with the same setting the timeline reads, so the pill and the label it
+        // replaces name the frame identically.
+        const core::TimeFormat format(aEditor.frameRange(), aEditor.fps());
         const core::Frame playhead = aEditor.currentFrame();
-        if (playhead.get() >= 0)
+        if (playhead.get() >= 0) {
             model.playheadX = scale.pixelX(playhead);
+            model.playheadText = format.frameToString(playhead.get(), aEditor.timeFormatType());
+        }
 
         // The live box-select rectangle, straight from the gesture that owns it: the
         // editor publishes an EMPTY rect while no drag is in flight (and for a press
@@ -744,7 +955,7 @@ namespace gui {
         // own glyphs in.
         const QFontMetrics metrics{QFont()};
 
-        buildFrameAxis(model, scale, metrics);
+        buildFrameAxis(model, scale, metrics, format, aEditor.timeFormatType(), aEditor.frameRange());
         buildValueAxis(model, scale, metrics);
         buildChannels(model, aEditor, aTheme, metrics, aHost);
         buildCurves(model, aEditor, scale, metrics);

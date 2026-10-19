@@ -74,12 +74,13 @@ const char* kGlslVersion = "#version 400 core";
 // depending on the angle (see tests/graph_panel_pixels.cpp's angle assertion).
 constexpr float kCurveWidth = stroke::kWidthPx;
 
-// Length of the short axis marks. The model publishes positions and leaves the
-// length to the drawing layer; 4 is the convention its own kFrameTickLength
-// documents (and the room it reserves above a frame number). ONE length for every
-// tick level: the tier is read from the ALPHA, never from a pixel length (the
-// timeline's own rule, TimeRuler.cpp:20).
-constexpr int kAxisTickLength = 4;
+// Length of the short axis marks, and where they hang from. The frame ruler is the
+// TIMELINE'S RULER (see GraphPanelModel.h): its ticks are gui::frameRuler::kTickLength
+// (5px, TimeRuler.cpp's kTickLength) and they are drawn UP from the band's last row,
+// exactly as TimeRuler draws them; the value axis keeps its own short marks. ONE
+// length for every frame-tick level: the tier is read from the ALPHA, never from a
+// pixel length (the timeline's own rule, TimeRuler.cpp:19-30).
+constexpr int kAxisTickLength = gui::frameRuler::kTickLength;
 
 // The ruler ink's ALPHA for a tick mark, keyed by the tick's own tier, on top of
 // the one token the ticks and the numbers share (theme::Graph::gridMajor() ==
@@ -173,11 +174,16 @@ constexpr float kChannelsButtonAlpha = 0.55f;
 // Its corner radius, the reference's own 4px (mock.css, .gp-chbtn: border-radius 4px).
 constexpr float kChannelsButtonRounding = 4.0f;
 
-// GHOST (Auto) tangent handles (PanelHandle::ghost). The reference draws them
-// hollow where a stored pair is filled: a smaller dot with no fill, its stem and ring
-// in the CHANNEL's own hue at reduced alpha (mock-graph.js: the stem at 0.5, the ring
-// at 0.7, the radius 1.5px under the stored one), so an implicit tangent can never
-// be taken for one the document stores.
+// TANGENT HANDLES (PanelHandle), in the reference's own ink (mock-graph.js:886-905):
+//
+//   * a STORED (Custom) pair is filled with the raised surface colour and STROKED in
+//     the CHANNEL's own hue at 0.9, with its stem in that hue at 0.85 - the handle
+//     belongs to a curve, so it reads in that curve's colour;
+//   * a GHOST (Auto) pair is hollow, in the channel's hue at 0.7, its dot 1.5px
+//     smaller and its stem at 0.5: it is derived, not stored, so a drag on it would
+//     CONVERT the key, and it must never be taken for a tangent the document holds.
+constexpr float kStoredHandleStemAlpha = 0.85f;
+constexpr float kStoredHandleEdgeAlpha = 0.9f;
 constexpr float kGhostHandleStemAlpha = 0.5f;
 constexpr float kGhostHandleEdgeAlpha = 0.7f;
 constexpr float kGhostHandleShrink = 1.5f;
@@ -359,19 +365,27 @@ void drawLabel(
 // both polarities, which is the design's sentence read against a palette instead of
 // against the mock's one.
 //
-// THE RING'S SLEEVE. The mock's selection ring is TWO strokes at one radius: a dark
-// edge (hexA('#0a0a0a', 0.55), 2.6px) under the 1px highlight ink, because "the ring
-// reads on any artwork". The dark is theme::Graph::outline() - the app's own #0a0a0a,
-// the one token the palette keeps black on both polarities for exactly this job
-// (Graph.h). The sibling ring has NO sleeve: it is the faint, in-play mark, and it
-// must not read as strongly as the selection ring.
-constexpr float kKeySelectedFillMix = 0.6f;   // mock-graph.js lighten(hue, 0.6)
-constexpr float kKeyHoverFillMix = 0.4f;      // mock-graph.js lighten(hue, 0.4)
-constexpr float kKeySiblingRingAlpha = 0.35f; // mock-graph.js hexA(hue, 0.35)
-constexpr float kKeyRingWidth = 1.0f;         // the 1px ring of the design's sentence
-constexpr float kKeyRingSleeveWidth = 2.6f;   // mock-graph.js's dark edge (2.6)
-constexpr float kKeyRingSleeveAlpha = 0.55f;  // ... at 0.55
-constexpr float kKeyRingAlpha = 0.95f;        // ... under the highlight at 0.95
+// THE SELECTED MARKER'S INK, one rule for BOTH views (the graph and the timeline):
+//
+//   * fill  = the channel's own hue mixed 0.45 toward the text colour - a lift toward
+//             the brightest panel ink without leaving the channel's identity;
+//   * ring  = the channel's OWN HUE at 0.85 alpha, 1px, at
+//             kKeyDotRadius + kKeyRingOffsetPx (2.6px), drawn OUTSIDE the marker;
+//   * the marker's own 1px edge stroke is drawn OUTSIDE its radius too (see the
+//     AddCircle below), so the coloured core is never eaten by its edge.
+//
+// NO DARK SLEEVE under this ring, and the reason is the ink itself: the mock's sleeve
+// exists to make a WHITE highlight ring read on arbitrary artwork
+// (mock-graph.js:865-876). This ring is the channel's own saturated hue - the same
+// ink family as its curve and its fill - and the marker already sits inside its
+// keyEdge() floor ring. A 2.6px black band beneath it would bury the 1px hue stroke
+// on the dark palette and read as a second, grey selection accent, which is exactly
+// the grey the user rejected for handles.
+constexpr float kKeySelectedFillMix = 0.45f;   // 0.45 of the way to the text colour
+constexpr float kKeyHoverFillMix = 0.4f;       // mock-graph.js lighten(hue, 0.4)
+constexpr float kKeySiblingRingAlpha = 0.35f;  // mock-graph.js hexA(hue, 0.35)
+constexpr float kKeyRingWidth = 1.0f;          // the 1px ring of the design's sentence
+constexpr float kKeySelectedRingAlpha = 0.85f; // the selection ring, in the channel's hue
 
 // A channel colour moved toward the highlight ink, channel-wise in sRGB - the mock's
 // own lighten(): `c + (255 - c) * t` per channel, opaque. A mix on the encoded values
@@ -1295,6 +1309,19 @@ void drawPanel(
     // value column or the panel's chrome.
     aDrawList.PushClipRect(rectMin(plot), rectMax(plot), true);
 
+    // THE RULER'S BAND: the timeline's own strip, token for token (surface
+    // rulerBand(), hairline rulerLine()), and the row the ticks rise from is its last
+    // one. Only the model's published band is painted - a hand-built model that names
+    // no band still gets the tick geometry below, but no surface it did not ask for.
+    // The hairline sits one row UNDER the band, as the timeline draws it on the first
+    // track row below its header.
+    const QRect rulerBand = aModel.rulerBand.isEmpty()
+        ? QRect(plot.left(), aModel.rulerBandTop, plot.width(), gui::frameRuler::kBandHeight)
+        : aModel.rulerBand;
+    if (!aModel.rulerBand.isEmpty()) {
+        aDrawList.AddRectFilled(rectMin(aModel.rulerBand), rectMax(aModel.rulerBand), toImU32(aTheme.rulerBand()));
+    }
+
     // The axes: SHORT marks only, 1px with AA off (an AA'd 1px line straddles two
     // columns and reads as 2px of grey, and every mark here is asked for an INTEGER
     // column by the model). The model publishes positions, never spans, so there is
@@ -1302,17 +1329,28 @@ void drawPanel(
     // caller's own setting is not clobbered.
     const ImDrawListFlags savedLineFlags = aDrawList.Flags;
     aDrawList.Flags = savedLineFlags & ~ImDrawListFlags_AntiAliasedLines;
-    // ...down from the RULER BAND's top, not from the plot's: a widget floating above
-    // the viewport moves the whole band (the marks and the numbers under them) below
-    // itself, and the marks are its top edge (see THE OCCLUDED TOP in
-    // GraphPanelModel.h). The band is inside the plot by construction.
-    const float bandTop = float(aModel.rulerBandTop);
+    // The hairline UNDER the band, in the same 1px integer-column style: the timeline
+    // draws its ruler line on the first track row below the header
+    // (TimeLineEditorWidget.cpp's paintEvent), so this is that row.
+    if (!aModel.rulerBand.isEmpty() && aModel.rulerBand.bottom() + 1 <= plot.bottom()) {
+        const float hairlineY = float(aModel.rulerBand.bottom() + 1);
+        aDrawList.AddLine(
+            ImVec2(float(plot.left()), hairlineY), ImVec2(float(plot.right() + 1), hairlineY),
+            toImU32(aTheme.rulerLine()), 1.0f
+        );
+    }
+    // ...UP from the ruler band's LAST ROW, exactly as the timeline's ruler draws them
+    // (TimeRuler.cpp:110-112, :281: the baseline is the band's bottom row and a tick
+    // rises kTickLength px from it). The band moved down under an occluding widget
+    // moves the ticks with it, and the ticks are its bottom edge (see THE OCCLUDED TOP
+    // in GraphPanelModel.h). The band is inside the plot by construction.
+    const float bandBaseline = float(rulerBand.bottom());
     // One mark per tick, each at its own tier's alpha from the model's classification
     // (walked by index, so the two vectors are read as one geometry).
     for (int i = 0; i < aModel.frameTickX.size(); ++i) {
         const float fx = float(aModel.frameTickX.at(i));
         aDrawList.AddLine(
-            ImVec2(fx, bandTop), ImVec2(fx, bandTop + float(kAxisTickLength)),
+            ImVec2(fx, bandBaseline), ImVec2(fx, bandBaseline - float(kAxisTickLength)),
             toImU32Strength(aTheme.gridMajor(), tickAlphaOf(aModel, i)), 1.0f
         );
     }
@@ -1384,16 +1422,18 @@ void drawPanel(
     // THE THREE STATES, in the model's own classification (PanelCurve::keySelected /
     // keySiblingSelected) and with the ink this layer gives each (see the marker
     // rule's tokens above for where every one of them comes from):
-    //   * SELECTED - the fill brightens toward the keyframe highlight and a 1px ring
-    //     sits clear of the marker, in that highlight ink over a dark sleeve. The
-    //     marker's own SIZE and the floor ring around it do not change: it keeps the
-    //     radius and the keyEdge() circle every marker already has.
+    //   * SELECTED - the fill is the channel's hue mixed 0.45 toward the text colour,
+    //     and a 1px ring in the CHANNEL'S OWN hue at 0.85 sits 2.6px clear of the
+    //     marker, drawn outside its radius. The marker's own SIZE does not change: the
+    //     fill keeps the radius and the keyEdge() stroke every marker already has
+    //     (that stroke is drawn outside the radius for every marker, selected or not).
     //   * SIBLING (not selected, its key selected on another component) - the faint
     //     ring alone, at the SAME radius as the selection ring, in the channel's own
-    //     hue at 0.35 and with no sleeve, and the fill is left exactly as an
-    //     unselected marker's is (that channel is in play, so it is at full
-    //     strength). One key, two channels, both in play - but the selection ring is
-    //     never on the marker that is not selected.
+    //     hue at 0.35, and the fill is left exactly as an unselected marker's is
+    //     (that channel is in play, so it is at full strength). One key, two
+    //     channels, both in play - but the selection ring is never on the marker that
+    //     is not selected. The two rings share a hue by design; their ALPHA is what
+    //     tells the in-play sibling from the selected marker.
     //   * HOVERED (the marker gui::panelKeyAt names under the pointer, and not
     //     selected) - the fill brightens at the mock's lighter step and NO ring is
     //     added. Hover COMPOSES with the sibling state (the mock draws both: the
@@ -1411,8 +1451,6 @@ void drawPanel(
     const float dotRadius = float(ctrl::graph::kKeyDotRadius);
     const float ringRadius = dotRadius + kKeyRingOffsetPx;
     const QColor highlightInk = aTheme.axisText();
-    const ImU32 highlightRing = toImU32Strength(highlightInk, kKeyRingAlpha);
-    const ImU32 ringSleeve = toImU32Strength(aTheme.outline(), kKeyRingSleeveAlpha);
     // THE HOVER, by the ONE shared hit test: gui::panelKeyAt answers with the
     // (node, channel, frame) triple the panel names a key by - the same rule (and the
     // same kKeyHitRadius) both hosts open the key menu with - and it reads the model's
@@ -1434,6 +1472,7 @@ void drawPanel(
         const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
         const ImU32 siblingRing = toImU32Strength(curve.color, kKeySiblingRingAlpha);
+        const ImU32 selectedRing = toImU32Strength(curve.color, kKeySelectedRingAlpha);
         const int keys = int(curve.keyDots.size());
         for (int k = 0; k < keys; ++k) {
             const QPointF& dot = curve.keyDots.at(k);
@@ -1454,17 +1493,24 @@ void drawPanel(
                          : hoveredHere ? toImU32(mixedToward(curve.color, highlightInk, kKeyHoverFillMix))
                                        : fill
             );
-            aDrawList.AddCircle(centre, dotRadius, edge, 0, 1.0f);
+            // THE EDGE STROKE IS CENTRED ON THE REFERENCE'S RADIUS. ImGui's AddCircle
+            // strokes INWARD from the radius it is given (a 1px circle at r covers
+            // [r-1, r]), so r on its own would draw the whole band inside the fill. At
+            // r + 0.5 the band is [r-0.5, r+0.5] - the same place a canvas stroke at r
+            // puts it, which is how the reference draws a key's separating edge. This
+            // edge is identical on every marker, selected or not; the ring that must be
+            // OUTSIDE is the selection ring below (that inner placement is what made a
+            // selected key read smaller).
+            aDrawList.AddCircle(centre, dotRadius + 0.5f, edge, 0, 1.0f);
             if (sibling && !selected) {
                 // The faint ring, at the selection ring's own radius: the same
-                // geometry, so the two can only be told apart by their ink.
+                // geometry, so the two can only be told apart by their alpha.
                 aDrawList.AddCircle(centre, ringRadius, siblingRing, 0, kKeyRingWidth);
             }
             if (selected) {
-                // The 1px ring, 1px clear of the marker, in the highlight ink over the
-                // dark sleeve that makes it read on any artwork.
-                aDrawList.AddCircle(centre, ringRadius, ringSleeve, 0, kKeyRingSleeveWidth);
-                aDrawList.AddCircle(centre, ringRadius, highlightRing, 0, kKeyRingWidth);
+                // The rule's ring: the CHANNEL's own hue, 1px, 2.6px clear of the
+                // marker's radius - drawn outside it, so it never eats the fill.
+                aDrawList.AddCircle(centre, ringRadius, selectedRing, 0, kKeyRingWidth);
             }
         }
     }
@@ -1518,9 +1564,7 @@ void drawPanel(
             }
         }
 
-        const ImU32 handleLine = toImU32(aTheme.handleLine());
         const ImU32 handleFill = toImU32(aTheme.handleFill());
-        const ImU32 handleEdge = toImU32(aTheme.handleEdge());
         const ImU32 handleSelected = toImU32(aTheme.selected());
         for (int c = 0; c < aModel.curves.size(); ++c) {
             const PanelCurve& curve = aModel.curves.at(c);
@@ -1531,27 +1575,27 @@ void drawPanel(
                 const bool highlighted = c == nearestCurve && h == nearestHandle;
                 const ImVec2 base(float(handle.base.x()), float(handle.base.y()));
                 const ImVec2 dot(float(handle.dot.x()), float(handle.dot.y()));
-                // A GHOST handle (an Auto segment's DERIVED pair, PanelHandle::ghost)
-                // is drawn HOLLOW, in the channel's own hue at the reference's reduced
-                // alphas: it is not in the document - a drag on it CONVERTS the key to
-                // Custom - so a filled dot would claim a stored tangent that is not
-                // there. A STORED pair keeps the palette's handle tokens, unchanged.
+                // BOTH KINDS READ THE CURVE'S CHANNEL COLOUR (mock-graph.js:886-905):
+                // a stored pair's stem and stroke are that hue at 0.85 / 0.9, a ghost
+                // pair's at 0.5 / 0.7 - so a handle, the curve it belongs to and the
+                // key it leaves are one hue, and only the ALPHAS and the fill say
+                // whether the tangent is in the document. A ghost is drawn HOLLOW with
+                // no fill at all; only a stored pair is filled. (The pointer's
+                // highlight still wins: the dot and stroke under it take the accent.)
                 // THE STEM'S INK IS A QColor, NOT ITS PACKED FORM. addInkCallback takes
                 // the colour itself; handing it the ImU32 would reach QColor(QRgb) -
                 // ImU32 and QRgb are both `unsigned int`, so it COMPILES - and ImGui
                 // packs IM_COL32 as A<<24|B<<16|G<<8|R while QColor(QRgb) reads
-                // A<<24|R<<16|G<<8|B, i.e. the red and blue channels swap. That is
-                // invisible on the stored stem (theme::Graph::handleLine() is the
-                // palette's neutral textMuted, R == G == B) and would NOT be on a ghost
-                // stem, which is the channel's own hue - so both branches pass the
-                // colour, and the strength carries the alpha the packed token had.
-                const QColor stemColour = handle.ghost ? curve.color : aTheme.handleLine();
-                const float stemStrength = handle.ghost ? kGhostHandleStemAlpha : 1.0f;
-                const ImU32 stem = handle.ghost ? toImU32Strength(curve.color, kGhostHandleStemAlpha) : handleLine;
+                // A<<24|R<<16|G<<8|B, i.e. the red and blue channels swap. The ghost
+                // stem is already the channel's own hue, and the stored one is now too,
+                // so both branches pass the colour and the strength carries the alpha.
+                const float stemStrength = handle.ghost ? kGhostHandleStemAlpha : kStoredHandleStemAlpha;
+                const ImU32 stem = toImU32Strength(curve.color, stemStrength);
                 const float radius =
                     handle.ghost ? ImMax(0.0f, float(handle.radius) - kGhostHandleShrink) : float(handle.radius);
-                const ImU32 edge =
-                    handle.ghost ? toImU32Strength(curve.color, kGhostHandleEdgeAlpha) : handleEdge;
+                const ImU32 edge = highlighted
+                    ? handleSelected
+                    : toImU32Strength(curve.color, handle.ghost ? kGhostHandleEdgeAlpha : kStoredHandleEdgeAlpha);
                 // THE STEM IS A 1px LINE WITH FRACTIONAL ENDS, and it goes through the same
                 // coverage pass the curves do - measured first, because it is the one 1px
                 // line in the panel whose position can be wrong: ImGui's own AddLine shifts
@@ -1565,13 +1609,15 @@ void drawPanel(
                 // AntiAliasedLines flag is not turned off here), so nothing about its
                 // crispness changes; only where its ink sits.
                 if (stroke::isReady()) {
-                    addInkCallback(aDrawList, QVector<QPointF>{handle.base, handle.dot}, stemColour, stemStrength, 0.5f);
+                    addInkCallback(
+                        aDrawList, QVector<QPointF>{handle.base, handle.dot}, curve.color, stemStrength, 0.5f
+                    );
                 } else {
                     aDrawList.AddLine(base, dot, stem, 1.0f);
                 }
                 if (!handle.ghost)
                     aDrawList.AddCircleFilled(dot, radius, highlighted ? handleSelected : handleFill);
-                aDrawList.AddCircle(dot, radius, highlighted ? handleSelected : edge, 0, 1.0f);
+                aDrawList.AddCircle(dot, radius, edge, 0, 1.0f);
             }
         }
     }
@@ -1635,25 +1681,49 @@ void drawPanel(
         aDrawList.AddRect(min, max, toImU32(aTheme.marqueeEdge()), kMarqueeRounding, ImDrawFlags_None, 1.0f);
     }
 
-    // The playhead: the document's own frame, 1px, the same hairline rule as the
-    // axes. It is the one mark on the panel that is not part of the curve data.
+    // The playhead: the document's own frame, marked the way the TIMELINE's ruler
+    // marks it. The 1px line is theme::Graph::selected() (accentBright, the same
+    // colour TimeCursor uses), and the frame NUMBER is the model's playheadText in a
+    // rounded accent pill at the band's number row - `playheadPill`, whose width the
+    // model measured from that same string. The line starts at `playheadLineTop`,
+    // under the pill (TimeCursor's line starts at pillTop + kNumberHeight), so the
+    // pill is the top of the playhead rather than a badge painted over the line.
     //
-    // It covers the plot's rows EXACTLY. The model's playheadX is a pixel column and
-    // the panel's playhead spans plot.top()..plot.bottom(), but ImGui's non-AA 1px
-    // path is half-open: it shifts the endpoints by half a pixel and loses the first
-    // row, so a line passed as (top, bottom+1) inks rows top+1..bottom and leaves the
-    // plot's first row empty. The half-pixel inset below is what makes the drawn
-    // column cover the rows the model names - measured by the gate's playhead
-    // assertion (tests/graph_panel_pixels.cpp), which walks every row of the span.
+    // It covers the plot's rows EXACTLY. ImGui's non-AA 1px path is half-open: it
+    // shifts the endpoints by half a pixel and loses the first row, so a line passed
+    // as (top, bottom+1) inks rows top+1..bottom and leaves the first row empty. The
+    // half-pixel inset below is what makes the drawn column cover the rows the model
+    // names - measured by the gate's playhead assertion
+    // (tests/graph_panel_pixels.cpp), which walks the span.
     if (aModel.playheadX >= 0) {
+        const float px = float(aModel.playheadX);
+        const float lineTop = float(aModel.playheadLineTop >= 0 ? aModel.playheadLineTop : plot.top());
         const ImDrawListFlags savedPlayheadFlags = aDrawList.Flags;
         aDrawList.Flags = savedPlayheadFlags & ~ImDrawListFlags_AntiAliasedLines;
-        const float px = float(aModel.playheadX);
         aDrawList.AddLine(
-            ImVec2(px, float(plot.top()) - 0.5f), ImVec2(px, float(plot.bottom()) + 0.5f),
-            toImU32(aTheme.selected()), 1.0f
+            ImVec2(px, lineTop - 0.5f), ImVec2(px, float(plot.bottom()) + 0.5f), toImU32(aTheme.selected()),
+            1.0f
         );
         aDrawList.Flags = savedPlayheadFlags;
+
+        if (!aModel.playheadPill.isEmpty() && !aModel.playheadText.isEmpty()) {
+            const QByteArray utf8 = aModel.playheadText.toUtf8();
+            const ImVec2 textSize = measureText(font, fontSize, utf8.constData());
+            // TimeCursor draws the number on the ruler's own number row, centred on the
+            // playhead's column; drawLabel's centre alignment is the same placement.
+            const QRect numberBox(
+                int(std::lround(px - textSize.x * 0.5f)), aModel.playheadPill.top(), int(std::ceil(textSize.x)),
+                aModel.playheadPill.height()
+            );
+            aDrawList.AddRectFilled(
+                rectMin(aModel.playheadPill), rectMax(aModel.playheadPill), toImU32(aTheme.selected()),
+                float(gui::frameRuler::kPillRadius)
+            );
+            drawLabel(
+                aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Centre,
+                toImU32(aTheme.accentBrightText()), halo
+            );
+        }
     }
 
     // The name CHIPS: one for every curve IN PLAY - the channels that own a selected

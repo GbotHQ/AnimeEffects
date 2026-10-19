@@ -44,9 +44,10 @@ namespace gui {
 //   * the document is read, never written. See READ-ONLY below.
 //
 // WHAT IT IS NOT
-//   * no background, no grid lines, no frame/value rules. The two axes are SHORT
-//     tick marks only (see the axes below), so the viewport's animation stays
-//     readable through the whole panel;
+//   * no background and no grid lines. The ONE piece of chrome the model describes
+//     is the frame ruler's band (see THE OCCLUDED TOP and THE AXES below): a strip of
+//     the timeline's own surface with a hairline under it, whose colours stay the
+//     drawing layer's;
 //   * no styled text: labels are RECTS. The halo/outline pass, the font, the
 //     colour and the alignment are the drawing layer's;
 //   * no interaction state. Hit-testing, the drag, the selection and the sticky
@@ -225,7 +226,49 @@ struct PanelCurve {
 struct PanelLabel {
     QRect rect;
     QString text;
+    // The frame the text NAMES, or -1 for a label that names no frame (every value
+    // axis number). The frame axis builds its strings with
+    // core::TimeFormat::frameToString(frame, editor.timeFormatType()), so this is the
+    // frame that call was given - the model states it rather than leaving a consumer
+    // to recover it from the drawn pixels.
+    int frame = -1;
+    // The LAST frame of the merged boundary label ("first–last", drawn when the
+    // project's own first and last frames are in view and their boxes collide); -1
+    // for every ordinary number.
+    int endFrame = -1;
 };
+
+// THE FRAME RULER'S METRICS, ported from the timeline's ruler so the graph's band is
+// its band and not a second convention:
+//
+//   * kBandHeight == ctrl::TimeLineEditor::kHeaderHeight (22px);
+//   * kNumberTop / kNumberHeight == the timeline's own number row (1 / 14), measured
+//     from the band's top;
+//   * kPillPadding / kPillRadius == the timeline's playhead pill (5 / 3);
+//   * kTickLength / kNumberCharWidth / kNumberMargin are TimeRuler.cpp's local
+//     constants: every tier's tick is 5px long, a frame number RESERVES 6px per
+//     character, and two numbers never come closer than 8px.
+//
+// The timeline's editor publishes the first five as public constants and
+// GraphPanelModel.cpp static_asserts these against them, so the two cannot drift. The
+// last three are the ruler's own file-local numbers there (TimeRuler.cpp:19, :108,
+// :164); they are restated here because the model and the drawing layer both need
+// them.
+namespace frameRuler {
+constexpr int kBandHeight = 22;
+constexpr int kNumberTop = 1;
+constexpr int kNumberHeight = 14;
+constexpr int kTickLength = 5;
+constexpr int kNumberCharWidth = 6;
+constexpr int kNumberMargin = 8;
+constexpr int kPillPadding = 5;
+constexpr int kPillRadius = 3;
+// The pill rides one row below the number text's top (gui::TimeCursor's pillTop ==
+// kNumberTop + 1), and the playhead line starts under it.
+constexpr int kPillTop = kNumberTop + 1;
+constexpr int kLineTop = kPillTop + kNumberHeight;
+} // namespace frameRuler
+
 
 // THE DRAG READOUT: the live numbers of a KEY MOVE in flight, as the editor publishes
 // them. Design section 4's strip row moves them out of the panel's strip and onto the
@@ -323,21 +366,23 @@ enum class GraphPanelHost {
 //   begin, i.e. plot.top() normally and the occluded line when the inset reaches
 //   past it (clamped to the plot's bottom, so a viewport whose whole top is covered
 //   simply has no room for a ruler band).
-//   WHAT MOVES AND WHAT DOES NOT. The RULER BAND moves: the tick marks are drawn
-//   down from rulerBandTop (not from plot.top()) and every frame label's box starts
-//   below it, and a value label whose own row would fall under the occluded band is
-//   nudged down to it - all of that is non-interactive ink, and it is the ink the
-//   user cannot see otherwise. The PLOT does not move: it is ctrl::GraphEditor's own
-//   rect (the editor's hit-test geometry, and the rect the editor's scaler is pinned
-//   to), so `plot`, the curves, the keys, the handles, the playhead and the marquee
-//   stay exactly where the editor acts on them. Moving them here would put the drawn
-//   key a tab bar's height away from the key a press grabs.
+//   WHAT MOVES AND WHAT DOES NOT. The RULER BAND moves: the band's whole 22px strip
+//   (its numbers and the ticks that rise from its last row) starts at rulerBandTop
+//   rather than at plot.top(), and a value label whose own row would fall under the
+//   occluded band is nudged down to it - all of that is non-interactive ink, and it is
+//   the ink the user cannot see otherwise. The PLOT does not move: it is
+//   ctrl::GraphEditor's own rect (the editor's hit-test geometry, and the rect the
+//   editor's scaler is pinned to), so `plot`, the curves, the keys, the handles, the
+//   playhead and the marquee stay exactly where the editor acts on them. Moving them
+//   here would put the drawn key a tab bar's height away from the key a press grabs.
 //
 // THE AXES (no grid, no rules)
 //   frameTickX: the x of every frame the ladder classifies (time::Scaler's
-//               TickLevel != None) inside the plot, ascending. The drawing layer
-//               draws a SHORT mark down from rulerBandTop at each - 4px is the
-//               convention (kFrameTickLength) - and nothing else.
+//               TickLevel != None) inside the plot, ascending, plus the project's
+//               forced BOUNDARY ticks (see LABELS below - the timeline's own rule that
+//               the first and last frames own their slots). The drawing layer draws a
+//               SHORT mark UP from the band's last row at each - frameRuler::kTickLength
+//               (5px, the timeline's kTickLength) for every tier - and nothing else.
 //   frameTickLevel: the tier of each of those ticks, one entry per frameTickX
 //               entry in the same order, so index i is tick i's tier. It is the
 //               ladder's own classification (ctrl::time::Scaler::TickLevel, carried
@@ -352,6 +397,8 @@ enum class GraphPanelHost {
 //               looks (the timeline's own table, 0.85 major / 0.60 intermediate /
 //               0.20 minor, one length for every level). The two vectors are
 //               appended in one step, so they are the same length by construction.
+//               A forced boundary tick carries TickLevel::Major, the prominence the
+//               timeline gives it.
 //   valueTickY: the y of the value axis' own ticks, one per window value (max,
 //               midpoint, min), in that order. A SHORT mark rightwards from
 //               plot.left() at each. A value whose NUMBER the column could not
@@ -366,19 +413,30 @@ enum class GraphPanelHost {
 //   than a colour or a length.
 //
 // LABELS (rects only)
-//   frameLabels: the frame NUMBER of a Major tick, in a box centred on that tick
-//               and always inside the plot (a label near an edge is nudged in).
-//               A label is dropped when it would come closer than kFrameLabelGap
-//               (8px) to the previous label's right edge - a rule stated on the
-//               boxes, not on their centres, so it holds for any font.
+//   frameLabels: the frame NUMBERS of the ruler, written by ONE function as
+//               core::TimeFormat::frameToString(frame, editor.timeFormatType()) - the
+//               timeline editor's own formatter and format setting, so both rulers
+//               name a frame identically. A number is drawn for EVERY ladder tick
+//               whose Attribute::showNumber is set (Major always, the intermediate
+//               tier once it has 64px of room), not only for majors. Every box
+//               RESERVES frameRuler::kNumberCharWidth (6px) per character, centred on
+//               its tick and nudged inside the plot, and the number's own frame
+//               travels beside the text in PanelLabel::frame. The project's FIRST and
+//               LAST frames are forced in when they are visible (the timeline's own
+//               "the range's first/last frame owns the end of the ruler"), and a
+//               narrow window collapses them into one "first–last" label
+//               (PanelLabel::endFrame). A label is dropped when it would come closer
+//               than frameRuler::kNumberMargin (8px) to a boundary label's reserved
+//               span, to the previous label's right edge, or when its centre falls
+//               inside the playhead pill's half-width - the pill owns its column.
 //               THE BOX'S TOP EDGE IS THE ROOM A NUMBER HAS: it sits at
-//               plot.top() + kFrameTickLength + 1, i.e. under the tick band, and a
-//               drawing layer must never put a glyph ABOVE its box's top edge - a
-//               font taller than the box is clamped into it (drawLabel in
+//               rulerBandTop + frameRuler::kNumberTop, inside the band's number row,
+//               and a drawing layer must never put a glyph ABOVE its box's top edge -
+//               a font taller than the box is clamped into it (drawLabel in
 //               src/gui/GraphPanelFrame.cpp). That pair is what keeps the top row of
 //               numbers off the plot's top edge and out of the plot clip; the model
-//               measures the box with the default UI font and cannot know the
-//               drawing layer's, so the obligation is split rather than assumed.
+//               measures the box with the ruler's fixed reserve and cannot know the
+//               drawing layer's font, so the obligation is split rather than assumed.
 //   valueLabels: the window's max / midpoint / min, formatted 'g' with four
 //               significant digits (the deleted painter renderer's valueText(),
 //               now ctrl::graph::Scaler::valueAxisText - the SAME function the
@@ -550,15 +608,15 @@ enum class GraphPanelHost {
 //   way - a drawing layer reads channelsButton and draws and hit-tests that,
 //   whichever host built the model:
 //     * VERTICALLY, both homes agree, and the rule is the BAND'S own: the box hangs
-//       below the whole block the band carries - its kFrameTickLength tick rows and
-//       the one line of frame numbers under them (buildFrameAxis's labelTop) - by
+//       below the whole band the ruler owns (frameRuler::kBandHeight - the timeline's
+//       22px header, its number row and its tick row together) by
 //       kChannelsButtonTopGap. The control is a VIEW control and the design keeps it
 //       out of the ruler band ("never in the ruler band", index.html:328-329); a
-//       box inside those rows would paint the button's own backing over a number.
+//       box inside it would paint the button's own backing over a number.
 //       The reference's `top: 30px` of the panel is exactly this offset while
-//       nothing occludes the band (its 22px band: a 4px tick row and an 18px line
-//       of numbers, plus this 8); stating it in the band's terms is what keeps it
-//       true when the band moves down under a widget floating above the panel.
+//       nothing occludes the band (its 22px band plus this 8); stating it in the
+//       band's terms is what keeps it true when the band moves down under a widget
+//       floating above the panel.
 //     * HORIZONTALLY, the two homes measure from different edges: the OVERLAY's
 //       button keeps kChannelsButtonGap (8px) inside the PANEL's right edge (the
 //       reference's floating rule, mock.css's .gp-chbtn:not(.hosted), `right: 8px`
@@ -601,6 +659,12 @@ enum class GraphPanelHost {
 //   reports no frame (currentFrame() < 0, i.e. no project is set). It is read
 //   even when the plot is empty, because a playhead is a property of the
 //   document and not of the geometry.
+//   playheadText is that frame written with the ruler's own formatter; playheadPill
+//   is the 14px rounded pill the timeline's TimeCursor draws about the column (null
+//   when there is no frame or no band), and playheadLineTop is the row the playhead's
+//   1px line starts on - under the pill, as TimeCursor's does. The pill's own number
+//   suppresses every ruler label whose centre falls inside its half-width, so the
+//   column carries one number.
 //
 // MARQUEE
 //   marquee == the editor's own box-select rectangle (GraphEditor::marqueeRect()),
@@ -657,6 +721,13 @@ struct GraphPanelModel {
     // above the viewport covers part of it (see THE OCCLUDED TOP above). Always
     // >= plot.top() and never past the plot's bottom edge.
     int rulerBandTop = -1;
+    // THE RULER BAND: the plot's own width by frameRuler::kBandHeight rows from
+    // rulerBandTop - the timeline's ruler strip, inside the plot by construction. The
+    // drawing layer fills it with theme::Graph::rulerBand() and rules its bottom with
+    // theme::Graph::rulerLine(); the ticks rise from its last row. EMPTY when the
+    // band does not fit in the plot at all (a fully occluded top), which is also the
+    // model's "no ruler ink" signal.
+    QRect rulerBand;
     QVector<int> frameTickX;
     // The tier of each tick in frameTickX: same length, same order, so index i is
     // tick i's tier (the ladder's own ctrl::time::Scaler::TickLevel as an int; None
@@ -668,6 +739,20 @@ struct GraphPanelModel {
     QVector<PanelLabel> valueLabels;
     int zeroY = -1;
     int playheadX = -1;
+    // THE PLAYHEAD'S PILL: the frame number, written with the SAME formatter the ruler
+    // numbers use (core::TimeFormat::frameToString(currentFrame, timeFormatType())) -
+    // published as the string so the drawing layer writes the very characters the
+    // suppression geometry was measured from. Empty when currentFrame() < 0.
+    QString playheadText;
+    // The 14px, 3px-radius pill gui::TimeCursor draws about the playhead's column, at
+    // the band's number row (frameRuler::kPillTop). EMPTY when there is no frame or no
+    // band to draw it in. The model suppresses every ruler number whose centre falls
+    // inside half this pill's width, so the pill's own number is the only one read in
+    // its column.
+    QRect playheadPill;
+    // The first row of the playhead's LINE: the pill covers the rows above it, exactly
+    // as TimeCursor's line starts under its pill. -1 when there is no playhead.
+    int playheadLineTop = -1;
     // The live box-select rectangle, or an empty rect while no marquee drag is in
     // flight (see the MARQUEE note above). The drawing layer paints it inside the
     // plot clip; nothing is drawn for an empty rect.

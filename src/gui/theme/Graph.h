@@ -33,6 +33,17 @@ public:
 
     QColor gridMajor() const { return mGridMajor; }  // the frame ticks (the panel has no grid)
     QColor axisLine() const { return mAxisLine; }    // value-axis base line
+    // THE FRAME RULER'S BAND, in the timeline's own tokens: the strip is the
+    // timeline's surface (theme::TimeLine::headerBackgroundColor() == Colors::base)
+    // and the 1px rule under it is the timeline's ruler line
+    // (theme::TimeLine::rulerLineColor() == Colors::hairline) - the two views'
+    // rulers are one chrome (see THE RULER in GraphPanelModel.h).
+    QColor rulerBand() const { return mRulerBand; }
+    QColor rulerLine() const { return mRulerLine; }
+    // The playhead pill's number. The timeline's playhead (gui::TimeCursor) fills its
+    // pill with accentBright and writes the frame in Colors::accentBrightText
+    // (src/gui/TimeLineEditorWidget.cpp:268-269); the graph's pill is that pill.
+    QColor accentBrightText() const { return mAccentBrightText; }
     // Value and frame labels. The FULL text token - the ink the timeline draws its own
     // ruler numbers in - not a muted one: these glyphs are the only panel content the
     // halo does not back (it ships off), so they sit on arbitrary artwork and a mid grey
@@ -59,9 +70,11 @@ public:
     // makes a key read as the feature it belongs to - see the class comment.
     QColor keyEdge() const { return mKeyEdge; }
     QColor selected() const { return mSelected; }    // selected key / handle
-    QColor handleFill() const { return mHandleFill; } // tangent handle fill
-    QColor handleEdge() const { return mHandleEdge; } // tangent handle edge
-    QColor handleLine() const { return mHandleLine; } // tangent handle stem
+    // A STORED tangent handle's fill: the raised surface the reference fills it with
+    // (mock-graph.js:898-900). Its stroke and its stem are the CHANNEL's own hue at
+    // the two alphas the drawing layer applies, so there is no token for them here -
+    // the hue travels with the curve (PanelCurve::color), not with the palette.
+    QColor handleFill() const { return mHandleFill; }
     // The marquee: the live rectangle of a box-select drag. The same two decisions
     // the timeline's own box-select makes (ctrl/time/time_Renderer.cpp,
     // renderSelectionRange): the bright accent edge at 230/255 and the same hue as
@@ -136,6 +149,9 @@ private:
 
     QColor mGridMajor;
     QColor mAxisLine;
+    QColor mRulerBand;
+    QColor mRulerLine;
+    QColor mAccentBrightText;
     QColor mAxisText;
     QColor mHalo;
     QColor mOutline;
@@ -143,8 +159,6 @@ private:
     QColor mKeyEdge;
     QColor mSelected;
     QColor mHandleFill;
-    QColor mHandleEdge;
-    QColor mHandleLine;
     QColor mMarqueeFill;
     QColor mMarqueeEdge;
     QColor mMenuBody;

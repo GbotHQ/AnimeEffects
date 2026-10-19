@@ -105,6 +105,7 @@
 #include "core/Project.h"
 #include "core/RotateKey.h"
 #include "core/TimeKeyType.h"
+#include "core/TimeFormat.h"
 #include "core/TimeLine.h"
 #include "ctrl/GraphEditor.h"
 #include "ctrl/UILogger.h"
@@ -527,33 +528,58 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // 3. the ladder follows the scaler
     {
+        // THE ONE FORMATTER the whole frame axis writes with: the test's own
+        // core::TimeFormat, built from the EDITOR's frame range and rate, so every
+        // label's text is checked against
+        // core::TimeFormat::frameToString(frame, editor.timeFormatType()) for the
+        // frame(s) the label publishes - never against the model's own string.
+        const core::TimeFormat format(editor.frameRange(), editor.fps());
+        const core::TimeFormatType formatType = editor.timeFormatType();
+        const int numberReserve = gui::frameRuler::kNumberCharWidth;
+
         int sampled = 0;
-        int wrongNumber = 0;
+        int wrongText = 0;
+        int noFrame = 0;
         int noTick = 0;
         int minGap = std::numeric_limits<int>::max();
         int previousRight = std::numeric_limits<int>::min();
         bool anyPrevious = false;
 
         for (const gui::PanelLabel& label : model.frameLabels) {
-            bool ok = false;
-            const int number = label.text.toInt(&ok);
-
-            // The number is the frame of a tick inside its own box (the box is
-            // centred on the tick and nudged inside the plot, so clamping can
-            // move the centre but never off the tick).
-            bool found = false;
-            int matchedX = -1;
-            for (int x : model.frameTickX) {
-                if (label.rect.left() <= x && x <= label.rect.right() && scale.frameAt(x).get() == number) {
-                    found = true;
-                    matchedX = x;
-                }
-            }
-            if (!found)
-                ++noTick;
-            if (!ok)
-                ++wrongNumber;
             ++sampled;
+            // A merged boundary label names TWO frames ("first-last"); every other
+            // frame label names exactly one, and that frame is published beside its
+            // text in PanelLabel::frame.
+            const bool merged = label.endFrame >= 0;
+            const QString expected =
+                merged ? format.frameToString(label.frame, formatType) + QString::fromUtf8("\u2013") +
+                             format.frameToString(label.endFrame, formatType)
+                       : format.frameToString(label.frame, formatType);
+            if (!merged && label.frame < 0)
+                ++noFrame;
+            if (label.text != expected)
+                ++wrongText;
+
+            // The frame(s) the text names own a tick: an ordinary number's box contains
+            // the tick of its own frame (the box is centred on it and nudged inside the
+            // plot, so clamping can move the centre but never off the tick), and the
+            // merged label's two boundary frames each have their tick somewhere.
+            const auto tickInsideBox = [&model, &scale, &label](int aFrame) {
+                for (const int x : model.frameTickX) {
+                    if (x >= label.rect.left() && x <= label.rect.right() && scale.frameAt(x).get() == aFrame)
+                        return true;
+                }
+                return false;
+            };
+            const auto tickExists = [&model, &scale](int aFrame) {
+                for (const int x : model.frameTickX) {
+                    if (scale.frameAt(x).get() == aFrame)
+                        return true;
+                }
+                return false;
+            };
+            if (merged ? !(tickExists(label.frame) && tickExists(label.endFrame)) : !tickInsideBox(label.frame))
+                ++noTick;
 
             if (anyPrevious) {
                 const int gap = label.rect.left() - previousRight - 1;
@@ -563,19 +589,22 @@ int main(int argc, char** argv) {
             anyPrevious = true;
 
             if (sampled <= 4) {
-                std::printf("[3] label \"%s\" <- tick x=%d, scale.frameAt(x)=%d, box x=%d..%d y=%d..%d\n",
-                            qUtf8Printable(label.text), matchedX,
-                            matchedX >= 0 ? scale.frameAt(matchedX).get() : -1, label.rect.left(), label.rect.right(),
-                            label.rect.top(), label.rect.bottom());
+                std::printf(
+                    "[3] label \"%s\" frame=%d end=%d expected=\"%s\" box x=%d..%d y=%d..%d reserve=%dpx\n",
+                    qUtf8Printable(label.text), label.frame, label.endFrame, qUtf8Printable(expected),
+                    label.rect.left(), label.rect.right(), label.rect.top(), label.rect.bottom(),
+                    numberReserve * int(label.text.size())
+                );
             }
         }
 
-        std::printf("[3] sampled %d frame labels, %d with no tick carrying their number, minimum gap between "
-                    "neighbouring boxes=%d px\n",
-                    sampled, noTick, sampled > 1 ? minGap : -1);
+        std::printf("[3] sampled %d frame labels, %d not equal to frameToString(frame), %d without a frame,"
+                    " %d without the tick of their own frame, minimum gap between neighbouring boxes=%d px\n",
+                    sampled, wrongText, noFrame, noTick, sampled > 1 ? minGap : -1);
         CHECK(sampled > 1);
+        CHECK(wrongText == 0);
+        CHECK(noFrame == 0);
         CHECK(noTick == 0);
-        CHECK(wrongNumber == 0);
         CHECK(minGap >= 8);
 
         // One tick, one number: the label rects are never the same box twice.
@@ -587,35 +616,22 @@ int main(int argc, char** argv) {
         std::printf("[3] overlapping neighbouring label boxes=%d\n", duplicates);
         CHECK(duplicates == 0);
 
-        // The ticks ARE the ladder's own ticks, not a tick per pixel: every
-        // published x maps to a frame the ladder classifies (TickLevel != None)
-        // and back to that same x, every classified frame inside the plot has its
-        // tick, and there are no others. Deleting the `level == None` filter in
-        // buildFrameAxis turns the axis into the solid comb the design removed -
-        // one tick per pixel at the 1px/frame floor - while every assertion above
-        // still passes; these are the ones that fail then.
-        int unclassified = 0;
-        int notRoundTrip = 0;
-        int notAscending = 0;
-        for (int i = 0; i < model.frameTickX.size(); ++i) {
-            const int x = model.frameTickX.at(i);
-            const core::Frame frame = scale.frameAt(x);
-            if (scale.frameScale().attribute(frame.get()).level == ctrl::time::Scaler::TickLevel::None)
-                ++unclassified;
-            if (scale.pixelX(frame) != x)
-                ++notRoundTrip;
-            if (0 < i && x <= model.frameTickX.at(i - 1))
-                ++notAscending;
-        }
+        // The ticks ARE the ladder's own ticks (plus the ruler's forced boundaries
+        // below), not a tick per pixel: deleting the `level == None` filter in
+        // buildFrameAxis would turn the axis into the solid comb the design removed -
+        // one tick per pixel at the 1px/frame floor. The measurements that catch that
+        // run after the oracle, which knows which columns the ruler forced.
 
+        // THE LADDER'S TICKS, PLUS THE RULER'S FORCED BOUNDARIES. The oracle is the
+        // scaler's own classification, re-derived with the documented rule the model
+        // follows: every None-filtered classified frame inside the plot is a tick, and
+        // the PROJECT's first/last frames (the editor's own range) replace their tick
+        // with a Major one when the ruler names them (their labels are active or the
+        // two are merged) - the timeline's boundary rule (TimeRuler.cpp:139-182). The
+        // model's own vectors are never used as their own oracle.
         const core::Frame windowFirst = scale.frameAt(model.plot.left());
         const core::Frame windowLast = scale.frameAt(model.plot.right());
         QVector<int> ladderTicks;
-        // The tier of each tick derived above, in the same step: the model publishes the
-        // ladder's own classification beside its positions (`frameTickLevel`), so the
-        // oracle for it is the same ladder call that produced the positions - and the
-        // model's own call at that (attributeAt at framePpf(), the spacing the frame
-        // mapping uses), never a re-statement of the model's own filter.
         QVector<int> ladderLevels;
         int classified = 0;
         for (int frame = windowFirst.get(); frame <= windowLast.get(); ++frame) {
@@ -632,6 +648,84 @@ int main(int argc, char** argv) {
                 ladderLevels.append(int(level));
             }
         }
+        // The boundary frames, promoted to the ruler's Major tick when the model is
+        // asked to name them - the same condition buildFrameAxis uses.
+        const int boundaryFirstFrame = editor.frameRange().min();
+        const int boundaryLastFrame = editor.frameRange().max();
+        const bool hasBoundaryRange = boundaryFirstFrame < boundaryLastFrame;
+        const int boundaryFirstX = hasBoundaryRange ? scale.pixelX(core::Frame(boundaryFirstFrame)) : -1;
+        const int boundaryLastX = hasBoundaryRange ? scale.pixelX(core::Frame(boundaryLastFrame)) : -1;
+        const auto inPlot = [&model](int aX) { return model.plot.left() <= aX && aX <= model.plot.right(); };
+        const int majorLevel = int(ctrl::time::Scaler::TickLevel::Major);
+        const auto levelOf = [&scale](int aFrame) {
+            return int(scale.frameScale().attributeAt(aFrame, scale.framePpf()).level);
+        };
+        const bool firstInView = hasBoundaryRange && inPlot(boundaryFirstX);
+        const bool lastInView = hasBoundaryRange && inPlot(boundaryLastX);
+        const bool firstActive = firstInView && levelOf(boundaryFirstFrame) != majorLevel;
+        const bool lastActive = lastInView && levelOf(boundaryLastFrame) != majorLevel;
+        const QString firstBoundaryText =
+            firstInView ? format.frameToString(boundaryFirstFrame, formatType) : QString();
+        const QString lastBoundaryText =
+            lastInView ? format.frameToString(boundaryLastFrame, formatType) : QString();
+        const bool mergedBoundaries = firstInView && lastInView &&
+            (boundaryFirstX + (numberReserve * int(firstBoundaryText.size())) / 2 +
+                 gui::frameRuler::kNumberMargin >=
+             boundaryLastX - (numberReserve * int(lastBoundaryText.size())) / 2);
+        // The forced boundary ticks, by column: a tick the ladder does not classify is
+        // allowed exactly here (that is what the ruler's boundary ink is).
+        QVector<int> forcedX;
+        const auto promote = [&ladderTicks, &ladderLevels, &forcedX](int aX) {
+            for (int i = 0; i < ladderTicks.size(); ++i) {
+                if (ladderTicks.at(i) == aX) {
+                    ladderTicks.removeAt(i);
+                    ladderLevels.removeAt(i);
+                    break;
+                }
+            }
+            ladderTicks.append(aX);
+            ladderLevels.append(int(ctrl::time::Scaler::TickLevel::Major));
+            forcedX.append(aX);
+        };
+        if (firstInView && (mergedBoundaries || firstActive))
+            promote(boundaryFirstX);
+        if (lastInView && (mergedBoundaries || lastActive))
+            promote(boundaryLastX);
+        // Ascending, one tick per column (the more prominent tier wins a shared one).
+        {
+            QVector<int> order;
+            for (int i = 0; i < ladderTicks.size(); ++i)
+                order.append(i);
+            std::stable_sort(order.begin(), order.end(), [&ladderTicks, &ladderLevels](int a, int b) {
+                return ladderTicks.at(a) != ladderTicks.at(b) ? ladderTicks.at(a) < ladderTicks.at(b)
+                                                              : ladderLevels.at(a) > ladderLevels.at(b);
+            });
+            QVector<int> sortedTicks;
+            QVector<int> sortedLevels;
+            for (int i : order) {
+                if (!sortedTicks.isEmpty() && sortedTicks.last() == ladderTicks.at(i))
+                    continue;
+                sortedTicks.append(ladderTicks.at(i));
+                sortedLevels.append(ladderLevels.at(i));
+            }
+            ladderTicks = sortedTicks;
+            ladderLevels = sortedLevels;
+        }
+
+        int unclassified = 0;
+        int notRoundTrip = 0;
+        int notAscending = 0;
+        for (int i = 0; i < model.frameTickX.size(); ++i) {
+            const int x = model.frameTickX.at(i);
+            const core::Frame frame = scale.frameAt(x);
+            const bool forced = forcedX.contains(x);
+            if (!forced && scale.frameScale().attribute(frame.get()).level == ctrl::time::Scaler::TickLevel::None)
+                ++unclassified;
+            if (scale.pixelX(frame) != x)
+                ++notRoundTrip;
+            if (0 < i && x <= model.frameTickX.at(i - 1))
+                ++notAscending;
+        }
 
         std::printf("[3] frame ticks: published=%d, the ladder's own inside the plot=%d (%d classified frames in "
                     "the window)  unclassified ticks=%d  pixel round-trip mismatches=%d  out of order=%d\n",
@@ -643,14 +737,10 @@ int main(int argc, char** argv) {
         CHECK(model.frameTickX == ladderTicks);
 
         // The TIERS: one per tick, index-aligned with the positions, each one of the
-        // three tiers the ruler draws, and each the ladder's own level for that tick's
-        // frame. TickLevel::None is the ladder's "do not mark this frame" and never
-        // reaches the model (buildFrameAxis filters it before appending), so a None
-        // entry - or a tier for the wrong tick, or a count that does not match the
-        // positions - fails here. The tier is what the drawing layer turns into the
-        // mark's alpha (0.85 major / 0.60 intermediate / 0.20 minor, the timeline's
-        // table, applied in GraphPanelFrame.cpp): a model that published no tier, or one
-        // per something else, is the bug this catches.
+        // three tiers the ruler draws, and each the level the oracle derived for that
+        // column. TickLevel::None reaches the model only through a FORCED boundary
+        // tick (which the ruler promotes to Major), so a None entry elsewhere, a tier
+        // for the wrong tick, or a count that does not match the positions, fails here.
         int notATier = 0;
         int tierHistogram[4] = {0, 0, 0, 0};
         for (int i = 0; i < model.frameTickLevel.size(); ++i) {
@@ -1344,13 +1434,48 @@ int main(int argc, char** argv) {
         CHECK(moved.playheadX == scale.pixelX(core::Frame(37)));
         CHECK(model.plot.left() <= moved.playheadX && moved.playheadX <= model.plot.right());
 
-        // No project: no frame to place.
+        // THE PILL'S TEXT IS THE RULER'S OWN STRING: the frame written with
+        // core::TimeFormat::frameToString and the editor's own format setting - the
+        // same call every frame label above is checked against, so the two views
+        // cannot name one frame two ways.
+        const core::TimeFormat format(editor.frameRange(), editor.fps());
+        const QString expectedText = format.frameToString(37, editor.timeFormatType());
+        std::printf(
+            "[7] playheadText=\"%s\" expected=\"%s\"  playheadPill=(%d,%d %dx%d)  rectangleBand=(%d,%d %dx%d)"
+            "  playheadLineTop=%d\n",
+            qUtf8Printable(moved.playheadText), qUtf8Printable(expectedText), moved.playheadPill.left(),
+            moved.playheadPill.top(), moved.playheadPill.width(), moved.playheadPill.height(),
+            moved.rulerBand.left(), moved.rulerBand.top(), moved.rulerBand.width(), moved.rulerBand.height(),
+            moved.playheadLineTop
+        );
+        CHECK(moved.playheadText == expectedText);
+        CHECK(!moved.playheadPill.isEmpty());
+        CHECK(moved.playheadPill.top() == moved.rulerBand.top() + gui::frameRuler::kPillTop);
+        CHECK(moved.playheadPill.height() == gui::frameRuler::kNumberHeight);
+        CHECK(moved.playheadPill.bottom() < moved.playheadLineTop);
+        CHECK(moved.playheadLineTop == moved.rulerBand.top() + gui::frameRuler::kLineTop);
+
+        // ...AND NO RULER NUMBER IS DRAWN UNDER IT: every label whose centre falls
+        // inside the pill's half-width is dropped, so the pill's number is the only
+        // one read in its column (the timeline's own rule).
+        int underPill = 0;
+        for (const gui::PanelLabel& label : moved.frameLabels) {
+            if (qAbs(label.rect.center().x() - moved.playheadX) < moved.playheadPill.width() / 2)
+                ++underPill;
+        }
+        std::printf("[7] frame labels under the pill=%d\n", underPill);
+        CHECK(underPill == 0);
+
+        // No project: no frame to place, no pill, no text.
         editor.setProject(nullptr);
         const gui::GraphPanelModel orphaned = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[7] no project: editor.currentFrame()=%d  playheadX=%d  emptyState=\"%s\"\n",
-                    editor.currentFrame().get(), orphaned.playheadX, qUtf8Printable(orphaned.emptyState));
+        std::printf("[7] no project: editor.currentFrame()=%d  playheadX=%d  playheadText=\"%s\"  emptyState=\"%s\"\n",
+                    editor.currentFrame().get(), orphaned.playheadX, qUtf8Printable(orphaned.playheadText),
+                    qUtf8Printable(orphaned.emptyState));
         CHECK(editor.currentFrame().get() == -1);
         CHECK(orphaned.playheadX == -1);
+        CHECK(orphaned.playheadText.isEmpty());
+        CHECK(orphaned.playheadPill.isEmpty());
         CHECK(!orphaned.emptyState.isEmpty());
         CHECK(orphaned.curves.isEmpty());
     }
@@ -1648,31 +1773,42 @@ int main(int argc, char** argv) {
         editor.setTargets({ &nodeA, &nodeB });
         const gui::GraphPanelModel ruled = gui::buildGraphPanelModel(editor, viewport, palette);
 
-        // The tick length the panel draws (kAxisTickLength in
-        // src/gui/GraphPanelFrame.cpp, the drawing layer's half of the same convention
-        // the model documents as kFrameTickLength).
-        constexpr int kDrawnTickLength = 4;
+        // THE RULER'S BAND is the timeline's: a 22px strip at rulerBandTop whose
+        // numbers sit in its top 14 rows and its 5px ticks rise from its last row. The
+        // model must carry it, the band must be inside the plot, and every number's box
+        // must be in the band's number row - ABOVE the tick rows, as the timeline draws
+        // them (the opposite of the old panel, which hung its numbers below the ticks).
+        const int kBandHeight = gui::frameRuler::kBandHeight;
+        const int kTickLength = gui::frameRuler::kTickLength;
         int labels = 0;
         int insidePlot = 0;
-        int clearOfTicks = 0;
+        int inNumberRow = 0;
         for (const gui::PanelLabel& label : ruled.frameLabels) {
             ++labels;
             if (ruled.plot.contains(label.rect))
                 ++insidePlot;
-            if (label.rect.top() >= ruled.plot.top() + kDrawnTickLength)
-                ++clearOfTicks;
+            if (label.rect.top() == ruled.rulerBand.top() + gui::frameRuler::kNumberTop &&
+                label.rect.bottom() < ruled.rulerBand.top() + kBandHeight - kTickLength)
+                ++inNumberRow;
         }
         std::printf(
-            "[11] plot=(%d,%d %dx%d) frame_labels=%d inside_plot=%d clear_of_%dpx_tick_band=%d\n", ruled.plot.left(),
-            ruled.plot.top(), ruled.plot.width(), ruled.plot.height(), labels, insidePlot, kDrawnTickLength,
-            clearOfTicks
+            "[11] plot=(%d,%d %dx%d) rulerBand=(%d,%d %dx%d) bandHeight=%d tickLength=%d frame_labels=%d"
+            " inside_plot=%d in_number_row=%d\n",
+            ruled.plot.left(), ruled.plot.top(), ruled.plot.width(), ruled.plot.height(), ruled.rulerBand.left(),
+            ruled.rulerBand.top(), ruled.rulerBand.width(), ruled.rulerBand.height(), kBandHeight, kTickLength,
+            labels, insidePlot, inNumberRow
         );
         // The precondition of the pixel gate's assertion 16 (which measures the same
         // rule on the drawn glyphs): the model has to carry labels at all, or the
         // reservation is unobservable.
+        CHECK(!ruled.rulerBand.isEmpty());
+        CHECK(ruled.rulerBand.top() == ruled.rulerBandTop);
+        CHECK(ruled.rulerBand.width() == ruled.plot.width());
+        CHECK(ruled.rulerBand.height() == kBandHeight);
+        CHECK(ruled.plot.contains(ruled.rulerBand));
         CHECK(labels > 0);
         CHECK(insidePlot == labels);
-        CHECK(clearOfTicks == labels);
+        CHECK(inNumberRow == labels);
 
         // No drag is live, so the marquee is EMPTY - which is the drawing layer's
         // whole signal to draw nothing.
@@ -1734,12 +1870,14 @@ int main(int argc, char** argv) {
         const int kInset = 24;
         const gui::GraphPanelModel occluded = gui::buildGraphPanelModel(editor, viewport, palette, kInset);
         int bandLabels = 0;
-        int bandClearOfTicks = 0;
+        int bandLabelsInBand = 0;
         int valueLabelsBelowBand = 0;
         for (const gui::PanelLabel& label : occluded.frameLabels) {
             ++bandLabels;
-            if (label.rect.top() >= occluded.rulerBandTop + 4) {
-                ++bandClearOfTicks;
+            // The band moved down by the inset, and the numbers moved WITH it: every
+            // box sits in the moved band's number row.
+            if (label.rect.top() == occluded.rulerBand.top() + gui::frameRuler::kNumberTop) {
+                ++bandLabelsInBand;
             }
         }
         for (const gui::PanelLabel& label : occluded.valueLabels) {
@@ -1749,18 +1887,19 @@ int main(int argc, char** argv) {
         }
         std::printf(
             "[11] occluded_top inset=%d rulerBandTop=%d (plot.top()=%d) plot_moved=%d frame_labels=%d"
-            " clear_of_tick_band=%d value_labels=%d below_band=%d ruler_vtx_unaffected=%d\n",
+            " in_moved_band=%d value_labels=%d below_band=%d ruler_vtx_unaffected=%d\n",
             kInset, occluded.rulerBandTop, ruled.plot.top(), int(occluded.plot != ruled.plot), bandLabels,
-            bandClearOfTicks, isz(occluded.valueLabels), valueLabelsBelowBand,
+            bandLabelsInBand, isz(occluded.valueLabels), valueLabelsBelowBand,
             int(occluded.curves.size() == ruled.curves.size())
         );
         CHECK(occluded.rulerBandTop == ruled.plot.top() + kInset);
+        CHECK(occluded.rulerBand.top() == occluded.rulerBandTop);
         CHECK(occluded.plot == ruled.plot);          // the interactive geometry stays put
         CHECK(occluded.panel == ruled.panel);
         CHECK(occluded.curves.size() == ruled.curves.size());
         CHECK(occluded.playheadX == ruled.playheadX);
         CHECK(bandLabels > 0);
-        CHECK(bandClearOfTicks == bandLabels);
+        CHECK(bandLabelsInBand == bandLabels);
         CHECK(valueLabelsBelowBand == isz(occluded.valueLabels));
 
         // An inset that swallows the plot leaves no band to draw in, and then there is

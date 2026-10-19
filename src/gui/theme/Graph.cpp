@@ -75,6 +75,16 @@ void Graph::assignFrom(const Colors& aColors) {
     mAxisLine = aColors.hairlineHover;
     mAxisText = aColors.text;
 
+    // The frame ruler's band and hairline: the timeline's ruler tokens, read from the
+    // same palette cells the timeline does (theme::TimeLine::headerBackgroundColor ==
+    // base, rulerLineColor == hairline). The panel's ruler IS the timeline's ruler
+    // (see GraphPanelModel.h), so the two surfaces cannot drift.
+    mRulerBand = aColors.base;
+    mRulerLine = aColors.hairline;
+    // The playhead pill's number, on its accentBright fill: the timeline's
+    // TimeCursor asks for exactly this pair (TimeLineEditorWidget.cpp:268-269).
+    mAccentBrightText = aColors.accentBrightText;
+
     // Label halo: the palette's opaque floater body. The panel paints no
     // background of its own (see GraphPanelModel's header), so the halo is the
     // tone the text would sit on if it had one - and a halo that carried the
@@ -113,11 +123,10 @@ void Graph::assignFrom(const Colors& aColors) {
     mMenuHoverText = aColors.accentText;
     mMenuSeparator = aColors.hairline;
 
-    // Tangent handles: raised like the widgets they emulate, edged with the
-    // popup border tone, stems muted so they never outread the curve itself.
+    // Tangent handles: a stored pair is filled with the raised surface the reference
+    // fills it with; its stroke and stem take the CHANNEL's own hue where they are
+    // drawn (GraphPanelFrame.cpp), so the palette names no grey for them.
     mHandleFill = aColors.raised;
-    mHandleEdge = aColors.floaterEdge;
-    mHandleLine = aColors.textMuted;
 
     // The channel hue table (theme::Colors, THE CHANNEL HUE TABLE): the axis
     // cells, and each key type's own hue for a channel with no axis. Both the

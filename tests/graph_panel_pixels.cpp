@@ -419,6 +419,15 @@ QColor over(const QColor& aSource, const QColor& aDestination) {
     );
 }
 
+// The same token with its alpha replaced, i.e. the ink a STRENGTH leaves behind: the
+// drawing layer's toImU32Strength scales the colour's alpha by the strength, so it is
+// the source of `over(...)` for a covered pixel.
+QColor withAlpha(const QColor& aColour, float aAlpha) {
+    QColor out = aColour;
+    out.setAlphaF(aAlpha);
+    return out;
+}
+
 int inkCount(const QImage& aImage, const QRect& aRect) {
     const QRect r = aRect.intersected(aImage.rect());
     int count = 0;
@@ -494,8 +503,8 @@ KeyFixture keyAt(int aCentreX, int aCentreY) {
 }
 
 // The ink bound of one key MARKER: the circle of radius kKeyDotRadius drawn about
-// the centre, grown by 1px for the 1px edge ring and 1px more for the
-// antialiasing, so nothing the marker can paint falls outside it.
+// the centre, grown by 1px for the 1px edge stroke centred on that radius and 1px
+// more for its antialiasing, so nothing the marker can paint falls outside it.
 QRect keyDotInkBox(const QPointF& aDot) {
     const int radius = int(std::ceil(double(ctrl::graph::kKeyDotRadius))) + 2; // 3.75 -> 6
     return QRect(int(aDot.x()) - radius, int(aDot.y()) - radius, 2 * radius + 1, 2 * radius + 1);
@@ -507,18 +516,24 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
     model.rulerBandTop = kPlot.top();   // no occluded top: the band starts at the plot
+    // THE RULER BAND the panel paints: the model's own 22px strip at the plot's top,
+    // with the numbers in its first 14 rows and the ticks rising from its last row.
+    model.rulerBand =
+        QRect(kPlot.left(), kPlot.top(), kPlot.width(), gui::frameRuler::kBandHeight);
 
     model.frameTickX = {90, 140, 320};
     model.valueTickY = {70, 210};
-    // THE CONGESTED CORNER, in the model's own box arithmetic: the first frame number
-    // sits on the tick at the plot's left edge (so its box is nudged just inside it,
-    // GraphPanelModel.cpp's buildFrameAxis) and the top value label is right-aligned in
-    // its box - 7px apart, on the same rows, which is the string "10" assertion 21 is
-    // about. The other two frame numbers are the ordinary mid-plot case.
+    // THE RULER'S NUMBER ROW, at the model's own geometry: every box starts at
+    // band.top() + kNumberTop and is one kNumberHeight tall (see checkRulerReserve).
+    // THE CONGESTED CORNER is unchanged in x: the first frame number sits on the tick
+    // at the plot's left edge, and the top value label is right-aligned in its box.
     model.frameLabels = {
-        {QRect(90, 40, 11, 14), QStringLiteral("0")},
-        {QRect(130, 40, 20, 14), QStringLiteral("10")},
-        {QRect(310, 40, 20, 14), QStringLiteral("20")},
+        {QRect(90, kPlot.top() + gui::frameRuler::kNumberTop, 11, gui::frameRuler::kNumberHeight),
+         QStringLiteral("0"), 0},
+        {QRect(130, kPlot.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
+         QStringLiteral("10"), 10},
+        {QRect(310, kPlot.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
+         QStringLiteral("20"), 20},
     };
     model.valueLabels = {
         {valueLabelBox(60), QStringLiteral("1")},
@@ -526,6 +541,14 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     };
     model.zeroY = 180;
     model.playheadX = 200;
+    // THE PLAYHEAD'S PILL, as the model publishes it: the frame's own string and the
+    // 14px rounded box around it, at the band's pill row, with the line starting
+    // under it (frameRuler::kLineTop).
+    model.playheadText = QStringLiteral("200");
+    model.playheadPill = QRect(
+        200 - 15, kPlot.top() + gui::frameRuler::kPillTop, 30, gui::frameRuler::kNumberHeight
+    );
+    model.playheadLineTop = kPlot.top() + gui::frameRuler::kLineTop;
 
     const KeyFixture aKeys[] = {keyAt(150, 220), keyAt(250, 200)};
     gui::PanelCurve a;
@@ -1004,8 +1027,26 @@ std::vector<Geom> geometryOf(
     const gui::GraphPanelModel& aModel, ImFont* aFont, float aFontSize
 ) {
     std::vector<Geom> out;
+    if (!aModel.rulerBand.isEmpty()) {
+        // The band's surface and its hairline row, plus the playhead's pill when one
+        // is published: all three are ink the drawing layer puts down.
+        out.push_back({"ruler_band", grow(aModel.rulerBand, 1)});
+        out.push_back(
+            {"ruler_hairline",
+             grow(QRect(aModel.rulerBand.left(), aModel.rulerBand.bottom() + 1, aModel.rulerBand.width(), 1), 1)}
+        );
+    }
+    if (!aModel.playheadPill.isEmpty()) {
+        out.push_back({"playhead_pill", grow(aModel.playheadPill, 1)});
+    }
+    // The frame ticks hang UP from the band's last row (frameRuler::kTickLength rows).
+    const int tickBaseline = aModel.rulerBand.isEmpty() ? aModel.rulerBandTop + gui::frameRuler::kBandHeight - 1
+                                                        : aModel.rulerBand.bottom();
     for (int x : aModel.frameTickX) {
-        out.push_back({"frame_tick", grow(QRect(x, aModel.plot.top() - 1, 1, 6), 2)});
+        out.push_back(
+            {"frame_tick",
+             grow(QRect(x, tickBaseline - gui::frameRuler::kTickLength + 1, 1, gui::frameRuler::kTickLength), 2)}
+        );
     }
     for (int y : aModel.valueTickY) {
         out.push_back({"value_tick", grow(QRect(aModel.plot.left() - 1, y, 6, 1), 2)});
@@ -1025,7 +1066,10 @@ std::vector<Geom> geometryOf(
         );
     }
     if (aModel.playheadX >= 0) {
-        out.push_back({"playhead", grow(QRect(aModel.playheadX, aModel.plot.top(), 1, aModel.plot.height() + 1), 2)});
+        const int lineTop = aModel.playheadLineTop >= 0 ? aModel.playheadLineTop : aModel.plot.top();
+        out.push_back(
+            {"playhead", grow(QRect(aModel.playheadX, lineTop, 1, aModel.plot.bottom() - lineTop + 1), 2)}
+        );
     }
     for (const gui::PanelCurve& curve : aModel.curves) {
         addCurveSamples(out, curve.points);
@@ -1253,7 +1297,8 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 // marker centre, and PanelCurve::color is theme::Graph::channelColor(type, component) - the
 // same colour the curve is stroked in, its chip's text is drawn in and its channel row
 // carries (the model documents them as one). So the marker's CENTRE pixel is compared to
-// its own channel colour and the pixel one ring-width inside its edge to keyEdge, and -
+// its own channel colour and the pixel inside the edge stroke's band (the 1px stroke is
+// centred on ctrl::graph::kKeyDotRadius) to keyEdge, and -
 // because "the key is tinted by its channel" is a statement about a RELATION - each centre
 // is also required to be nearer its own channel's colour than the other curve's, with the
 // two channels' colours asserted distinguishable first (which is why the fixture uses one
@@ -1261,7 +1306,7 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 // single hardcoded ink cannot satisfy that: it is the two-channels-at-once check.
 //
 // THE MARKER'S STRENGTH IS THE SELECTION'S (gui::curveStrength, off the model's own
-// marker flags): the fill and the floor ring both take the channel's strength, so each of
+// marker flags): the fill and the edge ring both take the channel's strength, so each of
 // these claims is measured in a pass where the marker is STRONG enough to read - the
 // no-selection pass shows every key dimmed at kUnselectedAlpha (still tinted by its own
 // channel, but not the undimmed token), and the selection passes put one channel in play,
@@ -1272,14 +1317,17 @@ bool checkCurveInk(const Rendered& aRendered, const gui::GraphPanelModel& aModel
 //
 // AND THE MARKER IS NOT THE PICK AREA (the model's visual/hit split). Three
 // measurements say so, on the geometry the model still publishes for both:
-//   * the ink's WIDTH through the centre is the marker's own diameter (2 *
-//     kKeyDotRadius plus the 1px ring and its antialiasing) - 7..9px, where the
-//     2*kKeyRadius hit square is 10;
+//   * the ink's WIDTH through the centre is the marker's own diameter: the 7.5px
+//     dot, its 1px stroke centred on that radius and their antialiasing (the width
+//     assertion's own 7..11px; MEASURED 10px). A 10px hit square would measure the
+//     same width, so it is the CORNERS below - not this width - that tell a dot
+//     from the square;
 //   * the four CORNERS of that hit square carry NO ink (they are ~7px from the
-//     centre, past the marker's 4.25px of ink, and inside a 10px square's);
-//   * the ring pixel's COLOUR is the edge token, not the fill - which is also what
-//     the ring is for: a same-hue key on a same-hue stroke would otherwise vanish
-//     into it.
+//     centre, past the marker's own ink - the edge band ends at 4.25 and its
+//     antialiasing at 4.5 - and inside a 10px square's);
+//   * the EDGE pixel's COLOUR is the dark edge ink, not the fill - which is also
+//     what the edge is for: a same-hue key on a same-hue stroke would otherwise
+//     vanish into it.
 // ALL THREE are measured in a pass where that key carries NO selection ring (see the
 // geometry pass selection in checkKeys): the ring is detached BY DESIGN (its ink starts
 // ~5px out), so a width taken through the centre of a ringed marker would measure the
@@ -1310,16 +1358,17 @@ int inkWidthThrough(
 // axis (a marker sits on its own curve, so the horizontal neighbour of a key pixel is the
 // stroke, while the row below/above it is clear).
 //
-// WHY TWO ROWS AND NOT ONE. ImGui's AddCircle strokes a POLYLINE of few segments (its own
-// auto-segment count for this radius is single digits), so the drawn band is centred on the
-// CHORD, which sits up to ~0.6px inside the nominal radius depending on where the probe's
-// angle falls between two vertices - and the band is 1px wide in the ink plus its AA. A
-// single-row probe that assumed the exact nominal radius would read the clearance between
-// the stroke's chord and its neighbour and could come back with 25% coverage of the ink
-// (MEASURED: the old single-step probe read rgb=#953c95, a sleeve-and-floor blend, where
-// the stroke's own ink is #f5f5f5-family). The reading therefore takes the stronger of the
-// two rows - which is the ring's own ink if the ring is there at all - and the claims built
-// on it are about WHICH TOKEN that ink is, never about one nominal pixel.
+// WHY TWO ROWS AND NOT ONE. The 1px band is centred on the reference radius
+// dotRadius + kKeyRingOffsetPx = 6.35 (ImGui's AddCircle strokes about radius - 0.5, so
+// its centreline is 5.85), i.e. [5.35, 6.35] plus AA; the framebuffer samples pixel
+// centres at half-integers while a key's centre is an integer coordinate, so the two
+// rows a nominal radius can land in sample 5.5px and 6.5px out. Which one carries the
+// ink's body is a sub-pixel fact of the band's placement: MEASURED on this build, row 6
+// reads rgb=#8596a9 (channel hue #4ade80 at ~0.68 over the clear colour) while row 7 is
+// its ~0.21 fringe rgb=#da2ee5 - so a single-row probe could read the fringe and call a
+// real ring missing, or too faint to name. The reading therefore takes the stronger of
+// the two rows - which is the ring's own ink if the ring is there at all - and the
+// claims built on it are about WHICH TOKEN that ink is, never about one nominal pixel.
 //
 // The pixel is reported in aPixel so a failure can name it.
 QColor detachedRingInk(const QImage& aImage, const QPoint& aCentre, QPoint& aPixel) {
@@ -1341,7 +1390,7 @@ QColor detachedRingInk(const QImage& aImage, const QPoint& aCentre, QPoint& aPix
 // 3: the key markers, in BOTH states the emphasis decision has, plus the two the marker
 // rule adds.
 //
-// THE EMPHASIS PAIR. The marker's fill and floor ring take the same strength as their curve
+// THE EMPHASIS PAIR. The marker's fill and edge ring take the same strength as their curve
 // (gui::curveStrength): a channel that owns a SELECTED marker - or the same key on a
 // sibling channel - is drawn at full strength, every other channel is dimmed to
 // kUnselectedAlpha, and with an EMPTY selection every channel is dimmed. The no-selection
@@ -1405,12 +1454,25 @@ bool checkKeys(
         hex(highlight).c_str(), hex(aTheme.keyEdge()).c_str(), hex(colourA).c_str(), hex(colourB).c_str()
     );
 
-    // The marker's own two bounds, from the constant the drawing layer uses:
-    // the drawn radius and the 1px ring around it, plus the antialiasing of both.
+    // The marker's own bounds, from the constant the drawing layer uses: the drawn
+    // radius, the 1px keyEdge stroke CENTRED on it (AddCircle(centre, dotRadius + 0.5)
+    // makes ImGui stroke 1px about (radius - 0.5) = dotRadius, so the band is
+    // [dotRadius - 0.5, dotRadius + 0.5] = [3.25, 4.25] and its AA reaches 4.5), and
+    // the antialiasing of both.
     const int dotRadius = int(std::lround(double(ctrl::graph::kKeyDotRadius)));   // 4
-    const int ringStep = dotRadius - 1;                                          // the ring's own band
+    // THE EDGE BAND'S OWN SAMPLE, MEASURED. A key's centre is an integer coordinate
+    // while the framebuffer samples pixel centres at half-integers, so the pixel
+    // `step` away from it samples at step + 0.5 from the centre. With the band at
+    // [3.25, 4.25], step 3 (sample 3.5) is INSIDE it and step 4 (4.5) is the stroke's
+    // outer fringe: on this build the +3 pixel reads rgb=#373239 (channel distance 19
+    // from keyEdge #262626) on the selected marker and rgb=#8a3493 (109) on the
+    // dimmed one, while +4 reads rgb=#e005e0 - 31 from the clear colour in play and
+    // 14 dimmed, i.e. below the ink floor, and on the shallow X curve it is the
+    // CURVE's own stroke that +4 samples. Probing dotRadius (4) therefore measured
+    // the fringe, or the curve, and never the marker's edge.
+    const int edgeStep = dotRadius - 1;                                          // 3: sample radius 3.5
     const int minWidth = 2 * dotRadius - 1;                                      // 7: the drawn diameter, less AA
-    const int maxWidth = 2 * dotRadius + 1;                                      // 9: ... plus the AA fringe
+    const int maxWidth = 2 * dotRadius + 3;                                      // 11: ... plus the stroke and AA
 
     int keys = 0;
     int tintedByOwn = 0;
@@ -1450,12 +1512,12 @@ bool checkKeys(
             const QPoint centre(int(dot.x()), int(dot.y()));
             // The dimmed state, from the no-selection pass...
             const QColor inner = pixelAt(aRendered.image, centre.x(), centre.y());
-            const QPoint ringPixel(centre.x() + ringStep, centre.y());
-            const QColor ring = pixelAt(aRendered.image, ringPixel.x(), ringPixel.y());
+            const QPoint edgePixel(centre.x() + edgeStep, centre.y());
+            const QColor edge = pixelAt(aRendered.image, edgePixel.x(), edgePixel.y());
             // ...and the full-strength state, from the pass that puts this key's channel
             // in play.
             const QColor inPlayInner = pixelAt(inPlay.image, centre.x(), centre.y());
-            const QColor inPlayRing = pixelAt(inPlay.image, ringPixel.x(), ringPixel.y());
+            const QColor inPlayEdge = pixelAt(inPlay.image, edgePixel.x(), edgePixel.y());
             const bool selectedInPlay = int(dot.x()) == selectedX;
             // THE DETACHED RING's own reading (the outermost state ink), out of the two rows
             // a 1px stroke at that radius can land in - see detachedRingInk for why one
@@ -1521,19 +1583,19 @@ bool checkKeys(
 
             std::printf(
                 "MEASURED key channel_type=%d dot=(%d,%d) hit_rect=(%d,%d %dx%d) centre_rgb=%s channel_hue=%s d=%d"
-                " other_channel_hue=%s d=%d ring=(%d,%d) ring_rgb=%s keyEdge=%s d_ring_to_edge=%d d_ring_to_fill=%d"
-                " width_x=%d (%d/%d) width_y=%d (%d/%d) dot_radius=%d ring_step=%d hit_corner_ink=%d"
-                " selected=%d in_play_centre_rgb=%s d_in_play_to_fill=%d d_in_play_to_highlight=%d"
-                " in_play_ring_rgb=%s d_in_play_ring_to_edge=%d outer_ring=(%d,%d) outer_ring_rgb=%s"
-                " d_outer_to_highlight=%d d_outer_to_fill=%d\n",
+                " other_channel_hue=%s d=%d edge=(%d,%d) edge_rgb=%s keyEdge=%s d_edge_to_keyEdge=%d"
+                " d_edge_to_fill=%d width_x=%d (%d/%d) width_y=%d (%d/%d) dot_radius=%d edge_step=%d"
+                " hit_corner_ink=%d selected=%d in_play_centre_rgb=%s d_in_play_to_fill=%d"
+                " d_in_play_to_highlight=%d in_play_edge_rgb=%s d_in_play_edge_to_keyEdge=%d"
+                " outer_ring=(%d,%d) outer_ring_rgb=%s d_outer_to_highlight=%d d_outer_to_fill=%d\n",
                 int(curve.channel.type()), centre.x(), centre.y(), hit.left(), hit.top(), hit.width(),
                 hit.height(), hex(inner).c_str(), hex(own).c_str(), colourDistance(inner, own), hex(other).c_str(),
-                colourDistance(inner, other), ringPixel.x(), ringPixel.y(), hex(ring).c_str(),
-                hex(aTheme.keyEdge()).c_str(), colourDistance(ring, aTheme.keyEdge()),
-                colourDistance(ring, own), widthX, negX, posX, widthY, negY, posY, dotRadius, ringStep, cornerInk,
+                colourDistance(inner, other), edgePixel.x(), edgePixel.y(), hex(edge).c_str(),
+                hex(aTheme.keyEdge()).c_str(), colourDistance(edge, aTheme.keyEdge()),
+                colourDistance(edge, own), widthX, negX, posX, widthY, negY, posY, dotRadius, edgeStep, cornerInk,
                 int(selectedInPlay), hex(inPlayInner).c_str(), colourDistance(inPlayInner, own),
-                colourDistance(inPlayInner, highlight), hex(inPlayRing).c_str(),
-                colourDistance(inPlayRing, aTheme.keyEdge()), outerRingPixel.x(), outerRingPixel.y(),
+                colourDistance(inPlayInner, highlight), hex(inPlayEdge).c_str(),
+                colourDistance(inPlayEdge, aTheme.keyEdge()), outerRingPixel.x(), outerRingPixel.y(),
                 hex(inPlayOuterRing).c_str(), colourDistance(inPlayOuterRing, highlight),
                 colourDistance(inPlayOuterRing, own)
             );
@@ -1566,20 +1628,31 @@ bool checkKeys(
             // colour for a marker with no state, or the channel colour mixed toward the
             // keyframe highlight for the marker this pass selects.
             if (selectedInPlay) {
-                // "THE FILL BRIGHTENS TOWARD THE KEYFRAME HIGHLIGHT" (index.html:279-280), read
-                // as the relation it is: the selected marker's centre is NEARER the highlight
-                // than its own channel colour, which is exactly what mixing toward the
-                // highlight by any amount past a half does (the drawing layer's 0.6), and what
-                // a marker still painted in the channel's colour fails. The old ink - the
-                // brand accent fill - is gone with the design's "no accent ring", so the
-                // assertion is not an equality to a token any more: it is the direction of the
-                // shift, on a fully covered pixel.
+                // "THE FILL BRIGHTENS" (index.html:279-280), read as the rule it is: the
+                // selected marker's ink is the channel hue mixed 0.45 toward the theme's TEXT
+                // colour - the same token and amount the drawing layer mixes
+                // (time_Renderer.cpp's mixTowardText, GraphPanelFrame's kKeySelectedFillMix).
+                // An earlier form asked whether the pixel was nearer the highlight than the
+                // hue, which silently encoded a minimum MIX AMOUNT and then rejected the
+                // design's own 0.45; and a per-channel "every component rose" test is wrong
+                // too, because the text ink (245) sits below this hue's red (251), so one
+                // component legitimately falls. The exact ink is the assertion.
+                const QColor textInk = theme::Colors::current().text;
+                const auto mixTowardText = [](int aChannel, int aTarget) {
+                    return static_cast<int>(std::lround(aChannel + (aTarget - aChannel) * 0.45));
+                };
+                const QColor expected(
+                    mixTowardText(own.red(), textInk.red()),
+                    mixTowardText(own.green(), textInk.green()),
+                    mixTowardText(own.blue(), textInk.blue())
+                );
                 REQUIRE(
-                    colourDistance(inPlayInner, highlight) < colourDistance(inPlayInner, own),
-                    "the selected key's centre rgb=%s is not nearer the keyframe highlight rgb=%s than its"
-                    " channel's colour rgb=%s (%d against %d): a selected marker's fill does not brighten",
-                    hex(inPlayInner).c_str(), hex(highlight).c_str(), hex(own).c_str(),
-                    colourDistance(inPlayInner, highlight), colourDistance(inPlayInner, own)
+                    colourDistance(inPlayInner, expected) <= kFillTol,
+                    "the selected key's centre rgb=%s is not its channel's colour mixed 0.45 toward the text ink"
+                    " rgb=%s (expected %s, distance %d > %d): a selected marker's fill does not brighten by the"
+                    " rule the drawing layer applies",
+                    hex(inPlayInner).c_str(), hex(textInk).c_str(), hex(expected).c_str(),
+                    colourDistance(inPlayInner, expected), kFillTol
                 );
             } else {
                 REQUIRE(
@@ -1591,37 +1664,53 @@ bool checkKeys(
                     colourDistance(inPlayInner, own), kFillTol
                 );
             }
-            // The FLOOR RING (the palette's own, drawn for every marker whether or not it is
-            // in a state): the pixel one ring-width inside the marker's edge is nearer
-            // theme::Graph::keyEdge() than the key's own colour - the 1px circle stroke sits
-            // at radius-1..radius, so that pixel is mostly the edge colour over the fill's own
-            // inner part. "Nearer the edge than the fill" is the whole claim (a missing ring
-            // would make it pure fill, which fails it), and it holds in BOTH states now: the
+            // The EDGE RING (the palette's own, drawn for every marker whether or not it is
+            // in a state): the pixel at the band the drawing actually paints carries ink,
+            // and it is the marker's own dark band rather than the fill - checked below in
+            // both states. The stroke is CENTRED on ctrl::graph::kKeyDotRadius
+            // (AddCircle(centre, dotRadius + 0.5) puts ImGui's 1px band at
+            // [dotRadius - 0.5, dotRadius + 0.5] = [3.25, 4.25]), and the sample at
+            // edgeStep (3.5px from the centre) is inside it. The dimmed claim is also
+            // relational - the edge pixel is nearer theme::Graph::keyEdge() than the
+            // centre is, which a pure fill fails - and it holds in BOTH states: the
             // selected marker's fill is the highlight mix rather than the accent, and the
-            // edge still outweighs it at that pixel (the drawing layer draws the floor ring
-            // first, and the state ink is detached - it starts 5px out, past this probe).
+            // edge still outweighs it at that pixel (the edge is drawn over the fill, and
+            // the detached selection ring starts past 5px - beyond this probe).
             REQUIRE(
-                clearDistance(ring) > kInkMin,
-                "the key marker at (%d,%d) has no ink at its ring pixel (%d,%d)", centre.x(), centre.y(),
-                ringPixel.x(), ringPixel.y()
+                clearDistance(edge) > kInkMin,
+                "the key marker at (%d,%d) has no ink at its edge pixel (%d,%d): the marker's own %.2f..%.2fpx"
+                " edge band is empty",
+                centre.x(), centre.y(), edgePixel.x(), edgePixel.y(),
+                double(ctrl::graph::kKeyDotRadius) - 0.5, double(ctrl::graph::kKeyDotRadius) + 0.5
             );
             {
-                const int toEdge = colourDistance(inPlayRing, aTheme.keyEdge());
-                const int toFill = colourDistance(inPlayRing, own);
+                // THE MARKER'S OWN SEPARATING EDGE. A 1px band antialiased into a single
+                // probe pixel is a FILL/EDGE BLEND by construction, so asking whether the
+                // sample is "nearer the edge colour than the fill" cannot pass: it measured
+                // a true edge ring as a failure once the band was centred on the reference
+                // radius. What the edge must do is DARKEN the fill it is drawn over: every
+                // channel at or below the fill pixel's, at least one strictly below. The
+                // comparison is against inPlayInner - the marker's OWN fill in this pass
+                // (the channel's hue, or the selected marker's highlight mix), which is the
+                // ink the edge is painted over. A marker with no edge reads as that fill and
+                // fails this; a fill that changed but an edge that did not darken it fails
+                // too, which is why the mixed selected fill cannot hide a missing edge.
                 REQUIRE(
-                    toEdge < toFill,
-                    "the key's ring pixel rgb=%s (selected=%d) is nearer its own fill rgb=%s than"
-                    " theme::Graph::keyEdge() rgb=%s (%d against %d): the marker has no floor edge ring",
-                    hex(inPlayRing).c_str(), int(selectedInPlay), hex(own).c_str(), hex(aTheme.keyEdge()).c_str(),
-                    toFill, toEdge
+                    inPlayEdge.red() <= inPlayInner.red() && inPlayEdge.green() <= inPlayInner.green()
+                        && inPlayEdge.blue() <= inPlayInner.blue()
+                        && (inPlayEdge.red() < inPlayInner.red() || inPlayEdge.green() < inPlayInner.green()
+                            || inPlayEdge.blue() < inPlayInner.blue()),
+                    "the key's edge pixel rgb=%s (selected=%d) is not darker than its own fill rgb=%s:"
+                    " the marker has no edge ring",
+                    hex(inPlayEdge).c_str(), int(selectedInPlay), hex(inPlayInner).c_str()
                 );
             }
             // THE DETACHED RING - the marker rule's own ink, and the pair this assertion is
-            // about: the pass that SELECTS a key paints a ring at the ring radius (the
-            // highlight's 1px ink over its dark sleeve), and the pass that puts the same
-            // channel in play without selecting THAT key paints NOTHING there (the marker's
-            // own ink ends ~2px short of these rows). So the ring is the selection's mark
-            // and not a bigger marker.
+            // about: the pass that SELECTS a key paints a 1px ring in the channel's own hue
+            // at 0.85, at the ring radius, and the pass that puts the same channel in play
+            // without selecting THAT key paints NOTHING there (the marker's own ink's AA
+            // ends at ~4.5px, and these rows sample 5.5px out and beyond). So the ring is
+            // the selection's mark and not a bigger marker.
             if (selectedInPlay) {
                 REQUIRE(
                     clearDistance(inPlayOuterRing) > kInkMin,
@@ -1630,11 +1719,19 @@ bool checkKeys(
                     centre.x(), centre.y(), outerRingPixel.x(), outerRingPixel.y(), double(gui::kKeyRingOffsetPx)
                 );
                 REQUIRE(
-                    colourDistance(inPlayOuterRing, highlight) < colourDistance(inPlayOuterRing, own),
-                    "the selected key's ring pixel rgb=%s is not nearer the keyframe highlight rgb=%s than its"
-                    " channel's colour rgb=%s (%d against %d): the selection ring is not the highlight ink",
-                    hex(inPlayOuterRing).c_str(), hex(highlight).c_str(), hex(own).c_str(),
-                    colourDistance(inPlayOuterRing, highlight), colourDistance(inPlayOuterRing, own)
+                    colourDistance(inPlayOuterRing, own) < colourDistance(inPlayOuterRing, highlight),
+                    "the selected key's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
+                    " highlight rgb=%s (%d against %d): the selection ring is the channel's own hue at 0.85",
+                    hex(inPlayOuterRing).c_str(), hex(own).c_str(), hex(highlight).c_str(),
+                    colourDistance(inPlayOuterRing, own), colourDistance(inPlayOuterRing, highlight)
+                );
+                // ...and it is OUTSIDE the dot's own ink: the probe rows sample 5.5px and
+                // 6.5px out, past the marker's own reach (the edge band ends at
+                // dotRadius + 0.5 = 4.25, its antialiasing at 4.5).
+                REQUIRE(
+                    gui::kKeyRingOffsetPx >= 2.0f,
+                    "the selection ring's centre (dotRadius + %.2f) is not at least 2px outside the dot's radius",
+                    double(gui::kKeyRingOffsetPx)
                 );
             } else {
                 REQUIRE(
@@ -1644,18 +1741,18 @@ bool checkKeys(
                     centre.x(), centre.y(), hex(inPlayOuterRing).c_str(), outerRingPixel.x(), outerRingPixel.y()
                 );
             }
-            // The ring of a DIMMED marker, where the 1px ring carries the marker's strength
-            // too: the claim that survives the dimming is the DIRECTION of the shift - the
-            // ring pixel is nearer the edge colour than the fully covered body pixel is
-            // (both are the same blend at the same strength, so the inequality scales and
-            // cannot depend on the strength). A marker with no ring fails it: the two
-            // pixels would be the same colour.
+            // The edge ring of a DIMMED marker, where the edge carries the marker's
+            // strength too: the claim that survives the dimming is the DIRECTION of the
+            // shift - the edge pixel is nearer the edge colour than the fully covered
+            // body pixel is (both are the same blend at the same strength, so the
+            // inequality scales and cannot depend on the strength). A marker with no edge
+            // fails it: the two pixels would be the same colour.
             REQUIRE(
-                colourDistance(ring, aTheme.keyEdge()) < colourDistance(inner, aTheme.keyEdge()),
-                "the dimmed key's ring pixel rgb=%s is not nearer theme::Graph::keyEdge() rgb=%s than its own"
+                colourDistance(edge, aTheme.keyEdge()) < colourDistance(inner, aTheme.keyEdge()),
+                "the dimmed key's edge pixel rgb=%s is not nearer theme::Graph::keyEdge() rgb=%s than its own"
                 " centre rgb=%s is (%d against %d): the marker has no edge ring",
-                hex(ring).c_str(), hex(aTheme.keyEdge()).c_str(), hex(inner).c_str(),
-                colourDistance(ring, aTheme.keyEdge()), colourDistance(inner, aTheme.keyEdge())
+                hex(edge).c_str(), hex(aTheme.keyEdge()).c_str(), hex(inner).c_str(),
+                colourDistance(edge, aTheme.keyEdge()), colourDistance(inner, aTheme.keyEdge())
             );
             // THE MARKER'S SIZE: the dot's own diameter, and not the hit square's
             // 2*kKeyRadius. THE WIDTH IS THE SMALLER OF THE TWO, because the curve the
@@ -1823,11 +1920,11 @@ bool checkMarkerStates(
             "the SELECTED marker paints nothing at its ring probe: rgb=%s", hex(ringPixel[0]).c_str()
         );
         REQUIRE(
-            colourDistance(ringPixel[0], highlight) < colourDistance(ringPixel[0], hue[0]),
-            "the SELECTED marker's ring pixel rgb=%s is not nearer the keyframe highlight rgb=%s than its"
-            " channel's hue rgb=%s (%d against %d)",
-            hex(ringPixel[0]).c_str(), hex(highlight).c_str(), hex(hue[0]).c_str(),
-            colourDistance(ringPixel[0], highlight), colourDistance(ringPixel[0], hue[0])
+            colourDistance(ringPixel[0], hue[0]) < colourDistance(ringPixel[0], highlight),
+            "the SELECTED marker's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
+            " highlight rgb=%s (%d against %d): the selection ring is drawn in the channel's own hue at 0.85",
+            hex(ringPixel[0]).c_str(), hex(hue[0]).c_str(), hex(highlight).c_str(),
+            colourDistance(ringPixel[0], hue[0]), colourDistance(ringPixel[0], highlight)
         );
     }
 
@@ -1841,11 +1938,12 @@ bool checkMarkerStates(
             hex(ringPixel[1]).c_str()
         );
         REQUIRE(
-            colourDistance(ringPixel[1], highlight) > colourDistance(ringPixel[0], highlight),
-            "the SIBLING marker's ring pixel rgb=%s is as near the keyframe highlight rgb=%s as the SELECTED"
-            " marker's ring is (%d against %d): the faint ring took the selection's ink",
-            hex(ringPixel[1]).c_str(), hex(highlight).c_str(), colourDistance(ringPixel[1], highlight),
-            colourDistance(ringPixel[0], highlight)
+            clearDistance(ringPixel[0]) > clearDistance(ringPixel[1]),
+            "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
+            " marker's (rgb=%s, %d): the two rings share the channel's hue and differ only by its alpha"
+            " (0.85 against 0.35)",
+            hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
+            clearDistance(ringPixel[0])
         );
         REQUIRE(
             colourDistance(ringPixel[1], hue[1]) < colourDistance(ringPixel[1], highlight),
@@ -1857,7 +1955,7 @@ bool checkMarkerStates(
         REQUIRE(
             clearDistance(ringPixel[1]) < clearDistance(ringPixel[0]),
             "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
-            " marker's (rgb=%s, %d): the two rings are the same ink",
+            " marker's (rgb=%s, %d): the two rings share one hue and must differ in ALPHA (0.35 against 0.85)",
             hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
             clearDistance(ringPixel[0])
         );
@@ -1891,6 +1989,36 @@ bool checkMarkerStates(
             " ring probe (%d,%d))",
             hex(hoverRing[0]).c_str(), ringProbe[0].x(), ringProbe[0].y()
         );
+    }
+
+    // ---- THE DOT'S OWN DIAMETER IS UNCHANGED BY SELECTION. The selected marker's fill
+    // colour and its detached ring differ; the marker's own SIZE must not. The ink
+    // width is measured through the centre with a 4px reach - through the marker's own
+    // edge band (centred on kKeyDotRadius) and its antialiasing, which ends 4.5px out,
+    // and short of the detached ring (whose ink starts at ~5.35px, dotRadius +
+    // kKeyRingOffsetPx - 1) - so the two passes compare the dot alone.
+    {
+        for (int c = 0; c < 2; ++c) {
+            const QPointF& dot = aModel.curves.at(c).keyDots.at(0);
+            const QPoint centre(int(dot.x()), int(dot.y()));
+            int negSelected = 0;
+            int posSelected = 0;
+            int negPlain = 0;
+            int posPlain = 0;
+            const int widthSelected =
+                inkWidthThrough(aSelected.image, centre, 1, 0, 4, negSelected, posSelected);
+            const int widthPlain = inkWidthThrough(aPlain.image, centre, 1, 0, 4, negPlain, posPlain);
+            std::printf(
+                "MEASURED marker_diameter curve=%d dot=(%d,%d) width_selected=%dpx width_plain=%dpx\n", c,
+                centre.x(), centre.y(), widthSelected, widthPlain
+            );
+            REQUIRE(
+                std::abs(widthSelected - widthPlain) <= 1,
+                "the selected marker at (%d,%d) inks %dpx across against the same marker unflagged at %dpx: the"
+                " selection ring must not change the dot's own diameter (within a pixel of antialiasing)",
+                centre.x(), centre.y(), widthSelected, widthPlain
+            );
+        }
     }
 
     return true;
@@ -1939,7 +2067,10 @@ bool checkDragReadout(const Rendered& aDrawn, const Rendered& aStill, const ImVe
 // below it are kept whole for the flag-on run - and which of the two runs is the
 // shipped one is a property of the flag itself (gui::kDrawTextHalo, declared in
 // src/gui/GraphPanelFrame.h), so this file cannot drift from the panel.
-bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
+bool checkLabelHalo(
+    const Rendered& aRendered, const gui::GraphPanelModel& aModel, const Rendered& aBare,
+    const theme::Graph& aTheme
+) {
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the model must carry a frame label");
     const gui::PanelLabel& label = aModel.frameLabels.at(0);
     REQUIRE(kPlot.contains(label.rect), "precondition: the label box must be inside the plot");
@@ -1948,12 +2079,14 @@ bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aMode
     REQUIRE(!glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text));
     REQUIRE(kPlot.contains(glyph), "precondition: the glyph box must be inside the plot");
 
-    // (a) the glyph itself is inked.
+    // (a) the glyph itself is inked - read as a PAIR against the label-less pass, since
+    // the ruler's band fills these rows and "not the clear colour" would count the band.
+    REQUIRE(!aBare.image.isNull(), "precondition: the label-less pass must be rendered for the halo pair");
     std::vector<QColor> glyphInk;
     for (int y = glyph.top(); y <= glyph.bottom(); ++y) {
         for (int x = glyph.left(); x <= glyph.right(); ++x) {
             const QColor c = pixelAt(aRendered.image, x, y);
-            if (clearDistance(c) > kInkMin) {
+            if (colourDistance(c, pixelAt(aBare.image, x, y)) > kInkMin) {
                 glyphInk.push_back(c);
             }
         }
@@ -1984,7 +2117,13 @@ bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aMode
                 continue;
             }
             const QColor c = pixelAt(aRendered.image, x, y);
-            if (clearDistance(c) <= kInkMin) {
+            // The ring is read as a PAIR where the label-less pass exists (the ruler's
+            // band fills these rows, so "not the clear colour" is no longer "the
+            // label's ink"): a pixel only the glyphs put down is the one that differs.
+            const bool inked = aBare.image.isNull()
+                ? clearDistance(c) > kInkMin
+                : colourDistance(c, pixelAt(aBare.image, x, y)) > kInkMin;
+            if (!inked) {
                 continue;
             }
             ++haloPixels;
@@ -2007,15 +2146,17 @@ bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aMode
     );
 
     if (!gui::kDrawTextHalo) {
-        // SHIPPED: the halo is off, so the panel paints NOTHING outside a glyph box.
-        // This is the assertion that catches the halo being re-enabled by accident,
-        // and the one that pins "the ink protection is the outline pass's job now":
-        // that protection is a separate pass with its own gate (assertions 11-15).
+        // SHIPPED: the halo is off, so the panel paints NOTHING outside a glyph box
+        // that the SAME model drawn without its frame labels does not paint. The
+        // reading is a PAIR against that label-less pass rather than an absolute
+        // "clear" count: the ruler's band fills these rows now, so a pixel the band
+        // alone paints is not the label's ink.
+        REQUIRE(!aBare.image.isNull(), "precondition: the label-less pass must be rendered for the halo pair");
         REQUIRE(
             haloPixels == 0,
-            "the halo flag is off but %d pixels 1-2px outside the glyph box carry ink (nearest halo distance %d):"
-            " the label is still haloed",
-            haloPixels, bestHaloDistance
+            "the halo flag is off but %d pixels 1-2px outside the glyph box carry ink the label-less pass does not"
+            " (first %d,%d): the label is still haloed",
+            haloPixels, bestHaloX, bestHaloY
         );
         REQUIRE(
             colourDistance(halo, axisText) > kInkMin,
@@ -2053,24 +2194,38 @@ bool checkLabelHalo(const Rendered& aRendered, const gui::GraphPanelModel& aMode
 // quietly cut by the clip.
 bool checkRulerReserve(
     const Rendered& aRendered, const gui::GraphPanelModel& aModel, const Rendered& aTight,
-    const gui::GraphPanelModel& aTightModel
+    const gui::GraphPanelModel& aTightModel, const Rendered& aTightBare, const theme::Graph& aTheme
 ) {
     REQUIRE(aRendered.font != nullptr, "the draw list carried no font: the ruler geometry cannot be described");
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the full model must carry frame labels");
     REQUIRE(!aModel.frameTickX.isEmpty(), "precondition: the full model must carry frame ticks");
-    // The band is where the drawing layer starts the tick marks, so it has to be a
-    // real line inside the plot (the model guarantees it; a model that forgot it would
-    // draw the ruler at y = -1).
+    REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the full model must carry the ruler band");
+    // The band is the timeline's own strip, so it is a real box inside the plot and the
+    // ticks rise from its LAST row (the model's frameRuler metrics; a model that forgot
+    // them would draw the ruler at y = -1).
+    const QRect band = aModel.rulerBand;
     REQUIRE(
-        aModel.rulerBandTop >= kPlot.top() && aModel.rulerBandTop <= kPlot.bottom() + 1,
-        "precondition: the ruler band top (%d) is outside the plot (%d..%d)", aModel.rulerBandTop, kPlot.top(),
+        aModel.rulerBandTop == band.top() && kPlot.contains(band)
+            && band.height() == gui::frameRuler::kBandHeight,
+        "precondition: the ruler band (%d,%d %dx%d) is not the model's %dpx strip inside the plot (%d..%d)",
+        band.left(), band.top(), band.width(), band.height(), gui::frameRuler::kBandHeight, kPlot.top(),
         kPlot.bottom()
     );
 
-    // The drawing layer's own tick length: the model documents 4px and the panel
-    // draws exactly that (kAxisTickLength in src/gui/GraphPanelFrame.cpp, where the
-    // model's kFrameTickLength is the model's half of the same convention).
-    constexpr int kDrawnTickLength = 4;
+    // A pixel of the band that is NOT the band's own surface: the glyphs, the ticks and
+    // the playhead's pill are the only ink that can sit on it.
+    const auto bandInk = [&aTheme](const QImage& aImage, const QRect& aRect) {
+        int count = 0;
+        const QRect r = aRect.intersected(QRect(0, 0, aImage.width(), aImage.height()));
+        for (int y = r.top(); y <= r.bottom(); ++y) {
+            for (int x = r.left(); x <= r.right(); ++x) {
+                if (colourDistance(pixelAt(aImage, x, y), aTheme.rulerBand()) > kInkMin)
+                    ++count;
+            }
+        }
+        return count;
+    };
+
     int checked = 0;
     for (const gui::PanelLabel& label : aModel.frameLabels) {
         REQUIRE(
@@ -2080,26 +2235,37 @@ bool checkRulerReserve(
             qPrintable(label.text), label.rect.left(), label.rect.top(), label.rect.width(), label.rect.height()
         );
         REQUIRE(
-            label.rect.top() >= kPlot.top() + kDrawnTickLength,
-            "the frame label '%s' box starts at y=%d, inside the %dpx tick band that starts at the plot's top edge"
+            label.rect.top() == band.top() + gui::frameRuler::kNumberTop
+                && label.rect.height() == gui::frameRuler::kNumberHeight,
+            "the frame label '%s' box (%d,%d %dx%d) is not in the band's number row (top %d, height %d): the"
+            " numbers moved out of the ruler",
+            qPrintable(label.text), label.rect.left(), label.rect.top(), label.rect.width(), label.rect.height(),
+            band.top() + gui::frameRuler::kNumberTop, gui::frameRuler::kNumberHeight
+        );
+        REQUIRE(
+            label.rect.bottom() < band.top() + gui::frameRuler::kBandHeight - gui::frameRuler::kTickLength,
+            "the frame label '%s' box reaches y=%d, into the %dpx tick rows that rise from the band's last row"
             " (%d): the numbers are not clear of the ruler's own marks",
-            qPrintable(label.text), label.rect.top(), kDrawnTickLength, kPlot.top()
+            qPrintable(label.text), label.rect.bottom(), gui::frameRuler::kTickLength, band.bottom()
         );
         const QRect glyph = glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre);
-        REQUIRE(!glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text));
+        REQUIRE(
+            !glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text)
+        );
         REQUIRE(
             kPlot.contains(glyph),
             "the frame label '%s' draws its glyph box (%d,%d %dx%d) outside the plot: the top row of numbers is cut"
             " by the plot clip",
             qPrintable(label.text), glyph.left(), glyph.top(), glyph.width(), glyph.height()
         );
-        const int ink = inkCount(aRendered.image, grow(glyph, 1));
+        const int ink = bandInk(aRendered.image, grow(glyph, 1));
         std::printf(
-            "MEASURED ruler_reserve label=%s box=(%d,%d %dx%d) glyph=(%d,%d %dx%d) above_plot_top=%dpx"
-            " below_tick_band=%dpx ink_pixels=%d\n",
+            "MEASURED ruler_reserve label=%s box=(%d,%d %dx%d) glyph=(%d,%d %dx%d) band=(%d,%d %dx%d)"
+            " above_band_top=%dpx below_tick_rows=%dpx ink_pixels=%d\n",
             qPrintable(label.text), label.rect.left(), label.rect.top(), label.rect.width(), label.rect.height(),
-            glyph.left(), glyph.top(), glyph.width(), glyph.height(), glyph.top() - kPlot.top(),
-            glyph.top() - (kPlot.top() + kDrawnTickLength), ink
+            glyph.left(), glyph.top(), glyph.width(), glyph.height(), band.left(), band.top(), band.width(),
+            band.height(), glyph.top() - band.top(),
+            (band.top() + gui::frameRuler::kBandHeight - gui::frameRuler::kTickLength) - glyph.bottom(), ink
         );
         REQUIRE(ink > 0, "the frame label '%s' painted no ink inside its own glyph box", qPrintable(label.text));
         ++checked;
@@ -2109,19 +2275,18 @@ bool checkRulerReserve(
 
     // ---- AND THE CASE THE CLAMP EXISTS FOR: A FONT TALLER THAN THE BOX ----
     //
-    // The model measures its boxes with the default UI font and draws with the
-    // widget's, so a layer font with a taller line height puts a glyph cell bigger
-    // than the box. Centred, half of that overflow goes ABOVE the box - i.e. above
-    // the reserved band, into the plot's top edge, where the plot clip cuts it, which
-    // is the "X-axis numbers clipped at the top" defect. drawLabel therefore clamps
-    // the glyph to the box's top edge and lets the overflow hang into the box's own
+    // The model measures its boxes from the ruler's fixed metrics and draws with the
+    // widget's font, so a layer font with a taller line height puts a glyph cell bigger
+    // than the box. Centred, half of that overflow goes ABOVE the box - i.e. out of the
+    // band's number row, toward the plot's top edge, where the plot clip cuts it, which
+    // is the "X-axis numbers clipped at the top" defect. drawLabel therefore clamps the
+    // glyph to the box's top edge and lets the overflow hang into the box's own
     // interior instead. This pass is that configuration: the FULL model with every
-    // frame label's box 8px tall, which is shorter than the draw list's font.
+    // frame label's box 8px tall, moved down into the band so there are rows above it.
     //
-    // MEASURED both ways round (the number in the message is the count of inked
-    // pixels in the box's own columns ABOVE its top edge): with the clamp the count is
-    // 0, and with the clamp removed the same model paints the glyph's upper rows
-    // there. That is the pair this assertion is.
+    // The reading is a PAIR: the same model with its labels removed (`aTightBare`) has
+    // the identical band, ticks and pill, so a pixel above a box that differs between
+    // the two passes is glyph ink and nothing else.
     int tightChecked = 0;
     for (const gui::PanelLabel& label : aTightModel.frameLabels) {
         const QByteArray utf8 = label.text.toUtf8();
@@ -2137,35 +2302,30 @@ bool checkRulerReserve(
         REQUIRE(
             glyph.top() >= label.rect.top(),
             "the frame label '%s' draws its glyph box at y=%d, above its own box's top edge (y=%d): a taller font"
-            " overflows out of the box and into the plot's top edge",
+            " overflows out of the box and out of the band's number row",
             qPrintable(label.text), glyph.top(), label.rect.top()
         );
-        // And the pixels: the band between the plot's top edge and the box's top edge,
-        // over the label's own columns, holds no GLYPH ink. The tick marks' own columns
-        // are excluded - the panel draws its 4px ticks down from the plot's top edge,
-        // and a tick that shares a column with the label is the ruler's ink, not the
-        // number's (the tick's extent is the drawing layer's own convention, asserted
-        // in checkRulerReserve's first half).
+        // And the pixels: the rows band.top() .. box.top()-1, over the label's own
+        // columns, are IDENTICAL to the same model drawn without this label. The tick
+        // columns are excluded: the ticks are the ruler's own ink, not the number's.
         int ink = 0;
         int tickPixels = 0;
         for (int x = label.rect.left(); x <= label.rect.right(); ++x) {
             bool tickColumn = false;
             for (const int tickX : aTightModel.frameTickX) {
-                if (std::abs(x - tickX) <= 1) {
+                if (std::abs(x - tickX) <= 1)
                     tickColumn = true;
-                }
             }
-            for (int y = kPlot.top(); y < label.rect.top(); ++y) {
-                if (clearDistance(pixelAt(aTight.image, x, y)) > kInkMin) {
-                    if (tickColumn) {
+            for (int y = band.top(); y < label.rect.top(); ++y) {
+                if (colourDistance(pixelAt(aTight.image, x, y), pixelAt(aTightBare.image, x, y)) > kInkMin) {
+                    if (tickColumn)
                         ++tickPixels;
-                    } else {
+                    else
                         ++ink;
-                    }
                 }
             }
         }
-        const QRect above(label.rect.left(), kPlot.top(), label.rect.width(), label.rect.top() - kPlot.top());
+        const QRect above(label.rect.left(), band.top(), label.rect.width(), label.rect.top() - band.top());
         std::printf(
             "MEASURED ruler_tight label=%s box=(%d,%d %dx%d) font_line_height=%d/100 glyph_top=%d"
             " above_box_band=(%d,%d %dx%d) glyph_ink_pixels=%d tick_ink_pixels=%d\n",
@@ -2175,8 +2335,8 @@ bool checkRulerReserve(
         );
         REQUIRE(
             ink == 0,
-            "the frame label '%s' painted %d pixels above its own box (rows %d..%d, the ticks' columns excluded):"
-            " a taller font is not clamped into the box, so the plot clip would cut the top of the number",
+            "the frame label '%s' painted %d pixels above its own box (rows %d..%d of the band, the ticks' columns"
+            " excluded): a taller font is not clamped into the box",
             qPrintable(label.text), ink, above.top(), above.bottom()
         );
         ++tightChecked;
@@ -2786,11 +2946,13 @@ bool checkZeroRule(const Rendered& aWithRule, const Rendered& aWithoutRule, cons
 // and at the same distance the editor's hit-test grabs through.
 //
 // The pair is the whole rule: with the pointer OFF (the default pass, io.MousePos
-// off-screen) every dot is drawn in theme::Graph::handleFill() and the stem in
-// theme::Graph::handleLine(); with the pointer ON one dot's centre (a second pass
-// that differs ONLY in io.MousePos) that dot is theme::Graph::selected() while
-// every other dot keeps its fill. Nothing else in the model moved between the two
-// passes, so a change at a dot's centre is the highlight and nothing else.
+// off-screen) every dot is filled with theme::Graph::handleFill() and BOTH the stem and
+// the dot's stroke are the CURVE's own channel hue - the stem at 0.85, the stroke at
+// 0.9 (the user's rule for both views; mock-graph.js:886-905); with the pointer ON one
+// dot's centre (a second pass that differs ONLY in io.MousePos) that dot is
+// theme::Graph::selected() while every other dot keeps its fill. Nothing else in the
+// model moved between the two passes, so a change at a dot's centre is the highlight
+// and nothing else.
 bool checkHandles(
     const Rendered& aOff, const Rendered& aOn, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme,
     const QPoint& aPointerDot
@@ -2823,20 +2985,44 @@ bool checkHandles(
             const QColor dotOff = pixelAt(aOff.image, dot.x(), dot.y());
             const QColor dotOn = pixelAt(aOn.image, dot.x(), dot.y());
 
+            // THE STORED PAIR'S INK IS THE CURVE'S CHANNEL HUE (the user's rule for both
+            // views; mock-graph.js: stored stem at hue/0.85, stroke at hue/0.9), read
+            // here through the drawing layer's own alphas - restated with their home
+            // named, the same move this file makes for kDrawnTickLength - and composited
+            // on the clear colour the frame is drawn over.
+            constexpr float kStoredStem = 0.85f;
+            const QColor stemInk = over(withAlpha(curve.color, kStoredStem), kClear);
+            // The strongest STROKE pixel among the offsets a 1px circle centred on
+            // kHandleRadius can land on (ImGui strokes a few-segment polyline, so its
+            // chord can sit inside the nominal radius).
+            QPoint strokePixel(dot.x() + ctrl::graph::kHandleRadius, dot.y());
+            QColor stroke = pixelAt(aOff.image, strokePixel.x(), strokePixel.y());
+            for (int step = ctrl::graph::kHandleRadius - 1; step <= ctrl::graph::kHandleRadius + 1; ++step) {
+                const QColor candidate = pixelAt(aOff.image, dot.x() + step, dot.y());
+                if (clearDistance(candidate) > clearDistance(stroke)) {
+                    stroke = candidate;
+                    strokePixel = QPoint(dot.x() + step, dot.y());
+                }
+            }
+
             const int dotDistance = colourDistance(dotOff, aTheme.handleFill());
             const int highlightDistance = colourDistance(dotOn, aTheme.selected());
             const int moved = colourDistance(dotOff, dotOn);
             const bool pointed = dot == aPointerDot;
+            const int stemToHue = colourDistance(stem, curve.color);
+            const int stemToGrey = colourDistance(stem, aTheme.handleFill());
+            const int strokeToHue = colourDistance(stroke, curve.color);
+            const int strokeToGrey = colourDistance(stroke, aTheme.handleFill());
 
             std::printf(
                 "MEASURED handle base=(%d,%d) dot=(%d,%d) radius=%d stem_mid=(%d,%d) stem_rgb=%s stem_clear=%d"
-                " stem_to_handleLine=%d line=%s dot_rgb=%s handleFill=%s d=%d dot_on_rgb=%s selected=%s d=%d"
-                " delta=%d pointed=%d\n",
+                " stem_to_hue=%d stem_to_handleFill=%d dot_rgb=%s handleFill=%s d=%d stroke=(%d,%d) stroke_rgb=%s"
+                " stroke_to_hue=%d stroke_to_handleFill=%d dot_on_rgb=%s selected=%s d=%d delta=%d pointed=%d\n",
                 int(handle.base.x()), int(handle.base.y()), dot.x(), dot.y(), handle.radius, mid.x(), mid.y(),
-                hex(stem).c_str(), clearDistance(stem), colourDistance(stem, aTheme.handleLine()),
-                hex(aTheme.handleLine()).c_str(), hex(dotOff).c_str(), hex(aTheme.handleFill()).c_str(),
-                dotDistance, hex(dotOn).c_str(), hex(aTheme.selected()).c_str(), highlightDistance, moved,
-                int(pointed)
+                hex(stem).c_str(), clearDistance(stem), stemToHue, stemToGrey, hex(dotOff).c_str(),
+                hex(aTheme.handleFill()).c_str(), dotDistance, strokePixel.x(), strokePixel.y(), hex(stroke).c_str(),
+                strokeToHue, strokeToGrey, hex(dotOn).c_str(), hex(aTheme.selected()).c_str(), highlightDistance,
+                moved, int(pointed)
             );
             // The pixel carrying the midpoint is within 0.707px of the stem's centreline
             // (its centre is at most half a pixel away in each axis), and a 1px stroke's
@@ -2845,11 +3031,25 @@ bool checkHandles(
             // kCurveTol (the file's own "an antialiased stroke's fringe" tolerance) admits.
             REQUIRE(clearDistance(stem) > kInkMin, "the handle stem has no ink at its midpoint (%d,%d): rgb=%s",
                     mid.x(), mid.y(), hex(stem).c_str());
-            REQUIRE(colourDistance(stem, aTheme.handleLine()) <= kCurveTol,
+            REQUIRE(stemToHue <= kCurveTol,
                     "the handle stem's own midpoint (pixel %d,%d) is %s, %d from the stem's own colour %s: the stem"
                     " is not drawn where the model puts it",
-                    mid.x(), mid.y(), hex(stem).c_str(), colourDistance(stem, aTheme.handleLine()),
-                    hex(aTheme.handleLine()).c_str());
+                    mid.x(), mid.y(), hex(stem).c_str(), stemToHue, hex(curve.color).c_str());
+            REQUIRE(colourDistance(stem, stemInk) <= kCurveTol,
+                    "the stored handle's stem midpoint rgb=%s is %d from the hue at the drawing layer's own strength"
+                    " (%.2f) rgb=%s",
+                    hex(stem).c_str(), colourDistance(stem, stemInk), double(kStoredStem),
+                    hex(stemInk).c_str());
+            REQUIRE(stemToHue < stemToGrey,
+                    "the STORED handle's stem at (%d,%d) rgb=%s is not nearer its channel's hue rgb=%s than the"
+                    " raised surface's grey rgb=%s (%d against %d): a stored stem is the curve's own colour",
+                    mid.x(), mid.y(), hex(stem).c_str(), hex(curve.color).c_str(), hex(aTheme.handleFill()).c_str(),
+                    stemToHue, stemToGrey);
+            REQUIRE(strokeToHue < strokeToGrey,
+                    "the STORED handle's stroke at (%d,%d) rgb=%s is not nearer its channel's hue rgb=%s than the"
+                    " raised surface's grey rgb=%s (%d against %d): a stored dot is ringed in the curve's own colour",
+                    strokePixel.x(), strokePixel.y(), hex(stroke).c_str(), hex(curve.color).c_str(),
+                    hex(aTheme.handleFill()).c_str(), strokeToHue, strokeToGrey);
             REQUIRE(dotDistance <= kFillTol,
                     "the handle dot at (%d,%d) rgb=%s is not theme::Graph::handleFill() rgb=%s (distance %d > %d)",
                     dot.x(), dot.y(), hex(dotOff).c_str(), hex(aTheme.handleFill()).c_str(), dotDistance, kFillTol);
@@ -2885,18 +3085,29 @@ bool checkHandles(
 // the playhead is the other mark that starts exactly there - so its extent is
 // measured rather than assumed, i.e. it must reach the plot's first row, stop at its
 // last, be exactly one pixel wide and put nothing outside.
-bool checkPlayhead(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
+bool checkPlayhead(
+    const Rendered& aRendered, const Rendered& aNoFrame, const gui::GraphPanelModel& aModel,
+    const gui::GraphPanelModel& aNoFrameModel, const theme::Graph& aTheme
+) {
     REQUIRE(aModel.playheadX >= 0, "precondition: the full model must publish a playhead");
+    REQUIRE(
+        !aModel.rulerBand.isEmpty() && !aModel.playheadPill.isEmpty() && aModel.playheadLineTop > aModel.rulerBand.top(),
+        "precondition: the full model must publish the band, the pill and the line's top"
+    );
+    REQUIRE(aNoFrameModel.playheadX < 0 && aNoFrameModel.playheadPill.isEmpty(),
+            "precondition: the invalid-frame model must publish no playhead");
     REQUIRE(kPlot.contains(aModel.playheadX, kPlot.top()), "precondition: the playhead column must be inside the plot");
 
-    // Every row of the plot's own vertical span, on the playhead's column.
+    // THE LINE: every row from the model's playheadLineTop to the plot's bottom, on the
+    // playhead's column, carries theme::Graph::selected(). The rows above it are the
+    // pill's (and the ruler band's) - the line starts under the pill, as TimeCursor's
+    // does.
     int missingRows = 0;
     int firstRow = -1;
     int lastRow = -1;
-    for (int y = kPlot.top(); y <= kPlot.bottom(); ++y) {
+    for (int y = aModel.playheadLineTop; y <= kPlot.bottom(); ++y) {
         const QColor c = pixelAt(aRendered.image, aModel.playheadX, y);
-        const bool isPlayhead = colourDistance(c, aTheme.selected()) <= kFillTol;
-        if (!isPlayhead) {
+        if (colourDistance(c, aTheme.selected()) > kFillTol) {
             ++missingRows;
             if (firstRow < 0) {
                 firstRow = y;
@@ -2904,28 +3115,70 @@ bool checkPlayhead(const Rendered& aRendered, const gui::GraphPanelModel& aModel
             lastRow = y;
         }
     }
-    // A row with no playhead colour can only be one that carries SOME ink (a curve, a
-    // key, the zero rule): the playhead is drawn last, over all of them, so a row it
-    // did not paint is a row it does not reach.
-    const int widthProbeRow = kPlot.top() + 30; // clear of the frame labels and of every curve
+    const int widthProbeRow = kPlot.top() + 30; // clear of the band and of every curve
     const QColor left = pixelAt(aRendered.image, aModel.playheadX - 1, widthProbeRow);
     const QColor right = pixelAt(aRendered.image, aModel.playheadX + 1, widthProbeRow);
     std::printf(
-        "MEASURED playhead x=%d span=%d..%d rows_without_playhead_colour=%d first=%d last=%d"
+        "MEASURED playhead x=%d line=%d..%d rows_without_playhead_colour=%d first=%d last=%d"
         " probe_row=%d left_clear_distance=%d right_clear_distance=%d\n",
-        aModel.playheadX, kPlot.top(), kPlot.bottom(), missingRows, firstRow, lastRow, widthProbeRow,
+        aModel.playheadX, aModel.playheadLineTop, kPlot.bottom(), missingRows, firstRow, lastRow, widthProbeRow,
         clearDistance(left), clearDistance(right)
     );
     REQUIRE(
         missingRows == 0,
-        "the playhead does not cover the plot's whole column at x=%d: %d rows lack it (first %d, last %d)",
-        aModel.playheadX, missingRows, firstRow, lastRow
+        "the playhead does not cover the plot's rows from its own top (y=%d) to its last (y=%d): %d rows lack it"
+        " (first %d, last %d)",
+        aModel.playheadLineTop, kPlot.bottom(), missingRows, firstRow, lastRow
     );
     REQUIRE(
         clearDistance(left) <= kInkMin && clearDistance(right) <= kInkMin,
         "the playhead is wider than one pixel: the neighbouring columns at row %d carry ink (%d and %d from the"
         " clear colour)",
         widthProbeRow, clearDistance(left), clearDistance(right)
+    );
+
+    // THE PILL: the frame's number rides the band's number row in the rounded accent
+    // box the model published - and NOTHING is painted in that column when the frame
+    // is invalid. The reading is per-pixel against the band's own surface, so the band
+    // itself (the same in both passes) is not mistaken for the pill.
+    const QRect pill = aModel.playheadPill;
+    int pillInk = 0;
+    int invalidInk = 0;
+    for (int y = aModel.rulerBand.top(); y <= aModel.rulerBand.bottom(); ++y) {
+        if (colourDistance(pixelAt(aRendered.image, aModel.playheadX, y), aTheme.rulerBand()) > kInkMin)
+            ++pillInk;
+        if (colourDistance(pixelAt(aNoFrame.image, aModel.playheadX, y), aTheme.rulerBand()) > kInkMin)
+            ++invalidInk;
+    }
+    const QColor pillCorner = pixelAt(aRendered.image, pill.left() + 1, pill.top() + pill.height() / 2);
+    std::printf(
+        "MEASURED playhead_pill rect=(%d,%d %dx%d) column_ink_in_band=%d corner_rgb=%s selected=%s d=%d"
+        " invalid_frame_column_ink_in_band=%d\n",
+        pill.left(), pill.top(), pill.width(), pill.height(), pillInk, hex(pillCorner).c_str(),
+        hex(aTheme.selected()).c_str(), colourDistance(pillCorner, aTheme.selected()), invalidInk
+    );
+    REQUIRE(
+        aModel.rulerBand.contains(pill) && pill.bottom() < aModel.playheadLineTop,
+        "the pill (%d,%d %dx%d) is not in the band's number row above the playhead's line (%d..%d)",
+        pill.left(), pill.top(), pill.width(), pill.height(), aModel.playheadLineTop, kPlot.bottom()
+    );
+    REQUIRE(
+        pillInk > 0,
+        "the playhead's pill painted nothing in the band at the playhead's column (%d): a current frame must be"
+        " marked in the ruler",
+        aModel.playheadX
+    );
+    REQUIRE(
+        colourDistance(pillCorner, aTheme.selected()) <= kFillTol,
+        "the playhead's pill corner rgb=%s is not the accent fill rgb=%s (distance %d > %d)",
+        hex(pillCorner).c_str(), hex(aTheme.selected()).c_str(), colourDistance(pillCorner, aTheme.selected()),
+        kFillTol
+    );
+    REQUIRE(
+        invalidInk == 0,
+        "an INVALID frame painted %d pixels in the band at the playhead's column (%d): there must be no playhead"
+        " ink when currentFrame() < 0",
+        invalidInk, aModel.playheadX
     );
     return true;
 }
@@ -3288,14 +3541,14 @@ bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aMo
     const int storedToFill = colourDistance(storedPixel, fill);
     const int ghostToFill = colourDistance(ghostPixel, fill);
     const int ringToColour = colourDistance(ghostRingPixel, curve.color);
-    const int ringToEdge = colourDistance(ghostRingPixel, aTheme.handleEdge());
+    const int ringToEdge = colourDistance(ghostRingPixel, aTheme.handleFill());
 
     std::printf(
         "MEASURED ghost_handle stored_dot=(%d,%d) rgb=%s handleFill=%s d=%d | ghost_dot=(%d,%d) rgb=%s d=%d"
-        " | ghost_ring=(%d,%d) rgb=%s channel_color=%s d=%d handleEdge=%s d=%d | radius=%d/%d\n",
+        " | ghost_ring=(%d,%d) rgb=%s channel_color=%s d=%d handleFill=%s d=%d | radius=%d/%d\n",
         storedCentre.x(), storedCentre.y(), hex(storedPixel).c_str(), hex(fill).c_str(), storedToFill,
         ghostCentre.x(), ghostCentre.y(), hex(ghostPixel).c_str(), ghostToFill, ghostRing.x(), ghostRing.y(),
-        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), ringToColour, hex(aTheme.handleEdge()).c_str(),
+        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), ringToColour, hex(aTheme.handleFill()).c_str(),
         ringToEdge, stored->radius, ghost->radius
     );
     REQUIRE(
@@ -3312,9 +3565,9 @@ bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aMo
     );
     REQUIRE(
         ringToColour < ringToEdge,
-        "the ghost handle's ring rgb=%s is not nearer its channel's colour rgb=%s than theme::Graph::handleEdge()"
+        "the ghost handle's ring rgb=%s is not nearer its channel's colour rgb=%s than the raised surface's grey"
         " rgb=%s (%d against %d): a ghost pair is ringed in the curve's own hue",
-        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), hex(aTheme.handleEdge()).c_str(), ringToColour,
+        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), hex(aTheme.handleFill()).c_str(), ringToColour,
         ringToEdge
     );
     return true;
@@ -4196,7 +4449,7 @@ gui::GraphPanelModel makePlayheadModel(int aPixelX) {
 const QPointF kStemBase(150.5, 250.25);
 const QPointF kStemDot(230.5, 190.75);
 
-gui::GraphPanelModel makeStemModel() {
+gui::GraphPanelModel makeStemModel(const theme::Graph& aTheme) {
     gui::GraphPanelModel model;
     model.panel = kPanel;
     model.plot = kPlot;
@@ -4209,6 +4462,9 @@ gui::GraphPanelModel makeStemModel() {
     curve.node = nullptr;
     curve.channel = ctrl::graph::Channel(kTypeA, 0);
     curve.channelRow = -1;
+    // The stem and the dot are drawn in the CURVE's channel hue (0.85 / 0.9), so this
+    // fixture has to give the curve the hue the probe below measures.
+    curve.color = aTheme.channelColor(kTypeA, 0);
     gui::PanelHandle handle;
     handle.segment = 0;
     handle.index = 0;
@@ -5204,7 +5460,9 @@ bool checkHairlinePlacement(
     // weighted by its own coverage and by its own SIGNED perpendicular distance from the line
     // the model asked for - so the answer is "where is the ink, in pixels, relative to the
     // line", not "how far does some sampling scheme drift".
-    const InkProbe stem = InkProbe::make(aTheme.handleLine());
+    const InkProbe stem = InkProbe::make(
+        over(withAlpha(aTheme.channelColor(kTypeA, 0), 0.85f), kClear)
+    );
     const QPointF direction = kStemDot - kStemBase;
     const double length = std::hypot(direction.x(), direction.y());
     const QPointF along(direction.x() / length, direction.y() / length);
@@ -5458,6 +5716,16 @@ int main(int argc, char** argv) {
     gui::GraphPanelModel fullNoRule = full;
     fullNoRule.zeroY = -1;
 
+    // The SAME model with the playhead invalid (no current frame): the pair assertion
+    // 17 reads the pill's own ink against. Everything else - the band, the ticks, the
+    // numbers - is identical, so a pixel at the playhead's column inside the band that
+    // differs between the two passes is the playhead's ink and nothing else.
+    gui::GraphPanelModel fullNoFrame = full;
+    fullNoFrame.playheadX = -1;
+    fullNoFrame.playheadText.clear();
+    fullNoFrame.playheadPill = QRect();
+    fullNoFrame.playheadLineTop = -1;
+
     // The same model with NO selection hull and no count label: the ONLY difference is
     // those two pieces of geometry, which is what makes assertion 9c a pair - the
     // other model publishes an outline through its points and the words beside it,
@@ -5479,7 +5747,17 @@ int main(int argc, char** argv) {
     gui::GraphPanelModel tightRuler = full;
     for (gui::PanelLabel& label : tightRuler.frameLabels) {
         label.rect.setHeight(8);
+        // DOWN into the band, so the rows above the short box are band surface and the
+        // clamp is observable (the band's number row starts at kNumberTop).
+        label.rect.moveTop(kPlot.top() + gui::frameRuler::kNumberTop + 5);
     }
+    // The SAME models with their frame labels removed: the pair the halo and ruler
+    // assertions read "the label's own ink" against, now that the ruler's band
+    // legitimately fills every one of those rows.
+    gui::GraphPanelModel fullNoLabels = full;
+    fullNoLabels.frameLabels.clear();
+    gui::GraphPanelModel tightRulerBare = tightRuler;
+    tightRulerBare.frameLabels.clear();
 
     // The same model with a LIVE BOX-SELECT MARQUEE: the ONLY difference is the
     // marquee rectangle, which is what makes assertion 18 a pair.
@@ -5519,7 +5797,7 @@ int main(int argc, char** argv) {
     const Rendered inkFringeDimmed = renderPass(ink, palette, inkDimmed, "curve_ink_fringe_dimmed");
     // Assertion 27's stem, drawn by ImGui's own AddLine: the before half of the stem
     // measurement, taken through the SAME method as the after half.
-    const Rendered stemFringe = renderPass(makeStemModel(), palette, focus, "hairline_stem_fringe");
+    const Rendered stemFringe = renderPass(makeStemModel(palette), palette, focus, "hairline_stem_fringe");
     if (!gui::stroke::init()) {
         std::printf("FAIL: the coverage stroke pass refused to build on this context\n");
         return 2;
@@ -5577,6 +5855,12 @@ int main(int argc, char** argv) {
     // drawing font taller than the model's box, and this is it (see checkRulerReserve).
     const Rendered tightRulerRendered =
         renderPass(tightRuler, palette, focus, "full_model_tight_ruler", ImVec2(-FLT_MAX, -FLT_MAX), 26.0f);
+    // The label-less pair for the halo and ruler assertions: the same models with
+    // their frame labels removed, so a pixel that differs is the LABEL's ink.
+    const Rendered fullBareRendered = renderPass(fullNoLabels, palette, focus, "full_model_no_labels");
+    const Rendered fullNoFrameRendered = renderPass(fullNoFrame, palette, focus, "full_model_no_frame");
+    const Rendered tightRulerBareRendered =
+        renderPass(tightRulerBare, palette, focus, "full_model_tight_ruler_bare", ImVec2(-FLT_MAX, -FLT_MAX), 26.0f);
 
     // The handle highlight pass: the SAME model with the pointer on the first
     // handle's dot, so the ONLY difference from `rendered` is io.MousePos - which
@@ -5723,11 +6007,11 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the drag readout\n");
         return 1;
     }
-    if (!checkLabelHalo(rendered, full, palette)) {
+    if (!checkLabelHalo(rendered, full, fullBareRendered, palette)) {
         std::printf("FAILED: label halo\n");
         return 1;
     }
-    if (!checkRulerReserve(rendered, full, tightRulerRendered, tightRuler)) {
+    if (!checkRulerReserve(rendered, full, tightRulerRendered, tightRuler, tightRulerBareRendered, palette)) {
         std::printf("FAILED: the frame number's reserved band\n");
         return 1;
     }
@@ -5765,7 +6049,7 @@ int main(int argc, char** argv) {
         std::printf("FAILED: tangent handles\n");
         return 1;
     }
-    if (!checkPlayhead(rendered, full, palette)) {
+    if (!checkPlayhead(rendered, fullNoFrameRendered, full, fullNoFrame, palette)) {
         std::printf("FAILED: the playhead's extent\n");
         return 1;
     }
@@ -5809,7 +6093,7 @@ int main(int argc, char** argv) {
     // these three frames carries one line family and nothing else.
     const Rendered playhead200 = renderPass(makePlayheadModel(200), palette, focus, "hairline_playhead_200");
     const Rendered playhead201 = renderPass(makePlayheadModel(201), palette, focus, "hairline_playhead_201");
-    const Rendered stem = renderPass(makeStemModel(), palette, focus, "hairline_stem");
+    const Rendered stem = renderPass(makeStemModel(palette), palette, focus, "hairline_stem");
     if (!checkHairlinePlacement(playhead200, playhead201, stem, stemFringe, palette)) {
         std::printf("FAILED: the panel's 1px lines\n");
         return 1;

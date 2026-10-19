@@ -12,6 +12,7 @@
 #include "core/Project.h"
 #include "core/CameraInfo.h"
 #include "core/TimeLineEvent.h"
+#include "core/TimeFormat.h"
 #include "ctrl/UILogger.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Scaler.h"
@@ -718,6 +719,19 @@ public:
     // frame).
     core::Frame currentFrame() const;
 
+    // THE FRAME-NUMBER FORMAT: the setting the timeline's editor reads
+    // ("generalsettings/ui/timeformat", ctrl/TimeLineEditor.h:203) so the graph's
+    // ruler writes a frame exactly as the timeline's ruler does. Read once when the
+    // editor is built (the timeline's own rule) and applied live by the setter, so a
+    // settings change can be pushed without an app restart.
+    core::TimeFormatType timeFormatType() const { return mTimeFormat; }
+    void setTimeFormatType(core::TimeFormatType aType) { mTimeFormat = aType; }
+
+    // The project's playback rate, for the formats that need it (seconds and
+    // timecode). The timeline's own default before a project exists is 60
+    // (ctrl::TimeLineEditor's mFps), so the two rulers format alike in every state.
+    int fps() const;
+
     // The scale, so the view can zoom and pan (wheel) and so a caller can query
     // the window it is showing.
     graph::Scaler& scale() { return mScale; }
@@ -1109,6 +1123,10 @@ private:
     // ladder, so the seed is skipped while the project's fps is unchanged (the
     // frame end is compared through the scaler's own getter).
     int mAxisFps;
+
+    // The frame-number format the panel's ruler writes (see timeFormatType). Seeded
+    // from the same QSettings key the timeline's editor reads, in the constructor.
+    core::TimeFormatType mTimeFormat = core::TimeFormatType_Frames_From0;
 };
 
 } // namespace ctrl
