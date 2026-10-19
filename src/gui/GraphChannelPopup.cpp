@@ -88,6 +88,7 @@ void GraphChannelPopup::setRows(const QVector<PanelChannelRow>& aRows) {
     mRows = aRows;
     mHover = -1;
     mCurrent = mRows.isEmpty() ? -1 : 0;
+    mKeyboardCursor = false;
     // The layout is the OPEN's (openAt calls rebuildLayout): a hidden list has no size
     // to build, and every open hands the rows it will list.
 }
@@ -172,6 +173,7 @@ void GraphChannelPopup::setHover(int aIndex) {
 void GraphChannelPopup::moveCurrent(int aStep) {
     if (mRows.isEmpty())
         return;
+    mKeyboardCursor = true; // a key moved the cursor: the row now shows the keyboard is here
     int index = mCurrent;
     for (int guard = 0; guard < mRows.size(); ++guard) {
         index += aStep;
@@ -188,8 +190,11 @@ void GraphChannelPopup::moveCurrent(int aStep) {
 }
 
 void GraphChannelPopup::activateCurrent() {
-    if (mCurrent >= 0 && mCurrent < mRows.size())
+    if (mCurrent >= 0 && mCurrent < mRows.size()) {
+        mKeyboardCursor = true; // the activated row was the keyboard's target
+        this->update();
         this->toggleRow(mCurrent);
+    }
 }
 
 void GraphChannelPopup::toggleRow(int aIndex) {
@@ -269,23 +274,33 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
     const PanelChannelRow& row = mRows.at(entry.row);
 
     // The row's own ink, clipped to the body so the hover fill cannot square off the
-    // rounded corners. The keyboard's current row reads like the hovered one, plus an
-    // accent hairline so a keyboard user can see where they are.
+    // rounded corners. The pointer's mark is the raised fill alone (a popup that
+    // re-strokes the row the mouse is on reads as a selected item, which this list
+    // deliberately does not have). A KEYBOARD cursor is marked by the raised fill plus
+    // a 1px INNER line in the neutral floater edge - the surface's own border ink, never
+    // a hue. It cannot be mistaken for a selected channel: the list has no selection,
+    // the only channel state it paints is the swatch's hue (filled = shown, hollow =
+    // hidden), and the focused channel's own mark is the BOLD NAME, a document state
+    // that stays whether or not this list is up. The line therefore means "the keyboard
+    // is here", not "this channel is selected".
     aPainter.save();
     QPainterPath clip;
     clip.addRoundedRect(QRectF(mBody), kBodyRadius, kBodyRadius);
     aPainter.setClipPath(clip);
 
-    const bool current = entry.row == mCurrent;
-    if (entry.row == mHover || current) {
+    const bool keyboardCurrent = entry.row == mCurrent && mKeyboardCursor;
+    if (entry.row == mHover || keyboardCurrent) {
         aPainter.setPen(Qt::NoPen);
         aPainter.setBrush(colors.raised);
         aPainter.drawRect(QRect(mBody.left(), entry.rect.top(), mBody.width(), entry.rect.height()));
     }
-    if (current) {
-        aPainter.setPen(QPen(colors.accent, 1.0));
+    if (keyboardCurrent) {
+        aPainter.setPen(QPen(colors.floaterEdge, 1.0));
         aPainter.setBrush(Qt::NoBrush);
-        aPainter.drawRect(QRect(mBody.left(), entry.rect.top(), mBody.width() - 1, entry.rect.height() - 1));
+        // Inset one pixel: the ring is the ROW's, not the body's own edge.
+        aPainter.drawRect(
+            QRect(mBody.left() + 1, entry.rect.top() + 1, mBody.width() - 3, entry.rect.height() - 3)
+        );
     }
 
     // THE SWATCH is the row's colour key: filled with the channel's hue while it is
@@ -323,8 +338,12 @@ void GraphChannelPopup::mouseMoveEvent(QMouseEvent* aEvent) {
     // not on every move within one: a focus write and a panel repaint per pixel is
     // exactly what the hover rule must not cost.
     if (hovered >= 0 && hovered != previous) {
+        // The row the pointer names is also Space/Return's target, but the pointer's
+        // mark is the RAISED FILL - the keyboard's inner ring is cleared here and only
+        // reappears when a key moves or activates the cursor.
         mCurrent = hovered;
-        this->update(); // the keyboard's current-row outline follows the pointer
+        mKeyboardCursor = false;
+        this->update();
         if (onRowHovered)
             onRowHovered(mRows.at(hovered)); // a row focuses its channel (keep the QMenu's behaviour)
     }
@@ -357,14 +376,18 @@ void GraphChannelPopup::keyPressEvent(QKeyEvent* aEvent) {
         aEvent->accept();
         return;
     case Qt::Key_Home:
-        if (!mRows.isEmpty())
+        if (!mRows.isEmpty()) {
             mCurrent = 0;
+            mKeyboardCursor = true;
+        }
         this->update();
         aEvent->accept();
         return;
     case Qt::Key_End:
-        if (!mRows.isEmpty())
+        if (!mRows.isEmpty()) {
             mCurrent = mRows.size() - 1;
+            mKeyboardCursor = true;
+        }
         this->update();
         aEvent->accept();
         return;
@@ -393,6 +416,7 @@ void GraphChannelPopup::openAt(const QPoint& aGlobalBottomRight) {
     this->rebuildLayout();
     mHover = -1;
     mCurrent = mRows.isEmpty() ? -1 : 0;
+    mKeyboardCursor = false; // the pointer opened the list: no keyboard mark until a key is used
 
     // UNDER the anchor, RIGHT-ALIGNED to it: the body's right edge is the anchor's x,
     // and the body's top sits a few pixels below it (the mock's .tl-chanpop, which the

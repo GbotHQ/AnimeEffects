@@ -312,13 +312,14 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
 
     const QPoint pos = aEvent->position().toPoint();
 
-    // A right press is the key menu's gesture - the panel's only right-button action -
-    // and it is taken here because this is the only place this host sees one. The menu
-    // is the TIMELINE'S own (QMenu::exec, see GraphPanelWidget::openKeyMenuAt), so it
-    // runs its own event loop and returns when it is dismissed - exactly as the
-    // timeline's own context-menu handler runs the same menu - and the press is
-    // accepted once it has. (A left press has no control to test any more: the panel's
-    // one control is the dock header's channels button now.)
+    // A right press is the MENU gesture - the panel's only right-button action - and it
+    // is taken here because this is the only place this host sees one. On a key it is
+    // the key menu; on the plot's background it is the timeline's own background menu
+    // (see GraphPanelWidget::openKeyMenuAt). Both are the TIMELINE'S own QMenu
+    // (QMenu::exec), so they run their own event loop and return when dismissed -
+    // exactly as the timeline's own context-menu handler runs the same menu - and the
+    // press is accepted once it has. (A left press has no control to test any more: the
+    // panel's one control is the dock header's channels button now.)
     if (aEvent->button() == Qt::RightButton) {
         openKeyMenuAt(pos);
         aEvent->accept();
@@ -610,8 +611,20 @@ bool GraphPanelWidget::openKeyMenuAt(const QPoint& aPos) {
     core::ObjectNode* node = nullptr;
     ctrl::graph::Channel channel;
     core::Frame frame;
-    if (!panelKeyAt(mFrame.model, aPos, node, channel, frame))
-        return false; // no key that close: this is not the panel's right-click
+    if (!panelKeyAt(mFrame.model, aPos, node, channel, frame)) {
+        // NO KEY THAT CLOSE: the plot's background, and the panel offers what the
+        // TIMELINE offers on its own empty lane background - not nothing. The route is
+        // MainDisplayWidget::showGraphBackgroundMenu, which hands the timeline's own
+        // context-menu handler the same request a right-click there produces; that
+        // handler reads the shared selection and builds buildKeyMenu, so the items,
+        // their labels and the paste anchor are the timeline's (paste-only with no
+        // selection, the full key set with one). The anchor is this widget's pointer in
+        // screen coordinates, the same mapping the key route below uses.
+        MainDisplayWidget* display = appDisplay();
+        if (!display)
+            return false; // no viewport in this window: no timeline menu to reach
+        return display->showGraphBackgroundMenu(this->mapToGlobal(aPos));
+    }
 
     core::TimeLine* line = node->timeLine();
     if (!line)

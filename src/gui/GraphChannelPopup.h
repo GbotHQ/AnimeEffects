@@ -93,6 +93,12 @@ private:
     QVector<Entry> mEntries;
     int mHover = -1;    // the row under the pointer, -1 when none
     int mCurrent = -1;  // the row the keyboard names, -1 when none
+    // Whether the keyboard has actually shown mCurrent. A list opened with the pointer
+    // starts with row 0 current so Space/Return have a target, but nothing is marked
+    // until a key moves or activates the cursor: the pointer's own mark is the hover
+    // fill, and a keyboard cursor that appeared on open would read as a second, phantom
+    // highlight. Cleared when the pointer takes over a row.
+    bool mKeyboardCursor = false;
     QRect mBody;        // the body (shadow inset included) in this widget's pixels
 };
 

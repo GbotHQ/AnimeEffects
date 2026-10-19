@@ -78,6 +78,24 @@ public:
     // rule, including the loan's drop, is the timeline's). False when nothing opened
     // (no timeline wired, or the key is not one the document holds).
     bool showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos);
+    // Opens the timeline's BACKGROUND menu - the one a right-click on empty timeline
+    // space builds - at aGlobalPos (screen coordinates). The panel's right-click uses
+    // this when its own hit test (gui::panelKeyAt) finds no key under the pointer.
+    //
+    // NOT A SECOND MENU: the request is delivered to the timeline's own surface as the
+    // very QContextMenuEvent a right-click there produces, so it runs
+    // TimeLineEditorWidget::onContextMenuRequested and buildKeyMenu - the same paste
+    // anchor, the same selection rule and the same items. The anchor survives because
+    // the point is mapped into that surface first (mapFromGlobal) and the handler maps
+    // it back out (mapToGlobal) for QMenu::exec: the menu opens exactly at the pointer.
+    // The graph page and the timeline page sit in the same dock stack, so the point
+    // also names the frame the pointer is over.
+    //
+    // With NO selection the menu is paste-only (buildKeyMenu's empty-targets shape):
+    // one "Paste key" item, enabled when something has been copied. With a selection it
+    // offers Copy key, Copy key to clipboard, Paste key, Select spacing between keys and
+    // Delete key. False when there is no timeline wired (or no surface to deliver to).
+    bool showGraphBackgroundMenu(const QPoint& aGlobalPos);
     // Shows the application's own CHANNEL LIST - the animation graph panel's ONE
     // control, which the user's design moved into the DOCK HEADER's channels button -
     // for the rows the panel's model published. aWidgetPos is the ANCHOR's BOTTOM-RIGHT

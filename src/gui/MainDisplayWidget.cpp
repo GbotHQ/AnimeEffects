@@ -1,4 +1,6 @@
 #include <functional>
+#include <QContextMenuEvent>
+#include <QCoreApplication>
 #include <QInputMethodEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -330,6 +332,35 @@ bool MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target& aPre
     // on, and whether the pressed one is lent to it, is the timeline's rule and stays
     // there (TimeLineWidget::openKeyMenu).
     return mTimeLine->openKeyMenu(aPressedKey, aGlobalPos);
+}
+
+bool MainDisplayWidget::showGraphBackgroundMenu(const QPoint& aGlobalPos) {
+    if (!mTimeLine)
+        return false; // no timeline: its menu is the one there is
+
+    // THE TIMELINE'S OWN SURFACE, found through the widget MainWindow wired in (the
+    // inner editor is that widget's only TimeLineEditorWidget). It is hidden while the
+    // dock's Graph tab is current, which is exactly when this route is used: the
+    // context-menu handler reads the editor and the shared selection, not the visible
+    // pixels, so a hidden page builds the same menu.
+    auto* surface = mTimeLine->findChild<TimeLineEditorWidget*>();
+    if (!surface)
+        return false;
+
+    // THE SAME REQUEST a right-click in the timeline produces: QWidget's
+    // customContextMenuRequested path (the policy is CustomContextMenu there), which
+    // calls TimeLineEditorWidget::onContextMenuRequested. That handler is the one that
+    // reads the selection at the click, anchors paste and builds the menu through
+    // buildKeyMenu - so there is no second menu and no second selection rule here.
+    //
+    // THE ANCHOR: the handler opens at mapToGlobal(its aPos), so handing it
+    // mapFromGlobal(aGlobalPos) makes that round trip return the pointer's own screen
+    // point. The graph page and the timeline page are pages of the same dock stack, so
+    // the mapped point also names the frame under the pointer.
+    const QPoint local = surface->mapFromGlobal(aGlobalPos);
+    QContextMenuEvent request(QContextMenuEvent::Mouse, local, aGlobalPos);
+    QCoreApplication::sendEvent(surface, &request);
+    return true;
 }
 
 void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos) {

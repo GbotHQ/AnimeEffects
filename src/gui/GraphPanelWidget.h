@@ -207,13 +207,18 @@ private:
     // A double-click on the plot: fits both axes (the panel's own gesture). Returns
     // true when it acted.
     bool doubleClickAt(const QPoint& aPos);
-    // The key under aPos by the EDITOR's own distance rule: opens the TIMELINE'S OWN
-    // KEY MENU (the one a right-click on a timeline key builds, through
-    // gui::MainDisplayWidget::showGraphKeyMenu) at that key, in screen coordinates.
-    // The timeline applies its own right-click rule to the pressed key against the one
-    // shared selection, so with several keys selected the menu acts on all of them and
-    // a key that is not selected is lent to the menu for its lifetime. Returns true
-    // when a key was hit and the menu opened.
+    // The panel's right-click, at aPos in this widget's pixels. On a key (the EDITOR's
+    // own distance rule, gui::panelKeyAt) it opens the TIMELINE'S OWN KEY MENU - the one
+    // a right-click on a timeline key builds, through
+    // gui::MainDisplayWidget::showGraphKeyMenu - anchored at the key in screen
+    // coordinates. The timeline applies its own right-click rule to the pressed key
+    // against the one shared selection, so with several keys selected the menu acts on
+    // all of them and a key that is not selected is lent to the menu for its lifetime.
+    // With NO key under the pointer it opens the TIMELINE'S BACKGROUND menu instead
+    // (gui::MainDisplayWidget::showGraphBackgroundMenu), anchored at the pointer: the
+    // same request a right-click on empty timeline space delivers, so the same
+    // buildKeyMenu shapes it (paste-only with no selection). Returns true when a menu
+    // opened.
     bool openKeyMenuAt(const QPoint& aPos);
     // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
     // under the pointer CHANGES, and none for a move that keeps the same target. The
