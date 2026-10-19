@@ -265,7 +265,13 @@ public:
     //   * a plain press on a key REPLACES the selection with the one marker it
     //     hit, so the OTHER component of that key is not selected (its curve stays
     //     at full strength and the drawing layer gives it the faint ring - see
-    //     isMarkerSelected and hasSelectedSiblingMarker);
+    //     isMarkerSelected and hasSelectedSiblingMarker) - UNLESS that marker is
+    //     already covered by the selection, in which case the selection is left
+    //     exactly as it is: pressing something already selected GRABS it, it does
+    //     not collapse the selection to it. That is what makes a multi-marker
+    //     selection draggable by any of its own markers (the drag is armed over
+    //     the whole selection, see the MOVE note), and a whole-key entry counts as
+    //     covering every component of its key;
     //   * Shift-press on a key ADDS that one marker if it is not already covered
     //     (an entry that is there is left alone - Shift extends, it does not
     //     toggle), which is how a key's two markers are selected together;
@@ -276,7 +282,9 @@ public:
     // dragged before it is released, replaces the selection with EVERY MARKER of
     // every key whose drawn square falls inside the dragged rectangle, or, with
     // Shift held at the press, adds those keys to the selection. It is drawn as a
-    // live rectangle while the drag is in flight (marqueeRect). Ctrl+A
+    // live rectangle while the drag is in flight (marqueeRect), and a release
+    // within 4px of the press on BOTH axes is not a drag at all: that press is the
+    // plain click, which clears the selection (see endMarquee). Ctrl+A
     // (selectAllMarkers) is the keyboard form of the same bulk rule over the shown
     // channels, and Escape clears (clearSelection).
     //
@@ -507,7 +515,8 @@ public:
     // driven by updateCursor, like the handle drag, and the rules are:
     //   * the members are the markers the selection named when the press armed the
     //     move (the press wrote that selection: a plain press replaces it with the
-    //     pressed marker, Shift adds one, Ctrl toggles it), resolved against the
+    //     pressed marker, or leaves it as it is when the press landed on a marker
+    //     it already covers, Shift adds one, Ctrl toggles it), resolved against the
     //     document so a stale entry is dropped. A whole-key entry (the timeline's
     //     own selection) names every component its key owns, so it becomes one
     //     member per graphable component of its type; a marker that is NOT
@@ -872,8 +881,11 @@ private:
     // per key, which IS all of its markers - replacing the selection (or added to
     // it, when mAddToSelection - the Shift state the press recorded). A Shift-marquee
     // over a key that was selected in ONE component therefore makes it WHOLE: the
-    // partial entry is taken out and the whole-key one put in its place. Then clears
-    // the marquee state.
+    // partial entry is taken out and the whole-key one put in its place. A gesture
+    // that never got 4px away from the press on either axis is the CLICK instead
+    // (it clears the selection and selects nothing): that is where the design puts
+    // the line between a click and a drag, and the live box is still drawn either
+    // way. Then clears the marquee state.
     void endMarquee();
 
     // --- middle-button pan ---
@@ -992,7 +1004,10 @@ private:
     // them all.
     //
     // Handle drag: the key whose easing is being edited, the segment that owns it
-    // and which of its two handles.
+    // and which of its two handles. The pair is written as a PAIR - the dragged
+    // one where the pointer is and the other at its mirror about the segment (see
+    // updateDrag) - so which of the two the press grabbed only decides which one
+    // the pointer drives.
     bool mDragging;
     bool mKeyMoveArmed;
     bool mMarqueeArmed;

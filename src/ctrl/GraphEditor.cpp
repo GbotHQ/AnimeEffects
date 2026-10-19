@@ -7,6 +7,7 @@
 
 #include <QObject>
 #include <QSettings>
+#include <QtGlobal>
 #include <memory>
 
 #include "cmnd/ScopedMacro.h"
@@ -49,6 +50,19 @@ constexpr double kWheelNotch = 120.0;
 // where the panel's plot clip removes it. 16 is the order of
 // Curve::buildPolyline's drawing rate, so the fit sees what is drawn.
 constexpr int kFitSamplesPerSegment = 16;
+
+// The marquee's SLOP, in pixels: how far the pointer has to travel from the
+// press before a press on empty plot is a DRAG rather than a click. Inside it -
+// this many pixels or fewer on BOTH axes - the gesture is the click that clears
+// the selection (unless Shift recorded that this press adds, see
+// GraphEditor::endMarquee), and past it on either axis it is the rectangle.
+// The number is the design's own (mock-graph.js: `r.w > 4 || r.h > 4`), and it
+// is where the design draws the line between a click that wobbled and a drag:
+// the grab radius (graph::kKeyHitRadius, 10px) is wider than the slop, so a box
+// inside it cannot cover a key the press did not already hit - the rule is about
+// the GESTURE's meaning, and it holds the click semantics if that radius ever
+// shrinks under it.
+constexpr int kMarqueeSlop = 4;
 
 double notchZoomFactor(int aWheelDelta) {
     return std::pow(kValueZoomPerNotch, static_cast<double>(aWheelDelta) / kWheelNotch);
@@ -726,8 +740,8 @@ namespace ctrl {
                 // its own selection (the two views can show different layers), and
                 // it is held in the timeline's currency so no second type is needed.
                 // The pointer names ONE marker - the component of the curve it is
-                // on - and the modifier chooses between replacing, extending and
-                // toggling that one marker.
+                // on - and the modifier chooses between replacing with it (when it
+                // is not already in the selection), extending and toggling it.
                 const graph::Channel channel = entries[hit.item].channel;
                 if (mModifiers.testFlag(Qt::ShiftModifier)) {
                     // Shift EXTENDS: a marker that is already covered is left alone
@@ -738,12 +752,22 @@ namespace ctrl {
                     // Ctrl TOGGLES: in when the marker is out, out when it is in.
                     const bool in = markerIndexOf(*entries[hit.item].node, channel, hit.keyFrame) >= 0;
                     modifyMarkerSelection(*entries[hit.item].node, channel, hit.keyFrame, !in);
-                } else {
+                } else if (!isMarkerSelected(*entries[hit.item].node, channel, hit.keyFrame)) {
                     // A plain press REPLACES with the one marker under the pointer:
                     // the key's other component is not selected, and the drawing
                     // layer gives it the faint ring.
                     selectMarker(*entries[hit.item].node, channel, hit.keyFrame);
                 }
+                // ...and a press on a marker the selection ALREADY covers leaves the
+                // selection exactly as it is (the test above), which is the design's
+                // rule for a press on something selected: a plain press is how a
+                // multi-marker selection is GRABBED, not how it is collapsed. The
+                // gesture armed below is that selection, so collapsing here would
+                // make a drag move only the marker under the pointer however many
+                // markers the user had selected. (A whole-key entry - what the
+                // timeline's own gestures, a marquee and ctrl+A write - covers every
+                // component of its key, so a press on any of its markers leaves it
+                // alone too: see markerIndexOf.)
                 // The same hit makes this entry the focused channel, which is
                 // what the panel emphasises.
                 setFocusedChannel(*entries[hit.item].node, channel);
@@ -761,8 +785,9 @@ namespace ctrl {
                 // key branch above, where Ctrl means "toggle it in the
                 // selection". insertKeyAt answers whether it inserted, so this
                 // needs no second band test. The rectangle is applied on the
-                // RELEASE, so a press that never moves opens an empty one and
-                // deselects.
+                // RELEASE, so a press that never moved opens an empty one and
+                // deselects - and one that shook within the slop is the same click
+                // (see endMarquee).
                 if (!(mModifiers.testFlag(Qt::ControlModifier) && insertKeyAt(aCamera, point)))
                     beginMarquee(point);
             }
@@ -1016,8 +1041,18 @@ namespace ctrl {
 
     void GraphEditor::endMarquee() {
         // The rectangle is read BEFORE the flags are cleared, since marqueeRect()
-        // is what says whether a drag happened at all.
+        // is what says whether a drag happened at all - and so is the pointer's
+        // own TRAVEL, which is what decides whether this gesture was a drag in
+        // the first place: a press on empty plot and a release within
+        // kMarqueeSlop of it is the "clear the selection" click, not a marquee
+        // over whatever the pointer twitched across (see kMarqueeSlop). The
+        // travel is measured corner to corner rather than read off the rectangle
+        // because the rectangle is CROPPED to the plot: a drag that walked out of
+        // the plot sideways would shrink the box under the slop and read as a
+        // click, while the hand that dragged it clearly dragged.
         const QRect box = marqueeRect();
+        const QPoint travel(qAbs(mMarqueeCurrent.x() - mMarqueeOrigin.x()),
+            qAbs(mMarqueeCurrent.y() - mMarqueeOrigin.y()));
         mMarqueeArmed = false;
         mDragging = false;
         mMarqueeOrigin = QPoint();
@@ -1026,7 +1061,7 @@ namespace ctrl {
         if (!mAddToSelection) {
             clearSelection();
         }
-        if (box.isEmpty()) {
+        if (travel.x() <= kMarqueeSlop && travel.y() <= kMarqueeSlop) {
             return; // a click that never dragged deselects and selects nothing
         }
 
@@ -1822,9 +1857,12 @@ namespace ctrl {
         // pair is DERIVED, not stored. The drag WRITES Type_Custom carrying that
         // exact derived pair at the third points (1/3, y1) and (2/3, y2), so the
         // curve the user was looking at does not move when the gesture begins;
-        // the pointer's own write just below then moves the GRABBED handle. The
-        // conversion rides the SAME mGesture, so it is one undo step with the
-        // drag - the whole Auto->Custom change undone by one undo.
+        // the pointer's own write just below then moves the GRABBED handle (and
+        // its mirror, see the write's note) - which is why the pair this branch
+        // writes is only the gesture's STARTING point: it is what the drag
+        // rewrites on its first step. The conversion rides the SAME mGesture, so
+        // it is one undo step with the drag - the whole Auto->Custom change undone
+        // by one undo.
         //
         // Detected from the LIVE param (not a press-time flag): the first step
         // converts, and every later step sees Custom and skips this branch.
@@ -1842,7 +1880,31 @@ namespace ctrl {
         }
 
         const QPointF normalized = handleNormalized(mScale, segment, aPos, flatY);
+
+        // THE PAIR MOVES AS ONE PAIR. The two control points of a segment's cubic
+        // are its shape, and a user shaping one end of a curve expects the other
+        // end to keep step with it - so a handle drag writes BOTH: the handle
+        // under the pointer where the pointer is, and the OTHER one at its mirror
+        // image about the segment. In this normalized space the segment's ends are
+        // (0,0) and (1,1), so the mirror of a control point (x,y) is (1-x,1-y):
+        // the pair stays symmetric about the middle of the segment, which is what
+        // makes the curve read the same whichever end of it the user grabs.
+        //
+        // The x of the handle the pointer wrote is read back from `next` rather
+        // than clamped here a second time: graph::Curve::setHandle already clamps
+        // it into [0,1] (a cubic is only solvable in its own domain, see its own
+        // note), and that clamped value is the one the mirror has to be taken
+        // from. Because x -> 1-x maps [0,1] onto itself, the mirrored x is in
+        // range by construction: a dragged handle pushed past the segment's start
+        // (x clamped to 0) puts its mirror exactly at 1, and the pair is still
+        // symmetric. The y stays free on both sides - overshoot is the point of
+        // Back/Elastic and of a deliberate anticipation (see setHandle's note).
         graph::Curve::setHandle(next, mDragHandle, normalized);
+        const bool draggedIsSecond = mDragHandle == 1;
+        const float placedX = draggedIsSecond ? next.cubicBezier.x2 : next.cubicBezier.x1;
+        const float placedY = draggedIsSecond ? next.cubicBezier.y2 : next.cubicBezier.y1;
+        const QPointF mirror(1.0 - static_cast<double>(placedX), 1.0 - static_cast<double>(placedY));
+        graph::Curve::setHandle(next, draggedIsSecond ? 0 : 1, mirror);
 
         if (mGesture.continues()) {
             // Rewrite the command this drag already pushed, so the whole drag

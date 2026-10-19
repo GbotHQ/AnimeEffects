@@ -13,8 +13,12 @@
 //     move cannot satisfy that.
 //   * it edits the key's own param at the pixel it points to. The dragged pixel
 //     maps back through the panel's own scale into the normalized (segment
-//     frame, segment value) space graph::Curve stores handles in, and only the
-//     GRABBED handle moves: the other one, and the keys' values, stay put.
+//     frame, segment value) space graph::Curve stores handles in, and the pair
+//     moves as ONE pair: the grabbed handle lands where the pointer is and the
+//     OTHER one at its mirror image about the segment ((1-x,1-y) in that space,
+//     whose ends are (0,0) and (1,1)), while the keys' values stay put. The
+//     grabbed x is clamped into [0,1] - a cubic is only solvable in its own
+//     domain - and the mirror follows from the CLAMPED x, so it is in range too.
 //
 // Everything is observed through the public API only - the editor's own live
 // scale for the pixels, the document for the values, the project's command stack
@@ -47,14 +51,19 @@
 //
 // The panel's SELECTION is pinned at the end of the file too, and it is a
 // selection of MARKERS - one COMPONENT of one key, the dot on one curve. A plain
-// press replaces the selection with the marker it hit (so a Scale key's X alone
-// can be selected), Shift-press adds one more (which is how both of a key's
-// markers are selected together), Ctrl-press toggles one, and a MARQUEE - a PLAIN
+// press replaces the selection with the marker it hit - unless that marker is
+// ALREADY selected, in which case the press grabs the selection and leaves it
+// exactly as it is, because a drag armed by that press carries the WHOLE
+// selection (so a two-key selection is dragged by any of its own keys). Shift-press
+// adds one more (which is how both of a key's markers are selected together),
+// Ctrl-press toggles one, and a MARQUEE - a PLAIN
 // press in the plot (Ctrl on a curve's band inserts instead), dragged and
 // released - replaces it with EVERY MARKER of every key inside the dragged
 // rectangle (adding, under Shift), with the rectangle published live by
-// marqueeRect(). Ctrl+A (selectAllMarkers) is the same bulk rule over the shown
-// channels from the keyboard, Escape clears (clearSelection), and the set
+// marqueeRect(); a release still within 4px of the press on both axes is the
+// plain CLICK instead, which clears the selection. Ctrl+A (selectAllMarkers) is
+// the same bulk rule over the shown channels from the keyboard, Escape clears
+// (clearSelection), and the set
 // announces every change of its own (time::Selection::onChanged) - which is what
 // the timeline header's chip reads instead of a reconcile timer. A KEY-LEVEL
 // entry - what the timeline's own gestures, a marquee and ctrl+A write - is every
@@ -153,10 +162,17 @@
 //     gesture is ONE command (KeyMoveCommand), ONE undo restores every frame and
 //     every value, a second undo finds nothing, and ONE redo rebuilds both. The
 //     single-key move is the one-member case of exactly this path.
+//   * 23c - THE PRESS THAT GRABS A SELECTION: a PLAIN press on a key that is
+//     already selected leaves the selection as it is (so the drag it arms moves
+//     EVERY selected key, and a key left unselected does not move), while a plain
+//     press on an unselected key still replaces the selection with it (so only
+//     that one moves). It is the press, not the move, that used to collapse a
+//     multi-key selection to the key under the pointer.
 //   * 23d - a drag on an Auto segment's GHOST handle (Curve::ghostHandles, the
 //     derived pair) WRITES Type_Custom carrying that pair at (1/3, y1) and
 //     (2/3, y2), inside the drag's own Gesture: one undo brings the Auto easing
-//     back whole, and a drag away then moves only the grabbed handle. The hit
+//     back whole, and the drag away from the dot then writes the grabbed handle
+//     at the pointer and the other at its mirror. The hit
 //     test DERIVES that pair only for a segment whose ghost x is within the grab
 //     radius of the pointer (an exact cull on the segment's own arithmetic), so
 //     the cursor path cannot pay a derivation per segment: 8px from the dot still
@@ -170,6 +186,12 @@
 //     vertical drag moves both components; ctrl+A selects the shown channels' keys
 //     as one entry per key and Escape clears; and the set announces every change
 //     of its own, and only the changes.
+//   * 23f - THE HANDLE PAIR IS SYMMETRIC: dragging either control point of a
+//     segment's cubic writes BOTH - the grabbed one where the pointer is and the
+//     other at (1-x,1-y) of it, about the segment - and a drag pushed past the
+//     segment's start pins the grabbed x at 0 with its mirror at 1, because the
+//     grabbed x is clamped into [0,1] (a cubic's own domain) and the mirror is
+//     taken from the clamped value.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -806,14 +828,29 @@ int main(int argc, char** argv) {
 
     // --- 5: the edit landed where the drag pointed. The released pixel maps
     // back through the SAME scale into the normalized space the handle lives in,
-    // and only the GRABBED handle moved.
+    // and the pair moved as ONE pair: the grabbed handle under the pointer and
+    // the OTHER one at its mirror image about the segment - (1-x,1-y) of what
+    // the drag wrote, in this space whose ends are (0,0) and (1,1). The keys'
+    // values are part of neither: a handle drag shapes the curve, it moves no key.
     const util::Easing::Param dragged = key0->data().easing();
     CHECK(dragged != kAuthored);
     CHECK(dragged.type == kAuthored.type); // a handle drag shapes the curve; it never writes the type
     CHECK(dragged.range == kAuthored.range);
     CHECK(dragged.weight == kAuthored.weight);
-    CHECK(dragged.cubicBezier.x2 == kAuthored.cubicBezier.x2); // the handle that was NOT grabbed
-    CHECK(dragged.cubicBezier.y2 == kAuthored.cubicBezier.y2);
+    // The mirror, BOTH components: the asserted value is 1 - the value the
+    // assertions below say the drag put on the grabbed handle, so this holds the
+    // pair only if both ends are the ones the one drag wrote.
+    const float kEpsilon = 1e-6f;
+    CHECK(std::fabs(dragged.cubicBezier.x2 - (1.0f - dragged.cubicBezier.x1)) < kEpsilon);
+    CHECK(std::fabs(dragged.cubicBezier.y2 - (1.0f - dragged.cubicBezier.y1)) < kEpsilon);
+    // The pair really is a NEW pair and not the authored one relabelled. The fixture
+    // is AUTHORED as a mirror pair - (0.4,0.1) and (0.6,0.9) are each other's mirror -
+    // which is why the old assertion ("the handle that was NOT grabbed stayed put")
+    // passed while a drag was asymmetric: the untouched handle WAS the mirror of the
+    // authored first handle. What says the drag wrote both ends is that the second
+    // handle has MOVED off the authored value and onto the mirror of the dragged one
+    // (checked above).
+    CHECK(dragged.cubicBezier.x2 != kAuthored.cubicBezier.x2);
 
     CHECK(key0->rotate() == 0.0f); // the drag edits the easing, not the key's value
     CHECK(key1->rotate() == 90.0f);
@@ -1712,11 +1749,13 @@ int main(int argc, char** argv) {
     // request for the type the key already has (a command whose exec and undo are
     // the same value is a history entry for a change that did not happen).
     //
-    // NOT HERE: a multi-key selection. The panel cannot make one - selectKey sets
-    // exactly one target and nothing else writes GraphEditor's own selection - so
-    // there is no second key to put in it through the public API. The action
-    // handles one anyway (one macro, one notifier, every target in the event), and
-    // the timeline is where a multi-key selection is made today.
+    // NOT HERE: a multi-key selection made by the panel's own POINTER gestures.
+    // Those write the same set - a Shift-press, a marquee and Ctrl+A are the
+    // routes sections 20, 23b and 23c pin - and this section drives the action
+    // through selectKey, which writes exactly one whole-key target, because what
+    // is asserted here is the ACTION's shape (one macro, one notifier, every
+    // target in the event) and not the gesture that filled the set. The action
+    // handles every target the selection names.
     {
         core::TestNode easeNode;
         // The first key's param is deliberately NOT the Param's own default (a range, a
@@ -2002,14 +2041,46 @@ int main(int argc, char** argv) {
         CHECK(sendRelease(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
         CHECK(framesAre({ 10 })); // still there: a Shift-marquee adds, so an empty one changes nothing
 
+        // A press that SHOOK before it was released is still that CLICK, not the
+        // marquee over the few pixels it covered: the design's slop is 4px on both
+        // axes (mock-graph.js: `r.w > 4 || r.h > 4`). The grab radius keeps a
+        // 4px box from covering a key the press did not already hit, so this pins
+        // the GESTURE's meaning - a hand-shake on empty plot stays the click that
+        // clears, and would not become a selection gesture if that radius ever
+        // shrank under the slop. The box is still PUBLISHED while the button is
+        // down (the rectangle the user sees), but the release treats it as the
+        // click: the selection is cleared, exactly as the never-moved click above
+        // clears it, and nothing is selected.
+        const QPoint shake(addOrigin.x() + 3, addOrigin.y() - 2);
+        CHECK(selScale.plotRect().contains(shake));
+        CHECK(sendPress(editor, camera, selCur, addOrigin));
+        CHECK(editor.hasMarquee());
+        CHECK(sendMove(editor, camera, selCur, shake));
+        CHECK(!editor.marqueeRect().isEmpty()); // the live box is drawn...
+        CHECK(editor.marqueeRect().width() <= 5); // ...and it is the few pixels that were dragged
+        CHECK(sendRelease(editor, camera, selCur, shake));
+        CHECK(!editor.hasMarquee());
+        CHECK(selectedFrames().isEmpty()); // the shake is a click: it cleared, it selected nothing
+
+        // ...and with Shift the same shake changes nothing at all: a Shift-press
+        // never clears, which is the other half of the click's rule.
+        CHECK(sendPress(editor, camera, selCur, k1));
+        CHECK(sendRelease(editor, camera, selCur, k1));
+        CHECK(framesAre({ 10 }));
+        CHECK(sendPress(editor, camera, selCur, addOrigin, Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, selCur, shake, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, selCur, shake, Qt::ShiftModifier));
+        CHECK(framesAre({ 10 })); // a Shift-click leaves the selection alone, shake or no shake
+
         std::printf(
             "[S] selection: marquee box (%d,%d)-(%d,%d) over empty plot selects %d keys; a shift-marquee "
             "over the frame-20 key makes %d\n",
             marqueeOrigin.x(), marqueeOrigin.y(), marqueeEnd.x(), marqueeEnd.y(), marqueeCount, shiftMarqueeCount
         );
 
-        // NOTHING ABOVE IS AN EDIT: four presses, four marquees and every modifier
-        // combination pushed no command at all.
+        // NOTHING ABOVE IS AN EDIT: every press here - the plain replacement, the
+        // two extensions, the toggle, the marquees, the shakes and the clicks -
+        // pushed no command at all.
         bool undoneAfterSelection = true;
         CHECK(stack.undo(&undoneAfterSelection).isEmpty());
         CHECK(!undoneAfterSelection);
@@ -2807,6 +2878,149 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
+    // --- 23c: THE PRESS THAT GRABS A SELECTION. Which key a drag STARTS on must
+    // not decide what it moves: a press on a key the selection already covers
+    // GRABS that selection and leaves it exactly as it is - the design's rule for
+    // a press on something selected - so the drag it arms carries the whole
+    // selection. A plain press on a key that is NOT selected still replaces the
+    // selection with that one key, which is the other half of the same rule and
+    // what makes a drag on a fresh key an edit of that key alone. Three keys: two
+    // selected (the halves) and one bystander, left unselected, that must not move
+    // a pixel in either half.
+    //
+    // This is the press, not the move, that the report was about: the move path
+    // already carried every member (23b above), but the press had already
+    // collapsed the selection to the marker under the pointer, so the move had
+    // nothing else to carry.
+    {
+        core::TestNode grabNode;
+        core::RotateKey* q0 = new core::RotateKey();
+        q0->setRotate(5.0f);
+        setup.push(grabNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, q0));
+        core::RotateKey* q1 = new core::RotateKey();
+        q1->setRotate(25.0f);
+        setup.push(grabNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, q1));
+        core::RotateKey* q2 = new core::RotateKey();
+        q2->setRotate(45.0f);
+        setup.push(grabNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 40, q2));
+        CHECK(grabNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 3);
+
+        editor.setTargets({ &grabNode });
+        editor.scale().setRect(panel);
+        editor.fitAll(); // so the keys are on screen and the drags land where they point
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        const Channel grabChannel(core::TimeKeyType_Rotate, 0);
+        // Every pixel below is read from the LIVE scale at the moment it is used,
+        // so each press and each expected delta are read off the same mapping the
+        // gesture will run on, whatever the window did between two of them.
+        auto keyPixel = [&editor](core::Frame aFrame, float aValue) {
+            const Scaler& live = editor.scale();
+            return QPoint(live.pixelX(aFrame), live.pixelY(aValue));
+        };
+        core::AbstractCursor grabCur;
+
+        // THE SELECTION: the plain press that replaces (nothing is selected, so the
+        // frame-0 key is what it replaces with) and the Shift-press that adds the
+        // frame-20 key. Two keys - and the frame-40 key is not one of them.
+        const QPoint gQ0 = keyPixel(core::Frame(0), q0->rotate());
+        const QPoint gQ1 = keyPixel(core::Frame(20), q1->rotate());
+        CHECK(editor.scale().plotRect().contains(gQ0));
+        CHECK(editor.scale().plotRect().contains(gQ1));
+        CHECK(sendPress(editor, camera, grabCur, gQ0));
+        CHECK(sendRelease(editor, camera, grabCur, gQ0));
+        CHECK(editor.selectionCount() == 1);
+        CHECK(sendPress(editor, camera, grabCur, gQ1, Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, grabCur, gQ1, Qt::ShiftModifier));
+        CHECK(editor.selectionCount() == 2);
+        CHECK(editor.isMarkerSelected(grabNode, grabChannel, core::Frame(20)));
+        CHECK(!editor.isMarkerSelected(grabNode, grabChannel, core::Frame(40)));
+
+        // (a) A PLAIN PRESS ON THE KEY THAT IS ALREADY SELECTED. It grabs the
+        // selection: the two assertions on the selection are the ones that fail
+        // today, when the press replaced the selection with the marker under the
+        // pointer and the drag below then moved ONE key.
+        const QPoint armQ1 = keyPixel(core::Frame(20), q1->rotate());
+        CHECK(sendPress(editor, camera, grabCur, armQ1));
+        const int grabbedCount = editor.selectionCount(); // how many keys the press left selected
+        CHECK(grabbedCount == 2); // the press grabbed the selection...
+        CHECK(editor.isMarkerSelected(grabNode, grabChannel, core::Frame(0))); // ...both keys are still in
+        CHECK(!editor.isMarkerSelected(grabNode, grabChannel, core::Frame(40))); // and the third still is not
+
+        const QPoint grabTo(editor.scale().pixelX(core::Frame(25)), editor.scale().pixelY(15.0f));
+        const Scaler& grabScale = editor.scale(); // the window the moves are interpreted against
+        const int grabStep = grabScale.frameAt(grabTo.x()).get() - grabScale.frameAt(armQ1.x()).get();
+        const float grabDelta = grabScale.valueAt(grabTo.y()) - grabScale.valueAt(armQ1.y());
+        CHECK(grabStep == 5); // the pixels name the frames they map to (and the window did not move)
+        CHECK(grabDelta < -5.0f && grabDelta > -15.0f); // a real, downward value move
+
+        CHECK(sendMove(editor, camera, grabCur, grabTo));
+        CHECK(sendRelease(editor, camera, grabCur, grabTo));
+
+        // The WHOLE selection moved by that one delta, and they are the SAME key
+        // objects (TimeLine::move re-keys, it never rebuilds).
+        CHECK(!grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0));
+        CHECK(!grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20));
+        CHECK(grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, grabStep));
+        CHECK(grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20 + grabStep));
+        CHECK(grabNode.timeLine()->timeKey(core::TimeKeyType_Rotate, grabStep) == q0);
+        CHECK(grabNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 20 + grabStep) == q1);
+        CHECK(q0->rotate() == 5.0f + grabDelta);
+        CHECK(q1->rotate() == 25.0f + grabDelta);
+        // ...while the key that was never selected did not move - neither its
+        // frame nor its value, on its own object.
+        CHECK(grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 40));
+        CHECK(grabNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 40) == q2);
+        CHECK(q2->frame() == 40);
+        CHECK(q2->rotate() == 45.0f);
+
+        // The whole gesture is ONE command, as for every move here.
+        bool undoneGrab = false;
+        CHECK(!stack.undo(&undoneGrab).isEmpty());
+        CHECK(undoneGrab);
+        CHECK(q0->frame() == 0 && q0->rotate() == 5.0f);
+        CHECK(q1->frame() == 20 && q1->rotate() == 25.0f);
+        CHECK(q2->frame() == 40 && q2->rotate() == 45.0f);
+
+        // (b) THE COMPLEMENT: a plain press on a key that is NOT selected still
+        // replaces the selection with it, so a drag from there moves that key
+        // alone. (Without this half the section would also pass on a press that
+        // never changed the selection at all.)
+        const QPoint gQ2 = keyPixel(core::Frame(40), q2->rotate());
+        CHECK(editor.scale().plotRect().contains(gQ2));
+        CHECK(sendPress(editor, camera, grabCur, gQ2));
+        CHECK(editor.selectionCount() == 1);
+        CHECK(editor.isMarkerSelected(grabNode, grabChannel, core::Frame(40)));
+        CHECK(!editor.isMarkerSelected(grabNode, grabChannel, core::Frame(0)));
+
+        const QPoint aloneTo(editor.scale().pixelX(core::Frame(35)), editor.scale().pixelY(35.0f));
+        const Scaler& aloneScale = editor.scale();
+        const int aloneStep = aloneScale.frameAt(aloneTo.x()).get() - aloneScale.frameAt(gQ2.x()).get();
+        const float aloneDelta = aloneScale.valueAt(aloneTo.y()) - aloneScale.valueAt(gQ2.y());
+        CHECK(aloneStep == -5);
+        CHECK(aloneDelta < -5.0f && aloneDelta > -15.0f);
+        CHECK(sendMove(editor, camera, grabCur, aloneTo));
+        CHECK(sendRelease(editor, camera, grabCur, aloneTo));
+
+        CHECK(grabNode.timeLine()->timeKey(core::TimeKeyType_Rotate, 40 + aloneStep) == q2);
+        CHECK(q2->rotate() == 45.0f + aloneDelta);
+        CHECK(grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 0)); // the dropped keys did not move
+        CHECK(grabNode.timeLine()->hasTimeKey(core::TimeKeyType_Rotate, 20));
+        CHECK(q0->frame() == 0 && q0->rotate() == 5.0f);
+        CHECK(q1->frame() == 20 && q1->rotate() == 25.0f);
+
+        std::printf(
+            "[G2] press that grabs a selection: a plain press on an already-selected key left %d keys "
+            "selected and the drag moved both by frame %+d / value %+.3f while the third key stayed at "
+            "frame 40 / %.1f; a plain press on the unselected key replaced the selection with it, and the "
+            "drag moved that one by frame %+d / value %+.3f alone\n",
+            grabbedCount, grabStep, grabDelta, q2->rotate() - aloneDelta, aloneStep, aloneDelta
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
     // --- 23d: a GHOST-handle drag writes Type_Custom at the third points. An
     // Auto segment's control points are DERIVED (Curve::ghostHandles), not
     // stored, so a press must FIND them (the hit-test does now) and a drag must
@@ -2854,7 +3068,12 @@ int main(int argc, char** argv) {
         core::AbstractCursor ghostCur;
 
         // (a) A drag whose move lands back ON the ghost dot: the conversion is
-        // the whole edit, so what was written is the derived pair at the thirds.
+        // the whole edit, so what was written is the derived pair's GEOMETRY at
+        // the thirds - the grabbed handle at its own third, and the other at the
+        // mirror of that point, which for the derived x (1/3) is the other third
+        // (2/3). The y is the mirror too, and NOT the derived pair's own y2: the
+        // pair is written symmetric (see 23f), so the drag's own write replaces
+        // the y the conversion put there.
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
         CHECK(editor.ownsCursor(camera, ghostCur)); // the ghost dot is a grabbable handle
         CHECK(a0->data().easing().type == util::Easing::Type_Auto); // the press alone edits nothing
@@ -2865,7 +3084,8 @@ int main(int argc, char** argv) {
         CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - 1.0f / 3.0f) < 0.01f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) < 0.01f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(ghosts[0].y())) < 0.02f);
-        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 0.02f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2
+                  - (1.0f - a0->data().easing().cubicBezier.y1)) < 1e-6f);
 
         // ONE undo brings the Auto easing back whole (the conversion and the
         // handle write are one command), and a second finds nothing behind it.
@@ -2877,17 +3097,18 @@ int main(int argc, char** argv) {
         CHECK(stack.undo(&undoneGhostAgain).isEmpty());
         CHECK(!undoneGhostAgain);
 
-        // (b) A real drag AWAY from the dot: the conversion still writes the pair
-        // at the thirds, and the drag then writes the GRABBED handle where the
-        // pointer is - the other handle stays exactly on its own third.
+        // (b) A real drag AWAY from the dot: the conversion still happens (the
+        // key becomes Custom, riding the drag's own gesture), and the drag then
+        // writes the GRABBED handle where the pointer is - and the other handle
+        // at ITS mirror, so the pair that comes out of an Auto->Custom drag is
+        // symmetric too (the other third is no longer where the conversion left
+        // it: the write covers both ends).
         const QPoint ghostMoved(ghostGrab.x() + 6, ghostGrab.y() + 5);
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
         CHECK(sendMove(editor, camera, ghostCur, ghostMoved));
         CHECK(sendRelease(editor, camera, ghostCur, ghostMoved));
 
         CHECK(a0->data().easing().type == util::Easing::Type_Custom);
-        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) < 1e-4f); // untouched
-        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-3f);
         const double ghostFrameSpan = static_cast<double>(ghostSeg.to->frame() - ghostSeg.from->frame());
         const double ghostValueSpan = static_cast<double>(ghostSeg.toValue - ghostSeg.fromValue);
         const double expectedNx = (editor.scale().frameAtPixel(static_cast<double>(ghostMoved.x()))
@@ -2898,13 +3119,21 @@ int main(int argc, char** argv) {
                                   / ghostValueSpan;
         CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - static_cast<float>(expectedNx)) < 1e-4f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(expectedNy)) < 1e-4f);
+        // ...and the other end at (1-x,1-y) of the grabbed one, both components,
+        // which is what the released pair is: the mirror, not its own third.
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x2
+                  - (1.0f - a0->data().easing().cubicBezier.x1)) < 1e-6f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2
+                  - (1.0f - a0->data().easing().cubicBezier.y1)) < 1e-6f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) > 1e-4f); // moved off its third
 
         std::printf(
             "[A] ghost-handle drag: an Auto segment's derived pair (1/3,%.3f)/(2/3,%.3f) was written as "
             "Type_Custom at the thirds and undone by ONE undo; a drag away moved the grabbed handle to "
-            "(%.3f,%.3f) and left the other on its third\n",
+            "(%.3f,%.3f) and the other to its mirror (%.3f,%.3f)\n",
             ghosts[0].y(), ghosts[1].y(), a0->data().easing().cubicBezier.x1,
-            a0->data().easing().cubicBezier.y1
+            a0->data().easing().cubicBezier.y1, a0->data().easing().cubicBezier.x2,
+            a0->data().easing().cubicBezier.y2
         );
 
         // (c) THE CULL. The hit test derives a segment's ghost pair only when one
@@ -3090,11 +3319,27 @@ int main(int argc, char** argv) {
         // (d) X ALONE, DRAGGED UP: X follows the pointer and the Y marker - not
         // selected, but the sibling of one that is - keeps its value BIT-identical.
         // The pointer moves in x by nothing at all, so no frame can be owed either.
-        CHECK(sendPress(editor, camera, markerCur, px05));
-        CHECK(sendRelease(editor, camera, markerCur, px05));
+        //
+        // The selection is narrowed to X by TOGGLING Y out with a Ctrl-press: a
+        // PLAIN press on the X marker cannot do it any more, because X is already
+        // selected and a press on something selected grabs the selection as it is
+        // (section 23c) - which is exactly why the design gives Ctrl that job.
+        // Both markers are selected here (the drag above, undone, left them), so
+        // the toggle has something to take out: asserted before and after, so the
+        // press cannot pass by doing nothing.
+        CHECK(editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
+        CHECK(sendPress(editor, camera, markerCur, py05, Qt::ControlModifier));
+        CHECK(sendRelease(editor, camera, markerCur, py05, Qt::ControlModifier));
         CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
         CHECK(!editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
         CHECK(editor.hasSelectedSiblingMarker(markerNode, markerY, core::Frame(5)));
+        // ...and the plain press that GRABS X (already selected) leaves it alone,
+        // which is the press this section's drag is armed by.
+        CHECK(sendPress(editor, camera, markerCur, px05));
+        CHECK(sendRelease(editor, camera, markerCur, px05));
+        CHECK(editor.selection().count() == 1); // still X alone: the plain press did not re-add Y
+        CHECK(editor.isMarkerSelected(markerNode, markerX, core::Frame(5)));
+        CHECK(!editor.isMarkerSelected(markerNode, markerY, core::Frame(5)));
 
         const QPoint xFrom(markerScale.pixelX(core::Frame(5)), markerScale.pixelY(20.0f));
         const QPoint xTo(xFrom.x(), xFrom.y() - 30);
@@ -3222,6 +3467,172 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
+    // --- 23f: THE TWO CONTROL POINTS OF A CUBIC ARE ONE PAIR. A segment's
+    // handles are its shape, and the convention every editor keeps is that they
+    // are symmetric about the segment: dragging one writes the other at its mirror
+    // image. The space a handle lives in is the NORMALIZED (segment frame, segment
+    // value) one, where the segment's own ends are exactly (0,0) and (1,1), so the
+    // mirror of a control point (x,y) is (1-x, 1-y). What is clamped is the x of
+    // the handle the POINTER drove: graph::Curve::setHandle clamps it into [0,1],
+    // because a cubic is only solvable in its own domain (a control point beyond
+    // the segment's end makes the curve non-monotonic in time). The mirror is then
+    // taken from that CLAMPED x, and since x -> 1-x maps [0,1] onto itself the
+    // mirrored x cannot leave the domain either: a handle dragged past the
+    // segment's start pins the grabbed x at 0 and puts its mirror at exactly 1,
+    // still symmetric - where mirroring the RAW pointer x would have asked for 1.3
+    // and left the pair lopsided. y stays free on both sides, mirrored and never
+    // clamped: overshoot past the keys' values is the point of a Back/Elastic
+    // curve and of a deliberate anticipation.
+    //
+    // Both handles are dragged below, because "the pair" is symmetric in the
+    // index too: whichever dot the press grabbed, it drives its own end and the
+    // other follows.
+    {
+        core::TestNode pairNode;
+        core::RotateKey* f0 = new core::RotateKey();
+        f0->setRotate(0.0f);
+        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, f0));
+        core::RotateKey* f1 = new core::RotateKey();
+        f1->setRotate(90.0f);
+        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, f1));
+        // An AUTHORED pair that is deliberately not the mirror pair: its x's are not
+        // each other's mirror (0.8 against 1-0.4), while its y's happen to be (0.9 and
+        // 1-0.1) - so the test is that the PAIR is not a mirror, not that each axis is
+        // asymmetric. Every mirror assertion below is then about the drag, not about a
+        // value that was already in place.
+        f0->data().easing().type = util::Easing::Type_Custom;
+        f0->data().easing().cubicBezier.x1 = 0.4f;
+        f0->data().easing().cubicBezier.y1 = 0.1f;
+        f0->data().easing().cubicBezier.x2 = 0.8f;
+        f0->data().easing().cubicBezier.y2 = 0.9f;
+        CHECK(std::fabs(f0->data().easing().cubicBezier.x2 - (1.0f - f0->data().easing().cubicBezier.x1)) > 0.05f
+              || std::fabs(f0->data().easing().cubicBezier.y2 - (1.0f - f0->data().easing().cubicBezier.y1)) > 0.05f);
+
+        editor.setTargets({ &pairNode });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+        editor.clearSelection();
+        project.commandStack().clear();
+
+        const Channel pairChannel(core::TimeKeyType_Rotate, 0);
+        const Curve::Segment pairSeg = Curve(*pairNode.timeLine(), pairChannel).segment(0);
+        CHECK(pairSeg.from == f0 && pairSeg.to == f1);
+        CHECK(pairSeg.fromValue == 0.0f && pairSeg.toValue == 90.0f);
+        const double pairFrameSpan = static_cast<double>(pairSeg.to->frame() - pairSeg.from->frame());
+        const double pairValueSpan = static_cast<double>(pairSeg.toValue - pairSeg.fromValue);
+        // The inverse of the panel's own mapping, for the expectations: a pixel
+        // back into the normalized space the handles are stored in.
+        auto normalizedAt = [&](const Scaler& aScale, const QPoint& aPos) {
+            return QPointF((aScale.frameAtPixel(static_cast<double>(aPos.x()))
+                               - static_cast<double>(pairSeg.from->frame()))
+                               / pairFrameSpan,
+                (aScale.valueAtPixel(static_cast<double>(aPos.y())) - static_cast<double>(pairSeg.fromValue))
+                    / pairValueSpan);
+        };
+        core::AbstractCursor pairCur;
+
+        // (a) HANDLE 0 DRAGGED: handle 0 lands on the pointer and handle 1 on its
+        // mirror. The window is snapshotted before the press so the grab pixel and
+        // the expectation below are read off the SAME mapping the moves run on.
+        const Scaler pairScaleA = editor.scale();
+        const Curve::Segment pairNowA = Curve(*pairNode.timeLine(), pairChannel).segment(0);
+        const QPoint grabA = handlePixel(pairScaleA, pairNowA, 0);
+        const QPoint toA = grabA + QPoint(30, -20); // right (later in time) and up (higher value)
+        CHECK(panel.contains(grabA));
+        CHECK(panel.contains(toA));
+        // The grab is unambiguous: the other dot is far outside the grab radius.
+        const QPoint otherA = handlePixel(pairScaleA, pairNowA, 1);
+        CHECK(std::hypot(otherA.x() - grabA.x(), otherA.y() - grabA.y()) > 2.0 * ctrl::graph::kHandleHitRadius);
+
+        CHECK(sendPress(editor, camera, pairCur, grabA));
+        CHECK(sendMove(editor, camera, pairCur, toA));
+        CHECK(sendRelease(editor, camera, pairCur, toA));
+
+        const QPointF wantA = normalizedAt(pairScaleA, toA);
+        CHECK(wantA.x() > 0.0 && wantA.x() < 1.0); // inside the segment: no clamp in play here
+        CHECK(wantA.y() > 0.0 && wantA.y() < 1.0);
+        const util::Easing::Param wroteA = f0->data().easing();
+        CHECK(wroteA.type == util::Easing::Type_Custom); // a handle drag never writes the type
+        CHECK(std::fabs(wroteA.cubicBezier.x1 - wantA.x()) < 0.02); // the grabbed handle is where the pointer is
+        CHECK(std::fabs(wroteA.cubicBezier.y1 - wantA.y()) < 0.02);
+        CHECK(std::fabs(wroteA.cubicBezier.x2 - (1.0f - wroteA.cubicBezier.x1)) < 1e-6f); // ...and the other at its mirror
+        CHECK(std::fabs(wroteA.cubicBezier.y2 - (1.0f - wroteA.cubicBezier.y1)) < 1e-6f);
+        CHECK(wroteA.cubicBezier.x2 != 0.8f); // the authored x2 is gone: the mirror replaced it
+        // The keys themselves are not part of a handle drag.
+        CHECK(f0->frame() == 0 && f0->rotate() == 0.0f);
+        CHECK(f1->frame() == 20 && f1->rotate() == 90.0f);
+
+        // (b) HANDLE 1 DRAGGED - the same rule from the other end: handle 1 lands
+        // on the pointer and handle 0 on ITS mirror, so the pair stays symmetric
+        // whichever dot the press grabbed. This is also the acceptance the report
+        // names: "dragging handle 1 sets handle 1 to the dragged point and handle 2
+        // to its mirror, both components".
+        const Scaler pairScaleB = editor.scale();
+        const Curve::Segment pairNowB = Curve(*pairNode.timeLine(), pairChannel).segment(0);
+        const QPoint grabB = handlePixel(pairScaleB, pairNowB, 1);
+        const QPoint toB = grabB + QPoint(-24, 14); // left and down: clearly a new pair
+        CHECK(panel.contains(grabB));
+        CHECK(panel.contains(toB));
+        const QPoint otherB = handlePixel(pairScaleB, pairNowB, 0);
+        CHECK(std::hypot(otherB.x() - grabB.x(), otherB.y() - grabB.y()) > 2.0 * ctrl::graph::kHandleHitRadius);
+
+        CHECK(sendPress(editor, camera, pairCur, grabB));
+        CHECK(sendMove(editor, camera, pairCur, toB));
+        CHECK(sendRelease(editor, camera, pairCur, toB));
+
+        const QPointF wantB = normalizedAt(pairScaleB, toB);
+        CHECK(wantB.x() > 0.0 && wantB.x() < 1.0);
+        const util::Easing::Param wroteB = f0->data().easing();
+        CHECK(std::fabs(wroteB.cubicBezier.x2 - wantB.x()) < 0.02); // the grabbed handle
+        CHECK(std::fabs(wroteB.cubicBezier.y2 - wantB.y()) < 0.02);
+        CHECK(std::fabs(wroteB.cubicBezier.x1 - (1.0f - wroteB.cubicBezier.x2)) < 1e-6f); // the other, mirrored
+        CHECK(std::fabs(wroteB.cubicBezier.y1 - (1.0f - wroteB.cubicBezier.y2)) < 1e-6f);
+        CHECK(!(wroteB.cubicBezier == wroteA.cubicBezier)); // a new pair, not the previous one
+
+        // (c) THE CLAMP: the pointer is dragged PAST the segment's start, so the
+        // normalized x the drag reads is negative. What is clamped is the grabbed
+        // handle's x (setHandle clamps it - a cubic needs x in [0,1]), and the
+        // mirror is computed from that clamped x, so it lands on 1: the two ends sit
+        // at the two ends of the domain instead of one of them leaving it. y is
+        // never clamped, on either side: it takes the pointer's row and the mirror
+        // takes 1-y, whatever those are.
+        const Scaler pairScaleC = editor.scale();
+        const Curve::Segment pairNowC = Curve(*pairNode.timeLine(), pairChannel).segment(0);
+        const QPoint grabC = handlePixel(pairScaleC, pairNowC, 0);
+        const QPoint pastStart(pairScaleC.plotRect().left() + 1, grabC.y() - 12);
+        const QPointF rawC = normalizedAt(pairScaleC, pastStart);
+        CHECK(rawC.x() < 0.0); // the precondition the clamp is about: the pointer is before frame 0
+        CHECK(panel.contains(grabC));
+        const util::Easing::Param beforeC = f0->data().easing();
+
+        CHECK(sendPress(editor, camera, pairCur, grabC));
+        CHECK(sendMove(editor, camera, pairCur, pastStart));
+        CHECK(sendRelease(editor, camera, pairCur, pastStart));
+
+        const util::Easing::Param wroteC = f0->data().easing();
+        CHECK(wroteC.cubicBezier.x1 == 0.0f); // the grabbed x, clamped into the cubic's domain
+        CHECK(wroteC.cubicBezier.x2 == 1.0f); // its mirror, and 1-0 is in the domain by construction
+        CHECK(std::fabs(wroteC.cubicBezier.y1 - rawC.y()) < 0.02f); // y is free: the pointer's own row
+        CHECK(std::fabs(wroteC.cubicBezier.y2 - (1.0f - wroteC.cubicBezier.y1)) < 1e-6f);
+        // ...and the clamped pair is still ONE undo step away from the pair before it.
+        bool undoneClamp = false;
+        CHECK(!stack.undo(&undoneClamp).isEmpty());
+        CHECK(undoneClamp);
+        CHECK(f0->data().easing() == beforeC);
+
+        std::printf(
+            "[P] handle pair: dragging handle 0 to (%.3f,%.3f) set handle 1 to its mirror (%.3f,%.3f); "
+            "dragging handle 1 to (%.3f,%.3f) set handle 0 to its mirror (%.3f,%.3f); and a drag past the "
+            "segment's start clamps the grabbed x to 0 with its mirror at 1 (y %.3f / %.3f, never "
+            "clamped)\n",
+            wroteA.cubicBezier.x1, wroteA.cubicBezier.y1, wroteA.cubicBezier.x2, wroteA.cubicBezier.y2,
+            wroteB.cubicBezier.x2, wroteB.cubicBezier.y2, wroteB.cubicBezier.x1, wroteB.cubicBezier.y1,
+            wroteC.cubicBezier.y1, wroteC.cubicBezier.y2
+        );
+
+        editor.setTargets({}); // drop the target before its owner dies
+    }
+
     // --- 24: THE PANEL GOING AWAY. The editor has no shown/hidden state any more -
     // the dock's Graph page IS the panel while its tab is current, so nothing in
     // this class could describe it, and the Driver's viewport routing no longer asks
@@ -3307,18 +3718,24 @@ int main(int argc, char** argv) {
 
     std::printf(
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
-        "at the pixel it points to; the value axis is fitted to the shown curves where the panel is "
+        "at the pixel it points to - the grabbed handle where the pointer is and the OTHER one at its "
+        "mirror (1-x,1-y) about the segment, the grabbed x clamped into [0,1] and the mirror in range "
+        "with it; the value axis is fitted to the shown curves where the panel is "
         "opened or re-selected, and a manual, wheeled or panned window survives every cursor pass; "
         "the panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
         "selects and drags, Ctrl on a curve's band inserts, everything else marquees) and the middle "
         "button (a pan), or mid-gesture - a press outside the plot, and every hover, stays the "
         "viewport tools'; the selection is a set of MARKERS - one press selects the one component "
-        "under the pointer (Scale X alone, its Y sibling left with the faint-ring predicate), Shift "
-        "adds a second marker, Ctrl toggles one, a marquee and ctrl+A take every marker of every key "
-        "they enclose as one whole-key entry, Escape clears, and the set announces every change of its "
+        "under the pointer (Scale X alone, its Y sibling left with the faint-ring predicate) unless "
+        "that marker is already selected, in which case the press grabs the selection as it stands, "
+        "Shift adds a second marker, Ctrl toggles one, a marquee and ctrl+A take every marker of every "
+        "key they enclose as one whole-key entry (a release within 4px of the press on both axes being "
+        "the CLICK that clears instead), Escape clears, and the set announces every change of its "
         "own and only the changes; a drag of that selection moves one key's frame ONCE and every "
         "selected marker in its OWN channel by the same delta, so a key's unselected component comes "
-        "out of the gesture bit-identical, all inside ONE command; the focus moves NO window (a click "
+        "out of the gesture bit-identical, all inside ONE command, and the drag starts on ANY of the "
+        "selected keys - a plain press on one of them keeps the selection, so the whole selection "
+        "moves; the focus moves NO window (a click "
         "does not zoom); the wheel zooms BOTH axes and one under Shift (frame) or Ctrl (value), and its "
         "DIRECTION is the caller's invert setting - the one the canvas takes - applied to both axes before "
         "the frame half is delegated, so the canvas, the timeline and the panel never zoom against each "
