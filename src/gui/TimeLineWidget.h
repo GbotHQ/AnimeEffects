@@ -95,9 +95,12 @@ public:
     // The two horizontal gestures the panel delegates here, in FRAMES - the one
     // unit both views can agree on: a pan (positive reveals LATER frames) and a
     // wheel notch about aAnchorFrame, fractional, so the frame under a cursor the
-    // panel owns pixel-exactly can be anchored pixel-exactly here too. Both drive
-    // this widget's own view transform and zoom ladder, which is what keeps a
-    // gesture made over the panel and one made over the timeline on the same frames.
+    // panel owns pixel-exactly can be anchored pixel-exactly here too. A held zoom
+    // carries its sub-pixel translation remainder between notches, so the frame
+    // under the pointer stays there over the WHOLE gesture, not only for one notch.
+    // Both drive this widget's own view transform and zoom ladder, which is what
+    // keeps a gesture made over the panel and one made over the timeline on the same
+    // frames.
     void scrollFramesBy(double aFrameDelta);
     void zoomFramesAbout(int aWheelDelta, double aAnchorFrame);
 
@@ -152,6 +155,11 @@ private:
     // A delegated pan's frame remainder, carried between scrollFramesBy calls so whole-content-pixel
     // rounding cannot make the view drift behind the pointer over a drag.
     double mPendingScrollFrames;
+    // A delegated zoom's sub-pixel remainder, carried between zoomFramesAbout calls for the same
+    // reason: the view transform is whole content pixels and the ladder makes each notch's
+    // fraction different, so discarding it per notch walks the anchored frame away over a held
+    // zoom (see ctrl::TimeLineEditor::zoomAnchorDelta).
+    double mPendingZoomPixels;
     bool mPendingScrollbarAdopt;
     // The window the last onViewRangeChanged emission reported, in FRACTIONAL frames (the same
     // values the signal's consumers get), so the signal fires on every change of it.

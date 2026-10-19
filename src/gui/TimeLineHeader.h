@@ -202,7 +202,9 @@ private:
     // The channels trigger: the mock's .tl-chans, hosted in the dock's header (the
     // panel's one control is a view action, so it sits with the view controls) and
     // shown only while the Graph tab is the dock's view. Its words are the panel's
-    // own count ("4 of 6"), read from the page's rows.
+    // own count ("4 of 6"), read from the page's rows. The trigger's BOX is fixed
+    // (the widest three-digit label) and its size policy retains it while hidden, so
+    // the header's minimum width - and with it the dock's - is the same on both tabs.
     QAbstractButton* mChannelsButton;
 #endif
     // The zoom group, with the icon each button carries: the glyphs are tinted per

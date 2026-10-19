@@ -285,9 +285,33 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     // THE CHANNELS TRIGGER: the panel's ONE control, in the dock's header (the mock's
     // .tl-chans - a view action, so it sits with the view controls and not in the
     // panel's own ruler band). Hidden while the Timeline tab is the dock's view, since
-    // there is no panel to control then (see onTabChanged).
+    // there is no panel to control then (see onTabChanged) - but its BOX stays in the
+    // layout. The dock is sized from this bar's minimum width, and the trigger is the
+    // one item whose visibility changes with the tab, so a hidden trigger used to take
+    // its box plus its group gap out of that minimum and move the dock (and the tree
+    // splitter) on every tab switch.
     mChannelsButton = new HeaderTextButton(this);
     mChannelsButton->setToolTip(tr("Which channels are drawn"));
+    // The box is FIXED, not the live label width: the trigger's words follow the
+    // panel's rows ("6 channels" / "4 of 6"), and a count change must not re-flow the
+    // bar any more than a tab change may. The width is the widest three-digit label,
+    // measured in the button's own 10px text (the same rule HeaderTextButton's
+    // sizeHint uses) plus its 6px side padding.
+    QFont channelsFont = mChannelsButton->font();
+    channelsFont.setPixelSize(kTextButtonSize);
+    const QFontMetrics channelsMetrics(channelsFont);
+    const int channelsWidth =
+        std::max(channelsMetrics.horizontalAdvance(tr("%n channel(s)", nullptr, 999)),
+                 channelsMetrics.horizontalAdvance(tr("%1 of %2").arg(999).arg(999)))
+        + 2 * kTextButtonPadX;
+    mChannelsButton->setFixedWidth(std::max(kButtonSize, channelsWidth));
+    // ...and the fixed box is reserved while the button is hidden: QWidgetItem::
+    // isEmpty() stays false for a hidden widget whose policy retains its size, so the
+    // box layout keeps the item's size hint (the fixed width and height) as its own -
+    // hiding the trigger now changes nothing in the row's minimum width.
+    QSizePolicy channelsPolicy = mChannelsButton->sizePolicy();
+    channelsPolicy.setRetainSizeWhenHidden(true);
+    mChannelsButton->setSizePolicy(channelsPolicy);
     mChannelsButton->setVisible(false);
     connect(mChannelsButton, &QAbstractButton::clicked, this, [this]() { this->onChannelsClicked(); });
     lay->addWidget(mChannelsButton, 0, Qt::AlignVCenter);

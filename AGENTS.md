@@ -1704,3 +1704,113 @@ pressed a tile at a coordinate derived from the tile order and read the commit o
 own state line (there is no 14-row menu left to count: 14 display-order entries now means 14 TILES).
 It is DELETED with the overlay host it drove (`aa92de2a`), and NO probe opens the picker at HEAD
 (`grep -r kTileOrder scripts/` returns 0), so that phase is a gate to RE-ADD rather than to re-run.
+
+## The graph panel as the timeline's second view: what the user's 17-item list changed (2026-10-19)
+
+One round took a user's list of "the graph has several shortcomings" and made the panel behave as a
+view of this application rather than an invention beside it. Every line below was measured; the
+mockup at `~/dev/graph-timeline-redesign/` is the design authority and its own code is silent about
+several items, which is recorded where it matters.
+
+**The ruler IS the timeline's, and that is now a compile-time fact.** The panel's frame axis used to
+be its own invention: no band, no hairline, 4px ticks pointing down, numbers only on Major ticks in
+`QString::number` format. It now draws a 22px band of the ruler surface with a 1px hairline, 5px ticks
+at the timeline's tier alphas, numbers in every tier carrying `showNumber`, formatted with
+`core::TimeFormat::frameToString` and the editor's own `timeFormatType()` (read from
+`generalsettings/ui/timeformat`, the timeline's key), on the 6px/char reserve, with the collision
+margin, the forced first/last labels, the merged "first–last" and the pill-column suppression.
+`GraphPanelModel` **static_asserts** its band height, number rows, tick length, pill padding and
+radius against `ctrl::TimeLineEditor`'s, so the two views cannot drift apart without a compile error.
+The playhead gained the timeline's pill (14px, radius 3, padding 5, accent fill, the formatted frame
+in the accent's text ink) and the line starts under it.
+
+**One selection highlight, and it is the key's own hue.** A selected key's fill is its channel hue
+mixed 0.45 toward `theme::Colors::text`; its ring is the same hue at 0.85, 1px, at `dotRadius + 2.6`
+- OUTSIDE the marker. The timeline's accent ring and the graph's white ring are both gone (the user
+was unhappy with both, and "the same highlight colour as the keyframe fill" is the rule). The graph's
+2.6px dark sleeve under that ring went with them: it existed to make a WHITE ring read, and a black
+band hugging the dot is what made a selected key look smaller - measured as the report "the key
+visually gets smaller when I select it". The marker's OWN 1px edge stroke stays on its radius, as the
+reference draws it; it is identical on every marker, selected or not.
+
+**The tangent pair is drawn by role, not by leftover grey.** Stored (Custom) handles are filled with
+the raised surface and stroked/stemmed in the channel hue (0.9/0.85); Auto's derived pair is a hollow
+ghost (hue at 0.7, radius r-1.5, stem 0.5). Dragging one control point now MIRRORS the other:
+`(1-x, 1-y)` in the segment's normalized space, with x read back from the clamped write, so the mirror
+can never leave [0,1] and y overshoot is not clamped. The fixture in `graph_drag.cpp` is AUTHORED as a
+mirror pair - which is why the old "the other handle stayed put" assertion passed while drags were
+asymmetric.
+
+**Three surfaces are gone: the hull, the drawn count, the drag readout.** The design draws none of
+them ("no gesture in the panel prints anything"), the user called them visual noise, and the tests
+that pinned them were deleted with them (`graph_drag` blocks 23c/23f, the model's [14] hull block and
+[15] readout passthrough, the pixel gate's `checkSelectionHull`/`checkDragReadout`). The count is not
+lost: `selectionCount` is published in the panel's accessibility node ("%1, %n key(s) selected"), so a
+screen reader still hears what the plot no longer prints.
+
+**The dock header carries what the design says it does.** The frame/total_frames readout is REMOVED
+(its two facts are the pill's number and the ruler's forced last label); the channels button moved out
+of the panel's ruler band into the header, shown while the Graph tab is current, and its popup is a
+hand-painted `gui::GraphChannelPopup` with the mockup's numbers (22px rows, 12x12 swatch at 10px, an
+8px swatch-to-name gap, names at 30px, group titles at the same 10px padding so they align with the
+SWATCH column) on the application's sunken body colour - the user ruled that better than the mockup's.
+The four quick easings (Linear/Floor/Round/Auto) sit beside the chip and act on the selection in one
+undoable step. The fit button now wears `arrows-out-line-horizontal`, because it fits the FRAME axis
+and the four-arrow cardinal glyph says "fit everything". And the easing vocabulary is ONE: the chip's
+private Hold/Step/Ease set is deleted in favour of `util::Easing::getTypeName`.
+
+**Two redraw gaps, both measured and both one line of cause.** A bare pointer move returned false from
+`GraphEditor::updateCursor`, so the widget's guarded `update()` never fired and a hover changed
+nothing; the widget now repaints when the hovered target's identity changes (and drops the lit marker
+when the pointer leaves). And `syncGraphPanelSharedState` pushed the new frame window to the panel's
+editor and then repainted only the VIEWPORT, so the header's zoom and fit buttons left the docked
+panel stale; it now refreshes the panel too.
+
+**The graph's key menu is the timeline's, and the multi-selection bug was in the PRESS.** Right-click
+used to open the easing PICKER (`showGraphKeyMenu -> showKeyEasingPicker`) at a point mapped with
+`MainDisplayWidget::mapFrom(this, ...)` between SIBLING widgets - a documented ancestor-only call,
+hence "at the wrong place". Both views now open one builder (`TimeLineEditorWidget::buildKeyMenu`;
+copy / paste / select spacing / delete, no easing - that is the header chip's job) at
+`mapToGlobal` of the key. "Only the key under the mouse drags" was NOT the move: a move already
+carried the whole selection. The PRESS collapsed it - a plain press on a covered marker re-selected
+that marker before the drag read the set - and block 23b passed only because its arming press was a
+SHIFT press. The press now leaves a covered selection alone; the marquee takes the design's 4px click
+slop and decides on its own travel, not the plot-clipped rectangle.
+
+**Trap: a button that appears per tab makes the DOCK grow, and then the WINDOW.** The channels button
+is shown only on the Graph tab; a hidden layout item's space collapses, so the header's minimum width
+changed and the dock measured 848px on the Timeline page against 920px on the Graph page - the window
+itself grew from 1168 to 1241px, and then to 1247px once the button's own text read "10 channel(s)".
+Fixed with `QSizePolicy::retainSizeWhenHidden(true)` and a pinned width: the hidden control keeps its
+box (Qt counts its spacing and minimum), so switching tabs moves nothing. Any NEW tab-scoped header
+control must do the same or the dock jumps.
+
+**Trap: an anchored zoom that rounds twice drifts.** One wheel notch or header zoom kept the frame
+under the cursor, but TWENTY did not: `TimeLineWidget::zoomFramesAbout` rounded its anchor to the
+integer content axis and the scaled pixel was rounded again, ~0.5 timeline px lost per notch and
+amplified on the narrower panel plot - measured 6px at 7.0000 px/frame = 0.857 frame, against the
+design's half-frame invariant. The delegate path now computes ONE exact translation from the
+fractional anchor (`delta = frame * (oldRate - newRate)`) and CARRIES its sub-pixel part in
+`mPendingZoomPixels`, the discipline `scrollFramesBy` already uses for pans. Simulated: old pair 0.655
+frame, exact-anchor-without-carry still 0.561, exact + carried remainder 0.021. `tests/time_scaler.cpp`
+drives 20 real notches, asserts the drift and asserts the OLD arithmetic DOES drift - a discriminating
+gate, not a tautology.
+
+**The dangling-project class: a driver dies with its project, and the widget still holds it.** Opening
+a project from the command line segfaulted on every run (`rc=139`): `TargetWidget::setProject(nullptr)`
+-> the header's `refreshFrame()` -> `GraphPanelWidget::channelRows()` -> `buildGraphPanelModel` ->
+`GraphEditor::isLooping()` on a FREED project (`this=0x5be9`). `isLooping()` is null-guarded, so a null
+check would not have helped: the pointer was dangling, not null. `setProject` now drops the panel's
+driver FIRST when the project is cleared, and the comment that had warned about exactly this ("the
+previous project's driver is already destroyed ... a refresh here would read a dead editor") finally
+covers the header's own read. Any new question from the header to the panel belongs AFTER that drop.
+
+**Probe traps this round cost four runs each.** (a) `probe_timeline_ink.sh` had been scoring 0/0 for
+weeks: an apostrophe in a comment inside its single-quoted `bash -c` body (`this suite's own`) ended
+the body 300 lines early, so every later `say` ran in the OUTER shell - the documented trap, now
+caught by counting apostrophes over the body, and the probe scores 31/31. (b) The anchor probe's
+colour-column finder was never fooled by the new 14px pill (the 1px line's column holds 246 rows
+against the pill's 14), but it now scans below the 22px band BY CONSTRUCTION. (c) The dock rectangle is
+NOT constant across tabs (see the growth trap), so a probe must re-read it per state and mask with the
+rect of the state it captured. (d) A pan of 40px near the content's end is CLAMPED by
+`updateCamera`'s overlap bound - the probe asserts `min(drag, room)`, not the drag.

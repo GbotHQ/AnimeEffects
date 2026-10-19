@@ -14,11 +14,15 @@
 //     one zoom level (the cost of not doing it at all is millions of iterations per repaint at a
 //     deep zoom-out, which is why the stride exists);
 //   * the pixel geometry (pixelWidth/frame) still ROUND-TRIPS at a fractional rate, which is what
-//     the content axis is expressed in.
+//     the content axis is expressed in;
+//   * a HELD anchored zoom (the delegated panel's notches) keeps the anchored frame within half a
+//     frame - not just one notch - because the view transform is whole content pixels and its
+//     sub-pixel translation remainder is carried between notches.
 #include <cstdio>
 #include <cmath>
 
 #include "ctrl/time/time_Scaler.h"
+#include "ctrl/TimeLineEditor.h"
 
 namespace {
 
@@ -203,8 +207,94 @@ int main() {
                     scale.pixelsPerFrame(), slack, scale.pixelWidth(37), scale.frame(scale.pixelWidth(37)));
     }
 
+    // --- a HELD anchored zoom keeps the anchored frame, not only one notch ---
+    // The panel hands the timeline the frame under its cursor FRACTIONALLY (frameAtPixel,
+    // never frameAt), and the timeline's view transform is whole content pixels. Each notch
+    // therefore leaves a sub-pixel remainder, and the zoom ladder makes that remainder
+    // different every notch, so rounding each one away does not cancel. What is driven here
+    // is the production arithmetic - TimeLineEditor::zoomAnchorDelta over the real ladder -
+    // with the panel's own way of re-reading the anchor: the frame at a FIXED cursor column
+    // of the pushed window, which is exactly what GraphEditor::updateWheel captures next.
+    {
+        constexpr int kNotches = 20;
+        const double startFrame = 20.5; // fractional: a drawn column is not the exact frame
+        const int margin = ctrl::TimeLineEditor::kTimeLineMargin;
+
+        ctrl::time::Scaler scale;
+        scale.setFps(24);
+        scale.setFrameEnd(600);
+        scale.setIndex(1); // the timeline's own seed rate
+        const double startSpacing = scale.pixelsPerFrame();
+        const double cursorX = margin + startSpacing * startFrame; // the fixed screen column
+        int offset = 0;        // the timeline's integer view transform (content px)
+        double remainder = 0.0; // carried between notches, as the widget does
+        double frame = startFrame;
+        for (int i = 0; i < kNotches; ++i) {
+            const double oldSpacing = scale.pixelsPerFrame();
+            scale.update(-120); // notch IN: x1.1 per step
+            offset += ctrl::TimeLineEditor::zoomAnchorDelta(frame, oldSpacing, scale.pixelsPerFrame(), remainder);
+            // The window the panel maps is (visibleFrameWindow): a content pixel is
+            // frame (x - margin) / rate, re-anchored from the fixed cursor column.
+            frame = (cursorX - offset - margin) / scale.pixelsPerFrame();
+        }
+        const double drift = std::fabs(frame - startFrame);
+        const double spacing = scale.pixelsPerFrame();
+        check(drift < 0.5, "20 anchored notches hold the anchored frame within half a frame");
+        check(spacing > startSpacing * 3.0, "and the notches really climbed the zoom");
+
+        // The arithmetic this replaces, kept as the baseline the assertion discriminates
+        // against: round the anchor's content pixel, then round the scaled one (the pair in
+        // TimeLineWidget::zoomFramesAbout / TimeLineEditor::anchorPixelAfterScale). It must
+        // FAIL the same half-frame bar on this scenario, or the check above proves nothing.
+        ctrl::time::Scaler roundedScale;
+        roundedScale.setFps(24);
+        roundedScale.setFrameEnd(600);
+        roundedScale.setIndex(1);
+        int roundedOffset = 0;
+        double roundedFrame = startFrame;
+        for (int i = 0; i < kNotches; ++i) {
+            const double oldSpacing = roundedScale.pixelsPerFrame();
+            roundedScale.update(-120);
+            const double newSpacing = roundedScale.pixelsPerFrame();
+            // frameStartPixel() for the [0, 600] range is margin + round(rate * 0) = margin;
+            // the anchor itself stays fractional until this rounding.
+            const int anchorX = static_cast<int>(std::lround(margin + oldSpacing * roundedFrame));
+            const double scaled = (static_cast<double>(anchorX) - margin) * newSpacing / oldSpacing;
+            const int pixelAfter = margin + static_cast<int>(scaled >= 0.0 ? scaled + 0.5 : scaled - 0.5);
+            roundedOffset += anchorX - pixelAfter;
+            roundedFrame = (cursorX - roundedOffset - margin) / newSpacing;
+        }
+        const double roundedDrift = std::fabs(roundedFrame - startFrame);
+        check(roundedDrift > 0.5, "the rounding pair it replaces does not meet that bar on the same scenario");
+
+        // ONE notch is unchanged where it was already measured exact: the probe's own
+        // anchor (frame 20 at 1.1 px/frame, margin 24) translates by -2.2 px, which
+        // rounds to the -2 px the rounded pair also applied, and the -0.2 px is carried.
+        {
+            ctrl::time::Scaler one;
+            one.setIndex(1);
+            const double oldSpacing = one.pixelsPerFrame();
+            one.update(-120);
+            const double newSpacing = one.pixelsPerFrame();
+            double oneRemainder = 0.0;
+            const int exactDelta = ctrl::TimeLineEditor::zoomAnchorDelta(20.0, oldSpacing, newSpacing, oneRemainder);
+            const int anchorX = static_cast<int>(std::lround(margin + oldSpacing * 20.0));
+            const int roundedDelta =
+                anchorX - (margin + static_cast<int>(std::lround((anchorX - margin) * newSpacing / oldSpacing)));
+            check(exactDelta == roundedDelta, "one notch applies the same pixel the rounding pair did");
+            check(std::fabs(oneRemainder) > 1e-9, "and only the sub-pixel part is carried");
+        }
+
+        std::printf("[L] anchored zoom: %d notches x1.1 -> %.4f px/frame, anchored frame %.3f -> %.3f "
+                    "(rounded pair: %.3f frame off; carried remainder: %.4f frame)\n",
+                    kNotches, spacing, startFrame, frame, roundedDrift, drift);
+    }
+
     if (failures == 0)
-        std::printf("time_scaler: the frame ladder has no wall either way, its inverse and its tick stride agree\n");
+        std::printf(
+            "time_scaler: the frame ladder has no wall either way, its inverse and its tick stride "
+            "agree, and a held anchored zoom stays anchored\n"
+        );
     else
         std::printf("time_scaler: %d FAILED\n", failures);
     return failures == 0 ? 0 : 1;

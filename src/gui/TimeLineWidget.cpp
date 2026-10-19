@@ -110,6 +110,7 @@ TimeLineWidget::TimeLineWidget(
     mVerticalScrollValue(0),
     mHorizontalOffset(0),
     mPendingScrollFrames(0.0),
+    mPendingZoomPixels(0.0),
     mPendingScrollbarAdopt(false),
     mReportedWindowLo(0.0),
     mReportedWindowHi(0.0),
@@ -837,29 +838,30 @@ void TimeLineWidget::zoomFramesAbout(int aWheelDelta, double aAnchorFrame) {
     if (!controller)
         return;
 
-    // The frame the panel's cursor is over, as THIS widget's content pixel: the frame
-    // range's first frame sits at frameStartPixel() (margin + its scale position), and
-    // every later frame is one pixels-per-frame step further. Kept in doubles and
-    // rounded once: a whole-frame anchor would move the anchored point by up to half a
-    // frame, which the panel (whose own mapping is exact) would show as a jump.
-    const double anchorX =
-        mInner->frameStartPixel()
-        + (aAnchorFrame - static_cast<double>(controller->frameRange().min())) * controller->pixelsPerFrame();
-
-    // The editor's own zoom, anchored exactly as this widget's own wheelEvent anchors
-    // it: the content point under the anchor stays under it. The invert flag is false
-    // because aWheelDelta arrives in the CALLER's sense (the panel applied its own user
-    // setting to the notch, and to its value half beside it) - this widget's setting
-    // belongs to its own wheel, and applying it here would invert the caller's notch
-    // twice.
+    // The editor's own zoom. The invert flag is false because aWheelDelta arrives in
+    // the CALLER's sense (the panel applied its own user setting to the notch, and to
+    // its value half beside it) - this widget's setting belongs to its own wheel, and
+    // applying it here would invert the caller's notch twice.
     const double oldSpacing = controller->pixelsPerFrame();
     if (!controller->updateWheel(aWheelDelta, false))
-        return;
+        return; // clamped: the scale did not move, so the view has nothing to re-anchor
 
-    const int roundedAnchorX = static_cast<int>(std::lround(anchorX));
-    const int pixelAfter = controller->anchorPixelAfterScale(roundedAnchorX, oldSpacing);
+    // aAnchorFrame is the frame under the caller's cursor, FRACTIONAL (the panel
+    // derives it with frameAtPixel, never frameAt), so the anchored point is known
+    // exactly. Go straight from it to the view translation: the content position is
+    // margin + rate*frame, and the margin cancels. Do NOT re-derive the anchor through
+    // frameStartPixel()/the integer content axis and round it - that (plus rounding the
+    // scaled pixel) is the pair that lost a fraction per notch and walked the anchored
+    // frame 0.86 of a frame over 20 notches at 7 px/frame.
+    const int delta = ctrl::TimeLineEditor::zoomAnchorDelta(
+        aAnchorFrame, oldSpacing, controller->pixelsPerFrame(), mPendingZoomPixels
+    );
+
+    // Applied even when delta is 0: the SCALE changed, so the visible frame window did
+    // too, and setViewTransform is what reports it (projectHorizontalScrollBar ->
+    // notifyViewRange). Returning early would leave the panel on the old window.
     QPoint viewTrans = viewportTransform();
-    viewTrans.setX(roundedAnchorX + viewTrans.x() - pixelAfter);
+    viewTrans.setX(viewTrans.x() + delta);
     setViewTransform(viewTrans);
 }
 

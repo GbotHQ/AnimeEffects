@@ -4,6 +4,7 @@
 #include <QRect>
 #include <QVector>
 #include <QScopedPointer>
+#include <cmath>
 #include "gui/obj/obj_Item.h"
 #include "util/Range.h"
 #include "util/LinkPointer.h"
@@ -21,6 +22,8 @@
 #include "ctrl/time/time_Marquee.h"
 #include "ctrl/time/time_Selection.h"
 #include "gui/theme/TimeLine.h"
+
+class QPainter;
 
 namespace ctrl {
 
@@ -139,6 +142,33 @@ public:
     // New-scale position of the content point under the mouse, computed
     // pixel-exact from the old scale (see implementation for why).
     int anchorPixelAfterScale(int aContentPixel, double aOldSpacing) const;
+    // The VIEW translation (content px == screen px) of ONE anchored zoom notch,
+    // and the sub-pixel part of it that the whole-pixel view transform cannot
+    // apply yet. aAnchorFrame is the frame under the caller's cursor, FRACTIONAL
+    // (the panel derives it with frameAtPixel, never frameAt); aOldSpacing and
+    // aNewSpacing are the scale's rate either side of the notch.
+    //
+    // The anchored point's content x is kTimeLineMargin + spacing*frame, so the
+    // view moves by frame*(oldSpacing - newSpacing): the margin cancels and
+    // nothing rounds except the final integer view write. That is the whole
+    // point. The pair this replaces - round the anchor's content pixel, then
+    // round the scaled one - loses up to ~1 px per notch AND the zoom ladder
+    // makes the loss different every notch, so it does not cancel: measured
+    // 0.86 of a frame over 20 notches at 7 px/frame on the docked panel.
+    //
+    // aRemainder must be owned by the caller across notches (the same discipline
+    // as TimeLineWidget::scrollFramesBy's pan remainder) and start at 0.0. It
+    // keeps the applied total within HALF A PIXEL of the exact total instead of
+    // dropping a fraction per notch; drag/no-zoom calls that translate nothing
+    // leave it untouched.
+    static int zoomAnchorDelta(
+        double aAnchorFrame, double aOldSpacing, double aNewSpacing, double& aRemainder
+    ) {
+        aRemainder += aAnchorFrame * (aOldSpacing - aNewSpacing);
+        const int delta = static_cast<int>(std::lround(aRemainder));
+        aRemainder -= static_cast<double>(delta);
+        return delta;
+    }
     // Context-menu key targeting. selectKeysAt() resolves the key under
     // aPos into aEvent. A click on an already-selected key operates on the
     // whole selection; right-clicking an UNSELECTED key clears the current
