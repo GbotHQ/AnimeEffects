@@ -49,10 +49,14 @@ class MainDisplayWidget;
 // widgets beside it do not show through it. The colour is the theme's panel/dock floor
 // (theme::Colors::base, the reference's own _floor: cssVar('--base')), read per frame
 // so a theme change needs no signal. NOTHING ELSE is drawn: no title (the tab names
-// the page), no header row of its own (the panel's one control sits in its ruler band,
-// which the model lays out for GraphPanelHost::Dock) and no scrim (an opaque floor has
-// nothing to sit on, so the contrast-outline composite gui::outline offers - the pass the
-// removed overlay host ran - is NOT run here).
+// the page), no control of its own - the panel's ONE control (the channel list) is a
+// VIEW action and the design puts it in the DOCK HEADER, beside the zoom group, so
+// this page draws no button and HIT-TESTS none: the model still lays one out for
+// GraphPanelHost::Dock (GraphPanelModel is not this host's to change), and the host
+// drops it from the frame it publishes, which is what keeps the pointer's hits and the
+// accessibility tree free of a control that is no longer drawn here. And no scrim (an
+// opaque floor has nothing to sit on, so the contrast-outline composite gui::outline
+// offers - the pass the removed overlay host ran - is NOT run here).
 //
 // ONE FRAME AXIS, ONE CURRENT FRAME, TWO VIEWS. The editor this host draws from is the
 // ONE ctrl::GraphEditor the driver owns, and it already carries the timeline's shared
@@ -73,9 +77,11 @@ class MainDisplayWidget;
 // graphEditor() - and not through the viewport at all: ctrl::Driver no longer routes a
 // panel event (the viewport's cursor, wheel and keys are the tools' alone), and the
 // editor has no shown/hidden flag left to gate on, because THIS PAGE is the panel
-// whenever its tab is current. The two controls the panel opens (the channel list and the
-// timeline's easing picker) are the application's own QMenus, which live in
-// gui::MainDisplayWidget - see appDisplay() below.
+// whenever its tab is current. The two controls the panel's views open - the channel
+// list (now the dock header's button, which hands this page's rows to
+// gui::MainDisplayWidget) and the timeline's easing picker - are opened from
+// gui::MainDisplayWidget, which is the object that has the timeline and the menus; see
+// appDisplay() below.
 //
 // THE PANEL'S TWO KEYS. Ctrl+A selects every marker of the shown channels and Escape
 // clears the selection - ctrl::GraphEditor::selectAllMarkers / clearSelection, the
@@ -141,10 +147,22 @@ public:
     // coalesces them into one paint, and a request for a hidden page is dropped.
     void refresh();
 
+    // THE CHANNEL LIST'S ROWS, for the dock header's channels control: the panel's OWN
+    // model rows (gui::PanelChannelRow - layer, legend group, name, hue, visibility and
+    // the sticky focus), built on demand from the live editor so the list and the
+    // curves cannot disagree about a channel's name, its colour or its state. Empty
+    // before a project (no editor, so no channels). The header is the list's host now
+    // - the design puts the panel's one control with the dock's view controls - and
+    // this is the one thing it needs from the page.
+    QVector<PanelChannelRow> channelRows() const;
+
 protected:
     void initializeGL() override;
     void paintGL() override;
     void hideEvent(QHideEvent* aEvent) override;
+    // The pointer left the page: the hover it was drawing goes with it (see
+    // updateHoverRepaint).
+    void leaveEvent(QEvent* aEvent) override;
     void mouseMoveEvent(QMouseEvent* aEvent) override;
     void mousePressEvent(QMouseEvent* aEvent) override;
     void mouseReleaseEvent(QMouseEvent* aEvent) override;
@@ -189,21 +207,20 @@ private:
     // taken the keyboard) are stated at the definition.
     bool panelKeyAction(const QKeyEvent& aEvent);
 
-    // The panel's ONE control (the "N channels" button the model lays out in the ruler
-    // band) under aPos, in this widget's logical pixels: opens the application's channel
-    // list. An empty box (no room for it) is not a control. Returns true when the press
-    // was the button's.
-    bool pressChannelButton(const QPoint& aPos);
-    // A double-click on the plot: fits both axes (the panel's own gesture), unless it
-    // landed on the panel's one control. Returns true when it acted.
+    // A double-click on the plot: fits both axes (the panel's own gesture). Returns
+    // true when it acted.
     bool doubleClickAt(const QPoint& aPos);
     // The key under aPos by the EDITOR's own distance rule: selects it and opens the
     // application's easing picker for the selection. Returns true when a key was hit.
     bool openKeyMenuAt(const QPoint& aPos);
-    // The application's channel list for the model's rows, at aPos in this widget's
-    // pixels.
-    void openChannelMenuAt(const QPoint& aPos);
-    // The viewport widget the application's QMenus live in (see the class comment):
+    // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
+    // under the pointer CHANGES, and none for a move that keeps the same target. The
+    // two things the panel draws from the pointer's position alone are the marker the
+    // pointer lights (gui::panelKeyAt) and the tangent handle it highlights (the
+    // nearest stored handle within ctrl::graph::kHandleHitRadius), so those two are
+    // what this compares.
+    void updateHoverRepaint();
+    // The viewport widget the application's menus live in (see the class comment):
     // MainDisplayWidget owns the channel list and the timeline's easing picker and is
     // the object that can map a panel position to a screen position. Asked for through
     // the window rather than held, because the panel's host interface carries no
@@ -212,7 +229,7 @@ private:
 
     // Runs the action an accessible item advertises, i.e. the one the pointer performs
     // on the same control. The thunk gui::publishPanelAccessibility is handed
-    // (kPanelFitItemId, kPanelKeyMenuItemId, kPanelChannelsItemId).
+    // (kPanelFitItemId, kPanelKeyMenuItemId).
     void onAccessibilityAction(int aId);
     static void accessibilityAction(void* aUser, int aId);
 
@@ -246,6 +263,30 @@ private:
     // position can lag the pointer (see runPanelFrame - the measured readout defect).
     // Starts outside the panel so no hover is painted before the pointer arrives.
     QPoint mPointer;
+
+    // THE HOVERED TARGET, in the panel's own two pointer-driven marks: the key under
+    // the pointer and the tangent handle nearest it. It is a VALUE, so the hover repaint
+    // rule is one compare - "did the target change?" - rather than a repaint per move
+    // (see updateHoverRepaint).
+    struct HoverTarget {
+        // The key under the pointer (gui::panelKeyAt), false when none is that close.
+        bool key = false;
+        core::ObjectNode* keyNode = nullptr;
+        ctrl::graph::Channel keyChannel;
+        int keyFrame = 0;
+        // The nearest drawn handle, as (curve index into the model, handle index), -1
+        // when none is within ctrl::graph::kHandleHitRadius.
+        int handleCurve = -1;
+        int handle = -1;
+
+        bool operator==(const HoverTarget& aRhs) const {
+            if (key != aRhs.key || handleCurve != aRhs.handleCurve || handle != aRhs.handle)
+                return false;
+            return !key || (keyNode == aRhs.keyNode && keyChannel == aRhs.keyChannel && keyFrame == aRhs.keyFrame);
+        }
+        bool operator!=(const HoverTarget& aRhs) const { return !(*this == aRhs); }
+    };
+    HoverTarget mHover;
     bool mReady;
 };
 

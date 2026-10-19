@@ -6,9 +6,15 @@
 #include <QScopedPointer>
 #include <vector>
 #include "util/SlotId.h"
+#include "util/Easing.h"
+#ifdef AE_ENABLE_IMGUI
+// The channel rows the Header's channels button lists (gui::PanelChannelRow): the
+// header hands them to gui::MainDisplayWidget, which owns the popup.
+#include "gui/GraphPanelModel.h"
+#endif
 
+class QAbstractButton;
 class QHBoxLayout;
-class QLabel;
 #ifdef AE_ENABLE_IMGUI
 class QTabBar;
 #endif
@@ -24,6 +30,9 @@ class IconButton;
 class PlayBackWidget;
 class TimeLineWidget;
 class TimeLineEditorWidget;
+#ifdef AE_ENABLE_IMGUI
+class GraphPanelWidget;
+#endif
 
 namespace prop {
 class EasingItem;
@@ -33,28 +42,30 @@ class EasingItem;
 // surface, replacing the fixed-width PlayBackWidget column that used to sit
 // beside the lanes. Left to right it holds
 //
-//   tabs | transport | frame readout | easing chip | stretch | zoom
+//   tabs | transport | chip | quick easings | stretch | channels | zoom
 //
-// with a 1x16 rule after the tabs, between the readout and the chip, and another
-// before the zoom group (the mock's .tl-hairline). The TABS are the dock's two
-// views (design section 5, "one dock, two tabs"): Timeline is the lanes' surface
-// (this bar's own surface) and Graph is the animation graph panel drawn on the
-// same dock floor, with the object tree still beside it - the bar keeps ONE
-// transport, ONE frame readout, ONE chip and ONE zoom group for both, and the tab
-// is what says which view the dock's body - and the panel's own ruler band - is
-// showing. In a build without the graph panel (AE_ENABLE_IMGUI off) the strip and
-// its rule above do not exist at all: the bar keeps the transport, the frame
-// readout, the chip and the zoom group, with no tabs and no graph view. The
-// transport is the existing eight-button PlayBackWidget group, moved
-// out of its column and laid out horizontally; the frame readout names the frame a
-// key will land on and the range the playhead is clamped to; the easing chip is the
-// picker's only home (design section 2) and names the timeline's key selection; and
-// the zoom group drives the timeline's own scale ladder (ctrl::time::Scaler) - in
-// for one rung, out for one rung, and fit for the whole frame range.
+// with a 1x16 rule after the tabs, after the transport and before the zoom group (the
+// mock's .tl-hairline). The TABS are the dock's two views (design section 5, "one
+// dock, two tabs"): Timeline is the lanes' surface (this bar's own surface) and Graph
+// is the animation graph panel drawn on the same dock floor, with the object tree
+// still beside it - the bar keeps ONE transport, ONE chip and ONE zoom group for both,
+// and the tab is what says which view the dock's body is showing. In a build without
+// the graph panel (AE_ENABLE_IMGUI off) the strip, the channels button and their rules
+// do not exist at all: the bar keeps the transport, the chip, the quick easings and the
+// zoom group. The transport is the existing eight-button PlayBackWidget group, moved
+// out of its column and laid out horizontally; the easing chip is the picker's only
+// home (design section 2) and names the timeline's key selection; the four QUICK
+// EASINGS beside it apply one easing TYPE to that same selection in one click (a
+// shortcut for the picker's four common tiles, disabled while nothing is selected and
+// lit on the one the selection agrees on); the CHANNELS button (Graph tab only) opens
+// the panel's channel list, which the design keeps out of the panel's own chrome
+// because it is a view action - the same reason the zoom group is here; and the zoom
+// group drives the timeline's own scale ladder (ctrl::time::Scaler) - in for one rung,
+// out for one rung, and fit for the whole frame range.
 //
-// The header does NOT carry the panel's own control (the "N channels" button): the
-// design puts the DOCKED panel's one control in the panel's ruler band, so the
-// panel draws it there (gui::GraphPanelModel's CHANNELS BUTTON, the Dock host).
+// The frame readout that used to sit between the transport and the chip is GONE: the
+// current frame is in the playhead pill and the end frame is in the ruler, so a third
+// copy in the bar said nothing the surface did not already say.
 //
 // The header's own section separator - the 1px hairline on its bottom edge - is
 // painted, not styled: QSS box rules do not render on plain widget surfaces.
@@ -76,20 +87,22 @@ public:
     TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransport, QWidget* aParent = nullptr);
     ~TimeLineHeader() override;
 
-    // The timeline the zoom group drives, the frame readout follows and the easing
+    // The timeline the zoom group drives, the quick easings apply to and the easing
     // chip names the selection of. Null (or a timeline with no project behind it)
-    // leaves the readout at zero, the zoom buttons inert and the chip disabled
+    // leaves the zoom buttons inert, the quick easings disabled and the chip disabled
     // rather than acting on a stale surface.
     void setTimeLineWidget(TimeLineWidget* aTimeLine);
 
-    // The 196px area between the frame readout and the zoom group, which the
-    // easing chip fills. Fixed on purpose: the chip's content changes with the key
-    // selection, and a control that resizes would re-flow the bar beside it.
+    // The 196px area between the hairline and the quick easings, which the easing chip
+    // fills. Fixed on purpose: the chip's content changes with the key selection, and a
+    // control that resizes would re-flow the bar beside it.
     QWidget* easingChipSlot() const { return mEaseSlot; }
 
-    // Re-reads the frame readout from the timeline. Public because a frame range
-    // edited outside the timeline - the animation-settings popup - arrives through
-    // neither of the timeline signals this widget follows.
+    // RE-READS THE BAR'S TIMELINE-DERIVED STATE: the quick easings' availability and
+    // which of them is active, plus (in a build with the panel) the channels button's
+    // own words. Public because a state the bar shows arrives through neither of the
+    // signals it follows - the dock calls it when the project changed and when the
+    // animation-settings popup edits the frame range.
     void refreshFrame();
 
 signals:
@@ -125,9 +138,32 @@ private:
     // the chip (the chip's state is pushed to it by the surface, see
     // TimeLineEditorWidget::setEasingItemHost).
     void onEasingChipClicked();
+    // The four quick easings, in the bar's own vocabulary: one click writes that
+    // easing TYPE to every key the timeline's live selection names. The write goes
+    // through the application's own selection-easing action (see the definition).
+    void onQuickEasingClicked(util::Easing::Type aType);
+    void refreshQuickEasings();
+    // Attaches the state the quick easings read: the one picker lives in the timeline's
+    // surface, so the host is bound (setEasingItemHost) and the picker's own commit is
+    // composed with this bar's re-read - the one easing write that does NOT move the
+    // selection.
+    void bindEasingHost();
 #ifdef AE_ENABLE_IMGUI
     // QTabBar::currentChanged, in the header's own currency.
     void onTabChanged(int aIndex);
+    // The channels button: it opens the panel's channel list (gui::GraphChannelPopup,
+    // through gui::MainDisplayWidget) for the row list the dock's Graph page publishes,
+    // anchored under the button itself.
+    void onChannelsClicked();
+    // The button's own words and availability, from the rows it would open: the
+    // model's own rule (the total while everything is shown, "shown of total" once a
+    // channel is hidden), disabled while there is no row at all (a control that would
+    // open an empty list).
+    void updateChannelsButton(const QVector<PanelChannelRow>& aRows);
+    // The dock's Graph page, when the window has one (the header carries no reference
+    // to the dock's body, so the page is asked for through the window - the same route
+    // gui::GraphPanelWidget uses for the application's menus).
+    GraphPanelWidget* graphPanelWidget() const;
 #endif
     void onThemeUpdated(theme::Theme& aTheme);
 
@@ -146,15 +182,29 @@ private:
     // and the chip's state both live there, and the timeline itself hands out its
     // editor, not its surface.
     TimeLineEditorWidget* mInner;
-    // The timeline's frame reports, so the readout follows the playhead (and the
-    // ruler's own range gestures, which report through the same signal).
-    util::SlotId mFrameConnection;
-    QLabel* mFrameText;
-    QLabel* mFrameEndText;
+    // The live key selection's own change notification (ctrl::time::Selection::
+    // onChanged, off the timeline's editor), which is what re-reads the quick easings
+    // whichever view moved the selection - the same source the chip is pushed from.
+    util::SlotId mSelectionSlot;
     QWidget* mEaseSlot;
     // The easing control: the chip in the slot above and the single picker
     // popover it opens (see prop::EasingItem).
     QScopedPointer<prop::EasingItem> mEasing;
+    // The four quick easings beside the chip: (button, the easing TYPE it writes).
+    // Text buttons in the bar's own vocabulary (see the class comment), lit while the
+    // selection agrees on that type and disabled while nothing is selected.
+    struct QuickEase {
+        QAbstractButton* button;
+        util::Easing::Type type;
+    };
+    std::vector<QuickEase> mQuickEases;
+#ifdef AE_ENABLE_IMGUI
+    // The channels trigger: the mock's .tl-chans, hosted in the dock's header (the
+    // panel's one control is a view action, so it sits with the view controls) and
+    // shown only while the Graph tab is the dock's view. Its words are the panel's
+    // own count ("4 of 6"), read from the page's rows.
+    QAbstractButton* mChannelsButton;
+#endif
     // The zoom group, with the icon each button carries: the glyphs are tinted per
     // theme at runtime, so every one of them is re-read on a theme change (the same
     // reason PlayBackWidget re-sets the transport's). gui::IconButton is the

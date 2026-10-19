@@ -1,0 +1,421 @@
+#include "gui/GraphChannelPopup.h"
+
+#include <QFont>
+#include <QFontMetrics>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QScreen>
+#include <algorithm>
+
+#include "gui/theme/Colors.h"
+
+namespace {
+
+// THE DESIGN'S OWN NUMBERS for the list (mock.css: .gp-chanpop / .gp-chlayer /
+// .gp-chrow / .gp-chrow .gw / .gp-chname), in the app's tokens:
+//
+//   .gp-chanpop { padding: 6px 0; border-radius: 6px; min-width: 150px;
+//                 box-shadow: 0 10px 24px rgba(0,0,0,.5) }
+//   .gp-chlayer { font-size: 10px; color: var(--text-muted); padding: 4px 10px 2px }
+//   .gp-chrow   { height: 22px; gap: 8px; padding: 0 10px }
+//   .gp-chrow .gw { width: 12px; height: 12px; border-radius: 3px }
+//   .gp-chname  { font-size: 11px; color: var(--text) }
+//
+// The row's padding (10px) and the heading's padding (10px) are the SAME number on
+// purpose: the title lines up with the SWATCH column, not with the names.
+const int kBodyPadY = 6;      // .gp-chanpop's 6px 0
+const int kRowHeight = 22;    // .gp-chrow
+const int kRowPadX = 10;      // .gp-chrow / .gp-chlayer, one number for both
+const int kSwatchSide = 12;   // .gp-chrow .gw
+const int kSwatchRadius = 3;
+const int kSwatchGap = 8;     // .gp-chrow's gap
+const int kBodyRadius = 6;    // .gp-chanpop's border-radius
+const int kMinWidth = 150;    // .gp-chanpop's min-width
+const int kHeadingPadTop = 4; // .gp-chlayer's "4px 10px 2px"
+const int kHeadingPadBottom = 2;
+const int kHeadingGap = 4;    // the air above a FOLLOWING (layer, group) heading
+const int kRowFontSize = 11;  // .gp-chname
+const int kHeadingFontSize = 10;
+// The shadow's own margin inside this widget (the body does not fill the window):
+// .gp-chanpop's 0 10px 24px, approximated by a few rounded layers because a
+// QGraphicsDropShadowEffect on a translucent top-level popup costs a render target
+// for one 150x300 box.
+const int kShadow = 8;
+const int kShadowOffsetY = 4;
+const int kShadowLayers = 6;
+
+} // namespace
+
+namespace gui {
+
+GraphChannelPopup::GraphChannelPopup(QWidget* aParent):
+    QWidget(aParent),
+    mRows(),
+    mEntries(),
+    mHover(-1),
+    mCurrent(-1),
+    mBody() {
+    // A POPUP, not a menu: Qt holds the mouse and the keyboard while it is up and a
+    // click outside closes it, which is the behaviour the QMenu had and the behaviour
+    // the row list wants. The translucent backing is what lets the rounded body and
+    // its shadow composite over the dock underneath (the same flags the easing picker
+    // uses, see prop::EasingItem).
+    this->setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+    this->setAttribute(Qt::WA_TranslucentBackground, true);
+    // THE BODY IS PAINTED HERE, so nothing else may fill the window: the application's
+    // window stylesheet has a generic QWidget background rule, and a styled background
+    // drawn behind this list would square off the rounded corners. An own, transparent
+    // rule beats the inherited one, and the system background is off as well (the same
+    // reason prop::EasingPickWidget leaves WA_StyledBackground alone).
+    this->setObjectName(QStringLiteral("graphChannelPopup"));
+    this->setStyleSheet(QStringLiteral("#graphChannelPopup { background: transparent; border: none; }"));
+    this->setAttribute(Qt::WA_NoSystemBackground, true);
+    this->setAutoFillBackground(false);
+    // The keyboard is the list's while it is up: the rows are not child widgets (the
+    // whole list is painted here), so the popup itself is the focus object and the
+    // arrow keys/Return below are how a keyboard user reaches every row.
+    this->setFocusPolicy(Qt::StrongFocus);
+    this->setMouseTracking(true);
+    this->setAccessibleName(tr("Channels"));
+}
+
+GraphChannelPopup::~GraphChannelPopup() = default;
+
+void GraphChannelPopup::setRows(const QVector<PanelChannelRow>& aRows) {
+    mRows = aRows;
+    mHover = -1;
+    mCurrent = mRows.isEmpty() ? -1 : 0;
+    // The layout is the OPEN's (openAt calls rebuildLayout): a hidden list has no size
+    // to build, and every open hands the rows it will list.
+}
+
+void GraphChannelPopup::rebuildLayout() {
+    QFont rowFont = this->font();
+    rowFont.setPixelSize(kRowFontSize);
+    QFont headingFont = this->font();
+    headingFont.setPixelSize(kHeadingFontSize);
+    const QFontMetrics rowMetrics(rowFont);
+    const QFontMetrics headingMetrics(headingFont);
+
+    mEntries.clear();
+    int width = kMinWidth;
+    int contentHeight = 0;
+    QString heading; // the (layer, group) text drawn last
+    for (int i = 0; i < mRows.size(); ++i) {
+        const PanelChannelRow& row = mRows.at(i);
+        const QString rowHeading =
+            row.group.isEmpty() ? row.layer : row.layer + QStringLiteral(" · ") + row.group;
+
+        // THE MODEL'S OWN GROUPING: rows of one (layer, group) are contiguous, so the
+        // heading is drawn exactly where the text changes (the same rule
+        // MainDisplayWidget's menu followed).
+        if (rowHeading != heading) {
+            heading = rowHeading;
+            Entry entry;
+            entry.heading = true;
+            entry.row = -1;
+            entry.text = rowHeading;
+            entry.rect = QRect(
+                0, contentHeight,
+                kMinWidth,
+                (mEntries.isEmpty() ? 0 : kHeadingGap) + kHeadingPadTop + headingMetrics.height()
+                    + kHeadingPadBottom
+            );
+            contentHeight += entry.rect.height();
+            mEntries.append(entry);
+            width = std::max(width, kRowPadX + headingMetrics.horizontalAdvance(rowHeading) + kRowPadX);
+        }
+
+        Entry entry;
+        entry.heading = false;
+        entry.row = i;
+        entry.text = row.name;
+        entry.rect = QRect(0, contentHeight, kMinWidth, kRowHeight);
+        contentHeight += entry.rect.height();
+        mEntries.append(entry);
+        width = std::max(
+            width, kRowPadX + kSwatchSide + kSwatchGap + rowMetrics.horizontalAdvance(row.name) + kRowPadX
+        );
+    }
+
+    // The boxes, in THIS widget's pixels: the body is inset by the shadow's margin,
+    // and the entries keep the x they will be DRAWN at (the body's left edge plus the
+    // row padding) so the paint and the hit test cannot disagree.
+    mBody = QRect(kShadow, kShadow, width, contentHeight + 2 * kBodyPadY);
+    for (Entry& entry : mEntries) {
+        entry.rect.moveLeft(mBody.left());
+        entry.rect.moveTop(entry.rect.top() + mBody.top() + kBodyPadY);
+        entry.rect.setWidth(mBody.width());
+    }
+
+    this->resize(mBody.width() + 2 * kShadow, mBody.height() + 2 * kShadow);
+}
+
+int GraphChannelPopup::rowAt(const QPoint& aPos) const {
+    for (const Entry& entry : mEntries) {
+        if (!entry.heading && entry.rect.contains(aPos))
+            return entry.row;
+    }
+    return -1;
+}
+
+void GraphChannelPopup::setHover(int aIndex) {
+    if (mHover == aIndex)
+        return;
+    mHover = aIndex;
+    this->update();
+}
+
+void GraphChannelPopup::moveCurrent(int aStep) {
+    if (mRows.isEmpty())
+        return;
+    int index = mCurrent;
+    for (int guard = 0; guard < mRows.size(); ++guard) {
+        index += aStep;
+        if (index < 0)
+            index = mRows.size() - 1;
+        else if (index >= mRows.size())
+            index = 0;
+        if (index != mCurrent) {
+            mCurrent = index;
+            break;
+        }
+    }
+    this->update();
+}
+
+void GraphChannelPopup::activateCurrent() {
+    if (mCurrent >= 0 && mCurrent < mRows.size())
+        this->toggleRow(mCurrent);
+}
+
+void GraphChannelPopup::toggleRow(int aIndex) {
+    if (aIndex < 0 || aIndex >= mRows.size())
+        return;
+
+    // The whole row toggles its channel's visibility, and the swatch IS the state
+    // (filled while shown, hollow while hidden): this list flips its own copy first,
+    // so the row the pointer just hit is drawn in its new state even when the editor
+    // write is refused (a node the document dropped).
+    mRows[aIndex].visible = !mRows[aIndex].visible;
+    this->update();
+
+    if (onRowToggled && !onRowToggled(mRows.at(aIndex)))
+        this->hide(); // the row no longer names a keyed channel: the list is stale
+}
+
+void GraphChannelPopup::paintEvent(QPaintEvent*) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    this->paintBody(painter);
+    for (int i = 0; i < mEntries.size(); ++i)
+        this->paintEntry(painter, i);
+}
+
+void GraphChannelPopup::paintBody(QPainter& aPainter) const {
+    const theme::Colors& colors = theme::Colors::current();
+
+    // The shadow: a few rounded layers from the body outwards, offset DOWN (the
+    // design's 0 10px 24px), each weaker than the one inside it.
+    const QRectF body(mBody);
+    for (int layer = kShadowLayers; layer >= 1; --layer) {
+        const qreal grow = qreal(kShadow) * qreal(layer) / qreal(kShadowLayers);
+        QColor shade(0, 0, 0);
+        shade.setAlphaF(0.06 * (1.0 - double(layer) / double(kShadowLayers + 1)));
+        aPainter.setPen(Qt::NoPen);
+        aPainter.setBrush(shade);
+        aPainter.drawRoundedRect(
+            body.adjusted(-grow, -grow + kShadowOffsetY * grow / kShadow, grow, grow + kShadowOffsetY * grow / kShadow),
+            kBodyRadius + grow, kBodyRadius + grow
+        );
+    }
+
+    // THE BODY: the app's sunken floater surface, edged with the floater edge (the
+    // user's ruling - the app's own body reads better than the mockup's).
+    aPainter.setPen(QPen(colors.floaterEdge, 1.0));
+    aPainter.setBrush(colors.floaterBody);
+    aPainter.drawRoundedRect(body.adjusted(0.5, 0.5, -0.5, -0.5), kBodyRadius, kBodyRadius);
+}
+
+void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
+    const theme::Colors& colors = theme::Colors::current();
+    const Entry& entry = mEntries.at(aIndex);
+
+    if (entry.heading) {
+        // A heading is structure, not a control. The 1px seam above a FOLLOWING group
+        // is the mock's .gp-chgroup + .gp-chgroup rule.
+        if (aIndex > 0) {
+            const int y = entry.rect.top() - kHeadingGap;
+            aPainter.setPen(Qt::NoPen);
+            aPainter.setBrush(colors.hairline);
+            aPainter.drawRect(QRect(mBody.left(), y, mBody.width(), 1));
+        }
+
+        QFont font = this->font();
+        font.setPixelSize(kHeadingFontSize);
+        aPainter.setFont(font);
+        aPainter.setPen(colors.textMuted);
+        const QRect textBox(
+            mBody.left() + kRowPadX, entry.rect.top() + kHeadingPadTop, mBody.width() - 2 * kRowPadX,
+            entry.rect.height() - kHeadingPadTop - kHeadingPadBottom
+        );
+        aPainter.drawText(textBox, Qt::AlignLeft | Qt::AlignVCenter, entry.text);
+        return;
+    }
+
+    const PanelChannelRow& row = mRows.at(entry.row);
+
+    // The row's own ink, clipped to the body so the hover fill cannot square off the
+    // rounded corners. The keyboard's current row reads like the hovered one, plus an
+    // accent hairline so a keyboard user can see where they are.
+    aPainter.save();
+    QPainterPath clip;
+    clip.addRoundedRect(QRectF(mBody), kBodyRadius, kBodyRadius);
+    aPainter.setClipPath(clip);
+
+    const bool current = entry.row == mCurrent;
+    if (entry.row == mHover || current) {
+        aPainter.setPen(Qt::NoPen);
+        aPainter.setBrush(colors.raised);
+        aPainter.drawRect(QRect(mBody.left(), entry.rect.top(), mBody.width(), entry.rect.height()));
+    }
+    if (current) {
+        aPainter.setPen(QPen(colors.accent, 1.0));
+        aPainter.setBrush(Qt::NoBrush);
+        aPainter.drawRect(QRect(mBody.left(), entry.rect.top(), mBody.width() - 1, entry.rect.height() - 1));
+    }
+
+    // THE SWATCH is the row's colour key: filled with the channel's hue while it is
+    // shown, the same hue as a 1px outline while it is hidden (mock.css's
+    // .gp-chrow.off .gw). No second control sits beside it - the row is the toggle.
+    const QRectF swatch(
+        qreal(mBody.left() + kRowPadX), qreal(entry.rect.center().y()) - kSwatchSide / 2.0, qreal(kSwatchSide),
+        qreal(kSwatchSide)
+    );
+    aPainter.setPen(row.visible ? QPen(Qt::NoPen) : QPen(row.color, 1.0));
+    aPainter.setBrush(row.visible ? QBrush(row.color) : QBrush(Qt::NoBrush));
+    aPainter.drawRoundedRect(
+        swatch.adjusted(0.5, 0.5, -0.5, -0.5), kSwatchRadius, kSwatchRadius
+    );
+
+    QFont font = this->font();
+    font.setPixelSize(kRowFontSize);
+    font.setBold(row.focused);
+    aPainter.setFont(font);
+    aPainter.setPen(row.visible ? colors.text : colors.textMuted);
+    const QRect textBox(
+        mBody.left() + kRowPadX + kSwatchSide + kSwatchGap, entry.rect.top(),
+        mBody.width() - (kRowPadX + kSwatchSide + kSwatchGap) - kRowPadX, entry.rect.height()
+    );
+    aPainter.drawText(textBox, Qt::AlignLeft | Qt::AlignVCenter, entry.text);
+
+    aPainter.restore();
+}
+
+void GraphChannelPopup::mouseMoveEvent(QMouseEvent* aEvent) {
+    const int hovered = this->rowAt(aEvent->position().toPoint());
+    const int previous = mHover;
+    this->setHover(hovered);
+    // The channel is focused when the pointer ENTERS a row (or moves between rows),
+    // not on every move within one: a focus write and a panel repaint per pixel is
+    // exactly what the hover rule must not cost.
+    if (hovered >= 0 && hovered != previous) {
+        mCurrent = hovered;
+        this->update(); // the keyboard's current-row outline follows the pointer
+        if (onRowHovered)
+            onRowHovered(mRows.at(hovered)); // a row focuses its channel (keep the QMenu's behaviour)
+    }
+    aEvent->accept();
+}
+
+void GraphChannelPopup::mouseReleaseEvent(QMouseEvent* aEvent) {
+    if (aEvent->button() == Qt::LeftButton) {
+        const int hit = this->rowAt(aEvent->position().toPoint());
+        if (hit >= 0)
+            this->toggleRow(hit);
+        aEvent->accept();
+        return;
+    }
+    QWidget::mouseReleaseEvent(aEvent);
+}
+
+void GraphChannelPopup::keyPressEvent(QKeyEvent* aEvent) {
+    switch (aEvent->key()) {
+    case Qt::Key_Escape:
+        this->hide();
+        aEvent->accept();
+        return;
+    case Qt::Key_Up:
+        this->moveCurrent(-1);
+        aEvent->accept();
+        return;
+    case Qt::Key_Down:
+        this->moveCurrent(1);
+        aEvent->accept();
+        return;
+    case Qt::Key_Home:
+        if (!mRows.isEmpty())
+            mCurrent = 0;
+        this->update();
+        aEvent->accept();
+        return;
+    case Qt::Key_End:
+        if (!mRows.isEmpty())
+            mCurrent = mRows.size() - 1;
+        this->update();
+        aEvent->accept();
+        return;
+    case Qt::Key_Space:
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+        this->activateCurrent();
+        aEvent->accept();
+        return;
+    case Qt::Key_Tab:
+        this->moveCurrent((aEvent->modifiers() & Qt::ShiftModifier) ? -1 : 1);
+        aEvent->accept();
+        return;
+    default:
+        break;
+    }
+    QWidget::keyPressEvent(aEvent);
+}
+
+void GraphChannelPopup::leaveEvent(QEvent* aEvent) {
+    this->setHover(-1);
+    QWidget::leaveEvent(aEvent);
+}
+
+void GraphChannelPopup::openAt(const QPoint& aGlobalBottomRight) {
+    this->rebuildLayout();
+    mHover = -1;
+    mCurrent = mRows.isEmpty() ? -1 : 0;
+
+    // UNDER the anchor, RIGHT-ALIGNED to it: the body's right edge is the anchor's x,
+    // and the body's top sits a few pixels below it (the mock's .tl-chanpop, which the
+    // dock header hosts). The shadow's own margin travels with the body.
+    QPoint topLeft(aGlobalBottomRight.x() - (mBody.left() + mBody.width()), aGlobalBottomRight.y() + 4 - mBody.top());
+
+    // Clamped to the screen the anchor is on, so the list stays whole beside a window
+    // edge (a header button sits at the dock's right end, which is exactly where a
+    // popup can hang off).
+    QScreen* screen = QGuiApplication::screenAt(aGlobalBottomRight);
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    if (screen) {
+        const QRect available = screen->availableGeometry();
+        topLeft.setX(std::max(available.left() - kShadow, std::min(topLeft.x(), available.right() + kShadow - this->width())));
+        topLeft.setY(std::max(available.top() - kShadow, std::min(topLeft.y(), available.bottom() + kShadow - this->height())));
+    }
+
+    this->move(topLeft);
+    this->show();
+    this->raise();
+    this->setFocus(Qt::PopupFocusReason);
+    this->update();
+}
+
+} // namespace gui

@@ -191,17 +191,14 @@ namespace prop {
         mSignal = true;
     }
 
-    // The mock's chip labels (mock.js LABEL): the four primaries wear the
-    // user vocabulary, the rest keep the engine name; directional curves add
-    // the range with the mock's en-dash "In–Out".
+    // The chip's label: the application's ONE easing vocabulary, util::Easing's own
+    // translated names. The mock's LABEL table gave the four primaries a second set of
+    // names ("Hold", "Step", "Ease"), which meant the same easing was called two things
+    // inside one application - the settings list and the picker said Floor/Round/Cubic
+    // while the chip beside them said Hold/Step/Ease, and the four quick easings now in
+    // the header had to pick one. They pick these.
     QString chipBaseLabel(util::Easing::Type aType) {
-        switch (aType) {
-        case util::Easing::Type_Floor: return QString("Hold");
-        case util::Easing::Type_Round: return QString("Step");
-        case util::Easing::Type_Cubic: return QString("Ease");
-
-        default: return util::Easing::getTypeName(aType);
-        }
+        return util::Easing::getTypeName(aType);
     }
 
     QString chipRangeLabel(util::Easing::Range aRange) {

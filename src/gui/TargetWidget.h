@@ -63,10 +63,10 @@ public:
     const PlayBackWidget& playBackWidget() const { return *mPlayBack; }
 
     // The dock's 40px header bar (the dock's tabs when the graph panel is built, the
-    // transport, the frame readout, the easing chip's reserved slot and the zoom
-    // group). The chip's own unit reaches the slot and the header's signal through
-    // this, rather than through the dock's layout, and the header's tab signal is
-    // what this dock's surface stack follows.
+    // transport, the easing chip and its four quick-easing buttons, the channels button
+    // while the graph is current, and the zoom group). The chip's own unit reaches the
+    // slot and the header's signal through this, rather than through the dock's layout,
+    // and the header's tab signal is what this dock's surface stack follows.
     TimeLineHeader& timeLineHeader() { return *mHeader; }
     const TimeLineHeader& timeLineHeader() const { return *mHeader; }
 

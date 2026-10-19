@@ -51,6 +51,12 @@ add_executable(${PROJECT_NAME} WIN32 MACOSX_BUNDLE
     NewProjectDialog.cpp NewProjectDialog.h
     AppStyle.cpp AppStyle.h
     ObjectTreeWidget.cpp ObjectTreeWidget.h
+    # The dock header's channel list: the panel's ONE control is a view action, so the
+    # design hosts it in the header and the list is its own widget (not a QMenu: the
+    # design's 22px rows and its swatch gaps are not reachable through AppStyle's menu
+    # metrics). Part of the always-built set: it needs no ImGui, only the model's plain
+    # row struct and the theme tokens.
+    GraphChannelPopup.cpp GraphChannelPopup.h
     TimeLineHeader.cpp TimeLineHeader.h
     PlayBackWidget.cpp PlayBackWidget.h
     ProjectHook.cpp ProjectHook.h

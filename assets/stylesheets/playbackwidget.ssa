@@ -53,23 +53,3 @@ QPushButton:disabled {
     color: @textDisabled@;
     background-color: transparent;
 }
-
-/* The timeline header's frame readout ("120 / 660"): the frame a key will land
-   on, then the range the playhead is clamped to beside it, in one row of two
-   inks. The frame carries the text color at 13px/600, the slash and the range's
-   end the muted token at 11px. The digits are tabular in the application font
-   (the bundled Geist, see Main.cpp), so a changing number never reflows the bar
-   - no font-feature rule is needed for it. */
-QLabel#frameCurrent {
-    background-color: transparent;
-    color: @text@;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-QLabel#frameSep,
-QLabel#frameEnd {
-    background-color: transparent;
-    color: @textMuted@;
-    font-size: 11px;
-}

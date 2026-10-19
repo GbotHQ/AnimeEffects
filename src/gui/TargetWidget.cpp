@@ -117,7 +117,7 @@ TargetWidget::TargetWidget(ViaPoint& aViaPoint, GUIResources& aResources, QWidge
 #ifdef AE_ENABLE_IMGUI
     // The header's tab is the dock's view switch, for the whole life of the dock: the
     // tab names the page, so the panel needs no title of its own and both pages keep
-    // the one header's transport, readout, chip and zoom.
+    // the one header's transport, chip, quick easings and zoom.
     connect(mHeader, &TimeLineHeader::surfaceChanged, this, &TargetWidget::onSurfaceChanged);
 #endif
 
@@ -179,16 +179,23 @@ void TargetWidget::setProject(core::Project* aProject) {
         //    already written when it fires. The graph's OWN gestures fire it too, after
         //    their command landed - the panel has already asked for that repaint from its
         //    cursor pass, so here it is a second update() on the same paint (Qt coalesces).
+        //    The dock's header reads the same document through its quick easings, so this
+        //    notification re-reads them as well: an undo/redo or a paste can change the
+        //    easing a selected key carries WITHOUT moving the selection, which is the only
+        //    other state they follow.
         //  * onProjectAttributeModified: fps and the frame range, which move the panel's
         //    frame axis. Project::Attribute's setters assign the member and only then call
         //    the project's notifier (core/Project.cpp: setFrameRange/setFps/... all return
         //    early when the value did not change, so this is one emission per real change).
         //
-        // NO LOOP IS POSSIBLE: refresh() is update(), which writes nothing, so a repaint
-        // cannot re-emit either signal; and neither signal is emitted from a paint.
+        // NO LOOP IS POSSIBLE: the panel's refresh() is update(), which writes nothing, and
+        // refreshFrame() only updates the header's controls; neither writes the document,
+        // so a repaint cannot re-emit either signal, and neither signal is emitted from a
+        // paint.
         mDocumentSlot = mProject->onTimeLineModified.connect([this](core::TimeLineEvent&, bool) {
             if (mGraphPanel)
                 mGraphPanel->refresh();
+            mHeader->refreshFrame();
         });
         mAttributeSlot = mProject->onProjectAttributeModified.connect([this](core::ProjectEvent&, bool) {
             if (mGraphPanel)
@@ -199,8 +206,10 @@ void TargetWidget::setProject(core::Project* aProject) {
     mObjTree->setProject(aProject);
     mTimeLine->setProject(aProject);
     mPlayBack->aProject = aProject;
-    // The frame range the readout names is the editor's own, so re-read it now
-    // that the project (or no project at all) is behind it.
+    // The bar's timeline-derived state must follow the editor that was just set
+    // above (or cleared): refreshFrame() re-reads the quick easings' availability
+    // and active type from the timeline's live selection, and (in a build with the
+    // panel) the channels button's own words.
     mHeader->refreshFrame();
     // The Graph tab's panel (when the panel is part of the build) is NOT re-read
     // here: it reads the document through the driver, and this call comes BEFORE
@@ -414,8 +423,10 @@ void TargetWidget::refreshAnimationSettings() {
     }
     // FPS changes the ruler strings (relative-to-FPS / timecode formats).
     mTimeLine->triggerOnTimeFormatChanged();
-    // The frame range is one of the two numbers the header reads, and this popup
-    // edits it without any frame report from the timeline: re-read it here.
+    // The popup edits the project's attributes, not the key selection, so no
+    // selection signal fires: re-read the bar's timeline-derived state here - the
+    // quick easings' availability and active type, and (with the panel) the
+    // channels button's words - so the header cannot lag the change.
     mHeader->refreshFrame();
 }
 

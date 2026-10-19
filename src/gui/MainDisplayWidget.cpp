@@ -1,12 +1,7 @@
 #include <functional>
-#include <QAction>
-#include <QFont>
-#include <QIcon>
 #include <QInputMethodEvent>
-#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
-#include <QPixmap>
 #include <QOpenGLFunctions>
 #include <QGuiApplication>
 #include "XC.h"
@@ -16,12 +11,19 @@
 #include "gl/Texture.h"
 #include "core/ClippingFrame.h"
 #include "gui/MainDisplayWidget.h"
+#include "gui/GraphChannelPopup.h"
 #include "gui/ProjectHook.h"
 #include "gui/TimeLineWidget.h"
 #include "gui/ViaPoint.h"
 #include "gui/ProjectTabBar.h"
 #include "gui/KeyCommandMap.h"
 #include "gui/MouseSetting.h"
+#ifdef AE_ENABLE_IMGUI
+// The dock's Graph page: syncGraphPanelSharedState (and every list action that changes
+// what it draws) asks it for a repaint, because the panel is a WIDGET of its own and
+// the viewport's updateRender() no longer touches it.
+#include "gui/GraphPanelWidget.h"
+#endif
 
 namespace gui {
 
@@ -29,55 +31,18 @@ namespace {
 // The panel's editor, or null when the driver has none (before the driver is set, or
 // after it is gone). The panel itself is DRAWN elsewhere (gui::GraphPanelWidget, the
 // dock's Graph tab); this widget keeps the editor's applications-side connections:
-// the CHANNEL LIST and the KEY MENU are this class's QMenus (showGraphChannelMenu,
-// showGraphKeyMenu) and the panel's accessibility items open them through here.
-// and the channel list's actions read it HERE, at the moment they fire, rather than
-// capturing one: a menu can be open across a project change. Independent of the
-// ImGui build flag, like the two panel questions below: the editor is the driver's
-// either way.
+// the CHANNEL LIST (showGraphChannelMenu) and the KEY MENU (showGraphKeyMenu) are
+// opened from here, and the panel's accessibility items reach them through this class
+// too. Both read the editor HERE, at the moment they fire, rather than capturing one:
+// a list can be open across a project change. Independent of the ImGui build flag,
+// like the two panel questions below: the editor is the driver's either way.
 ctrl::GraphEditor* graphEditorOrNull(ctrl::Driver* aDriver) {
     return aDriver ? aDriver->graphEditor() : nullptr;
 }
 
-// The colour key of one channel-list row (showGraphChannelMenu): a 12px rounded
-// square in the channel's own hue while the channel is shown, and the same square
-// HOLLOW - the hue as its 1px outline - while it is hidden. That is the reference's
-// own swatch to the pixel (mock.css's .gp-chrow .gw: 12x12, radius 3, `background:
-// var(--h)`, and `.gp-chrow.off .gw { background: transparent }`), and it is the ONE
-// mark a row carries: the row is the toggle, so no second, redundant control sits
-// beside it.
-QIcon channelSwatch(const QColor& aHue, bool aVisible) {
-    constexpr int kSide = 12;
-    constexpr qreal kRadius = 3.0;
-
-    QPixmap pixmap(kSide, kSide);
-    pixmap.fill(Qt::transparent);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setPen(aVisible ? QPen(Qt::NoPen) : QPen(aHue, 1.0));
-    painter.setBrush(aVisible ? QBrush(aHue) : QBrush(Qt::NoBrush));
-    painter.drawRoundedRect(QRectF(0.5, 0.5, kSide - 1.0, kSide - 1.0), kRadius, kRadius);
-    painter.end();
-    return QIcon(pixmap);
-}
-
-// What one channel-list row's action acts on, snapshotted for the life of the menu:
-// the channel names the component, `visible` is the state the action flips, and the
-// node is a RAW pointer held only for the menu's lifetime. It cannot be a QPointer -
-// core::ObjectNode is no QObject, so there is nothing to auto-clear it - so the
-// liveness rule is explicit instead: every action re-checks the node against the LIVE
-// editor's own targets (channelRowNodeAlive below) before it writes. A menu outlives
-// the press that popped it and the document can change under it, so this is what
-// stops an action writing through a node the document has since dropped.
-struct ChannelRowTarget {
-    core::ObjectNode* node = nullptr;
-    ctrl::graph::Channel channel;
-    bool visible = true;
-};
-
-// Whether a row's node is still one the live editor knows: the panel's rows are built
-// from exactly that list (GraphPanelModel.cpp's buildChannels walks aEditor.targets()),
-// so a node the document has dropped since the menu was popped - or one a project
+// Whether a row's node is still one the live editor knows: the list's rows are built
+// from exactly that set (GraphPanelModel.cpp's buildChannels walks aEditor.targets()),
+// so a node the document has dropped since the list was opened - or one a project
 // change took out of the editor's targets - is no longer in it. Only POINTERS are
 // compared, never dereferenced, so a stale node cannot be touched by the test itself.
 bool channelRowNodeAlive(const ctrl::GraphEditor* aEditor, core::ObjectNode* aNode) {
@@ -104,6 +69,7 @@ MainDisplayWidget::MainDisplayWidget(ViaPoint& aViaPoint, QWidget* aParent):
     mAbstractCursor(),
     mDriver(),
     mProjectTabBar(),
+    mChannelPopup(nullptr),
     mTimeLine(),
     mTimeLineRangeSlot(),
     mViewportBackground(),
@@ -266,6 +232,8 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
         // tests drive it in.
         editor->clearFrameAxis();
         editor->setSelectionSource(nullptr);
+        // The panel draws that state, and it is a widget of its own.
+        this->refreshGraphPanel();
         return;
     }
 
@@ -302,8 +270,52 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
     if (hi > lo)
         editor->setFrameWindow(lo, hi);
 
-    // The panel draws that window, so its own frame is now stale.
+    // The panel draws that window, so its own frame is now stale. TWO SURFACES READ
+    // THIS STATE: the viewport (which no longer draws the panel) and the dock's Graph
+    // page, which does - and that page is a QOpenGLWidget of its own, so the viewport's
+    // update() does not paint it. This is the call that keeps the header's zoom and fit
+    // buttons honest: they drive the timeline's view transform (TimeLineWidget::
+    // zoomFramesAbout/scrollFramesBy), the new window comes back through
+    // onViewRangeChanged -> HERE, and the page is asked for its frame.
     this->updateRender();
+    this->refreshGraphPanel();
+}
+
+void MainDisplayWidget::refreshGraphPanel() {
+#ifdef AE_ENABLE_IMGUI
+    // The dock's Graph page, found through the window (this widget is the viewport and
+    // holds no reference to the dock, exactly as gui::GraphPanelWidget finds this one
+    // for its own menus). It is one widget per window, and a no-op elsewhere: with no
+    // dock (a harness) or with the page not constructed (no ImGui build) there is
+    // nothing to ask, and the request is dropped.
+    if (QWidget* top = this->window()) {
+        if (auto* panel = top->findChild<GraphPanelWidget*>())
+            panel->refresh();
+    }
+#endif
+}
+
+//-------------------------------------------------------------------------------------------------
+bool MainDisplayWidget::applyEasingToSelection(util::Easing::Type aEasing) {
+    // THE SELECTION-EASING EDIT, on the one editor that holds the one selection: the
+    // panel's editor writes the timeline's live set (syncGraphPanelSharedState wires
+    // it with setSelectionSource), and ctrl::GraphEditor::setSelectedKeysEasing is the
+    // application's own action for it - one macro, one notifier, one history entry for
+    // the whole selection, and it skips a key whose type carries no easing or whose
+    // value is step-held (the image offset), exactly as the graph panel's own action
+    // does. Reading the selection through the driver rather than through a cached
+    // pointer is what makes this safe across a project change.
+    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+    if (!editor)
+        return false;
+
+    const bool changed = editor->setSelectedKeysEasing(aEasing);
+    if (changed) {
+        // The curves' own ink changed shape: both surfaces that draw them are stale.
+        this->updateRender();
+        this->refreshGraphPanel();
+    }
+    return changed;
 }
 
 void MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent& aTargets, const QPoint& aWidgetPos) {
@@ -317,105 +329,61 @@ void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRo
     if (aRows.isEmpty())
         return; // no channels: no list to show
 
-    // ONE menu, built fresh from the rows the panel's model published for the frame
-    // the button was pressed in. It is DELETED ON CLOSE and parented to this widget,
-    // because popup() is not exec(): it returns immediately, so a stack QMenu would
-    // be destroyed before the user ever saw it. A press with a QMenu already open
-    // cannot arrive here (the menu owns the mouse grab), so no second one is
-    // possible while one is up.
-    QMenu* menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    // What each row's action acts on, snapshotted with the node GUARDED: the menu
-    // outlives the press that popped it and the document can change under it, so an
-    // action resolves its node at trigger time rather than holding a raw pointer
-    // into a model that has been replaced (or a node that has been deleted) since.
-    // The actions carry the INDEX into this vector; the lambdas below hold a copy.
-    QVector<ChannelRowTarget> rows;
-    rows.reserve(aRows.size());
-    for (const PanelChannelRow& row : aRows) {
-        ChannelRowTarget target;
-        target.node = row.node;
-        target.channel = row.channel;
-        target.visible = row.visible;
-        rows.append(target);
-    }
-
-    // THE LEGEND IS GROUPED (design section 7): one group per (layer, key type),
-    // headed by the property and its components - "line · Move [X][Y]",
-    // "line · Opa [Opacity]" - with one row per component inside it. The heading
-    // is a disabled row, so it is structure and not a control; the hue on the rows
-    // says the AXIS, and the group says the property, so two red X curves (Move X
-    // and Scale X) are still told apart by the heading over them. The model
-    // publishes the group on every row (PanelChannelRow::group) and guarantees its
-    // rows are contiguous, so this walk only has to notice the boundary.
-    QString group;
-    for (int i = 0; i < aRows.size(); ++i) {
-        const PanelChannelRow& row = aRows.at(i);
-        if (!row.node)
-            continue;
-
-        const QString headingText =
-            row.group.isEmpty() ? row.layer : row.layer + QStringLiteral(" · ") + row.group;
-        if (headingText != group) {
-            group = headingText;
-            QAction* heading = menu->addAction(headingText);
-            heading->setEnabled(false);
-            // The sentinel index -1 so the hover handler below can tell the
-            // heading from a channel row (an action with NO data would read back
-            // as index 0, i.e. as the first channel).
-            heading->setData(-1);
-        }
-
-        QAction* action = menu->addAction(channelSwatch(row.color, row.visible), row.name);
-        action->setData(i);
-        if (row.focused) {
-            // The focused channel, marked the one way a QMenu row can be: bold. It is
-            // the channel whose tangent handles the panel draws (and the one the
-            // accessible summary names), and the list is how it is chosen.
-            QFont font = action->font();
-            font.setBold(true);
-            action->setFont(font);
-        }
+    // ONE LIST, built fresh from the rows the panel's model published for the frame
+    // the header's button was pressed in, and REUSED for the life of this widget: the
+    // popup is a child of this one (so it dies with it) and hiding it on an outside
+    // click leaves it ready to show again, while a QMenu-style WA_DeleteOnClose would
+    // leak under a plain Qt::Popup (Qt's own dismissal HIDES a popup; it does not
+    // close it). The rows are re-set on every open, so the state can never be stale.
+    //
+    // THE WIDGET IS gui::GraphChannelPopup, NOT A QMenu: the design's list has 22px
+    // rows, an 8px swatch-to-name gap and 10px group titles at the swatch's own
+    // padding, and none of those are reachable through gui::AppStyle's menu metrics
+    // (24px rows, an icon margin and a QSS item padding). The row DATA is the panel
+    // model's own (gui::PanelChannelRow), so the list, the curves and the timeline's
+    // keys still name one channel one way.
+    if (!mChannelPopup) {
+        mChannelPopup = new GraphChannelPopup(this);
 
         // THE ROW'S ONE ACTION is its channel's visibility switch - the swatch beside
         // it IS its colour key, filled while the channel is shown and hollow while it
-        // is hidden. The editor is read from the DRIVER at this moment, not captured:
-        // the menu can be open across a project change, and the driver is what owns
-        // the live editor.
-        connect(action, &QAction::triggered, this, [this, rows, i] {
+        // is hidden. The editor is read from the DRIVER at the moment the row is hit,
+        // not captured: the list can be open across a project change, and the driver is
+        // what owns the live editor. The popup hands back the row with its NEW
+        // visibility (it flipped its own copy already, which is why the swatch follows
+        // the click); a false answer means the row names a node the document no longer
+        // holds, and the list closes rather than writing through it.
+        mChannelPopup->onRowToggled = [this](const PanelChannelRow& aRow) {
             ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
-            const ChannelRowTarget& row = rows.at(i);
-            if (!channelRowNodeAlive(editor, row.node))
-                return; // the node is not one the live editor holds any more
-            editor->setChannelVisible(*row.node, row.channel, !row.visible);
+            if (!channelRowNodeAlive(editor, aRow.node))
+                return false; // the node is not one the live editor holds any more
+            editor->setChannelVisible(*aRow.node, aRow.channel, aRow.visible);
             this->updateRender();
-        });
+            this->refreshGraphPanel();
+            return true;
+        };
+
+        // HIGHLIGHTING A ROW FOCUSES ITS CHANNEL - the other half of what the list is
+        // for ("the row itself focuses the type"): the panel then draws that channel's
+        // tangent handles and the panel's own summary names it. Hover, not activation,
+        // because activation is already spent on the visibility switch. The DOCKED
+        // panel is the surface that has to show it, hence the panel refresh beside the
+        // viewport's.
+        mChannelPopup->onRowHovered = [this](const PanelChannelRow& aRow) {
+            ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+            if (!channelRowNodeAlive(editor, aRow.node))
+                return; // the node is not one the live editor holds any more
+            editor->setFocusedChannel(*aRow.node, aRow.channel);
+            this->refreshGraphPanel();
+        };
     }
 
-    // Highlighting a row FOCUSES its channel - the other half of what the list is
-    // for ("the row itself focuses the type"): the panel then draws that channel's
-    // tangent handles and the panel's own summary names it. Hover, not activation,
-    // because activation is already spent on the visibility switch.
-    connect(menu, &QMenu::hovered, this, [this, rows](QAction* aAction) {
-        if (!aAction)
-            return;
-        const int index = aAction->data().toInt();
-        if (index < 0 || index >= rows.size())
-            return; // a group heading, which carries no index
-        ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
-        const ChannelRowTarget& row = rows.at(index);
-        if (!channelRowNodeAlive(editor, row.node))
-            return; // the node is not one the live editor holds any more
-        editor->setFocusedChannel(*row.node, row.channel);
-        this->updateRender();
-    });
+    mChannelPopup->setRows(aRows);
 
-    if (menu->actions().isEmpty()) {
-        delete menu; // every row was a node-less one: nothing to show
-        return;
-    }
-    menu->popup(this->mapToGlobal(aWidgetPos));
+    // aWidgetPos is the ANCHOR's bottom-right corner in this widget's coordinates: the
+    // list opens just under it, right-aligned to it, which is where the dock header's
+    // channels button sits.
+    mChannelPopup->openAt(this->mapToGlobal(aWidgetPos));
 }
 
 void MainDisplayWidget::resetCamera() {

@@ -19,6 +19,7 @@
 #include "core/TimeLineEvent.h"
 #include "ctrl/Driver.h"
 #include "ctrl/GraphEditor.h"
+#include "ctrl/graph/graph_Geometry.h" // kHandleHitRadius: the hover rule updateHoverRepaint shares with drawPanel
 #include "gl/Util.h"
 #include "gui/GUIResources.h"
 #include "gui/ImGuiA11y.h"
@@ -26,6 +27,8 @@
 #include "gui/MainDisplayWidget.h"
 #include "gui/MouseSetting.h"
 #include "gui/theme/Colors.h"
+#include "gui/theme/Graph.h" // the palette channelRows() builds the panel's model with
+#include <cmath>
 
 namespace gui {
 
@@ -177,6 +180,23 @@ void GraphPanelWidget::paintGL() {
         *this, GraphPanelHost::Dock, editor, editor != nullptr, mFrame, mPointer
     );
 
+    // TEMPORARY - REMOVED IN WAVE 2, TOGETHER WITH THE PUBLICATION IT SUPPRESSES.
+    // The design moved the panel's one control into the DOCK HEADER (it is a view
+    // action, and the header is where the view controls are), and this host publishes
+    // the frame's state, so the model's channelsButton/channelsButtonText are dropped
+    // here: every consumer of that state - the pointer's own hits below, the
+    // double-click's rule and gui::publishPanelAccessibility - sees a panel with no
+    // control.
+    //
+    // THIS LINE IS A SEAM, NOT THE FIX. runPanelFrame still builds the box and DRAWS
+    // it (gui::buildGraphPanelModel and gui::drawPanel, in GraphPanelModel.cpp and
+    // GraphPanelFrame.cpp - another agent's files), so the ruler band's own label is
+    // still VISIBLE and inert until that owner stops publishing the box for
+    // GraphPanelHost::Dock and stops drawing it. When that lands, DELETE THIS
+    // CLEARING: the publisher emits nothing and there is nothing to suppress.
+    mFrame.model.channelsButton = QRect();
+    mFrame.model.channelsButtonText.clear();
+
     // ...into THIS widget's framebuffer, which QOpenGLWidget has bound and whose viewport
     // it has already set: the renderer takes the projection, the viewport and the scissor
     // boxes from the draw data, which the frame built from this host's own size and device
@@ -286,6 +306,13 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
     editor->setModifiers(aEvent->modifiers());
     mCursor.setMouseMove(aEvent, panelCamera());
     routeCursor();
+
+    // AND THE HOVER'S OWN INK. routeCursor() repaints only when the editor's cursor pass
+    // reports a change (a bare move answers false, GraphEditor's own rule), while the
+    // panel draws two things from the pointer alone: the marker under it and the nearest
+    // handle. A move that changed which of those is lit has to be painted, and a move
+    // that did not must not be (see updateHoverRepaint).
+    this->updateHoverRepaint();
     aEvent->accept();
 }
 
@@ -302,19 +329,11 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
 
     const QPoint pos = aEvent->position().toPoint();
 
-    // The panel's ONE control takes a left press before the plot's gestures do, and it
-    // takes it from the geometry that was DRAWN (the model of the last frame), so the
-    // control under the pointer is the control on screen.
-    if (aEvent->button() == Qt::LeftButton && pressChannelButton(pos)) {
-        this->update(); // the list may have changed what the panel shows
-        aEvent->accept();
-        return;
-    }
-
     // A right press is the key menu's gesture - the panel's only right-button action -
     // and it is taken here because this is the only place this host sees one. The menu
-    // is the application's own QMenu and QMenu::popup() returns immediately, so nothing
-    // here blocks the press.
+    // is the application's own and its popup returns immediately, so nothing here
+    // blocks the press. (A left press has no control to test any more: the panel's one
+    // control is the dock header's channels button now.)
     if (aEvent->button() == Qt::RightButton) {
         openKeyMenuAt(pos);
         aEvent->accept();
@@ -582,47 +601,15 @@ bool GraphPanelWidget::event(QEvent* aEvent) {
 }
 
 //-------------------------------------------------------------------------------------------------
-bool GraphPanelWidget::pressChannelButton(const QPoint& aPos) {
-    if (!mFrame.editor)
-        return false; // no panel on screen: nothing to hit
-    if (mFrame.model.channelsButton.isEmpty() || !mFrame.model.channelsButton.contains(aPos))
-        return false; // an empty box is not a control (no room for it in the plot)
-
-    openChannelMenuAt(aPos);
-    return true;
-}
-
-void GraphPanelWidget::openChannelMenuAt(const QPoint& aPos) {
-    MainDisplayWidget* display = appDisplay();
-    if (!display)
-        return; // no viewport in this window (a harness): no menu to show
-
-    // THE LIST IS THE APPLICATION'S OWN: the rows travel to gui::MainDisplayWidget, which
-    // builds and pops a real QMenu and whose actions toggle a channel's visibility and
-    // focus it. This page draws no popup and measures none - there is one list of channels
-    // in the application.
-    //
-    // AND THE POSITION IS MAPPED INTO IT. showGraphChannelMenu anchors the menu at
-    // aWidgetPos IN ITS OWN COORDINATES (it is the object that calls mapToGlobal), and
-    // this page sits in the dock, not over the viewport: without the mapping the menu
-    // would open one dock-width away from the button that asked for it.
-    display->showGraphChannelMenu(mFrame.model.channels, display->mapFrom(this, aPos));
-}
-
 bool GraphPanelWidget::doubleClickAt(const QPoint& aPos) {
     if (!mFrame.editor)
         return false;
     if (!mFrame.model.plot.contains(aPos))
         return false; // not the plot: nothing here owns a double-click outside it
 
-    // A double-click ON the panel's ONE control is that control's business, not the
-    // fit's: the first press already opened the channel list, and a second click must not
-    // turn it into a zoom change. An empty button box is not a control.
-    if (!mFrame.model.channelsButton.isEmpty() && mFrame.model.channelsButton.contains(aPos))
-        return false;
-
     // Both axes to the shown data: the panel's own fit gesture, the same one the
-    // viewport host performs on the same double-click.
+    // viewport host performs on the same double-click. (There is no control to exclude
+    // any more: the panel draws none, and its published model carries none.)
     mFrame.editor->fitAll();
     return true;
 }
@@ -707,10 +694,102 @@ void GraphPanelWidget::onAccessibilityAction(int aId) {
         return;
     }
 
-    // The panel's ONE control: the very action a pointer press on it performs, at the
-    // same position (the box the model gave the button).
-    if (aId == kPanelChannelsItemId)
-        openChannelMenuAt(mFrame.model.channelsButton.topLeft());
+    // kPanelChannelsItemId is deliberately NOT handled: the panel publishes no channel
+    // control any more (the dock header hosts it), so no such item is ever published
+    // either - gui::publishPanelAccessibility builds its items from the model this host
+    // emptied in paintGL.
+}
+
+//-------------------------------------------------------------------------------------------------
+QVector<PanelChannelRow> GraphPanelWidget::channelRows() const {
+    // THE PANEL'S OWN MODEL, built for the LIST rather than for a frame: the rows carry
+    // (layer, legend group, name, hue, visibility, sticky focus) and NOTHING about
+    // geometry, so the viewport size only has to be a real one - the plot it would map
+    // is discarded with the rest of the model. Built on demand from the live editor (not
+    // read off the last drawn frame) because the dock header may ask before this page
+    // has painted: switching to the Graph tab and clicking the button immediately is a
+    // normal thing to do, and a stale (or empty) row list would open a list that does
+    // not match the panel.
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!editor)
+        return {}; // no project: no channels
+
+    // THE ROWS ARE GEOMETRY-FREE (layer, group, name, hue, visibility, focus), so the
+    // viewport handed to the builder only has to be a REAL one: the builder publishes
+    // no rows at all when its plot comes out empty, which is exactly the page that has
+    // not been laid out yet - tab switched to and the header's button read before the
+    // first paint. A fixed viewport makes this path independent of that.
+    const QSize viewport(800, 600);
+    const theme::Graph palette = theme::Graph::from(theme::Colors::current());
+    return buildGraphPanelModel(*editor, viewport, palette, 0, GraphPanelHost::Dock).channels;
+}
+
+//-------------------------------------------------------------------------------------------------
+void GraphPanelWidget::updateHoverRepaint() {
+    // THE BOUNDED RULE: repaint when the target under the pointer CHANGES, and not on a
+    // move that keeps the same one. The panel's pointer-driven ink is exactly two marks
+    // (drawPanel reads io.MousePos, which this host feeds from mPointer): the key marker
+    // the pointer lights - gui::panelKeyAt, the same hit test the right-click uses - and
+    // the tangent handle nearest the pointer, under the SAME rule drawPanel highlights
+    // with: the nearest STORED/derived handle dot within ctrl::graph::kHandleHitRadius,
+    // over the curves whose handles are drawn (the focused channel's, or every curve's
+    // while nothing is focused). Everything else the panel draws is the document's or a
+    // gesture's and has its own repaint; a move over empty space changes neither mark and
+    // therefore paints nothing.
+    HoverTarget now;
+
+    ctrl::GraphEditor* editor = graphEditor();
+    if (editor && mFrame.editor) {
+        core::ObjectNode* node = nullptr;
+        ctrl::graph::Channel channel;
+        core::Frame frame;
+        if (panelKeyAt(mFrame.model, mPointer, node, channel, frame)) {
+            now.key = true;
+            now.keyNode = node;
+            now.keyChannel = channel;
+            now.keyFrame = frame.get();
+        }
+
+        const bool focused = editor->hasFocus();
+        const core::ObjectNode* focusNode = focused ? editor->focusedNode() : nullptr;
+        const ctrl::graph::Channel focusChannel = editor->focusedChannel();
+        double nearest = double(ctrl::graph::kHandleHitRadius); // `<=`, like drawPanel's own pick
+        for (int c = 0; c < mFrame.model.curves.size(); ++c) {
+            const PanelCurve& curve = mFrame.model.curves.at(c);
+            if (focused && !(curve.node == focusNode && curve.channel == focusChannel))
+                continue; // a handle that is not drawn cannot be hovered
+            for (int h = 0; h < curve.handles.size(); ++h) {
+                const QPointF& dot = curve.handles.at(h).dot;
+                const double distance =
+                    std::hypot(double(mPointer.x()) - dot.x(), double(mPointer.y()) - dot.y());
+                if (distance <= nearest) {
+                    nearest = distance;
+                    now.handleCurve = c;
+                    now.handle = h;
+                }
+            }
+        }
+    }
+
+    if (now != mHover) {
+        mHover = now;
+        this->update();
+    }
+}
+
+void GraphPanelWidget::leaveEvent(QEvent* aEvent) {
+    QOpenGLWidget::leaveEvent(aEvent);
+
+    // The hover is the POINTER's and the pointer is gone: the host parks it outside the
+    // panel (the same "nothing hovers" point it starts at, see mPointer) and drops the
+    // lit target with it, so the next frame paints neither mark. A move that keeps
+    // arriving - a drag with the mouse grabbed reports the pointer outside the widget
+    // too - re-establishes both through mouseMoveEvent.
+    if (mHover != HoverTarget()) {
+        mHover = HoverTarget();
+        mPointer = QPoint(-1, -1);
+        this->update();
+    }
 }
 
 } // namespace gui
