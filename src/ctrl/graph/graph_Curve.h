@@ -75,8 +75,11 @@ public:
     // from the keys AROUND the segment, so the pair re-shapes itself when a
     // neighbour changes - which is why it cannot live in the key's param. These
     // are the GHOST handles: real control points the panel can map with
-    // graph_Geometry's handlePointAt and draw hollow, next to a Custom pair it
-    // draws filled.
+    // graph_Geometry's handlePointAt and draw as a SOLID dot at the smaller
+    // radius (kHandleRadius - kGhostHandleShrink, 3.5px) filled with the
+    // channel's reduced-chroma hue, next to a Custom pair's larger (5px) dot
+    // filled with the raised surface. The pair's radius and fill are the tell,
+    // not a hollow centre.
     //
     // The pair is returned in the SAME normalized easing space handle() reads a
     // Custom pair from, handle 0 first, and it is the pair the DRAWING rate uses:

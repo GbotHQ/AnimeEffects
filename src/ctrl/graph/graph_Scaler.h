@@ -27,6 +27,15 @@ public:
     // Panel layout. Public so the renderer and the hit-test share one geometry
     // instead of each carrying its own copy of the insets.
     static constexpr int kMargin = 4; // inset of the plot inside the panel
+    // THE FRAME RULER'S BAND, reserved ABOVE the plot: the 22px strip whose numbers
+    // and ticks the timeline's own header carries (ctrl::TimeLineEditor::kHeaderHeight,
+    // re-exported as gui::frameRuler::kBandHeight and static_asserted against this
+    // constant there). It is reserved HERE, in the shared plot rect, rather than
+    // carved out of the drawing layer's clip, because the plot rect is the one
+    // geometry the curves, the keys, the handles, the value axis and the editor's
+    // hit-test all read - so no ink can be clipped into the ruler's rows and no
+    // axis can disagree about where the graph starts.
+    static constexpr int kRulerBandHeight = 22;
 
     // ---- THE LABEL COLUMN (a STABLE, format-derived reserve) ----
     //
@@ -103,8 +112,11 @@ public:
     // The panel rect, in viewport pixels.
     void setRect(const QRect& aRect);
     const QRect& rect() const { return mRect; }
-    // Where curves are drawn: the rect minus the margins and the MEASURED label
-    // column (see THE LABEL COLUMN above).
+    // Where curves are drawn: the rect minus the margins, the MEASURED label column
+    // (see THE LABEL COLUMN above) and the RULER BAND's 22 rows at the top
+    // (kRulerBandHeight). The band itself sits immediately above the returned rect
+    // (GraphPanelModel publishes it at plot.top() - kRulerBandHeight), so the plot's
+    // first row is the graph's, never the ruler's.
     QRect plotRect() const;
 
     // The width of the left label column: the reserve described in THE LABEL

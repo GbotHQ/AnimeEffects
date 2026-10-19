@@ -1041,19 +1041,40 @@ int sectionScaler() {
 
     Scaler scaler;
     scaler.setRect(QRect(0, 0, 600, 400));
-    // The left column is the scaler's OWN format-derived reserve, not a constant:
-    // margin 4, then axisLabelWidth()'s column, then the plot, then the margin again.
-    // Written as the rule rather than the number it happens to come to for the font
-    // in force, so this pins the inset arithmetic and not a magic 46.
+    // The plot rectangle is a DESIGNED SECTION, not a fudge factor: the ruler is a
+    // 22px strip ABOVE the graph (the timeline's own arrangement - its surface
+    // starts below the TimeRuler), and Scaler::plotRect() reserves those rows at
+    // the top. So the curve rectangle is:
+    //   x      = kMargin + the measured axis-label column
+    //   y      = kMargin + kRulerBandHeight     <- the band's bottom + 1
+    //   width  = 600 - 2*kMargin - axisLabelWidth()
+    //   height = 400 - 2*kMargin - kRulerBandHeight
+    // and no curve/key/handle/chip can be clipped into the ruler's rows. The left
+    // column is the scaler's OWN format-derived reserve, not a constant (margin 4,
+    // then axisLabelWidth()'s column, then the plot, then the margin again); it is
+    // written as the rule rather than the number the font happens to produce, so
+    // this pins the inset arithmetic and not a magic 46.
     CHECK(scaler.axisLabelWidth() >= Scaler::kAxisLabelWidth); // never below the floor
     CHECK(scaler.axisLabelWidth() <= Scaler::kMaxAxisLabelWidth); // never past the ceiling
+    // The 22px band is the timeline's own kHeaderHeight (GraphPanelModel.cpp's
+    // static_assert pins gui::frameRuler::kBandHeight to it and to this constant).
+    CHECK(Scaler::kRulerBandHeight == 22);
     CHECK(
         scaler.plotRect()
         == QRect(
-            Scaler::kMargin + scaler.axisLabelWidth(), Scaler::kMargin,
-            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth(), 400 - 2 * Scaler::kMargin
+            Scaler::kMargin + scaler.axisLabelWidth(), Scaler::kMargin + Scaler::kRulerBandHeight,
+            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth(),
+            400 - 2 * Scaler::kMargin - Scaler::kRulerBandHeight
         )
     );
+    // The section boundary itself: the band's 22 rows sit immediately above the
+    // plot, and the plot's first row is the graph's - the exact arithmetic a pixel
+    // capture must show (band.top() == kMargin, band.bottom() + 1 == plot.top()).
+    const QRect sectionBand(
+        scaler.plotRect().left(), Scaler::kMargin, scaler.plotRect().width(), Scaler::kRulerBandHeight
+    );
+    CHECK(sectionBand.bottom() + 1 == scaler.plotRect().top());
+    CHECK(scaler.plotRect().top() == Scaler::kMargin + Scaler::kRulerBandHeight);
     CHECK(scaler.rect() == QRect(0, 0, 600, 400));
     // The value window is seeded non-degenerate: every mapping divides by its
     // span.

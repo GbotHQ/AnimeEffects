@@ -106,10 +106,18 @@ namespace graph {
         // sit, so the curves start to its right. Its width is MEASURED from the
         // labels this window will draw (axisLabelWidth(), memoized) rather than
         // reserved at a fixed 46px, so a number can never be cut off by the
-        // column while the plot keeps as much as the labels leave it. The frame
-        // offset is NOT baked in here - it lives on the frame mapping, so this
+        // column while the plot keeps as much as the labels leave it.
+        // The frame offset is NOT baked in here - it lives on the frame mapping, so this
         // stays a pure function of the panel geometry and the value window.
-        return mRect.adjusted(kMargin + axisLabelWidth(), kMargin, -kMargin, -kMargin);
+        //
+        // THE TOP INSET IS THE RULER BAND. The panel's frame ruler is a SECTION above
+        // the graph (the timeline's own arrangement: its surface starts below the
+        // 22px TimeRuler strip), so its rows are taken out of the plot here - in the
+        // one rect the curves, the keys, the handles, both axes and the editor's
+        // hit-test share. Nothing that is clipped to the plot can reach the ruler.
+        return mRect.adjusted(
+            kMargin + axisLabelWidth(), kMargin + kRulerBandHeight, -kMargin, -kMargin
+        );
     }
 
     //-------------------------------------------------------------------------------------------------

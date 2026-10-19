@@ -26,7 +26,8 @@
 //     no published rect spans the plot, every published frame tick is a frame the
 //     ladder classifies and every frame the ladder classifies inside the plot has
 //     its tick, the value ticks are exactly the published value labels' own
-//     pixels, and every frame label box lies inside the plot
+//     pixels, and every frame label box lies inside the RULER BAND above the plot
+//     (the band is a section outside the plot, and no label reaches into the plot)
 //   3 the ladder follows the scaler: a label's number is scale.frameAt(tick),
 //     neighbouring label boxes keep a minimum gap, and every published tier is one
 //     of the three the ruler draws and is the ladder's own level for that tick's
@@ -57,7 +58,9 @@
 //     (ghost == true) whose x IS the third and two thirds of the segment's span
 //     and whose dot is the same mapping (ctrl::graph::handlePointAt) - and none on
 //     a segment whose easing is neither
-//  11 the reserved ruler band and the live marquee
+//  11 the ruler band as a section ABOVE the plot (its own reserved rows, the
+//     numbers inside it, the playhead crossing from its pill column into the
+//     plot), the occluded top that can only hide it, and the live marquee
 //  12 the label column is a STABLE, FORMAT-DERIVED reserve: its width is the
 //     widest label the value format can write (plus the box inset and text gap,
 //     clamped into the scaler's floor and ceiling), so it is the SAME width for
@@ -429,7 +432,24 @@ int main(int argc, char** argv) {
         CHECK(model.valueColumn.width() == scale.axisLabelWidth());
         CHECK(ctrl::graph::Scaler::kAxisLabelWidth <= model.valueColumn.width());
         CHECK(model.valueColumn.width() <= ctrl::graph::Scaler::kMaxAxisLabelWidth);
-        CHECK(model.plot.height() == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin);
+        // THE RULER IS A SECTION ABOVE THE GRAPH. The plot's top is the panel's
+        // margin PLUS the band's 22 reserved rows, and its height loses exactly
+        // those rows: the scaler's plot rect is the shared geometry, so every axis,
+        // every curve point and the editor's hit-test start below the ruler.
+        CHECK(model.plot.top()
+              == model.panel.top() + ctrl::graph::Scaler::kMargin
+                  + ctrl::graph::Scaler::kRulerBandHeight);
+        CHECK(model.plot.height()
+              == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin
+                  - ctrl::graph::Scaler::kRulerBandHeight);
+        // The band itself keeps the rows it always occupied: directly above the
+        // plot, so it is visually where it was while the graph moved out from under
+        // it. Its top is the panel's margin (the old plot.top), and its left edge is
+        // the new plot's (the label column still insets both by the same amount).
+        CHECK(model.rulerBand.top() == model.panel.top() + ctrl::graph::Scaler::kMargin);
+        CHECK(model.rulerBand.left() == model.plot.left());
+        CHECK(model.rulerBand.top() + gui::frameRuler::kBandHeight == model.plot.top());
+        CHECK(!model.plot.intersects(model.rulerBand));
 
         // The small viewport, same invariants. What happens to the plot at this
         // size is reported rather than assumed: at 320x200 it is still non-empty,
@@ -500,15 +520,22 @@ int main(int argc, char** argv) {
         CHECK(!rects.isEmpty());
         CHECK(spanning == 0);
 
+        // THE FRAME NUMBERS BELONG TO THE RULER, NOT THE GRAPH: their boxes are in
+        // the band above the plot, and none of them may reach into the plot's rows
+        // (the model's own section boundary).
         int outside = 0;
+        int inPlotRows = 0;
         for (const gui::PanelLabel& label : model.frameLabels) {
-            if (label.rect.left() < model.plot.left() || model.plot.right() < label.rect.right() ||
-                label.rect.top() < model.plot.top() || model.plot.bottom() < label.rect.bottom())
+            if (!model.rulerBand.contains(label.rect))
                 ++outside;
+            if (label.rect.intersects(model.plot))
+                ++inPlotRows;
         }
-        std::printf("[2] frameLabels=%d  with an x outside the plot=%d\n", isz(model.frameLabels), outside);
+        std::printf("[2] frameLabels=%d  outside the ruler band=%d  reaching into the plot=%d\n",
+                    isz(model.frameLabels), outside, inPlotRows);
         CHECK(!model.frameLabels.isEmpty());
         CHECK(outside == 0);
+        CHECK(inPlotRows == 0);
 
         int valuesOutside = 0;
         for (const gui::PanelLabel& label : model.valueLabels) {
@@ -1425,6 +1452,14 @@ int main(int argc, char** argv) {
         CHECK(moved.playheadPill.height() == gui::frameRuler::kNumberHeight);
         CHECK(moved.playheadPill.bottom() < moved.playheadLineTop);
         CHECK(moved.playheadLineTop == moved.rulerBand.top() + gui::frameRuler::kLineTop);
+        // THE PLAYHEAD SPANS BOTH SECTIONS: its line begins in the ruler's pill column
+        // (under the pill) and crosses the section boundary into the plot, which
+        // starts BELOW the band. The drawing layer inks the band's rows outside the
+        // curve clip and the plot's rows inside it; this is the geometry both halves
+        // share.
+        CHECK(moved.playheadLineTop > moved.rulerBand.top());
+        CHECK(moved.playheadLineTop < moved.plot.top());
+        CHECK(moved.plot.top() == moved.rulerBand.bottom() + 1);
 
         // ...AND NO RULER NUMBER IS DRAWN UNDER IT: every label whose centre falls
         // inside the pill's half-width is dropped, so the pill's number is the only
@@ -1522,7 +1557,8 @@ int main(int argc, char** argv) {
         CHECK(badHandles == 0);
         CHECK(misplacedDots == 0);
         // A STORED pair is not a ghost pair: `ghost` is the whole distinction, and a
-        // Custom handle drawn hollow would claim the document holds no tangent.
+        // Custom handle drawn as a derived (smaller, channel-hue) dot would claim the
+        // document holds no tangent.
         int storedGhosts = 0;
         for (const gui::PanelCurve& curve : handled.curves) {
             const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
@@ -1746,39 +1782,44 @@ int main(int argc, char** argv) {
 
         // THE RULER'S BAND is the timeline's: a 22px strip at rulerBandTop whose
         // numbers sit in its top 14 rows and its 5px ticks rise from its last row. The
-        // model must carry it, the band must be inside the plot, and every number's box
-        // must be in the band's number row - ABOVE the tick rows, as the timeline draws
-        // them (the opposite of the old panel, which hung its numbers below the ticks).
+        // model must carry it, the band must sit ABOVE the plot (the scaler reserved
+        // those rows, so the plot's own clip begins below them), and every
+        // number's box must be in the band's number row - ABOVE the tick rows, as the
+        // timeline draws them (the opposite of the old panel, which hung its numbers
+        // below the ticks).
         const int kBandHeight = gui::frameRuler::kBandHeight;
         const int kTickLength = gui::frameRuler::kTickLength;
         int labels = 0;
-        int insidePlot = 0;
+        int insideBand = 0;
         int inNumberRow = 0;
         for (const gui::PanelLabel& label : ruled.frameLabels) {
             ++labels;
-            if (ruled.plot.contains(label.rect))
-                ++insidePlot;
+            if (ruled.rulerBand.contains(label.rect))
+                ++insideBand;
             if (label.rect.top() == ruled.rulerBand.top() + gui::frameRuler::kNumberTop &&
                 label.rect.bottom() < ruled.rulerBand.top() + kBandHeight - kTickLength)
                 ++inNumberRow;
         }
         std::printf(
             "[11] plot=(%d,%d %dx%d) rulerBand=(%d,%d %dx%d) bandHeight=%d tickLength=%d frame_labels=%d"
-            " inside_plot=%d in_number_row=%d\n",
+            " inside_band=%d in_number_row=%d\n",
             ruled.plot.left(), ruled.plot.top(), ruled.plot.width(), ruled.plot.height(), ruled.rulerBand.left(),
             ruled.rulerBand.top(), ruled.rulerBand.width(), ruled.rulerBand.height(), kBandHeight, kTickLength,
-            labels, insidePlot, inNumberRow
+            labels, insideBand, inNumberRow
         );
         // The precondition of the pixel gate's assertion 16 (which measures the same
         // rule on the drawn glyphs): the model has to carry labels at all, or the
-        // reservation is unobservable.
+        // reservation is unobservable. THE BAND IS ABOVE THE PLOT and the numbers are
+        // inside the BAND (they used to be inside the plot): the plot's clip now
+        // starts on the graph's first row, so a number that reached it would be cut.
         CHECK(!ruled.rulerBand.isEmpty());
         CHECK(ruled.rulerBand.top() == ruled.rulerBandTop);
         CHECK(ruled.rulerBand.width() == ruled.plot.width());
         CHECK(ruled.rulerBand.height() == kBandHeight);
-        CHECK(ruled.plot.contains(ruled.rulerBand));
+        CHECK(ruled.rulerBand.bottom() + 1 == ruled.plot.top());
+        CHECK(!ruled.plot.intersects(ruled.rulerBand));
         CHECK(labels > 0);
-        CHECK(insidePlot == labels);
+        CHECK(insideBand == labels);
         CHECK(inNumberRow == labels);
 
         // No drag is live, so the marquee is EMPTY - which is the drawing layer's
@@ -1832,58 +1873,60 @@ int main(int argc, char** argv) {
         CHECK(afterRelease.marquee.isEmpty());
 
         // ---- AND THE OCCLUDED TOP: a widget floating above the viewport ----
-        // The project tab bar covers the panel's first rows, so the model is asked for
-        // the occluded height and must move the RULER BAND - and nothing else. The two
-        // halves are what this checks: the band (and the labels below it) moves down,
-        // and the interactive geometry (the plot, and with it every curve, key, handle
-        // and the playhead) does NOT, which is what keeps the drawn key the same key a
-        // press grabs.
+        // The project tab bar covers the panel's first rows. The ruler band is a
+        // SECTION ABOVE THE GRAPH now, so the only two answers an occluder can get
+        // are:
+        //   * the same band, when its whole slot is still at or below the occluded
+        //     line (the inset cannot push it UP, so the strip does not move); and
+        //   * NO band, when the occluder reaches into its slot - the band is never
+        //     pushed down into the plot, because the plot's rows are the graph's and
+        //     the whole point of the section is that curve ink cannot enter the ruler.
+        // In BOTH cases the plot does not move: it is the editor's hit-test geometry,
+        // so the drawn key stays the same key a press grabs.
+        const int shallowInset = ruled.rulerBand.top() - ruled.panel.top(); // reaches the band's first row at most
+        const gui::GraphPanelModel shallow =
+            gui::buildGraphPanelModel(editor, viewport, palette, shallowInset);
+        std::printf(
+            "[11] occluded_shallow inset=%d band=(%d,%d %dx%d) frame_labels=%d plot_moved=%d\n",
+            shallowInset, shallow.rulerBand.left(), shallow.rulerBand.top(), shallow.rulerBand.width(),
+            shallow.rulerBand.height(), isz(shallow.frameLabels), int(shallow.plot != ruled.plot)
+        );
+        CHECK(shallow.rulerBand == ruled.rulerBand);
+        CHECK(shallow.rulerBandTop == ruled.rulerBandTop);
+        CHECK(shallow.frameLabels.size() == ruled.frameLabels.size());
+        CHECK(shallow.plot == ruled.plot); // the interactive geometry stays put
+
+        // An inset that reaches INTO the band's slot hides the strip for this frame:
+        // no band, no ruler numbers, and - the invariant - no ruler ink inside the
+        // plot. The graph itself is untouched.
         const int kInset = 24;
         const gui::GraphPanelModel occluded = gui::buildGraphPanelModel(editor, viewport, palette, kInset);
-        int bandLabels = 0;
-        int bandLabelsInBand = 0;
-        int valueLabelsBelowBand = 0;
-        for (const gui::PanelLabel& label : occluded.frameLabels) {
-            ++bandLabels;
-            // The band moved down by the inset, and the numbers moved WITH it: every
-            // box sits in the moved band's number row.
-            if (label.rect.top() == occluded.rulerBand.top() + gui::frameRuler::kNumberTop) {
-                ++bandLabelsInBand;
-            }
-        }
-        for (const gui::PanelLabel& label : occluded.valueLabels) {
-            if (label.rect.top() >= occluded.rulerBandTop) {
-                ++valueLabelsBelowBand;
-            }
-        }
         std::printf(
-            "[11] occluded_top inset=%d rulerBandTop=%d (plot.top()=%d) plot_moved=%d frame_labels=%d"
-            " in_moved_band=%d value_labels=%d below_band=%d ruler_vtx_unaffected=%d\n",
-            kInset, occluded.rulerBandTop, ruled.plot.top(), int(occluded.plot != ruled.plot), bandLabels,
-            bandLabelsInBand, isz(occluded.valueLabels), valueLabelsBelowBand,
-            int(occluded.curves.size() == ruled.curves.size())
+            "[11] occluded_top inset=%d rulerBandTop=%d plot.top()=%d band_empty=%d frame_labels=%d"
+            " plot_moved=%d value_labels=%d\n",
+            kInset, occluded.rulerBandTop, ruled.plot.top(), int(occluded.rulerBand.isEmpty()),
+            isz(occluded.frameLabels), int(occluded.plot != ruled.plot), isz(occluded.valueLabels)
         );
-        CHECK(occluded.rulerBandTop == ruled.plot.top() + kInset);
-        CHECK(occluded.rulerBand.top() == occluded.rulerBandTop);
-        CHECK(occluded.plot == ruled.plot);          // the interactive geometry stays put
+        CHECK(occluded.rulerBand.isEmpty());          // the strip is hidden, not moved into the graph
+        CHECK(occluded.rulerBandTop == ruled.plot.top());
+        CHECK(occluded.plot == ruled.plot);           // the interactive geometry stays put
         CHECK(occluded.panel == ruled.panel);
         CHECK(occluded.curves.size() == ruled.curves.size());
         CHECK(occluded.playheadX == ruled.playheadX);
-        CHECK(bandLabels > 0);
-        CHECK(bandLabelsInBand == bandLabels);
-        CHECK(valueLabelsBelowBand == isz(occluded.valueLabels));
+        CHECK(occluded.frameLabels.isEmpty());
+        CHECK(occluded.valueLabels.size() == ruled.valueLabels.size());
 
-        // An inset that swallows the plot leaves no band to draw in, and then there is
-        // nothing to label - the model says so by publishing no frame label rather than
-        // by placing one under the widget.
+        // An inset that swallows the whole panel has the same answer - there is still
+        // no ruler ink inside the plot, and still no label under the widget.
         const gui::GraphPanelModel swallowed =
-            gui::buildGraphPanelModel(editor, viewport, palette, ruled.plot.height() + 40);
+            gui::buildGraphPanelModel(editor, viewport, palette, ruled.plot.bottom() + 40);
         std::printf(
-            "[11] occluded_all inset=%d rulerBandTop=%d plot.bottom()+1=%d frame_labels=%d value_labels=%d\n",
-            ruled.plot.height() + 40, swallowed.rulerBandTop, ruled.plot.bottom() + 1,
-            isz(swallowed.frameLabels), isz(swallowed.valueLabels)
+            "[11] occluded_all inset=%d rulerBandTop=%d plot.top()=%d band_empty=%d frame_labels=%d\n",
+            ruled.plot.bottom() + 40, swallowed.rulerBandTop, ruled.plot.top(),
+            int(swallowed.rulerBand.isEmpty()), isz(swallowed.frameLabels)
         );
-        CHECK(swallowed.rulerBandTop == ruled.plot.bottom() + 1);
+        CHECK(swallowed.rulerBand.isEmpty());
+        CHECK(swallowed.rulerBandTop == ruled.plot.top());
         CHECK(swallowed.frameLabels.isEmpty());
         CHECK(swallowed.plot == ruled.plot);
     }

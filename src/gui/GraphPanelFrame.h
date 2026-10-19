@@ -65,21 +65,27 @@ struct PanelFocus {
     bool valid = false;
 };
 
-// Draws the panel into aDrawList: the short ticks (in the numbers' own token, each
+// Draws the panel into aDrawList. The RULER is a SECTION ABOVE THE GRAPH: its band,
+// hairline, ticks and frame numbers are drawn first, outside the plot's clip (the
+// scaler reserved their rows in plotRect()), so nothing the plot draws can reach
+// them. Then, clipped to the plot: the value ticks (in the numbers' own token, each
 // frame mark at the tier's alpha the model publishes for it - one ink for the ruler,
-// the timeline's rule), the labels with their
-// halo, the zero rule, the curves (clipped to the plot; the channels that own a
-// selected marker, or the SIBLING of one, at full colour and every other curve dimmed -
-// see curveStrength), the key
-// markers (a filled dot of radius ctrl::graph::kKeyDotRadius about each key's centre,
-// ringed in theme::Graph::keyEdge(), in one of the THREE states the model classifies:
-// a selected marker brightens its fill and takes a 1px ring clear of the marker, a
-// marker whose key has a selected sibling keeps the faint ring, and the marker under
-// the pointer brightens its fill alone - see the marker pass), every segment's tangent
-// handles (a stored pair filled, an
-// Auto segment's derived pair hollow; the grabbed one highlighted from io.MousePos),
-// the playhead, the box-select marquee, the name CHIP of every curve in play, and the
-// empty state. It keeps no state - which
+// the timeline's rule), the zero rule, the curves (the
+// channels that own a selected marker, or the SIBLING of one, at full colour and
+// every other curve dimmed - see curveStrength), the key markers (a filled dot of
+// radius ctrl::graph::kKeyDotRadius about each key's centre, ringed in
+// theme::Graph::keyEdge(), in one of the THREE states the model classifies: a
+// selected marker brightens its fill and takes a 1px ring in THAT SAME ink clear of
+// the marker, a marker whose key has a selected sibling keeps the faint raw-hue
+// ring, and the marker under the pointer brightens its fill alone - see the marker
+// pass), every segment's tangent handles (both kinds are solid dots: a stored pair
+// filled with the raised surface, an Auto segment's derived pair filled with the
+// channel hue at a smaller radius; both stems and both rings take that hue mixed 0.2
+// toward the panel's halo so they read on top of their own curve, and the grabbed one
+// is lifted toward axisText from io.MousePos), the box-select marquee, the name CHIP
+// of every curve in play, and the empty state. The PLAYHEAD is drawn last, outside
+// the plot clip and over the chips, from the pill's row in the band through the
+// plot's last row, so no chip can cover it. It keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
 // but the marker hover (gui::panelKeyAt), the handle highlight and the
@@ -398,10 +404,11 @@ struct PanelFrameState {
     theme::Graph palette;
     // How many LOGICAL pixels of this host's top another widget covers. The dock's page
     // leaves it at 0 - nothing floats over the dock, the tab names the page and the
-    // header belongs to the dock - so the ruler band sits at the plot's own top. (The
-    // field and the clamp stay: the inset is the model's, GraphPanelModel's THE OCCLUDED
-    // TOP, and a host that floats something over the panel sets it rather than the model
-    // inferring one.)
+    // header belongs to the dock - so the ruler band occupies its reserved slot above
+    // the plot. (The field and the clamp stay: the inset is the model's,
+    // GraphPanelModel's THE OCCLUDED TOP, and a host that floats something over the
+    // panel sets it rather than the model inferring one. The band is never pushed into
+    // the plot; an occluder that reaches its slot hides the strip for that frame.)
     int topInset = 0;
     // io.DeltaTime, from the real interval between THIS host's frames.
     QElapsedTimer frameTimer;

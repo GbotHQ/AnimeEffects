@@ -133,8 +133,10 @@ struct PanelHandle {
     // TRUE for an Auto segment's DERIVED pair and false for a Custom one's
     // STORED pair. It is the whole of what distinguishes them: a ghost handle is
     // not in the document (dragging one converts the key to Custom), so the
-    // drawing layer draws it hollow - a stored handle is filled - and a consumer
-    // that grabbed a handle knows which kind of write it would start.
+    // drawing layer draws it as a SOLID dot of the channel's hue at a smaller
+    // radius and a thinner-alpha ring, while a stored handle is the raised surface
+    // - and a consumer that grabbed a handle knows which kind of write it would
+    // start.
     bool ghost = false;
 };
 
@@ -297,9 +299,13 @@ enum class GraphPanelHost {
 //              function returns is the panel.
 //   plot    == the editor's own scaler, given `panel`, i.e.
 //              ctrl::graph::Scaler::plotRect() = panel minus kMargin on all
-//              sides and minus the MEASURED label column on the left
-//              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth). Empty
-//              on a viewport too small for that inset; see emptyState.
+//              sides, minus the MEASURED label column on the left
+//              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth) and
+//              minus the RULER BAND's 22 rows at the top
+//              (Scaler::kRulerBandHeight): the graph's own surface starts BELOW
+//              the ruler, exactly as the timeline's surface starts below its
+//              TimeRuler strip. Empty on a viewport too small for those insets;
+//              see emptyState.
 //   valueColumn == the left column the value numbers sit in, the deleted painter
 //              renderer's layout, kept as the panel's convention:
 //              QRect(panel.left() + kMargin, plot.top(), scale.axisLabelWidth(),
@@ -317,19 +323,26 @@ enum class GraphPanelHost {
 //   project tab bar does, in the application's own layout - and the panel draws no
 //   background, so anything under it is simply lost. buildGraphPanelModel therefore
 //   takes the occluded height (aTopInset, logical pixels, 0 when nothing covers the
-//   panel) and publishes rulerBandTop: the y where the panel's TOP CONTENT may
-//   begin, i.e. plot.top() normally and the occluded line when the inset reaches
-//   past it (clamped to the plot's bottom, so a viewport whose whole top is covered
-//   simply has no room for a ruler band).
-//   WHAT MOVES AND WHAT DOES NOT. The RULER BAND moves: the band's whole 22px strip
-//   (its numbers and the ticks that rise from its last row) starts at rulerBandTop
-//   rather than at plot.top(), and a value label whose own row would fall under the
-//   occluded band is nudged down to it - all of that is non-interactive ink, and it is
-//   the ink the user cannot see otherwise. The PLOT does not move: it is
-//   ctrl::GraphEditor's own rect (the editor's hit-test geometry, and the rect the
-//   editor's scaler is pinned to), so `plot`, the curves, the keys, the handles, the
-//   playhead and the marquee stay exactly where the editor acts on them. Moving them
-//   here would put the drawn key a tab bar's height away from the key a press grabs.
+//   panel) and publishes rulerBandTop: the y where the panel's TOP CONTENT (the
+//   ruler band) begins.
+//
+//   WHERE THE BAND IS, AND WHAT AN OCCLUDER MAY DO. The band is a SECTION above
+//   the plot: its natural slot is the 22 rows the scaler reserved, i.e.
+//   plot.top() - frameRuler::kBandHeight (visually the same rows it occupied when
+//   it was painted inside the plot). The band may not begin above the occluded
+//   line, and it may NOT be pushed down into the plot - those rows belong to the
+//   graph clip, and moving the ruler into them is exactly the ink-over-the-ruler
+//   defect this section removes. So the band is published only while its whole
+//   slot is at or below the occluder (inset <= plot.top() - kBandHeight); an
+//   occluder that reaches into the slot hides the strip for that frame, and
+//   rulerBandTop then names plot.top() - the y where the panel's top content may
+//   begin when there is no ruler ink above the graph.
+//
+//   THE PLOT NEVER MOVES. It is ctrl::GraphEditor's own rect (the editor's
+//   hit-test geometry, and the rect the editor's scaler is pinned to), so `plot`,
+//   the curves, the keys, the handles, the playhead and the marquee stay exactly
+//   where the editor acts on them. Moving them here would put the drawn key a tab
+//   bar's height away from the key a press grabs.
 //
 // THE AXES (no grid, no rules)
 //   frameTickX: the x of every frame the ladder classifies (time::Scaler's
@@ -486,8 +499,9 @@ enum class GraphPanelHost {
 //   of the segment's span; the two y values come from the key's neighbours), so
 //   a stored pair and a derived one cannot drift apart. The document holds no
 //   such pair - it is recomputed - which is exactly what `ghost` tells a
-//   consumer: drawing it filled would claim the key stores a tangent it does
-//   not.
+//   consumer: a solid dot of the channel's hue (smaller and lighter than the
+//   raised, stored dot) is how the layer shows a tangent the key does not
+//   store.
 //   Every other easing type (the analytic curves) publishes nothing for that
 //   segment, so a curve with no Custom and no Auto segment has an empty
 //   `handles`.
@@ -612,15 +626,19 @@ struct GraphPanelModel {
     QRect panel;
     QRect plot;
     QRect valueColumn;
-    // Where the panel's top content may begin: plot.top() unless a widget floating
-    // above the viewport covers part of it (see THE OCCLUDED TOP above). Always
-    // >= plot.top() and never past the plot's bottom edge.
+    // Where the panel's top content begins: the ruler band's top, i.e.
+    // plot.top() - frameRuler::kBandHeight (the rows the scaler reserved above the
+    // plot). When a widget floating above the viewport reaches into that slot the
+    // band is hidden and this names plot.top() instead (see THE OCCLUDED TOP above);
+    // an empty plot publishes plot.bottom() + 1.
     int rulerBandTop = -1;
     // THE RULER BAND: the plot's own width by frameRuler::kBandHeight rows from
-    // rulerBandTop - the timeline's ruler strip, inside the plot by construction. The
-    // drawing layer fills it with theme::Graph::rulerBand() and rules its bottom with
-    // theme::Graph::rulerLine(); the ticks rise from its last row. EMPTY when the
-    // band does not fit in the plot at all (a fully occluded top), which is also the
+    // rulerBandTop - the timeline's ruler strip, ABOVE the plot by construction
+    // (rulerBand.bottom() + 1 == plot.top()). The drawing layer fills it with
+    // theme::Graph::rulerBand(), rules its bottom with theme::Graph::rulerLine()
+    // and draws the ticks up from its last row; the band's row is OUTSIDE the plot
+    // clip, so no curve, key, handle or chip can paint into it. EMPTY when the strip
+    // does not fit in its reserved slot (a fully occluded top), which is also the
     // model's "no ruler ink" signal.
     QRect rulerBand;
     QVector<int> frameTickX;
@@ -673,8 +691,8 @@ struct GraphPanelModel {
 // Builds the model. aViewport is the whole viewport the panel is pinned over;
 // aTheme is the palette the curves and swatches take their colours from; aTopInset is
 // how many LOGICAL pixels of that viewport's top a widget floating above it covers (0
-// when nothing does), which moves the ruler band and nothing else - see THE OCCLUDED
-// TOP above; and aHost is the floor the panel is on, republished in the model and
+// when nothing does), which can HIDE the ruler band but moves nothing else - see THE
+// OCCLUDED TOP above; and aHost is the floor the panel is on, republished in the model and
 // used for no geometry - see GraphPanelHost.
 GraphPanelModel buildGraphPanelModel(
     ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0,

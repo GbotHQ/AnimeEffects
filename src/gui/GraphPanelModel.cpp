@@ -26,6 +26,12 @@
 // read them.
 static_assert(gui::frameRuler::kBandHeight == ctrl::TimeLineEditor::kHeaderHeight,
               "the graph's ruler band must be the timeline's kHeaderHeight");
+// The band is a SECTION the scaler reserves above the plot (Scaler::plotRect), so
+// the rows the model publishes as the band and the rows the scaler keeps out of the
+// plot are one number: a drift would put curve ink through the ruler or leave dead
+// rows above the graph.
+static_assert(ctrl::graph::Scaler::kRulerBandHeight == gui::frameRuler::kBandHeight,
+              "the scaler's reserved band must be the ruler's kBandHeight");
 static_assert(gui::frameRuler::kNumberTop == ctrl::TimeLineEditor::kNumberTop,
               "the graph's number row must start where the timeline's does");
 static_assert(gui::frameRuler::kNumberHeight == ctrl::TimeLineEditor::kNumberHeight,
@@ -357,9 +363,9 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
     const int textHeight = aMetrics.height();
     // The column the numbers may be placed in: the value column, with its bottom
     // shortened by one text line so a number centred on a value can still fit. The
-    // occluded band moves the top of that window down (see THE OCCLUDED TOP), and when
-    // the band has reached past the bottom there is no room for a number at all - the
-    // same answer as a column shorter than a text line.
+    // column already begins at the plot's top (below the ruler band), and the
+    // occluded-top line can only be at or above it now (THE OCCLUDED TOP: the band
+    // never moves into the plot) - the clamp keeps that true for a hand-built model.
     const int columnTop = std::max(column.top(), aModel.rulerBandTop);
     const int columnBottom = column.bottom() - textHeight + 1;
     if (column.height() < textHeight || columnBottom < columnTop)
@@ -375,9 +381,8 @@ void buildValueAxis(gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aSc
 
         // The number is centred on its value and clamped into the column: the
         // extreme values sit on the plot's edges, where half a text height would
-        // spill past the panel. The column starts at the plot's top edge, so the
-        // topmost number is also clamped below the occluded band (the widget floating
-        // above the viewport covers the value column too - see THE OCCLUDED TOP).
+        // spill past the panel. The column starts at the plot's top edge - below the
+        // ruler band, which owns the rows above it.
         const int y = aScale.pixelY(value);
         const int top = std::clamp(y - textHeight / 2, columnTop, columnBottom);
 
@@ -591,7 +596,8 @@ void buildCurves(
         // (handlePointAt over ghostHandles, the same function handlePoint calls), so
         // a stored pair and a derived one cannot drift apart. `ghost` carries which
         // kind it is: the derived pair is not in the document, and the drawing layer
-        // draws it hollow (a drag on it converts the key to Custom).
+        // draws it as a smaller, solid dot of the channel's reduced-chroma hue (a
+        // drag on it converts the key to Custom).
         // Published whether or not the pair lies inside the plot: the drawing layer
         // clips, and a handle off the plot's edge is still one the user can grab.
         //
@@ -717,18 +723,30 @@ namespace gui {
         scale.setRect(model.panel);
 
         model.plot = scale.plotRect();
-        // The band the panel's top content may use: the plot's own top, moved down by
-        // the occluded inset (see THE OCCLUDED TOP in the header). A negative inset is
-        // no inset at all, and the result never leaves the plot.
+        // THE RULER BAND LIVES ABOVE THE PLOT. The scaler reserved its 22 rows in
+        // plotRect() (Scaler::kRulerBandHeight), so the band's natural slot is the
+        // strip immediately above the plot - the same rows it occupied before the
+        // reservation, which is what keeps it visually where it was while every
+        // plot-clipped pass now starts below it.
+        //
+        // THE OCCLUDED TOP (aTopInset): a widget floating over the panel covers the
+        // viewport's first rows. The band may not begin above that line, but it may
+        // NOT be pushed into the plot either - the plot's rows are the graph's, and
+        // moving the band there would put curve ink through the ruler. So the band
+        // stays only while its whole 22px slot is at or below the occluded line;
+        // an occluder that reaches into the slot hides the strip for this frame
+        // (rulerBandTop then names the plot's own top, where the panel's top content
+        // may begin when there is no ruler). The plot itself never moves: it is the
+        // editor's hit-test geometry too (see THE OCCLUDED TOP in the header).
         const int inset = std::max(0, aTopInset);
-        model.rulerBandTop = std::min(model.plot.top() + inset, model.plot.bottom() + 1);
-        // THE RULER BAND itself: one timeline header, inside the plot. It needs the
-        // whole band PLUS the hairline row under it inside the plot; when the plot is
-        // too short (or the top is fully occluded) there is no band, and then no
-        // ruler ink at all - the model's empty rect is the drawing layer's signal.
-        if (!model.plot.isEmpty() && model.rulerBandTop + frameRuler::kBandHeight <= model.plot.bottom()) {
-            model.rulerBand =
-                QRect(model.plot.left(), model.rulerBandTop, model.plot.width(), frameRuler::kBandHeight);
+        const int bandTop = model.plot.top() - frameRuler::kBandHeight;
+        if (!model.plot.isEmpty() && inset <= bandTop) {
+            model.rulerBandTop = bandTop;
+            model.rulerBand = QRect(model.plot.left(), bandTop, model.plot.width(), frameRuler::kBandHeight);
+        } else if (!model.plot.isEmpty()) {
+            model.rulerBandTop = model.plot.top();
+        } else {
+            model.rulerBandTop = model.plot.bottom() + 1;
         }
         // The column's width is the scaler's STABLE reserve for the value format
         // (see THE LABEL COLUMN in graph_Scaler.h) - the width the plot was

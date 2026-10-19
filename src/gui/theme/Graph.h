@@ -69,11 +69,15 @@ public:
     // legend swatch. The FILL is the channel's own colour (channelColor), which is what
     // makes a key read as the feature it belongs to - see the class comment.
     QColor keyEdge() const { return mKeyEdge; }
-    QColor selected() const { return mSelected; }    // selected key / handle
+    // Structural accent: the playhead's line+pill and the marquee edge (a handle is
+    // NOT highlighted with it; a hovered handle is hue-derived, see GraphPanelFrame).
+    QColor selected() const { return mSelected; }
     // A STORED tangent handle's fill: the raised surface the reference fills it with
-    // (mock-graph.js:898-900). Its stroke and its stem are the CHANNEL's own hue at
-    // the two alphas the drawing layer applies, so there is no token for them here -
-    // the hue travels with the curve (PanelCurve::color), not with the palette.
+    // (mock-graph.js:898-900). Its stroke and its stem take the CHANNEL's own hue
+    // from the curve (PanelCurve::color), not from here - and the drawing layer
+    // mixes that hue toward halo() by a small factor so a handle reads where it sits
+    // ON its own curve (GraphPanelFrame.cpp's kHandleChromaMix). halo() is the
+    // neutral the panel's text is drawn against, i.e. the palette's floor tone.
     QColor handleFill() const { return mHandleFill; }
     // The marquee: the live rectangle of a box-select drag. The same two decisions
     // the timeline's own box-select makes (ctrl/time/time_Renderer.cpp,

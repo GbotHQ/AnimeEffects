@@ -34,7 +34,8 @@
 //     undimmed token - and in the pass that puts its channel in play it IS the
 //     channel's own colour, except for the marker the pass SELECTS, whose fill
 //     moves toward the keyframe highlight (theme::Graph::axisText()) and which
-//     alone carries the detached 1px ring. Item 29 is the three marker states side
+//     alone carries the detached 1px ring IN THAT SAME MIXED INK (opaque; the raw
+//     hue is no longer the ring's colour). Item 29 is the three marker states side
 //     by side.
 //   4 the label halo, behind gui::kDrawTextHalo (SHIPPED OFF): with the flag on, a
 //     pixel 1-2px outside the advance box is inked and is closer to
@@ -50,18 +51,24 @@
 //   9 the panel's CHROME, on the model's own geometry: a curve's name CHIP is drawn
 //     ONLY while that curve is in play (the channels that own a selected key - the
 //     pair is the empty-selection pass, where no chip is drawn at all - plus whatever
-//     the pointer is over), and an Auto segment's GHOST handle is drawn HOLLOW in its
-//     channel's hue where a Custom one's dot is filled in theme::Graph::handleFill().
+//     the pointer is over); the chips are drawn BEFORE the playhead (a chip moved onto
+//     the playhead's column cannot cover it); and an Auto segment's GHOST handle is a
+//     SOLID dot of its reduced-chroma channel hue where a Custom one's dot is filled
+//     in theme::Graph::handleFill().
 //  10 the Custom tangent handles: each handle's stem carries ink at its own
-//     midpoint and each dot is theme::Graph::handleFill() at its own coordinates;
-//     with io.MousePos on one dot (a second pass that differs ONLY in the pointer)
-//     that dot turns theme::Graph::selected() while every other dot is unchanged -
-//     the highlight at the same distance and in the same token the editor's own
-//     hit-test grabs through.
+//     midpoint (the channel hue mixed 0.2 toward the panel's halo, so it reads on its
+//     own curve) and each stored dot is theme::Graph::handleFill() at its own
+//     coordinates; with io.MousePos on one dot (a second pass that differs ONLY in
+//     the pointer) that dot takes the HUE-DERIVED highlight (the same reduced hue
+//     lifted 0.45 toward axisText, not the structural accent) while every other dot
+//     is unchanged - the highlight at the same distance the editor's own hit-test
+//     grabs through.
 //  17 the playhead's own extent: the document's frame is ONE pixel column that
-//     covers the plot's whole vertical span in theme::Graph::selected() and puts
-//     nothing in the neighbouring columns - the "while you are there" half of the
-//     ruler assertion below.
+//     runs from the ruler band's pill column (above the plot) through the plot's
+//     whole vertical span in theme::Graph::selected() and puts nothing in the
+//     neighbouring columns - the structural accent crossing the section boundary.
+//     Its pass also proves the chips are drawn BEFORE it: a chip moved onto the
+//     playhead's column cannot cover it.
 //  18 the box-select marquee, as a pair: the same model with and without
 //     gui::GraphPanelModel::marquee, whose body must be
 //     theme::Graph::marqueeFill() composited on what is under it and whose 1px edge
@@ -78,10 +85,11 @@
 //     painting outside the panel. The first is measured against the glyph box the
 //     drawing layer used, the second against a model whose panel starts inside the
 //     framebuffer.
-//  16 the frame numbers' reserved band: every frame label's box is inside the plot and
-//     clear of the tick band the panel draws, and the glyph box the panel actually
-//     used (drawLabel's own clamped placement) is inside the plot - so a top row of
-//     numbers that could be cut by the plot clip fails here instead.
+//  16 the frame numbers' reserved band: it is a SECTION ABOVE THE PLOT (band.bottom()
+//     + 1 == plot.top(), the two rects disjoint), every frame label's box is inside it
+//     and clear of the tick rows, and the glyph box the panel actually used
+//     (drawLabel's own clamped placement) is inside it - so a number that left the
+//     ruler section fails here instead.
 //  11-15 THE CONTRAST OUTLINE AND COMPOSITE PASS (gui::outline), driven directly
 //     with hand-authored textures: a low-contrast stroke over a bright patch is
 //     ringed in black and the ring's strength follows the stroke's coverage; the
@@ -323,6 +331,12 @@ constexpr int kViewH = 320;
 
 const QRect kPanel(0, 0, 400, 300);
 const QRect kPlot(90, 30, 290, 240);        // x 90..379, y 30..269
+// THE RULER BAND, as a SECTION ABOVE THE PLOT (the model's own new geometry): 22 rows
+// ending one row above the plot's top, so the band is outside the plot clip and no
+// curve/key/handle/chip can ink it. The viewport above it (rows 0..7) stays empty.
+const QRect kRulerBand(
+    kPlot.left(), kPlot.top() - gui::frameRuler::kBandHeight, kPlot.width(), gui::frameRuler::kBandHeight
+);
 // The value column, in the model's OWN relationship to the plot: its right edge one
 // pixel left of the plot's (GraphPanelModel.h: "It never overlaps the plot"), which is
 // what puts the value numbers where the real panel puts them.
@@ -418,6 +432,44 @@ QColor withAlpha(const QColor& aColour, float aAlpha) {
     return out;
 }
 
+// GraphPanelFrame.cpp's mixedToward: the channel-wise sRGB mix the panel uses for a
+// key's selected fill/ring and for a handle's reduced-chroma hue. Restated here so an
+// expected ink is the layer's own arithmetic, not a guessed colour.
+QColor mixedToward(const QColor& aColour, const QColor& aToward, float aMix) {
+    const float t = std::clamp(aMix, 0.0f, 1.0f);
+    const auto step = [t](int aFrom, int aTo) {
+        return int(std::lround(double(aFrom) + (double(aTo) - double(aFrom)) * double(t)));
+    };
+    return QColor(
+        step(aColour.red(), aToward.red()), step(aColour.green(), aToward.green()),
+        step(aColour.blue(), aToward.blue())
+    );
+}
+
+// An OPAQUE ring pixel over the clear colour is the ink itself at its coverage. A
+// framebuffer sample on a 1px ring is a partial-coverage blend, so "is this pixel the
+// ink" has to be read as "is it on the line between the clear colour and that ink":
+// the projection below recovers the coverage, and `over` rebuilds the exact blend a
+// correct implementation leaves (the same arithmetic the drawing layer's AA path
+// produces over the cleared frame).
+double coverageOfTone(const QColor& aSample, const QColor& aInk) {
+    const int sample[3] = {aSample.red(), aSample.green(), aSample.blue()};
+    const int ink[3] = {aInk.red(), aInk.green(), aInk.blue()};
+    const int clear[3] = {kClear.red(), kClear.green(), kClear.blue()};
+    double num = 0.0;
+    double den = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        const double e = double(ink[i] - clear[i]);
+        num += double(sample[i] - clear[i]) * e;
+        den += e * e;
+    }
+    return den > 0.0 ? std::clamp(num / den, 0.0, 1.0) : 0.0;
+}
+
+QColor toneAtCoverage(const QColor& aInk, double aCoverage) {
+    return over(withAlpha(aInk, float(aCoverage)), kClear);
+}
+
 int inkCount(const QImage& aImage, const QRect& aRect) {
     const QRect r = aRect.intersected(aImage.rect());
     int count = 0;
@@ -505,11 +557,10 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();   // no occluded top: the band starts at the plot
-    // THE RULER BAND the panel paints: the model's own 22px strip at the plot's top,
+    model.rulerBandTop = kRulerBand.top();   // no occluded top: the band is the section above the plot
+    // THE RULER BAND the panel paints: the model's own 22px section ABOVE the plot,
     // with the numbers in its first 14 rows and the ticks rising from its last row.
-    model.rulerBand =
-        QRect(kPlot.left(), kPlot.top(), kPlot.width(), gui::frameRuler::kBandHeight);
+    model.rulerBand = kRulerBand;
 
     model.frameTickX = {90, 140, 320};
     model.valueTickY = {70, 210};
@@ -518,11 +569,11 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     // THE CONGESTED CORNER is unchanged in x: the first frame number sits on the tick
     // at the plot's left edge, and the top value label is right-aligned in its box.
     model.frameLabels = {
-        {QRect(90, kPlot.top() + gui::frameRuler::kNumberTop, 11, gui::frameRuler::kNumberHeight),
+        {QRect(90, kRulerBand.top() + gui::frameRuler::kNumberTop, 11, gui::frameRuler::kNumberHeight),
          QStringLiteral("0"), 0},
-        {QRect(130, kPlot.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
+        {QRect(130, kRulerBand.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
          QStringLiteral("10"), 10},
-        {QRect(310, kPlot.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
+        {QRect(310, kRulerBand.top() + gui::frameRuler::kNumberTop, 20, gui::frameRuler::kNumberHeight),
          QStringLiteral("20"), 20},
     };
     model.valueLabels = {
@@ -536,9 +587,11 @@ gui::GraphPanelModel makeFullModel(const theme::Graph& aTheme) {
     // under it (frameRuler::kLineTop).
     model.playheadText = QStringLiteral("200");
     model.playheadPill = QRect(
-        200 - 15, kPlot.top() + gui::frameRuler::kPillTop, 30, gui::frameRuler::kNumberHeight
+        200 - 15, kRulerBand.top() + gui::frameRuler::kPillTop, 30, gui::frameRuler::kNumberHeight
     );
-    model.playheadLineTop = kPlot.top() + gui::frameRuler::kLineTop;
+    // The line begins under the pill INSIDE the band and runs through the plot: the
+    // playhead spans both sections.
+    model.playheadLineTop = kRulerBand.top() + gui::frameRuler::kLineTop;
 
     const KeyFixture aKeys[] = {keyAt(150, 220), keyAt(250, 200)};
     gui::PanelCurve a;
@@ -641,7 +694,7 @@ gui::GraphPanelModel makeClipModel(const theme::Graph& aTheme) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();   // no occluded top: the band starts at the plot
+    model.rulerBandTop = kRulerBand.top();   // no occluded top: the band is the section above the plot
 
     gui::PanelCurve curve;
     curve.node = nullptr;
@@ -667,7 +720,7 @@ gui::GraphPanelModel makeEmptyModel() {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();   // no occluded top: the band starts at the plot
+    model.rulerBandTop = kRulerBand.top();   // no occluded top: the band is the section above the plot
     model.frameTickX = {140};
     model.valueTickY = {70};
     model.frameLabels = {{QRect(130, 40, 20, 14), QStringLiteral("10")}};
@@ -680,13 +733,14 @@ gui::GraphPanelModel makeEmptyModel() {
 // that paints (no ticks, no labels, no keys, no chips) - so the pixels at the two dots
 // are the handles' own ink and nothing else. The stored pair is a Custom segment's (the
 // document holds it); the ghost pair is an Auto segment's
-// DERIVED handles (PanelHandle::ghost), which the drawing layer must show hollow.
+// DERIVED handles (PanelHandle::ghost), which the drawing layer must show as a
+// smaller, solid dot of the reduced-chroma channel hue (never the stored surface).
 gui::GraphPanelModel makeGhostModel(const theme::Graph& aTheme) {
     gui::GraphPanelModel model;
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();   // no occluded top: the band starts at the plot
+    model.rulerBandTop = kRulerBand.top();   // no occluded top: the band is the section above the plot
 
     gui::PanelCurve curve;
     curve.node = nullptr;
@@ -744,7 +798,7 @@ gui::GraphPanelModel makeMarkerModel(const theme::Graph& aTheme, core::ObjectNod
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top(); // no occluded top: the band starts at the plot
+    model.rulerBandTop = kRulerBand.top(); // no occluded top: the band is the section above the plot
 
     for (int component = 0; component < 2; ++component) {
         const int y = (component == 0) ? kMarkerYTop : kMarkerYBottom;
@@ -1656,10 +1710,11 @@ bool checkKeys(
                 );
             }
             // THE DETACHED RING - the marker rule's own ink, and the pair this assertion is
-            // about: the pass that SELECTS a key paints a 1px ring in the channel's own hue
-            // at 0.85, at the ring radius, and the pass that puts the same channel in play
-            // without selecting THAT key paints NOTHING there (the marker's own ink's AA
-            // ends at ~4.5px, and these rows sample 5.5px out and beyond). So the ring is
+            // about: the pass that SELECTS a key paints a 1px ring in THAT MARKER'S FILL
+            // INK (mixedToward(hue, axisText, 0.45), opaque), at the ring radius, and the
+            // pass that puts the same channel in play without selecting THAT key paints
+            // NOTHING there (the marker's own ink's AA ends at ~4.5px, and these rows
+            // sample 5.5px out and beyond). So the ring is
             // the selection's mark and not a bigger marker.
             if (selectedInPlay) {
                 REQUIRE(
@@ -1668,12 +1723,28 @@ bool checkKeys(
                     " carry its 1px ring %.1fpx clear of the marker",
                     centre.x(), centre.y(), outerRingPixel.x(), outerRingPixel.y(), double(gui::kKeyRingOffsetPx)
                 );
+                // THE RING IS THE FILL'S INK, OPAQUE. The drawing layer inks both
+                // with mixedToward(curve.color, axisText(), 0.45), so the probe - a
+                // 1px stroke's partial coverage over the clear frame - must lie on
+                // the line from the clear colour to THAT ink. The projection recovers
+                // the coverage and `over` rebuilds the exact sample.
+                const QColor selectedRingInk = mixedToward(own, highlight, 0.45f);
                 REQUIRE(
-                    colourDistance(inPlayOuterRing, own) < colourDistance(inPlayOuterRing, highlight),
-                    "the selected key's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
-                    " highlight rgb=%s (%d against %d): the selection ring is the channel's own hue at 0.85",
-                    hex(inPlayOuterRing).c_str(), hex(own).c_str(), hex(highlight).c_str(),
-                    colourDistance(inPlayOuterRing, own), colourDistance(inPlayOuterRing, highlight)
+                    colourDistance(selectedRingInk, own) > kInkMin
+                        && colourDistance(selectedRingInk, highlight) > kInkMin,
+                    "precondition: the selected fill ink rgb=%s is indistinguishable from the hue rgb=%s or the"
+                    " highlight rgb=%s, so the ring's ink cannot be named",
+                    hex(selectedRingInk).c_str(), hex(own).c_str(), hex(highlight).c_str()
+                );
+                const double ringCoverage = coverageOfTone(inPlayOuterRing, selectedRingInk);
+                const QColor ringPredicted = toneAtCoverage(selectedRingInk, ringCoverage);
+                REQUIRE(
+                    ringCoverage > 0.0 && colourDistance(inPlayOuterRing, ringPredicted) <= kCurveTol,
+                    "the selected key's ring pixel rgb=%s is not the fill's own ink rgb=%s at the measured"
+                    " coverage %.2f (expected %s, distance %d > %d): the selection ring must use the same"
+                    " mixed, OPAQUE colour as the fill",
+                    hex(inPlayOuterRing).c_str(), hex(selectedRingInk).c_str(), ringCoverage,
+                    hex(ringPredicted).c_str(), colourDistance(inPlayOuterRing, ringPredicted), kCurveTol
                 );
                 // ...and it is OUTSIDE the dot's own ink: the probe rows sample 5.5px and
                 // 6.5px out, past the marker's own reach (the edge band ends at
@@ -1766,9 +1837,9 @@ bool checkKeys(
 // the design names, and that they are told apart from each other:
 //
 //   * SELECTED - the fill brightens toward the keyframe highlight AND a 1px ring sits
-//     clear of the marker. Read as: the centre moved TOWARD the highlight against the same
-//     marker's unflagged fill, the ring's probe carries ink, and that ink is nearer the
-//     highlight than the channel's colour.
+//     clear of the marker IN THE SAME INK. Read as: the centre moved TOWARD the highlight
+//     against the same marker's unflagged fill, and the ring's probe is that mixed colour
+//     (opaque) at its own antialiased coverage - the ring is no longer the raw hue.
 //   * SIBLING (not selected, its key selected on the other component) - the FAINT ring,
 //     and a fill that is NOT brightened. Read as: the ring's probe carries ink at the same
 //     radius, that ink is clearly NOT the selection's (farther from the highlight than the
@@ -1869,12 +1940,18 @@ bool checkMarkerStates(
             clearDistance(ringPixel[0]) > kInkMin,
             "the SELECTED marker paints nothing at its ring probe: rgb=%s", hex(ringPixel[0]).c_str()
         );
+        // THE RING IS THE FILL'S INK, OPAQUE - one expression with the fill. The probe
+        // is a 1px stroke's partial coverage over the clear frame, so it must lie on
+        // the line from the clear colour to mixedToward(hue, axisText, 0.45).
+        const QColor selectedRingInk = mixedToward(hue[0], highlight, 0.45f);
+        const double ringCoverage = coverageOfTone(ringPixel[0], selectedRingInk);
+        const QColor ringPredicted = toneAtCoverage(selectedRingInk, ringCoverage);
         REQUIRE(
-            colourDistance(ringPixel[0], hue[0]) < colourDistance(ringPixel[0], highlight),
-            "the SELECTED marker's ring pixel rgb=%s is not nearer its channel's hue rgb=%s than the keyframe"
-            " highlight rgb=%s (%d against %d): the selection ring is drawn in the channel's own hue at 0.85",
-            hex(ringPixel[0]).c_str(), hex(hue[0]).c_str(), hex(highlight).c_str(),
-            colourDistance(ringPixel[0], hue[0]), colourDistance(ringPixel[0], highlight)
+            ringCoverage > 0.0 && colourDistance(ringPixel[0], ringPredicted) <= kCurveTol,
+            "the SELECTED marker's ring pixel rgb=%s is not its fill ink rgb=%s at the measured coverage %.2f"
+            " (expected %s, distance %d > %d): the selection ring is the fill's own opaque mixed colour",
+            hex(ringPixel[0]).c_str(), hex(selectedRingInk).c_str(), ringCoverage, hex(ringPredicted).c_str(),
+            colourDistance(ringPixel[0], ringPredicted), kCurveTol
         );
     }
 
@@ -1890,8 +1967,8 @@ bool checkMarkerStates(
         REQUIRE(
             clearDistance(ringPixel[0]) > clearDistance(ringPixel[1]),
             "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
-            " marker's (rgb=%s, %d): the two rings share the channel's hue and differ only by its alpha"
-            " (0.85 against 0.35)",
+            " marker's (rgb=%s, %d): the sibling ring is the raw hue at 0.35, the selection ring the opaque"
+            " fill mix",
             hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
             clearDistance(ringPixel[0])
         );
@@ -1905,7 +1982,7 @@ bool checkMarkerStates(
         REQUIRE(
             clearDistance(ringPixel[1]) < clearDistance(ringPixel[0]),
             "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
-            " marker's (rgb=%s, %d): the two rings share one hue and must differ in ALPHA (0.35 against 0.85)",
+            " marker's (rgb=%s, %d): the faint ring is raw hue at 0.35 against the opaque selection fill ink",
             hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
             clearDistance(ringPixel[0])
         );
@@ -1986,12 +2063,15 @@ bool checkLabelHalo(
     const theme::Graph& aTheme
 ) {
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the model must carry a frame label");
+    REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the model must carry the ruler band");
     const gui::PanelLabel& label = aModel.frameLabels.at(0);
-    REQUIRE(kPlot.contains(label.rect), "precondition: the label box must be inside the plot");
+    // THE FRAME NUMBERS LIVE IN THE RULER SECTION, above the plot (the plot's clip
+    // starts below it), so their boxes and glyphs are bounded by the band.
+    REQUIRE(aModel.rulerBand.contains(label.rect), "precondition: the label box must be inside the ruler band");
 
     const QRect glyph = glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre);
     REQUIRE(!glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text));
-    REQUIRE(kPlot.contains(glyph), "precondition: the glyph box must be inside the plot");
+    REQUIRE(aModel.rulerBand.contains(glyph), "precondition: the glyph box must be inside the ruler band");
 
     // (a) the glyph itself is inked - read as a PAIR against the label-less pass, since
     // the ruler's band fills these rows and "not the clear colour" would count the band.
@@ -2027,7 +2107,7 @@ bool checkLabelHalo(
     int bestHaloY = -1;
     for (int y = glyph.top() - 2; y <= glyph.bottom() + 2; ++y) {
         for (int x = glyph.left() - 2; x <= glyph.right() + 2; ++x) {
-            if (glyph.contains(x, y) || !kPlot.contains(x, y)) {
+            if (glyph.contains(x, y) || !aModel.rulerBand.contains(x, y)) {
                 continue;
             }
             const QColor c = pixelAt(aRendered.image, x, y);
@@ -2097,15 +2177,17 @@ bool checkLabelHalo(
     return true;
 }
 
-// 16: THE FRAME NUMBERS' RESERVED BAND. The X-axis numbers are clipped at the plot's
-// top edge if their glyphs start above it, and two things keep that from happening:
-// the model puts every frame label's box BELOW the tick band (its own 4px marks), and
-// the drawing layer clamps a { font taller than the box } into the box instead of
-// letting it hang out of the top. This asserts both halves on the drawn pass: the
-// boxes are inside the plot and clear of the tick band, and the glyph box the panel
-// actually used (rebuilt by drawLabel's own rule, clamp included) is inside the plot -
-// so a label the panel cannot draw inside the plot would fail here rather than being
-// quietly cut by the clip.
+// 16: THE FRAME NUMBERS' RESERVED BAND. The X-axis numbers are drawn in the ruler
+// SECTION ABOVE THE PLOT (the scaler reserves its 22 rows, so the section is outside
+// the plot clip), and two things keep them inside it: the model puts every frame
+// label's box BELOW the tick band (its own 4px marks), and the drawing layer clamps a
+// { font taller than the box } into the box instead of letting it hang out of the
+// top. This asserts both halves on the drawn pass: the boxes are inside the band and
+// clear of the tick rows, and the glyph box the panel actually used (rebuilt by
+// drawLabel's own rule, clamp included) is inside the band - so a label the panel
+// cannot draw inside its section would fail here rather than being quietly cut.
+// It also pins the section boundary: band.bottom() + 1 == plot.top() and the two
+// rects do not intersect.
 bool checkRulerReserve(
     const Rendered& aRendered, const gui::GraphPanelModel& aModel, const Rendered& aTight,
     const gui::GraphPanelModel& aTightModel, const Rendered& aTightBare, const theme::Graph& aTheme
@@ -2114,16 +2196,17 @@ bool checkRulerReserve(
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the full model must carry frame labels");
     REQUIRE(!aModel.frameTickX.isEmpty(), "precondition: the full model must carry frame ticks");
     REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the full model must carry the ruler band");
-    // The band is the timeline's own strip, so it is a real box inside the plot and the
-    // ticks rise from its LAST row (the model's frameRuler metrics; a model that forgot
-    // them would draw the ruler at y = -1).
+    // The band is the timeline's own strip, and its ticks rise from its LAST row
+    // (the model's frameRuler metrics; a model that forgot them would draw the
+    // ruler at y = -1).
     const QRect band = aModel.rulerBand;
+    // THE BAND IS A SECTION ABOVE THE PLOT: its last row is the row before the plot's
+    // first, so it is outside the plot clip and no curve/key/handle/chip can ink it.
     REQUIRE(
-        aModel.rulerBandTop == band.top() && kPlot.contains(band)
-            && band.height() == gui::frameRuler::kBandHeight,
-        "precondition: the ruler band (%d,%d %dx%d) is not the model's %dpx strip inside the plot (%d..%d)",
-        band.left(), band.top(), band.width(), band.height(), gui::frameRuler::kBandHeight, kPlot.top(),
-        kPlot.bottom()
+        aModel.rulerBandTop == band.top() && band.height() == gui::frameRuler::kBandHeight
+            && band.bottom() + 1 == kPlot.top() && !band.intersects(kPlot),
+        "precondition: the ruler band (%d,%d %dx%d) is not the model's %dpx strip above the plot (top %d)",
+        band.left(), band.top(), band.width(), band.height(), gui::frameRuler::kBandHeight, kPlot.top()
     );
 
     // A pixel of the band that is NOT the band's own surface: the glyphs, the ticks and
@@ -2143,9 +2226,9 @@ bool checkRulerReserve(
     int checked = 0;
     for (const gui::PanelLabel& label : aModel.frameLabels) {
         REQUIRE(
-            kPlot.contains(label.rect),
-            "the frame label '%s' box (%d,%d %dx%d) is not inside the plot: a number outside the plot's top would"
-            " be cut by the plot clip",
+            band.contains(label.rect),
+            "the frame label '%s' box (%d,%d %dx%d) is not inside the ruler band: the numbers live in the section"
+            " above the plot",
             qPrintable(label.text), label.rect.left(), label.rect.top(), label.rect.width(), label.rect.height()
         );
         REQUIRE(
@@ -2167,9 +2250,9 @@ bool checkRulerReserve(
             !glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text)
         );
         REQUIRE(
-            kPlot.contains(glyph),
-            "the frame label '%s' draws its glyph box (%d,%d %dx%d) outside the plot: the top row of numbers is cut"
-            " by the plot clip",
+            band.contains(glyph),
+            "the frame label '%s' draws its glyph box (%d,%d %dx%d) outside the ruler band: the numbers have left"
+            " their section",
             qPrintable(label.text), glyph.left(), glyph.top(), glyph.width(), glyph.height()
         );
         const int ink = bandInk(aRendered.image, grow(glyph, 1));
@@ -2192,7 +2275,7 @@ bool checkRulerReserve(
     // The model measures its boxes from the ruler's fixed metrics and draws with the
     // widget's font, so a layer font with a taller line height puts a glyph cell bigger
     // than the box. Centred, half of that overflow goes ABOVE the box - i.e. out of the
-    // band's number row, toward the plot's top edge, where the plot clip cuts it, which
+    // band's number row, toward the band's top edge (the section's own boundary), which
     // is the "X-axis numbers clipped at the top" defect. drawLabel therefore clamps the
     // glyph to the box's top edge and lets the overflow hang into the box's own
     // interior instead. This pass is that configuration: the FULL model with every
@@ -2548,13 +2631,14 @@ bool checkZeroRule(const Rendered& aWithRule, const Rendered& aWithoutRule, cons
 // and at the same distance the editor's hit-test grabs through.
 //
 // The pair is the whole rule: with the pointer OFF (the default pass, io.MousePos
-// off-screen) every dot is filled with theme::Graph::handleFill() and BOTH the stem and
-// the dot's stroke are the CURVE's own channel hue - the stem at 0.85, the stroke at
-// 0.9 (the user's rule for both views; mock-graph.js:886-905); with the pointer ON one
-// dot's centre (a second pass that differs ONLY in io.MousePos) that dot is
-// theme::Graph::selected() while every other dot keeps its fill. Nothing else in the
-// model moved between the two passes, so a change at a dot's centre is the highlight
-// and nothing else.
+// off-screen) every STORED dot is filled with theme::Graph::handleFill() and BOTH the
+// stem and the dot's stroke are the CURVE's hue mixed 0.2 toward
+// theme::Graph::halo() - the stem at 0.85, the stroke at 0.9 (mock-graph.js's alphas
+// over a hue lowered in chroma so the handle reads on its own stroke); with the
+// pointer ON one dot's centre (a second pass that differs ONLY in io.MousePos) that
+// dot takes the hue-derived highlight mixedToward(handleInk, axisText, 0.45) while
+// every other dot keeps its fill. Nothing else in the model moved between the two
+// passes, so a change at a dot's centre is the highlight and nothing else.
 bool checkHandles(
     const Rendered& aOff, const Rendered& aOn, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme,
     const QPoint& aPointerDot
@@ -2587,13 +2671,16 @@ bool checkHandles(
             const QColor dotOff = pixelAt(aOff.image, dot.x(), dot.y());
             const QColor dotOn = pixelAt(aOn.image, dot.x(), dot.y());
 
-            // THE STORED PAIR'S INK IS THE CURVE'S CHANNEL HUE (the user's rule for both
-            // views; mock-graph.js: stored stem at hue/0.85, stroke at hue/0.9), read
-            // here through the drawing layer's own alphas - restated with their home
-            // named, the same move this file makes for kDrawnTickLength - and composited
-            // on the clear colour the frame is drawn over.
+            // THE STORED PAIR'S INK IS THE HANDLE HUE (the user's rule for both views;
+            // mock-graph.js's stored stem at 0.85 and stroke at 0.9, over the hue the
+            // drawing layer derives): the channel colour MIXED 0.2 toward
+            // theme::Graph::halo() so the handle reads on top of its own curve. Read
+            // here through the drawing layer's own alphas and composited on the clear
+            // colour the frame is drawn over.
             constexpr float kStoredStem = 0.85f;
-            const QColor stemInk = over(withAlpha(curve.color, kStoredStem), kClear);
+            constexpr float kHandleChroma = 0.2f;
+            const QColor handleInk = mixedToward(curve.color, aTheme.halo(), kHandleChroma);
+            const QColor stemInk = over(withAlpha(handleInk, kStoredStem), kClear);
             // The strongest STROKE pixel among the offsets a 1px circle centred on
             // kHandleRadius can land on (ImGui strokes a few-segment polyline, so its
             // chord can sit inside the nominal radius).
@@ -2608,22 +2695,25 @@ bool checkHandles(
             }
 
             const int dotDistance = colourDistance(dotOff, aTheme.handleFill());
-            const int highlightDistance = colourDistance(dotOn, aTheme.selected());
+            // THE HOVER IS HUE-DERIVED, NOT THE ACCENT: the handle's reduced-chroma
+            // hue lifted toward axisText by the panel's 0.45 brightened step.
+            const QColor hoverInk = mixedToward(handleInk, aTheme.axisText(), 0.45f);
+            const int highlightDistance = colourDistance(dotOn, hoverInk);
             const int moved = colourDistance(dotOff, dotOn);
             const bool pointed = dot == aPointerDot;
-            const int stemToHue = colourDistance(stem, curve.color);
+            const int stemToHue = colourDistance(stem, handleInk);
             const int stemToGrey = colourDistance(stem, aTheme.handleFill());
-            const int strokeToHue = colourDistance(stroke, curve.color);
+            const int strokeToHue = colourDistance(stroke, handleInk);
             const int strokeToGrey = colourDistance(stroke, aTheme.handleFill());
 
             std::printf(
                 "MEASURED handle base=(%d,%d) dot=(%d,%d) radius=%d stem_mid=(%d,%d) stem_rgb=%s stem_clear=%d"
                 " stem_to_hue=%d stem_to_handleFill=%d dot_rgb=%s handleFill=%s d=%d stroke=(%d,%d) stroke_rgb=%s"
-                " stroke_to_hue=%d stroke_to_handleFill=%d dot_on_rgb=%s selected=%s d=%d delta=%d pointed=%d\n",
+                " stroke_to_hue=%d stroke_to_handleFill=%d dot_on_rgb=%s hover_ink=%s d=%d delta=%d pointed=%d\n",
                 int(handle.base.x()), int(handle.base.y()), dot.x(), dot.y(), handle.radius, mid.x(), mid.y(),
                 hex(stem).c_str(), clearDistance(stem), stemToHue, stemToGrey, hex(dotOff).c_str(),
                 hex(aTheme.handleFill()).c_str(), dotDistance, strokePixel.x(), strokePixel.y(), hex(stroke).c_str(),
-                strokeToHue, strokeToGrey, hex(dotOn).c_str(), hex(aTheme.selected()).c_str(), highlightDistance,
+                strokeToHue, strokeToGrey, hex(dotOn).c_str(), hex(hoverInk).c_str(), highlightDistance,
                 moved, int(pointed)
             );
             // The pixel carrying the midpoint is within 0.707px of the stem's centreline
@@ -2634,23 +2724,24 @@ bool checkHandles(
             REQUIRE(clearDistance(stem) > kInkMin, "the handle stem has no ink at its midpoint (%d,%d): rgb=%s",
                     mid.x(), mid.y(), hex(stem).c_str());
             REQUIRE(stemToHue <= kCurveTol,
-                    "the handle stem's own midpoint (pixel %d,%d) is %s, %d from the stem's own colour %s: the stem"
-                    " is not drawn where the model puts it",
-                    mid.x(), mid.y(), hex(stem).c_str(), stemToHue, hex(curve.color).c_str());
+                    "the handle stem's own midpoint (pixel %d,%d) is %s, %d from the handle's reduced-chroma colour"
+                    " %s: the stem is not drawn where the model puts it",
+                    mid.x(), mid.y(), hex(stem).c_str(), stemToHue, hex(handleInk).c_str());
             REQUIRE(colourDistance(stem, stemInk) <= kCurveTol,
                     "the stored handle's stem midpoint rgb=%s is %d from the hue at the drawing layer's own strength"
                     " (%.2f) rgb=%s",
                     hex(stem).c_str(), colourDistance(stem, stemInk), double(kStoredStem),
                     hex(stemInk).c_str());
             REQUIRE(stemToHue < stemToGrey,
-                    "the STORED handle's stem at (%d,%d) rgb=%s is not nearer its channel's hue rgb=%s than the"
-                    " raised surface's grey rgb=%s (%d against %d): a stored stem is the curve's own colour",
-                    mid.x(), mid.y(), hex(stem).c_str(), hex(curve.color).c_str(), hex(aTheme.handleFill()).c_str(),
+                    "the STORED handle's stem at (%d,%d) rgb=%s is not nearer its handle hue rgb=%s than the"
+                    " raised surface's grey rgb=%s (%d against %d): a stored stem is the curve's hue, reduced in"
+                    " chroma",
+                    mid.x(), mid.y(), hex(stem).c_str(), hex(handleInk).c_str(), hex(aTheme.handleFill()).c_str(),
                     stemToHue, stemToGrey);
             REQUIRE(strokeToHue < strokeToGrey,
-                    "the STORED handle's stroke at (%d,%d) rgb=%s is not nearer its channel's hue rgb=%s than the"
-                    " raised surface's grey rgb=%s (%d against %d): a stored dot is ringed in the curve's own colour",
-                    strokePixel.x(), strokePixel.y(), hex(stroke).c_str(), hex(curve.color).c_str(),
+                    "the STORED handle's stroke at (%d,%d) rgb=%s is not nearer its handle hue rgb=%s than the"
+                    " raised surface's grey rgb=%s (%d against %d): a stored dot is ringed in the curve's hue",
+                    strokePixel.x(), strokePixel.y(), hex(stroke).c_str(), hex(handleInk).c_str(),
                     hex(aTheme.handleFill()).c_str(), strokeToHue, strokeToGrey);
             REQUIRE(dotDistance <= kFillTol,
                     "the handle dot at (%d,%d) rgb=%s is not theme::Graph::handleFill() rgb=%s (distance %d > %d)",
@@ -2658,14 +2749,13 @@ bool checkHandles(
 
             if (pointed) {
                 // The dot under the pointer is the highlighted one: it moved between
-                // the passes and it is now theme::Graph::selected().
+                // the passes and it now carries the hue-derived hover ink.
                 REQUIRE(moved > 0, "the dot under the pointer (%d,%d) did not change between the two passes",
                         dot.x(), dot.y());
                 REQUIRE(highlightDistance <= kFillTol,
-                        "the dot under the pointer (%d,%d) rgb=%s is not theme::Graph::selected() rgb=%s"
-                        " (distance %d > %d)",
-                        dot.x(), dot.y(), hex(dotOn).c_str(), hex(aTheme.selected()).c_str(), highlightDistance,
-                        kFillTol);
+                        "the dot under the pointer (%d,%d) rgb=%s is not the hue-derived highlight rgb=%s"
+                        " (distance %d > %d): the handle hover must not use the structural accent",
+                        dot.x(), dot.y(), hex(dotOn).c_str(), hex(hoverInk).c_str(), highlightDistance, kFillTol);
                 ++highlighted;
             } else {
                 // Every other dot is untouched: the two passes differ only in
@@ -2681,12 +2771,12 @@ bool checkHandles(
 }
 
 // 17: THE PLAYHEAD'S OWN EXTENT. The panel's playhead is the document's frame, drawn
-// as one 1px column from the plot's top edge to its bottom edge, in
-// theme::Graph::selected(). This is the "while you are there" half of the ruler
-// assertion: the space the frame numbers are reserved is the plot's top band, and
-// the playhead is the other mark that starts exactly there - so its extent is
-// measured rather than assumed, i.e. it must reach the plot's first row, stop at its
-// last, be exactly one pixel wide and put nothing outside.
+// as one 1px column in theme::Graph::selected() from the RULER's pill column (under
+// the pill) through the plot's last row: the structural accent is the one mark that
+// crosses the section boundary, exactly as the timeline's playhead crosses its ruler
+// and tracks. Its extent is measured rather than assumed: it must ink the band's rows
+// from playheadLineTop, reach the plot's first row and stop at its last, be exactly
+// one pixel wide and put nothing outside its two sections.
 bool checkPlayhead(
     const Rendered& aRendered, const Rendered& aNoFrame, const gui::GraphPanelModel& aModel,
     const gui::GraphPanelModel& aNoFrameModel, const theme::Graph& aTheme
@@ -2699,6 +2789,14 @@ bool checkPlayhead(
     REQUIRE(aNoFrameModel.playheadX < 0 && aNoFrameModel.playheadPill.isEmpty(),
             "precondition: the invalid-frame model must publish no playhead");
     REQUIRE(kPlot.contains(aModel.playheadX, kPlot.top()), "precondition: the playhead column must be inside the plot");
+    // THE SECTION SPAN: the line starts in the BAND's pill column (above the plot)
+    // and crosses into the graph. The drawing layer inks those band rows outside the
+    // plot clip, because the plot now starts below the ruler.
+    REQUIRE(
+        aModel.playheadLineTop > aModel.rulerBand.top() && aModel.playheadLineTop < aModel.plot.top(),
+        "precondition: the playhead's line (%d) is not inside the ruler's pill column above the plot (%d..%d)",
+        aModel.playheadLineTop, aModel.rulerBand.top(), aModel.plot.top()
+    );
 
     // THE LINE: every row from the model's playheadLineTop to the plot's bottom, on the
     // playhead's column, carries theme::Graph::selected(). The rows above it are the
@@ -2781,6 +2879,57 @@ bool checkPlayhead(
         "an INVALID frame painted %d pixels in the band at the playhead's column (%d): there must be no playhead"
         " ink when currentFrame() < 0",
         invalidInk, aModel.playheadX
+    );
+    return true;
+}
+
+// 17b: THE CHIPS ARE DRAWN BEFORE THE PLAYHEAD. The model's chip box is inside the
+// PLOT, so it can never reach the band's pill row; the line, however, crosses the
+// plot's rows, and a chip could sit on its column. The drawing order is therefore
+// part of the contract: chips first, the playhead after them. This pass moves the
+// selected curve's chip ONTO the playhead's column and reads the column through the
+// chip's rows - every one must be the accent, and the chip's own backing must still
+// be there beside it (so the reading is not "nothing was drawn").
+bool checkChipUnderPlayhead(
+    const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
+) {
+    REQUIRE(aModel.playheadX >= 0, "precondition: the fixture must publish a playhead");
+    REQUIRE(!aModel.curves.isEmpty(), "precondition: the fixture must carry a curve");
+    const QRect& chip = aModel.curves.at(0).chip;
+    REQUIRE(!chip.isEmpty() && kPlot.contains(chip), "precondition: the fixture's chip is not inside the plot");
+    REQUIRE(
+        chip.left() <= aModel.playheadX && aModel.playheadX <= chip.right(),
+        "precondition: the fixture's chip (%d..%d) does not cover the playhead column %d",
+        chip.left(), chip.right(), aModel.playheadX
+    );
+
+    int missing = 0;
+    for (int y = chip.top(); y <= chip.bottom(); ++y) {
+        const QColor c = pixelAt(aRendered.image, aModel.playheadX, y);
+        if (colourDistance(c, aTheme.selected()) > kFillTol) {
+            ++missing;
+        }
+    }
+    // The chip's own backing, two columns clear of the line (the box is opaque at its
+    // interior, so this is the chip and not the artwork).
+    const int besideX = chip.left() + 2;
+    const QColor beside = pixelAt(aRendered.image, besideX, chip.center().y());
+    std::printf(
+        "MEASURED chip_under_playhead chip=(%d,%d %dx%d) playhead_x=%d rows_without_accent=%d"
+        " beside=(%d,%d) rgb=%s clear=%d\n",
+        chip.left(), chip.top(), chip.width(), chip.height(), aModel.playheadX, missing, besideX, chip.center().y(),
+        hex(beside).c_str(), clearDistance(beside)
+    );
+    REQUIRE(
+        missing == 0,
+        "the playhead's column lost the accent on %d of the chip's rows (%d..%d): the chip was drawn over the"
+        " playhead",
+        missing, chip.top(), chip.bottom()
+    );
+    REQUIRE(
+        clearDistance(beside) > kInkMin,
+        "the chip painted nothing beside the playhead (rgb=%s at %d,%d): the pass is not reading a drawn chip",
+        hex(beside).c_str(), besideX, chip.center().y()
     );
     return true;
 }
@@ -3100,14 +3249,16 @@ bool checkHandleFocus(
 }
 
 // 9d: the GHOST handle (PanelHandle::ghost). A Custom segment's stored pair is in the
-// document and is drawn FILLED in theme::Graph::handleFill(); an Auto segment's pair is
-// DERIVED - a drag on it converts the key - so the drawing layer draws it HOLLOW, its
-// stem and ring in the channel's own hue at reduced alphas. The model's own ghost model
-// carries one of each, nothing else in the frame, so the two dots' pixels are the two
-// drawings and the pair is the assertion: the stored dot's centre IS the fill token, the
-// ghost dot's centre is NOT (it is the stem's own ink through the hollow middle), and
-// the ghost's ring pixel is nearer its channel's colour than the stored pair's edge
-// token - which is the difference the flag exists for.
+// document and is drawn as a FILLED dot of theme::Graph::handleFill() at radius 5; an
+// Auto segment's pair is DERIVED - a drag on it converts the key - so the drawing layer
+// draws it as a SOLID dot of the handle hue (the channel's colour mixed 0.2 toward
+// theme::Graph::halo()) at radius 3.5, filled at its 0.7 edge alpha, with the stem at
+// 0.5 and the ring in that same hue. The model's own ghost model carries one of each,
+// nothing else in the frame, so the two dots' pixels are the two drawings and the pair
+// is the assertion: the stored dot's centre IS the raised fill token, the ghost dot's
+// centre IS its own hue at 0.7 (solid, not hollow and not the stored surface), and the
+// ghost's ring pixel is nearer the handle hue than the raised surface - which is the
+// difference the flag exists for.
 bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
     REQUIRE(aModel.curves.size() == 1, "precondition: the ghost model must carry one curve");
     const gui::PanelCurve& curve = aModel.curves.at(0);
@@ -3134,24 +3285,29 @@ bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aMo
 
     const QColor storedPixel = pixelAt(aRendered.image, storedCentre.x(), storedCentre.y());
     const QColor ghostPixel = pixelAt(aRendered.image, ghostCentre.x(), ghostCentre.y());
-    // Three pixels out along the dot's own radius: on the 1px ring both drawings stroke
-    // (kHandleRadius at 5; the ghost's is inset by kGhostHandleShrink, 1.5px, so its ring
-    // band is 3.0..4.0 about the centre).
+    // Three pixels out along the dot's own radius: on the 1px ring each drawing strokes
+    // (kHandleRadius at 5; the ghost's is inset by kGhostHandleShrink, 1.5px, so its
+    // radius is 3.5 and ImGui's 1px band is 2.5..3.5 about the centre).
     const QPoint ghostRing(ghostCentre.x() + 3, ghostCentre.y());
     const QColor ghostRingPixel = pixelAt(aRendered.image, ghostRing.x(), ghostRing.y());
     const QColor fill = aTheme.handleFill();
+    // The ghost's hue is the shared handle ink: the channel colour mixed 0.2 toward the
+    // panel's halo, filled at the ghost's own 0.7 edge alpha over the clear frame.
+    const QColor handleInk = mixedToward(curve.color, aTheme.halo(), 0.2f);
+    const QColor ghostFill = over(withAlpha(handleInk, 0.7f), kClear);
     const int storedToFill = colourDistance(storedPixel, fill);
     const int ghostToFill = colourDistance(ghostPixel, fill);
-    const int ringToColour = colourDistance(ghostRingPixel, curve.color);
+    const int ghostToOwn = colourDistance(ghostPixel, ghostFill);
+    const int ringToColour = colourDistance(ghostRingPixel, handleInk);
     const int ringToEdge = colourDistance(ghostRingPixel, aTheme.handleFill());
 
     std::printf(
-        "MEASURED ghost_handle stored_dot=(%d,%d) rgb=%s handleFill=%s d=%d | ghost_dot=(%d,%d) rgb=%s d=%d"
-        " | ghost_ring=(%d,%d) rgb=%s channel_color=%s d=%d handleFill=%s d=%d | radius=%d/%d\n",
+        "MEASURED ghost_handle stored_dot=(%d,%d) rgb=%s handleFill=%s d=%d | ghost_dot=(%d,%d) rgb=%s d_own=%d"
+        " d_handleFill=%d | ghost_ring=(%d,%d) rgb=%s handle_hue=%s d=%d handleFill=%s d=%d | radius=%d/%d\n",
         storedCentre.x(), storedCentre.y(), hex(storedPixel).c_str(), hex(fill).c_str(), storedToFill,
-        ghostCentre.x(), ghostCentre.y(), hex(ghostPixel).c_str(), ghostToFill, ghostRing.x(), ghostRing.y(),
-        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), ringToColour, hex(aTheme.handleFill()).c_str(),
-        ringToEdge, stored->radius, ghost->radius
+        ghostCentre.x(), ghostCentre.y(), hex(ghostPixel).c_str(), ghostToOwn, ghostToFill, ghostRing.x(),
+        ghostRing.y(), hex(ghostRingPixel).c_str(), hex(handleInk).c_str(), ringToColour,
+        hex(aTheme.handleFill()).c_str(), ringToEdge, stored->radius, ghost->radius
     );
     REQUIRE(
         storedToFill <= kFillTol,
@@ -3160,16 +3316,22 @@ bool checkGhostHandle(const Rendered& aRendered, const gui::GraphPanelModel& aMo
         hex(storedPixel).c_str(), hex(fill).c_str(), storedToFill, kFillTol
     );
     REQUIRE(
+        ghostToOwn <= kFillTol,
+        "the GHOST handle's dot rgb=%s is not its own hue at the ghost's 0.7 alpha (expected %s, distance %d >"
+        " %d): a derived pair is a SOLID dot of the channel's reduced-chroma hue",
+        hex(ghostPixel).c_str(), hex(ghostFill).c_str(), ghostToOwn, kFillTol
+    );
+    REQUIRE(
         ghostToFill > kFillTol,
-        "the GHOST handle's dot rgb=%s IS theme::Graph::handleFill() rgb=%s (distance %d): a derived pair must be"
-        " drawn hollow, never as a stored tangent",
+        "the GHOST handle's dot rgb=%s IS theme::Graph::handleFill() rgb=%s (distance %d): a derived pair must"
+        " never be taken for the stored tangent's raised surface",
         hex(ghostPixel).c_str(), hex(fill).c_str(), ghostToFill
     );
     REQUIRE(
         ringToColour < ringToEdge,
-        "the ghost handle's ring rgb=%s is not nearer its channel's colour rgb=%s than the raised surface's grey"
-        " rgb=%s (%d against %d): a ghost pair is ringed in the curve's own hue",
-        hex(ghostRingPixel).c_str(), hex(curve.color).c_str(), hex(aTheme.handleFill()).c_str(), ringToColour,
+        "the ghost handle's ring rgb=%s is not nearer its handle hue rgb=%s than the raised surface's grey"
+        " rgb=%s (%d against %d): a ghost pair is ringed in the curve's reduced-chroma hue",
+        hex(ghostRingPixel).c_str(), hex(handleInk).c_str(), hex(aTheme.handleFill()).c_str(), ringToColour,
         ringToEdge
     );
     return true;
@@ -3814,7 +3976,7 @@ gui::GraphPanelModel makeInkModel(const theme::Graph& aTheme) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();
+    model.rulerBandTop = kRulerBand.top();
     // NOTHING but the runs: see the block comment above.
     model.zeroY = -1;
     model.playheadX = -1;
@@ -3846,7 +4008,7 @@ gui::GraphPanelModel makeDenseModel(const theme::Graph& aTheme) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();
+    model.rulerBandTop = kRulerBand.top();
     model.zeroY = -1;
     model.playheadX = -1;
 
@@ -4038,7 +4200,7 @@ gui::GraphPanelModel makePlayheadModel(int aPixelX) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();
+    model.rulerBandTop = kRulerBand.top();
     model.zeroY = -1;
     model.playheadX = aPixelX;
     return model;
@@ -4055,7 +4217,7 @@ gui::GraphPanelModel makeStemModel(const theme::Graph& aTheme) {
     model.panel = kPanel;
     model.plot = kPlot;
     model.valueColumn = kValueColumn;
-    model.rulerBandTop = kPlot.top();
+    model.rulerBandTop = kRulerBand.top();
     model.zeroY = -1;
     model.playheadX = -1;
 
@@ -4063,8 +4225,9 @@ gui::GraphPanelModel makeStemModel(const theme::Graph& aTheme) {
     curve.node = nullptr;
     curve.channel = ctrl::graph::Channel(kTypeA, 0);
     curve.channelRow = -1;
-    // The stem and the dot are drawn in the CURVE's channel hue (0.85 / 0.9), so this
-    // fixture has to give the curve the hue the probe below measures.
+    // The stem and the dot are drawn in the HANDLE hue (the channel colour mixed 0.2
+    // toward the panel's halo) at 0.85 / 0.9, so this fixture has to give the curve
+    // the channel hue the probe below derives that ink from.
     curve.color = aTheme.channelColor(kTypeA, 0);
     gui::PanelHandle handle;
     handle.segment = 0;
@@ -5061,9 +5224,10 @@ bool checkHairlinePlacement(
     // weighted by its own coverage and by its own SIGNED perpendicular distance from the line
     // the model asked for - so the answer is "where is the ink, in pixels, relative to the
     // line", not "how far does some sampling scheme drift".
-    const InkProbe stem = InkProbe::make(
-        over(withAlpha(aTheme.channelColor(kTypeA, 0), 0.85f), kClear)
-    );
+    // The stem's ink is the handle hue - the channel colour mixed 0.2 toward the
+    // panel's halo - at the stored stem's 0.85 alpha.
+    const QColor stemHandleInk = mixedToward(aTheme.channelColor(kTypeA, 0), aTheme.halo(), 0.2f);
+    const InkProbe stem = InkProbe::make(over(withAlpha(stemHandleInk, 0.85f), kClear));
     const QPointF direction = kStemDot - kStemBase;
     const double length = std::hypot(direction.x(), direction.y());
     const QPointF along(direction.x() / length, direction.y() / length);
@@ -5341,7 +5505,7 @@ int main(int argc, char** argv) {
         label.rect.setHeight(8);
         // DOWN into the band, so the rows above the short box are band surface and the
         // clamp is observable (the band's number row starts at kNumberTop).
-        label.rect.moveTop(kPlot.top() + gui::frameRuler::kNumberTop + 5);
+        label.rect.moveTop(kRulerBand.top() + gui::frameRuler::kNumberTop + 5);
     }
     // The SAME models with their frame labels removed: the pair the halo and ruler
     // assertions read "the label's own ink" against, now that the ruler's band
@@ -5365,7 +5529,7 @@ int main(int argc, char** argv) {
     overflow.panel = QRect(60, 0, 340, 300);
     overflow.plot = QRect(150, 30, 240, 240);
     overflow.valueColumn = QRect(66, 30, 83, 240);
-    overflow.rulerBandTop = overflow.plot.top();
+    overflow.rulerBandTop = overflow.plot.top() - gui::frameRuler::kBandHeight;
     overflow.valueLabels = {{QRect(66, 60, 20, 14), QStringLiteral("-1.235e+07")}};
 
     // 0: the control, then one pass per model the assertions read.
@@ -5514,6 +5678,15 @@ int main(int argc, char** argv) {
         palette, focus, "full_model_selected_last_curve"
     );
 
+    // THE DRAW-ORDER PASS (assertion 17b): the selected curve's chip is moved onto
+    // the playhead's column, deep inside the plot. The chip is drawn first and the
+    // playhead after it, so the column must read as the accent through the chip's
+    // rows - and the chip must still be visible beside it.
+    gui::GraphPanelModel chipUnderPlayhead = selectedMarkerModel(0);
+    chipUnderPlayhead.curves[0].chip = QRect(chipUnderPlayhead.playheadX - 30, 150, 60, 14);
+    const Rendered chipUnderPlayheadRendered =
+        renderPass(chipUnderPlayhead, palette, focus, "full_model_chip_under_playhead");
+
     // THE THREE MARKER STATES (assertion 29), on the ONE-KEY fixture: the same model, the
     // same invalid focus, and only the marker flags (and the pointer) differing between the
     // four passes. `markerSelected` is the editor's own state for "the Move X marker of one
@@ -5612,6 +5785,10 @@ int main(int argc, char** argv) {
     }
     if (!checkPlayhead(rendered, fullNoFrameRendered, full, fullNoFrame, palette)) {
         std::printf("FAILED: the playhead's extent\n");
+        return 1;
+    }
+    if (!checkChipUnderPlayhead(chipUnderPlayheadRendered, chipUnderPlayhead, palette)) {
+        std::printf("FAILED: the chips are drawn before the playhead\n");
         return 1;
     }
     if (!checkMarquee(rendered, marqueeRendered, fullMarquee, palette, kMarqueeRect)) {
