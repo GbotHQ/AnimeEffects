@@ -1814,3 +1814,81 @@ against the pill's 14), but it now scans below the 22px band BY CONSTRUCTION. (c
 NOT constant across tabs (see the growth trap), so a probe must re-read it per state and mask with the
 rect of the state it captured. (d) A pan of 40px near the content's end is CLAMPED by
 `updateCamera`'s overlap bound - the probe asserts `min(drag, room)`, not the drag.
+
+## The second graph round: the ruler became a section, and the inks became one family (2026-10-19)
+
+The user's second list ("set todo again and orchestrate") was about the panel looking like a
+different product beside the timeline. Every line measured.
+
+**The ruler is a SECTION now, not a fill under the graph.** It used to be an `AddRectFilled` inside
+`plot`, painted first, and every curve/key/handle was clipped only to `plot` whose top EQUALS the
+band's top - so the document's ink painted straight over the ruler, which is exactly what
+"seems to be behind the graph" meant. `ctrl::graph::Scaler::plotRect()`'s top inset is now
+`kMargin + kRulerBandHeight` (22), the model publishes `rulerBand = QRect(plot.left(),
+plot.top()-22, plot.width(), 22)` with `band.bottom()+1 == plot.top()`, and the band is painted
+BEFORE `PushClipRect(plot)`, so nothing in the graph can enter it. `Scaler::kRulerBandHeight` is
+`static_assert`ed against `gui::frameRuler::kBandHeight` AND the timeline's
+`ctrl::TimeLineEditor::kHeaderHeight` - the three cannot drift. The playhead (line + pill) is drawn
+LAST, after the chips, so a curve name can no longer cover it. A deeper occlusion (the tab-bar inset)
+HIDES the band rather than pushing it into the graph; the plot never moves for it.
+
+**Every selection mark is now the key's own ink.** The ring was the raw channel hue at 0.85 while the
+fill was the hue mixed 0.45 toward the text ink - two different colours for one state. Both now use
+the same opaque `mixedToward(hue, axisText, 0.45)`; the ring keeps its radius (dotRadius + 2.6) and
+1px width. Auto's tangent dot is a SOLID dot at the smaller radius (it was hollow), so the two handle
+kinds differ by radius and fill, not by hollowness. Handle stems and dots are mixed 0.2 toward the
+panel's halo, i.e. slightly lower chroma than their own curve - a handle now reads where it sits ON
+that curve instead of vanishing into it (alpha could not do this: alpha changes coverage, not chroma).
+And the hovered handle stops being accent: it is the handle ink brightened 0.45 toward the text ink.
+The accent is left to the two structural marks it already owned and shares with the timeline - the
+playhead and the marquee.
+
+**The Auto glyph finally says "automatic handles".** `gui::prop::paintEasingCurve` gained a trailing
+`bool aAutoHandles = false`; when set on a Type_Auto param it draws the derived curve PLUS its two
+control-point dots joined to the segment's endpoints by short stems - the reference's `ease` icon,
+sized from the rect so a 28px tile and an 18px header button read the same. Every other easing's
+glyph is byte-identical (the flag is a no-op off Auto). The picker's Auto tile opts in through
+`CurveGlyph::setAutoHandlesVisible`. The four HEADER quick easings are glyph buttons built from the
+same helper now (`QuickEaseButton`, 28x28 with an 18x18 glyph), placed LEFT of the easing chip, and
+their checked state is the text ink rather than the accent.
+
+**The channels popup had an accent rectangle, not an outline.** It was a `QPen(colors.accent, 1.0)`
+`drawRect` around the CURRENT row, seeded to row 0 on open and moved with the pointer - so it read as
+an accent outline that followed the mouse. Removed; the pointer's mark is the row's `raised` fill, and
+keyboard focus uses a neutral `floaterEdge` inner line gated by a `mKeyboardCursor` flag (so nothing
+appears on open and nothing follows the mouse).
+
+**A background right-click now opens the timeline's own empty-space menu.** `openKeyMenuAt` returned
+false whenever `panelKeyAt` missed a key within 10px, so the plot's background had no menu at all. It
+now routes `MainDisplayWidget::showGraphBackgroundMenu` into the timeline surface's context-menu
+route (a `QContextMenuEvent` delivered to `TimeLineEditorWidget`), so both views show one menu: with
+no selection it is a single (clipboard-gated) `Paste key`; with a selection it is the key menu acting
+on the whole selection. A right-click on a key is unchanged.
+
+**The wheel gains SCROLL and loses a dead combination.** The graph used Shift/Ctrl for per-axis ZOOM
+and, with both modifiers, consumed a notch that moved neither axis. The timeline's own wheel is
+Shift = scroll, plain = zoom; the graph now mirrors that with a dual axis: plain = zoom both (about
+the cursor), **Shift = scroll both** (frames through the timeline's `scrollFramesBy`, so both views
+stay the same window, at the timeline's own 50px per notch; value by 50px locally), **Ctrl = value
+zoom**, **Ctrl+Shift = frame zoom** (where Shift's frame zoom went). Select-all: the graph had it
+(`GraphEditor::selectAllMarkers`); the timeline gains `ctrl::TimeLineEditor::selectAllKeys()` (every
+key of every shown row, closed folders contributing their descendants) wired to Ctrl+A on the
+timeline surface. The two do NOT share an implementation - the same shared `time::Selection`, two
+different universes.
+
+**Tangent symmetry is about the KEY, and that is a storage fact.** `cubicBezier` lives in the FROM
+key's param: `(x1,y1)` is that key's OUTGOING handle and `(x2,y2)` is the TO key's INCOMING handle.
+The segment-space mirror `(1-x, 1-y)` therefore wrote the NEXT key's handle - the user's "it
+symmetrizes with the left side handle of the next key". The drag now reflects the grabbed handle about
+the KEY in PIXELS (`2*key - dragged`, converted back through the NEIGHBOUR segment's own frame and
+value spans, x clamped, y free), because a normalized mirror would bend the tangent where the two
+segments have different value spans - measured on a fixture with 90 vs 60 value units and 30 vs 10
+frames. First and last keys have one handle each: no mirror. An Auto neighbour is converted to Custom
+first so the mirror is what playback reads. The gesture is now a two-param `HandleDragCommand`, so one
+undo restores both. `graph_drag` section 23f holds six cases (both handle directions, first key, last
+key, the clamp, and an Auto neighbour).
+
+**Trap for the next test of this kind:** adding panel assertions to `tests/time_scaler.cpp` broke that
+target's LINK (`gXCAssertHandler`, `AudioPlaybackWidget`, `QMediaPlayer` undefined) because it pulls
+`libctrl`/`libcore` into a test that deliberately links neither. Panel-side wheel/zoom assertions
+belong in `graph_drag`, which already links them.

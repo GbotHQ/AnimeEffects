@@ -21,7 +21,8 @@
 #   * the measured surface is the rectangle the panel PUBLISHES for its own "Fit graph"
 #     action, read by name through AT-SPI: gui::GraphPanelFrame's buildAccessibilityModel
 #     sets fitItem.rect to the model's plot (and to the panel when the plot is empty), so
-#     the crop below IS the application's own plot and not this probe's arithmetic;
+#     the crop below reads the application's own plot, and the notch witness adds the
+#     model's own rulerBand to it - neither is this probe's arithmetic;
 #   * the header's page tabs are AT-SPI controls named "Timeline" and "Graph", pressed by
 #     name, and WHICH ONE IS CURRENT is readable from their rectangles: the current one is
 #     inflated to the whole strip (MEASURED on this tab bar by probe_graph_ink.sh, 120px
@@ -46,16 +47,30 @@
 #   * the crop is that published plot inset by kFrameWindowMargin (8px, the same
 #     ctrl::graph::Scaler): the margin the shared frame window is mapped into at both plot
 #     edges, so the playhead, which lives inside that mapping, cannot touch the crop's own
-#     edge. Two row ranges are cut from it, and the difference is the RULER BAND:
-#       - the PAN's and the ZOOM's before/after comparison uses the whole crop, because a
-#         notch repaints almost nothing BUT the band (MEASURED: 975 of the notch's 975
-#         changed pixels were in the band's 14 rows, none below them on the fresh project);
+#     edge. The finder/pan reading is cut to the rows BELOW the band, which is the
+#     difference the RULER BAND makes:
 #       - the FINDER (ae_pix.py's "line"/"moved") reads only the rows BELOW the band, so the
 #         playhead's PILL - a 14px-wide accent block in the band's number row - is not in its
-#         search region at all and the column it returns is the 1px line by construction.
-#     The crop itself does not have to chase the band's ink: the band's chrome is neutral and
-#     ae_pix.py's "moved" insists on a CHROMATIC colour that tops exactly ONE column in both
-#     shots and moves, so a number's or a tick's column cannot take the playhead's place.
+#         search region at all and the column it returns is the 1px line by construction;
+#       - the PAN's before/after reading uses that same below-band range, because the pan
+#         moves the playhead LINE there and the finder must not see the pill.
+#     THE NOTCH WITNESS HAS ITS OWN REGION (NOTCH_CROP), because the ruler is a SECTION now.
+#     ctrl::graph::Scaler::plotRect() starts below the 22px kRulerBandHeight band, the model
+#     publishes rulerBand == QRect(plot.left(), plot.top() - 22, plot.width(), 22), and the
+#     playhead pill and the frame ticks/numbers live in that band, not in the plot. On the
+#     fresh project this probe builds there are no keys, so one notch changes the band's
+#     ticks and numbers and almost nothing inside the plot (MEASURED: 975 of the notch's 975
+#     changed pixels were in the band's 14 rows, none below them). The witness therefore
+#     compares the band PLUS the plot - the panel region from the band's top, plot.top() - 22,
+#     to the plot's bottom, over the plot's own width - read from the same GEOM dump the probe
+#     already reads (the model's rulerBand and the published plot), so the region is
+#     application geometry and not this probe's arithmetic. That is why a stale crop is exactly
+#     what made this assertion read 0: the old plot-only region had no notch ink in it at all.
+#     Neither comparison chases ink: the band's chrome is neutral, and ae_pix.py's "moved"
+#     insists on a CHROMATIC colour that tops exactly ONE column in both shots and moves, so
+#     a number's or a tick's column cannot take the playhead's place - and the notch witness is
+#     an AE difference on a static raster, so a stale capture (nothing repainted between the
+#     two shots) is byte-identical there and counts 0, far under its bar.
 #
 # THE FEATURE IS THE PLAYHEAD, and no theme constant is baked in: its colour is learned from
 # the pan pair below (the colour that tops exactly ONE column in both shots, at a different
@@ -114,7 +129,7 @@ APPLOG=/tmp/probe_graph_anchor_app.log
 rm -f "$GEOM"
 rm -rf "$SCRATCH"; mkdir -p "$SCRATCH"
 
-# The crop, as an inset of the published plot. 8 is ctrl::graph::Scaler::kFrameWindowMargin,
+# The finder/pan crop, as an inset of the published plot. 8 is ctrl::graph::Scaler::kFrameWindowMargin,
 # the margin the shared window is mapped into at both plot edges: the playhead cannot be
 # nearer an edge than that, so the crop keeps the whole of it and drops the panel's own
 # edge rules (the value ticks sit AT the plot's left edge, the zero rule spans its width).
@@ -122,14 +137,15 @@ CROP_INSET=8
 # A crop narrower than this cannot hold the gesture the pan assertion makes: the drag starts
 # at the crop's middle and runs PAN_PIXELS, so the crop must be at least middle + drag wide.
 CROP_MIN=80
-# The ruler band the panel draws at the plot's top: frameRuler::kBandHeight (==
+# The ruler band the panel draws immediately ABOVE the plot's top (the scaler reserves its
+# rows, so plotRect starts below them): frameRuler::kBandHeight (==
 # ctrl::TimeLineEditor::kHeaderHeight), 22px, because the panel republishes the timeline's
 # own header height. The playhead's PILL is drawn inside it (frameRuler::kPillTop 2 from the
 # band's top, kNumberHeight 14 tall) and the 1px line starts UNDER it
 # (playheadLineTop == band top + kLineTop), so the FINDER reads only the rows BELOW this
 # many pixels from the plot's top: the pill can then never take the line's column, and the
-# column that wins is the line by construction. The crop itself keeps the band - it is what
-# a zoom notch repaints.
+# column that wins is the line by construction. The finder/pan crop drops the band; the
+# NOTCH witness keeps it, because it is what a zoom notch repaints.
 RULER_BAND=22
 # How many rows one colour must cover for its column to be a candidate at all, as a percent
 # of the rows scanned. The playhead line covers all of them; the ruler band's chrome and the
@@ -159,10 +175,12 @@ HIGH_FRAME_STEPS=5
 # the overlay's recording measured (the shared window's exact fit rounds the rung, so the run
 # prints 6.2 rather than 6.7 - the same order, and several pixels per frame either way).
 HIGH_ZOOM_NOTCHES=20
-# The notch has to have done something. A zoom of this panel's frame ladder repaints many
-# hundreds of the crop's pixels (the crop is hundreds of columns wide and every frame tick
-# and number on it moves), so this bar separates "the notch zoomed" from "the notch did
-# nothing" with room to spare.
+# The notch has to have done something. Its witness reads the ruler band PLUS the plot
+# (NOTCH_CROP): hundreds of columns wide, and one notch redraws every tick, every number and
+# the playhead pill in the band, so this bar separates "the notch zoomed" from "the notch did
+# nothing" with room to spare. It CANNOT pass on a stale capture: the band's chrome and the
+# plot's empty floor are static, so two captures with no repaint between them are identical
+# and compare to 0 changed pixels. Only a raster the notch actually changed can reach 500.
 NOTCH_CHANGE_MIN=500
 export GEOM SCRATCH STEPS INK APPLOG CROP_INSET CROP_MIN RULER_BAND MIN_COLOUR_PERCENT \
        TREE_EDGE_MIN_RUN PLOT_PAGE_INSET_MIN PLOT_PAGE_INSET_MAX PAN_PIXELS FRAME_STEPS \
@@ -215,7 +233,8 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # The FINDER raw: the crop own columns, but only the rows BELOW the ruler band, so the
   # playhead pill (which lives in the band) is not inside the scanned region at all - see
   # RULER_BAND. The columns are the crop own (the left edge is), so every column number is
-  # comparable with the crop the pan and the zoom are compared in.
+  # comparable with the crop the pan is compared in. The notch witness is a separate region
+  # (NOTCH_CROP); the playhead columns above are always read from THIS raw, never from it.
   rawline() { raw "$1" "${CW}x${LH}+${CL}+${LT}" "$2"; }
   pix() { python3 "$ROOT/scripts/gui/ae_pix.py" "$@"; }
   inkpx() { python3 "$INK" "$@"; }
@@ -284,6 +303,26 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   CW=$((PLW - 2 * CROP_INSET)); CH=$((PLH - 2 * CROP_INSET))
   echo "PLOT=\"$PLOT\"" >> "$GEOM"
   echo "CROP=\"$CL $CT $CW $CH\"" >> "$GEOM"
+  # THE RULER BAND, from the model own publication: GraphPanelModel publishes rulerBand as
+  # QRect(plot.left(), plot.top() - kRulerBandHeight, plot.width(), kRulerBandHeight), with
+  # the band bottom (plot.top() - 1) adjacent to the plot, and the published Fit graph box
+  # above IS model.plot. kRulerBandHeight is 22 (Scaler::kRulerBandHeight, static_asserted
+  # against frameRuler::kBandHeight), the same RULER_BAND the finder rows are cut with.
+  BL=$PLX
+  BT=$((PLY - RULER_BAND))
+  BW=$PLW
+  BH=$RULER_BAND
+  echo "rulerBand=\"$BL $BT $BW $BH\"" >> "$GEOM"
+  # THE NOTCH WITNESS REGION: the ruler band PLUS the plot - the panel page from the band top
+  # to the plot bottom, over the plot own width. Named apart from CROP because the finder
+  # must keep reading only below the band (the playhead pill would otherwise win the column),
+  # while the notch witness must include the band: on this keyless project that is where one
+  # notch actually paints (its ticks, its numbers and the pill).
+  NC_L=$PLX
+  NC_T=$BT
+  NC_W=$PLW
+  NC_H=$((PLH + RULER_BAND))
+  echo "NOTCH_CROP=\"$NC_L $NC_T $NC_W $NC_H\"" >> "$GEOM"
   if [ "$CW" -lt "$CROP_MIN" ] || [ "$CH" -lt "$CROP_MIN" ]; then
     abort "the panel own plot [${PLOT:-none}] leaves a ${CW}x${CH} crop, and a pan of ${PAN_PIXELS}px from its middle needs ${CROP_MIN}px each way"
   fi
@@ -297,6 +336,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   MINC_LINE=$((LH * MIN_COLOUR_PERCENT / 100))
   echo "FINDER_ROWS=\"$LT $LH\"" >> "$GEOM"
   say "plot $PLOT -> crop $CL,$CT ${CW}x${CH} (a column needs ${MINC} rows of one colour); the finder reads rows ${LT}..$((LT + LH - 1)) below the ${RULER_BAND}px band (${LH} rows, ${MINC_LINE} of one colour)"
+  say "ruler band $BL,$BT ${BW}x${BH} (plot.top() - ${RULER_BAND}); the notch witness is $NC_L,$NC_T ${NC_W}x${NC_H} (band top to plot bottom)"
   shot "$SHOTS/anchor_01_graph_page.png"
 
   # ---- the dock and the page edge AS THE GRAPH PAGE SHOWS THEM ----
@@ -412,18 +452,22 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # file sent it while the pointer was still parked, and the notch changed 0 px of the panel
   # and moved the anchored frame 0 px - i.e. it did not happen at all).
   shot "$SHOTS/anchor_05_zoom_before.png"
-  magick "$SHOTS/anchor_05_zoom_before.png" -crop "${CW}x${CH}+${CL}+${CT}" +repage "$SCRATCH/za.png"
+  magick "$SHOTS/anchor_05_zoom_before.png" -crop "${NC_W}x${NC_H}+${NC_L}+${NC_T}" +repage "$SCRATCH/za.png"
   xdotool mousemove --sync $((CL + FX1)) $MIDY
   sleep 0.4
   xdotool click 5
   sleep 1.0
   shot "$SHOTS/anchor_06_zoom_after.png"
   rawline "$SHOTS/anchor_06_zoom_after.png" "$SCRATCH/zb.raw"
-  magick "$SHOTS/anchor_06_zoom_after.png" -crop "${CW}x${CH}+${CL}+${CT}" +repage "$SCRATCH/zb.png"
+  magick "$SHOTS/anchor_06_zoom_after.png" -crop "${NC_W}x${NC_H}+${NC_L}+${NC_T}" +repage "$SCRATCH/zb.png"
   ZX1=$(col "$SCRATCH/zb.raw" "$PLR" "$PLG" "$PLB")
   echo "ZOOM_X=\"$FX1 $ZX1\"" >> "$GEOM"
-  echo "ZOOM_PIXELS=\"$(magick compare -metric AE "$SCRATCH/za.png" "$SCRATCH/zb.png" null: 2>&1)\"" >> "$GEOM"
-  say "one notch on the playhead column: $FX1 -> $ZX1"
+  # THE WITNESS COUNTS THE BAND PLUS THE PLOT, i.e. the region a notch really repaints now
+  # that the ruler is its own section. A stale capture (both shots identical because the
+  # notch did not reach the panel) compares to 0 and cannot reach the bar.
+  ZCH=$(magick compare -metric AE "$SCRATCH/za.png" "$SCRATCH/zb.png" null: 2>&1)
+  echo "ZOOM_PIXELS=\"$ZCH\"" >> "$GEOM"
+  say "one notch on the playhead column: $FX1 -> $ZX1; the band+plot witness $NC_L,$NC_T ${NC_W}x${NC_H} (band $BL,$BT ${BW}x${BH} + plot $PLOT) changed ${ZCH} px"
 
   xdotool mousemove --sync $((CL + ZX1)) $MIDY
   sleep 0.4
@@ -545,7 +589,7 @@ check "$((1 - inside_ok))" "and the panel publishes its own plot as the box of i
 # both move when this page becomes current.
 INSET=-1
 [ -n "${PAGE_LEFT:-}" ] && INSET=$((PLX - PAGE_LEFT))
-echo "geometry: dock with the timeline up [${DOCK:-none}] (tree ${TREE_W:-none}px, longest hairline run ${TREE_RUN:-0} of ${DW}px, hairline colour ${HAIR_COLOUR:-none}), dock with the Graph page up [${DOCK_G:-none}], graph page left ${PAGE_LEFT:-unmeasured} (body background ${PAGE_BG:-none}), plot [${PLOT:-none}] -> inset ${INSET}px, crop [${CROP:-none}], finder rows [${FLT:-?}..$((FLT + FLH - 1))] (${FLH:-0} rows)"
+echo "geometry: dock with the timeline up [${DOCK:-none}] (tree ${TREE_W:-none}px, longest hairline run ${TREE_RUN:-0} of ${DW}px, hairline colour ${HAIR_COLOUR:-none}), dock with the Graph page up [${DOCK_G:-none}], graph page left ${PAGE_LEFT:-unmeasured} (body background ${PAGE_BG:-none}), plot [${PLOT:-none}] -> inset ${INSET}px, ruler band [${rulerBand:-none}] (the model rulerBand: plot.left(), plot.top()-22, plot.width(), 22), crop [${CROP:-none}], notch witness [${NOTCH_CROP:-none}] (band + plot), finder rows [${FLT:-?}..$((FLT + FLH - 1))] (${FLH:-0} rows)"
 inset_ok=0
 [ -n "${PAGE_LEFT:-}" ] && [ "$INSET" -ge "$PLOT_PAGE_INSET_MIN" ] && [ "$INSET" -le "$PLOT_PAGE_INSET_MAX" ] && inset_ok=1
 check "$((1 - inset_ok))" "the published plot's left edge sits the scaler's own inset past the Graph page's left edge, measured on that page's own splitter hairline: plot x ${PLX:-?} minus page x ${PAGE_LEFT:-unmeasured} = ${INSET}px, inside [${PLOT_PAGE_INSET_MIN},${PLOT_PAGE_INSET_MAX}] (kMargin 4 + axisLabelWidth, 46..96 behind it)"
@@ -561,7 +605,7 @@ ppf=$(awk -v a="$FX1" -v b="$PX1" -v n="$FRAME_STEPS" 'BEGIN { printf "%.4f", (a
 # rate is the movement over the step, in either direction.
 high_ppf=$(awk -v a="$HP1" -v b="$HP0" -v n="$HIGH_FRAME_STEPS" 'BEGIN { printf "%.4f", (a > b ? a - b : b - a) / n }')
 changed=${ZOOM_PIXELS%% *}
-echo "measured: playhead rgb ${COLOUR:-?} at ${PX0:-?}px into the ${CROP:-?} crop, ${ppf} px/frame, pan ${pan}px of the ${PAN_PIXELS}px dragged, one notch moved it ${zoom}px (${changed:-0} px changed), ${HIGH_ZOOM_NOTCHES} notches held it within ${high_anchor}px at ${high_ppf} px/frame, pan at that zoom ${pan2}px"
+echo "measured: playhead rgb ${COLOUR:-?} at ${PX0:-?}px into the ${CROP:-?} crop, ${ppf} px/frame, pan ${pan}px of the ${PAN_PIXELS}px dragged, one notch moved it ${zoom}px (${changed:-0} px changed in the band+plot witness [${NOTCH_CROP:-?}], bar ${NOTCH_CHANGE_MIN}), ${HIGH_ZOOM_NOTCHES} notches held it within ${high_anchor}px at ${high_ppf} px/frame, pan at that zoom ${pan2}px"
 echo "steps: $(tr "\n" ";" < "$STEPS" 2>/dev/null)"
 [ "${ALIVE:-no}" = "yes" ]
 alive_rc=$?
@@ -575,7 +619,7 @@ check "$([ "$pan" -gt $((PAN_PIXELS - 3)) ] && [ "$pan" -lt $((PAN_PIXELS + 3)) 
 check "$([ "$zoom" -le 1 ] && echo 0 || echo 1)" \
     "a wheel notch with the pointer ON a frame holds that frame still (measured ${zoom}px of ${ZX0:-?} -> ${ZX1:-?})"
 check "$([ "${changed:-0}" -gt "$NOTCH_CHANGE_MIN" ] && echo 0 || echo 1)" \
-    "and the same notch really zoomed (${changed:-0} px of the panel changed inside the crop, bar ${NOTCH_CHANGE_MIN})"
+    "and the same notch really zoomed (${changed:-0} px changed in the band+plot witness [${NOTCH_CROP:-none}]: ruler band [${rulerBand:-none}] + plot [${PLOT:-none}], bar ${NOTCH_CHANGE_MIN} - the band's static chrome and the empty plot compare to 0 on a stale capture)"
 # THE CLIMB IS NOT THE ONE NOTCH ABOVE, AND THE DIFFERENCE IS MEASURED, NOT ASSUMED. Each notch
 # re-anchors on the TIMELINE's INTEGER content axis - TimeLineWidget::zoomFramesAbout rounds the
 # anchor's content pixel and TimeLineEditor::anchorPixelAfterScale rounds the scaled one - which
