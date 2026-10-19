@@ -154,7 +154,7 @@ private:
     int mHorizontalOffset;
     // A delegated pan's frame remainder, carried between scrollFramesBy calls so whole-content-pixel
     // rounding cannot make the view drift behind the pointer over a drag.
-    double mPendingScrollFrames;
+    double mPendingScrollPixels;
     // A delegated zoom's sub-pixel remainder, carried between zoomFramesAbout calls for the same
     // reason: the view transform is whole content pixels and the ladder makes each notch's
     // fraction different, so discarding it per notch walks the anchored frame away over a held

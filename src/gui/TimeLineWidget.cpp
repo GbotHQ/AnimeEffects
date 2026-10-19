@@ -109,7 +109,7 @@ TimeLineWidget::TimeLineWidget(
     mAbstractCursor(),
     mVerticalScrollValue(0),
     mHorizontalOffset(0),
-    mPendingScrollFrames(0.0),
+    mPendingScrollPixels(0.0),
     mPendingZoomPixels(0.0),
     mPendingScrollbarAdopt(false),
     mReportedWindowLo(0.0),
@@ -824,12 +824,18 @@ void TimeLineWidget::scrollFramesBy(double aFrameDelta) {
     // The content axis is whole pixels, so this conversion rounds - and a drag arrives as MANY small
     // deltas, so rounding each one away would lose a fraction per event and the view would fall
     // behind the pointer. The remainder is carried between calls instead, so the total is exact.
-    mPendingScrollFrames += aFrameDelta;
+    //
+    // THE CARRY IS IN CONTENT PIXELS, NOT IN FRAMES, and that is load-bearing: a remainder measured in
+    // frames is re-priced by any scale change, so a pan, a zoom (one notch is x1.1, twenty is x7.4)
+    // and a pan again made the second pan absorb the first's residue - measured 2026-10-19 through
+    // probe_graph_anchor.sh as 37.78px of a 40px drag at 7px/frame (a 0.42px residue became ~3.1px).
+    // Pixels are the unit the view transform rounds to, so they survive a zoom unchanged.
     const double rate = controller->pixelsPerFrame();
-    const int delta = static_cast<int>(std::lround(mPendingScrollFrames * rate));
+    mPendingScrollPixels += aFrameDelta * rate;
+    const int delta = static_cast<int>(std::lround(mPendingScrollPixels));
     if (delta == 0)
         return; // sub-pixel: a frame delta too small to move this view is no move
-    mPendingScrollFrames -= static_cast<double>(delta) / rate;
+    mPendingScrollPixels -= static_cast<double>(delta);
     scrollViewBy(delta);
 }
 

@@ -26,24 +26,36 @@
 #     name, and WHICH ONE IS CURRENT is readable from their rectangles: the current one is
 #     inflated to the whole strip (MEASURED on this tab bar by probe_graph_ink.sh, 120px
 #     against 60px, while the two keep their own slots at x=8 and x=68);
-#   * the dock is the AT-SPI rectangle of the widget named "Animation";
-#   * the panel's PAGE inside the dock - the dock's right-hand part - starts where the
-#     timeline's ruler does, measured off the ruler's bottom hairline exactly as
-#     probe_timeline_ink.sh measures it (the hairline spans the timeline and NOT the tree
-#     column, whose width is a property of the project: MEASURED 189px on one project,
-#     226px on another). It is CHECKED against rather than cropped to: the published plot's
-#     left edge must sit the scaler's own inset (kMargin 4 + axisLabelWidth, whose reserve is
-#     derived from the value format's widest label - 68px in graph_Scaler.h's own measurement,
-#     MEASURED here as 70px, so the plot sits 74px into the page - and whose range is
-#     [46,96]) past the page's left edge, and the assertion names both numbers.
+#   * the dock is the AT-SPI rectangle of the widget named "Animation", read TWICE - once
+#     while the timeline is the current page (for the tabs) and again once the Graph page is
+#     (for the plot), because the two pages are not the same width (see the PAGE bullet);
+#   * the panel's PAGE inside the dock - the dock's right-hand part - starts at the TREE
+#     SPLITTER's hairline, measured ON THE GRAPH PAGE ITSELF as the one column inked in every
+#     row of the dock's body (the same 1px hairlines probe_timeline_ink.sh measures the
+#     timeline's ruler with). It is measured on THAT page and not on the timeline's ruler,
+#     because the dock AND that boundary MOVE when the Graph tab becomes current: the header
+#     carries the page's OWN controls and the Channels button exists only on the Graph page
+#     (MEASURED: dock 848px wide with the boundary at x=242 while the timeline is up, 920px
+#     with it at x=263 once this page is up - and the timeline's own tree width is then the
+#     edge of a page that is not showing). It is CHECKED against rather than cropped to: the
+#     published plot's left edge must sit the scaler's own inset (kMargin 4 + axisLabelWidth,
+#     whose reserve is derived from the value format's widest label - 68px in
+#     graph_Scaler.h's own measurement, MEASURED here as 70px, so the plot sits 74px into the
+#     page - and whose range is [46,96]) past the page's left edge, and the assertion names
+#     both numbers.
 #   * the crop is that published plot inset by kFrameWindowMargin (8px, the same
 #     ctrl::graph::Scaler): the margin the shared frame window is mapped into at both plot
 #     edges, so the playhead, which lives inside that mapping, cannot touch the crop's own
-#     edge. The crop does NOT chase the ruler band's height - that is a FONT measurement
-#     (4px of tick rows plus one line of numbers), not a constant. It does not have to: the
-#     band's ink is the ruler's neutral chrome, and ae_pix.py's "moved" insists on a
-#     CHROMATIC colour that tops exactly ONE column in both shots and moves, so a number's
-#     or a tick's column cannot take the playhead's place.
+#     edge. Two row ranges are cut from it, and the difference is the RULER BAND:
+#       - the PAN's and the ZOOM's before/after comparison uses the whole crop, because a
+#         notch repaints almost nothing BUT the band (MEASURED: 975 of the notch's 975
+#         changed pixels were in the band's 14 rows, none below them on the fresh project);
+#       - the FINDER (ae_pix.py's "line"/"moved") reads only the rows BELOW the band, so the
+#         playhead's PILL - a 14px-wide accent block in the band's number row - is not in its
+#         search region at all and the column it returns is the 1px line by construction.
+#     The crop itself does not have to chase the band's ink: the band's chrome is neutral and
+#     ae_pix.py's "moved" insists on a CHROMATIC colour that tops exactly ONE column in both
+#     shots and moves, so a number's or a tick's column cannot take the playhead's place.
 #
 # THE FEATURE IS THE PLAYHEAD, and no theme constant is baked in: its colour is learned from
 # the pan pair below (the colour that tops exactly ONE column in both shots, at a different
@@ -53,7 +65,11 @@
 # does the scan. With the fresh project this probe builds there is nothing else chromatic on
 # the panel to learn by mistake: no key means no curve, no marker, and no channels button
 # (graph::buildChannels publishes none while the count is zero), so the playhead's column is
-# the only full-height chromatic run on the dock's page.
+# the only full-height chromatic run on the dock's page. The pill is the SECOND piece of
+# accent ink (14 rows in the band's number row, MEASURED 17 columns wide, none of which holds
+# more than 8 of them inside the crop), and it is exactly why the finder is restricted to the
+# rows below the band: the column it returns holds the line's whole run (MEASURED 218 of 218
+# rows below the band, one pixel wide), never the pill's block.
 #
 # THE PROJECT IS BUILT HERE, at the application's own default (600 frames): the pan assertion
 # is only decisive where a frame is SEVERAL pixels wide, and that needs room to zoom - a
@@ -106,12 +122,22 @@ CROP_INSET=8
 # A crop narrower than this cannot hold the gesture the pan assertion makes: the drag starts
 # at the crop's middle and runs PAN_PIXELS, so the crop must be at least middle + drag wide.
 CROP_MIN=80
-# How many rows one colour must cover for its column to be a candidate at all. The playhead
-# covers all of them; the ruler band's chrome is well below that, so an overlay of text
-# cannot hide it.
+# The ruler band the panel draws at the plot's top: frameRuler::kBandHeight (==
+# ctrl::TimeLineEditor::kHeaderHeight), 22px, because the panel republishes the timeline's
+# own header height. The playhead's PILL is drawn inside it (frameRuler::kPillTop 2 from the
+# band's top, kNumberHeight 14 tall) and the 1px line starts UNDER it
+# (playheadLineTop == band top + kLineTop), so the FINDER reads only the rows BELOW this
+# many pixels from the plot's top: the pill can then never take the line's column, and the
+# column that wins is the line by construction. The crop itself keeps the band - it is what
+# a zoom notch repaints.
+RULER_BAND=22
+# How many rows one colour must cover for its column to be a candidate at all, as a percent
+# of the rows scanned. The playhead line covers all of them; the ruler band's chrome and the
+# pill (14 rows) are far below that, so an overlay of text cannot hide it. The rows scanned
+# are the FINDER's own, i.e. below RULER_BAND.
 MIN_COLOUR_PERCENT=35
-# A run this long in the ruler's bottom hairline is the timeline's, not a tree cell's: the
-# edge the panel's page starts at is the first such run.
+# A run this long in the TIMELINE page's ruler hairline is the timeline's, not a tree cell's:
+# the edge that page starts at is the first such run.
 TREE_EDGE_MIN_RUN=10
 # The scaler's own inset of the plot inside the panel: kMargin (4) + axisLabelWidth, whose
 # floor is kAxisLabelWidth (46) and whose ceiling is kMaxAxisLabelWidth (96).
@@ -138,9 +164,9 @@ HIGH_ZOOM_NOTCHES=20
 # and number on it moves), so this bar separates "the notch zoomed" from "the notch did
 # nothing" with room to spare.
 NOTCH_CHANGE_MIN=500
-export GEOM SCRATCH STEPS INK APPLOG CROP_INSET CROP_MIN MIN_COLOUR_PERCENT TREE_EDGE_MIN_RUN \
-       PLOT_PAGE_INSET_MIN PLOT_PAGE_INSET_MAX PAN_PIXELS FRAME_STEPS HIGH_FRAME_STEPS \
-       HIGH_ZOOM_NOTCHES NOTCH_CHANGE_MIN
+export GEOM SCRATCH STEPS INK APPLOG CROP_INSET CROP_MIN RULER_BAND MIN_COLOUR_PERCENT \
+       TREE_EDGE_MIN_RUN PLOT_PAGE_INSET_MIN PLOT_PAGE_INSET_MAX PAN_PIXELS FRAME_STEPS \
+       HIGH_FRAME_STEPS HIGH_ZOOM_NOTCHES NOTCH_CHANGE_MIN
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   set -u
@@ -186,6 +212,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   park() { xdotool mousemove --sync $POINTX $POINTY; sleep 0.5; }
   shot() { park; import -window root "$1"; }
   raw() { magick "$1" -crop "$2" +repage -depth 8 rgb:"$3"; }
+  # The FINDER raw: the crop own columns, but only the rows BELOW the ruler band, so the
+  # playhead pill (which lives in the band) is not inside the scanned region at all - see
+  # RULER_BAND. The columns are the crop own (the left edge is), so every column number is
+  # comparable with the crop the pan and the zoom are compared in.
+  rawline() { raw "$1" "${CW}x${LH}+${CL}+${LT}" "$2"; }
   pix() { python3 "$ROOT/scripts/gui/ae_pix.py" "$@"; }
   inkpx() { python3 "$INK" "$@"; }
   # tab <name>: press the dock header page tab BY NAME, from its own rectangle.
@@ -211,11 +242,12 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   echo "TAB_T_AT_TL=\"$(ae extents "Timeline")\"" >> "$GEOM"
   echo "TAB_G_AT_TL=\"$(ae extents "Graph")\"" >> "$GEOM"
 
-  # ---- the page edge, off the TIMELINE page own ruler hairline ----
+  # ---- the TIMELINE page own edge, off its ruler bottom hairline ----
   # Taken before the switch, because the timeline is the page that is up. The ruler bottom
   # hairline spans the timeline and NOT the tree column, so the first long run of the row
-  # modal colour IS where the timeline starts - the panel page left edge, which the Graph
-  # page then draws from.
+  # modal colour IS where the timeline starts. This is the TIMELINE page own edge and only
+  # that page: the dock and this boundary MOVE when the Graph page becomes current, which is
+  # why the panel page edge is measured again (below) with that page up.
   shot "$SHOTS/anchor_00_dock_timeline.png"
   TY0=$((DY + 37 + 40))
   raw "$SHOTS/anchor_00_dock_timeline.png" "${DW}x1+${DX}+$((TY0 - 1))" "$SCRATCH/hairline.raw"
@@ -237,7 +269,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   echo "TREE_W=\"${TREE_W:-}\"" >> "$GEOM"
   echo "TREE_RUN=\"$TREE_RUN\"" >> "$GEOM"
   echo "HAIR_COLOUR=\"${HAIRC:-none}\"" >> "$GEOM"
-  say "the page starts at $((${TREE_W:-0} + DX)) (tree ${TREE_W:-none}px of the dock, longest hairline run ${TREE_RUN} of ${DW}px)"
+  say "the timeline page starts at $((${TREE_W:-0} + DX)) (tree ${TREE_W:-none}px of the dock, longest hairline run ${TREE_RUN} of ${DW}px)"
 
   # ---- the route: the dock header own Graph tab, pressed BY NAME ----
   tab "Graph" || abort "the dock header has no pressable tab named Graph: the panel cannot be shown by the dock own route"
@@ -257,14 +289,63 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   fi
   MIDY=$((CT + CH / 2))
   MINC=$((CH * MIN_COLOUR_PERCENT / 100))
-  say "plot $PLOT -> crop $CL,$CT ${CW}x${CH} (a column needs ${MINC} rows of one colour)"
+  # The FINDER rows: the crop below the ruler band, which the playhead pill lives in. LH
+  # cannot run out before the crop does (CH >= CROP_MIN with 16 of CROP_INSET inside it, so
+  # PLH >= 96 and LH == PLH - RULER_BAND - CROP_INSET >= 66).
+  LT=$((PLY + RULER_BAND))
+  LH=$((PLY + PLH - CROP_INSET - LT))
+  MINC_LINE=$((LH * MIN_COLOUR_PERCENT / 100))
+  echo "FINDER_ROWS=\"$LT $LH\"" >> "$GEOM"
+  say "plot $PLOT -> crop $CL,$CT ${CW}x${CH} (a column needs ${MINC} rows of one colour); the finder reads rows ${LT}..$((LT + LH - 1)) below the ${RULER_BAND}px band (${LH} rows, ${MINC_LINE} of one colour)"
   shot "$SHOTS/anchor_01_graph_page.png"
 
+  # ---- the dock and the page edge AS THE GRAPH PAGE SHOWS THEM ----
+  # THE DOCK MOVES WHEN THE GRAPH PAGE BECOMES CURRENT, and the tree splitter with it. The
+  # header above the body carries the page OWN controls: TimeLineHeader shows the Channels
+  # button only while the Graph page is current (TimeLineHeader.cpp, the onTabChanged branch
+  # that sets mChannelsButton visible for Surface::Graph), so switching pages changes what the
+  # dock has to be wide enough for, and the dock takes that width (MEASURED on this recording:
+  # 848px wide with the boundary at x=242 while the timeline was up, 920px with it at x=263
+  # now). The rectangle read before the switch is therefore the TIMELINE page own dock, and
+  # using it as the panel page is how a correct plot came out "outside" it. Both bounds are
+  # read HERE, with the Graph page up:
+  #   * the dock own AT-SPI rectangle again - the page own right and bottom bounds;
+  #   * the page own LEFT edge from the splitter hairline, the one column inked in EVERY row
+  #     of the dock body, so a column scan needing all ${CH} rows returns it first (the
+  #     playhead line and the dock own right-hand edge are the only other such columns, both
+  #     to its right). The page first pixel is the column after the run.
+  DOCK_G=$(ae extents "Animation")
+  echo "DOCK_G=\"${DOCK_G:-}\"" >> "$GEOM"
+  PAGE_LEFT=""; PBG=""
+  read -r DGX DGY DGW DGH <<< "${DOCK_G:-0 0 0 0}"
+  if [ "$DGW" -gt 0 ]; then
+    PW=$((DGX + DGW))
+    raw "$SHOTS/anchor_01_graph_page.png" "${PW}x${CH}+${DGX}+${CT}" "$SCRATCH/pageband.raw"
+    PBG=$(inkpx modal "$SCRATCH/pageband.raw" "$PW" "$CH" 0 0 "$PW" "$CH" | cut -d" " -f1-3)
+    case "$PBG" in
+      ""|none) say "the dock body has no modal colour: the page edge cannot be measured" ;;
+      *)
+        read -r PBR PBGG PBB <<< "$PBG"
+        inkpx inkcols "$SCRATCH/pageband.raw" "$PW" "$CH" 0 $((CH - 1)) "$PBR" "$PBGG" "$PBB" 12 "$CH" > "$SCRATCH/page_cols.txt"
+        while read -r c0 c1 cn cr cg cb; do
+          case "$c0" in ""|none) continue ;; esac
+          PAGE_LEFT=$((DGX + c0 + 1))
+          break
+        done < "$SCRATCH/page_cols.txt"
+        ;;
+    esac
+  fi
+  echo "PAGE_LEFT=\"${PAGE_LEFT:-}\"" >> "$GEOM"
+  echo "PAGE_BG=\"${PBG:-none}\"" >> "$GEOM"
+  say "the graph page starts at ${PAGE_LEFT:-unmeasured} (dock now ${DGW}px wide, body background ${PBG:-none})"
+
   # The playhead column of a capture, given its learned colour; 99999 fails the assertion
-  # loudly when the feature is not in view.
+  # loudly when the feature is not in view. The raw it reads is a rawline (the rows below the
+  # ruler band), so its height is LH and the bar is MINC_LINE: the column that wins holds the
+  # line whole run there, and the pan own reading prints that count against LH.
   col() {
     local c
-    c=$(pix line "$1" $CW $CH "$2" "$3" "$4" $MINC | cut -d" " -f1)
+    c=$(pix line "$1" $CW $LH "$2" "$3" "$4" $MINC_LINE | cut -d" " -f1)
     case "$c" in ""|*[!0-9]*) echo 99999 ;; *) echo "$c" ;; esac
   }
 
@@ -274,7 +355,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # frame at the window own left edge, so a drag the other way would take the playhead out of
   # the crop the columns are read from.
   shot "$SHOTS/anchor_02_pan_before.png"
-  raw "$SHOTS/anchor_02_pan_before.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/pa.raw"
+  rawline "$SHOTS/anchor_02_pan_before.png" "$SCRATCH/pa.raw"
   xdotool mousemove --sync $((CL + CW / 2)) $MIDY
   sleep 0.3
   xdotool mousedown 2
@@ -284,11 +365,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mouseup 2
   sleep 1.0
   shot "$SHOTS/anchor_03_pan_after.png"
-  raw "$SHOTS/anchor_03_pan_after.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/pb.raw"
-  MOVED=$(pix moved "$SCRATCH/pa.raw" "$SCRATCH/pb.raw" $CW $CH $MINC)
+  rawline "$SHOTS/anchor_03_pan_after.png" "$SCRATCH/pb.raw"
+  MOVED=$(pix moved "$SCRATCH/pa.raw" "$SCRATCH/pb.raw" $CW $LH $MINC_LINE)
   echo "MOVED=\"$MOVED\"" >> "$GEOM"
   if [ "$MOVED" = "none" ]; then
-    say "the pan moved nothing in the crop ${CL},${CT} ${CW}x${CH}"
+    say "the pan moved nothing in the crop ${CL},${CT} ${CW}x${CH} below the band"
     kill $app 2>/dev/null
     wait $app 2>/dev/null
     exit 0
@@ -296,7 +377,16 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   read -r PX0 PX1 PLR PLG PLB <<< "$MOVED"
   echo "PAN_X=\"$PX0 $PX1\"" >> "$GEOM"
   echo "COLOUR=\"$PLR $PLG $PLB\"" >> "$GEOM"
-  say "the playhead is rgb $PLR,$PLG,$PLB and the pan moved it $PX0 -> $PX1"
+  # WHAT THE COLUMN IS, printed with the colour it is found by: the finder reads only the rows
+  # below the 22px ruler band, so the pill is not in its region - and this count is the proof,
+  # because a pill column could hold at most its own 14 rows while the line holds every row of
+  # the region.
+  LINE_READ=$(pix line "$SCRATCH/pa.raw" $CW $LH "$PLR" "$PLG" "$PLB" $MINC_LINE)
+  LINE_X=${LINE_READ%% *}
+  LINE_N=${LINE_READ##* }
+  case "$LINE_N" in ""|*[!0-9]*) LINE_N=0 ;; esac
+  echo "LINE_RUN=\"column ${LINE_X:-none} holds $LINE_N of $LH rows\"" >> "$GEOM"
+  say "the playhead is rgb $PLR,$PLG,$PLB and the pan moved it $PX0 -> $PX1 (its column holds $LINE_N of ${LH} rows of the colour below the band: a full-height 1px line, not the pill)"
 
   # The panel own pixels per frame, from the playhead own frame: 20 current-frame steps. The
   # steps move the frame the TIMELINE is on and the page draws it as it goes (the dock connects
@@ -306,7 +396,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool key --clearmodifiers --repeat $FRAME_STEPS --repeat-delay 60 ctrl+Right
   sleep 1.0
   shot "$SHOTS/anchor_04_frameN.png"
-  raw "$SHOTS/anchor_04_frameN.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/fn.raw"
+  rawline "$SHOTS/anchor_04_frameN.png" "$SCRATCH/fn.raw"
   FX1=$(col "$SCRATCH/fn.raw" "$PLR" "$PLG" "$PLB")
   echo "FRAME_X=\"$PX1 $FX1\"" >> "$GEOM"
   say "$FRAME_STEPS frame steps moved the playhead $PX1 -> $FX1"
@@ -322,14 +412,13 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # file sent it while the pointer was still parked, and the notch changed 0 px of the panel
   # and moved the anchored frame 0 px - i.e. it did not happen at all).
   shot "$SHOTS/anchor_05_zoom_before.png"
-  raw "$SHOTS/anchor_05_zoom_before.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/za.raw"
   magick "$SHOTS/anchor_05_zoom_before.png" -crop "${CW}x${CH}+${CL}+${CT}" +repage "$SCRATCH/za.png"
   xdotool mousemove --sync $((CL + FX1)) $MIDY
   sleep 0.4
   xdotool click 5
   sleep 1.0
   shot "$SHOTS/anchor_06_zoom_after.png"
-  raw "$SHOTS/anchor_06_zoom_after.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/zb.raw"
+  rawline "$SHOTS/anchor_06_zoom_after.png" "$SCRATCH/zb.raw"
   magick "$SHOTS/anchor_06_zoom_after.png" -crop "${CW}x${CH}+${CL}+${CT}" +repage "$SCRATCH/zb.png"
   ZX1=$(col "$SCRATCH/zb.raw" "$PLR" "$PLG" "$PLB")
   echo "ZOOM_X=\"$FX1 $ZX1\"" >> "$GEOM"
@@ -341,7 +430,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool click --repeat $HIGH_ZOOM_NOTCHES --delay 90 5
   sleep 1.2
   shot "$SHOTS/anchor_07_high_before.png"
-  raw "$SHOTS/anchor_07_high_before.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/ha.raw"
+  rawline "$SHOTS/anchor_07_high_before.png" "$SCRATCH/ha.raw"
   HA=$(col "$SCRATCH/ha.raw" "$PLR" "$PLG" "$PLB")
   echo "HIGH_ANCHOR=\"$ZX1 $HA\"" >> "$GEOM"
   say "$HIGH_ZOOM_NOTCHES notches on the playhead column: $ZX1 -> $HA"
@@ -354,7 +443,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool key --clearmodifiers --repeat $HIGH_FRAME_STEPS --repeat-delay 60 $STEPKEY
   sleep 1.0
   shot "$SHOTS/anchor_08_high_frameN.png"
-  raw "$SHOTS/anchor_08_high_frameN.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/hn.raw"
+  rawline "$SHOTS/anchor_08_high_frameN.png" "$SCRATCH/hn.raw"
   HB=$(col "$SCRATCH/hn.raw" "$PLR" "$PLG" "$PLB")
   echo "HIGH_PPF=\"$HA $HB\"" >> "$GEOM"
   say "$HIGH_FRAME_STEPS frame steps at the high zoom moved the playhead $HA -> $HB"
@@ -362,6 +451,12 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # (3) THE PAN AT THAT ZOOM: the same drag, with a frame now several pixels wide - a
   # whole-frame carrier misses by a frame, which at this zoom is a visible distance. Toward
   # the middle again, so the playhead stays inside the measured crop.
+  #
+  # THIS PAN IS MEASURED AS THE APPLICATION BEHAVES, INCLUDING A DEFECT IT EXPOSES: the
+  # previous pan left a remainder in TimeLineWidget::mPendingScrollFrames, which is counted
+  # in FRAMES, and the 21 notches between the two pans re-price it (see the assertion at the
+  # end of this file). The probe does NOT flush or evade it - the claim is that a pan is
+  # exact, and a gesture sequence a user can perform is what has to satisfy it.
   PAN2_DX=$PAN_PIXELS
   [ "$HB" -gt $((CW / 2)) ] && PAN2_DX=$((-PAN_PIXELS))
   echo "PAN2_DIR=\"$PAN2_DX\"" >> "$GEOM"
@@ -374,7 +469,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   xdotool mouseup 2
   sleep 1.0
   shot "$SHOTS/anchor_09_pan_zoomed_after.png"
-  raw "$SHOTS/anchor_09_pan_zoomed_after.png" "${CW}x${CH}+${CL}+${CT}" "$SCRATCH/pc.raw"
+  rawline "$SHOTS/anchor_09_pan_zoomed_after.png" "$SCRATCH/pc.raw"
   echo "PAN2_X=\"$HB $(col "$SCRATCH/pc.raw" "$PLR" "$PLG" "$PLB")\"" >> "$GEOM"
   say "the pan at the high zoom ($PAN2_DX px) was measured"
 
@@ -405,11 +500,15 @@ if [ -z "${MOVED:-}" ] || [ "$MOVED" = "none" ]; then
 fi
 
 read -r DX DY DW DH <<< "${DOCK:-0 0 0 0}"
+# The dock AS THE GRAPH PAGE SHOWS IT. Its width is not the timeline page's (that page's own
+# controls are narrower), so this is the rectangle the published plot has to be inside.
+read -r DGX DGY DGW DGH <<< "${DOCK_G:-0 0 0 0}"
 read -r t1x t1y t1w t1h <<< "${TAB_T_AT_TL:-0 0 0 0}"
 read -r g1x g1y g1w g1h <<< "${TAB_G_AT_TL:-0 0 0 0}"
 read -r t2x t2y t2w t2h <<< "${TAB_T_AT_G:-0 0 0 0}"
 read -r g2x g2y g2w g2h <<< "${TAB_G_AT_G:-0 0 0 0}"
 read -r PLX PLY PLW PLH <<< "${PLOT:-0 0 0 0}"
+read -r FLT FLH <<< "${FINDER_ROWS:-0 0}"
 read -r PX0 PX1 <<< "${PAN_X:-0 0}"
 read -r FX0 FX1 <<< "${FRAME_X:-0 0}"
 read -r ZX0 ZX1 <<< "${ZOOM_X:-0 0}"
@@ -436,18 +535,20 @@ check "$((1 - gswitch_ok))" "and pressing the tab BY NAME made the Graph tab the
 
 inside_ok=1
 [ "$PLW" -gt 0 ] && [ "$PLH" -gt 0 ] || inside_ok=0
-[ "$PLX" -ge "$DX" ] && [ "$PLY" -ge "$DY" ] && [ $((PLX + PLW)) -le $((DX + DW)) ] \
-    && [ $((PLY + PLH)) -le $((DY + DH)) ] || inside_ok=0
-check "$((1 - inside_ok))" "and the panel publishes its own plot as the box of its Fit graph action, inside the dock's page rectangle: [${PLOT:-none}] inside [${DOCK:-none}] - the crop below is the application's own geometry, not this probe's"
+[ "$DGW" -gt 0 ] || inside_ok=0
+[ "$PLX" -ge "$DGX" ] && [ "$PLY" -ge "$DGY" ] && [ $((PLX + PLW)) -le $((DGX + DGW)) ] \
+    && [ $((PLY + PLH)) -le $((DGY + DGH)) ] || inside_ok=0
+check "$((1 - inside_ok))" "and the panel publishes its own plot as the box of its Fit graph action, inside the dock's page rectangle measured with the Graph page current: [${PLOT:-none}] inside [${DOCK_G:-none}] (the dock's rectangle while the timeline was up was [${DOCK:-none}], $((DGW - DW))px narrower - the page is the one that is showing). Its own left edge is measured separately, below. The crop is the application's own geometry, not this probe's"
 
-PAGE_LEFT=""
-[ -n "${TREE_W:-}" ] && [ "${TREE_RUN:-0}" -ge $((DW / 4)) ] && PAGE_LEFT=$((DX + TREE_W))
+# THE PAGE'S LEFT EDGE, measured ON THE GRAPH PAGE (see the body): it is where the tree
+# splitter's hairline is, and it is NOT the timeline page's edge - the dock and that boundary
+# both move when this page becomes current.
 INSET=-1
-[ -n "$PAGE_LEFT" ] && INSET=$((PLX - PAGE_LEFT))
-echo "geometry: dock [${DOCK:-none}], page left $((DX + ${TREE_W:-0})) (tree ${TREE_W:-none}px of the dock, longest hairline run ${TREE_RUN:-0} of ${DW}px, hairline colour ${HAIR_COLOUR:-none}), plot [${PLOT:-none}] -> inset ${INSET}px, crop [${CROP:-none}]"
+[ -n "${PAGE_LEFT:-}" ] && INSET=$((PLX - PAGE_LEFT))
+echo "geometry: dock with the timeline up [${DOCK:-none}] (tree ${TREE_W:-none}px, longest hairline run ${TREE_RUN:-0} of ${DW}px, hairline colour ${HAIR_COLOUR:-none}), dock with the Graph page up [${DOCK_G:-none}], graph page left ${PAGE_LEFT:-unmeasured} (body background ${PAGE_BG:-none}), plot [${PLOT:-none}] -> inset ${INSET}px, crop [${CROP:-none}], finder rows [${FLT:-?}..$((FLT + FLH - 1))] (${FLH:-0} rows)"
 inset_ok=0
-[ -n "$PAGE_LEFT" ] && [ "$INSET" -ge "$PLOT_PAGE_INSET_MIN" ] && [ "$INSET" -le "$PLOT_PAGE_INSET_MAX" ] && inset_ok=1
-check "$((1 - inset_ok))" "the published plot's left edge sits the scaler's own inset past the page edge the ruler hairline measures: plot x ${PLX:-?} minus page x ${PAGE_LEFT:-unmeasured} = ${INSET}px, inside [${PLOT_PAGE_INSET_MIN},${PLOT_PAGE_INSET_MAX}] (kMargin 4 + axisLabelWidth, 46..96 behind it)"
+[ -n "${PAGE_LEFT:-}" ] && [ "$INSET" -ge "$PLOT_PAGE_INSET_MIN" ] && [ "$INSET" -le "$PLOT_PAGE_INSET_MAX" ] && inset_ok=1
+check "$((1 - inset_ok))" "the published plot's left edge sits the scaler's own inset past the Graph page's left edge, measured on that page's own splitter hairline: plot x ${PLX:-?} minus page x ${PAGE_LEFT:-unmeasured} = ${INSET}px, inside [${PLOT_PAGE_INSET_MIN},${PLOT_PAGE_INSET_MAX}] (kMargin 4 + axisLabelWidth, 46..96 behind it)"
 assert_rendered "$SHOTS/anchor_01_graph_page.png" "the docked graph panel's page"
 
 # ---- 2. THE CLAIMS ----
@@ -468,7 +569,7 @@ alive_msg="the application survived every gesture on the docked panel (ALIVE=${A
 [ "$alive_rc" -eq 0 ] || alive_msg="the application was NOT running when the gestures ended (ALIVE=${ALIVE:-?}, its log ended [${APP_TAIL:-none}])"
 check "$alive_rc" "$alive_msg"
 
-check 0 "the playhead is found and moved by the pan (column ${PX0:-?} -> ${PX1:-?}, colour ${COLOUR:-?})"
+check 0 "the playhead is found and moved by the pan (column ${PX0:-?} -> ${PX1:-?}, colour ${COLOUR:-?}, found as a full-height 1px run below the ${RULER_BAND}px ruler band: ${LINE_RUN:-unmeasured} - the pill's block is not in the scanned rows at all)"
 check "$([ "$pan" -gt $((PAN_PIXELS - 3)) ] && [ "$pan" -lt $((PAN_PIXELS + 3)) ] && echo 0 || echo 1)" \
     "a ${PAN_PIXELS}px middle-drag moves the content ${PAN_PIXELS}px, not a frame's worth (measured ${pan}px of the ${PAN_PIXELS}px dragged, ${PX0:-?} -> ${PX1:-?}, at ${ppf} px/frame)"
 check "$([ "$zoom" -le 1 ] && echo 0 || echo 1)" \
@@ -479,14 +580,66 @@ check "$([ "${changed:-0}" -gt "$NOTCH_CHANGE_MIN" ] && echo 0 || echo 1)" \
 # re-anchors on the TIMELINE's INTEGER content axis - TimeLineWidget::zoomFramesAbout rounds the
 # anchor's content pixel and TimeLineEditor::anchorPixelAfterScale rounds the scaled one - which
 # is up to ~0.8 of this panel's pixels per notch and does not cancel. MEASURED over this climb:
-# 2px at 6.8 px/frame, i.e. 0.3 of a frame, against the ONE notch's exact 0px above. The bar is
-# therefore what "anchored" means where a frame is SEVERAL pixels - the anchored frame stays
-# under the pointer to better than HALF a frame at the zoom reached - and the one-notch claim
-# keeps the one pixel it was recorded with.
+# 2px at 6.8 px/frame (0.3 of a frame) on the overlay recording, and 6px at 7.0 px/frame (0.86
+# of a frame) on the docked page, against the ONE notch's exact 0px above both times - the
+# handler is exact, the repeated step accumulates. The bar is what "anchored" means where a
+# frame is SEVERAL pixels - the anchored frame stays under the pointer to better than HALF a
+# frame at the zoom reached - and it is the design's invariant, so it is NOT relaxed to admit
+# the drift: the run prints its own px and px/frame either way.
 check "$(awk -v a="$high_anchor" -v b="$high_ppf" 'BEGIN { print (b > 0 && a * 2 < b) ? 0 : 1 }')" \
     "$HIGH_ZOOM_NOTCHES notches on the playhead leave the anchored frame under the pointer to better than half a frame at the zoom they reach (measured ${high_anchor}px of ${high_ppf} px/frame, ${HX0:-?} -> ${HX1:-?}, while the one notch above held exactly)"
 check "$(awk -v a="$ppf" -v b="$high_ppf" 'BEGIN { print (a > 0 && b > a * 3) ? 0 : 1 }')" \
     "and they climbed the zoom (${ppf} -> ${high_ppf} px/frame)"
+# ---- THE PAN AFTER THE ZOOM IS A DEFECT, NOT THE CAMERA CLAMP ----
+#
+# The claim is kept exact, so this FAILs until TimeLineWidget is fixed. The failure is
+# reported as the defect it is, with the arithmetic that rules the clamp out and names the
+# cause, rather than by widening the tolerance to the measured 37px.
+#
+# THE CLAMP IS EXCLUDED. updateCamera (src/gui/TimeLineWidget.cpp) bounds the view to an
+# OVERLAP: mHorizontalOffset in [-contentSpan, viewport], where
+# contentSpan = frameEndPixel + kTimeLineMargin and viewport = mInner->width(). The two bounds
+# are "the content's start at the view's right edge" and "the content's end at the view's left
+# edge". This run's numbers: the timeline page is DW - PAGE_LEFT = 933 - 268 = 665px (the
+# viewport), the panel maps that same window into the plot inset CW = 587 - 16 = 571px, and
+# the measured 7.00 px/frame is therefore 7.00 * 665/571 = 8.14 px/frame on the timeline's
+# content axis (the timeline's seeded rung, index 1, is 1.1 = 0.945 * 665/571 - the same
+# ratio). The 600-frame content is 24 + 600*8.14 + 24 = 4932px long; the playhead is on frame
+# ~25-26 (FRAME_STEPS + HIGH_FRAME_STEPS steps from the new project's first frame) and its
+# column is 114/7.00 = 16.3 frames into the window, so the view starts at ~9 frames, offset
+# ~ -100px. Room is ~665 - (-100) = ~765px toward the content's start and
+# ~-100 + 4932 = ~4830px toward its end, against the 40 * 665/571 = 46.6 content px the drag
+# asks for. The content end is NOT reachable within 40px at this zoom - it is thousands of px
+# away - so no clamp is the cause.
+#
+# THE CAUSE, READ OFF THE CODE: TimeLineWidget::scrollFramesBy carries mPendingScrollFrames in
+# FRAMES (delta = lround(pending * rate); pending -= delta/rate), and zoomFramesAbout never
+# touches it. A remainder of R frames is R * rate pixels, so the carry is sub-pixel only while
+# the rate is constant - and a notch multiplies the rate by 1.1. The earlier pan asked for
+# 46.58 content px, lround applied 47, leaving +0.377 frames; at the old 1.1 px/frame that was
+# 0.42px (exactly what the carry exists for); the 1 + HIGH_ZOOM_NOTCHES notches multiply the
+# rate by 1.1^21 = 7.400, so the same 0.377 frames is 3.07px at 8.14 px/frame. This pan then
+# computes lround(0.377*8.14 - 46.58) = lround(3.07 - 46.58) = -44 content px - 44 * 571/665 =
+# 37.8px of exact panel shift, which the per-column rounding draws as the measured 37 (114 ->
+# 151) - where 47 content px would have drawn 40.4px. The carry is not scoped to a drag
+# either: GraphEditor::endPan clears only the pointer origin, and nothing in TimeLineWidget
+# clears mPendingScrollFrames, so it survives any gesture between two pans.
+#
+# THE PENDING ZOOM REMAINDER CANNOT DO THIS: mPendingZoomPixels is a PIXEL quantity (the
+# zoom's view translation is the content axis, 1:1 with screen pixels, so a scale change does
+# not re-price it) and it is read only by zoomFramesAbout through
+# ctrl::TimeLineEditor::zoomAnchorDelta - never by scrollFramesBy. Nothing to do in the probe.
+#
+# THE FIX (not a probe edit): keep the pan remainder in CONTENT PIXELS (pending +=
+# aFrameDelta * rate; delta = lround(pending); pending -= delta), which is invariant under a
+# scale change; the minimal alternative is to drop mPendingScrollFrames in zoomFramesAbout
+# once updateWheel has moved the scale.
+pan2_requested=unknown
+if [ -n "${PAGE_LEFT:-}" ] && [ "${CW:-0}" -gt 0 ]; then
+    pan2_requested=$(awk -v p="$PAN_PIXELS" -v i="$((DW - PAGE_LEFT))" -v c="$CW" \
+        'BEGIN { printf "%.2f", p * i / c }')
+fi
+zoom_gain=$(awk -v n="$((HIGH_ZOOM_NOTCHES + 1))" 'BEGIN { printf "%.3f", 1.1 ^ n }')
 check "$([ "$pan2" -gt $((PAN_PIXELS - 2)) ] && [ "$pan2" -lt $((PAN_PIXELS + 2)) ] && echo 0 || echo 1)" \
-    "at ${high_ppf} px/frame a frame is several pixels, and the same pan still moves exactly ${PAN_PIXELS}px (measured ${pan2}px, ${P20:-?} -> ${P21:-?}, dragged ${PAN2_DIR:-?}px) - a whole-frame carrier cannot pass this one"
+    "DEFECT, not the camera clamp: a ${PAN_PIXELS}px middle-drag after the zoom must still move the content exactly ${PAN_PIXELS}px and moves ${pan2}px (${P20:-?} -> ${P21:-?}, dragged ${PAN2_DIR:-?}px; the camera's overlap bounds are hundreds of px away, while the drag asks for ${pan2_requested} content px). TimeLineWidget::scrollFramesBy carries mPendingScrollFrames in FRAMES across the zoom: the earlier pan left ~0.38 frame, and the ${zoom_gain}x rate change re-prices it from a sub-pixel 0.4px to ~3.1px, so this pan applies ~44 content px where ${pan2_requested} was asked - 37.8px of panel shift, drawn as the measured ${pan2}px. Fix: drop mPendingScrollFrames when the scale changes (or carry it in pixels). The exact claim is NOT relaxed"
 summary probe_graph_anchor
