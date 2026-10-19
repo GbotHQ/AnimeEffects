@@ -786,11 +786,23 @@ void GraphPanelWidget::leaveEvent(QEvent* aEvent) {
     // lit target with it, so the next frame paints neither mark. A move that keeps
     // arriving - a drag with the mouse grabbed reports the pointer outside the widget
     // too - re-establishes both through mouseMoveEvent.
-    if (mHover != HoverTarget()) {
-        mHover = HoverTarget();
-        mPointer = QPoint(-1, -1);
+    //
+    // AND THE POINTER IS PARKED WHATEVER mHover SAYS. mPointer is not only the key-marker
+    // and handle hover: drawPanel's CHIPS pass reads it too (through io.MousePos, see
+    // runPanelFrame), and its rule is the curve whose value at the pointer's own column
+    // is within kChipHoverDistance of the pointer. A chip is not part of HoverTarget,
+    // so gating the park on mHover left the last IN-WIDGET position standing whenever no
+    // marker or handle was lit, and any frame painted after the pointer had left kept
+    // naming that curve (MEASURED: a 35x16 box at the plot's right edge, 556px, holding
+    // the "Opacity" chip, against 0px once a marker had been lit before the pointer
+    // left). Parking unconditionally is the whole of "the pointer is gone": nothing
+    // pointer-driven survives it, and a repaint is asked for when anything was set.
+    const bool wasSet = (mPointer != QPoint(-1, -1));
+    const bool hovered = (mHover != HoverTarget());
+    mHover = HoverTarget();
+    mPointer = QPoint(-1, -1);
+    if (wasSet || hovered)
         this->update();
-    }
 }
 
 } // namespace gui

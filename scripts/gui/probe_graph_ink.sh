@@ -36,12 +36,25 @@
 #      last drawn frame in the tree.
 #
 #   3. THE PIXELS ARE THE DOCK'S OWN. Switching the tab changes a bounded number of pixels and
-#      ALL of them are inside the Animation dock's AT-SPI rectangle: the panel is drawn in the
-#      dock's page area, not over the screen. This is the docked form of the claim the old
-#      overlay probe made with a viewport crop, and it is stronger where it matters: the docked
-#      panel paints its own OPAQUE floor (theme::Colors::base; GraphPanelWidget::paintGL), so
-#      what changes inside that rectangle is the panel's own ink on its own surface, with no
-#      artwork composited under it.
+#      ALL of them are inside the Animation dock's AT-SPI rectangle (MEASURED 2026-10-19 in the
+#      grown layout: 10337px of the dock's 921x310, and exactly 0px anywhere else on the screen):
+#      the panel is drawn in the dock's page area, not over the screen. This is the docked form of
+#      the claim the old overlay probe made with a viewport crop, and it is stronger where it
+#      matters: the docked panel paints its own OPAQUE floor (theme::Colors::base;
+#      GraphPanelWidget::paintGL), so what changes inside that rectangle is the panel's own ink on
+#      its own surface, with no artwork composited under it.
+#      THE RECTANGLE IS NOT A CONSTANT, AND THE TWO CAPTURES MUST SHARE A LAYOUT. The header is
+#      TimeLineHeader, and the Graph page's own controls in it (the four quick-easing check boxes
+#      and the "N channel(s)" channels button) raise the dock's MINIMUM WIDTH when its tab is
+#      pressed: MEASURED, the dock is [0 185 848 310] with the Timeline tab current and
+#      [0 185 921 310] with the Graph tab current, the application (at its own minimum size under
+#      this harness) grows the WINDOW with it, 1168px wide and then 1241px, the neighbouring
+#      Properties dock is re-laid out beside it, and neither ever shrinks back. So the two pages
+#      this claim compares are captured IN ONE LAYOUT - the Graph visit happens FIRST, and both the
+#      "before" and the "after" capture are taken afterwards, against the rectangle re-read in that
+#      layout - rather than across that growth, where 53390px outside the dock would be the
+#      application re-laying itself out and not the panel (see "THE DOCK RECTANGLE IS NOT A
+#      CONSTANT" in the body for the boxes those pixels occupied).
 #
 #   4. THE KEYED FRAME DRAWS, AND ITS INK IS THE MODEL'S. Two channels of different key TYPES
 #      are coloured differently (theme::Graph::keyColor, the same token the timeline paints
@@ -89,7 +102,11 @@
 # that reason.
 #
 # WHERE EVERY NUMBER COMES FROM. The dock's rectangle is the AT-SPI rectangle of the widget named
-# "Animation" (the dock itself); the tabs are addressed by name; and the panel's PAGE AREA - used
+# "Animation" (the dock itself) - READ ONCE PER STATE, because the header's Graph-page controls
+# widen the dock (and the window) when that tab is pressed: MEASURED [0 185 848 310] with the
+# Timeline tab current, [0 185 921 310] with the Graph tab current, and [0 185 927 310] once the
+# header's channels control reads "10 channel(s)" - which is 6px more text than "0 channel(s)";
+# the tabs are addressed by name; and the panel's PAGE AREA - used
 # by the keyed phase only - is the dock's right-hand part, whose left edge is the timeline's,
 # measured off the ruler's bottom hairline exactly as probe_timeline_ink.sh measures it (the
 # hairline spans the timeline and not the tree column, and nothing publishes the tree's width
@@ -116,10 +133,13 @@ rm -rf "$SCRATCH"; mkdir -p "$SCRATCH"
 
 # THE TAB SWITCH IS A REPAINT AND NOT A TRANSIENT: the panel re-reads the document when it
 # becomes visible (TargetWidget::onSurfaceChanged -> GraphPanelWidget::refresh), and the diff
-# between the two pages is taken from settled captures. MEASURED on this layout: 8880px changed
-# inside the dock's 788x310 rectangle (3.6%) with nothing selected and 21362px (8.7%) with a layer
-# selected - the panel page draws its labels and the timeline page its lanes, so the number moves
-# with the project; the bar is a fifth of the smaller one.
+# between the two pages is taken from settled captures. MEASURED on this layout, BOTH pages
+# captured in one window layout (the body re-reads the dock's rectangle for that reason):
+# 10337px changed inside the dock's 921x310 rectangle (3.6%) with no keys yet and nothing
+# selected, and 0px anywhere else on the screen - a diff taken across the layout growth the Graph
+# tab itself causes measures the application instead (MEASURED: 10932px inside the 848px-wide
+# rectangle the app starts in and 53390px outside it, all of it the re-laid-out window); the bar
+# is a fifth of the smaller of the two inside readings.
 DOCK_CHANGE_MIN=2000
 # ...and it is BOUNDED: a change that swallowed the whole dock would make "the panel is in there"
 # unfalsifiable, and it would mean the measurement caught a repaint of everything (MEASURED 3.6%
@@ -155,6 +175,33 @@ HUE_SEP=40
 # had nothing to do with the marker.
 HOVER_BOX_PX=13
 HOVER_BOX_MIN=8
+# ...and it is CLAMPED to the dock's own rectangle before it is read, because a key whose channel
+# value sits at the plot's floor has its dot drawn ON the plate's last row: MEASURED, the dot this
+# phase hovers is centred 1px above the dock's bottom edge, so the square around it hangs one row
+# below the dock. The clamp is asserted to be at most two rows (HOVER_CLAMP_MAX), so the box is
+# still the marker's own box and the reading is still the docked panel's own ink.
+HOVER_CLAMP_MAX=2
+# ...and the SHAPE of the run of columns that is a dot, in the panel's own ink: a dot of
+# ctrl::graph::kKeyDotRadius (3.75px) is 7.5px across, so its disk is at most 8 columns wide. The
+# run is asked of the hue the page ACTUALLY draws the dot in - on the frame the search reads, with
+# no selection, that is toImU32Strength(curve.color, 0.45): the SAME blended colour as the curve.
+# MEASURED on the current frame (2026-10-19, the plate [342 243 587 248] of the hover base capture):
+# the dot at plate (28,28) owns 4 columns (27..30) holding 4 pixels of its hue each, the dot at
+# (136,28) owns 2 columns holding 4 each, and every column of the two flat curves away from a dot
+# holds 1 - the 2px stroke leaves one full-strength core pixel and one antialiased neighbour, and
+# the neighbour is outside HUE_TOL. A run wider than 8 columns is a ruler line or the playhead
+# (MEASURED: the accent hue owns the 32 columns of its frame pill), and a run of ONE column is a
+# near-vertical segment of a curve or a ring's edge - neither is a dot.
+DOT_RUN_MIN=2
+DOT_RUN_MAX=8
+# THE EMPTY-SELECTION PROOF'S OWN BAR, and it is the bar probe_graph_keys.sh sets for the same ink:
+# Ctrl+A selects the shown channels' keys and the page draws it (MEASURED 14157px of the whole page
+# and 7753px of the panel's page in that probe's run of these gestures). The hover phase applies
+# the same two gestures to ESTABLISH that nothing is selected before it hovers a marker, because
+# hover ink is given ONLY to an unselected marker (the drawing pass sets
+# hoveredHere = hovered && !selected): a phase that hovered a selected key would read the control
+# pair's own 0px and call a design property a regression.
+SEL_INK_MIN=300
 # THE HEADER VIEW BUTTON'S OWN BAR, on the panel's page. One zoom-in notch is one rung of the
 # frame ladder (x1.1, ctrl::time::Scaler::kZoomPerNotch): the shared frame window shrinks about
 # the playhead's frame, so every tick, number, curve sample and key marker away from the anchor
@@ -166,7 +213,8 @@ ZOOM_PAGE_MIN=200
 # at the pointer any more (the drag deltas are still computed for the edit - only the printed
 # readout is gone), so there is no box to measure and no bar to compare against.
 export GEOM SCRATCH INK APPLOG DOCK_CHANGE_MIN DOCK_CHANGE_SHARE HUE_TOL HUE_CURVE_MIN \
-       HUE_COLS_MIN HUE_SEP HUE_MIN_PX HOVER_BOX_PX HOVER_BOX_MIN ZOOM_PAGE_MIN
+       HUE_COLS_MIN HUE_SEP HUE_MIN_PX HOVER_BOX_PX HOVER_BOX_MIN ZOOM_PAGE_MIN \
+       HOVER_CLAMP_MAX SEL_INK_MIN DOT_RUN_MIN DOT_RUN_MAX
 
 xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   set -u
@@ -190,6 +238,21 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   raw() { magick "$1" -crop "$2" +repage -depth 8 rgb:"$3"; }
   inkpx() { python3 "$INK" "$@"; }
+  # adiff <a> <b>: how many pixels differ, the reading the reporting half takes with the same tool.
+  adiff() { local d; d=$(magick compare -metric AE "$1" "$2" null: 2>&1); d=${d%% *}; [ -n "$d" ] || d=0; echo "$d"; }
+  # nudge: make the page paint the document AS IT IS NOW without touching the keyboard focus, the
+  # selection or the frame it ends on - ONE frame step forward and back. The docked host does NOT
+  # repaint itself on a selection change (MEASURED, and why probe_graph_keys.sh nudges between its
+  # own Ctrl+A and its captures), while the timeline own onFrameUpdated IS connected to the refresh
+  # of the panel (TargetWidget), so a frame step repaints this page; the key is not one the panel
+  # consumes, so it propagates to the application key map and the FOCUS STAYS on the panel, and the
+  # step back puts the playhead where it was. The HOVER phase 4 measures does NOT use this: a hover
+  # that repaints itself is exactly what that phase asserts, so nudging there would paint the page
+  # whether or not the marker lit and the reading would stop meaning anything.
+  nudge() {
+    xdotool key --clearmodifiers ctrl+Right; sleep 0.5
+    xdotool key --clearmodifiers ctrl+Left;  sleep 0.8
+  }
   # The pointer rests on the File menu for every capture the probe takes: the panel has hover
   # states of its own (a marker brightens, a chip appears, tangent handles highlight), so a
   # capture taken with the pointer over the plot would measure one of them.
@@ -241,36 +304,72 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   }
 
   # ---- the dock, and the two tabs its header publishes ----
-  DOCK=$(ae extents "Animation")
-  [ -n "$DOCK" ] || abort "no visible widget named Animation: this is not the docked layout, so there is no dock to measure the panel in"
-  read -r DX DY DW DH <<< "$DOCK"
-  echo "DOCK=\"$DOCK\"" >> "$GEOM"
-  say "dock $DX,$DY ${DW}x${DH}"
+  DOCK0=$(ae extents "Animation")
+  [ -n "$DOCK0" ] || abort "no visible widget named Animation: this is not the docked layout, so there is no dock to measure the panel in"
+  read -r DX DY DW DH <<< "$DOCK0"
+  echo "DOCK_START=\"$DOCK0\"" >> "$GEOM"
+  say "dock $DX,$DY ${DW}x${DH} (the layout the application starts in)"
 
   echo "TAB_T_AT_TL=\"$(ae extents "Timeline")\"" >> "$GEOM"
   echo "TAB_G_AT_TL=\"$(ae extents "Graph")\"" >> "$GEOM"
-  shot "$SHOTS/gink_10_dock_timeline.png"
-  ae dump > "$SCRATCH/dump_timeline.txt" 2>/dev/null
-  say "timeline state captured"
 
+  # ---- THE DOCK RECTANGLE IS NOT A CONSTANT: THE GRAPH PAGE WIDENS IT ----
+  # The header is TimeLineHeader, and the Graph page own controls in it (the four quick-easing
+  # check boxes and the "N channel(s)" channels button) raise the MINIMUM WIDTH of the dock, so
+  # pressing the dock own Graph tab grows the dock - and the application is at its own minimum size
+  # under this harness, so it grows the WINDOW with it. MEASURED here, in the tree and in the pixels:
+  # the dock is [0 185 848 310] with the Timeline tab current and [0 185 921 310] with the Graph tab
+  # current, the window is 1168px wide and then 1241px (the same +73px), the neighbouring
+  # Properties dock (320px wide in both states) is re-laid out beside it, the viewport above the
+  # dock widens with the column (which re-lays out the dashed guide of the canvas by 2..4px), and
+  # the application does NOT shrink any of it back when the Timeline tab returns: a SECOND Timeline
+  # capture is 57997px away from the first, and every one of those pixels is that re-laid-out
+  # window - MEASURED against the first capture, the changed pixels sit in boxes x 1164..1240
+  # y 0..495 (the content of the Properties dock itself, moved), x 847..920 y 21..430 (the strip the
+  # dock gained) and x 411..847 y 21..183 (the dashed guide of the canvas, re-laid out inside the
+  # wider viewport: 604px, all of it neutral canvas colours), and the Properties dock pixels are the
+  # SAME pixels translated by 73px (0px of difference when the two crops are compared with that
+  # shift).
+  # THAT IS WHY THE TWO PAGES THE PIXEL CLAIM COMPARES ARE CAPTURED AFTER THIS FIRST GRAPH VISIT, in
+  # the one layout they share, and why the rectangle the claim crops and masks with is re-read here
+  # instead of being taken from the reading above: a diff between a page captured at 848px and one
+  # captured at 921px measures the application re-laying itself out, not the panel.
   tab "Graph" || abort "the dock header has no pressable tab named Graph: the panel cannot be shown by the dock own route"
   echo "TAB_T_AT_G=\"$(ae extents "Timeline")\"" >> "$GEOM"
   echo "TAB_G_AT_G=\"$(ae extents "Graph")\"" >> "$GEOM"
+  DOCKG=$(ae extents "Animation")
+  WING=$(ae extents "AnimeEffects")
+  echo "DOCK_G=\"$DOCKG\"" >> "$GEOM"
+  echo "WIN_G=\"$WING\"" >> "$GEOM"
   shot "$SHOTS/gink_20_dock_graph.png"
   ae dump > "$SCRATCH/dump_graph.txt" 2>/dev/null
-  say "graph state captured"
+  say "graph state captured; the dock is [$DOCKG] now"
 
-  # ...and back to the timeline, for the pair the pixel claim is built from, plus a CONTROL
-  # capture of the same state twice: the probe must not read a repaint as the switch.
+  # ...and back to the timeline, WHERE THE LAYOUT STAYS AS THE GRAPH PAGE LEFT IT: the pair the
+  # pixel claim is built from is these captures of the two pages at ONE window width, and the control
+  # is the same state captured twice. The dock own rectangle is read again here to show it did not
+  # move between the two pages - the reporting half asserts the two readings are equal.
   tab "Timeline" || abort "the dock header stopped answering its Timeline tab"
+  DOCKT=$(ae extents "Animation")
+  echo "DOCK_T=\"$DOCKT\"" >> "$GEOM"
+  shot "$SHOTS/gink_10_dock_timeline.png"
   shot "$SHOTS/gink_11_dock_timeline_b.png"
   shot "$SHOTS/gink_12_dock_timeline_c.png"
-  say "timeline state re-captured (the control pair)"
+  ae dump > "$SCRATCH/dump_timeline.txt" 2>/dev/null
+  say "timeline state captured twice (the control pair), in the same layout as the Graph capture: dock [$DOCKT]"
+  DOCK="$DOCKG"
+  echo "DOCK=\"$DOCK\"" >> "$GEOM"
+  read -r DX DY DW DH <<< "$DOCK"
 
   # ---- the tree edge, which is where the panel page starts ----
   # The ruler bottom hairline spans the timeline and NOT the tree column, so the first long run of
   # the panel modal colour in row TY0-1 IS the timeline x range (probe_timeline_ink.sh measures it
-  # this way; the tree is MEASURED as 189px of this dock while older probes assume 72).
+  # this way; the tree is MEASURED as 189px of this dock while older probes assume 72). The capture
+  # below is the GROWN layout, which is the layout every phase after this one measures in: the
+  # tree column redistributes with the dock, MEASURED 243px of the 848px dock the application starts
+  # in and 264px of the 921px one both captures of the pixel claim are taken at (the splitter line
+  # is at x=263 there, and at x=265 in the 927px dock the keys make - 2px, inside the 13px box this
+  # phase reads and well inside the page crop below).
   TY0=$((DY + 37 + 40))
   raw "$SHOTS/gink_10_dock_timeline.png" "${DW}x1+${DX}+$((TY0 - 1))" "$SCRATCH/hairline.raw"
   HAIRC=$(inkpx modal "$SCRATCH/hairline.raw" $DW 1 0 0 $DW 1 | cut -d" " -f1-3)
@@ -425,10 +524,20 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
         echo "CRASH_TAIL=\"$(tail -2 "$APPLOG" | tr "\n" "|")\"" >> "$GEOM"
         say "the application DIED on the keyed frame"
       fi
+      # THE DOCK RECTANGLE MOVES ONCE MORE WHEN THE HEADER CHANNELS CONTROL NAMES A COUNT: the
+      # "N channel(s)" button is text, so it is 6px wider reading "10 channel(s)" than "0
+      # channel(s)", and MEASURED the dock (and the window with it) is [0 185 927 310] here against
+      # [0 185 921 310] before the keys existed. The page rect below is measured with THAT reading,
+      # so the page this phase scans and the zoom phase reads is the page of the panel itself rather
+      # than the still narrower strip the starting rectangle of the application would give.
+      DOCKK=$(ae extents "Animation")
+      echo "DOCK_K=\"$DOCKK\"" >> "$GEOM"
+      read -r KX KY KW KH <<< "$DOCKK"
+      say "the keyed page is up: the dock is [$DOCKK]"
 
       # ---- the panel PAGE, its floor, and the channel hues on it ----
-      PX2=$((DX + TREE_W)); PY2=$((DY + 40))
-      PW2=$((DX + DW - PX2)); PH2=$((DY + DH - PY2))
+      PX2=$((KX + TREE_W)); PY2=$((KY + 40))
+      PW2=$((KX + KW - PX2)); PH2=$((KY + KH - PY2))
       echo "PANELRECT=\"$PX2 $PY2 $PW2 $PH2\"" >> "$GEOM"
       raw "$SHOTS/gink_30_dock_graph_keys.png" "${PW2}x${PH2}+${PX2}+${PY2}" "$SCRATCH/panel.raw"
       FLOOR=$(inkpx modal "$SCRATCH/panel.raw" $PW2 $PH2 0 0 $PW2 $PH2 | cut -d" " -f1-3)
@@ -444,8 +553,10 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
       # the LEFTMOST of them. Which HUE a channel is drawn in is the application business (it is
       # theme::Colors::channelColor(type, component) - an axis hue where the channel has one - and
       # this probe never states it), so the probe reads whatever it finds: the two-colour claim
-      # below takes the hues with a curve share of the plate, and the insert below takes any of
-      # them, at its leftmost column.
+      # below takes the hues with a curve share of the plate. THIS LIST IS FOR THAT CLAIM only;
+      # the marker search in the hover phase below measures its OWN frame, because the selection
+      # gestures between the two captures change the strength every curve and every unselected
+      # marker is drawn at (see the marker section).
       inkpx inkhues "$SCRATCH/panel.raw" $PW2 $PH2 0 0 $PW2 $PH2 "$F1" "$F2" "$F3" 60 40 "$HUE_MIN_PX" > "$SCRATCH/hues_raw.txt"
       : > "$SCRATCH/hues.txt"
       : > "$SCRATCH/hues_all.txt"
@@ -477,61 +588,148 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
       # marker never lights on the page, and the box this phase reads stays at the control pair
       # 0px - which is exactly what GraphPanelWidget::updateHoverRepaint not asking for a repaint
       # when the hovered target identity changes leaves behind.
-      # THE MARKER IS FOUND IN THE PANEL OWN INK, with the helpers the hue scan above rests on: a
-      # key marker is the one CHROMATIC mark on the plate that is a DISK. The ae_ink.py inkcolmap
-      # gives every inked column with its row span, its pixel count and its modal colour, and the
-      # disk is read off that: a column of 5..12 ink pixels whose colour is chromatic (the hue
-      # family the curves are drawn in - theme::Graph::keyColor), with 2..10 such columns within
-      # 12px of it whose centres agree within 4 rows. The two halves of that test are the two
-      # things a disk has: a disk narrows from its centre to the curve own 2px stroke
-      # (gui::stroke::kWidthPx) over a compact run of neighbouring columns, and it is BOUNDED -
-      # while a near-vertical curve segment crosses those rows in ONE column whose neighbours
-      # centre rows away, and two flat curves of one hue running together are a chromatic band
-      # that spans the whole plate rather than 2..10 columns. The shapes are told apart by the
-      # ink, not by a guess. The playhead accent column spans the plate (far above 12 rows), the
-      # ruler ticks and numbers are neutral (theme::Graph::axisText), and with an empty selection
-      # no chip is drawn (a chip is for a curve IN PLAY), so a chromatic disk on the plate is a
-      # key marker.
+      #
+      # FIRST: THE MARKER THIS PHASE HOVERS MUST BE UNSELECTED, AND THE PHASE ESTABLISHES THAT
+      # BEFORE IT HOVERS ANYTHING. Hover ink is given ONLY to an unselected marker - the drawing
+      # pass sets hoveredHere = hovered && !selected - so a selected key changes NO ink when the
+      # pointer sits on it (MEASURED 2026-10-19: a phase that hovered one read 0px of the own box of
+      # the marker while the SAME page changed 792px elsewhere, all of it the parking ink of the
+      # File menu, and its return-to-pre-hover check passed at 0px: nothing about the marker had
+      # changed). The state is therefore made empty of any selection and the emptiness is PROVED,
+      # with the two gestures probe_graph_keys.sh measured for exactly this binding and this panel:
+      #   * a press inside the plot gives the panel the keyboard AND clears the selection (the editor
+      #     clears on an empty marquee; a press in the ruler band of the panel does NOT leave the
+      #     panel the focus widget - MEASURED in that probe, which is why it presses this point);
+      #   * Ctrl+A selects every key of the shown channels and the page DRAWS it (the bar this phase
+      #     reads below), and the Escape that follows must put the page back to the pixel it had
+      #     BEFORE the Ctrl+A - an exact zero, the rule probe_graph_keys.sh applies to the same
+      #     binding.
+      # Both gestures are followed by a NUDGE (one frame step forward and back): the docked host does
+      # not repaint itself on a selection change, so without it the captures below would show the page
+      # as it was before the key was sent (MEASURED, and why probe_graph_keys.sh nudges exactly the
+      # same way). The HOVER itself is not nudged: a hover that asks for its own repaint is the thing
+      # this phase exists to measure.
+      # Only then is the page a no-selection page, and the marker the search below finds - whichever
+      # marker that is, of whichever channel - is an UNSELECTED one. Both readings are printed in the
+      # "selection:" line below and both are asserted below it, so a run that cannot establish the
+      # empty selection fails loudly instead of measuring a hover that never had ink to give.
       PLOT=$(ae extents "Fit graph")
       [ -n "$PLOT" ] || abort "the docked panel published no Fit graph box while its Graph page is up: there is no measured plate to find a key marker in"
       read -r PLX PLY PLW PLH <<< "$PLOT"
       echo "PLOT=\"$PLOT\"" >> "$GEOM"
+      FOCUSX=$((PLX + 12)); FOCUSY=$((PLY + PLH - 12))
+      xdotool mousemove --sync $FOCUSX $FOCUSY; sleep 0.3
+      xdotool click 1; sleep 0.8
+      xdotool key --clearmodifiers Escape; sleep 0.4
+      nudge
+      park
+      settle_shot "$SCRATCH/hov_clear.png" || abort "the panel never settled after the press that gives it the keyboard and clears the key selection"
+      xdotool key --clearmodifiers ctrl+a; nudge; park
+      settle_shot "$SCRATCH/hov_selected.png" || abort "the panel never settled after Ctrl+A selected the shown channels keys"
+      xdotool key --clearmodifiers Escape; nudge; park
+      settle_shot "$SCRATCH/hov_escaped.png" || abort "the panel never settled after the Escape that clears the selection"
+      SEL_INK=$(adiff "$SCRATCH/hov_clear.png" "$SCRATCH/hov_selected.png")
+      ESC_RET=$(adiff "$SCRATCH/hov_clear.png" "$SCRATCH/hov_escaped.png")
+      echo "SEL_INK=\"$SEL_INK\"" >> "$GEOM"
+      echo "ESC_RET=\"$ESC_RET\"" >> "$GEOM"
+      say "the selection was made (Ctrl+A: ${SEL_INK}px) and cleared (Escape: ${ESC_RET}px against the page before the Ctrl+A)"
       shot "$SHOTS/gink_40_hover_base.png"
       shot "$SHOTS/gink_40b_hover_control.png"
+
+      # ---- THE MARKER IS FOUND IN THE INK OF THE PANEL ITSELF ----
+      # WHAT A MARKER IS DRAWN AS ON THIS FRAME, and why the ink is measured HERE instead of reused:
+      # with nothing selected every curve is stroked at 0.45 (kUnselectedAlpha), and a marker that is
+      # neither selected nor the sibling of a selected key has the ink of an unselected one - its
+      # fill is toImU32Strength(curve.color, 0.45), the SAME blended colour as the curve, inside a
+      # keyEdge() stroke that is the floor colour. A SELECTED marker is a different ink (the fill
+      # mixed 0.45 toward axisText, plus a 1px hue ring at kKeyDotRadius + 2.6), and the phase has
+      # just PROVED the selection empty (SEL_INK/ESC_RET above), so no ring and no brightened fill
+      # exist on the frame this search reads. THE HUE LIST MUST COME FROM THIS FRAME: the scan above
+      # ran on the keyed page BEFORE the selection gestures, when the page was drawn in another
+      # state - MEASURED 2026-10-19, it names 172 163 72 and 178 131 221, and `cols` finds ZERO
+      # columns of either on the plate of this frame, which is the abort this section fixes.
+      # A key marker is where the ink of its channel is DEEPER than its curve: gui::stroke::kWidthPx
+      # is 2px, and at 0.45 strength a column of a flat curve holds ONE full-strength pixel of the
+      # blended hue (the antialiased neighbour is outside HUE_TOL), while the 3.75px dot adds a
+      # disk. MEASURED on this frame: the columns the dot owns hold 4 of the hue, the curve beside
+      # it holds 1. So the columns holding MORE THAN THE STROKE are the columns of the dot - the
+      # `cols` mode of ae_ink returns them as x-runs of columns with at least 3 pixels of the hue -
+      # and the ROW of the dot is the centre of mass of that hue in a 13-column strip about them
+      # (`centroid`). The two things a run has to be are the two things a disk is: BOUNDED (a run
+      # wider than the 7.5px disk is the playhead pill or a ruler line, and a run of one column is a
+      # near-vertical segment of a curve or a ring edge, so neither is a dot) and a CHANNEL hue
+      # (from the scan of this very plate, which keeps hues with a CURVE share of it - the marker
+      # fill and the curve are one ink here, so the dot hue is in that list by construction). The
+      # row is MEASURED and not computed from the first and last inked ROW of the column, because
+      # that span mixes the top frame line of the plate with the dot: MEASURED, every column of the
+      # plate is inked at row 0 and at the floor of the plot, so a span midpoint put the pointer 123
+      # rows above the dot (empty floor) and the hover it then measured lit nothing.
+      # THE PROOF THAT A RUN IS A MARKER AND NOT THE CURVE is two-part and both parts are asserted:
+      # the run is a compact 2..8-column body of one channel hue whose columns are deeper than the
+      # stroke (above), and the phase then moves the pointer ONTO it and reads a repaint of the
+      # 13x13 box around it - hover ink exists for a key dot and for nothing on a curve, so a run
+      # that was a steep curve segment reads 0 in that box and fails the HOVER_BOX_MIN check below.
+      # WHY THE MODEL ROUTE IS NOT USED HERE (the "Key menu" node probe_graph_keys.sh can read):
+      # that node is published ONLY while the selection names exactly ONE key, and its rectangle is
+      # the dot of that key (buildAccessibilityModel, kPanelKeyMenuItemId). Selecting a key to learn
+      # its dot would make the marker SELECTED, and a selected marker takes NO hover ink (hoveredHere
+      # = hovered && !selected) - the state this phase must measure is the opposite one. The pixel
+      # route is therefore the PRIMARY: it finds an UNSELECTED marker in the very ink the hover
+      # changes, and the only selection gesture it needs is the one that proves the selection empty.
       raw "$SHOTS/gink_40_hover_base.png" "${PLW}x${PLH}+${PLX}+${PLY}" "$SCRATCH/plate.raw"
-      inkpx inkcolmap "$SCRATCH/plate.raw" $PLW $PLH "$F1" "$F2" "$F3" 60 > "$SCRATCH/plate_cols.txt"
-      MCX=(); MCY=(); MCN=(); MCK=0
-      while read -r cxx cy0 cy1 cnn cr cg cb; do
-        case "$cxx" in ""|none) continue ;; esac
-        cnn=${cnn:-0}
-        cmx=$cr; [ "$cg" -gt "$cmx" ] && cmx=$cg; [ "$cb" -gt "$cmx" ] && cmx=$cb
-        cmn=$cr; [ "$cg" -lt "$cmn" ] && cmn=$cg; [ "$cb" -lt "$cmn" ] && cmn=$cb
-        [ $((cmx - cmn)) -ge 40 ] || continue
-        { [ "$cnn" -ge 5 ] && [ "$cnn" -le 12 ]; } || continue
-        MCX[$MCK]=$cxx; MCY[$MCK]=$(( (cy0 + cy1) / 2 )); MCN[$MCK]=$cnn; MCK=$((MCK + 1))
-      done < "$SCRATCH/plate_cols.txt"
-      DOTX=""; DOTY=""; DOTN=0
-      mi=0
-      while [ "$mi" -lt "$MCK" ]; do
-        mnear=0; mj=0
-        while [ "$mj" -lt "$MCK" ]; do
-          if [ "$mj" -ne "$mi" ]; then
-            mdx=$((MCX[mi] - MCX[mj])); [ "$mdx" -lt 0 ] && mdx=$((-mdx))
-            mdy=$((MCY[mi] - MCY[mj])); [ "$mdy" -lt 0 ] && mdy=$((-mdy))
-            if [ "$mdx" -le 12 ] && [ "$mdy" -le 4 ]; then mnear=$((mnear + 1)); fi
-          fi
-          mj=$((mj + 1))
-        done
-        if [ "$mnear" -ge 2 ] && [ "$mnear" -le 10 ] && [ "${MCN[mi]}" -gt "$DOTN" ]; then
-          DOTN=${MCN[mi]}; DOTX=${MCX[mi]}; DOTY=${MCY[mi]}
-        fi
-        mi=$((mi + 1))
-      done
-      [ -n "$DOTX" ] || abort "no key marker ink was found on the panel plate [${PLOT:-none}]: a chromatic disk 5..12 rows deep over a run of neighbouring columns is what a key marker is, and this frame draws none (the keys the knobs made may lie outside the plate window, or no marker was inked)"
-      HKX=$((PLX + DOTX)); HKY=$((PLY + DOTY))
+      PLFLOOR=$(inkpx modal "$SCRATCH/plate.raw" $PLW $PLH 0 0 $PLW $PLH | cut -d" " -f1-3)
+      read -r PF1 PF2 PF3 <<< "$PLFLOOR"
+      inkpx inkhues "$SCRATCH/plate.raw" $PLW $PLH 0 0 $PLW $PLH "$PF1" "$PF2" "$PF3" 60 40 "$HUE_MIN_PX" > "$SCRATCH/plate_hues_raw.txt"
+      : > "$SCRATCH/hues_plate.txt"
+      while read -r r g b n; do
+        case "$r" in ""|none) continue ;; esac
+        inkpx cols "$SCRATCH/plate.raw" $PLW $PLH 0 $((PLH - 1)) "$r" "$g" "$b" $HUE_TOL 1 > "$SCRATCH/plate_hue_runs.txt"
+        ncols=0
+        while read -r a bb nn; do
+          case "$a" in ""|none) continue ;; esac
+          ncols=$((ncols + (bb - a + 1)))
+        done < "$SCRATCH/plate_hue_runs.txt"
+        [ "$ncols" -ge "$HUE_COLS_MIN" ] || continue
+        [ "$n" -ge "$HUE_CURVE_MIN" ] || continue
+        printf "%s %s %s %s %s\n" "$r" "$g" "$b" "$n" "$ncols" >> "$SCRATCH/hues_plate.txt"
+      done < "$SCRATCH/plate_hues_raw.txt"
+      echo "PLATE_FLOOR=\"$PLFLOOR\"" >> "$GEOM"
+      echo "PLATE_HUES=\"$(tr "\n" ";" < "$SCRATCH/hues_plate.txt")\"" >> "$GEOM"
+      say "chromatic hues on the plate the marker search reads (floor [$PLFLOOR]): [$(tr "\n" ";" < "$SCRATCH/hues_plate.txt")]"
+      HKX=""; HKY=""; HKINK=0; HKRUN=""
+      while read -r hr hg hb hn hcols; do
+        [ -n "${hr:-}" ] || continue
+        inkpx cols "$SCRATCH/plate.raw" $PLW $PLH 0 $((PLH - 1)) "$hr" "$hg" "$hb" $HUE_TOL 3 > "$SCRATCH/dot_runs.txt"
+        while read -r rx0 rx1 rn; do
+          case "$rx0" in ""|none) continue ;; esac
+          rw=$((rx1 - rx0 + 1))
+          { [ "$rw" -ge "$DOT_RUN_MIN" ] && [ "$rw" -le "$DOT_RUN_MAX" ]; } || continue
+          rcx=$(( (rx0 + rx1) / 2 ))
+          read -r ccx ccy ccn <<< "$(inkpx centroid "$SCRATCH/plate.raw" $PLW $PLH $((rcx - HOVER_BOX_PX / 2)) 0 $HOVER_BOX_PX $PLH "$hr" "$hg" "$hb" $HUE_TOL)"
+          case "${ccx:-none}" in none|"") continue ;; esac
+          [ "${ccn:-0}" -gt "$HKINK" ] || continue
+          HKINK=$ccn; HKX=$((PLX + ccx)); HKY=$((PLY + ccy)); HKRUN="$hr $hg $hb $rx0 $rx1 $rw $rn"
+        done < "$SCRATCH/dot_runs.txt"
+      done < "$SCRATCH/hues_plate.txt"
+      [ -n "$HKX" ] || abort "no key marker ink was found on the panel plate [${PLOT:-none}] (floor [$PLFLOOR]): a dot is a run of ${DOT_RUN_MIN}..${DOT_RUN_MAX} columns of a channel hue each holding 3 or more pixels of it (more than the 1 full-strength pixel the 2px stroke of the curve leaves at 0.45), and this frame draws none of the plate hues [$(tr "\n" ";" < "$SCRATCH/hues_plate.txt")] - the keys the knobs made may lie outside the plate window, no marker was inked, or the ink of a marker is not one of the hues this plate scan found"
+      # THE BOX IS THE 13x13 SQUARE AROUND THE DOT, CLAMPED TO THE DOCK RECTANGLE: a key whose
+      # channel value sits at the floor of the plot has its dot drawn ON the last row of the plate,
+      # so the square around it can hang a row or two below the dock - and this phase reads the ink
+      # the DOCKED panel drew, so it clamps. The reporting half asserts the clamp moved it by at most
+      # HOVER_CLAMP_MAX, which is what keeps the box the box of the marker itself.
+      HRBX=$((HKX - HOVER_BOX_PX / 2)); HRBY=$((HKY - HOVER_BOX_PX / 2))
+      HBX=$HRBX; HBY=$HRBY
+      [ "$HBX" -lt "$KX" ] && HBX=$KX
+      [ $((HBX + HOVER_BOX_PX)) -gt $((KX + KW)) ] && HBX=$((KX + KW - HOVER_BOX_PX))
+      [ "$HBY" -lt "$KY" ] && HBY=$KY
+      [ $((HBY + HOVER_BOX_PX)) -gt $((KY + KH)) ] && HBY=$((KY + KH - HOVER_BOX_PX))
       echo "HOVER_AT=\"$HKX $HKY\"" >> "$GEOM"
-      echo "HOVER_BOX=\"$((HKX - HOVER_BOX_PX / 2)) $((HKY - HOVER_BOX_PX / 2)) $HOVER_BOX_PX $HOVER_BOX_PX\"" >> "$GEOM"
-      say "key marker at $HKX,$HKY (its column is ${DOTN}px of chromatic ink): the pointer moves onto it with NO click"
+      echo "HOVER_RAW=\"$HRBX $HRBY $HOVER_BOX_PX $HOVER_BOX_PX\"" >> "$GEOM"
+      echo "HOVER_BOX=\"$HBX $HBY $HOVER_BOX_PX $HOVER_BOX_PX\"" >> "$GEOM"
+      echo "HOVER_INK=\"$HKINK\"" >> "$GEOM"
+      echo "HOVER_RUN=\"$HKRUN\"" >> "$GEOM"
+      read -r HKHR HKG HKB HKR0 HKR1 HKRW HKRT <<< "$HKRUN"
+      say "key marker at $HKX,$HKY: a ${HKRW}-column run (x ${HKR0}..${HKR1}) of the channel hue [$HKHR $HKG $HKB] on the plate, ${HKRT}px of it in the run and ${HKINK}px in the 13-column strip the dot is centred in - the curve beside it leaves 1 full-strength pixel per column - so the pointer moves onto it with NO click"
       xdotool mousemove --sync $HKX $HKY
       settle_shot "$SHOTS/gink_41_hover.png" || abort "the docked panel never settled with the pointer on the key marker at $HKX,$HKY"
       park
@@ -597,6 +795,14 @@ anim_panes() { # anim_panes <dump> -> "<indent> <name-or-empty>" per line
     ' "$1"
 }
 aediff() { local d; d=$(magick compare -metric AE "$1" "$2" null: 2>&1); d=${d%% *}; [ -n "$d" ] || d=0; echo "$d"; }
+# topcols <capture> <WxH+X+Y>: the commonest colours inside a box, most frequent first.
+# A failing pixel reading has to name the INK it found, not only its size: this is how the
+# hover phase's return diff says which drawing pass was left changed.
+topcols() {
+    magick "$1" -crop "$2" +repage -format %c histogram:info:- 2>/dev/null |
+        sort -rn | head -4 |
+        sed -E 's/^ *([0-9]+): .*#([0-9A-Fa-f]{6}).*/#\2 x\1/' | paste -sd' ' -
+}
 dist() { awk -v a1="$1" -v a2="$2" -v a3="$3" -v b1="$4" -v b2="$5" -v b3="$6" \
         'BEGIN{d1=a1-b1; d2=a2-b2; d3=a3-b3; printf "%.1f", sqrt(d1*d1+d2*d2+d3*d3)}'; }
 
@@ -654,21 +860,43 @@ check "$ok" "and the application never warned that its viewport was queried for 
 # INSIDE, on the two tab states; OUTSIDE, on the same two captures with the dock's rectangle
 # blanked in both, so the number is a measurement rather than a subtraction; and the CONTROL pair,
 # which is what rules a repaint out.
+# THE RECTANGLE IS THE ONE BOTH CAPTURES WERE TAKEN IN. It is NOT the rectangle the application
+# starts in: the dock's own header carries the Graph page's controls (the quick-easing check boxes
+# and the "N channel(s)" channels button), so the first press of the dock's own Graph tab raises the
+# dock's minimum width and the application - at its own minimum size under this harness - grows the
+# WINDOW with it, and neither comes back when the Timeline tab returns. MEASURED on these captures:
+# [0 185 848 310] and a 1168px window before that visit, [0 185 921 310] and a 1241px window after
+# it. Masking the STARTING rectangle against two captures of the grown layout is what leaves 53390px
+# "outside" - and those pixels are the layout, not ink: their boxes are x 1164..1240 y 0..495 (the
+# content of the neighbouring Properties dock, MOVED: the same pixels, 0px of difference against the
+# Timeline capture's neighbour when the two crops are compared with that 73px shift), x 847..920
+# y 21..430 (the width the dock gained) and x 411..847 y 21..183 (the dashed guide of the canvas,
+# re-laid out inside the wider viewport: 604px, all of it neutral canvas colours). So the probe reads
+# the rectangle once per state in the body and asserts here that the two pages it compares were
+# captured in ONE layout.
+read -r _ _ s0w _ <<< "${DOCK_START:-0 0 0 0}"
+read -r _ _ gw _ <<< "${DOCK_G:-0 0 0 0}"
+[ -n "${DOCK_T:-}" ] && [ "$DOCK_T" = "$DOCK_G" ]
+check $? "the two pages the pixel claim compares were captured in ONE window layout: the dock's own rectangle is [${DOCK_G:-none}] with the Graph page up and [${DOCK_T:-none}] with the Timeline page up. The application grows that rectangle from [${DOCK_START:-none}] to [${DOCK_G:-none}] - $((gw - s0w))px - the FIRST time its Graph tab is pressed, and it does not shrink it back (the window it grows with it is [${WIN_G:-none}])"
 magick "${SHOTS}/gink_10_dock_timeline.png" "${SHOTS}/gink_20_dock_graph.png" \
     -crop "${DW}x${DH}+${DX}+${DY}" +repage "${SCRATCH}/dock_%d.png" 2>/dev/null
-magick "${SHOTS}/gink_10_dock_timeline.png" -fill black -draw "rectangle ${DX},${DY} $((DX + DW)),$((DY + DH))" "${SCRATCH}/tl_masked.png"
-magick "${SHOTS}/gink_20_dock_graph.png" -fill black -draw "rectangle ${DX},${DY} $((DX + DW)),$((DY + DH))" "${SCRATCH}/gr_masked.png"
+magick "${SHOTS}/gink_10_dock_timeline.png" -fill black -draw "rectangle ${DX},${DY} $((DX + DW - 1)),$((DY + DH - 1))" "${SCRATCH}/tl_masked.png"
+magick "${SHOTS}/gink_20_dock_graph.png" -fill black -draw "rectangle ${DX},${DY} $((DX + DW - 1)),$((DY + DH - 1))" "${SCRATCH}/gr_masked.png"
 DOCK_DIFF=$(aediff "$SCRATCH/dock_0.png" "$SCRATCH/dock_1.png")
 OUTSIDE_DIFF=$(aediff "$SCRATCH/tl_masked.png" "$SCRATCH/gr_masked.png")
 CONTROL_DIFF=$(aediff "${SHOTS}/gink_11_dock_timeline_b.png" "${SHOTS}/gink_12_dock_timeline_c.png")
+# the bounding box of what is left outside, printed whether or not the check below clears: if the
+# panel ever paints over the window, this is the box and the region that has to be named.
+OUTSIDE_BOX=""
+[ "${OUTSIDE_DIFF:-0}" -eq 0 ] || OUTSIDE_BOX=$(magick "$SCRATCH/tl_masked.png" "$SCRATCH/gr_masked.png" -compose difference -composite -threshold 0 -format "%@" info: 2>/dev/null)
 SHARE=$(awk -v a="$DOCK_DIFF" -v b="$DOCK_AREA" 'BEGIN{ printf "%.3f", (b > 0) ? a / b : 0 }')
-echo "pixels: the Graph tab against the Timeline tab changes ${DOCK_DIFF}px inside the dock (${SHARE} of its ${DOCK_AREA}px) and ${OUTSIDE_DIFF}px outside it; the same state captured twice differs by ${CONTROL_DIFF}px (the tree is ${TREE_W:-?}px of the dock, so the panel's page is the other $((DW - ${TREE_W:-0}))px)"
+echo "pixels: the Graph tab against the Timeline tab changes ${DOCK_DIFF}px inside the dock (${SHARE} of its ${DOCK_AREA}px, both captures in the grown layout [${DOCK:-none}]) and ${OUTSIDE_DIFF}px outside it (their bounding box ${OUTSIDE_BOX:-none}); the same state captured twice differs by ${CONTROL_DIFF}px (the tree is ${TREE_W:-?}px of the dock, so the panel's page is the other $((DW - ${TREE_W:-0}))px)"
 [ "${CONTROL_DIFF:-1}" -eq 0 ]
 check $? "the control pair is the SAME state twice: ${CONTROL_DIFF:-?}px differ between two captures taken with nothing forced between them, so the change below is the tab switch and not a repaint"
 [ "${DOCK_DIFF:-0}" -ge "$DOCK_CHANGE_MIN" ]
 check $? "switching the dock's tab to Graph repaints a substantial part of the dock's own rectangle: ${DOCK_DIFF:-0}px changed inside [${DOCK:-none}] (bar ${DOCK_CHANGE_MIN})"
 [ "${OUTSIDE_DIFF:-1}" -eq 0 ]
-check $? "and NOTHING changes outside that rectangle: ${OUTSIDE_DIFF:-?}px differ elsewhere on the screen, so the panel is the dock's PAGE and not an overlay over the window"
+check $? "and NOTHING changes outside that rectangle: ${OUTSIDE_DIFF:-?}px differ elsewhere on the screen (their bounding box is ${OUTSIDE_BOX:-none}), so the panel is the dock's PAGE and not an overlay over the window"
 awk -v s="$SHARE" -v m="$DOCK_CHANGE_SHARE" 'BEGIN{ exit !(s <= m) }'
 check $? "and the change is BOUNDED - ink on the dock's page, not a repaint of the whole dock: share ${SHARE} <= ${DOCK_CHANGE_SHARE}"
 assert_rendered "${SHOTS}/gink_20_dock_graph.png" "the docked panel's page with the Graph tab up"
@@ -703,10 +931,14 @@ check $? "and the Properties dock's CURRENT KEYS knobs put a key of TWO differen
 CHBTN_LINES=$(grep -c "^ *button *| [0-9]\{1,\} channel(s)$" "$KEYSLOG" 2>/dev/null) || CHBTN_LINES=0
 [ "${CHBTN_LINES:-0}" -eq 1 ]
 check $? "the panel publishes NO channels control of its own: the tree holds exactly ONE \"N channel(s)\" button (${CHBTN_LINES:-0}), and it is the DOCK HEADER's ([${CHBTN:-none}])"
+# THE DOCK'S RECTANGLE WITH THE KEYED PAGE UP: the header's channels control reads "10 channel(s)"
+# by now, which is 6px more text than "0 channel(s)", so the dock this phase's rectangle is read
+# from is [0 185 927 310] and not the 921px one the tab-switch captures are taken at.
+read -r KX2 KY2 KW2 KH2 <<< "${DOCK_K:-${DOCK:-0 0 0 0}}"
 read -r CX2 CY2 CW2 CH2 <<< "${CHBTN_RECT:-0 0 0 0}"
-awk -v x="$CX2" -v y="$CY2" -v w="$CW2" -v h="$CH2" -v X="$DX" -v Y="$DY" -v W="$DW" -v H="$DH" \
+awk -v x="$CX2" -v y="$CY2" -v w="$CW2" -v h="$CH2" -v X="$KX2" -v Y="$KY2" -v W="$KW2" -v H="$KH2" \
     'BEGIN{ exit !(x >= X && y >= Y && x + w <= X + W && y + h <= Y + H) }'
-check $? "and that header control is a real one inside the dock's own rectangle ([${CHBTN_RECT:-none}] in [${DOCK:-none}])"
+check $? "and that header control is a real one inside the dock's own rectangle ([${CHBTN_RECT:-none}] in [${DOCK_K:-none}])"
 echo "panel: page area [${PANELRECT:-none}], floor [${PANEL_FLOOR:-none}]; the channel hues on it (rgb px columns): [${PANEL_HUES:-none}]"
 # ---- TWO CHANNELS OF DIFFERENT KEY TYPES ARE TWO COLOURS ----
 # The pair is chosen from the hues the panel is DRAWN with, not from a list of tokens: a hue that
@@ -741,11 +973,25 @@ check $? "and two different CHANNELS carry different colours: the two are ${HD:-
 # asked of the marker's OWN box rather than of a share of the page, so a page-wide repaint that
 # left the marker alone cannot clear it. A missing capture reads 0 through magick compare and
 # fails the box check, and the capture's existence and non-blackness are asserted beside it.
+# AND IT IS ASKED OF A MARKER THAT IS PROVABLY UNSELECTED, which is why the two readings below come
+# first: hover ink is given ONLY to an unselected marker, so the phase empties the selection with
+# the panel's own gestures and proves it emptied - Ctrl+A selects the shown channels' keys and the
+# page draws it, and the Escape after it returns the page to the pixel it had before the Ctrl+A.
+# The BAR for the selection's own ink is the one probe_graph_keys.sh sets for the same ink on the
+# same panel (MEASURED 14157px of the whole page there). A run that cannot establish the empty
+# selection FAILS HERE, before the box reading, rather than measuring a state in which the marker it
+# found could never light.
 HOVER_BASE="${SHOTS}/gink_40_hover_base.png"
 HOVER_CTRL="${SHOTS}/gink_40b_hover_control.png"
 HOVER_ON="${SHOTS}/gink_41_hover.png"
 HOVER_OFF="${SHOTS}/gink_42_hover_off.png"
 read -r HBX HBY HBW HBH <<< "${HOVER_BOX:-0 0 0 0}"
+read -r RBX RBY _ _ <<< "${HOVER_RAW:-0 0 0 0}"
+echo "selection: Ctrl+A on the keyed page drew ${SEL_INK:-?}px of the screen, and the Escape after it returned the page to the pixel it had before the Ctrl+A (${ESC_RET:-?}px) - the state the marker below is hovered in has no key selected, which is the only state in which hover ink exists (the drawing pass sets hoveredHere = hovered && !selected)"
+[ "${SEL_INK:-0}" -ge "$SEL_INK_MIN" ]
+check $? "the phase's own precondition is measurably a state: Ctrl+A selected the shown channels' keys and the page DREW it - ${SEL_INK:-0}px of the screen changed (bar ${SEL_INK_MIN}) - so there are keys to hover at all"
+[ "${ESC_RET:-1}" -eq 0 ]
+check $? "and the Escape that followed cleared that selection back to the pixel: ${ESC_RET:-?}px between the page before the Ctrl+A and the page after the Escape (an exact zero, the rule probe_graph_keys.sh applies to the same binding). THIS is how the phase knows the marker it is about to hover is UNSELECTED - a selected marker legitimately gives a hover NO ink to change, and hovering one would read the control pair's 0px and call a design property a regression (MEASURED 2026-10-19: exactly that, 0px of the box while the same page changed 792px elsewhere and the return check passed at 0px)"
 assert_exists "$HOVER_BASE" "the panel's page captured before the hover"
 assert_rendered "$HOVER_BASE" "the panel's page captured before the hover"
 assert_exists "$HOVER_CTRL" "the panel's page captured again, for the same-state pair"
@@ -754,23 +1000,47 @@ assert_rendered "$HOVER_ON" "the panel's page with the pointer ON a key's dot"
 assert_exists "$HOVER_OFF" "the panel's page with the pointer back off every key"
 assert_rendered "$HOVER_OFF" "the panel's page with the pointer back off every key"
 [ -n "${HOVER_BOX:-}" ] && [ -n "${HOVER_AT:-}" ]
-check $? "the probe hovers a marker it FOUND in the panel's own ink rather than a guessed point: a chromatic disk read off the plate at [${HOVER_AT:-none}], measured as the box [${HOVER_BOX:-none}] around it"
-awk -v x="$HBX" -v y="$HBY" -v w="$HBW" -v h="$HBH" -v X="$DX" -v Y="$DY" -v W="$DW" -v H="$DH" \
+check $? "the probe hovers a marker it FOUND in the panel's own ink rather than a guessed point: a dot read off the plate at [${HOVER_AT:-none}] as a run of columns holding MORE of a channel hue than its curve's stroke leaves in a column (the plate's own hues were measured on the capture this search reads: [${PLATE_HUES:-none}], floor [${PLATE_FLOOR:-none}]), measured as the box [${HOVER_BOX:-none}] around it"
+read -r HR1 HR2 HR3 HRX0 HRX1 HRW HRT <<< "${HOVER_RUN:-0 0 0 0 0 0 0}"
+[ "${HRW:-0}" -ge "$DOT_RUN_MIN" ] && [ "${HRW:-0}" -le "$DOT_RUN_MAX" ] && [ "${HOVER_INK:-0}" -gt "$HOVER_BOX_PX" ]
+check $? "and the run it was read from is a MARKER and not the curve: rgb (${HR1:-?} ${HR2:-?} ${HR3:-?}) owns columns ${HRX0:-?}..${HRX1:-?} (${HRW:-0}-wide, bar ${DOT_RUN_MIN}..${DOT_RUN_MAX}) holding ${HRT:-0}px of the hue - 3 or more pixels per column, where the 2px stroke of a flat curve leaves exactly 1 full-strength pixel per column (MEASURED on this frame) - and its 13-column strip holds ${HOVER_INK:-?}px, more than the one-per-column a stroke can leave there (bar ${HOVER_BOX_PX})"
+awk -v x="$HBX" -v y="$HBY" -v w="$HBW" -v h="$HBH" -v X="$KX2" -v Y="$KY2" -v W="$KW2" -v H="$KH2" \
     'BEGIN{ exit !(x >= X && y >= Y && x + w <= X + W && y + h <= Y + H) }'
-check $? "and that box lies inside the dock's own rectangle [${DOCK:-none}], so the ink it measures is the docked panel's own"
+check $? "and that box lies inside the dock's own rectangle [${DOCK_K:-none}], so the ink it measures is the docked panel's own"
+awk -v a="$HBX" -v A="$RBX" -v b="$HBY" -v B="$RBY" -v m="$HOVER_CLAMP_MAX" \
+    'BEGIN{ d1=a-A; d2=b-B; if (d1<0) d1=-d1; if (d2<0) d2=-d2; exit !(d1 <= m && d2 <= m) }'
+check $? "and the box is still the marker's OWN box: it is the 13x13 square around the dot [${HOVER_RAW:-none}], clamped to the dock's rectangle by at most ${HOVER_CLAMP_MAX} rows/columns - a key whose channel value sits at the plot's floor is drawn ON the plate's last row, so its square hangs below the dock (MEASURED: 1 row)"
 magick "$HOVER_BASE" -crop "${HBW}x${HBH}+${HBX}+${HBY}" +repage "$SCRATCH/hov_base.png" 2>/dev/null
 magick "$HOVER_ON" -crop "${HBW}x${HBH}+${HBX}+${HBY}" +repage "$SCRATCH/hov_on.png" 2>/dev/null
 HOVER_BOX_DIFF=$(aediff "$SCRATCH/hov_base.png" "$SCRATCH/hov_on.png")
 HOVER_PAGE_DIFF=$(aediff "$HOVER_BASE" "$HOVER_ON")
 HOVER_CTRL_DIFF=$(aediff "$HOVER_BASE" "$HOVER_CTRL")
 HOVER_RET_DIFF=$(aediff "$HOVER_BASE" "$HOVER_OFF")
-echo "hover: the pointer on the marker changes ${HOVER_BOX_DIFF}px of its own ${HBW}x${HBH} box at [${HOVER_BOX:-none}] (${HOVER_PAGE_DIFF}px of the whole page); the same state twice differs by ${HOVER_CTRL_DIFF}px, and the page with the pointer back off every key differs from the pre-hover one by ${HOVER_RET_DIFF}px"
+# WHERE AND IN WHAT COLOUR the return diff lives, printed whether or not it clears: the box the
+# changed pixels occupy and the colours each capture carries inside it. A return that is an
+# exact zero prints no box; anything else names the ink, which is what separates "a marker left
+# lit" from "a chip the pointer was last seen near" from a whole-page state difference.
+HOVER_RET_BOX=""
+HOVER_RET_BEFORE=""
+HOVER_RET_AFTER=""
+if [ "${HOVER_RET_DIFF:-0}" -ne 0 ] && [ -f "$HOVER_BASE" ] && [ -f "$HOVER_OFF" ]; then
+    HOVER_RET_BOX=$(magick "$HOVER_BASE" "$HOVER_OFF" -compose difference -composite -threshold 0 -format "%@" info: 2>/dev/null)
+    case "$HOVER_RET_BOX" in
+        *x*+*+*) ;;
+        *) HOVER_RET_BOX="" ;;
+    esac
+    if [ -n "$HOVER_RET_BOX" ]; then
+        HOVER_RET_BEFORE=$(topcols "$HOVER_BASE" "$HOVER_RET_BOX")
+        HOVER_RET_AFTER=$(topcols "$HOVER_OFF" "$HOVER_RET_BOX")
+    fi
+fi
+echo "hover: the pointer on the marker changes ${HOVER_BOX_DIFF}px of its own ${HBW}x${HBH} box at [${HOVER_BOX:-none}] (${HOVER_PAGE_DIFF}px of the whole page); the same state twice differs by ${HOVER_CTRL_DIFF}px, and the page with the pointer back off every key differs from the pre-hover one by ${HOVER_RET_DIFF}px${HOVER_RET_BOX:+ - those pixels are all inside [${HOVER_RET_BOX}], where the pre-hover capture carries (${HOVER_RET_BEFORE:-none}) and the post-park capture carries (${HOVER_RET_AFTER:-none})}"
 [ "${HOVER_CTRL_DIFF:-1}" -eq 0 ]
 check $? "the keyed Graph page is a STATE and not a repaint: two captures of it taken with nothing forced between them differ by ${HOVER_CTRL_DIFF:-?}px, so what the next reading sees is the pointer"
 [ "${HOVER_BOX_DIFF:-0}" -ge "$HOVER_BOX_MIN" ]
 check $? "moving the pointer ONTO a key's dot, with no click, repaints the docked panel: ${HOVER_BOX_DIFF:-0}px changed inside the marker's own box (bar ${HOVER_BOX_MIN}) - a stale or missing capture reads 0 here and fails"
 [ "${HOVER_RET_DIFF:-1}" -eq 0 ]
-check $? "and taking the pointer OFF every key puts the page back to the pre-hover pixel: ${HOVER_RET_DIFF:-?}px between the capture before the hover and the one after the pointer was parked (an exact zero, the rule the selection probe applies to Escape) - a marker left lit, or a hover that repainted something else and left it changed, fails here"
+check $? "and taking the pointer OFF every key puts the page back to the pre-hover pixel: ${HOVER_RET_DIFF:-?}px between the capture before the hover and the one after the pointer was parked (an exact zero, the rule the selection probe applies to Escape)${HOVER_RET_BOX:+ - they differ only inside [${HOVER_RET_BOX}], where the pre-hover capture carries (${HOVER_RET_BEFORE:-none}) and the post-park capture carries (${HOVER_RET_AFTER:-none})} - a marker left lit, or a hover that repainted something else and left it changed, fails here"
 
 # ---- 5. THE DOCK HEADER'S VIEW BUTTON REPAINTS THE PAGE IT DRIVES ----
 # A REGRESSION LOOKS LIKE this: the zoom-in button works (the timeline's own ruler and lanes move)
