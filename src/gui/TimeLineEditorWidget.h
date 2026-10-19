@@ -171,6 +171,17 @@ private:
     void updateLinesRecursive(QTreeWidgetItem* aItem);
     virtual void paintEvent(QPaintEvent* aEvent);
     virtual void resizeEvent(QResizeEvent* aEvent);
+    // THE SURFACE'S KEYBOARD. The surface takes focus on a click (it is the widget
+    // the pointer lands on, and it has Qt::ClickFocus: a click here hands it the
+    // keyboard without adding a Tab stop beside the timeline's own, and the press
+    // itself still propagates to TimeLineWidget's gestures), and it owns exactly one
+    // key:
+    //   * Ctrl+A - ctrl::TimeLineEditor::selectAllKeys(), every key of every row the
+    //     timeline shows, then a repaint.
+    // Every other key is IGNORED, so it propagates to TimeLineWidget (the arrow-key
+    // panning) and from there to the application's key map, exactly as before this
+    // widget could hold focus.
+    virtual void keyPressEvent(QKeyEvent* aEvent);
     void onTimeLineModified(core::TimeLineEvent& aEvent, bool aUndo);
     void onTreeRestructured(core::ObjectTreeEvent& aEvent, bool aUndo);
     void onProjectAttributeModified(core::ProjectEvent& aEvent, bool aUndo);

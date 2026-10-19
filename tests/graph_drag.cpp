@@ -6,19 +6,22 @@
 // invisible from inside the implementation:
 //
 //   * it is ONE command. The drag holds a cmnd::Gesture over a single
-//     cmnd::ModifiableAssign<util::Easing::Param>: the press only records the
-//     hit, the FIRST move commits, and every later move rewrites that same
-//     command. So one undo must restore the pre-drag param exactly, and a
+//     HandleDragCommand, which carries BOTH params a step writes (the grabbed
+//     one and the neighbour that receives the mirror): the press only records
+//     the hit, the FIRST move commits, and every later move rewrites that same
+//     command. So one undo must restore BOTH pre-drag params exactly, and a
 //     second undo must find nothing left - a drag that pushed one command per
 //     move cannot satisfy that.
-//   * it edits the key's own param at the pixel it points to. The dragged pixel
-//     maps back through the panel's own scale into the normalized (segment
-//     frame, segment value) space graph::Curve stores handles in, and the pair
-//     moves as ONE pair: the grabbed handle lands where the pointer is and the
-//     OTHER one at its mirror image about the segment ((1-x,1-y) in that space,
-//     whose ends are (0,0) and (1,1)), while the keys' values stay put. The
-//     grabbed x is clamped into [0,1] - a cubic is only solvable in its own
-//     domain - and the mirror follows from the CLAMPED x, so it is in range too.
+//   * it edits the easing at the pixel it points to, and mirrors the grabbed
+//     handle about the KEY it belongs to. Handle 0 is the `from` key's OUTGOING
+//     tangent and handle 1 the `to` key's INCOMING one, so the opposite tangent
+//     of that same key lives in the neighbouring segment: segment i-1's
+//     (x2,y2) for an outgoing drag, segment i+1's (x1,y1) for an incoming one.
+//     The reflection is arithmetic in PIXELS - the two segments normalize y by
+//     their own value spans, so a normalized (1-x,1-y) mirror would bend the
+//     tangent at the key - and the mirrored dot is mapped back into the
+//     neighbour's own normalized space, its x clamped into [0,1] and its y
+//     left free. The FIRST and LAST key have one handle only and get no mirror.
 //
 // Everything is observed through the public API only - the editor's own live
 // scale for the pixels, the document for the values, the project's command stack
@@ -101,8 +104,13 @@
 //     playback never reads (the step-held image offset) and a request for the
 //     type the key already has all push NOTHING.
 //
-// The WHEEL is pinned in section 0b: it zooms BOTH axes about the cursor, and
-// Shift narrows it to the frame axis while Ctrl narrows it to the value axis. The
+// The WHEEL is pinned in section 0b (and its delegation in section 23): the plain
+// wheel zooms BOTH axes about the cursor, Shift SCROLLS both axes by the
+// timeline's fixed 50 px per notch, Ctrl narrows it to the value axis, and
+// Ctrl+Shift narrows it to the frame axis (the frame-only zoom Shift provided
+// before the 2026-10-19 remap). Section 0b-iii pins the STEP at four notches -
+// 4*50 px on both axes with the frame RATE and the value SPAN unchanged - and the
+// Ctrl+Shift notch's RATE change with the anchored frame held. The
 // MIDDLE button is pinned in section 21: while the panel is up it pans the graph's
 // window (both axes, a pure pixel offset), never the canvas camera.
 //
@@ -172,7 +180,9 @@
 //     derived pair) WRITES Type_Custom carrying that pair at (1/3, y1) and
 //     (2/3, y2), inside the drag's own Gesture: one undo brings the Auto easing
 //     back whole, and the drag away from the dot then writes the grabbed handle
-//     at the pointer and the other at its mirror. The hit
+//     at the pointer. Its segment is the channel's first, so its `from` key has
+//     no incoming handle: the pair's other control point (the `to` key's
+//     incoming one) stays at the derived value. The hit
 //     test DERIVES that pair only for a segment whose ghost x is within the grab
 //     radius of the pointer (an exact cull on the segment's own arithmetic), so
 //     the cursor path cannot pay a derivation per segment: 8px from the dot still
@@ -186,12 +196,15 @@
 //     vertical drag moves both components; ctrl+A selects the shown channels' keys
 //     as one entry per key and Escape clears; and the set announces every change
 //     of its own, and only the changes.
-//   * 23f - THE HANDLE PAIR IS SYMMETRIC: dragging either control point of a
-//     segment's cubic writes BOTH - the grabbed one where the pointer is and the
-//     other at (1-x,1-y) of it, about the segment - and a drag pushed past the
-//     segment's start pins the grabbed x at 0 with its mirror at 1, because the
-//     grabbed x is clamped into [0,1] (a cubic's own domain) and the mirror is
-//     taken from the clamped value.
+//   * 23f - THE MIRROR IS TAKEN ABOUT THE KEY: a three-key channel, so key B
+//     owns both an incoming and an outgoing handle. Dragging B's INCOMING handle
+//     (segment A-B's x2,y2) writes segment B-C's (x1,y1) at the reflection of
+//     that dot about B - and leaves segment A-B's (x1,y1) alone; dragging B's
+//     OUTGOING handle (segment B-C's x1,y1) writes segment A-B's (x2,y2) and
+//     leaves segment B-C's (x2,y2) alone. The reflection is computed in panel
+//     pixels (the two segments' value spans differ), and the test pins it with
+//     the pixel collinearity through B. The first key (A) and the last key (C)
+//     have one handle each, so their drags write it and NO neighbour at all.
 #include <QApplication>
 #include <QMouseEvent>
 #include <QPoint>
@@ -563,11 +576,16 @@ int main(int argc, char** argv) {
 
     // The wheel's path too, since that is where a user really moves the window.
     // The PLAIN wheel zooms BOTH axes about the cursor - the reported defect was
-    // that one wheel moved one axis - and the modifier forms narrow it to one:
-    // Shift the frame axis, Ctrl the value axis. Both are asserted on the MAPPING
-    // the two axes produce (pixels between two frames; the value span), because a
-    // zoom that changed the stored numbers without moving the pixels would prove
-    // nothing.
+    // that one wheel moved one axis - and the modifier forms are, as of the
+    // 2026-10-19 remap, a SCROLL and the two per-axis zooms:
+    //   * Shift         -> scroll BOTH axes by the timeline's fixed 50 px per notch;
+    //   * Ctrl          -> value-axis zoom only (unchanged);
+    //   * Ctrl + Shift  -> frame-axis zoom only (what Shift used to be).
+    // Shift was the frame-axis-only ZOOM until that change; the assertions below
+    // name the old mapping so this rewrite reads as deliberate. They are asserted
+    // on the MAPPING the two axes produce (pixels between two frames; the value
+    // span; the frame content's origin), because a move that changed the stored
+    // numbers without moving the pixels would prove nothing.
     const QPoint kWheelPoint = panel.center();
     const int beforeFrameSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
@@ -587,18 +605,42 @@ int main(int argc, char** argv) {
     CHECK(afterFrameSpan > beforeFrameSpan);   // the FRAME axis zoomed in...
     CHECK(afterValueSpan < beforeValueSpan);   // ...and so did the VALUE axis
 
-    // Shift: the frame axis alone. The value window must be BIT-identical - not
-    // merely "about the same" - or the modifier is not narrowing anything.
+    // SHIFT IS THE SCROLL MODIFIER now (it was the frame-axis-only zoom until
+    // 2026-10-19; that zoom is Ctrl+Shift below). One notch scrolls BOTH axes by
+    // exactly the timeline's fixed 50 px - here a notch toward the user (-120), so
+    // the frame content moves LEFT and the value content moves UP - and changes
+    // NEITHER zoom: the pixel distance between two frames and the value span are
+    // the mapping's own scale measures.
+    const int beforeShiftOrigin = editor.scale().pixelX(core::Frame(0));
+    const int beforeShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeShiftMin = editor.scale().valueMin();
     const float beforeShiftMax = editor.scale().valueMax();
-    const int beforeShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const double beforeShiftValueY = editor.scale().pixelYOfValue(0.5f);
     CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ShiftModifier, false));
-    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) > beforeShiftSpan);
-    CHECK(editor.scale().valueMin() == beforeShiftMin);
-    CHECK(editor.scale().valueMax() == beforeShiftMax);
+    CHECK(editor.scale().pixelX(core::Frame(0)) - beforeShiftOrigin == -50); // one fixed step, no zoom
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == beforeShiftSpan);
+    CHECK(editor.scale().valueMin() != beforeShiftMin || editor.scale().valueMax() != beforeShiftMax); // panned...
+    CHECK(std::fabs((editor.scale().valueMax() - editor.scale().valueMin()) - (beforeShiftMax - beforeShiftMin))
+          < 1e-5f); // ...without zooming
+    CHECK(std::fabs((editor.scale().pixelYOfValue(0.5f) - beforeShiftValueY) + 50.0) < 1e-3); // the value half moved one step
     const int afterShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
 
-    // Ctrl: the value axis alone, and the frame axis untouched this time.
+    // CTRL+SHIFT: the FRAME-axis-only zoom the old Shift used to provide. The value
+    // window must be BIT-identical - not merely "about the same" - or the modifier
+    // is not narrowing anything. The anchored frame stays under the cursor, so the
+    // notch changes the rate and does not pan the axis.
+    const float beforeCtrlShiftMin = editor.scale().valueMin();
+    const float beforeCtrlShiftMax = editor.scale().valueMax();
+    const int beforeCtrlShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+    const double ctrlShiftAnchorFrame = editor.scale().frameAtPixel(kWheelPoint.x());
+    CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier | Qt::ShiftModifier, false));
+    CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) > beforeCtrlShiftSpan);
+    CHECK(editor.scale().valueMin() == beforeCtrlShiftMin);
+    CHECK(editor.scale().valueMax() == beforeCtrlShiftMax);
+    CHECK(std::fabs(editor.scale().frameAtPixel(kWheelPoint.x()) - ctrlShiftAnchorFrame) < 1e-9);
+    const int afterCtrlShiftSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+
+    // Ctrl alone: the value axis alone, and the frame axis untouched this time.
     const int beforeCtrlSpan = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
     const float beforeCtrlValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
     CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier, false));
@@ -618,9 +660,12 @@ int main(int argc, char** argv) {
 
     std::printf(
         "[W] wheel: frame px(0..24) %d -> %d (both axes, one notch)  value span %.4f -> %.4f  "
-        "shift-only frame px(0..24) %d with value span %.4f (unchanged)  ctrl-only value span %.4f -> %.4f\n",
+        "Shift SCROLL: frame origin moved -50 px, frame span %d unchanged, value span %.4f unchanged  "
+        "Ctrl+Shift frame-only zoom: px(0..24) %d -> %d with value window unchanged  "
+        "ctrl-only value span %.4f -> %.4f\n",
         beforeFrameSpan, afterFrameSpan, beforeValueSpan, afterValueSpan, afterShiftSpan,
-        beforeShiftMax - beforeShiftMin, beforeCtrlValueSpan, afterCtrlValueSpan
+        beforeShiftMax - beforeShiftMin, beforeCtrlShiftSpan, afterCtrlShiftSpan,
+        beforeCtrlValueSpan, afterCtrlValueSpan
     );
 
     // The window the wheel left, against the cursor pass that follows: nothing is
@@ -693,6 +738,65 @@ int main(int argc, char** argv) {
 
         // Both axes of the window back on the shown keys, which is the state the
         // sections below measure their pixels in.
+        editor.fitAll();
+    }
+
+    // --- 0b-iii: FOUR SHIFT NOTCHES ARE FOUR FIXED STEPS, AND ONE Ctrl+SHIFT
+    // NOTCH ZOOMS THE FRAME AXIS IN PLACE. The single-notch forms above pin the
+    // direction and the axis split; these pin the STEP ARITHMETIC at a count
+    // (four, the number the timeline's own scroll is exercised with) and measure
+    // the frame axis through its MAPPING - pixelXOfFrame() and framePpf() - not
+    // through the rounded pixel between two frames, so a rate change cannot hide
+    // inside the span. Everything is asserted THROUGH GraphEditor::updateWheel,
+    // the one place a notch becomes a window move:
+    //   * Shift: every one of the four notches is consumed; the frame content
+    //     moves exactly 4*50 = 200 px and the value content the same 200 px,
+    //     with the frame RATE == bit-identical and the value SPAN unchanged;
+    //   * Ctrl+Shift: the notch is consumed, RAISES the frame rate (a notch in,
+    //     x1.1), leaves the value window BIT-identical - so the value content
+    //     does not move either - and holds the frame under the cursor within
+    //     1e-9 of a frame (the anchored zoom, not a pan).
+    {
+        const Scaler& scale = editor.scale();
+        constexpr int kScrolls = 4;
+        const double frameX0 = scale.pixelXOfFrame(0.0);
+        const double framePpf0 = scale.framePpf();
+        const float valueSpan0 = scale.valueMax() - scale.valueMin();
+        const double valueY0 = scale.pixelYOfValue(0.5f);
+        bool taken = true;
+        for (int i = 0; i < kScrolls; ++i)
+            taken = editor.updateWheel(camera, kWheelPoint, 120, Qt::ShiftModifier, false) && taken;
+        CHECK(taken); // a Shift notch over the panel is consumed
+        const double shiftedFramePx = scale.pixelXOfFrame(0.0) - frameX0;
+        const double shiftedValuePx = scale.pixelYOfValue(0.5f) - valueY0;
+        CHECK(std::fabs(shiftedFramePx - kScrolls * 50.0) < 1e-9); // exactly N*50 px of frame content
+        CHECK(std::fabs(shiftedValuePx - kScrolls * 50.0) < 1e-2); // and the same N*50 px of value content
+        CHECK(scale.framePpf() == framePpf0); // Shift scroll leaves the frame RATE unchanged
+        CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - valueSpan0) < 1e-4f); // and the value zoom
+
+        // CTRL+SHIFT: the frame-only zoom. The value axis is untouched (bit for
+        // bit) and the frame under the cursor stays under it - the notch changes
+        // the rate, it does not pan either axis.
+        const double zoomPpf0 = scale.framePpf();
+        const double anchorX = static_cast<double>(kWheelPoint.x());
+        const double anchorFrame = scale.frameAtPixel(anchorX);
+        const float valueMin0 = scale.valueMin();
+        const float valueMax0 = scale.valueMax();
+        const double valueYBeforeZoom = scale.pixelYOfValue(0.5f);
+        CHECK(editor.updateWheel(camera, kWheelPoint, -120, Qt::ControlModifier | Qt::ShiftModifier, false));
+        CHECK(scale.framePpf() > zoomPpf0); // Ctrl+Shift zooms the frame axis (a notch in, x1.1)
+        CHECK(scale.valueMin() == valueMin0 && scale.valueMax() == valueMax0); // value window bit-identical
+        CHECK(std::fabs(scale.pixelYOfValue(0.5f) - valueYBeforeZoom) < 1e-12); // value content did not move
+        CHECK(std::fabs(scale.frameAtPixel(anchorX) - anchorFrame) < 1e-9); // anchored frame held
+
+        std::printf(
+            "[W] wheel steps: %d Shift notches -> frame %.1f px and value %.1f px, ppf %.6f (unchanged); "
+            "Ctrl+Shift -> ppf %.6f, value window %.4f..%.4f unchanged, anchored frame %.4f\n",
+            kScrolls, shiftedFramePx, shiftedValuePx, framePpf0, scale.framePpf(), valueMin0, valueMax0,
+            scale.frameAtPixel(anchorX)
+        );
+
+        // Both axes back on the shown keys for the sections below.
         editor.fitAll();
     }
 
@@ -828,29 +932,24 @@ int main(int argc, char** argv) {
 
     // --- 5: the edit landed where the drag pointed. The released pixel maps
     // back through the SAME scale into the normalized space the handle lives in,
-    // and the pair moved as ONE pair: the grabbed handle under the pointer and
-    // the OTHER one at its mirror image about the segment - (1-x,1-y) of what
-    // the drag wrote, in this space whose ends are (0,0) and (1,1). The keys'
-    // values are part of neither: a handle drag shapes the curve, it moves no key.
+    // and the GRABBED handle is exactly where the pointer is.
+    //
+    // This fixture has ONE segment, and the press grabbed its handle 0 - the
+    // OUTGOING handle of key0, the channel's FIRST key. A first key has no
+    // incoming handle, so there is no neighbour segment and NO MIRROR: the
+    // other control point of the segment is key1's INCOMING handle and this
+    // drag must leave it exactly where it was. (The old claim asserted
+    // `x2 == 1-x1` / `y2 == 1-y1`, "the OTHER one at its mirror image about the
+    // segment"; that mirrored key1's handle whenever key0's was dragged, which
+    // is the defect this contract replaces.)
     const util::Easing::Param dragged = key0->data().easing();
     CHECK(dragged != kAuthored);
     CHECK(dragged.type == kAuthored.type); // a handle drag shapes the curve; it never writes the type
     CHECK(dragged.range == kAuthored.range);
     CHECK(dragged.weight == kAuthored.weight);
-    // The mirror, BOTH components: the asserted value is 1 - the value the
-    // assertions below say the drag put on the grabbed handle, so this holds the
-    // pair only if both ends are the ones the one drag wrote.
-    const float kEpsilon = 1e-6f;
-    CHECK(std::fabs(dragged.cubicBezier.x2 - (1.0f - dragged.cubicBezier.x1)) < kEpsilon);
-    CHECK(std::fabs(dragged.cubicBezier.y2 - (1.0f - dragged.cubicBezier.y1)) < kEpsilon);
-    // The pair really is a NEW pair and not the authored one relabelled. The fixture
-    // is AUTHORED as a mirror pair - (0.4,0.1) and (0.6,0.9) are each other's mirror -
-    // which is why the old assertion ("the handle that was NOT grabbed stayed put")
-    // passed while a drag was asymmetric: the untouched handle WAS the mirror of the
-    // authored first handle. What says the drag wrote both ends is that the second
-    // handle has MOVED off the authored value and onto the mirror of the dragged one
-    // (checked above).
-    CHECK(dragged.cubicBezier.x2 != kAuthored.cubicBezier.x2);
+    // key1's handle - the segment's other control point - is untouched.
+    CHECK(dragged.cubicBezier.x2 == kAuthored.cubicBezier.x2);
+    CHECK(dragged.cubicBezier.y2 == kAuthored.cubicBezier.y2);
 
     CHECK(key0->rotate() == 0.0f); // the drag edits the easing, not the key's value
     CHECK(key1->rotate() == 90.0f);
@@ -2668,11 +2767,12 @@ int main(int argc, char** argv) {
 
         // --- (e) THE HORIZONTAL GESTURES GO TO THE TIMELINE. ---
         double scrolledFrames = 0.0;
+        int scrollCalls = 0;
         int zoomedDelta = 0;
         double zoomedAnchor = 0.0;
         int zoomCalls = 0;
         editor.setFrameGestureDelegates(
-            [&scrolledFrames](double aDelta) { scrolledFrames += aDelta; },
+            [&scrolledFrames, &scrollCalls](double aDelta) { scrolledFrames += aDelta; ++scrollCalls; },
             [&zoomedDelta, &zoomedAnchor, &zoomCalls](int aDelta, double aAnchor) {
                 zoomedDelta = aDelta;
                 zoomedAnchor = aAnchor;
@@ -2680,17 +2780,39 @@ int main(int argc, char** argv) {
             }
         );
 
-        // Shift = the frame axis alone: the notch is the TIMELINE's, about the frame
-        // under the panel's cursor, and the panel's own X does not move under it. The
-        // anchor is that frame SUB-PIXEL, which is what lets the timeline put it back
-        // under the cursor instead of rounding to the nearest whole one.
-        const double anchorFrameAtCursor = editor.scale().frameAtPixel(sharedPlot.center().x());
+        // SHIFT IS THE SCROLL MODIFIER (it was the frame-axis-only zoom until the
+        // 2026-10-19 remap; the frame-only zoom is Ctrl+Shift below). The notch has
+        // to reach the timeline's scrollFramesBy, in the unit both views share - a
+        // FRAME delta - and a notch toward the user (-120) asks for 50 px of content
+        // moving LEFT, i.e. +50 / framePpf frames (a positive frame delta moves the
+        // content left through scrollFramesBy). The ZOOM delegate must not hear it.
+        const double framePpfAtScroll = editor.scale().framePpf();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, false));
+        CHECK(scrollCalls == 1);
+        CHECK(zoomCalls == 0); // the frame ZOOM delegate did not hear it
+        CHECK(std::fabs(scrolledFrames - 50.0 / framePpfAtScroll) < 1e-9); // exactly 50 px, in shared frames
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X stayed put
+
+        // THE CONVERSE: Ctrl+Shift changes the frame axis' RATE and NOT its offset.
+        // The notch goes to the ZOOM delegate, about the frame under the panel's
+        // cursor SUB-PIXEL (so the timeline can put it back under the cursor instead
+        // of rounding it), the SCROLL delegate hears nothing, and the value axis is
+        // untouched.
+        const double anchorFrameAtCursor = editor.scale().frameAtPixel(sharedPlot.center().x());
+        const double scrolledBeforeCtrlShift = scrolledFrames;
+        const int scrollCallsBeforeCtrlShift = scrollCalls;
+        const float beforeCtrlShiftSeamMin = editor.scale().valueMin();
+        const float beforeCtrlShiftSeamMax = editor.scale().valueMax();
+        CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier | Qt::ShiftModifier, false));
         CHECK(zoomCalls == 1);
         CHECK(zoomedDelta == -120);
         CHECK(std::fabs(zoomedAnchor - anchorFrameAtCursor) < 1e-9);
         CHECK(zoomedAnchor != std::floor(zoomedAnchor)); // a real sub-pixel anchor, not a coincidence
-        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X stayed put
+        CHECK(scrolledFrames == scrolledBeforeCtrlShift);
+        CHECK(scrollCalls == scrollCallsBeforeCtrlShift); // the scroll delegate did not hear it
+        CHECK(editor.scale().valueMin() == beforeCtrlShiftSeamMin); // and no value-axis move
+        CHECK(editor.scale().valueMax() == beforeCtrlShiftSeamMax);
+        CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
         // The plain wheel zooms BOTH axes: the frame half still goes to the timeline,
         // while the VALUE half - the axis the timeline does not show - is the panel's
@@ -2698,27 +2820,34 @@ int main(int argc, char** argv) {
         const float beforeSeamValueSpan = editor.scale().valueMax() - editor.scale().valueMin();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, false));
         CHECK(zoomCalls == 2);
+        CHECK(zoomedDelta == -120);
+        CHECK(scrollCalls == scrollCallsBeforeCtrlShift); // a zoom is not a scroll
         CHECK(editor.scale().valueMax() - editor.scale().valueMin() < beforeSeamValueSpan);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
-        // Ctrl = the value axis alone: the frame delegate hears nothing at all.
+        // Ctrl = the value axis alone: neither frame delegate hears it.
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ControlModifier, false));
         CHECK(zoomCalls == 2);
+        CHECK(scrollCalls == scrollCallsBeforeCtrlShift);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
         // ...and the INVERTED setting is applied BEFORE the delegation, so the
         // timeline is handed a notch in the panel's own sense and the panel's two
         // axes keep moving together: with the setting on, the same wheel-away notch
-        // that arrived as -120 above arrives as +120 here. (The timeline's own
-        // invert setting is its own wheel's; that is the gesture
+        // that arrived as -120 above arrives as +120 here. Shift is the SCROLL now,
+        // so the delegate receives the OPPOSITE frame delta: -50 / framePpf. (The
+        // timeline's own invert setting is its own wheel's; that is the gesture
         // gui::TimeLineEditorWidget::updateWheel drives, not this one.)
+        const double scrolledBeforeInvert = scrolledFrames;
+        const int scrollCallsBeforeInvert = scrollCalls;
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::ShiftModifier, true));
-        CHECK(zoomCalls == 3);
-        CHECK(zoomedDelta == 120);
+        CHECK(scrollCalls == scrollCallsBeforeInvert + 1);
+        CHECK(std::fabs(scrolledFrames - scrolledBeforeInvert + 50.0 / framePpfAtScroll) < 1e-9);
+        CHECK(zoomCalls == 2); // a scroll is not a zoom
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
         const float beforeInvertSpan = editor.scale().valueMax() - editor.scale().valueMin();
         CHECK(editor.updateWheel(camera, sharedPlot.center(), -120, Qt::NoModifier, true));
-        CHECK(zoomCalls == 4);
+        CHECK(zoomCalls == 3);
         CHECK(zoomedDelta == 120); // the plain wheel's frame half too
         // The value half moves the way the canvas moves on that same notch with the
         // setting on: a notch TOWARD the user is the zoom OUT when the wheel is
@@ -2734,12 +2863,13 @@ int main(int argc, char** argv) {
         const float beforeSeamPanMax = editor.scale().valueMax();
         const QPoint seamPanStart = sharedPlot.center();
         const QPoint seamPanDelta(40, 25);
+        const double scrolledBeforePan = scrolledFrames;
         core::AbstractCursor seamPanCur;
         CHECK(sendMiddlePress(editor, camera, seamPanCur, seamPanStart));
         CHECK(sendMiddleMove(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
         CHECK(sendMiddleRelease(editor, camera, seamPanCur, seamPanStart + seamPanDelta));
-        CHECK(zoomCalls == 4); // a pan is not a zoom
-        CHECK(std::fabs(scrolledFrames + 40.0 / static_cast<double>(sharedPpf)) < 1e-9);
+        CHECK(zoomCalls == 3); // a pan is not a zoom
+        CHECK(std::fabs((scrolledFrames - scrolledBeforePan) + 40.0 / static_cast<double>(sharedPpf)) < 1e-9);
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0); // the panel's X still did not move
         const float afterSeamPanSpan = editor.scale().valueMax() - editor.scale().valueMin();
         const float beforeSeamPanSpan = beforeSeamPanMax - beforeSeamPanMin;
@@ -2750,9 +2880,11 @@ int main(int argc, char** argv) {
             "[T] timeline seam: the panel writes the timeline's own selection (1 key selected in the panel "
             "is 1 in the timeline, focused), a pushed window of %.2f..%.2f maps onto the panel's plot at "
             "%.3f px/frame "
-            "(plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a wheel notch and a 40px "
-            "middle-drag pan both reach the delegates and leave the panel's own X exactly where the timeline put "
-            "it, while a Ctrl wheel moves only the value axis\n",
+            "(plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a Shift notch reaches "
+            "the timeline SCROLL delegate with exactly 50/framePpf frames, Ctrl+Shift reaches the frame ZOOM "
+            "delegate and not the scroll one, and a 40px middle-drag pan reaches the scroll delegate - all "
+            "leaving the panel's own X exactly where the timeline put it, while a Ctrl wheel moves only the "
+            "value axis\n",
             pushedLo, pushedHi, sharedPpf, sharedPlot.width(), sharedPlot.height()
         );
 
@@ -2766,9 +2898,27 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.left())) <= 2.0);   // the shown keys came back
         CHECK(editor.scale().frameAtPixel(static_cast<double>(ownPlot.right())) >= 6.0);
         const double ownPpfBefore = editor.scale().frameScale().pixelsPerFrame();
-        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier, false)); // a notch AWAY from the ceiling
+        const int ownOriginBefore = editor.scale().pixelX(core::Frame(0));
+        const int ownSpanBefore = editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0));
+        // SHIFT IS THE SCROLL (it was the frame zoom until the 2026-10-19 remap):
+        // with no timeline the panel's OWN frame axis pans and its rate stays put.
+        // A notch AWAY (+120) is +50 px of content moved RIGHT, the timeline's own
+        // Shift direction.
+        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ShiftModifier, false));
+        CHECK(editor.scale().pixelX(core::Frame(0)) - ownOriginBefore == 50); // the offset panned...
+        CHECK(editor.scale().pixelX(core::Frame(24)) - editor.scale().pixelX(core::Frame(0)) == ownSpanBefore);
+        CHECK(editor.scale().frameScale().pixelsPerFrame() == ownPpfBefore); // ...and the rate did not change
+        CHECK(zoomCalls == 3);   // the ZOOM delegate heard nothing
+        CHECK(scrollCalls == 3); // and the scroll delegate did not either: this axis is the panel's own
+
+        // CTRL+SHIFT: the frame-only zoom, now on the panel's own axis. The rate
+        // changes, the anchored frame stays under the cursor, and no delegate hears it.
+        const double ownAnchorFrame = editor.scale().frameAtPixel(ownPlot.center().x());
+        CHECK(editor.updateWheel(camera, ownPlot.center(), 120, Qt::ControlModifier | Qt::ShiftModifier, false));
         CHECK(editor.scale().frameScale().pixelsPerFrame() < ownPpfBefore); // the panel's OWN frame axis moved
-        CHECK(zoomCalls == 4);                                              // and the delegate heard nothing
+        CHECK(std::fabs(editor.scale().frameAtPixel(ownPlot.center().x()) - ownAnchorFrame) < 1e-9);
+        CHECK(zoomCalls == 3);   // still no delegate: the panel owns this axis
+        CHECK(scrollCalls == 3);
 
         // The shared end must go before the timeline it points at does: a dangling
         // selection source is the one thing this seam can get catastrophically wrong.
@@ -3069,11 +3219,12 @@ int main(int argc, char** argv) {
 
         // (a) A drag whose move lands back ON the ghost dot: the conversion is
         // the whole edit, so what was written is the derived pair's GEOMETRY at
-        // the thirds - the grabbed handle at its own third, and the other at the
-        // mirror of that point, which for the derived x (1/3) is the other third
-        // (2/3). The y is the mirror too, and NOT the derived pair's own y2: the
-        // pair is written symmetric (see 23f), so the drag's own write replaces
-        // the y the conversion put there.
+        // the thirds - the grabbed handle at its own third, and the pair's
+        // other control point left at the second third. That other point is the
+        // `to` key's INCOMING handle, NOT the dragged key's opposite handle: the
+        // grabbed handle is this segment's `from` key's OUTGOING one, that key
+        // is the channel's FIRST, and a first key has no incoming handle - so
+        // there is no neighbour to mirror onto and the derived (2/3, y2) stays.
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
         CHECK(editor.ownsCursor(camera, ghostCur)); // the ghost dot is a grabbable handle
         CHECK(a0->data().easing().type == util::Easing::Type_Auto); // the press alone edits nothing
@@ -3084,8 +3235,9 @@ int main(int argc, char** argv) {
         CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - 1.0f / 3.0f) < 0.01f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) < 0.01f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(ghosts[0].y())) < 0.02f);
-        CHECK(std::fabs(a0->data().easing().cubicBezier.y2
-                  - (1.0f - a0->data().easing().cubicBezier.y1)) < 1e-6f);
+        // The other control point is the conversion's own derived y, untouched
+        // by the drag: no mirror exists for the first key.
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
 
         // ONE undo brings the Auto easing back whole (the conversion and the
         // handle write are one command), and a second finds nothing behind it.
@@ -3099,10 +3251,9 @@ int main(int argc, char** argv) {
 
         // (b) A real drag AWAY from the dot: the conversion still happens (the
         // key becomes Custom, riding the drag's own gesture), and the drag then
-        // writes the GRABBED handle where the pointer is - and the other handle
-        // at ITS mirror, so the pair that comes out of an Auto->Custom drag is
-        // symmetric too (the other third is no longer where the conversion left
-        // it: the write covers both ends).
+        // writes the GRABBED handle where the pointer is. The pair's other
+        // control point belongs to the `to` key, not to the dragged one, and has
+        // no mirror rule of its own: it stays at the derived second third.
         const QPoint ghostMoved(ghostGrab.x() + 6, ghostGrab.y() + 5);
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
         CHECK(sendMove(editor, camera, ghostCur, ghostMoved));
@@ -3119,18 +3270,16 @@ int main(int argc, char** argv) {
                                   / ghostValueSpan;
         CHECK(std::fabs(a0->data().easing().cubicBezier.x1 - static_cast<float>(expectedNx)) < 1e-4f);
         CHECK(std::fabs(a0->data().easing().cubicBezier.y1 - static_cast<float>(expectedNy)) < 1e-4f);
-        // ...and the other end at (1-x,1-y) of the grabbed one, both components,
-        // which is what the released pair is: the mirror, not its own third.
-        CHECK(std::fabs(a0->data().easing().cubicBezier.x2
-                  - (1.0f - a0->data().easing().cubicBezier.x1)) < 1e-6f);
-        CHECK(std::fabs(a0->data().easing().cubicBezier.y2
-                  - (1.0f - a0->data().easing().cubicBezier.y1)) < 1e-6f);
-        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - 2.0f / 3.0f) > 1e-4f); // moved off its third
+        // ...and the other control point is still the derived pair's own second
+        // third, in BOTH components: the drag did not touch it.
+        CHECK(std::fabs(a0->data().easing().cubicBezier.x2 - static_cast<float>(ghosts[1].x())) < 1e-6f);
+        CHECK(std::fabs(a0->data().easing().cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
 
         std::printf(
             "[A] ghost-handle drag: an Auto segment's derived pair (1/3,%.3f)/(2/3,%.3f) was written as "
             "Type_Custom at the thirds and undone by ONE undo; a drag away moved the grabbed handle to "
-            "(%.3f,%.3f) and the other to its mirror (%.3f,%.3f)\n",
+            "(%.3f,%.3f) and left the other control point at its derived (%.3f,%.3f) - the first key has "
+            "no mirror\n",
             ghosts[0].y(), ghosts[1].y(), a0->data().easing().cubicBezier.x1,
             a0->data().easing().cubicBezier.y1, a0->data().easing().cubicBezier.x2,
             a0->data().easing().cubicBezier.y2
@@ -3467,46 +3616,55 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 23f: THE TWO CONTROL POINTS OF A CUBIC ARE ONE PAIR. A segment's
-    // handles are its shape, and the convention every editor keeps is that they
-    // are symmetric about the segment: dragging one writes the other at its mirror
-    // image. The space a handle lives in is the NORMALIZED (segment frame, segment
-    // value) one, where the segment's own ends are exactly (0,0) and (1,1), so the
-    // mirror of a control point (x,y) is (1-x, 1-y). What is clamped is the x of
-    // the handle the POINTER drove: graph::Curve::setHandle clamps it into [0,1],
-    // because a cubic is only solvable in its own domain (a control point beyond
-    // the segment's end makes the curve non-monotonic in time). The mirror is then
-    // taken from that CLAMPED x, and since x -> 1-x maps [0,1] onto itself the
-    // mirrored x cannot leave the domain either: a handle dragged past the
-    // segment's start pins the grabbed x at 0 and puts its mirror at exactly 1,
-    // still symmetric - where mirroring the RAW pointer x would have asked for 1.3
-    // and left the pair lopsided. y stays free on both sides, mirrored and never
-    // clamped: overshoot past the keys' values is the point of a Back/Elastic
-    // curve and of a deliberate anticipation.
+    // --- 23f: THE MIRROR IS TAKEN ABOUT THE KEY THE HANDLE BELONGS TO. A
+    // segment's two control points are NOT a symmetric pair about the segment:
+    // (x1,y1) is the `from` key's OUTGOING tangent and (x2,y2) the `to` key's
+    // INCOMING one, so each belongs to a different key. The opposite tangent of
+    // a given key lives in the NEIGHBOURING segment - segment i-1's (x2,y2) for
+    // the `from` key's outgoing handle, segment i+1's (x1,y1) for the `to` key's
+    // incoming one.
     //
-    // Both handles are dragged below, because "the pair" is symmetric in the
-    // index too: whichever dot the press grabbed, it drives its own end and the
-    // other follows.
+    // The reflection is done in PIXELS about the KEY: draggedPixel is reflected
+    // as keyPixel - (draggedPixel - keyPixel), then mapped back through the
+    // NEIGHBOUR segment's own frame/value normalization. Normalized space would
+    // be wrong because each segment divides y by ITS OWN value span: the two
+    // spans below are 90 and 60, so a normalized (1-x,1-y) mirror would bend the
+    // tangent away from the straight line the eye expects through the key.
+    // graph::Curve::setHandle clamps the mirrored x into [0,1] (a cubic's own
+    // domain) and leaves y free.
+    //
+    // Both directions are driven below, and the first key (A) and last key (C)
+    // are driven too: a channel's first key has no segment before it and its
+    // last none after it, so their single handle has no opposite and gets NO
+    // mirror at all.
     {
         core::TestNode pairNode;
-        core::RotateKey* f0 = new core::RotateKey();
-        f0->setRotate(0.0f);
-        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, f0));
-        core::RotateKey* f1 = new core::RotateKey();
-        f1->setRotate(90.0f);
-        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, f1));
-        // An AUTHORED pair that is deliberately not the mirror pair: its x's are not
-        // each other's mirror (0.8 against 1-0.4), while its y's happen to be (0.9 and
-        // 1-0.1) - so the test is that the PAIR is not a mirror, not that each axis is
-        // asymmetric. Every mirror assertion below is then about the drag, not about a
-        // value that was already in place.
-        f0->data().easing().type = util::Easing::Type_Custom;
-        f0->data().easing().cubicBezier.x1 = 0.4f;
-        f0->data().easing().cubicBezier.y1 = 0.1f;
-        f0->data().easing().cubicBezier.x2 = 0.8f;
-        f0->data().easing().cubicBezier.y2 = 0.9f;
-        CHECK(std::fabs(f0->data().easing().cubicBezier.x2 - (1.0f - f0->data().easing().cubicBezier.x1)) > 0.05f
-              || std::fabs(f0->data().easing().cubicBezier.y2 - (1.0f - f0->data().easing().cubicBezier.y1)) > 0.05f);
+        core::RotateKey* fA = new core::RotateKey();
+        fA->setRotate(0.0f);
+        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 0, fA));
+        core::RotateKey* fB = new core::RotateKey();
+        fB->setRotate(90.0f);
+        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 30, fB));
+        core::RotateKey* fC = new core::RotateKey();
+        fC->setRotate(150.0f);
+        setup.push(pairNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 40, fC));
+
+        auto custom = [](float x1, float y1, float x2, float y2) {
+            util::Easing::Param param;
+            param.type = util::Easing::Type_Custom;
+            param.cubicBezier.x1 = x1;
+            param.cubicBezier.y1 = y1;
+            param.cubicBezier.x2 = x2;
+            param.cubicBezier.y2 = y2;
+            return param;
+        };
+        // A's param shapes segment A-B (A's outgoing handle, B's incoming one);
+        // B's shapes B-C (B's outgoing, C's incoming). Both authored away from
+        // any mirror, so every assertion below is about the drag.
+        const util::Easing::Param kAB = custom(0.4f, 0.1f, 0.8f, 0.9f);
+        const util::Easing::Param kBC = custom(0.2f, -0.3f, 0.7f, 0.9f);
+        fA->data().easing() = kAB;
+        fB->data().easing() = kBC;
 
         editor.setTargets({ &pairNode });
         editor.scale().setRect(panel);
@@ -3515,120 +3673,399 @@ int main(int argc, char** argv) {
         project.commandStack().clear();
 
         const Channel pairChannel(core::TimeKeyType_Rotate, 0);
-        const Curve::Segment pairSeg = Curve(*pairNode.timeLine(), pairChannel).segment(0);
-        CHECK(pairSeg.from == f0 && pairSeg.to == f1);
-        CHECK(pairSeg.fromValue == 0.0f && pairSeg.toValue == 90.0f);
-        const double pairFrameSpan = static_cast<double>(pairSeg.to->frame() - pairSeg.from->frame());
-        const double pairValueSpan = static_cast<double>(pairSeg.toValue - pairSeg.fromValue);
-        // The inverse of the panel's own mapping, for the expectations: a pixel
-        // back into the normalized space the handles are stored in.
-        auto normalizedAt = [&](const Scaler& aScale, const QPoint& aPos) {
-            return QPointF((aScale.frameAtPixel(static_cast<double>(aPos.x()))
-                               - static_cast<double>(pairSeg.from->frame()))
-                               / pairFrameSpan,
-                (aScale.valueAtPixel(static_cast<double>(aPos.y())) - static_cast<double>(pairSeg.fromValue))
-                    / pairValueSpan);
+        const Curve pairCurve(*pairNode.timeLine(), pairChannel);
+        CHECK(pairCurve.segmentCount() == 2);
+        CHECK(pairCurve.segment(0).from == fA && pairCurve.segment(0).to == fB);
+        CHECK(pairCurve.segment(1).from == fB && pairCurve.segment(1).to == fC);
+        CHECK(pairCurve.segment(0).fromValue == 0.0f && pairCurve.segment(0).toValue == 90.0f);
+        CHECK(pairCurve.segment(1).fromValue == 90.0f && pairCurve.segment(1).toValue == 150.0f);
+        // The point of pixel arithmetic: the two segments' value spans differ.
+        CHECK(pairCurve.segment(0).toValue - pairCurve.segment(0).fromValue
+              != pairCurve.segment(1).toValue - pairCurve.segment(1).fromValue);
+
+        // A pixel back into one segment's own normalized space (the inverse of
+        // graph::handlePointAt), for the "the grabbed handle is at the pointer"
+        // expectations.
+        auto normalizedAt = [](const Scaler& aScale, const Curve::Segment& aSeg, const QPoint& aPos) {
+            const double frameSpan = static_cast<double>(aSeg.to->frame() - aSeg.from->frame());
+            const double valueSpan = static_cast<double>(aSeg.toValue - aSeg.fromValue);
+            return QPointF(
+                (aScale.frameAtPixel(static_cast<double>(aPos.x())) - static_cast<double>(aSeg.from->frame()))
+                    / frameSpan,
+                (aScale.valueAtPixel(static_cast<double>(aPos.y())) - static_cast<double>(aSeg.fromValue))
+                    / valueSpan
+            );
         };
+
+        // How far, in pixels, the mirrored dot sits from the line through the
+        // dragged dot and the KEY that handle belongs to, and whether the two
+        // dots are on opposite sides of the key (a translation would also be
+        // collinear, a mirror is not). THE TOLERANCE IS 0.75 px: the drawing
+        // maps y through the integer pixelY (graph::handlePointAt), so a stored
+        // mirror may be rounded by up to half a pixel, plus the float precision
+        // of the two control points.
+        const double kMirrorTolerance = 0.75;
+        struct MirrorCheck {
+            double distance;
+            bool opposite;
+        };
+        auto checkMirror = [](const Scaler& aScale, const Curve::Segment& aDragged, int aDraggedHandle,
+                              const Curve::Segment& aMirror, int aMirrorHandle) {
+            MirrorCheck result{0.0, false};
+            const QPointF dragged =
+                ctrl::graph::handlePointAt(aScale, aDragged, Curve::handle(aDragged, aDraggedHandle));
+            const QPointF mirrored =
+                ctrl::graph::handlePointAt(aScale, aMirror, Curve::handle(aMirror, aMirrorHandle));
+            const bool second = (aDraggedHandle == 1);
+            const QPointF key = ctrl::graph::keyDot(
+                aScale, core::Frame(second ? aDragged.to->frame() : aDragged.from->frame()),
+                second ? aDragged.toValue : aDragged.fromValue
+            );
+            const double vx = dragged.x() - key.x();
+            const double vy = dragged.y() - key.y();
+            const double length = std::hypot(vx, vy);
+            if (length > 0.0) {
+                result.distance =
+                    std::fabs(vx * (mirrored.y() - key.y()) - vy * (mirrored.x() - key.x())) / length;
+            }
+            result.opposite =
+                vx * (mirrored.x() - key.x()) + vy * (mirrored.y() - key.y()) < 0.0;
+            return result;
+        };
+
         core::AbstractCursor pairCur;
 
-        // (a) HANDLE 0 DRAGGED: handle 0 lands on the pointer and handle 1 on its
-        // mirror. The window is snapshotted before the press so the grab pixel and
-        // the expectation below are read off the SAME mapping the moves run on.
-        const Scaler pairScaleA = editor.scale();
-        const Curve::Segment pairNowA = Curve(*pairNode.timeLine(), pairChannel).segment(0);
-        const QPoint grabA = handlePixel(pairScaleA, pairNowA, 0);
-        const QPoint toA = grabA + QPoint(30, -20); // right (later in time) and up (higher value)
-        CHECK(panel.contains(grabA));
-        CHECK(panel.contains(toA));
-        // The grab is unambiguous: the other dot is far outside the grab radius.
-        const QPoint otherA = handlePixel(pairScaleA, pairNowA, 1);
-        CHECK(std::hypot(otherA.x() - grabA.x(), otherA.y() - grabA.y()) > 2.0 * ctrl::graph::kHandleHitRadius);
+        // (a) B'S INCOMING HANDLE - segment A-B's handle 1. The grabbed value is
+        // stored in A's param, but it belongs to key B, so its opposite (B's
+        // outgoing tangent) is segment B-C's (x1,y1), stored in B's param.
+        {
+            const Scaler scaleA = editor.scale();
+            const Curve beforeA(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment abA = beforeA.segment(0);
+            const QPoint grab = handlePixel(scaleA, abA, 1);
+            const QPoint to = grab + QPoint(-28, 20); // left (earlier) and down (lower value)
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+            const QPoint otherA = handlePixel(scaleA, abA, 0);
+            CHECK(std::hypot(otherA.x() - grab.x(), otherA.y() - grab.y())
+                > 2.0 * ctrl::graph::kHandleHitRadius); // unambiguous grab
 
-        CHECK(sendPress(editor, camera, pairCur, grabA));
-        CHECK(sendMove(editor, camera, pairCur, toA));
-        CHECK(sendRelease(editor, camera, pairCur, toA));
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
 
-        const QPointF wantA = normalizedAt(pairScaleA, toA);
-        CHECK(wantA.x() > 0.0 && wantA.x() < 1.0); // inside the segment: no clamp in play here
-        CHECK(wantA.y() > 0.0 && wantA.y() < 1.0);
-        const util::Easing::Param wroteA = f0->data().easing();
-        CHECK(wroteA.type == util::Easing::Type_Custom); // a handle drag never writes the type
-        CHECK(std::fabs(wroteA.cubicBezier.x1 - wantA.x()) < 0.02); // the grabbed handle is where the pointer is
-        CHECK(std::fabs(wroteA.cubicBezier.y1 - wantA.y()) < 0.02);
-        CHECK(std::fabs(wroteA.cubicBezier.x2 - (1.0f - wroteA.cubicBezier.x1)) < 1e-6f); // ...and the other at its mirror
-        CHECK(std::fabs(wroteA.cubicBezier.y2 - (1.0f - wroteA.cubicBezier.y1)) < 1e-6f);
-        CHECK(wroteA.cubicBezier.x2 != 0.8f); // the authored x2 is gone: the mirror replaced it
-        // The keys themselves are not part of a handle drag.
-        CHECK(f0->frame() == 0 && f0->rotate() == 0.0f);
-        CHECK(f1->frame() == 20 && f1->rotate() == 90.0f);
+            const util::Easing::Param wroteAB = fA->data().easing();
+            const util::Easing::Param wroteBC = fB->data().easing();
+            CHECK(wroteAB.type == util::Easing::Type_Custom);
+            CHECK(wroteBC.type == util::Easing::Type_Custom);
 
-        // (b) HANDLE 1 DRAGGED - the same rule from the other end: handle 1 lands
-        // on the pointer and handle 0 on ITS mirror, so the pair stays symmetric
-        // whichever dot the press grabbed. This is also the acceptance the report
-        // names: "dragging handle 1 sets handle 1 to the dragged point and handle 2
-        // to its mirror, both components".
-        const Scaler pairScaleB = editor.scale();
-        const Curve::Segment pairNowB = Curve(*pairNode.timeLine(), pairChannel).segment(0);
-        const QPoint grabB = handlePixel(pairScaleB, pairNowB, 1);
-        const QPoint toB = grabB + QPoint(-24, 14); // left and down: clearly a new pair
-        CHECK(panel.contains(grabB));
-        CHECK(panel.contains(toB));
-        const QPoint otherB = handlePixel(pairScaleB, pairNowB, 0);
-        CHECK(std::hypot(otherB.x() - grabB.x(), otherB.y() - grabB.y()) > 2.0 * ctrl::graph::kHandleHitRadius);
+            // Segment A-B: the grabbed handle 1 is at the pointer...
+            const QPointF want = normalizedAt(scaleA, abA, to);
+            CHECK(want.x() > 0.0 && want.x() < 1.0); // inside the cubic's domain: no clamp
+            CHECK(std::fabs(wroteAB.cubicBezier.x2 - want.x()) < 0.02);
+            CHECK(std::fabs(wroteAB.cubicBezier.y2 - want.y()) < 0.02);
+            // ...and its (x1,y1) - KEY A's outgoing handle, a different key -
+            // is exactly where it was.
+            CHECK(wroteAB.cubicBezier.x1 == kAB.cubicBezier.x1);
+            CHECK(wroteAB.cubicBezier.y1 == kAB.cubicBezier.y1);
 
-        CHECK(sendPress(editor, camera, pairCur, grabB));
-        CHECK(sendMove(editor, camera, pairCur, toB));
-        CHECK(sendRelease(editor, camera, pairCur, toB));
+            // Segment B-C: B's OUTGOING handle is the mirror...
+            CHECK(wroteBC.cubicBezier.x1 != kBC.cubicBezier.x1
+                  || wroteBC.cubicBezier.y1 != kBC.cubicBezier.y1);
+            CHECK(wroteBC.cubicBezier.x1 >= 0.0f && wroteBC.cubicBezier.x1 <= 1.0f);
+            // ...and segment B-C's own (x2,y2) - KEY C's incoming handle - did
+            // not move: the mirror of B's incoming is B's outgoing, not C's.
+            CHECK(wroteBC.cubicBezier.x2 == kBC.cubicBezier.x2);
+            CHECK(wroteBC.cubicBezier.y2 == kBC.cubicBezier.y2);
 
-        const QPointF wantB = normalizedAt(pairScaleB, toB);
-        CHECK(wantB.x() > 0.0 && wantB.x() < 1.0);
-        const util::Easing::Param wroteB = f0->data().easing();
-        CHECK(std::fabs(wroteB.cubicBezier.x2 - wantB.x()) < 0.02); // the grabbed handle
-        CHECK(std::fabs(wroteB.cubicBezier.y2 - wantB.y()) < 0.02);
-        CHECK(std::fabs(wroteB.cubicBezier.x1 - (1.0f - wroteB.cubicBezier.x2)) < 1e-6f); // the other, mirrored
-        CHECK(std::fabs(wroteB.cubicBezier.y1 - (1.0f - wroteB.cubicBezier.y2)) < 1e-6f);
-        CHECK(!(wroteB.cubicBezier == wroteA.cubicBezier)); // a new pair, not the previous one
+            const Curve afterA(*pairNode.timeLine(), pairChannel);
+            const MirrorCheck mirrorA =
+                checkMirror(scaleA, afterA.segment(0), 1, afterA.segment(1), 0);
+            CHECK(mirrorA.distance < kMirrorTolerance); // collinear through B, in pixels
+            CHECK(mirrorA.opposite); // and reflected to the other side of B
 
-        // (c) THE CLAMP: the pointer is dragged PAST the segment's start, so the
-        // normalized x the drag reads is negative. What is clamped is the grabbed
-        // handle's x (setHandle clamps it - a cubic needs x in [0,1]), and the
-        // mirror is computed from that clamped x, so it lands on 1: the two ends sit
-        // at the two ends of the domain instead of one of them leaving it. y is
-        // never clamped, on either side: it takes the pointer's row and the mirror
-        // takes 1-y, whatever those are.
-        const Scaler pairScaleC = editor.scale();
-        const Curve::Segment pairNowC = Curve(*pairNode.timeLine(), pairChannel).segment(0);
-        const QPoint grabC = handlePixel(pairScaleC, pairNowC, 0);
-        const QPoint pastStart(pairScaleC.plotRect().left() + 1, grabC.y() - 12);
-        const QPointF rawC = normalizedAt(pairScaleC, pastStart);
-        CHECK(rawC.x() < 0.0); // the precondition the clamp is about: the pointer is before frame 0
-        CHECK(panel.contains(grabC));
-        const util::Easing::Param beforeC = f0->data().easing();
+            // ONE undo restores BOTH params - the dragged one and the mirrored
+            // neighbour - and a second finds nothing behind it.
+            bool undoneA = false;
+            CHECK(!stack.undo(&undoneA).isEmpty());
+            CHECK(undoneA);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kBC);
+            bool undoneAAgain = true;
+            CHECK(stack.undo(&undoneAAgain).isEmpty());
+            CHECK(!undoneAAgain);
 
-        CHECK(sendPress(editor, camera, pairCur, grabC));
-        CHECK(sendMove(editor, camera, pairCur, pastStart));
-        CHECK(sendRelease(editor, camera, pairCur, pastStart));
+            std::printf(
+                "[M] incoming mirror: dragging key B's incoming handle to (%.3f,%.3f) of segment A-B left "
+                "its outgoing (%.3f,%.3f) alone and put segment B-C's outgoing (x1,y1) at (%.3f,%.3f) - "
+                "%.3f px from the line through B and the dragged dot, on the opposite side\n",
+                wroteAB.cubicBezier.x2, wroteAB.cubicBezier.y2, wroteAB.cubicBezier.x1,
+                wroteAB.cubicBezier.y1, wroteBC.cubicBezier.x1, wroteBC.cubicBezier.y1, mirrorA.distance
+            );
+        }
 
-        const util::Easing::Param wroteC = f0->data().easing();
-        CHECK(wroteC.cubicBezier.x1 == 0.0f); // the grabbed x, clamped into the cubic's domain
-        CHECK(wroteC.cubicBezier.x2 == 1.0f); // its mirror, and 1-0 is in the domain by construction
-        CHECK(std::fabs(wroteC.cubicBezier.y1 - rawC.y()) < 0.02f); // y is free: the pointer's own row
-        CHECK(std::fabs(wroteC.cubicBezier.y2 - (1.0f - wroteC.cubicBezier.y1)) < 1e-6f);
-        // ...and the clamped pair is still ONE undo step away from the pair before it.
-        bool undoneClamp = false;
-        CHECK(!stack.undo(&undoneClamp).isEmpty());
-        CHECK(undoneClamp);
-        CHECK(f0->data().easing() == beforeC);
+        // (b) B'S OUTGOING HANDLE - segment B-C's handle 0. Its opposite (B's
+        // incoming tangent) is segment A-B's (x2,y2), stored in A's param.
+        {
+            const Scaler scaleB = editor.scale();
+            const Curve beforeB(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment bcB = beforeB.segment(1);
+            const QPoint grab = handlePixel(scaleB, bcB, 0);
+            const QPoint to = grab + QPoint(26, -18); // right (later) and up (higher value)
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+            const QPoint otherB = handlePixel(scaleB, bcB, 1);
+            CHECK(std::hypot(otherB.x() - grab.x(), otherB.y() - grab.y())
+                > 2.0 * ctrl::graph::kHandleHitRadius);
 
-        std::printf(
-            "[P] handle pair: dragging handle 0 to (%.3f,%.3f) set handle 1 to its mirror (%.3f,%.3f); "
-            "dragging handle 1 to (%.3f,%.3f) set handle 0 to its mirror (%.3f,%.3f); and a drag past the "
-            "segment's start clamps the grabbed x to 0 with its mirror at 1 (y %.3f / %.3f, never "
-            "clamped)\n",
-            wroteA.cubicBezier.x1, wroteA.cubicBezier.y1, wroteA.cubicBezier.x2, wroteA.cubicBezier.y2,
-            wroteB.cubicBezier.x2, wroteB.cubicBezier.y2, wroteB.cubicBezier.x1, wroteB.cubicBezier.y1,
-            wroteC.cubicBezier.y1, wroteC.cubicBezier.y2
-        );
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
+
+            const util::Easing::Param wroteAB = fA->data().easing();
+            const util::Easing::Param wroteBC = fB->data().easing();
+
+            // Segment B-C: the grabbed handle 0 is at the pointer...
+            const QPointF want = normalizedAt(scaleB, bcB, to);
+            CHECK(want.x() > 0.0 && want.x() < 1.0);
+            CHECK(std::fabs(wroteBC.cubicBezier.x1 - want.x()) < 0.02);
+            CHECK(std::fabs(wroteBC.cubicBezier.y1 - want.y()) < 0.02);
+            // ...and (x2,y2) - KEY C's incoming handle - did not move.
+            CHECK(wroteBC.cubicBezier.x2 == kBC.cubicBezier.x2);
+            CHECK(wroteBC.cubicBezier.y2 == kBC.cubicBezier.y2);
+
+            // Segment A-B: B's INCOMING handle is the mirror, and A's own
+            // (x1,y1) - the other key's outgoing handle - is untouched.
+            CHECK(wroteAB.cubicBezier.x2 != kAB.cubicBezier.x2
+                  || wroteAB.cubicBezier.y2 != kAB.cubicBezier.y2);
+            CHECK(wroteAB.cubicBezier.x2 >= 0.0f && wroteAB.cubicBezier.x2 <= 1.0f);
+            CHECK(wroteAB.cubicBezier.x1 == kAB.cubicBezier.x1);
+            CHECK(wroteAB.cubicBezier.y1 == kAB.cubicBezier.y1);
+
+            const Curve afterB(*pairNode.timeLine(), pairChannel);
+            const MirrorCheck mirrorB =
+                checkMirror(scaleB, afterB.segment(1), 0, afterB.segment(0), 1);
+            CHECK(mirrorB.distance < kMirrorTolerance);
+            CHECK(mirrorB.opposite);
+
+            bool undoneB = false;
+            CHECK(!stack.undo(&undoneB).isEmpty());
+            CHECK(undoneB);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kBC);
+            bool undoneBAgain = true;
+            CHECK(stack.undo(&undoneBAgain).isEmpty());
+            CHECK(!undoneBAgain);
+
+            std::printf(
+                "[M] outgoing mirror: dragging key B's outgoing handle to (%.3f,%.3f) of segment B-C left "
+                "its incoming (%.3f,%.3f) alone and put segment A-B's incoming (x2,y2) at (%.3f,%.3f) - "
+                "%.3f px from the line through B and the dragged dot, on the opposite side\n",
+                wroteBC.cubicBezier.x1, wroteBC.cubicBezier.y1, wroteBC.cubicBezier.x2,
+                wroteBC.cubicBezier.y2, wroteAB.cubicBezier.x2, wroteAB.cubicBezier.y2, mirrorB.distance
+            );
+        }
+
+        // (c) THE FIRST KEY HAS NO MIRROR - dragging A's outgoing handle
+        // (segment A-B's handle 0) must leave the segment's other control point
+        // (B's incoming) and the whole of B's param alone: A owns no incoming
+        // handle, so there is nothing to reflect onto.
+        {
+            const Scaler scaleC = editor.scale();
+            const Curve beforeC(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment abC = beforeC.segment(0);
+            const QPoint grab = handlePixel(scaleC, abC, 0);
+            const QPoint to = grab + QPoint(24, -16);
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
+
+            const util::Easing::Param wroteAB = fA->data().easing();
+            const QPointF want = normalizedAt(scaleC, abC, to);
+            CHECK(std::fabs(wroteAB.cubicBezier.x1 - want.x()) < 0.02);
+            CHECK(std::fabs(wroteAB.cubicBezier.y1 - want.y()) < 0.02);
+            // No previous segment: the param's other control point keeps its
+            // authored value and B's param is bit-identical.
+            CHECK(wroteAB.cubicBezier.x2 == kAB.cubicBezier.x2);
+            CHECK(wroteAB.cubicBezier.y2 == kAB.cubicBezier.y2);
+            CHECK(fB->data().easing() == kBC);
+
+            bool undoneC = false;
+            CHECK(!stack.undo(&undoneC).isEmpty());
+            CHECK(undoneC);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kBC);
+
+            std::printf(
+                "[M] first key: dragging A's only (outgoing) handle to (%.3f,%.3f) left the segment's "
+                "other control point at (%.3f,%.3f) and the next key's easing untouched - no mirror\n",
+                wroteAB.cubicBezier.x1, wroteAB.cubicBezier.y1, wroteAB.cubicBezier.x2,
+                wroteAB.cubicBezier.y2
+            );
+        }
+
+        // (d) THE LAST KEY HAS NO MIRROR - dragging C's incoming handle (segment
+        // B-C's handle 1) leaves segment B-C's (x1,y1) and A's param alone: C
+        // owns no outgoing handle, so there is no next segment to reflect onto.
+        {
+            const Scaler scaleD = editor.scale();
+            const Curve beforeD(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment bcD = beforeD.segment(1);
+            const QPoint grab = handlePixel(scaleD, bcD, 1);
+            const QPoint to = grab + QPoint(-20, 14);
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
+
+            const util::Easing::Param wroteBC = fB->data().easing();
+            const QPointF want = normalizedAt(scaleD, bcD, to);
+            CHECK(std::fabs(wroteBC.cubicBezier.x2 - want.x()) < 0.02);
+            CHECK(std::fabs(wroteBC.cubicBezier.y2 - want.y()) < 0.02);
+            // No next segment: the param's other control point keeps its
+            // authored value and A's param is bit-identical.
+            CHECK(wroteBC.cubicBezier.x1 == kBC.cubicBezier.x1);
+            CHECK(wroteBC.cubicBezier.y1 == kBC.cubicBezier.y1);
+            CHECK(fA->data().easing() == kAB);
+
+            bool undoneD = false;
+            CHECK(!stack.undo(&undoneD).isEmpty());
+            CHECK(undoneD);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kBC);
+
+            std::printf(
+                "[M] last key: dragging C's only (incoming) handle to (%.3f,%.3f) left the segment's "
+                "other control point at (%.3f,%.3f) and the previous key's easing untouched - no mirror\n",
+                wroteBC.cubicBezier.x2, wroteBC.cubicBezier.y2, wroteBC.cubicBezier.x1,
+                wroteBC.cubicBezier.y1
+            );
+        }
+
+        // (e) THE MIRRORED X IS CLAMPED, THE Y IS NOT. Dragging B's incoming
+        // handle to (past) segment A-B's start pins its x at 0; the reflection
+        // about B then lands A-B's own 30-frame span to B's right - 3.0 in
+        // segment B-C's 10-frame normalization - so setHandle clamps the
+        // mirrored x to 1, the edge of the cubic's domain. The y still takes the
+        // reflection: it is never clamped on either side.
+        {
+            const Scaler scaleE = editor.scale();
+            const Curve beforeE(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment abE = beforeE.segment(0);
+            const Curve::Segment bcE = beforeE.segment(1);
+            const QPoint grab = handlePixel(scaleE, abE, 1);
+            const QPoint to(scaleE.plotRect().left() + 1, grab.y() + 12);
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+            const QPointF raw = normalizedAt(scaleE, abE, to);
+            CHECK(raw.x() < 0.0); // the pointer is before segment A-B: the grabbed x must clamp
+
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
+
+            const util::Easing::Param wroteAB = fA->data().easing();
+            const util::Easing::Param wroteBC = fB->data().easing();
+            CHECK(wroteAB.cubicBezier.x2 == 0.0f); // the grabbed x, clamped into the cubic's domain
+            CHECK(std::fabs(wroteAB.cubicBezier.y2 - raw.y()) < 0.02); // y free: the pointer's row
+            CHECK(wroteBC.cubicBezier.x1 == 1.0f); // the mirror, clamped at the other end
+            // The mirror's y is the pixel reflection about B, untouched by the
+            // x clamp: the row the flip asks for, mapped through segment B-C.
+            const QPointF draggedPixel = ctrl::graph::handlePointAt(
+                scaleE, abE, QPointF(wroteAB.cubicBezier.x2, wroteAB.cubicBezier.y2)
+            );
+            const QPointF keyB = ctrl::graph::keyDot(scaleE, core::Frame(fB->frame()), 90.0f);
+            const double wantY =
+                (scaleE.valueAtPixel(2.0 * keyB.y() - draggedPixel.y()) - static_cast<double>(bcE.fromValue))
+                / static_cast<double>(bcE.toValue - bcE.fromValue);
+            CHECK(std::fabs(wroteBC.cubicBezier.y1 - wantY) < 0.02);
+            // The keys' other control points are untouched, as in every case above.
+            CHECK(wroteAB.cubicBezier.x1 == kAB.cubicBezier.x1);
+            CHECK(wroteBC.cubicBezier.x2 == kBC.cubicBezier.x2);
+
+            bool undoneE = false;
+            CHECK(!stack.undo(&undoneE).isEmpty());
+            CHECK(undoneE);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kBC);
+
+            std::printf(
+                "[M] clamp: dragging key B's incoming handle past segment A-B's start pinned its x to 0 "
+                "and the mirrored x of segment B-C to 1 (the y %.3f stayed the pixel reflection, never "
+                "clamped)\n",
+                wroteBC.cubicBezier.y1
+            );
+        }
+
+        // (f) AN AUTO KEY STILL CONVERTS, AND THE PAIR IT LEAVES FOLLOWS THE
+        // SAME RULE. Segment B-C is switched to Type_Auto (its pair is derived,
+        // not stored); dragging B's OUTGOING ghost handle must (1) convert B's
+        // param to Custom carrying the derived pair, (2) write the grabbed
+        // handle at the pointer, and (3) mirror that handle about B into segment
+        // A-B's (x2,y2). ONE undo brings both params back - the Auto easing and
+        // the authored A.
+        {
+            fB->data().easing().type = util::Easing::Type_Auto; // a document write, not a gesture
+            const util::Easing::Param kAutoBC = fB->data().easing();
+
+            const Scaler scaleF = editor.scale();
+            const Curve beforeF(*pairNode.timeLine(), pairChannel);
+            const Curve::Segment bcF = beforeF.segment(1);
+            const QVector<QPointF> ghosts = beforeF.ghostHandles(*bcF.from);
+            CHECK(ghosts.size() == 2);
+            const QPointF ghostDot = ctrl::graph::handlePointAt(scaleF, bcF, ghosts[0]);
+            const QPoint grab(
+                static_cast<int>(std::lround(ghostDot.x())), static_cast<int>(std::lround(ghostDot.y()))
+            );
+            const QPoint to = grab + QPoint(8, 6);
+            CHECK(panel.contains(grab));
+            CHECK(panel.contains(to));
+
+            CHECK(sendPress(editor, camera, pairCur, grab));
+            CHECK(fB->data().easing().type == util::Easing::Type_Auto); // the press alone edits nothing
+            CHECK(sendMove(editor, camera, pairCur, to));
+            CHECK(sendRelease(editor, camera, pairCur, to));
+
+            const util::Easing::Param wroteAB = fA->data().easing();
+            const util::Easing::Param wroteBC = fB->data().easing();
+            CHECK(wroteBC.type == util::Easing::Type_Custom); // the derived pair was made storable
+            // The grabbed handle follows the pointer; the pair's OTHER control
+            // point is key C's incoming handle and stays at its derived third.
+            const QPointF want = normalizedAt(scaleF, bcF, to);
+            CHECK(std::fabs(wroteBC.cubicBezier.x1 - want.x()) < 0.02);
+            CHECK(std::fabs(wroteBC.cubicBezier.y1 - want.y()) < 0.02);
+            CHECK(std::fabs(wroteBC.cubicBezier.x2 - static_cast<float>(ghosts[1].x())) < 1e-6f);
+            CHECK(std::fabs(wroteBC.cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
+            // ...and B's INCOMING handle - segment A-B's (x2,y2) - is the mirror
+            // about B, while A's own (x1,y1) is untouched.
+            CHECK(wroteAB.cubicBezier.x1 == kAB.cubicBezier.x1);
+            CHECK(wroteAB.cubicBezier.y1 == kAB.cubicBezier.y1);
+            CHECK(wroteAB.cubicBezier.x2 >= 0.0f && wroteAB.cubicBezier.x2 <= 1.0f);
+            const Curve afterF(*pairNode.timeLine(), pairChannel);
+            const MirrorCheck mirrorF =
+                checkMirror(scaleF, afterF.segment(1), 0, afterF.segment(0), 1);
+            CHECK(mirrorF.distance < kMirrorTolerance);
+            CHECK(mirrorF.opposite);
+
+            bool undoneF = false;
+            CHECK(!stack.undo(&undoneF).isEmpty());
+            CHECK(undoneF);
+            CHECK(fA->data().easing() == kAB);
+            CHECK(fB->data().easing() == kAutoBC); // the Auto easing, whole
+
+            std::printf(
+                "[M] auto: dragging B's outgoing ghost handle converted segment B-C to Custom at "
+                "(%.3f,%.3f)/(%.3f,%.3f) and mirrored B's incoming handle to segment A-B's (%.3f,%.3f) - "
+                "%.3f px from the line through B - undone in ONE step\n",
+                wroteBC.cubicBezier.x1, wroteBC.cubicBezier.y1, wroteBC.cubicBezier.x2,
+                wroteBC.cubicBezier.y2, wroteAB.cubicBezier.x2, wroteAB.cubicBezier.y2, mirrorF.distance
+            );
+        }
 
         editor.setTargets({}); // drop the target before its owner dies
     }
@@ -3718,9 +4155,10 @@ int main(int argc, char** argv) {
 
     std::printf(
         "graph_drag: one handle drag is one undo step, and the drag edits the key's own easing param "
-        "at the pixel it points to - the grabbed handle where the pointer is and the OTHER one at its "
-        "mirror (1-x,1-y) about the segment, the grabbed x clamped into [0,1] and the mirror in range "
-        "with it; the value axis is fitted to the shown curves where the panel is "
+        "at the pixel it points to - the grabbed handle where the pointer is, and the OPPOSITE handle "
+        "of the SAME key mirrored about that key in pixels into the neighbouring segment (outgoing -> "
+        "the previous segment's x2,y2, incoming -> the next segment's x1,y1; the mirrored x clamped into "
+        "[0,1], y free; no mirror for a channel's first or last key); the value axis is fitted to the shown curves where the panel is "
         "opened or re-selected, and a manual, wheeled or panned window survives every cursor pass; "
         "the panel owns the cursor on a key, a handle, a LEFT PRESS inside the plot (a key "
         "selects and drags, Ctrl on a curve's band inserts, everything else marquees) and the middle "

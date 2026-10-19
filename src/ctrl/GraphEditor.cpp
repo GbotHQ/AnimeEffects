@@ -43,6 +43,12 @@ namespace {
 constexpr double kValueZoomPerNotch = 1.1;
 constexpr double kWheelNotch = 120.0;
 
+// The SCROLL step of one wheel notch: the timeline's own fixed step
+// (TimeLineWidget::wheelEvent's Shift branch), applied here to BOTH axes. It is
+// a pixel count, so the frame half becomes a frame delta on the shared mapping
+// (updateWheel) and the value half is the panel's own pan.
+constexpr int kWheelScrollPixels = 50;
+
 // How many points a segment is walked through when the value axis is fitted.
 // The fit cannot read the key values alone: a Custom easing's cubic bezier (and
 // Back/Elastic) reaches values beyond BOTH of the keys it sits between, and a
@@ -72,12 +78,17 @@ double pixelDistance(const QPointF& aLhs, const QPointF& aRhs) {
     return std::hypot(aLhs.x() - aRhs.x(), aLhs.y() - aRhs.y());
 }
 
-// The inverse of graph::handlePoint for one drag position. aFlatY is what the y
+// The inverse of graph::handlePointAt for one panel pixel. aFlatY is what the y
 // component falls back to when the segment's value span is zero: a constant
 // segment has no value axis to normalize across, so the vertical component of
 // the drag has nothing to write and the handle keeps the y it had.
+//
+// aPos is a QPointF, not a QPoint, because the MIRRORED handle is not a pointer
+// pixel: it is the reflection of the dragged dot about its key, and rounding it
+// to a pixel before mapping it back would put the mirror half a pixel off the
+// line the user sees (see updateDrag).
 QPointF
-handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Segment& aSegment, const QPoint& aPos,
+handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Segment& aSegment, const QPointF& aPos,
     double aFlatY) {
     // Keys are unique per frame, so a segment always spans at least one frame;
     // a degenerate span could not be inverted anyway.
@@ -92,7 +103,7 @@ handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Se
         return QPointF(nx, aFlatY);
     }
     const double ny =
-        (static_cast<double>(aScale.valueAtPixel(static_cast<double>(aPos.y()))) - aSegment.fromValue) / valueSpan;
+        (static_cast<double>(aScale.valueAtPixel(aPos.y())) - aSegment.fromValue) / valueSpan;
     return QPointF(nx, ny);
 }
 
@@ -185,6 +196,54 @@ namespace ctrl {
     }
 
     //-------------------------------------------------------------------------------------------------
+    HandleDragCommand::HandleDragCommand(
+        util::Easing::Param* aMain, const util::Easing::Param& aMainValue, util::Easing::Param* aMirror,
+        const util::Easing::Param* aMirrorValue
+    ):
+        mMain{aMain, util::Easing::Param(), aMainValue},
+        mMirror{aMirror, util::Easing::Param(), aMirrorValue ? *aMirrorValue : util::Easing::Param()},
+        mHasMirror(aMirror && aMirrorValue),
+        mDone(false) {}
+
+    void HandleDragCommand::modifyValues(const util::Easing::Param& aMain, const util::Easing::Param* aMirror) {
+        mMain.next = aMain;
+        if (mHasMirror && aMirror) {
+            mMirror.next = *aMirror;
+        }
+        if (mDone) {
+            redo();
+        }
+    }
+
+    void HandleDragCommand::exec() {
+        // The PRE-drag values are read off the live document when the command
+        // first runs, exactly as cmnd::ModifiableAssign does: the drag may have
+        // written nothing yet (the first move is the commit), and an Auto
+        // conversion is part of `next`, not of `prev`.
+        mMain.prev = *mMain.target;
+        if (mHasMirror) {
+            mMirror.prev = *mMirror.target;
+        }
+        redo();
+    }
+
+    void HandleDragCommand::undo() {
+        *mMain.target = mMain.prev;
+        if (mHasMirror) {
+            *mMirror.target = mMirror.prev;
+        }
+        mDone = false;
+    }
+
+    void HandleDragCommand::redo() {
+        *mMain.target = mMain.next;
+        if (mHasMirror) {
+            *mMirror.target = mMirror.next;
+        }
+        mDone = true;
+    }
+
+    //-------------------------------------------------------------------------------------------------
     GraphEditor::GraphEditor(core::Project& aProject, UILogger& aLogger):
         mProject(&aProject),
         mLogger(aLogger),
@@ -270,7 +329,7 @@ namespace ctrl {
             // document being edited.
             mGesture.~Gesture();
             ::new (static_cast<void*>(&mGesture))
-                cmnd::Gesture<cmnd::ModifiableAssign<util::Easing::Param> >(aProject->commandStack());
+                cmnd::Gesture<HandleDragCommand>(aProject->commandStack());
             // The key move's gesture holds the same stack by reference, so it is
             // rebuilt for the same reason and at the same, inert moment.
             mKeyMoveGesture.~Gesture();
@@ -861,35 +920,67 @@ namespace ctrl {
         // harmless only because of that. The wheel is the user's own movement of
         // the window, and this path is where it is made.
 
-        // BOTH axes by default, so a curve keeps its shape while zooming and the
-        // point under the cursor stays under it (each axis anchors on the
-        // cursor's own coordinate). A modifier narrows the zoom to one axis:
-        // Shift is the frame axis (horizontal), Ctrl the value axis (vertical).
+        // THE MAPPING, axis by axis (see updateWheel's declaration for the table):
+        //   * plain          - zoom BOTH axes about the cursor;
+        //   * Shift          - SCROLL both axes by 50 px per notch (the timeline's
+        //                      own Shift step), no zoom;
+        //   * Ctrl           - zoom the VALUE axis only;
+        //   * Ctrl + Shift   - zoom the FRAME axis only.
+        // Ctrl+Shift is where the old Shift-only frame zoom moved: every modifier
+        // combination now moves something, so a notch is never consumed by a case
+        // that changed neither axis.
         //
         // DIRECTION: a notch Qt reports as positive zooms OUT at 1.1 of scale, the
         // canvas mover's and the timeline scaler's own sense (see aInvertScaling for
         // the user's own). The value axis alone used to zoom IN on that notch, which
-        // is the one thing a uniform two-axis zoom cannot have.
+        // is the one thing a uniform two-axis zoom cannot have. The same signed
+        // delta drives the scroll: a positive notch moves the content right (to
+        // earlier frames, exactly like the timeline's own Shift) and down.
         const int delta = aInvertScaling ? -aWheelDelta : aWheelDelta;
-        const bool frameOnly = aModifiers.testFlag(Qt::ShiftModifier);
-        const bool valueOnly = aModifiers.testFlag(Qt::ControlModifier);
+        if (delta == 0)
+            // a pixel-only wheel event with no angle delta: no notch to act on
+            // (and, as before, no canvas zoom either)
+            return true;
+        const bool shift = aModifiers.testFlag(Qt::ShiftModifier);
+        const bool ctrl = aModifiers.testFlag(Qt::ControlModifier);
 
-        if (!frameOnly) {
-            // About the cursor's row, so the number under it stays there. The
-            // negated delta is what turns Qt's notch direction into the canvas's.
-            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
-        }
-        if (!valueOnly) {
-            // While a timeline owns the frame axis the notch goes to IT, about the
-            // frame under the cursor - sub-pixel (frameAtPixel, never frameAt), so the
-            // timeline can put that exact frame back under the cursor. The panel's X
-            // then follows the window the timeline pushes back.
+        // The frame half of a zoom, whichever view owns the axis. While a timeline
+        // owns it the notch goes to IT, about the frame under the cursor -
+        // sub-pixel (frameAtPixel, never frameAt), so the timeline can put that
+        // exact frame back under the cursor. The panel's X then follows the window
+        // the timeline pushes back.
+        const auto zoomFrames = [&]() {
             if (mFrameWindowShared) {
                 if (mZoomFrames)
                     mZoomFrames(delta, mScale.frameAtPixel(aPos.x()));
             } else {
                 mScale.updateFrameZoom(delta, aPos.x());
             }
+        };
+
+        if (shift && ctrl) {
+            zoomFrames();
+        } else if (shift) {
+            // SCROLL both axes, by the timeline's fixed 50 px step. The frame half
+            // goes back through the timeline when it owns the axis, in the panel's
+            // own frames: a positive notch moves the content right, which is the
+            // negative frame delta (the same sign the middle-drag pan uses). The
+            // value half is always this panel's and moves down by the same pixels.
+            const int step = delta > 0 ? kWheelScrollPixels : -kWheelScrollPixels;
+            if (mFrameWindowShared) {
+                if (mScrollFrames)
+                    mScrollFrames(-static_cast<double>(step) / mScale.framePpf());
+            } else {
+                mScale.panFrame(step);
+            }
+            mScale.panValue(step);
+        } else if (ctrl) {
+            // About the cursor's row, so the number under it stays there. The
+            // negated delta is what turns Qt's notch direction into the canvas's.
+            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
+        } else {
+            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
+            zoomFrames();
         }
         // Taken even when the axes were already clamped at their floor or
         // ceiling: the pointer is over the panel, so the canvas must not also
@@ -1513,8 +1604,13 @@ namespace ctrl {
 
         const graph::Curve::Segment segment = entry.curve.segment(aHit.segment);
 
-        // Playback reads the segment's easing from its `from` key, for the whole
-        // span, so both of the segment's handles edit that one key's param.
+        // Playback reads the segment's easing from its `from` key for the whole
+        // span, so BOTH handles are stored in that one param - but they belong
+        // to different keys: handle 0 is the `from` key's OUTGOING tangent and
+        // handle 1 the `to` key's INCOMING one. updateDrag mirrors each about
+        // the key it belongs to (the opposite tangent of that key lives in the
+        // neighbouring segment), so the anchor recorded here is the SEGMENT's
+        // `from` key, not the key the grabbed dot belongs to.
         mDragging = true;
         mKeyMoveArmed = false; // this is a handle drag: the kinds never coexist
         mMarqueeArmed = false;
@@ -1857,12 +1953,14 @@ namespace ctrl {
         // pair is DERIVED, not stored. The drag WRITES Type_Custom carrying that
         // exact derived pair at the third points (1/3, y1) and (2/3, y2), so the
         // curve the user was looking at does not move when the gesture begins;
-        // the pointer's own write just below then moves the GRABBED handle (and
-        // its mirror, see the write's note) - which is why the pair this branch
-        // writes is only the gesture's STARTING point: it is what the drag
-        // rewrites on its first step. The conversion rides the SAME mGesture, so
-        // it is one undo step with the drag - the whole Auto->Custom change undone
-        // by one undo.
+        // The pointer's own write just below then moves the GRABBED handle, and
+        // the mirror (about the KEY that handle belongs to, see below) lands in
+        // the NEIGHBOUR segment's param, never on this pair's other control
+        // point - which belongs to the other end's key. The pair this branch
+        // writes is therefore only the gesture's STARTING point: it is what the
+        // drag rewrites on its first step. The conversion rides the SAME
+        // mGesture, so it is one undo step with the drag - the whole
+        // Auto->Custom change undone by one undo.
         //
         // Detected from the LIVE param (not a press-time flag): the first step
         // converts, and every later step sees Custom and skips this branch.
@@ -1879,44 +1977,141 @@ namespace ctrl {
             }
         }
 
-        const QPointF normalized = handleNormalized(mScale, segment, aPos, flatY);
+        const QPointF normalized = handleNormalized(mScale, segment, QPointF(aPos), flatY);
 
-        // THE PAIR MOVES AS ONE PAIR. The two control points of a segment's cubic
-        // are its shape, and a user shaping one end of a curve expects the other
-        // end to keep step with it - so a handle drag writes BOTH: the handle
-        // under the pointer where the pointer is, and the OTHER one at its mirror
-        // image about the segment. In this normalized space the segment's ends are
-        // (0,0) and (1,1), so the mirror of a control point (x,y) is (1-x,1-y):
-        // the pair stays symmetric about the middle of the segment, which is what
-        // makes the curve read the same whichever end of it the user grabs.
-        //
-        // The x of the handle the pointer wrote is read back from `next` rather
-        // than clamped here a second time: graph::Curve::setHandle already clamps
-        // it into [0,1] (a cubic is only solvable in its own domain, see its own
-        // note), and that clamped value is the one the mirror has to be taken
-        // from. Because x -> 1-x maps [0,1] onto itself, the mirrored x is in
-        // range by construction: a dragged handle pushed past the segment's start
-        // (x clamped to 0) puts its mirror exactly at 1, and the pair is still
-        // symmetric. The y stays free on both sides - overshoot is the point of
-        // Back/Elastic and of a deliberate anticipation (see setHandle's note).
+        // THE GRABBED HANDLE goes where the pointer is. setHandle clamps x into
+        // [0,1] (a cubic is only solvable in its own domain, see its note) and
+        // leaves y free, so an overshoot - what Back/Elastic and a deliberate
+        // anticipation are made of - survives.
         graph::Curve::setHandle(next, mDragHandle, normalized);
-        const bool draggedIsSecond = mDragHandle == 1;
+
+        // ---- THE MIRROR IS TAKEN ABOUT THE KEY THE HANDLE BELONGS TO ----
+        //
+        // A key owns ONE param but plays TWO handles: its OUTGOING handle is
+        // this segment's (x1,y1) when the key is the segment's `from`, and its
+        // INCOMING handle is this segment's (x2,y2) when the key is its `to`.
+        // The opposite side of the SAME key is therefore stored in the
+        // NEIGHBOURING segment:
+        //
+        //   handle 0 (outgoing, belongs to `from`): the key's incoming handle is
+        //     segment i-1's (x2,y2), stored in THAT segment's `from` param;
+        //   handle 1 (incoming, belongs to `to`): the key's outgoing handle is
+        //     segment i+1's (x1,y1), stored in THAT segment's `from` param.
+        //
+        // Mirroring INSIDE the dragged segment instead - the old (1-x,1-y)
+        // write - symmetrised the NEXT key's handle when the user grabbed this
+        // key's right-hand one, which is a different key's tangent.
+        //
+        // The FIRST key has no previous segment and the LAST key has no next
+        // one: their single handle has no opposite to mirror onto, so the drag
+        // writes the grabbed handle and leaves everything else alone.
+        //
+        // THE MIRROR IS IN PIXELS, NOT IN NORMALIZED SPACE. Each segment
+        // normalizes y by its OWN value span, so a normalized mirror would not
+        // be collinear with the key in the picture whenever the two spans differ
+        // - the tangent would visibly bend at the key. What has to be collinear
+        // is exactly what the user sees, so the arithmetic runs through the SAME
+        // mappings the drawing uses:
+        //
+        //   keyPixel     = mScale.pixelX(core::Frame(key frame)), mScale.pixelY(key value)
+        //                  (the marker's centre; the model's keyDot/keyCenter pair)
+        //   draggedPixel = handlePointAt(dragged segment, the stored handle)
+        //   mirrorPixel  = keyPixel - (draggedPixel - keyPixel) = 2 * keyPixel - draggedPixel
+        //
+        // and mirrorPixel is then mapped back through the NEIGHBOUR segment's
+        // inverse mapping (handleNormalized): x as a fraction of that segment's
+        // frame span, y of its value span. setHandle clamps that x into [0,1];
+        // the y stays free, as on the grabbed side.
+        const bool draggedIsSecond = (mDragHandle == 1);
         const float placedX = draggedIsSecond ? next.cubicBezier.x2 : next.cubicBezier.x1;
         const float placedY = draggedIsSecond ? next.cubicBezier.y2 : next.cubicBezier.y1;
-        const QPointF mirror(1.0 - static_cast<double>(placedX), 1.0 - static_cast<double>(placedY));
-        graph::Curve::setHandle(next, draggedIsSecond ? 0 : 1, mirror);
+        const QPointF placed(static_cast<double>(placedX), static_cast<double>(placedY));
+
+        // TimeKey::frame() is an int: a TimeKey is addressed by its integer frame,
+        // not by core::Frame (which the Scaler converts from explicitly).
+        const int ownerFrame = draggedIsSecond ? segment.to->frame() : segment.from->frame();
+        const float ownerValue = draggedIsSecond ? segment.toValue : segment.fromValue;
+        // The marker's own pixel, through the one helper the model publishes key dots
+        // with, so the mirror is about the pixel the marker is actually drawn at.
+        const QPointF keyPixel = graph::keyDot(mScale, core::Frame(ownerFrame), ownerValue);
+
+        const int neighbourIndex = draggedIsSecond ? mDragSegment + 1 : mDragSegment - 1;
+        const int neighbourHandle = draggedIsSecond ? 0 : 1;
+
+        util::Easing::Param* mirrorEasing = nullptr;
+        util::Easing::Param mirrorNext;
+        int mirrorFrame = 0;
+        bool hasMirror = false;
+
+        if (0 <= neighbourIndex && neighbourIndex < entry.curve.segmentCount()) {
+            const graph::Curve::Segment neighbour = entry.curve.segment(neighbourIndex);
+            core::TimeKey* neighbourKey =
+                line ? line->timeKey(entry.channel.type(), neighbour.from->frame()) : nullptr;
+            util::Easing::Param* neighbourEasing =
+                neighbourKey ? graph::Curve::easingOf(*neighbourKey, entry.channel.type()) : nullptr;
+
+            // The mirror is written into the neighbour param WHATEVER its
+            // easing type: the control point is stored there either way, and an
+            // analytic type simply ignores it (it draws no tangent, but the pair
+            // a later switch to Custom would show is already the mirror). Only
+            // Auto needs more than the write, because its pair is DERIVED.
+            if (neighbourEasing) {
+                mirrorNext = *neighbourEasing;
+                bool represented = true;
+
+                // An Auto neighbour DERIVES its pair: convert it to Custom
+                // carrying that exact derived pair first - the same seamless
+                // conversion the dragged segment gets above - because a handle
+                // written into a Type_Auto param is never read.
+                if (neighbourEasing->type == util::Easing::Type_Auto) {
+                    const QVector<QPointF> ghosts = entry.curve.ghostHandles(*neighbour.from);
+                    if (ghosts.size() == 2) {
+                        mirrorNext.type = util::Easing::Type_Custom;
+                        mirrorNext.cubicBezier.x1 = static_cast<float>(ghosts[0].x());
+                        mirrorNext.cubicBezier.y1 = static_cast<float>(ghosts[0].y());
+                        mirrorNext.cubicBezier.x2 = static_cast<float>(ghosts[1].x());
+                        mirrorNext.cubicBezier.y2 = static_cast<float>(ghosts[1].y());
+                    } else {
+                        represented = false; // nothing to convert: no mirror
+                    }
+                }
+
+                if (represented) {
+                    const QPointF draggedPixel = graph::handlePointAt(mScale, segment, placed);
+                    const QPointF mirrorPixel(
+                        2.0 * keyPixel.x() - draggedPixel.x(), 2.0 * keyPixel.y() - draggedPixel.y()
+                    );
+                    // A constant neighbour has no value axis to write into: its
+                    // handle keeps the y it has, exactly as handleNormalized's
+                    // own flat fallback does for the dragged side.
+                    const double mirrorFlatY = neighbourHandle == 1
+                        ? static_cast<double>(mirrorNext.cubicBezier.y2)
+                        : static_cast<double>(mirrorNext.cubicBezier.y1);
+                    const QPointF mirrorNormalized =
+                        handleNormalized(mScale, neighbour, mirrorPixel, mirrorFlatY);
+                    graph::Curve::setHandle(mirrorNext, neighbourHandle, mirrorNormalized);
+                    mirrorEasing = neighbourEasing;
+                    mirrorFrame = neighbour.from->frame();
+                    hasMirror = true;
+                }
+            }
+        }
 
         if (mGesture.continues()) {
             // Rewrite the command this drag already pushed, so the whole drag
-            // stays ONE undo step.
-            mGesture.command()->modifyValue(next);
+            // stays ONE undo step - both halves of it.
+            mGesture.command()->modifyValues(next, hasMirror ? &mirrorNext : nullptr);
 
             // The rewrite goes straight through the stack, so the notification
             // the first commit pushed has to be sent again here - the same event
-            // the timeline emits for a key whose value changed.
+            // the timeline emits for a key whose value changed, for every key
+            // whose easing this step rewrote.
             core::TimeLineEvent event;
             event.setType(core::TimeLineEvent::Type_ChangeKeyValue);
             event.pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
+            if (hasMirror) {
+                event.pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
+            }
             mProject->onTimeLineModified(event, false);
         } else {
             // The drag's first commit (or its first after an undo/redo dropped
@@ -1927,9 +2122,12 @@ namespace ctrl {
                 auto* notifier = new TimeLineUtil::Notifier(*mProject);
                 notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
                 notifier->event().pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
+                if (hasMirror) {
+                    notifier->event().pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
+                }
                 aMacro.grabListener(notifier);
 
-                return new cmnd::ModifiableAssign<util::Easing::Param>(easing, next);
+                return new HandleDragCommand(easing, next, mirrorEasing, hasMirror ? &mirrorNext : nullptr);
             });
         }
     }

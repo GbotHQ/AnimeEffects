@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetrics>
+#include <QKeyEvent>
 #include <algorithm>
 #include "core/TimeKeyExpans.h"
 #include "core/BlurKey.h"
@@ -132,6 +133,11 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
 
     mEditor.reset(new ctrl::TimeLineEditor());
     this->setMouseTracking(true);
+    // The surface is where Ctrl+A lives (see keyPressEvent): ClickFocus, not
+    // StrongFocus, so a click in the lanes hands the keyboard to this widget (the
+    // press still propagates to TimeLineWidget's gestures, because every mouse
+    // handler here ignores) without adding a Tab stop beside the timeline's own.
+    this->setFocusPolicy(Qt::ClickFocus);
     this->setContextMenuPolicy(Qt::CustomContextMenu);
 
     // THE CHIP FOLLOWS THE SELECTION, NOT THE EVENT LOOP. A selection another view
@@ -291,6 +297,24 @@ void TimeLineEditorWidget::resizeEvent(QResizeEvent* aEvent) {
     QWidget::resizeEvent(aEvent);
     if (mTimeRuler)
         mTimeRuler->setGeometry(0, 0, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
+}
+
+void TimeLineEditorWidget::keyPressEvent(QKeyEvent* aEvent) {
+    // Ctrl+A selects everything the timeline shows (see
+    // ctrl::TimeLineEditor::selectAllKeys for the exact enumeration) and repaints
+    // only when the set actually changed - a second Ctrl+A is not a repaint.
+    // The modifiers must be EXACTLY Ctrl: Ctrl+Shift+A is a different binding, the
+    // graph panel's own rule (GraphPanelWidget::panelKeyAction).
+    if (aEvent->key() == Qt::Key_A && aEvent->modifiers() == Qt::ControlModifier) {
+        if (mEditor->selectAllKeys())
+            this->update();
+        aEvent->accept();
+        return;
+    }
+    // Everything else is not this surface's: the base ignores it, which is what
+    // propagates it to TimeLineWidget's arrow-key handling and then to the
+    // application's own key map.
+    QWidget::keyPressEvent(aEvent);
 }
 
 void TimeLineEditorWidget::updateLines(QTreeWidgetItem* aTopNode) {

@@ -180,6 +180,27 @@ public:
     bool selectKeysAt(core::TimeLineEvent& aEvent, const QPoint& aPos);
     void endTemporarySelection();
     bool retrieveSelectionTargets(core::TimeLineEvent& aEvent) const;
+    // THE BULK SELECTION (Ctrl+A on the timeline surface): replaces the shared
+    // selection with EVERY KEY OF EVERY ROW THIS TIMELINE SHOWS. The enumeration is
+    // the marquee's own walk over the rows, without the box and without a frame
+    // window:
+    //   * every ctrl::TimeLineRow in mRows - every expanded object-tree row, on or
+    //     off screen (the row list is the tree, not the viewport), in tree order;
+    //   * for each row, the row's own node and, when the row is a CLOSED FOLDER,
+    //     every descendant - those keys are drawn on the folder's row and have no
+    //     rows of their own (an OPEN folder's children are rows and are covered by
+    //     their own entry);
+    //   * every key type in TimeLine::getTimeKeyTypeInOrderOfOperations order, and
+    //     every frame its map holds - not only the frames inside the visible
+    //     window or the project's frame range.
+    // Each key is one KEY-LEVEL entry (time::Selection::kKeyLevel), which is the
+    // timeline's currency and covers every component the graph panel draws. With
+    // no rows there is nothing to select, so the set is emptied - "select all"
+    // over an empty enumeration means empty, the same rule the graph's
+    // selectAllMarkers follows. Gesture state and a right-click temporary loan are
+    // dropped. True when the set CHANGED (so a caller only repaints then), the
+    // same answer every time::Selection mutator gives.
+    bool selectAllKeys();
     // The LIVE selection, by reference: the one instance this editor writes and
     // the timeline's renderer highlights. It is handed out rather than copied so
     // another view of the same keys (the animation graph panel) can SHARE it

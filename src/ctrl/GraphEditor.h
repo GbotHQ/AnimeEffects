@@ -89,6 +89,45 @@ private:
     QVector<Value> mValues;
 };
 
+// ONE HANDLE DRAG'S COMMAND: the two easing params a handle drag writes - the
+// param the GRABBED handle is stored in, and, when the key that handle belongs
+// to has a neighbour on its other side, the NEIGHBOUR segment's param that
+// receives the MIRRORED handle (see GraphEditor::updateDrag). One command for
+// both halves is what keeps the whole drag ONE undo step; modifyValues()
+// rewrites both on every later move instead of pushing a second command.
+//
+// The two halves are separate Param objects even when the grabbed handle is the
+// `to` key's incoming one, whose value still lives in the segment's `from`
+// param: the mirror always lives in the NEXT/PREVIOUS segment's `from` param,
+// which is a different key's easing. aMirror is null when the key has only one
+// handle (the first and last key of a channel): there is no neighbour segment
+// to hold the opposite tangent.
+class HandleDragCommand: public cmnd::Stable {
+public:
+    HandleDragCommand(
+        util::Easing::Param* aMain, const util::Easing::Param& aMainValue, util::Easing::Param* aMirror,
+        const util::Easing::Param* aMirrorValue
+    );
+    // The values the drag holds NOW: the grabbed param and, when this command
+    // owns one, the neighbour's. A null aMirror leaves the mirror half alone.
+    void modifyValues(const util::Easing::Param& aMain, const util::Easing::Param* aMirror);
+
+    virtual void exec();
+    virtual void undo();
+    virtual void redo();
+
+private:
+    struct Half {
+        util::Easing::Param* target;
+        util::Easing::Param prev;
+        util::Easing::Param next;
+    };
+    Half mMain;
+    Half mMirror;
+    bool mHasMirror;
+    bool mDone;
+};
+
 // The animation graph editor: the value curves of the selected layers'
 // channels, drawn as a fullscreen overlay over the animation.
 //
@@ -120,7 +159,8 @@ private:
 //
 // Every edit is ONE undo step, and every edit announces itself on the timeline's
 // own wire: a handle drag is a cmnd::Gesture over a single
-// cmnd::ModifiableAssign<util::Easing::Param>, the key move is a
+// HandleDragCommand (the dragged param AND the neighbour segment's mirrored
+// one, see updateDrag), the key move is a
 // cmnd::Gesture over a single KeyMoveCommand (the whole selection, one step of
 // the drag rewritten - see that class above), and the three key edits - insert,
 // move and remove (see insertKeyAt, the MOVE note next to it and
@@ -200,30 +240,41 @@ public:
     bool ownsCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) const;
     bool updateCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor);
 
-    // Wheel over the panel: zoom. Returns true when the graph took the event, so
-    // the viewport does not also zoom the canvas.
+    // Wheel over the panel: zoom and scroll. Returns true when the graph took the
+    // event, so the viewport does not also zoom the canvas.
     //
-    // The plain wheel zooms BOTH axes about the cursor by the same notch factor,
-    // so the point under the pointer stays under it - the two axes have to scale
-    // together for a curve's shape to stay readable while zooming. A modifier
-    // narrows it to one axis, which is what the wheel did before both axes were
-    // the default:
-    //   * Shift - the FRAME axis alone (horizontal), about the cursor's column;
-    //   * Ctrl  - the VALUE axis alone (vertical), about the cursor's row.
-    // Both use the canvas mover's and the timeline scaler's own per-notch factor
-    // (1.1 per notch) and their default direction (a positive notch zooms OUT), so
-    // one wheel motion does the same thing over the panel and over the viewport.
+    // THE MAPPING, axis by axis:
+    //   * plain         - zoom BOTH axes about the cursor by the same notch factor,
+    //                     so the point under the pointer stays under it;
+    //   * Shift         - SCROLL both axes by 50 px per notch, no zoom. The frame
+    //                     half is the timeline's own step and, when a timeline owns
+    //                     the frame axis, goes through its scrollFramesBy delegate
+    //                     so both views keep the same window; the value half pans
+    //                     this panel's value axis by the same pixels;
+    //   * Ctrl          - zoom the VALUE axis alone (vertical), about the cursor's
+    //                     row;
+    //   * Ctrl + Shift  - zoom the FRAME axis alone (horizontal), about the
+    //                     cursor's column.
+    // Every combination therefore moves at least one axis, and no notch is
+    // consumed by a case that changed nothing.
     //
-    // aInvertScaling is the user's zoom direction, and it inverts BOTH halves here -
-    // before the frame half is delegated - so one notch cannot move the two axes
+    // The zooms use the canvas mover's and the timeline scaler's own per-notch
+    // factor (1.1 per notch) and their default direction (a positive notch zooms
+    // OUT), so one wheel motion does the same thing over the panel and over the
+    // viewport. A positive notch scrolls the content right (to earlier frames, the
+    // timeline's own Shift direction) and down.
+    //
+    // aInvertScaling is the user's zoom direction, and it inverts EVERY branch here
+    // - before the frame half is delegated - so one notch cannot move the two axes
     // against each other. It is gui::MouseSetting::invertMainViewScaling: the panel
     // takes its wheel from the main view (hiding it gives the wheel back to the
     // canvas), so it takes that view's setting.
     //
-    // The FRAME half is the TIMELINE's while a timeline owns the frame axis (see
-    // setFrameWindow): the notch goes to the timeline through its delegate, about the
-    // frame under the cursor, and the panel's own X moves only because the timeline
-    // pushed its new window back. The VALUE half is always this panel's.
+    // The FRAME half of a zoom is the TIMELINE's while a timeline owns the frame
+    // axis (see setFrameWindow): the notch goes to the timeline through its
+    // delegate, about the frame under the cursor, and the panel's own X moves only
+    // because the timeline pushed its new window back. The VALUE half is always
+    // this panel's.
     bool updateWheel(
         const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
         bool aInvertScaling
@@ -340,6 +391,12 @@ public:
     // the same keys it would have had. True when the selection changed; with no
     // shown channel there is nothing to select, so the set is emptied (and only then
     // does this answer true).
+    // THE TIMELINE HAS ITS OWN Ctrl+A (ctrl::TimeLineEditor::selectAllKeys), and the
+    // two do NOT share an implementation: both write this same shared set, but this
+    // method enumerates the PANEL's universe (every marker of every visible channel
+    // of the targets) while the timeline's enumerates the TIMELINE's (every key of
+    // every row it shows, closed folders' descendants included). They share the
+    // selection, not the walk.
     bool selectAllMarkers();
     // Replaces the whole selection with this one key: the KEY, not a marker of it,
     // so every component it owns is selected (the timeline's own unit - a caller
@@ -750,10 +807,11 @@ public:
     // --- the shared FRAME window ---
     //
     // X is the TIMELINE's while the panel is a second view of one: the gui pushes the
-    // frames the timeline is showing (setFrameWindow) and the two horizontal gestures -
-    // the wheel's frame half and the pan's horizontal half - go back to the timeline
-    // through the delegates below. The panel's own X is written by setFrameWindow and
-    // by nothing else (see fitFrameAxis, updateWheel, updatePan).
+    // frames the timeline is showing (setFrameWindow) and every horizontal gesture -
+    // the wheel's frame half (its scroll and both of its zooms) and the pan's
+    // horizontal half - goes back to the timeline through the delegates below. The
+    // panel's own X is written by setFrameWindow and by nothing else (see
+    // fitFrameAxis, updateWheel, updatePan).
     //
     // The window is FRACTIONAL frames, mapped into the plot's inset exactly
     // (graph::Scaler::applyFrameWindow): the timeline's viewport is expressed in content
@@ -765,9 +823,10 @@ public:
     // that arrive before the viewport is laid out (the plot has no width to map into
     // yet). Called from the draw path, where the geometry is known.
     void syncFrameWindowFor(const QSize& aViewportSize);
-    // The two horizontal gestures, in the units each side owns: a pan by aFrameDelta
-    // FRAMES, and a wheel notch about aAnchorFrame, the frame under the panel's cursor
-    // (fractional, so the timeline can anchor on it exactly).
+    // The two horizontal gestures, in the units each side owns: a scroll (the pan,
+    // and the wheel's Shift branch) by aFrameDelta FRAMES - so 50 px of scroll is
+    // 50 / framePpf() frames - and a wheel notch about aAnchorFrame, the frame under
+    // the panel's cursor (fractional, so the timeline can anchor on it exactly).
     using FrameScrollFunc = std::function<void(double aFrameDelta)>;
     using FrameZoomFunc = std::function<void(int aWheelDelta, double aAnchorFrame)>;
     void setFrameGestureDelegates(FrameScrollFunc aScrollFrames, FrameZoomFunc aZoomFrames);
@@ -1003,11 +1062,13 @@ private:
     // construction: each press entry point clears the others, and endDrag clears
     // them all.
     //
-    // Handle drag: the key whose easing is being edited, the segment that owns it
-    // and which of its two handles. The pair is written as a PAIR - the dragged
-    // one where the pointer is and the other at its mirror about the segment (see
-    // updateDrag) - so which of the two the press grabbed only decides which one
-    // the pointer drives.
+    // Handle drag: the segment's `from` key (the anchor the segment index is
+    // checked against), the segment, and which of its two handles was grabbed.
+    // The grabbed handle is written where the pointer is; the OPPOSITE handle of
+    // the KEY it belongs to - which lives in the neighbouring segment's param -
+    // is written at its mirror about that key in PIXELS (see updateDrag), so
+    // which of the two the press grabbed decides both what follows the pointer
+    // and which neighbour is the mirror's home.
     bool mDragging;
     bool mKeyMoveArmed;
     bool mMarqueeArmed;
@@ -1016,7 +1077,7 @@ private:
     int mDragItem;
     int mDragSegment;
     int mDragHandle;
-    cmnd::Gesture<cmnd::ModifiableAssign<util::Easing::Param> > mGesture;
+    cmnd::Gesture<HandleDragCommand> mGesture;
     // The KEY MOVE's own gesture, over the one command that carries the whole
     // selection (see KeyMoveCommand). A separate Gesture from the handle drag's
     // because the kinds never coexist: each press clears the other, and the two

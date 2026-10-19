@@ -450,6 +450,42 @@ void TimeLineEditor::endTemporarySelection() {
     mSelection.clear();
     mSelectionTemporary = false;
 }
+
+bool TimeLineEditor::selectAllKeys() {
+    // The marquee's row walk (see time_Marquee.cpp) without its box: every row,
+    // every live key of its node's timeline, and - for a closed folder - its
+    // descendants, whose keys are drawn on that row. The frame window is NOT
+    // applied: "all" is every key the row holds, not the slice on screen.
+    core::TimeLineEvent all;
+    for (const TimeLineRow& row : mRows) {
+        if (!row.node)
+            continue;
+        core::ObjectNode::Iterator nodeItr(row.node);
+        while (nodeItr.hasNext()) {
+            core::ObjectNode* node = nodeItr.next();
+            if (!node || !node->timeLine())
+                continue;
+            const core::TimeLine& timeLine = *(node->timeLine());
+            for (int i = 0; i < core::TimeKeyType_TERM; ++i) {
+                const core::TimeKeyType type = core::TimeLine::getTimeKeyTypeInOrderOfOperations(i);
+                const core::TimeLine::MapType& map = timeLine.map(type);
+                for (auto itr = map.begin(); itr != map.end(); ++itr) {
+                    if (itr.value())
+                        all.pushTarget(*node, type, itr.key());
+                }
+            }
+            if (!row.closedFolder)
+                break; // an open folder's children are rows of their own
+        }
+    }
+    // An explicit bulk selection replaces whatever was there, and a temporary
+    // right-click loan has no menu to outlive: drop both the gesture state and the
+    // loan flag so a stale press cannot anchor on the fresh selection.
+    mSelectionTemporary = false;
+    clearState();
+    return mSelection.set(all);
+}
+
 bool TimeLineEditor::retrieveSelectionTargets(TimeLineEvent& aEvent) const {
     if (mSelection.empty())
         return false;
