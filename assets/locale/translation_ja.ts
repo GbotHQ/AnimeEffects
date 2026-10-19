@@ -1040,32 +1040,32 @@
         <translation>アセット名を変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TargetWidget.cpp" line="255"/>
+        <location filename="../../src/gui/TargetWidget.cpp" line="397"/>
         <source>Change animation settings</source>
         <translation>アニメーション設定の変更</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1828"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1800"/>
         <source>move a key</source>
         <translation>キーを移動</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1927"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1926"/>
         <source>change a key easing</source>
         <translation>キーのイージングを変更</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2187"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2149"/>
         <source>remove a key</source>
         <translation>キーを削除</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2289"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2251"/>
         <source>change key easing</source>
         <translation>キーのイージングを変更</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="865"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="868"/>
         <source>Change key(s) easing</source>
         <translation>キーのイージングを変更</translation>
     </message>
@@ -1073,77 +1073,77 @@
 <context>
     <name>EasingName</name>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="67"/>
+        <location filename="../../src/util/Easing.cpp" line="77"/>
         <source>Floor</source>
         <translation>切り捨て</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="69"/>
+        <location filename="../../src/util/Easing.cpp" line="79"/>
         <source>Linear</source>
         <translation>リニア</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="71"/>
+        <location filename="../../src/util/Easing.cpp" line="81"/>
         <source>Sine</source>
         <translation>正弦曲線</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="73"/>
+        <location filename="../../src/util/Easing.cpp" line="83"/>
         <source>Quad</source>
         <translation>二次式</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="75"/>
+        <location filename="../../src/util/Easing.cpp" line="85"/>
         <source>Cubic</source>
         <translation>三次式</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <location filename="../../src/util/Easing.cpp" line="87"/>
         <source>Quart</source>
         <translation>四次式</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <location filename="../../src/util/Easing.cpp" line="89"/>
         <source>Quint</source>
         <translation>五次式</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <location filename="../../src/util/Easing.cpp" line="91"/>
         <source>Expo</source>
         <translation>指数</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <location filename="../../src/util/Easing.cpp" line="93"/>
         <source>Circ</source>
         <translation>円形</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <location filename="../../src/util/Easing.cpp" line="95"/>
         <source>Back</source>
         <translation>バック</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="87"/>
+        <location filename="../../src/util/Easing.cpp" line="97"/>
         <source>Elastic</source>
         <translation>ゴム状</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="89"/>
+        <location filename="../../src/util/Easing.cpp" line="99"/>
         <source>Bounce</source>
         <translation>バウンス</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="91"/>
+        <location filename="../../src/util/Easing.cpp" line="101"/>
         <source>Custom</source>
         <translation>カスタム</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="93"/>
+        <location filename="../../src/util/Easing.cpp" line="103"/>
         <source>Round</source>
         <translation>四捨五入</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="95"/>
+        <location filename="../../src/util/Easing.cpp" line="105"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
@@ -2649,36 +2649,34 @@ The %2 encoder could not be opened either (%3).</source>
 <context>
     <name>GraphPanel</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="312"/>
         <source>%n channel(s)</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>%n個のチャンネル</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="416"/>
         <source>%n key(s)</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>%n個のキー</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="637"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="674"/>
         <source>No keys on the selected layers</source>
         <translation>選択したレイヤーにキーがありません</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="638"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="675"/>
         <source>Select a layer to show its curves</source>
         <translation>カーブを表示するにはレイヤーを選択してください</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="641"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="678"/>
         <source>All channels of the selected layers are hidden</source>
         <translation>選択したレイヤーのすべてのチャンネルが非表示です</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="738"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="776"/>
         <source>No room for the graph in this viewport</source>
         <translation>このビューポートにはグラフを表示する余白がありません</translation>
     </message>
@@ -3007,22 +3005,22 @@ The %2 encoder could not be opened either (%3).</source>
         <translation type="vanished">ベジェエディタ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="271"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="268"/>
         <source>Easing</source>
         <translation>イージング</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="341"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="338"/>
         <source>Select keys</source>
         <translation>キーを選択</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="354"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="351"/>
         <source>Mixed</source>
         <translation>混在</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="357"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="354"/>
         <source>%n key(s)</source>
         <translation>
             <numerusform>%n個のキー</numerusform>
@@ -3146,12 +3144,12 @@ The %2 encoder could not be opened either (%3).</source>
         <translation>色相</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1686"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1665"/>
         <source>The animation graph stopped moving: the dragged key changed.</source>
         <translation>アニメーショングラフの移動を中止しました: ドラッグしていたキーが変更されました。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1867"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1839"/>
         <source>The animation graph stopped editing: the dragged key changed.</source>
         <translation>アニメーショングラフの編集を中止しました: ドラッグしていたキーが変更されました。</translation>
     </message>
@@ -4420,6 +4418,24 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
     </message>
 </context>
 <context>
+    <name>gui::GraphChannelPopup</name>
+    <message>
+        <location filename="../../src/gui/GraphChannelPopup.cpp" line="82"/>
+        <source>Channels</source>
+        <translation>チャンネル</translation>
+    </message>
+</context>
+<context>
+    <name>gui::GraphPanelFrame</name>
+    <message numerus="yes">
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1966"/>
+        <source>%1, %n key(s) selected</source>
+        <translation>
+            <numerusform>%1、%n個のキーを選択</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>gui::ImGuiOverlay</name>
     <message>
         <source>shown</source>
@@ -4430,19 +4446,19 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         <translation type="vanished">非表示</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2017"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1956"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>%n個のチャンネルを表示</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2022"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1974"/>
         <source>%1, focused: %2</source>
         <translation>%1、フォーカス中: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2051"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2003"/>
         <source>%1, selected key: %2</source>
         <translation>%1、選択中のキー: %2</translation>
     </message>
@@ -4453,32 +4469,30 @@ FFmpegのパレット生成の確認 ... 🗸</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1850"/>
         <source>Δframe %1   Δvalue %2</source>
-        <translation>Δフレーム %1   Δ値 %2</translation>
+        <translation type="vanished">Δフレーム %1   Δ値 %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2005"/>
         <source>shows the channel list</source>
-        <translation>チャンネル一覧を表示</translation>
+        <translation type="vanished">チャンネル一覧を表示</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2082"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2034"/>
         <source>Fit graph</source>
         <translation>グラフ全体を表示</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2083"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2035"/>
         <source>double-click the plot</source>
         <translation>プロットをダブルクリック</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2099"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2051"/>
         <source>Key menu</source>
         <translation>キーメニュー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2100"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2052"/>
         <source>right-click the key</source>
         <translation>キーを右クリック</translation>
     </message>
@@ -5915,47 +5929,42 @@ The log is available below.</source>
         <translation type="vanished">バウンス</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="174"/>
         <source>Change key(s) range to</source>
-        <translation>キーレンジを</translation>
+        <translation type="vanished">キーレンジを</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="176"/>
         <source>In</source>
-        <translation>イン</translation>
+        <translation type="vanished">イン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="177"/>
         <source>Out</source>
-        <translation>アウト</translation>
+        <translation type="vanished">アウト</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="178"/>
         <source>All</source>
-        <translation>オール</translation>
+        <translation type="vanished">オール</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="191"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="174"/>
         <source>Select spacing between keys</source>
         <translation>キー間の間隔を選択</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="486"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="469"/>
         <source>Clear playback window</source>
         <translation>再生ウィンドウをクリア</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="532"/>
         <source>Change key(s) easing...</source>
-        <translation>キーのイージングを変更...</translation>
+        <translation type="vanished">キーのイージングを変更...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="779"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="782"/>
         <source>Operation Error</source>
         <translation>操作エラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="779"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="782"/>
         <source>Failed to paste keys. 
 (If you want to paste across objects copy the key to the clipboard and right-click and paste to the node instead)</source>
         <translation>キーの貼り付けに失敗しました。
@@ -5966,37 +5975,37 @@ The log is available below.</source>
         <translation type="vanished">キーの貼り付けに失敗しました。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="961"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="952"/>
         <source>A minimum of two keys in different frames are needed.</source>
         <translation>異なるフレームに少なくとも 2 つのキーが必要です。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="962"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="953"/>
         <source>Not enough targets</source>
         <translation>ターゲットが足りません</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="997"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="988"/>
         <source>Key spacing</source>
         <translation>キー間隔</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="999"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="990"/>
         <source>Number of frames the selected keys should be spaced by:</source>
         <translation>選択したキーの間隔を空けるフレーム数:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1048"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1039"/>
         <source>Key conflict detected for key type </source>
         <translation>キータイプにキー競合が検出されました </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1049"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1040"/>
         <source> in node </source>
         <translation> ノード </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1049"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1040"/>
         <source> at frame </source>
         <translation> 内、フレーム </translation>
     </message>
@@ -6009,17 +6018,17 @@ The log is available below.</source>
         <translation type="vanished"> プロジェクトの最大フレーム外であるため、フレーム ターゲットへのキーの移動は無視されました. フレーム： </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1051"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1042"/>
         <source>Move error</source>
         <translation>移動エラー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1052"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1043"/>
         <source>Unable to move </source>
         <translation>次の理由により、キー </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1052"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1043"/>
         <source> key(s), due to the following reasons: </source>
         <translation> を移動できません </translation>
     </message>
@@ -6027,29 +6036,52 @@ The log is available below.</source>
 <context>
     <name>gui::TimeLineHeader</name>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="126"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="205"/>
         <source>Timeline</source>
         <translation>タイムライン</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="127"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="206"/>
         <source>Graph</source>
         <translation>グラフ</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="200"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="271"/>
+        <source>Set the selected keys&apos; easing to %1</source>
+        <translation>選択したキーのイージングを %1 に設定</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="290"/>
+        <source>Which channels are drawn</source>
+        <translation>描画するチャンネル</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="305"/>
         <source>Zoom out</source>
         <translation>縮小</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="202"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="307"/>
         <source>Zoom in</source>
         <translation>拡大</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="205"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="313"/>
         <source>Fit the frame range</source>
         <translation>フレーム範囲全体を表示</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="604"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="606"/>
+        <source>%n channel(s)</source>
+        <translation>
+            <numerusform>%n個のチャンネル</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="608"/>
+        <source>%1 of %2</source>
+        <translation>%2 中 %1</translation>
     </message>
 </context>
 <context>
@@ -6287,22 +6319,22 @@ The log is available below.</source>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="552"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="584"/>
         <source>Easing</source>
         <translation>イージング</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="561"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="593"/>
         <source>Close</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="816"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="854"/>
         <source>Copy</source>
         <translation>コピー</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="819"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="857"/>
         <source>Paste</source>
         <translation>貼り付け</translation>
     </message>

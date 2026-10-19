@@ -1963,7 +1963,7 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
     // StaticText item below (see THE PANEL'S NAME), and it is added only while
     // something IS selected - "0 keys selected" would be a sentence about nothing.
     if (aModel.selectionCount > 0) {
-        summary = trText(QT_TRANSLATE_N_NOOP("gui::ImGuiOverlay", "%1, %n key(s) selected"), aModel.selectionCount)
+        summary = trText(QT_TRANSLATE_N_NOOP("gui::GraphPanelFrame", "%1, %n key(s) selected"), aModel.selectionCount)
                       .arg(summary);
     }
 

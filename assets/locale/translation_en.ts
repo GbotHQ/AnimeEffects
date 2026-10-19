@@ -4,7 +4,6 @@
 <context>
     <name>GraphPanel</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="312"/>
         <source>%n channel(s)</source>
         <translation>
             <numerusform>%n channel</numerusform>
@@ -12,9 +11,8 @@
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="416"/>
         <source>%n key(s)</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>%n key</numerusform>
             <numerusform>%n keys</numerusform>
         </translation>
@@ -23,7 +21,7 @@
 <context>
     <name>QCoreApplication</name>
     <message numerus="yes">
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="357"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="354"/>
         <source>%n key(s)</source>
         <translation>
             <numerusform>%n key</numerusform>
@@ -32,9 +30,20 @@
     </message>
 </context>
 <context>
+    <name>gui::GraphPanelFrame</name>
+    <message numerus="yes">
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1966"/>
+        <source>%1, %n key(s) selected</source>
+        <translation>
+            <numerusform>%1, %n key selected</numerusform>
+            <numerusform>%1, %n keys selected</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>gui::ImGuiOverlay</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2017"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1956"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>1 channel shown</numerusform>
@@ -46,6 +55,18 @@
         <translation type="vanished">
             <numerusform>%1 (1 more channel not listed: no room in the panel)</numerusform>
             <numerusform>%1 (%n more channels not listed: no room in the panel)</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
+    <name>gui::TimeLineHeader</name>
+    <message numerus="yes">
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="604"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="606"/>
+        <source>%n channel(s)</source>
+        <translation>
+            <numerusform>%n channel</numerusform>
+            <numerusform>%n channels</numerusform>
         </translation>
     </message>
 </context>

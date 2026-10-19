@@ -332,7 +332,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   say "phase: keys"
   # ---- 2. the keys, and then the ring ----
-  # Add default keys through the OBJECT TREE own row menu, driven the way this suite's own
+  # Add default keys through the OBJECT TREE row menu, the way the graph probes drive a menu
   # graph probes drive the same kind of menu: a right click inside the cell opens a top-level
   # popup at the click point; the popup is focused by window id; two UPs reach "Add default keys"
   # (the last entry is Delete and the separator above it is skipped) and Return presses it.

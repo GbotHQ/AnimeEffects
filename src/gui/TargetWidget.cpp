@@ -203,6 +203,19 @@ void TargetWidget::setProject(core::Project* aProject) {
         });
     }
 #endif
+#ifdef AE_ENABLE_IMGUI
+    // THE PANEL'S DRIVER DIES WITH THE PROJECT, and the bar below asks the panel for its
+    // channel rows (the header's channels button names them). When the project is being
+    // CLEARED the old driver is already destroyed while this widget still holds the
+    // pointer, so the question would reach a dead editor: measured 2026-10-19 as a
+    // SIGSEGV inside GraphEditor::isLooping from channelRows via
+    // TimeLineHeader::refreshFrame, on every "open a project from the command line".
+    // Dropping the driver FIRST makes graphEditor() null, which channelRows() already
+    // answers with no rows. The new project's driver arrives in setDriver, in the same
+    // resetProjectRefs pass.
+    if (!aProject && mGraphPanel)
+        mGraphPanel->setDriver(nullptr);
+#endif
     mObjTree->setProject(aProject);
     mTimeLine->setProject(aProject);
     mPlayBack->aProject = aProject;
