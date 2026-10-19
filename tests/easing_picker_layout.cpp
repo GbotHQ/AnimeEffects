@@ -197,7 +197,9 @@ int main(int argc, char** argv) {
         }
 
         // (c) The Auto glyph: neither tile is checked here, so both glyphs are painted
-        // the same muted colour and any pixel difference IS the curve.
+        // the same muted colour and any pixel difference IS the Auto tile's image
+        // (its canonical curve plus the two handle dots/stems it now draws) rather
+        // than the identity curve the Linear tile paints.
         auto grabGlyph = [&w](const char* aTile) {
             QToolButton* tile = w.findChild<QToolButton*>(QString::fromLatin1(aTile));
             gui::prop::CurveGlyph* g = tile ? tile->findChild<gui::prop::CurveGlyph*>() : nullptr;

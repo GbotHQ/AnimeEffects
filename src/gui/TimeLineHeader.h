@@ -42,7 +42,7 @@ class EasingItem;
 // surface, replacing the fixed-width PlayBackWidget column that used to sit
 // beside the lanes. Left to right it holds
 //
-//   tabs | transport | chip | quick easings | stretch | channels | zoom
+//   tabs | transport | quick easings | chip | stretch | channels | zoom
 //
 // with a 1x16 rule after the tabs, after the transport and before the zoom group (the
 // mock's .tl-hairline). The TABS are the dock's two views (design section 5, "one
@@ -55,13 +55,14 @@ class EasingItem;
 // zoom group. The transport is the existing eight-button PlayBackWidget group, moved
 // out of its column and laid out horizontally; the easing chip is the picker's only
 // home (design section 2) and names the timeline's key selection; the four QUICK
-// EASINGS beside it apply one easing TYPE to that same selection in one click (a
+// EASINGS to its left apply one easing TYPE to that same selection in one click (a
 // shortcut for the picker's four common tiles, disabled while nothing is selected and
-// lit on the one the selection agrees on); the CHANNELS button (Graph tab only) opens
-// the panel's channel list, which the design keeps out of the panel's own chrome
-// because it is a view action - the same reason the zoom group is here; and the zoom
-// group drives the timeline's own scale ladder (ctrl::time::Scaler) - in for one rung,
-// out for one rung, and fit for the whole frame range.
+// lit on the one the selection agrees on, drawn with the picker's own curve glyphs);
+// the CHANNELS button (Graph tab only) opens the panel's channel list, which the
+// design keeps out of the panel's own chrome because it is a view action - the same
+// reason the zoom group is here; and the zoom group drives the timeline's own scale
+// ladder (ctrl::time::Scaler) - in for one rung, out for one rung, and fit for the
+// whole frame range.
 //
 // The frame readout that used to sit between the transport and the chip is GONE: the
 // current frame is in the playhead pill and the end frame is in the ruler, so a third
@@ -93,7 +94,7 @@ public:
     // rather than acting on a stale surface.
     void setTimeLineWidget(TimeLineWidget* aTimeLine);
 
-    // The 196px area between the hairline and the quick easings, which the easing chip
+    // The 196px area between the quick easings and the stretch, which the easing chip
     // fills. Fixed on purpose: the chip's content changes with the key selection, and a
     // control that resizes would re-flow the bar beside it.
     QWidget* easingChipSlot() const { return mEaseSlot; }
@@ -190,9 +191,11 @@ private:
     // The easing control: the chip in the slot above and the single picker
     // popover it opens (see prop::EasingItem).
     QScopedPointer<prop::EasingItem> mEasing;
-    // The four quick easings beside the chip: (button, the easing TYPE it writes).
-    // Text buttons in the bar's own vocabulary (see the class comment), lit while the
-    // selection agrees on that type and disabled while nothing is selected.
+    // The four quick easings to the left of the chip: (button, the easing TYPE it
+    // writes). Glyph buttons that draw the same curve as the picker's tiles (Auto
+    // with its derived handles); lit in the panel's text ink while the selection
+    // agrees on that type and disabled while nothing is selected. Each button's box
+    // is fixed, so its state never changes the bar's width.
     struct QuickEase {
         QAbstractButton* button;
         util::Easing::Type type;

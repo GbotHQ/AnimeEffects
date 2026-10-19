@@ -50,6 +50,13 @@ public:
     void setAutoContext(const util::Easing::AutoContext& aContext);
     void setGlyphColor(const QColor& aColor);
     void setStrokeWidth(double aWidth); // default 1.5
+    // Also draw Auto's derived control points (two dots joined to the segment's
+    // endpoints by short stems) beside the curve, so the glyph reads as "a
+    // bezier with automatic handles" rather than as another function plot. Off
+    // by default: the catalog tile and the header button opt in, while a
+    // preview (the blend thumbnails, the timeline chip) stays a bare curve.
+    // Non-Auto params ignore it.
+    void setAutoHandlesVisible(bool aVisible);
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -59,6 +66,7 @@ private:
     util::Easing::AutoContext mAuto;
     QColor mColor;
     double mStrokeWidth = 1.5;
+    bool mAutoHandles = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -67,11 +75,20 @@ private:
 // pad=2 and value axis [kVMIN,kVMAX], then non-uniformly scaled into aRect
 // (preserveAspectRatio="none"). Shared by CurveGlyph and the EasingChip so the
 // curve looks identical wherever it is drawn.
+//
+// aAutoHandles asks for the Auto icon rather than a plot: for a Type_Auto param
+// it also draws the two control points the context derives, as small dots joined
+// to the segment's endpoints by short stems. The dots/stems are sized from aRect
+// (not from fixed pixels), so the same call reads at the 28px catalog tile and at
+// a 16-18px header button. It is a trailing defaulted flag so every existing
+// caller - the EasingChip, the blend thumbnails - keeps painting byte-for-byte
+// the same curve, and only a catalog/icon caller has to say what it wants.
 // ---------------------------------------------------------------------------
 void paintEasingCurve(QPainter& aPainter, const QRectF& aRect,
                       const util::Easing::Param& aParam,
                       const QColor& aColor, qreal aStrokeWidth = 1.5,
-                      const util::Easing::AutoContext* aAuto = nullptr);
+                      const util::Easing::AutoContext* aAuto = nullptr,
+                      bool aAutoHandles = false);
 
 // ---------------------------------------------------------------------------
 // EasingPickWidget — the locked "shape-first" easing picker (variant A).

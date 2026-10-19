@@ -4,6 +4,7 @@
 #include "gui/PlayBackWidget.h"
 #include "gui/TimeLineWidget.h"
 #include "gui/TimeLineEditorWidget.h"
+#include "gui/prop/EasingPickWidget.h" // gui::prop::paintEasingCurve (the tile glyph)
 #include "gui/prop/prop_Items.h"
 #include "gui/theme/Colors.h"
 #include "ctrl/TimeLineEditor.h"
@@ -41,13 +42,30 @@ const int kZoomIconSize = 18;
 // The easing chip's reserved width. Fixed on purpose: the chip's content changes
 // with the key selection, and a control that resizes re-flows the bar beside it.
 const int kEaseSlotWidth = 196;
-// The bar's TEXT buttons (the four quick easings and the channels trigger): the
-// mock's .gp-chbtn numbers - 10px text, 6px of side padding, a 4px radius and a
-// 28px box (the bar's own grid) - and the 2px between the quick easings.
+// The bar's TEXT button (the channels trigger): the mock's .gp-chbtn numbers -
+// 10px text, 6px of side padding, a 4px radius and a 28px box (the bar's own
+// grid). The quick easings are glyph buttons now and carry no text.
 const int kTextButtonSize = 10;
 const int kTextButtonPadX = 6;
 const int kTextButtonRadius = 4;
+// The quick easings: the glyph's 18px box inside the bar's 28px button (the
+// same proportion the zoom group uses) and the 2px between the four.
+const int kQuickEaseGlyphSize = 18;
 const int kQuickEaseGap = 2;
+
+// The AutoContext the quick-easing Auto button draws with: the SAME canonical
+// neighbour pair the picker's Auto tile uses (kAutoTileContext in
+// EasingPickWidget.cpp) - one segment away on each side, at the segment's own
+// end values. A quick easing is a TYPE shortcut, so its button is a catalog
+// image of the type, not a preview of the selected keys (whose neighbours
+// differ per selection): with the real, empty context Auto's derived handles
+// collapse to the identity and the button would read as Linear. The pair makes
+// the REAL auto-clamp rule shape the canonical ease-in-out, and with
+// aAutoHandles it also shows the control points.
+constexpr util::Easing::AutoContext kQuickEaseAutoContext = {
+    { true, -1.0f, 0.0f }, // prev: one segment before, at the from key's value
+    { true, 2.0f, 1.0f },  // next: one segment after, at the to key's value
+};
 #ifdef AE_ENABLE_IMGUI
 // The tab strip: the mock's own numbers for a tab (.tl-tabs button - 11px text,
 // 3px/8px of padding, a 4px radius) and the bar it sits in (a 2px gap between the
@@ -78,17 +96,18 @@ protected:
 };
 
 // A TEXT BUTTON in the bar's own vocabulary: the mock's .gp-chbtn - 10px text at the
-// muted ink, `raised` under the pointer, and the ACCENT fill with the accent's content
-// colour while it is CHECKED (the quick easings are lit that way; the channels button
-// is not checkable). It paints from the LIVE tokens rather than from a stylesheet,
-// because the header owns no sheet of its own (playbackwidget.ssa styles the transport,
-// not this) - the same rule the tab strip follows. gui::IconButton, the bar's other
-// button, is the glyph-hover pair and has no text.
+// muted ink and `raised` under the pointer or while pressed. The channels trigger is
+// its one user (the quick easings were the checkable ones and are glyph buttons now),
+// so the checked/accent state it used to paint is gone. It paints from the LIVE tokens
+// rather than from a stylesheet, because the header owns no sheet of its own
+// (playbackwidget.ssa styles the transport, not this) - the same rule the tab strip
+// follows. gui::IconButton, the bar's other button, is the glyph-hover pair and has no
+// text.
 class HeaderTextButton: public QAbstractButton {
 public:
     explicit HeaderTextButton(QWidget* aParent): QAbstractButton(aParent) {
-        // Keyboard reachable: Tab moves between the bar's text buttons and Space (or
-        // Return, handled below) activates one. The focus ring is painted.
+        // Keyboard reachable: Tab moves between the bar's focusable buttons and
+        // Space (or Return, handled below) activates one. The focus ring is painted.
         this->setFocusPolicy(Qt::StrongFocus);
         this->setFixedHeight(kButtonSize);
     }
@@ -108,9 +127,9 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
 
         const QRectF box = QRectF(this->rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        if (this->isEnabled() && (this->isChecked() || this->isDown() || this->underMouse())) {
+        if (this->isEnabled() && (this->isDown() || this->underMouse())) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(this->isChecked() ? QBrush(colors.accent) : QBrush(colors.raised));
+            painter.setBrush(colors.raised);
             painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
         }
 
@@ -118,7 +137,6 @@ protected:
         font.setPixelSize(kTextButtonSize);
         painter.setFont(font);
         const QColor ink = !this->isEnabled() ? colors.textMutedDim
-            : this->isChecked()               ? colors.accentText
             : this->underMouse()              ? colors.text
                                               : colors.textMuted;
         painter.setPen(ink);
@@ -142,6 +160,87 @@ protected:
         }
         QAbstractButton::keyPressEvent(aEvent);
     }
+};
+
+// A GLYPH BUTTON for one of the four quick easings: the same curve the easing
+// picker paints on its catalog tiles, through gui::prop::paintEasingCurve, and
+// no text at all. Auto opts into the control-point glyph exactly as its tile
+// does, so it reads as "a bezier with automatic handles" instead of as another
+// function plot.
+//
+// Inks, all from the LIVE tokens (a theme change is a repaint, nothing else):
+//   * resting  - textMutedDim, the ink the picker's unselected tiles use;
+//   * hover    - the panel's text ink over the `raised` fill (the picker's own
+//                tile hover rule: color text, background raised);
+//   * checked  - the panel's text ink (never the accent: the quick easings are a
+//                TYPE shortcut, not the chip's own state);
+//   * disabled - textDisabled (nothing is selected, so the button cannot act);
+//   * focus    - a 1px text-ink ring, the bar's keyboard affordance.
+//
+// The BOX is fixed: a glyph has no text whose width could follow the state, and
+// setFixedSize makes min = max = 28, so enabling, checking or hovering one of
+// the four never re-measures the group (the bar's reserved-width rule).
+class QuickEaseButton: public QAbstractButton {
+public:
+    QuickEaseButton(util::Easing::Type aType, QWidget* aParent): QAbstractButton(aParent) {
+        mParam.type = aType;
+        mAuto = kQuickEaseAutoContext;
+        // Keyboard reachable: Tab moves between the bar's buttons and Space (or
+        // Return, handled below) activates one, exactly as the text button is.
+        this->setFocusPolicy(Qt::StrongFocus);
+        this->setFixedSize(kButtonSize, kButtonSize);
+        this->setCheckable(true);
+    }
+
+    QSize sizeHint() const override { return QSize(kButtonSize, kButtonSize); }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        const theme::Colors& colors = theme::Colors::current();
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const QRectF box = QRectF(this->rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const bool hovered = this->isEnabled() && this->underMouse();
+        if (hovered) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(colors.raised);
+            painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
+        }
+
+        // The glyph: the bar's 18px icon box, centered in the 28px button (the
+        // zoom group's own proportion).
+        const QRectF glyph((this->width() - kQuickEaseGlyphSize) / 2.0,
+                           (this->height() - kQuickEaseGlyphSize) / 2.0,
+                           kQuickEaseGlyphSize, kQuickEaseGlyphSize);
+        const QColor ink = !this->isEnabled() ? colors.textDisabled
+            : this->isChecked() || hovered     ? colors.text
+                                               : colors.textMutedDim;
+        // Auto's derived control points and stems are part of its icon, as on the
+        // picker's tile; every other type is a bare curve.
+        gui::prop::paintEasingCurve(painter, glyph, mParam, ink, 1.5, &mAuto,
+                                    mParam.type == util::Easing::Type_Auto);
+
+        if (this->hasFocus()) {
+            painter.setPen(QPen(colors.text, 1.0));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(box, kTextButtonRadius, kTextButtonRadius);
+        }
+    }
+
+    void keyPressEvent(QKeyEvent* aEvent) override {
+        // Return activates like Space, the same reason HeaderTextButton binds it.
+        if (aEvent->key() == Qt::Key_Return || aEvent->key() == Qt::Key_Enter) {
+            this->click();
+            aEvent->accept();
+            return;
+        }
+        QAbstractButton::keyPressEvent(aEvent);
+    }
+
+private:
+    util::Easing::Param mParam;
+    util::Easing::AutoContext mAuto;
 };
 
 // A bar button (the mock's .ib): the glyph-hover pair the transport's buttons use,
@@ -217,11 +316,58 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     // the bar.
     lay->addWidget(mTransport, 0, Qt::AlignVCenter);
 
-    // The mock's rule between the transport and the chip: the frame readout used to
-    // sit between them and is gone (the playhead pill names the current frame and the
-    // ruler the end frame), so this is the mock's own .tl-hairline - one group's end,
-    // the next one's start.
+    // The mock's rule between the transport and the chip group: the frame readout
+    // used to sit between them and is gone (the playhead pill names the current frame
+    // and the ruler the end frame), so this is the mock's own .tl-hairline - one
+    // group's end, the next one's start (here: the quick easings, which precede the
+    // chip's slot).
     this->addHairline(*lay);
+
+    // THE FOUR QUICK EASINGS, TO THE LEFT OF THE CHIP: the picker's four common
+    // tiles as one click each, on the same selection the chip names. They are the
+    // TYPE shortcut - the range and the blend stay the key's own, exactly as the
+    // picker's tiles leave them - and they read back which of the four the
+    // selection agrees on. Added to the row BEFORE the chip's slot, so the local
+    // order is transport | quick easings | chip (the bar reads the type shortcut
+    // first and then the control that names the selection).
+    //
+    // The four types, in the picker catalog's own display head (its first tile
+    // row). Their names come from util::Easing::getTypeName - the application's
+    // one public type vocabulary, which the picker's menus and the general
+    // settings also read - rather than from literals here, so the bar cannot
+    // introduce a name of its own. getTypeName is already translated (its
+    // "EasingName" context), so its result is used as-is and must not be wrapped
+    // in tr() again.
+    //
+    // WIDTH IS RESERVED, NOT MEASURED: each button is a fixed 28x28 box
+    // (QuickEaseButton::setFixedSize) whose size hint never depends on the
+    // enabled/checked/hover state, and the glyph itself is a fixed 18px box. The
+    // group therefore contributes one constant width to this layout, and a
+    // selection change cannot re-flow the bar or resize the dock.
+    const util::Easing::Type quickDefs[] = {
+        util::Easing::Type_Linear,
+        util::Easing::Type_Floor,
+        util::Easing::Type_Round,
+        util::Easing::Type_Auto,
+    };
+    auto* quickBox = new QWidget(this);
+    auto* quickLay = new QHBoxLayout(quickBox);
+    quickLay->setContentsMargins(0, 0, 0, 0);
+    quickLay->setSpacing(kQuickEaseGap);
+    for (const util::Easing::Type type : quickDefs) {
+        auto* button = new QuickEaseButton(type, quickBox);
+        const QString name = util::Easing::getTypeName(type);
+        // A glyph-only control has no text for assistive technology to read, so
+        // the easing's name IS its accessible text; the tooltip keeps naming the
+        // action for the pointer.
+        button->setAccessibleName(name);
+        button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
+        button->setEnabled(false); // until a selection names a key that carries an easing
+        quickLay->addWidget(button);
+        mQuickEases.push_back({button, type});
+        connect(button, &QAbstractButton::clicked, this, [this, type]() { this->onQuickEasingClicked(type); });
+    }
+    lay->addWidget(quickBox, 0, Qt::AlignVCenter);
 
     // The easing chip's slot: the reserved width, with a zero-margin layout so the
     // chip fills it without carrying the geometry (see easingChipSlot()). Fixed on
@@ -243,39 +389,6 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     easeLay->addWidget(mEasing->itemWidget());
     mEasing->chip()->connect(mEasing->chip(), &QAbstractButton::clicked, this,
                              [this]() { this->onEasingChipClicked(); });
-
-    // THE FOUR QUICK EASINGS, beside the chip: the picker's four common tiles as one
-    // click each, on the same selection the chip names. They are the TYPE shortcut -
-    // the range and the blend stay the key's own, exactly as the picker's tiles leave
-    // them - and they read back which of the four the selection agrees on.
-    // The four types, in the picker catalog's own display head (its first tile row).
-    // Their labels come from util::Easing::getTypeName - the application's one public
-    // type vocabulary, which the picker's menus and the general settings also read -
-    // rather than from literals here, so the bar cannot introduce a name of its own.
-    // getTypeName is already translated (its "EasingName" context), so its result is
-    // used as-is and must not be wrapped in tr() again.
-    const util::Easing::Type quickDefs[] = {
-        util::Easing::Type_Linear,
-        util::Easing::Type_Floor,
-        util::Easing::Type_Round,
-        util::Easing::Type_Auto,
-    };
-    auto* quickBox = new QWidget(this);
-    auto* quickLay = new QHBoxLayout(quickBox);
-    quickLay->setContentsMargins(0, 0, 0, 0);
-    quickLay->setSpacing(kQuickEaseGap);
-    for (const util::Easing::Type type : quickDefs) {
-        auto* button = new HeaderTextButton(quickBox);
-        const QString name = util::Easing::getTypeName(type);
-        button->setText(name);
-        button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
-        button->setCheckable(true);
-        button->setEnabled(false); // until a selection names a key that carries an easing
-        quickLay->addWidget(button);
-        mQuickEases.push_back({button, type});
-        connect(button, &QAbstractButton::clicked, this, [this, type]() { this->onQuickEasingClicked(type); });
-    }
-    lay->addWidget(quickBox, 0, Qt::AlignVCenter);
 
     // The mock's .tl-spacer: the zoom group is the bar's right end, whatever the
     // chip's content and the quick easings' widths do.
@@ -724,8 +837,8 @@ void TimeLineHeader::onThemeUpdated(theme::Theme& aTheme) {
     // The chip paints from the live palette, but its caret pixmap is tinted through
     // the icon pipeline and must be re-loaded for the new appearance.
     mEasing->refreshIcon();
-    // The bar's text buttons paint from the live tokens too, so a theme change is a
-    // repaint and nothing else.
+    // The bar's buttons - the channels text button and the quick easings' glyphs -
+    // paint from the live tokens too, so a theme change is a repaint and nothing else.
     for (const QuickEase& quick : mQuickEases)
         quick.button->update();
 #ifdef AE_ENABLE_IMGUI

@@ -369,7 +369,8 @@ private:
 void paintEasingCurve(QPainter& p, const QRectF& aRect,
                       const util::Easing::Param& aParam,
                       const QColor& aColor, qreal aStrokeWidth,
-                      const util::Easing::AutoContext* aAuto) {
+                      const util::Easing::AutoContext* aAuto,
+                      bool aAutoHandles) {
     const qreal w = aRect.width(), h = aRect.height();
     if (w <= 1 || h <= 1) return;
 
@@ -417,6 +418,44 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
         else path.lineTo(s);
     }
     p.drawPath(path);
+
+    // ---- Auto's handle glyph ------------------------------------------------
+    // The catalog tile (and a header button) draws an automatic easing as what
+    // it IS: a bezier whose control points were derived from the keys, with
+    // those points visible as detached dots joined to the endpoints by short
+    // stems. Auto is the only type that has derived handles and the flag is
+    // opt-in, so every other glyph - and every Auto preview that leaves the
+    // flag off - paints exactly the curve it painted before. The dot radius and
+    // stem width scale with the rect, so the same call reads at the 28px tile
+    // and at a 16-18px button.
+    if (aAutoHandles && aParam.type == util::Easing::Type_Auto) {
+        // The curve is sampled over one segment (d = 1), so derive its handles
+        // in that same span; x is fixed at the thirds and only y is derived.
+        float y1 = 1.0f / 3.0f, y2 = 2.0f / 3.0f;
+        util::Easing::autoHandles(autoCtx, 1.0f, y1, y2);
+        auto toValueSpace = [&](double aX, double aY) {
+            return toScreen(x0 + aX * (x1 - x0),
+                            pad + (kVMAX - aY) / (kVMAX - kVMIN) * span);
+        };
+        const QPointF from = toValueSpace(0.0, 0.0);
+        const QPointF to = toValueSpace(1.0, 1.0);
+        const QPointF h1 = toValueSpace(1.0 / 3.0, y1);
+        const QPointF h2 = toValueSpace(2.0 / 3.0, y2);
+
+        QPen stemPen(aColor);
+        stemPen.setWidthF(qMax(0.75, aStrokeWidth * 0.6));
+        stemPen.setCapStyle(Qt::RoundCap);
+        p.setPen(stemPen);
+        p.drawLine(from, h1);
+        p.drawLine(to, h2);
+
+        const qreal dotR = qBound(1.0, qMin(w, h) * 0.06, 2.5);
+        p.setPen(Qt::NoPen);
+        p.setBrush(aColor);
+        p.drawEllipse(h1, dotR, dotR);
+        p.drawEllipse(h2, dotR, dotR);
+        p.setBrush(Qt::NoBrush);
+    }
 }
 
 CurveGlyph::CurveGlyph(QWidget* aParent) : QWidget(aParent) {
@@ -429,13 +468,14 @@ void CurveGlyph::setAutoContext(const util::Easing::AutoContext& aContext) {
 }
 void CurveGlyph::setGlyphColor(const QColor& aColor) { mColor = aColor; update(); }
 void CurveGlyph::setStrokeWidth(double aWidth) { mStrokeWidth = aWidth; update(); }
+void CurveGlyph::setAutoHandlesVisible(bool aVisible) { mAutoHandles = aVisible; update(); }
 
 void CurveGlyph::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
     paintEasingCurve(p, QRectF(0, 0, width(), height()), mParam,
                      mColor.isValid() ? mColor : palette().color(QPalette::WindowText),
-                     mStrokeWidth, &mAuto);
+                     mStrokeWidth, &mAuto, mAutoHandles);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +771,10 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType) 
     // Auto's tile draws the canonical automatic-handle pair, not the edited key's
     // neighbours (a tile is a catalog image; see kAutoTileContext).
     g->setAutoContext(glyphAutoContext(aType, mAuto));
+    // Auto is the one entry whose catalog image must SAY it is a bezier with
+    // derived handles: draw the two control points and their stems. No other
+    // tile (nor the blend thumbnails) opts in, so their glyphs are unchanged.
+    g->setAutoHandlesVisible(aType == util::Easing::Type_Auto);
     g->setGlyphColor(C().textMutedDim);
     vl->addWidget(g, 0, Qt::AlignCenter);
     connect(tile, &QToolButton::clicked, this, [this, aType] { setType(aType); });
