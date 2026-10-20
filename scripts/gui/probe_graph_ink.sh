@@ -57,14 +57,18 @@
 #      CONSTANT" in the body for the boxes those pixels occupied).
 #
 #   4. THE KEYED FRAME DRAWS, AND ITS INK IS THE MODEL'S. Two channels of different key TYPES
-#      are coloured differently (theme::Graph::keyColor, the same token the timeline paints
-#      those types with), the DOCK HEADER's channels control is present and names the count it
-#      changes (the panel no longer draws one, and no longer paints any gesture numbers either -
-#      the drag readout it used to print at the pointer is gone). The keys come from the
-#      application's own routes: "Add default keys" in the object tree's row menu puts ten
-#      channels at frame 0, and the Properties dock's Current Keys knobs put a key of TWO key
-#      TYPES at the frame the playhead has been moved to (a frame-0 marker is culled at the
-#      plot's left edge, so the knobs are what makes the plot show keys at all).
+#      are coloured differently (theme::Colors::channelColor through theme::Graph, the same
+#      tokens the timeline paints keys with), the DOCK HEADER's channels control is present and
+#      names the count it changes (the panel no longer draws one, and no longer paints any
+#      gesture numbers either - the drag readout it used to print at the pointer is gone). The
+#      keys come from the application's own routes: "Add default keys" in the object tree's row
+#      menu puts ten channels at frame 0, and the Properties dock's Current Keys knobs put a key
+#      of TWO key TYPES at the frame the playhead has been moved to (a frame-0 marker is culled
+#      at the plot's left edge, so the knobs are what makes the plot show keys at all). The two
+#      COLOURS are read off the settled frame where every shown channel is drawn - the one the
+#      hover phase's marker search also reads - because on the frame the knobs key all their
+#      keys sit at one value and only the selected channel's stroke is visible (see "TWO
+#      CHANNELS OF DIFFERENT KEY TYPES ARE TWO COLOURS" below).
 #
 # WHY THAT FRAME USED TO KILL THE APPLICATION, AND WHAT NOW PINS IT (measured 2026-10-18). The
 # docked host used to abort on the first frame it had to STROKE: gui::GraphPanelWidget::paintGL
@@ -552,11 +556,21 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
       # EVERY chromatic ink on the floor is measured once: its pixel count, the columns it owns and
       # the LEFTMOST of them. Which HUE a channel is drawn in is the application business (it is
       # theme::Colors::channelColor(type, component) - an axis hue where the channel has one - and
-      # this probe never states it), so the probe reads whatever it finds: the two-colour claim
-      # below takes the hues with a curve share of the plate. THIS LIST IS FOR THAT CLAIM only;
-      # the marker search in the hover phase below measures its OWN frame, because the selection
-      # gestures between the two captures change the strength every curve and every unselected
-      # marker is drawn at (see the marker section).
+      # this probe never states it), so the probe reads whatever it finds.
+      # THIS LIST IS THE KEYED FRAME INVENTORY, NOT THE PAIR THE TWO-COLOUR CLAIM COMPARES.
+      # On this frame the keys the knobs wrote sit at one value (both knobs write 0), so the
+      # channels they key draw ONE coincident flat stroke on the bottom row of the plot, and the
+      # channel whose key the knobs left SELECTED is drawn at full strength over the others
+      # (GraphPanelFrame curveStrength). MEASURED on the run that exposed this: the only two
+      # qualifying hues are that selected channel rotateKey purple at full strength
+      # (192 132 252, 531px over 533 columns) and the playhead accent (167 139 250: its 1px line
+      # plus the 32-column pill, 578px over 32 columns) - 26 apart, and NEITHER pair there is two
+      # channels, because the page draws one channel hue on that frame. The two-colour claim is
+      # therefore read from the PLATE OWN list (hues_plate.txt), the settled no-selection page
+      # the marker search reads, where every shown channel is drawn at 0.45 and at its own value:
+      # see the claim itself.
+      # The marker search below measures that same frame for the same reason - the selection
+      # gestures change the strength every curve and every unselected marker is drawn at.
       inkpx inkhues "$SCRATCH/panel.raw" $PW2 $PH2 0 0 $PW2 $PH2 "$F1" "$F2" "$F3" 60 40 "$HUE_MIN_PX" > "$SCRATCH/hues_raw.txt"
       : > "$SCRATCH/hues.txt"
       : > "$SCRATCH/hues_all.txt"
@@ -581,7 +595,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
       head -8 "$SCRATCH/hues_all.txt" > "$SCRATCH/hues_cand.txt"
       echo "PANEL_HUES=\"$(tr "\n" ";" < "$SCRATCH/hues_u.txt")\"" >> "$GEOM"
       echo "PANEL_HUES_ALL=\"$(tr "\n" ";" < "$SCRATCH/hues_cand.txt")\"" >> "$GEOM"
-      say "chromatic hues on the panel: curves [$(tr "\n" ";" < "$SCRATCH/hues_u.txt")], all [$(tr "\n" ";" < "$SCRATCH/hues_cand.txt")]"
+      say "chromatic hues on the keyed frame: those with a curve share of ink [$(tr "\n" ";" < "$SCRATCH/hues_u.txt")], every chromatic hue owning 2+ columns [$(tr "\n" ";" < "$SCRATCH/hues_cand.txt")]"
 
       # ---- PHASE 4: A HOVER REPAINTS THE KEY MARKER IT LIGHTS ----
       # WHAT A REGRESSION LOOKS LIKE: the pointer sits on a key dot and NOTHING is clicked, the
@@ -939,12 +953,22 @@ read -r CX2 CY2 CW2 CH2 <<< "${CHBTN_RECT:-0 0 0 0}"
 awk -v x="$CX2" -v y="$CY2" -v w="$CW2" -v h="$CH2" -v X="$KX2" -v Y="$KY2" -v W="$KW2" -v H="$KH2" \
     'BEGIN{ exit !(x >= X && y >= Y && x + w <= X + W && y + h <= Y + H) }'
 check $? "and that header control is a real one inside the dock's own rectangle ([${CHBTN_RECT:-none}] in [${DOCK_K:-none}])"
-echo "panel: page area [${PANELRECT:-none}], floor [${PANEL_FLOOR:-none}]; the channel hues on it (rgb px columns): [${PANEL_HUES:-none}]"
+echo "panel: page area [${PANELRECT:-none}], floor [${PANEL_FLOOR:-none}]; the channel hues on the keyed frame (rgb px columns): [${PANEL_HUES:-none}]; on the settled no-selection frame the marker search reads: [${PLATE_HUES:-none}]"
 # ---- TWO CHANNELS OF DIFFERENT KEY TYPES ARE TWO COLOURS ----
-# The pair is chosen from the hues the panel is DRAWN with, not from a list of tokens: a hue that
-# covers a curve's share of the panel (HUE_CURVE_MIN px) over hundreds of columns is a channel's
-# own colour (theme::Graph::keyColor), the playhead's single column keeps the accent out, and the
-# two are required HUE_SEP apart. Measured in both directions below.
+# The pair is chosen from the hues a frame of this keyed layer is DRAWN with, not from a list of
+# tokens, and it must be two CHANNELS: a hue that covers a curve's share of ink (HUE_CURVE_MIN px)
+# over a curve's share of columns (HUE_COLS_MIN), and the two HUE_SEP apart. Measured in both
+# directions below.
+# WHY THE PLATE'S LIST AND NOT THE KEYED CAPTURE'S. On the keyed frame the knobs' keys sit at one
+# value, so the channels they key draw ONE coincident stroke on the plot's bottom row, and the
+# selected channel's stroke (full strength) covers the others (0.45) - MEASURED there: the purple
+# rotateKey hue at 531px over 533 columns and the playhead's accent at 578px over 32 columns, 26
+# apart. That list holds no two channel hues at all, so the old pair loop compared the accent with
+# ONE channel and found no pair (the failure this section fixes). The plate is the same keyed
+# layer's page after the phase has established an EMPTY selection (SEL_INK/ESC_RET below), where
+# every shown channel is drawn at 0.45 and at its own value - a frame that really carries two
+# channels' curves, which is the property this check names. None of the bars moves: the same
+# HUE_CURVE_MIN, HUE_COLS_MIN and HUE_SEP judge it.
 HA=""; HB=""; HD=""
 while read -r r g b n cols; do
     [ -n "${r:-}" ] || continue
@@ -953,12 +977,15 @@ while read -r r g b n cols; do
     D=$(dist "$r" "$g" "$b" $(printf "%s" "$HA" | cut -d" " -f1-3))
     awk -v a="$D" -v m="$HUE_SEP" 'BEGIN{ exit !(a >= m) }' || continue
     HB="$r $g $b $n $cols"; HD="$D"
-done < "$SCRATCH/hues_u.txt"
-NH=$(grep -c . "$SCRATCH/hues_u.txt" 2>/dev/null) || NH=0
-[ "${NH:-0}" -ge 2 ]
-check $? "the keyed layer shows at least two CHANNELS at the frame the knobs keyed, each drawn as a stroke on the panel's own floor: ${NH:-0} qualifying hue(s) ([${PANEL_HUES:-none}])"
+done < "$SCRATCH/hues_plate.txt"
+NH=$(grep -c . "$SCRATCH/hues_plate.txt" 2>/dev/null) || NH=0
 read -r A1 A2 A3 A4 A5 <<< "${HA:-0 0 0 0 0}"
 read -r B1 B2 B3 B4 B5 <<< "${HB:-0 0 0 0 0}"
+# THE TWO HUES AND THE DISTANCE THE CHECKS COMPARE, printed before them so neither reading is
+# inferred from a PASS/FAIL line alone.
+echo "two hues: rgb ${A1:-?},${A2:-?},${A3:-?} at ${A4:-0}px over ${A5:-0} columns against rgb ${B1:-?},${B2:-?},${B3:-?} at ${B4:-0}px over ${B5:-0} columns - ${HD:-unmeasured} apart (bar ${HUE_SEP}); ${NH:-0} qualifying hue(s) on the plate [${PLATE_HUES:-none}]"
+[ "${NH:-0}" -ge 2 ]
+check $? "the keyed layer shows at least two CHANNELS on the plate the marker search reads - the settled page with the selection proved empty, where every shown channel is drawn as a stroke on the panel's own floor: ${NH:-0} qualifying hue(s) ([${PLATE_HUES:-none}]; the keyed frame itself draws one channel hue plus the playhead's accent, see the two-colour note)"
 [ -n "${B1:-}" ] && [ "${B4:-0}" -ge "$HUE_CURVE_MIN" ] && [ "${A4:-0}" -ge "$HUE_CURVE_MIN" ]
 check $? "and the two of them are different colours, each with a curve's share of ink (rgb ${A1:-?},${A2:-?},${A3:-?} at ${A4:-0}px over ${A5:-0} columns; rgb ${B1:-?},${B2:-?},${B3:-?} at ${B4:-0}px over ${B5:-0} columns)"
 awk -v a="${HD:-0}" -v m="$HUE_SEP" 'BEGIN{ exit !(a >= m) }'
