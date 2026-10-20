@@ -95,7 +95,7 @@ void Serializer::write(const util::Easing::Param& aValue) {
     // Appended LAST so every field an older reader consumes keeps its offset.
     // A file written before 0.15 carries ONE uint32 (the old `aligned` flag) at
     // this offset; Deserializer reads that as the two modes. A 0.14 file with
-    // the retired Type_Auto id migrates to Custom with both sides Auto.
+    // the retired Type_Auto id migrates to Custom with both sides AutoClamped.
     mOut.write((uint32)aValue.handleOut);
     mOut.write((uint32)aValue.handleIn);
 }

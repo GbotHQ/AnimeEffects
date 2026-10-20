@@ -693,6 +693,15 @@ void buildCurves(
         // kind it is: the derived pair is not in the document, and the drawing layer
         // draws it as a smaller, solid dot of the channel's reduced-chroma hue (a
         // drag on it converts the key to Custom).
+        //
+        // THE KIND IS PER SIDE, never per segment. A Custom segment may derive one
+        // side and store the other (the whole point of the per-side modes), so the
+        // segment's two handles can be of DIFFERENT kinds. Asking isCustom() - "both
+        // sides stored" - would publish a one-derived segment as two ghosts AND drop
+        // its stored handle. Curve::derivesHandle is that per-side rule, and
+        // effectiveHandles is the pair for both kinds (a stored side comes back
+        // exactly as stored), so one mapping still serves every dot.
+        //
         // Published whether or not the pair lies inside the plot: the drawing layer
         // clips, and a handle off the plot's edge is still one the user can grab.
         //
@@ -707,18 +716,20 @@ void buildCurves(
                 const ctrl::graph::Curve::Segment segment = curve.segment(s);
                 if (!segment.from || !segment.to)
                     continue;
-
-                const bool custom = curve.isCustom(segment);
-                // The derived pair, when this is an Auto segment and there is something
-                // to derive from (a last key in the channel has none, and neither has a
-                // type that carries no easing at all): empty otherwise.
-                const QVector<QPointF> ghosts = custom ? QVector<QPointF>() : curve.ghostHandles(*segment.from);
-                if (!custom && ghosts.size() != 2)
+                if (segment.easing.type != util::Easing::Type_Custom)
                     continue; // the analytic easings expose no handle to drag at all
+
+                // The effective pair: a stored side is its stored control point,
+                // a derived side the one its neighbours produce. These are the dots
+                // the editor's own hit-test grabs through.
+                QPointF pair[2];
+                if (!curve.effectiveHandles(segment, pair))
+                    continue;
 
                 const core::TimeKey* owners[2] = { segment.from, segment.to };
                 const float ownerValues[2] = { segment.fromValue, segment.toValue };
                 for (int h = 0; h < 2; ++h) {
+                    const bool derived = ctrl::graph::Curve::derivesHandle(segment, h);
                     gui::PanelHandle handle;
                     handle.segment = s;
                     handle.index = h;
@@ -726,10 +737,13 @@ void buildCurves(
                         aScale.pixelXOfFrame(static_cast<double>(owners[h]->frame())),
                         static_cast<double>(aScale.pixelY(ownerValues[h]))
                     );
-                    handle.dot = custom ? ctrl::graph::handlePoint(aScale, segment, h)
-                                        : ctrl::graph::handlePointAt(aScale, segment, ghosts.at(h));
+                    // Both mappings take the same pair; handlePoint() is the stored
+                    // path and handlePointAt() the published dot, and the pair's
+                    // stored side equals what handlePoint() would compute.
+                    handle.dot = derived ? ctrl::graph::handlePointAt(aScale, segment, pair[h])
+                                         : ctrl::graph::handlePoint(aScale, segment, h);
                     handle.radius = ctrl::graph::kHandleRadius;
-                    handle.ghost = !custom;
+                    handle.ghost = derived;
                     out.handles.append(handle);
                 }
             }
@@ -797,7 +811,7 @@ namespace gui {
     //-------------------------------------------------------------------------------------------------
     GraphPanelModel buildGraphPanelModel(
         ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset,
-        GraphPanelHost aHost
+        GraphPanelHost aHost, const QFont& aMeasuredFont
     ) {
         GraphPanelModel model;
 
@@ -923,10 +937,14 @@ namespace gui {
             return model;
         }
 
-        // Text is measured with the default UI font: the model has no painter by
-        // design, and a label box is advisory geometry the drawing layer puts its
-        // own glyphs in.
-        const QFontMetrics metrics{QFont()};
+        // Text is measured with the font the DRAWING HOST hands in: the model has no painter
+        // by design, and a label box is advisory geometry the drawing layer puts its own
+        // glyphs in. For the playhead pill that font is not advisory at all - it is the
+        // timeline's own measurement (TimeRuler/TimeCursor call
+        // QFontMetrics(aPainter.font())), so the pill's width and left edge come out equal
+        // to TimeCursor's instead of 2px wider (QFont() is the application default font,
+        // which the dock's stylesheet font size does not apply to).
+        const QFontMetrics metrics{aMeasuredFont};
 
         buildFrameAxis(
             model, scale, metrics, format, aEditor.timeFormatType(), aEditor.frameRange(), aEditor.activeRange()

@@ -48,7 +48,7 @@ public:
     // a derived side reads it; an empty context is the neutral (straight) curve.
     // The picker's Auto PRESET tile is the one caller that hands in a FIXED pair
     // rather than the document's keys, so the catalog image does not change with
-    // the selection (see kAutoTileContext in EasingPickWidget.cpp).
+    // the selection (see autoPreviewContext below).
     void setAutoContext(const util::Easing::AutoContext& aContext);
     void setGlyphColor(const QColor& aColor);
     void setStrokeWidth(double aWidth); // default 1.5
@@ -59,6 +59,12 @@ public:
     // (the blend thumbnails, the timeline chip) stays a bare curve. A param with
     // no derived side ignores it.
     void setAutoHandlesVisible(bool aVisible);
+
+    // What the glyph is drawn from, read back for the layout gate: the catalog is
+    // asserted on the SHAPE its own state derives (a tile that quietly changed its
+    // context would still "differ from Linear" while drawing the wrong curve).
+    const util::Easing::Param& param() const { return mParam; }
+    const util::Easing::AutoContext& autoContext() const { return mAuto; }
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -91,6 +97,19 @@ void paintEasingCurve(QPainter& aPainter, const QRectF& aRect,
                       const QColor& aColor, qreal aStrokeWidth = 1.5,
                       const util::Easing::AutoContext* aAuto = nullptr,
                       bool aAutoHandles = false);
+
+// THE canonical neighbour pair a catalog/glyph image of the Auto mode draws with.
+// A tile and the header's quick-easing button are pictures of the easing, not
+// previews of the selected keys (the picker hands them no document), and an
+// automatic pair with the real empty context collapses to the identity - the
+// straight line. This pair is one segment wide (the glyph's d = 1) with a
+// neighbour one segment away on each side, holding the segment's OWN end values,
+// so the real derivation produces the canonical flat-ended ease-in-out: outgoing
+// control point (1/3, 0) and incoming (2/3, 1). BOTH sides are HandleMode_Auto
+// (the arriving mode lives in the TO key). There is exactly ONE definition, so
+// the picker's Auto tile and the header's Auto button cannot paint two different
+// curves (they did: the old values were the retired CLAMPED pair's).
+util::Easing::AutoContext autoPreviewContext();
 
 // ---------------------------------------------------------------------------
 // EasingPickWidget — the locked "shape-first" easing picker (variant A).
@@ -130,7 +149,11 @@ public:
     // pre-footer value (the root layout had header 40 + body + footer 48, all
     // between 1px root margins; dropping the footer removes exactly its 48px).
     static constexpr int kNormalHeight = 202;  // In/Out/In-Out (and Linear/Cubic/etc.)
-    static constexpr int kCustomHeight = 474;  // Custom (incl. the per-side mode row)
+    // Custom: the bezier stage, the x1/y1/x2/y2 field row, the per-side mode
+    // field row and the actions. The mode row is a labelled field (12px label +
+    // 2px + 24px value = 38) exactly like the spin row, so it is 14px taller
+    // than the old label-beside-combo row the constant was first measured with.
+    static constexpr int kCustomHeight = 488;
 
     explicit EasingPickWidget(const util::Easing::Param& aInitial, QWidget* aParent = nullptr);
     ~EasingPickWidget() override;
@@ -153,10 +176,12 @@ public:
     void setRange(util::Easing::Range aRange);
     void setWeight(float aWeight);
     void setCustom();
-    // The Auto preset: Type_Custom with BOTH handle sides Auto. Automatic
-    // handles are per-side modes now, so this writes modes (and the Custom curve
-    // that exposes them), never a retired easing type. This is what the catalog's
-    // Auto tile clicks.
+    // The Auto preset: Type_Custom with BOTH handle sides on HandleMode_Auto.
+    // Automatic handles are per-side modes now, so this writes modes (and the
+    // Custom curve that exposes them), never a retired easing type. This is what
+    // the catalog's Auto tile clicks. (The application's own DEFAULT automatic
+    // pair - a migrated 0.14 Auto / stored default - is clamped instead; see
+    // Easing::kDefaultAutomaticHandleMode.)
     void setAutoHandlesPreset();
     // One side's handle mode (Blender's five). aIncoming selects the TO key's
     // arriving side (the param's handleIn); the other writes handleOut. The
@@ -251,6 +276,16 @@ private:
     void animStep();
     void refit();
     void onBezierSpin(int aIndex, double aValue);
+    // A control point was edited (a spin, a paste or a canvas drag): FREE the side
+    // it belongs to if that side was DERIVED. x1/y1 is this param's handleOut (the
+    // FROM key's outgoing side); x2/y2 is its handleIn (the TO key's arriving one).
+    // This is the graph drag's own rule - a derived side has no stored value, so
+    // writing one must make the side read it - and every bezier edit goes through
+    // it, otherwise a drag/spin/paste of an Auto or Vector side would change a
+    // stored value nothing reads. A stored side (Free/Aligned) keeps its mode: its
+    // stored value IS what it reads, so the edit already lands. TRUE when a mode
+    // was freed.
+    bool freeEditedSides(const util::Easing::CubicBezier& aBefore);
     void applyAppearance();
 
     // Session undo/redo helpers. Each user gesture (a discrete click, or one
@@ -275,6 +310,11 @@ private:
     QVector<util::Easing::Param> mRedo; // session states to re-do forward to
     util::Easing::Param mGestureStart;  // draft snapshot at drag start
     bool mGestureActive = false;        // a continuous drag is in progress
+    // The bezier panel is shown for a Custom draft - EXCEPT while that draft is
+    // exactly the Auto preset, which is a CATALOG state (its tile must stay
+    // visible and checked). This flag is an explicit "I clicked Custom", so a user
+    // on the preset can still reach the bezier controls without changing the pair.
+    bool mForceBezierPanel = false;
     bool mHideText = false;
     QPoint mAnchorPoint; // global top-left the popup is anchored to
     bool mHasAnchor = false;

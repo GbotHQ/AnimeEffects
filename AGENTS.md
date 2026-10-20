@@ -1403,9 +1403,12 @@ measured): **`probe_timeline_ink.sh` PASSES, 31/31** - the selected tree row's 2
 disappearance, the lane band's accent@0.06 tint measured against BOTH composites with a share bound
 the old 0.40 flood is 2.7x past, the focused key's ring 0 -> 20-25 -> 0 accent pixels in a 5..8px
 annulus while its centre goes to the 0.45 highlight mix, the lane label's 0.42 ink present with the
-playhead away and absent when it is parked on the label, and the ruler number yielding its column to
-the pill and coming back. Its shared helper is `scripts/gui/ae_ink.py` (modal colour of a box, counts
-within a tolerance, x/y runs of inked columns and rows, an annulus count). The two PANEL probes were
+playhead BOTH away from the label and parked on it (a lane's name is not the ruler's number, so it
+does not yield; the phase prints both counts), and the ruler number yielding its column to the pill
+and coming back. Its shared helper is `scripts/gui/ae_ink.py` (modal colour of a box, counts
+within a tolerance, x/y runs of inked columns and rows, an annulus count). THE LABEL PHASE WAS FLIPPED
+after the 31/31 run recorded here, which predates it: re-record the figure on the next run. The two
+PANEL probes were
 RETARGETED AT THE DOCK, and the retarget has landed: `aa92de2a` rewrote `probe_graph_ink.sh` to reach
 the panel through the dock's own tab and the dock's own pixels (its header records the crash that
 phase now pins - "WHY THAT FRAME USED TO KILL THE APPLICATION", `scripts/gui/probe_graph_ink.sh:54`)

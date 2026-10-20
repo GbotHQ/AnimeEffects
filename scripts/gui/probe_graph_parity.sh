@@ -30,8 +30,11 @@
 #   * THE PLAYHEAD'S LINE, under each strip: the current frame's column on the axis both
 #     views share. The probe seeks ONCE and never between the captures, so this is the
 #     assertion that the two pages show the SAME frame at the SAME zoom - the pill's
-#     number cannot be (the two fonts' advances differ), which is why the pill is compared
-#     as a box and its fill/glyph as tokens.
+#     number cannot be (the two rasterisers' faces have different advances), which is why
+#     the pill is compared as a BOX and its fill/glyph as tokens. That box IS comparable:
+#     it is the model's geometry, measured from the same string with the host's own font
+#     (the dock's stylesheet font, the one TimeCursor measures with), so its start and
+#     width are asserted EQUAL - there is no AA band left in that comparison.
 #
 # WHAT IS COMPARED AND WHAT IS NOT, when the two engines rasterise differently: the
 # timeline's ruler is Qt and the panel's is ImGui, so a glyph's edge pixels and a 1px
@@ -40,7 +43,9 @@
 # value - the log says so beside those numbers. The two tokens that are NOT AA - the
 # pill's solid fill and the glyph's core ink, both read as the colour farthest/most
 # common inside a solid area - are compared as colours, with the tolerance of the AA
-# band (the same bar the timeline's own ink probes use for these tokens).
+# band (the same bar the timeline's own ink probes use for these tokens). The pill's BOX
+# is not read as ink: its column run is the fill's widest run, and the fill is drawn from
+# the model's rect, so the run measures that rect.
 #
 # HOW EACH NUMBER IS FOUND, and no theme constant is baked in beyond the model's own
 # row arithmetic: the accent fill and the scroll bar's pill are LEARNED from each
@@ -115,7 +120,8 @@
 # so its page-relative column must be inside each pill and must agree between the two
 # captures (a tab switch that also seeked or re-zoomed would move it). The pill's NUMBER
 # is not the witness - the two rasterisers' fonts have different advances, which is why
-# the pill's width is compared with a tolerance.
+# only the pill's BOX is compared across pages (asserted equal: the model measures it with
+# the host's font, the timeline's own) and the glyph is compared as rows and tokens.
 #
 # FAILING LOUDLY: a pill that is not found, a pill whose run is not the model's
 # NUMBER_HEIGHT-row box on the strip's own kPillTop row, a band whose ink runs are not
@@ -830,9 +836,13 @@ near "$((T_ay - ${T_btop:-0}))" "$PILL_TOP" 1 || box_ok=0
 near "$((G_ay - ${G_btop:-0}))" "$PILL_TOP" 1 || box_ok=0
 check "$((1 - box_ok))" "THE PILL'S BOX is the same box on both pages, and each is the model's ${NUMBER_HEIGHT}-row box at kPillTop ${PILL_TOP} of its own ${BAND_HEIGHT}-row strip: rows ${T_ay:-?}..$((T_ay + T_ph - 1)) (${T_ph:-?} tall) at ${T_ay} - ${T_btop:-?} = $((T_ay - ${T_btop:-0})) rows into the timeline's strip ${T_btop:-?}..${T_bbot:-?}, against rows ${G_ay:-?}..$((G_ay + G_ph - 1)) (${G_ph:-?} tall) at ${G_ay} - ${G_btop:-?} = $((G_ay - ${G_btop:-0})) rows into the graph's ${G_btop:-?}..${G_bbot:-?} - the two rulers' strips are the same rows of the same page"
 cols_ok=1
-near "${T_px:-0}" "${G_px:-0}" 2 || cols_ok=0
-near "${T_pw:-0}" "${G_pw:-0}" 2 || cols_ok=0
-check "$((1 - cols_ok))" "and its column is the same column OF ITS PAGE: ${T_px:-?}+${T_pw:-?} from the timeline page's splitter against ${G_px:-?}+${G_pw:-?} from the graph page's (the pages are different widths, so x is compared page-relative with the AA band's 2px; the pill is as wide on both because its width is the number's advance plus its padding, not a page measurement)"
+# EQUAL, not within an AA band: the pill is the model's rect drawn solid, and the model
+# measures it from the very string TimeCursor measures, with the host's own widget font
+# (the dock's stylesheet font). A tolerance here hid a 1px left shift and a 2px width
+# difference caused by measuring with QFont() instead.
+[ "${T_px:-0}" -eq "${G_px:-0}" ] || cols_ok=0
+[ "${T_pw:-0}" -eq "${G_pw:-0}" ] || cols_ok=0
+check "$((1 - cols_ok))" "and its column is the same column OF ITS PAGE: ${T_px:-?}+${T_pw:-?} from the timeline page's splitter against ${G_px:-?}+${G_pw:-?} from the graph page's (the pages are different widths, so x is page-relative). Start and width are EQUAL: the pill is the model's rect, measured from the same string with the same widget font TimeCursor uses - the 1px shift and 2px width difference of the QFont()-measured box are gone"
 
 # ---- 4. THE PILL'S INKS: the fill token, and the number's glyph ----
 fill_ok=1
@@ -860,10 +870,10 @@ check "$((1 - ink_ok))" "and the glyph's CORE ink is one token on both: the pixe
 # ---- 4b. ONE STATE: the two captures are the SAME FRAME at the SAME ZOOM ----
 # The probe seeks once and zooms once, both on the Timeline page, and the Graph capture is
 # taken without touching the state. The playhead LINE is the current frame's column on the
-# frame axis both views share, so the assertion is the same-frame check the pill's box
-# cannot be (the two rasterisers' fonts measure the frame text differently, which is why
-# the pill's width is compared with a tolerance). The line must lie under its own pill and
-# at the same page-relative column on both pages.
+# frame axis both views share, so the assertion is the direct same-frame check: the
+# playhead's COLUMN moves if the tab switch re-seeked, while the pill's box alone would
+# only report the frame text. The line must lie under its own pill and at the same
+# page-relative column on both pages.
 line_ok=1
 [ "${T_line:--1}" -ge 0 ] && [ "${G_line:--1}" -ge 0 ] || line_ok=0
 near "${T_line:--1}" "${G_line:--1}" 2 || line_ok=0

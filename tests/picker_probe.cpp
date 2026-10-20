@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QWidget>
 #include <QSlider>
+#include <QComboBox>
 #include <QSet>
 #include <QToolButton>
 #include <QDoubleSpinBox>
@@ -14,6 +15,7 @@
 #include <QTemporaryDir>
 #include <cstdio>
 #include "gui/prop/EasingPickWidget.h"
+#include "gui/prop/bezierCurveEditor.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/Icons.h"
 #include "util/Easing.h"
@@ -355,6 +357,208 @@ int main(int argc, char** argv) {
                 "curve family shifted by one (%d tile(s) for %d non-Custom entries + the preset), "
                 "Auto preset is index %d -> %s\n",
                 tileCount, util::Easing::displayCount() - 1, autoTileIndex, verdict(order));
+
+        // The preset's checked state and label read the PAIR it writes: with
+        // the automatic pair selected only tile-3 is checked, and the glyph
+        // button's name is the Param's user-facing name (the handle modes),
+        // not the interpolation type "Custom".
+        QToolButton* autoTile = w.findChild<QToolButton*>(QStringLiteral("tile-3"));
+        bool checkedOnlyAuto = autoTile != nullptr;
+        QString presetName;
+        if (autoTile) {
+            autoTile->click();
+            app.processEvents();
+            presetName = util::Easing::getParamName(w.value());
+            for (int i = 0; i < tileCount; ++i) {
+                QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
+                checkedOnlyAuto = checkedOnlyAuto && tile && tile->isChecked() == (i == 3);
+            }
+            checkedOnlyAuto = checkedOnlyAuto && presetName == autoTile->accessibleName()
+                && presetName == util::Easing::getHandleModeName(util::Easing::HandleMode_Auto)
+                && presetName != QLatin1String("Custom");
+        }
+        fprintf(stderr, "#10b Auto preset: checked only tile-3=%d, label='%s' -> %s\n",
+                int(checkedOnlyAuto), qPrintable(presetName), verdict(checkedOnlyAuto));
+
+        // ---- #10c ONE canonical Auto image, and its SHAPE ----
+        // The tile and the header's quick-easing button draw the same catalog
+        // image through gui::prop::autoPreviewContext(); "not equal to Linear" is
+        // not enough of a gate (the retired clamped pair's values also drew a
+        // non-linear curve - one that dived below the start and overshot the end).
+        // Assert the control points the pair DERIVES: the flat-ended ease-in-out
+        // (1/3, 0) and (2/3, 1).
+        {
+            const util::Easing::AutoContext ctx = gui::prop::autoPreviewContext();
+            util::Easing::Param preset;
+            preset.type = util::Easing::Type_Custom;
+            preset.handleIn = util::Easing::HandleMode_Auto;
+            preset.handleOut = util::Easing::HandleMode_Auto;
+            const QPointF out = util::Easing::controlPoint(preset, ctx.inMode, ctx, 1.0f, 0);
+            const QPointF in = util::Easing::controlPoint(preset, ctx.inMode, ctx, 1.0f, 1);
+            const bool shape = std::fabs(out.x() - 1.0 / 3.0) < 1e-6
+                && std::fabs(out.y() - 0.0) < 1e-6
+                && std::fabs(in.x() - 2.0 / 3.0) < 1e-6
+                && std::fabs(in.y() - 1.0) < 1e-6;
+            fprintf(stderr,
+                    "#10c Auto glyph: control points (%g,%g) and (%g,%g), expected (1/3,0)/(2/3,1) -> %s\n",
+                    out.x(), out.y(), in.x(), in.y(), verdict(shape));
+        }
+    }
+
+    // ---- #12 the chip's repaint cache compares the WHOLE AutoContext ----
+    // The chip's glyph depends on the TO key's arriving mode, which changes without
+    // either neighbour moving; its cache compare is AutoContext::operator==, so a
+    // context equal except for inMode must read as a change (and an identical one as
+    // no change). Neighbours alone are not the state.
+    {
+        const util::Easing::AutoContext base = gui::prop::autoPreviewContext();
+        util::Easing::AutoContext nextMode = base;
+        nextMode.inMode = util::Easing::HandleMode_AutoClamped;
+        util::Easing::AutoContext nextValue = base;
+        nextValue.next.value = 0.25f;
+        util::Easing::AutoContext prevFrame = base;
+        prevFrame.prev.frame = -3.0f;
+        const util::Easing::AutoContext copy = base;
+        const bool differs = (nextMode != base) && (nextValue != base) && (prevFrame != base);
+        const bool same = (copy == base) && !(copy != base);
+        fprintf(stderr,
+                "#12 chip cache: inMode-only differs=%d, next value differs=%d, prev frame differs=%d, "
+                "identical equal=%d -> %s\n",
+                int(nextMode != base), int(nextValue != base), int(prevFrame != base), int(same),
+                verdict(differs && same));
+    }
+
+    // ---- #11 the two handle-mode combos are ORDINARY FIELD CONTROLS ----
+    // They are a labelled field in the picker's own row structure (role bfield:
+    // 12px label above a 24px role=fi value, exactly like the bezier spins) and
+    // carry no stylesheet of their own. Their look is the app field rule the
+    // popover shares with the spins, not a bespoke combo style.
+    {
+        QComboBox* in = w.findChild<QComboBox*>("handle-in");
+        QComboBox* out = w.findChild<QComboBox*>("handle-out");
+        const QString css = w.styleSheet();
+        const bool plain = in && out
+            && in->styleSheet().isEmpty() && out->styleSheet().isEmpty()
+            && in->height() == 24 && out->height() == 24
+            && in->property("role").toString() == QLatin1String("fi")
+            && out->property("role").toString() == QLatin1String("fi")
+            && in->parentWidget() && out->parentWidget()
+            && in->parentWidget()->property("role").toString() == QLatin1String("bfield")
+            && out->parentWidget()->property("role").toString() == QLatin1String("bfield");
+        const bool appField = css.contains(QStringLiteral("QComboBox[role=\"fi\"]"))
+            && css.contains(QStringLiteral("QComboBox[role=\"fi\"]::down-arrow"))
+            && css.contains(QStringLiteral("caret-down.svg"))
+            && !css.contains(QStringLiteral("handle-in"))
+            && !css.contains(QStringLiteral("handle-out"));
+        fprintf(stderr,
+                "#11 handle-mode combos: plain field (no local stylesheet, bfield/fi, 24px)=%d, "
+                "app field rule (raised/border/caret, no id rules)=%d -> %s\n",
+                int(plain), int(appField), verdict(plain && appField));
+    }
+
+    // ---- #13 A DERIVED SIDE IS FREED BY EDITING ITS CONTROL POINT ----
+    // The bezier panel edits STORED control points. On a derived side (Auto/
+    // Vector/AutoClamped) that stored value is never read, so a drag/spin/paste
+    // there used to change nothing the curve plays - an inert editor. The rule is
+    // the graph drag's own: the edited side becomes Free, the other side is
+    // untouched (it keeps deriving if it was). A STORED side (Free/Aligned) keeps
+    // its mode - its stored value is what it reads, so the edit lands either way.
+    {
+        // (a) the spin for the INCOMING side (x2/y2, this param's handleIn).
+        EasingPickWidget p{util::Easing::Param()};
+        util::Easing::Param draft;
+        draft.type = util::Easing::Type_Custom;
+        draft.handleIn = util::Easing::HandleMode_Auto;
+        draft.handleOut = util::Easing::HandleMode_Aligned;
+        p.setValue(draft);
+        p.resize(300, p.maxContentHeight());
+        p.show();
+        app.processEvents();
+        QDoubleSpinBox* x2 = p.findChild<QDoubleSpinBox*>("bezier-x2");
+        QDoubleSpinBox* x1 = p.findChild<QDoubleSpinBox*>("bezier-x1");
+        bool spinFreed = x2 && x1;
+        if (spinFreed) {
+            x2->setValue(0.9);
+            app.processEvents();
+            spinFreed = p.value().handleIn == util::Easing::HandleMode_Free
+                && p.value().handleOut == util::Easing::HandleMode_Aligned
+                && std::fabs(double(p.value().cubicBezier.x2) - 0.9) < 1e-4;
+            // ...and a STORED side is not freed by its own edit.
+            x1->setValue(0.2);
+            app.processEvents();
+            spinFreed = spinFreed
+                && p.value().handleOut == util::Easing::HandleMode_Aligned
+                && std::fabs(double(p.value().cubicBezier.x1) - 0.2) < 1e-4;
+        }
+        fprintf(stderr,
+                "#13a derived-side spin: handleIn=Free, handleOut keeps Aligned, values stored=%d -> %s\n",
+                int(spinFreed), verdict(spinFreed));
+    }
+    {
+        // (b) a real canvas DRAG on the outgoing control point (x1/y1 -> handleOut).
+        EasingPickWidget p{util::Easing::Param()};
+        util::Easing::Param preset;
+        preset.type = util::Easing::Type_Custom;
+        preset.handleIn = util::Easing::HandleMode_Auto;
+        preset.handleOut = util::Easing::HandleMode_Auto;
+        p.setValue(preset);
+        p.show();
+        p.setCustom(); // the preset routes to the catalog; open the bezier panel
+        app.processEvents();
+        auto* stage = p.findChild<BezierCurveEditor*>("bezier-stage");
+        bool dragFreed = stage && stage->width() > 0 && stage->height() > 0;
+        if (dragFreed) {
+            stage->syncFromBezier();
+            stage->update();
+            app.processEvents();
+            const QPoint from(stage->m_points[BezierCurveEditor::ControlPoint1].toPoint());
+            const QPoint to(from.x() + 8, from.y() - 12);
+            QMouseEvent press(QEvent::MouseButtonPress, from, stage->mapToGlobal(from),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &press);
+            QMouseEvent move(QEvent::MouseMove, to, stage->mapToGlobal(to),
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &move);
+            QMouseEvent release(QEvent::MouseButtonRelease, to, stage->mapToGlobal(to),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &release);
+            app.processEvents();
+            dragFreed = p.value().handleOut == util::Easing::HandleMode_Free
+                && p.value().handleIn == util::Easing::HandleMode_Auto;
+        }
+        fprintf(stderr,
+                "#13b derived-side drag: handleOut=Free, the OTHER (Auto) side untouched=%d -> %s\n",
+                int(dragFreed), verdict(dragFreed));
+    }
+
+    // ---- #14 THE AUTO PRESET IS SHOWN AS CURRENT (catalog, tile checked) ----
+    // Entering a Custom param used to switch straight to the bezier panel, where
+    // the Auto tile cannot be seen - so a preset selected by the tile (or loaded
+    // from a key) could not say it was current. The preset routes to the catalog;
+    // an explicit Custom click still opens the bezier panel without changing it.
+    {
+        util::Easing::Param preset;
+        preset.type = util::Easing::Type_Custom;
+        preset.handleIn = util::Easing::HandleMode_Auto;
+        preset.handleOut = util::Easing::HandleMode_Auto;
+        EasingPickWidget p{util::Easing::Param()};
+        p.setValue(preset);
+        p.show();
+        app.processEvents();
+        QWidget* trow = p.findChild<QWidget*>("trow");
+        QWidget* bezier = p.findChild<QWidget*>("bezier-panel");
+        QToolButton* autoTile = p.findChild<QToolButton*>("tile-3");
+        const bool catalog = trow && bezier && autoTile
+            && trow->isVisible() && !bezier->isVisible() && autoTile->isChecked();
+        // The Custom segment still reaches the controls, keeping the pair.
+        p.setCustom();
+        app.processEvents();
+        const bool forced = bezier && bezier->isVisible()
+            && p.value() == preset;
+        fprintf(stderr,
+                "#14 Auto preset routed to the catalog (tile checked)=%d, Custom still opens the "
+                "bezier panel without changing the pair=%d -> %s\n",
+                int(catalog), int(forced), verdict(catalog && forced));
     }
 
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");

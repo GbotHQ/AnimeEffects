@@ -104,6 +104,22 @@ public:
     void scrollFramesBy(double aFrameDelta);
     void zoomFramesAbout(int aWheelDelta, double aAnchorFrame);
 
+    // THE FIT: scale and translate this widget's frame axis so the project's frame
+    // range is shown whole with the SAME gutter at each end (see
+    // ctrl::TimeLineEditor::fitFrameRange, which computes the two numbers). This is
+    // the header's fit button and the new-project fit (setProject), in one place.
+    // A widget with no laid-out width remembers the request and applies it on the
+    // first camera pass that has one.
+    void fitFrameRange();
+
+    // THE TEMPORARY PLAYBACK WINDOW'S GESTURE, for the animation graph's ruler band
+    // (ctrl::GraphEditor::setPlayWindowDelegate): one Begin/Drag/End step on the
+    // timeline's own ctrl::TimeLineEditor::PlayWindow. The window is the TIMELINE's
+    // state - the panel only overlays it - so the graph's Shift-drag moves exactly
+    // the window the timeline's own Shift-drag does, and this repaints both rulers.
+    // Returns true when the window's value changed.
+    bool updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame);
+
 private:
     virtual void mouseMoveEvent(QMouseEvent* aEvent);
     virtual void mousePressEvent(QMouseEvent* aEvent);
@@ -174,6 +190,9 @@ private:
     double mScrollbarDragAnchorValue;
     int mScrollbarDragAnchorX;
     double mScrollbarDragRatio;
+    // A fit requested before this widget had a laid-out width (a project opened on
+    // a hidden timeline): updateCamera applies it on the first pass that has one.
+    bool mFitPending;
     bool mIsPanning;
     // WHICH button started the pan. The pan is a gesture of one button, and
     // only that button's release may end it: while a middle-drag pan is in

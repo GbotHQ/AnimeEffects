@@ -342,10 +342,9 @@ namespace prop {
 
     template<typename T>
     void assignParam(T* key) {
-        QSettings settings;
-        util::Easing::Param aNext;
-        aNext.type = util::Easing::easingToEnum(QString());
-        aNext.range = util::Easing::rangeToEnum(QString());
+        // One reader of the stored defaults, so a retired Auto default becomes
+        // the automatic (CLAMPED) pair and every new-key path agrees.
+        const util::Easing::Param aNext = util::Easing::defaultParam();
         // A new key starts with every component on the same default curve; each
         // component then owns its own copy, so editing one cannot warp another.
         for (int component = 0; component < T::kComponents; ++component) {

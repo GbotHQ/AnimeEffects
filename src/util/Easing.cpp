@@ -122,6 +122,29 @@ QString Easing::getHandleModeName(const HandleMode aMode) {
     }
 }
 
+QString Easing::getParamName(const Param& aParam) {
+    if (aParam.type != Type_Custom)
+        return getTypeName(aParam.type);
+
+    // A Custom curve is its handle pair. Both sides equal are the five named
+    // presets Blender offers; a mixed pair names both sides, incoming first, so
+    // the chip can never claim a shape the two modes do not describe.
+    if (aParam.handleIn == aParam.handleOut) {
+        switch (aParam.handleIn) {
+        case HandleMode_Free:
+        case HandleMode_Aligned:
+        case HandleMode_Vector:
+        case HandleMode_Auto:
+        case HandleMode_AutoClamped:
+            return getHandleModeName(aParam.handleIn);
+        default:
+            break;
+        }
+    }
+    return getHandleModeName(aParam.handleIn) + QStringLiteral(" / ")
+        + getHandleModeName(aParam.handleOut);
+}
+
 QString Easing::getRangeName(const Range aRange) {
     switch (aRange) {
     case Range_In:
@@ -185,9 +208,9 @@ Easing::Type Easing::easingToEnum(QString easing) {
         return Type_Round;
     if (aEasing == "Auto")
         // The retired name: a project file's lane JSON or a stored default can
-        // still say it. There is no Auto TYPE any more - the caller that reads
-        // a saved easing (objToEasing) turns it into a Custom param with both
-        // handle sides Auto, which is what it meant.
+        // still say it. There is no Auto TYPE any more - the callers that read a
+        // saved easing (ctrl::TimeLineEditor::easingFromJson, defaultParam) turn it into a Custom param
+        // whose two sides are kDefaultAutomaticHandleMode, which is what it meant.
         return Type_Custom;
     if (aEasing == "Custom")
         return Type_Custom;
@@ -211,6 +234,46 @@ Easing::Range Easing::rangeToEnum(QString range) {
         return Range_InOut;
     return Range_InOut;
     // Default range is InOut, defined as "All" by Hidefuku
+}
+
+Easing::Param Easing::defaultParam() {
+    Param param;
+    param.range = rangeToEnum(QString());
+
+    QSettings settings;
+    const QVariant stored = settings.value("generalsettings/easing");
+    bool isOrdinal = false;
+    const int ordinal = stored.toInt(&isOrdinal);
+    if (isOrdinal) {
+        // 14 was Type_Auto before Type_Auto was retired and the id was left
+        // unused (now Type_TERM). A settings file written before 0.15 can still
+        // carry it; it meant the automatic (CLAMPED) handle pair, not unclamped
+        // Auto and not Linear.
+        if (ordinal == int(Type_TERM)) {
+            param.type = Type_Custom;
+            param.handleIn = kDefaultAutomaticHandleMode;
+            param.handleOut = kDefaultAutomaticHandleMode;
+            return param;
+        }
+        // The stored ordinal names an interpolation type directly (0.14+); the
+        // range test keeps an out-of-range byte from becoming an invalid param.
+        if (0 <= ordinal && ordinal < int(Type_TERM)) {
+            param.type = static_cast<Type>(ordinal);
+            return param;
+        }
+        param.type = Type_Linear;
+        return param;
+    }
+
+    const QString name = stored.toString();
+    if (name == QStringLiteral("Auto")) {
+        param.type = Type_Custom;
+        param.handleIn = kDefaultAutomaticHandleMode;
+        param.handleOut = kDefaultAutomaticHandleMode;
+        return param;
+    }
+    param.type = easingToEnum(name);
+    return param;
 }
 
 //-------------------------------------------------------------------------------------------------

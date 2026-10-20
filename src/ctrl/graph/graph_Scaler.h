@@ -205,11 +205,22 @@ public:
     // on either bar here, exactly the travel the timeline's bar makes.
     static constexpr int kScrollBarStepPixels = 24;
 
-    // The shortest a thumb may be drawn, whatever the window/content fraction is:
-    // Qt's own PM_ScrollBarSliderMin, asked from the application style at runtime
-    // (src/gui/AppStyle.cpp inherits it; nothing here hardcodes a length). Never
-    // longer than its track (a short track wins).
-    static int scrollBarSliderMin();
+    // THE REFERENCE IS THE TIMELINE'S OWN HANDLE ARITHMETIC, not QStyle's slider
+    // layout. gui::TimelineScrollBar paints from its model
+    // (TimeLineWidget.cpp: handleRect): the handle is the VIEWPORT's own pixel span
+    // over the UNION track, edge-rounded at both ends:
+    //     fx(v)  = int((v - trackMin) / (trackMax - trackMin) * trackLength + 0.5)
+    //     thumb  = [fx(viewLo), fx(viewHi)]   (width floored at 1px)
+    // There is NO style minimum and NO one-pixel-short cap: those are Qt's QScrollBar
+    // layout rules, and the panel must match the bar the user compares it with.
+    //
+    // The horizontal track is the project's frame range UNIONED with the visible
+    // window, plus the timeline's trailing margin past the range's last frame
+    // (kTimeLineMargin, 24px, in ctrl::TimeLineEditor). In frames that margin is
+    // 24 / framePpf(); it is what makes the timeline's handle leave a margin after
+    // the last frame when scrolled flush right. The vertical track is the shown
+    // value extent unioned with the value window (no trailing margin).
+    static constexpr int kScrollBarTrailingMargin = 24; // ctrl::TimeLineEditor::kTimeLineMargin
 
     // THE TWO SCROLL BARS' GEOMETRY, as one structure: the editor's press routing
     // and the model's drawing read THIS, so the bar a press grabs and the bar the
@@ -219,24 +230,18 @@ public:
     //     panel's bottom AND right edges, as the timeline's bar is).
     //   * vTrack: the panel's last 12 columns, from plot.top() to the row above
     //     hTrack (flush with the panel's right edge).
-    //   * hThumb/vThumb: the SLIDER'S RUN - the visible WINDOW inside the CONTENT,
-    //     laid out along the track and spanning the lane's thickness, by Qt's own
-    //     arithmetic (see scrollBars): run length = pageStep/content x track length,
-    //     floored at QStyle::PM_ScrollBarSliderMin and capped one pixel SHORT of the
-    //     track, and its offset = the window's own fraction of the TRAVEL (content -
-    //     page) across (track - length). The drawing layer paints a
-    //     kScrollBarPillThickness pill centred in the lane across this run, and
+    //   * hThumb/vThumb: the timeline's handle over that track (see above): the
+    //     window's span edge-rounded over the UNION track. The drawing layer paints
+    //     a kScrollBarPillThickness pill centred in the lane across this run, and
     //     nothing else: the trough is invisible.
     //
     // THE TWO LANES FOLLOW THE TIMELINE'S TWO BARS, measured per lane:
-    //   * hThumb is ALWAYS the slider - at zero travel (the window covers the content)
-    //     it IS the whole track. That is the timeline's horizontal bar, which is
-    //     AlwaysOn and draws its slider across the whole groove when the range is
-    //     empty (measured: 638 of 638px at zero travel). A full-length run cannot pan
-    //     anything, and hTravel() says so.
+    //   * hThumb is ALWAYS the handle - when the window covers the union track it
+    //     spans the whole track (the timeline's AlwaysOn bar). A full-length run
+    //     cannot pan anything, and hTravel() says so.
     //   * vThumb is EMPTY at zero travel: the timeline's vertical bar is AsNeeded and
     //     shows no ink when the tracks fit (measured: its right lane stays base).
-    //     A value run that fills its groove therefore means "the bar is hidden".
+    //     A value run that fills its track therefore means "the bar is hidden".
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).
@@ -245,17 +250,27 @@ public:
         QRect hThumb;
         QRect vTrack;
         QRect vThumb;
+        // Whether the bar has any TRAVEL, i.e. whether the window is narrower than
+        // the union track. This is NOT "the run is shorter than the track": a bar
+        // can be shorter for other reasons only in degenerate layouts, and the
+        // timeline's own drag/page rules ask the travel question directly.
+        bool hScrollable = false;
+        bool vScrollable = false;
+        // CONTENT UNITS PER LANE PIXEL for the grabbed axis. The timeline anchors its
+        // thumb drag on this ratio at press (beginScrollbarDrag), which is what makes
+        // the pill follow the pointer 1:1: a pointer delta dx moves the WINDOW by
+        // dx * trackSpan/trackLength, so the handle's offset moves by exactly dx.
+        double hContentPerPixel = 0.0;
+        double vContentPerPixel = 0.0;
 
         // True when there is no bar to draw and nothing to hit (an empty plot).
         bool isEmpty() const { return hTrack.isEmpty() && vTrack.isEmpty(); }
 
-        // WHETHER THE RUN CAN MOVE - the question a press, a lane wheel notch and a
-        // page step all ask, and NOT the same question as "is there a run to draw":
-        // the horizontal slider is drawn at zero travel too (see above), and panning
-        // it could only be a no-op. A run shorter than its track is exactly a positive
-        // travel (scrollBars caps it one pixel short when there is one).
-        bool hTravel() const { return !hThumb.isEmpty() && hThumb.width() < hTrack.width(); }
-        bool vTravel() const { return !vThumb.isEmpty() && vThumb.height() < vTrack.height(); }
+        // WHETHER THE RUN CAN MOVE - see the fields above. The horizontal slider is
+        // drawn at zero travel too (see the lane note), and panning it could only
+        // be a no-op.
+        bool hTravel() const { return hScrollable; }
+        bool vTravel() const { return vScrollable; }
     };
 
     // The bars for THIS scaler's plot rect. The horizontal bar scrolls the FRAME
@@ -264,13 +279,18 @@ public:
     // [frameAtPixel(plot.left()), frameAtPixel(plot.right() + 1)]. The vertical bar
     // scrolls the VALUE axis, so its content is the value extent of the shown
     // channels' keys (aValueContentLo/Hi, the extent ctrl::GraphEditor's value fit
-    // uses) and its window is valueMin()..valueMax(). A DEGENERATE content (lo ==
-    // hi, i.e. no key at all, or a project with no frame span) means "nothing to
-    // scroll", and its run then fills the track exactly as a fully visible window
-    // does - which is the full slider of the horizontal lane and, after the AsNeeded
-    // rule, no run at all for the vertical one (see ScrollBars). The value axis is INVERTED along its track - valueMax is at the track's
-    // top - which the layout accounts for, so a window at high values draws its
-    // thumb at the top.
+    // uses) and its window is valueMin()..valueMax().
+    //
+    // THE TRACK IS THE UNION, as the timeline's is: min(contentLo, windowLo) ..
+    // max(contentHi, windowHi), and the horizontal one also adds
+    // kScrollBarTrailingMargin pixels past the range's last frame (expressed in
+    // frames through framePpf()). A DEGENERATE content (lo == hi, i.e. no key at
+    // all, or a project with no frame span) therefore has a track of just the
+    // window: its handle fills the track exactly as a fully visible window does -
+    // the full handle of the horizontal lane and, after the AsNeeded rule, no run at
+    // all for the vertical one (see ScrollBars). The value axis is INVERTED along
+    // its track - valueMax is at the track's top - which the layout accounts for, so
+    // a window at high values draws its thumb at the top.
     ScrollBars scrollBars(
         double aFrameContentLo, double aFrameContentHi, double aValueContentLo, double aValueContentHi
     ) const;
@@ -307,8 +327,9 @@ public:
     // stays under it (the timeline's anchoring rule). Returns false when the
     // zoom is already clamped at the floor or ceiling and nothing moved.
     bool updateFrameZoom(int aWheelDelta, int aAnchorPixelX);
-    // Pans the frame axis by a pixel delta.
-    void panFrame(int aPixelDeltaX);
+    // Pans the frame axis by a pixel delta (fractional while the bar drag converts
+    // through the track's own content-per-pixel ratio).
+    void panFrame(double aPixelDeltaX);
     // Fits the frame window so every frame in [aLo,aHi] lands inside
     // plotRect(), with a small pad at both ends. This is the graph's OWN frame
     // axis - its own ctrl::time::Scaler instance - so the fit moves the graph's
@@ -337,8 +358,10 @@ public:
     // Zooms the value axis by aFactor about aAnchorPixelY (aFactor > 1 zooms in).
     // Returns false when the resulting window would be degenerate.
     bool updateValueZoom(float aFactor, int aAnchorPixelY);
-    // Pans the value axis by a pixel delta (positive moves the window down).
-    void panValue(int aPixelDeltaY);
+    // Pans the value axis by a pixel delta (positive moves the window down);
+    // fractional while the bar drag converts through the track's own
+    // content-per-pixel ratio.
+    void panValue(double aPixelDeltaY);
 
 private:
     // Measures axisLabelWidth()'s value. Called only while the memo is empty.

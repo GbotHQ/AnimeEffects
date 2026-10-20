@@ -68,7 +68,19 @@ public:
     // aHandleIndex 0 is the handle leaving `from`, 1 the handle arriving at `to`.
     // These read the STORED pair (what a gesture writes back); use
     // effectiveHandles() for the pair the curve is actually drawn with.
+    //
+    // "Fully authored": a Custom curve whose BOTH sides read their stored value.
+    // This is the STORED-PAIR question, never a per-side one: a segment with one
+    // derived side is not fully authored, but it still has a stored handle on the
+    // other side (see derivesHandle). Anything that publishes or draws handles one
+    // at a time must ask derivesHandle for that side.
     bool isCustom(const Segment& aSegment) const;
+    // Whether ONE side of the segment is derived (Vector/Auto/AutoClamped) rather
+    // than stored. aHandleIndex is the handlePoint order: 0 is the FROM key's
+    // outgoing side (its handleOut), 1 the TO key's incoming one (inMode). This is
+    // the per-side rule the drawing layer and the hit-test share: a derived side
+    // is a ghost, a stored side is the document's handle.
+    static bool derivesHandle(const Segment& aSegment, int aHandleIndex);
     static QPointF handle(const Segment& aSegment, int aHandleIndex);
     // Writes a handle back into an easing param: x is clamped into [0,1] (a
     // cubic bezier requires it) while y stays free, so overshoot remains
@@ -97,7 +109,9 @@ public:
     // the Scaler. aSamplesPerSegment bounds the error of the analytic curves (one sample per frame is
     // NOT enough: Expo and Elastic are steep inside a single frame at high zoom) and is spent on the
     // part of each segment the window SHOWS, plus each touched segment's own endpoints for the caller
-    // to clip against. The frames outside the keys follow setLoop below.
+    // to clip against. The frames outside the keys follow setLoop below: a hold SPANS the window even
+    // when the window misses the keys entirely (a horizontal segment at the nearest key's value),
+    // because a polyline of one point is not a drawable curve.
     void buildPolyline(core::Frame aFrom, core::Frame aTo, int aSamplesPerSegment, QVector<QPointF>& aOut) const;
 
     // How the frames OUTSIDE the keys are evaluated, which is the project's own playback rule
@@ -116,7 +130,9 @@ public:
 
     // The easing param that shapes one key's segment of a graph channel, for a
     // graphable type and one of its components. Null for a type that carries no
-    // easing (bone, mesh, pose, FFD) and for a component the type does not have.
+    // easing (bone, mesh) and for a component the type does not have. Pose and
+    // FFD store one shared param at index 0 (their channel count is 0, but the
+    // timeline chip and the header's quick easings edit them), so they answer it.
     static const util::Easing::Param* easingOf(const core::TimeKey& aKey, core::TimeKeyType aType, int aComponent);
     static util::Easing::Param* easingOf(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent);
 

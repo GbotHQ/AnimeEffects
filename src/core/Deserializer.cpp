@@ -157,15 +157,17 @@ bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
         aValue.handleIn = util::Easing::HandleMode_Free;
     }
     // THE RETIRED TYPE. Id 14 was Type_Auto, which had no stored handles: its
-    // pair was derived from the neighbours. It is now Type_Custom with BOTH
-    // sides Auto - exactly what that type meant - so a legacy curve keeps its
-    // derived shape. The test is only for pre-0.15 files: at 0.15 the value is
-    // Type_TERM and isValidParam() rejects it rather than silently accepting a
-    // file that should never have written it.
+    // pair was derived from the neighbours and ALWAYS CLAMPED into the value
+    // range (the old autoHandles clamped unconditionally). It becomes Type_Custom
+    // with both sides on kDefaultAutomaticHandleMode - auto CLAMPED - so a legacy curve
+    // keeps the shape it played; unclamped Auto would change it and can overshoot.
+    // The test is only for pre-0.15 files: at 0.15 the value is Type_TERM and
+    // isValidParam() rejects it rather than silently accepting a file that should
+    // never have written it.
     if (!postHandleModes && rawType == 14) {
         aValue.type = util::Easing::Type_Custom;
-        aValue.handleOut = util::Easing::HandleMode_Auto;
-        aValue.handleIn = util::Easing::HandleMode_Auto;
+        aValue.handleOut = util::Easing::kDefaultAutomaticHandleMode;
+        aValue.handleIn = util::Easing::kDefaultAutomaticHandleMode;
     }
     if (!aValue.isValidParam() && errorCorrection) {
         aValue = util::Easing::Param();

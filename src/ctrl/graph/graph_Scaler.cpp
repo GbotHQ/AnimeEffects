@@ -1,9 +1,7 @@
 #include "ctrl/graph/graph_Scaler.h"
 
-#include <QApplication>
 #include <QFont>
 #include <QFontMetrics>
-#include <QStyle>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -132,92 +130,73 @@ namespace graph {
     }
 
     //-------------------------------------------------------------------------------------------------
-    // The thumb of one bar, in its track's own pixels. aInverted says the track runs
-    // AGAINST the coordinate axis (the value axis: valueMax is at the track's top),
-    // so the content and the window are read in track order and the whole layout
-    // below is one arithmetic for both bars.
+    // THE TIMELINE'S HANDLE, in the track's own pixels.
     //
-    // THE ARITHMETIC IS Qt's OWN (QScrollBarPrivate::sliderLength() and the slider
-    // position in updateScrollBar()), because the application's scroll bar is a
-    // QScrollBar and the panel's must page, step and drag like one:
+    // gui::TimelineScrollBar does not use QScrollBar's value-driven slider layout:
+    // projectHorizontalScrollBar builds a UNION track (the project's range never
+    // clamps the view) and paintEvent draws handleRect(), which maps the viewport's
+    // two edges over the FULL track and rounds each edge:
     //
-    //   totalSteps = content - pageStep                // the travel the window can make
-    //   length     = qRound(pageStep / content * track) // Qt divides by
-    //                                                  // (totalSteps + pageStep), i.e. content
-    //   offset     = qRound((windowLo - contentLo) / totalSteps * (track - length))
+    //     fx(v) = int((v - trackMin) / (trackMax - trackMin) * trackLength + 0.5)
+    //     thumb = [fx(viewLo), fx(viewHi)]           (width floored at 1px)
     //
-    // with the LENGTH floored at QStyle::PM_ScrollBarSliderMin (the style's minimum,
-    // asked at runtime - not a literal) and capped at the track. The OFFSET is a
-    // fraction of the TRAVEL across the space the pill can use (track - length), so
-    // the pill is flush with the track's far end when the window is at the content's
-    // far end - which the old fraction-of-the-whole-track form could not do, and
-    // which is why the pill and the pointer disagreed at the ends.
+    // There is no style minimum and no one-pixel-short cap here - those are Qt's
+    // QScrollBar layout rules, and the panel's bar is compared with the timeline's,
+    // not with a stock QScrollBar. aInverted reads the value axis in TRACK order
+    // (valueMax at the top) so both axes share this one arithmetic.
     //
-    // A WINDOW THAT COVERS ITS CONTENT HAS A FULL-LENGTH SLIDER, NOT NO SLIDER. Qt's
-    // QScrollBar is drawn with its slider across the whole groove whenever the range is
-    // empty - the bar is still there, it simply has nowhere to go - and the timeline's
-    // own bar measures exactly that (638 of its 638px lane at zero travel). Removing
-    // the run instead left the panel with no bars at all in the common state where the
-    // window covers the content, beside a timeline that always has them.
-    //
-    // So this returns the FULL TRACK when the travel is zero (or negative: the window
-    // is wider than the content), and the run otherwise. THE TEST IS THE TRAVEL, NOT
-    // THE ROUNDED LENGTH: a window two percent short of a 600-frame content is 0.983 of
-    // it, and on a short track that fraction ROUNDS UP TO THE WHOLE TRACK - removing
-    // the run when the rounded length reached the track deleted the bar exactly where
-    // the timeline still drew one. The travel is measured in the TRACK'S OWN PIXELS:
-    // half a pixel is the resolution a pill can express, and below it the length would
-    // round to the track, i.e. read as "nothing to scroll" anyway. That also keeps the
-    // mapping's floating noise out: a window equal to its content to within 1e-13
-    // frames (frameAtPixel of its own far edge) is not travel.
-    static QRect scrollThumbRect(
+    // The track is the UNION of content and window: a window panned off the content
+    // still lies inside its own track, so the handle is flush with the edge it pokes
+    // through. `travel` is the window's own question (is it narrower than the
+    // track?), and `contentPerPixel` is the ratio the drag anchors on: a pointer
+    // delta dx moves the window by dx * trackSpan/trackLength, which moves the
+    // handle's offset by exactly dx - the 1:1 drag the timeline has.
+    struct BarLayout {
+        QRect thumb;
+        bool travel = false;
+        double contentPerPixel = 0.0;
+    };
+
+    static BarLayout timelineHandle(
         const QRect& aTrack, bool aHorizontal, bool aInverted, double aContentLo, double aContentHi,
         double aWindowLo, double aWindowHi
     ) {
+        BarLayout out;
         if (aTrack.isEmpty())
-            return QRect();
+            return out;
         const int trackLength = aHorizontal ? aTrack.width() : aTrack.height();
+        if (trackLength <= 0)
+            return out;
 
-        // Track order. The frame axis runs WITH its content (a bigger frame is further
-        // right); the value axis runs AGAINST it (a bigger value is nearer the top), so
-        // the value coordinate is NEGATED - content [lo,hi] becomes [-hi,-lo] along the
-        // track - and both axes are then one arithmetic. Sorting the window's two
-        // edges keeps a pair handed over the other way round from drawing a negative
-        // thumb.
         const double windowLow = aInverted ? -std::max(aWindowLo, aWindowHi) : std::min(aWindowLo, aWindowHi);
         const double windowHigh = aInverted ? -std::min(aWindowLo, aWindowHi) : std::max(aWindowLo, aWindowHi);
-        const double contentLo = aInverted ? -aContentHi : aContentLo;
-        const double contentHi = aInverted ? -aContentLo : aContentHi;
-
-        const double contentSpan = contentHi - contentLo;
+        const double contentLo = aInverted ? -std::max(aContentLo, aContentHi) : std::min(aContentLo, aContentHi);
+        const double contentHi = aInverted ? -std::min(aContentLo, aContentHi) : std::max(aContentLo, aContentHi);
         const double pageSpan = windowHigh - windowLow;
-        if (!(contentSpan > 0.0) || !(pageSpan > 0.0))
-            return QRect(); // a degenerate content or window is "nothing to scroll"
-        const double travel = contentSpan - pageSpan;
-        // The floor is the style's minimum slider, the ceiling one pixel SHORT of the
-        // track (see A WINDOW THAT COVERS ITS CONTENT above): the clamp is well-formed
-        // even for a degenerate 1px track, where floor and ceiling meet.
-        const int minLength = std::min(Scaler::scrollBarSliderMin(), trackLength);
-        const int maxLength = std::max(minLength, trackLength - 1);
-        if (!(travel > 0.0) || !(travel / contentSpan * double(trackLength) >= 0.5))
-            return aTrack; // no travel a pill can express: the slider fills its groove
-        const int thumbLength =
-            std::clamp(int(std::lround(pageSpan / contentSpan * trackLength)), minLength, maxLength);
-        const double start = std::clamp((windowLow - contentLo) / travel, 0.0, 1.0);
-        const int offset = std::clamp(
-            int(std::lround(start * (trackLength - thumbLength))), 0, trackLength - thumbLength
-        );
-        return aHorizontal ? QRect(aTrack.left() + offset, aTrack.top(), thumbLength, aTrack.height())
-                           : QRect(aTrack.left(), aTrack.top() + offset, aTrack.width(), thumbLength);
-    }
+        if (!(pageSpan > 0.0))
+            return out; // a degenerate window is "nothing to lay out"
 
-    int Scaler::scrollBarSliderMin() {
-        // Qt's own minimum slider length for the application's style. AppStyle is a
-        // QProxyStyle over the platform style and only overrides the EXTENT
-        // (PM_ScrollBarExtent -> 12), so this is the same number Qt's own QScrollBar
-        // would use - the whole point of asking instead of writing a constant.
-        // QStyle is a widget-module class: ctrl links Qt::Widgets already.
-        return qMax(1, QApplication::style()->pixelMetric(QStyle::PM_ScrollBarSliderMin));
+        // THE UNION TRACK, the timeline's range: content and window, whichever
+        // reaches further at each end.
+        const double trackLo = std::min(contentLo, windowLow);
+        const double trackHi = std::max(contentHi, windowHigh);
+        const double trackSpan = trackHi - trackLo;
+        if (!(trackSpan > 0.0))
+            return out;
+
+        // handleRect's edge rounding, over the FULL track (no groove inset).
+        const auto edge = [&](double aValue) {
+            return int((aValue - trackLo) / trackSpan * double(trackLength) + 0.5);
+        };
+        const int start = edge(windowLow);
+        const int end = edge(windowHigh);
+        const int thumbLength = std::max(end - start, 1);
+        out.thumb = aHorizontal
+            ? QRect(aTrack.left() + start, aTrack.top(), thumbLength, aTrack.height())
+            : QRect(aTrack.left(), aTrack.top() + start, aTrack.width(), thumbLength);
+        out.travel = trackSpan > pageSpan;
+        out.contentPerPixel = trackSpan / double(trackLength);
+        return out;
     }
 
     Scaler::ScrollBars Scaler::scrollBars(
@@ -249,24 +228,36 @@ namespace graph {
         // instead of the fitted one (mFrameWindowRect) scales the window by the two
         // widths' ratio, which is how a narrower window on screen came out as "no
         // travel" and no bar at all.
+        //
+        // THE TRAILING MARGIN is the timeline's: frameEnd = frameEndPixel() +
+        // kTimeLineMargin, so the bar's content reaches one margin past the last
+        // frame's tick. It is a PIXEL margin (24), converted here to frames at the
+        // axis' own rate - which is what makes the panel's denominator the timeline's,
+        // not the raw project span.
         const QRect frameWindow =
             (mFramePpf > 0.0 && !mFrameWindowRect.isEmpty()) ? mFrameWindowRect : plot;
-        bars.hThumb = scrollThumbRect(
-            bars.hTrack, true, false, aFrameContentLo, aFrameContentHi,
+        const double marginFrames = double(kScrollBarTrailingMargin) / framePpf();
+        const BarLayout horizontal = timelineHandle(
+            bars.hTrack, true, false, aFrameContentLo, aFrameContentHi + marginFrames,
             frameAtPixel(frameWindow.left()), frameAtPixel(frameWindow.left() + frameWindow.width())
         );
+        bars.hThumb = horizontal.thumb;
+        bars.hScrollable = horizontal.travel;
+        bars.hContentPerPixel = horizontal.contentPerPixel;
+
         // THE VERTICAL LANE FOLLOWS THE TIMELINE'S OWN VERTICAL BAR, which is
         // AsNeeded: in the state where the tracks fit, its lane carries NO ink at all
-        // (measured: columns 876..893 stay the base surface). So a value run that
-        // fills its groove is DROPPED here - the bar is hidden, not drawn full - while
-        // the horizontal one above is the timeline's AlwaysOn bar and keeps its full
-        // slider. The two policies are the reference's, measured per lane, not one
-        // rule applied twice.
-        const QRect valueRun = scrollThumbRect(
+        // (measured: columns 876..893 stay the base surface). So a bar with no travel
+        // is DROPPED here - hidden, not drawn full - while the horizontal one above is
+        // the timeline's AlwaysOn bar and keeps its handle. The two policies are the
+        // reference's, measured per lane, not one rule applied twice.
+        const BarLayout vertical = timelineHandle(
             bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
             static_cast<double>(valueMax())
         );
-        bars.vThumb = (valueRun.height() < bars.vTrack.height()) ? valueRun : QRect();
+        bars.vThumb = vertical.travel ? vertical.thumb : QRect();
+        bars.vScrollable = vertical.travel;
+        bars.vContentPerPixel = vertical.contentPerPixel;
         return bars;
     }
 
@@ -343,7 +334,7 @@ namespace graph {
         return true;
     }
 
-    void Scaler::panFrame(int aPixelDeltaX) { mFrameOffset += static_cast<double>(aPixelDeltaX); }
+    void Scaler::panFrame(double aPixelDeltaX) { mFrameOffset += aPixelDeltaX; }
 
     //-------------------------------------------------------------------------------------------------
     void Scaler::fitFrameAxis(core::Frame aLo, core::Frame aHi) {
@@ -477,7 +468,7 @@ namespace graph {
     }
 
     //-------------------------------------------------------------------------------------------------
-    void Scaler::panValue(int aPixelDeltaY) {
+    void Scaler::panValue(double aPixelDeltaY) {
         const double height = plotHeight();
         const double span = static_cast<double>(mValueMax) - mValueMin;
         if (!(height > 0.0) || !(span > 0.0))

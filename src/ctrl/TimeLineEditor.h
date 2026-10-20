@@ -4,9 +4,12 @@
 #include <QRect>
 #include <QVector>
 #include <QScopedPointer>
+#include <QJsonObject>
 #include <cmath>
+#include <functional>
 #include "gui/obj/obj_Item.h"
 #include "util/Range.h"
+#include "util/Easing.h"
 #include "util/LinkPointer.h"
 #include "util/PlacePointer.h"
 #include "core/Project.h"
@@ -76,6 +79,20 @@ public:
         }
     };
 
+    // THE WINDOW GESTURE, as the three steps an input handler delivers: a
+    // press anchors it (nothing is visible yet), the first drag materializes
+    // it, and the release applies the gesture's ending rule (a press with no
+    // drag, or a drag that collapsed to one frame, dismisses it). Both rulers
+    // drive these exact steps - the timeline's own Shift-press/drag/release in
+    // updateCursor and the animation graph's band through
+    // gui::TimeLineWidget::updatePlayWindow - so there is ONE gesture, not a
+    // copy with its own edge cases.
+    enum class PlayWindowStep { Begin, Drag, End };
+    // Applies one step of the gesture at aFrame (clamped into the project
+    // frame range, as the window always is). Returns true when the window's
+    // value changed; Begin never does by itself.
+    bool updatePlayWindow(PlayWindowStep aStep, core::Frame aFrame);
+
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);
     void setFrameRange(const util::Range& aRange);
@@ -142,6 +159,38 @@ public:
     // New-scale position of the content point under the mouse, computed
     // pixel-exact from the old scale (see implementation for why).
     int anchorPixelAfterScale(int aContentPixel, double aOldSpacing) const;
+
+    // THE TIMELINE'S FIT, computed here because both numbers are properties of
+    // this axis (the ladder and the margin token): the rung to show the frame
+    // range at, and the content pixel the viewport's left edge must sit on.
+    //
+    // The range is CENTRED, not pushed against an edge: the content axis keeps
+    // its own kTimeLineMargin gutter before frame min, and the result leaves the
+    // SAME gutter after frame max - so a fit reads as symmetric padding instead
+    // of "flush left, whatever is left over on the right". The rung is the
+    // sparsest one whose rate still fits the span plus a gutter at each end, so
+    // the padding is never the arbitrary remainder of the next rung up, and a
+    // negative-centred range is additionally capped so the centred view stays
+    // inside gui::TimeLineWidget::updateCamera's overlap bound.
+    //
+    // viewLeftPixel is on the content pixel grid (whole pixels, like the view
+    // transform), which keeps the two paddings within one pixel of each other.
+    // aViewportWidth <= 0 answers the CURRENT rung and no view.
+    struct FrameFit {
+        int scaleIndex = 0;
+        int viewLeftPixel = 0;
+        bool valid = false;
+    };
+    FrameFit fitFrameRange(double aViewportWidth) const;
+
+    // WHICH PROJECT CHANGES ARE FITTED (see gui::TimeLineWidget::setProject):
+    // a project that arrives from NO project is newly opened or newly created, so
+    // the timeline has no view of it and starts fitted; a project that replaces
+    // another one is a tab switch back to a project this widget is already
+    // showing, and its live zoom/pan is the user's saved view - kept.
+    static bool fitsOnProjectAttach(bool aHadProject, bool aHasProject) {
+        return !aHadProject && aHasProject;
+    }
     // The VIEW translation (content px == screen px) of ONE anchored zoom notch,
     // and the sub-pixel part of it that the whole-pixel view transform cannot
     // apply yet. aAnchorFrame is the frame under the caller's cursor, FRACTIONAL
@@ -218,8 +267,47 @@ public:
     const time::Selection& selection() const { return mSelection; }
     static QString pasteCbKeys(gui::obj::Item* objItem, util::LifeLink::Pointee<core::Project> project, bool isFolder);
     static QList<core::TimeKey*> getTypesFromCb(util::LifeLink::Pointee<core::Project> project, core::ObjectNode *node);
+
+    // ---- THE CLIPBOARD'S EASING PAYLOAD ----
+    //
+    // The lane JSON carries one easing per COMPONENT now (a Move key has X and Y,
+    // a Blur key three). The writer (gui::TimeLineEditorWidget's copy) and the
+    // reader (getTypesFromCb, below) use these two functions, so the field names
+    // and the fallbacks cannot drift:
+    //   eType   the name (util::Easing::getTypeName; "Auto" for the legacy Auto)
+    //   eRange  the range name;  eWeight the blend
+    //   eIn/eOut the two HANDLE MODES as their enum ordinals (0.15+)
+    //   x1,y1,x2,y2 the stored cubic, so a Custom curve's shape survives a copy
+    // A payload without eIn/eOut predates the per-side model. Its "Auto" name
+    // meant the retired Auto TYPE - both sides CLAMPED
+    // (kDefaultAutomaticHandleMode), not the explicit Auto preset the current
+    // writer still names "Auto" for older readers. The per-component "eEasings"
+    // array is therefore what a reader trusts; the top-level fields are the
+    // component-0 fallback for payloads that carry no array (and for old builds
+    // reading a new clipboard).
+    static QJsonObject easingToJson(const util::Easing::Param& aParam);
+    static util::Easing::Param easingFromJson(const QJsonObject& aObject);
+    // Every component's param for one key: the eEasings array when present, else
+    // the top-level fields broadcast to aStoredCount components (which is
+    // lossless for pre-per-component payloads).
+    static QVector<util::Easing::Param> easingsFromJson(
+        const QJsonObject& aObject, int aStoredCount);
     bool pasteCopiedKeys(core::TimeLineEvent& aEvent, const QPoint& aWorldPos);
     void deleteCheckedKeys(core::TimeLineEvent& aEvent);
+    // THE SELECTION'S EASING EDIT: apply aNext to every COMPONENT the live
+    // selection names, as ONE undo step (one macro, one notification naming every
+    // key written). This lives here because the selection and the document do; the
+    // timeline widget's picker and quick easings are its callers, and the animation
+    // graph's own action is the same rule over its channels.
+    //
+    // A marker entry (graph-panel press) edits ONLY its component; a whole-key entry
+    // (every timeline gesture) edits every component the type stores. Pose/FFD
+    // answer their one shared param at component 0; an Image key's stored pair is
+    // editable too. A key whose type carries no easing is skipped, and so is a
+    // component aNext would not change, so an edit that changes nothing leaves no
+    // history entry behind. TRUE when something was written.
+    bool assignSelectionEasing(
+        const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
     // The "creation selects its output" rule. Call this after new keys are
     // created (a push/copy notification): the current selection is cleared and
     // replaced with exactly the created keys carried by aEvent. Gesture and

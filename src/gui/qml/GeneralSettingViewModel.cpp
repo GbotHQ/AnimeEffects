@@ -56,7 +56,59 @@ QVariantList GeneralSettingViewModel::easingOptions() const {
         map.insert(QStringLiteral("value"), out.size());
         out.append(map);
     }
+    // The MODE pair a default can be, as its own option (see the header).
+    QVariantMap automatic;
+    automatic.insert(
+        QStringLiteral("label"),
+        util::Easing::getHandleModeName(util::Easing::kDefaultAutomaticHandleMode));
+    automatic.insert(QStringLiteral("value"), autoClampedOptionIndex());
+    out.append(automatic);
     return out;
+}
+
+int GeneralSettingViewModel::autoClampedOptionIndex() {
+    // The non-Custom entries, in display order; the mode option follows them.
+    int count = 0;
+    for (int i = 0; i < util::Easing::displayCount(); ++i) {
+        if (util::Easing::typeAtDisplayIndex(i) != util::Easing::Type_Custom)
+            ++count;
+    }
+    return count;
+}
+
+int GeneralSettingViewModel::optionForSetting(const QVariant& aStored) {
+    const int linear = util::Easing::displayIndexOf(util::Easing::Type_Linear);
+    if (!aStored.isValid())
+        return linear;
+
+    bool isOrdinal = false;
+    const int ordinal = aStored.toInt(&isOrdinal);
+    if (isOrdinal) {
+        if (ordinal == int(util::Easing::Type_TERM))
+            return autoClampedOptionIndex(); // the retired Auto id: the clamped pair
+        const util::Easing::Type type = static_cast<util::Easing::Type>(ordinal);
+        const int index = util::Easing::displayIndexOf(type);
+        return (type == util::Easing::Type_Custom || index < 0 || index >= autoClampedOptionIndex())
+                   ? linear
+                   : index;
+    }
+
+    const QString name = aStored.toString();
+    if (name == QStringLiteral("Auto"))
+        return autoClampedOptionIndex(); // the retired NAME: the clamped pair
+    const util::Easing::Type type = util::Easing::easingToEnum(name);
+    const int index = util::Easing::displayIndexOf(type);
+    return (type == util::Easing::Type_Custom || index < 0 || index >= autoClampedOptionIndex())
+               ? linear
+               : index;
+}
+
+int GeneralSettingViewModel::storedValueForOption(const int aOptionIndex) {
+    if (aOptionIndex == autoClampedOptionIndex())
+        // 14 is Type_TERM, deliberately not reused: defaultParam reads it as
+        // Custom + kDefaultAutomaticHandleMode.
+        return int(util::Easing::Type_TERM);
+    return int(util::Easing::typeAtDisplayIndex(aOptionIndex));
 }
 
 QVariantList GeneralSettingViewModel::rangeOptions() const {

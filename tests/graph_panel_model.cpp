@@ -29,9 +29,13 @@
 //     pixels, and every frame label box lies inside the RULER BAND above the plot
 //     (the band is a section outside the plot, and no label reaches into the plot)
 //   3 the ladder follows the scaler: a label's number is scale.frameAt(tick),
-//     neighbouring label boxes keep a minimum gap, and every published tier is one
+//     neighbouring label boxes keep a minimum gap, every published tier is one
 //     of the three the ruler draws and is the ladder's own level for that tick's
-//     frame (index-aligned with the positions)
+//     frame (index-aligned with the positions), and every label box is the
+//     TIMELINE'S slot - tick-centred, 6px per character, nudged inside the band -
+//     at 1, 2 and 3 digits (the 1-digit case measured on a second window, 0..8,
+//     because the fitted window's only one-digit numbers sit under the playhead
+//     pill)
 //   4 curves: exactly one per shown (target, channel) - the same set and the
 //     same order as the editor's own curves() and as the channel list's rows -
 //     each with >1 point, key rects clipped into the plot and equal to
@@ -624,6 +628,9 @@ int main(int argc, char** argv) {
         int wrongText = 0;
         int noFrame = 0;
         int noTick = 0;
+        int wrongBoxWidth = 0;
+        int wrongBoxLeft = 0;
+        int timelineBoxes[4] = {0, 0, 0, 0}; // 1..3 digits verified as the timeline's slot
         int minGap = std::numeric_limits<int>::max();
         int previousRight = std::numeric_limits<int>::min();
         bool anyPrevious = false;
@@ -681,14 +688,111 @@ int main(int argc, char** argv) {
             }
         }
 
-        std::printf("[3] sampled %d frame labels, %d not equal to frameToString(frame), %d without a frame,"
-                    " %d without the tick of their own frame, minimum gap between neighbouring boxes=%d px\n",
-                    sampled, wrongText, noFrame, noTick, sampled > 1 ? minGap : -1);
+        // THE TIMELINE'S SLOT, NOT A MEASURED BOX. TimeRuler reserves
+        // kNumberCharWidth (6) per character and draws the number with Qt's default
+        // LEFT alignment from `left = tickX - (reserve >> 1)` inside that reserve
+        // (src/gui/TimeRuler.cpp:108, :231, :272-278). The panel must publish the
+        // same integer slot: same width, same left edge, so the drawing layer can
+        // anchor the run at the box's left instead of centring it on the drawing
+        // font's advance (that subtraction is the 1px left shift this test exists
+        // to prevent). The nudge inside the band is the panel's only allowed
+        // difference.
+        const auto measureSlots = [&](const gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale,
+                                      const char* aWindow) {
+            for (const gui::PanelLabel& label : aModel.frameLabels) {
+                // A merged boundary label names TWO frames in one box: it has no one
+                // frame of its own to centre on.
+                if (label.endFrame >= 0 || label.frame < 0)
+                    continue;
+                const int reserve = numberReserve * int(label.text.size());
+                const int tickX = aScale.pixelX(core::Frame(label.frame));
+                const int unclampedLeft = tickX - (reserve >> 1);
+                const int expectedLeft = std::clamp(
+                    unclampedLeft, aModel.rulerBand.left(), aModel.rulerBand.right() - reserve + 1
+                );
+                if (label.rect.width() != reserve)
+                    ++wrongBoxWidth;
+                if (label.rect.left() != expectedLeft)
+                    ++wrongBoxLeft;
+                if (label.rect.left() == unclampedLeft && label.text.size() >= 1 && label.text.size() <= 3) {
+                    ++timelineBoxes[int(label.text.size())];
+                    if (label.text.size() == 1) {
+                        std::printf(
+                            "[3] %s: one-digit label \"%s\" frame=%d tickX=%d unclampedLeft=%d"
+                            " box x=%d..%d (band %d..%d)\n",
+                            aWindow, qUtf8Printable(label.text), label.frame, tickX, unclampedLeft,
+                            label.rect.left(), label.rect.right(), aModel.rulerBand.left(),
+                            aModel.rulerBand.right()
+                        );
+                    }
+                }
+            }
+        };
+        measureSlots(model, scale, "fitted window");
+
+        // A SECOND WINDOW BUILT FOR THE ONE-DIGIT CASE. The fitted window above is the
+        // graph's own ladder at its seed rung (1.1 px/frame, a number every 96 frames).
+        // Its only one-digit frame labels are the ladder's 0 and the project's first
+        // frame, 1 - and both fall inside the playhead's pill (the document is on frame
+        // 1, so the pill spans those columns), which is why no one-digit box survives
+        // it. This window maps 0..8 across the panel (1280 / 8 = 160 px/frame): every
+        // frame is then a numbered major tick, so frames 2..7 are one-digit labels well
+        // inside the band and the identity is exercised where `reserve` (6px) is far
+        // from the drawing font's advance. Frame 0 is clamped at the band's left edge
+        // and frame 1 is the playhead's, which is why the printed list starts at 2. A
+        // SECOND EDITOR: the main one's frame axis is the graph's own, and a shared
+        // window applied to it could not be undone exactly (clearFrameWindow leaves the
+        // offset and the ladder rung it rewrote).
+        ctrl::GraphEditor digitsEditor(project, logger);
+        digitsEditor.scale().setRect(panel);
+        digitsEditor.setTargets({ &nodeA, &nodeB });
+        digitsEditor.setFrameWindow(0.0, 8.0);
+        const gui::GraphPanelModel digits = gui::buildGraphPanelModel(digitsEditor, viewport, palette);
+        ctrl::graph::Scaler digitsScale = digitsEditor.scale();
+        digitsScale.setRect(panel);
+        measureSlots(digits, digitsScale, "one-digit window 0..8");
+        int digitsLabels = 0;
+        int digitsWrongText = 0;
+        for (const gui::PanelLabel& label : digits.frameLabels) {
+            if (label.endFrame >= 0 || label.text != format.frameToString(label.frame, formatType))
+                ++digitsWrongText; // every box names the frame it publishes, the formatter's way
+            digitsLabels += int(label.text.size() == 1);
+        }
+        std::printf(
+            "[3] one-digit window 0..8: labels=%d (all one digit=%d, wrong text=%d), ticks=%d,"
+            " pxPerFrame=%.3f, playhead frame=%d x=%d\n",
+            isz(digits.frameLabels), digitsLabels, digitsWrongText, isz(digits.frameTickX),
+            digitsScale.framePpf(), digitsEditor.currentFrame().get(), digits.playheadX
+        );
+        CHECK(!digits.frameLabels.isEmpty());
+        CHECK(digitsWrongText == 0);
+        CHECK(digitsLabels == isz(digits.frameLabels)); // the window's whole point: no 2/3-digit label in it
+        CHECK(digitsScale.framePpf() == 160.0);         // 0..8 across a 1280px panel
+
+        std::printf(
+            "[3] sampled %d frame labels, %d not equal to frameToString(frame), %d without a frame,"
+            " %d without the tick of their own frame, minimum gap between neighbouring boxes=%d px;"
+            " TIMELINE SLOT: boxes with the wrong reserve=%d, with the wrong left edge=%d,"
+            " 1/2/3-digit boxes exactly at the timeline's left edge=%d/%d/%d\n",
+            sampled, wrongText, noFrame, noTick, sampled > 1 ? minGap : -1, wrongBoxWidth, wrongBoxLeft,
+            timelineBoxes[1], timelineBoxes[2], timelineBoxes[3]
+        );
         CHECK(sampled > 1);
         CHECK(wrongText == 0);
         CHECK(noFrame == 0);
         CHECK(noTick == 0);
         CHECK(minGap >= 8);
+        // Every frame number is the timeline's slot, and BOTH windows carry the digit
+        // lengths the identity needs: the fitted one has 2- and 3-digit numbers (its
+        // only 1-digit candidate, frame 1, is the playhead's) and the 0..8 window has
+        // nothing but 1-digit ones. The counts are summed over the two, so each length
+        // is exercised where it actually occurs - not where the reserve happens to
+        // equal the drawing font's advance.
+        CHECK(wrongBoxWidth == 0);
+        CHECK(wrongBoxLeft == 0);
+        CHECK(timelineBoxes[1] > 0);
+        CHECK(timelineBoxes[2] > 0);
+        CHECK(timelineBoxes[3] > 0);
 
         // One tick, one number: the label rects are never the same box twice.
         int duplicates = 0;
@@ -1528,6 +1632,42 @@ int main(int argc, char** argv) {
         // between it and the plot (see the band alignment rule in block [1]).
         CHECK(moved.plot.top() == moved.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin);
 
+        // THE PILL IS MEASURED WITH THE FONT THE HOST HANDS IN. That is the timeline's
+        // own measurement: TimeCursor builds its pill from
+        // `QFontMetrics(font()).horizontalAdvance(mFrameText) + 2 * kPillPadding`
+        // (TimeLineEditorWidget.cpp:54, :96), and the dock's stylesheet gives the
+        // timeline's ruler and the panel's host the same widget font. QFont() is the
+        // APPLICATION default font, which the stylesheet does not apply to the widgets
+        // - the shipped locale sheet is 8pt while QFont() keeps the platform's 9pt, so
+        // a QFont()-measured pill came out 2px wider than TimeCursor's on a 3-digit
+        // frame and its left edge 1px left (the parity probe's 283+30 against 282+32).
+        // The same integer rule the timeline uses places it: `left = x - width / 2`.
+        {
+            QFont hostFont;
+            hostFont.setPixelSize(17); // deliberately not QFont()'s size: the reading must follow it
+            const QFontMetrics hostMetrics(hostFont);
+            const gui::GraphPanelModel measured =
+                gui::buildGraphPanelModel(editor, viewport, palette, 0, gui::GraphPanelHost::Dock, hostFont);
+            const int hostWidth =
+                hostMetrics.horizontalAdvance(measured.playheadText) + 2 * gui::frameRuler::kPillPadding;
+            const int defaultWidth =
+                QFontMetrics(QFont()).horizontalAdvance(moved.playheadText) + 2 * gui::frameRuler::kPillPadding;
+            std::printf(
+                "[7] pill measured with a 17px host font: width=%d (QFontMetrics=%d, left=%d, playheadX=%d,"
+                " x - width/2=%d); the default QFont() box is %d wide (QFontMetrics=%d)\n",
+                measured.playheadPill.width(), hostWidth, measured.playheadPill.left(), measured.playheadX,
+                measured.playheadX - hostWidth / 2, moved.playheadPill.width(), defaultWidth
+            );
+            CHECK(measured.playheadText == expectedText);
+            CHECK(measured.playheadPill.width() == hostWidth);
+            CHECK(measured.playheadPill.left() == measured.playheadX - hostWidth / 2);
+            CHECK(measured.playheadPill.height() == gui::frameRuler::kNumberHeight);
+            // The no-font call keeps its documented default, so a headless caller's
+            // geometry is unchanged by the new parameter.
+            CHECK(moved.playheadPill.width() == defaultWidth);
+            CHECK(moved.playheadPill.left() == moved.playheadX - defaultWidth / 2);
+        }
+
         // ...AND NO RULER NUMBER IS DRAWN UNDER IT: every label whose centre falls
         // inside the pill's half-width is dropped, so the pill's number is the only
         // one read in its column (the timeline's own rule).
@@ -1905,6 +2045,93 @@ int main(int argc, char** argv) {
         CHECK(badGhostX == 0);
         CHECK(ghostDotsOffMapping == 0);
         CHECK(nonGhostOnAuto == 0);
+
+        // ---- 10c. A SEGMENT WITH ONE DERIVED SIDE MUST STILL PUBLISH ITS STORED
+        // SIDE AS STORED. The kind is a per-SIDE fact: the model used to ask
+        // Curve::isCustom ("both sides stored"), so a mixed segment fell into the
+        // ghost branch wholesale - BOTH handles were marked derived AND the stored
+        // pair was never read. Publish per side instead: the derived side is the
+        // effective control point (a ghost), the stored one is handlePoint().
+        // Component 0 derives its OUTGOING side, component 1 its INCOMING one, so
+        // both directions are pinned by one build.
+        {
+            // The FROM key carries the outgoing mode and the stored x1/y1; the TO
+            // key carries the incoming mode (its x2/y2 still lives in the FROM
+            // param). Component 0 derives the OUTGOING side, component 1 the
+            // INCOMING one.
+            util::Easing::Param outgoingDerived = custom;
+            outgoingDerived.type = util::Easing::Type_Custom;
+            outgoingDerived.handleOut = util::Easing::HandleMode_Auto;
+            outgoingDerived.handleIn = util::Easing::HandleMode_Aligned;
+            util::Easing::Param storedOutgoing = custom;
+            storedOutgoing.type = util::Easing::Type_Custom;
+            storedOutgoing.handleOut = util::Easing::HandleMode_Free;
+            storedOutgoing.handleIn = util::Easing::HandleMode_Aligned;
+            util::Easing::Param incomingDerived = custom;
+            incomingDerived.type = util::Easing::Type_Custom;
+            incomingDerived.handleOut = util::Easing::HandleMode_Aligned;
+            incomingDerived.handleIn = util::Easing::HandleMode_Auto;
+
+            move0->data().easing(0) = outgoingDerived;
+            move1->data().easing(0) = custom; // incoming side stored (Aligned)
+            move0->data().easing(1) = storedOutgoing;
+            move1->data().easing(1) = incomingDerived;
+
+            const gui::GraphPanelModel mixed = gui::buildGraphPanelModel(editor, viewport, palette);
+            ctrl::graph::Scaler mixedOracle = editor.scale();
+            mixedOracle.setRect(panel);
+
+            int mixedPairs = 0;
+            int ghostSides = 0;
+            int storedSides = 0;
+            int badKind = 0;
+            int badStoredDot = 0;
+            int badDerivedDot = 0;
+            int badSize = 0;
+            for (const gui::PanelCurve& curve : mixed.curves) {
+                const ctrl::graph::Curve source(*curve.node->timeLine(), curve.channel);
+                if (curve.channel.type() != core::TimeKeyType_Move || source.isEmpty())
+                    continue;
+                const ctrl::graph::Curve::Segment seg = source.segment(0);
+                if (seg.from != move0)
+                    continue; // another layer's Move channel: not the edited segment
+                if (curve.handles.size() != 2) {
+                    ++badSize;
+                    continue;
+                }
+                ++mixedPairs;
+                QPointF pair[2];
+                if (!source.effectiveHandles(seg, pair))
+                    ++badKind;
+                for (int h = 0; h < 2; ++h) {
+                    const gui::PanelHandle& handle = curve.handles.at(h);
+                    const bool derived = ctrl::graph::Curve::derivesHandle(seg, h);
+                    if (handle.ghost != derived || handle.index != h || handle.segment != 0)
+                        ++badKind;
+                    if (derived) {
+                        ++ghostSides;
+                        if (handle.dot != ctrl::graph::handlePointAt(mixedOracle, seg, pair[h]))
+                            ++badDerivedDot;
+                    } else {
+                        ++storedSides;
+                        if (handle.dot != ctrl::graph::handlePoint(mixedOracle, seg, h))
+                            ++badStoredDot;
+                    }
+                }
+            }
+            std::printf("[10c] mixed-side segments: pairs=%d ghost sides=%d stored sides=%d  "
+                        "wrong pair size=%d  wrong kind=%d  stored dot off handlePoint=%d  "
+                        "ghost dot off handlePointAt=%d\n",
+                        mixedPairs, ghostSides, storedSides, badSize, badKind, badStoredDot,
+                        badDerivedDot);
+            CHECK(mixedPairs == 2);   // Move x and Move y
+            CHECK(ghostSides == 2);   // exactly one derived side per segment
+            CHECK(storedSides == 2);  // ... and the stored side is NOT dropped
+            CHECK(badSize == 0);
+            CHECK(badKind == 0);
+            CHECK(badStoredDot == 0);
+            CHECK(badDerivedDot == 0);
+        }
 
         // Back to the Custom pair, so the blocks after this one measure the geometry
         // they were written against (the trace handle is the one thing that moved).
@@ -2814,21 +3041,12 @@ int main(int argc, char** argv) {
         CHECK(barsModel.hTrack.top() > barsModel.valueColumn.bottom());
         CHECK(barsModel.vTrack.left() > plot.right());
 
-        // THE THUMBS sit inside their tracks, and their LENGTH and OFFSET are Qt's own
-        // QScrollBar arithmetic - not a private fraction:
-        //   totalSteps = content - pageStep
-        //   length     = qRound(pageStep / content * track), floored at
-        //                QStyle::PM_ScrollBarSliderMin (asked from the style, not 16)
-        //   offset     = qRound((windowStart - contentStart) / totalSteps * (track - length)),
-        //                CLAMPED to [0, track - length]
-        // The clamp is Qt's: a QScrollBar's value cannot leave [minimum, maximum], so
-        // a window at - or, as here, slightly BEYOND (the frame fit's own padding
-        // starts before the content's first frame) - an edge parks the pill flush with
-        // that end instead of hanging it outside the lane. The oracle below repeats
-        // that arithmetic INCLUDING the clamp, so a change to the formula fails here
-        // rather than only in a screenshot.
-        const int minSlider = ctrl::graph::Scaler::scrollBarSliderMin();
-        CHECK(minSlider > 0);
+        // THE THUMBS ARE THE TIMELINE'S HANDLE, not a private fraction. The
+        // reference is gui::TimelineScrollBar::handleRect: the viewport's two edges
+        // over the UNION track, each rounded; the frame axis' track also carries the
+        // timeline's trailing kTimeLineMargin (24px, in frames at the axis' rate).
+        // There is no style minimum and no track-minus-one cap.
+        //
         // The window the thumb describes is the editor's own: the frames the plot
         // covers (the mapping's inverse at its two edges) inside the project's range.
         // The oracle is a copy of the editor's LIVE scaler pinned to this panel - the
@@ -2836,35 +3054,71 @@ int main(int argc, char** argv) {
         // measured against the mapping the plot is drawn with.
         ctrl::graph::Scaler live = editor.scale();
         live.setRect(panel);
+        const auto spans = [](double aLo, double aHi) {
+            return std::max(aLo, aHi) - std::min(aLo, aHi);
+        };
+        // The timeline's handleRect, written out (edge rounding, union track, 1px
+        // floor) - the formula graph_Scaler.cpp's timelineHandle implements.
+        const auto timelineThumb = [](const QRect& aTrack, bool aHorizontal, bool aInverted,
+                                      double aContentLo, double aContentHi, double aWindowLo,
+                                      double aWindowHi) {
+            const int trackLength = aHorizontal ? aTrack.width() : aTrack.height();
+            if (trackLength <= 0)
+                return QRect();
+            const double windowLo = aInverted ? -std::max(aWindowLo, aWindowHi) : std::min(aWindowLo, aWindowHi);
+            const double windowHi = aInverted ? -std::min(aWindowLo, aWindowHi) : std::max(aWindowLo, aWindowHi);
+            const double contentLo = aInverted ? -std::max(aContentLo, aContentHi) : std::min(aContentLo, aContentHi);
+            const double contentHi = aInverted ? -std::min(aContentLo, aContentHi) : std::max(aContentLo, aContentHi);
+            const double trackLo = std::min(contentLo, windowLo);
+            const double trackHi = std::max(contentHi, windowHi);
+            if (!(trackHi > trackLo))
+                return QRect();
+            const auto edge = [&](double aValue) {
+                return int((aValue - trackLo) / (trackHi - trackLo) * trackLength + 0.5);
+            };
+            const int start = edge(windowLo);
+            const int length = std::max(edge(windowHi) - start, 1);
+            return aHorizontal ? QRect(aTrack.left() + start, aTrack.top(), length, aTrack.height())
+                               : QRect(aTrack.left(), aTrack.top() + start, aTrack.width(), length);
+        };
         const double frameWindowLo = live.frameAtPixel(double(plot.left()));
         const double frameWindowHi = live.frameAtPixel(double(plot.right() + 1));
         const double frameContentLo = double(frames.min());
         const double frameContentHi = double(frames.max());
-        const double contentSpan = frameContentHi - frameContentLo;
-        const double pageSpan = frameWindowHi - frameWindowLo;
-        const int expectedHLength = std::clamp(
-            int(std::lround(pageSpan / contentSpan * barsModel.hTrack.width())), minSlider, barsModel.hTrack.width()
+        const double frameMargin =
+            double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / live.framePpf();
+        const QRect expectedH = timelineThumb(
+            barsModel.hTrack, true, false, frameContentLo, frameContentHi + frameMargin, frameWindowLo,
+            frameWindowHi
         );
-        const int expectedHOffset = std::clamp(
-            int(std::lround(
-                (frameWindowLo - frameContentLo) / (contentSpan - pageSpan)
-                * (barsModel.hTrack.width() - expectedHLength)
-            )),
-            0, barsModel.hTrack.width() - expectedHLength
-        );
-        CHECK(barsModel.hThumb.width() == expectedHLength);
-        CHECK(barsModel.hThumb.left() - barsModel.hTrack.left() == expectedHOffset);
+        const double hTrackLo = std::min(frameContentLo, frameWindowLo);
+        const double hTrackHi = std::max(frameContentHi + frameMargin, frameWindowHi);
+        const bool expectedHTravel =
+            hTrackHi - hTrackLo > spans(frameWindowLo, frameWindowHi);
+        const QRect expectedV =
+            timelineThumb(barsModel.vTrack, false, true, double(valueLo), double(valueHi), live.valueMin(), live.valueMax());
+        const double vTrackLo = std::min(double(valueLo), double(live.valueMin()));
+        const double vTrackHi = std::max(double(valueHi), double(live.valueMax()));
+        const bool expectedVTravel =
+            vTrackHi - vTrackLo > (double(live.valueMax()) - double(live.valueMin()));
+        CHECK(barsModel.hThumb == expectedH);
+        if (!expectedHTravel)
+            CHECK(barsModel.hThumb == barsModel.hTrack);
+        CHECK(barsModel.vThumb == (expectedVTravel ? expectedV : QRect()));
+        if (expectedVTravel)
+            CHECK(!barsModel.vThumb.isEmpty());
+        else
+            CHECK(barsModel.vThumb.isEmpty());
         CHECK(barsModel.hTrack.contains(barsModel.hThumb));
-        CHECK(barsModel.vTrack.contains(barsModel.vThumb));
-        CHECK(barsModel.hThumb.width() >= std::min(minSlider, barsModel.hTrack.width()));
-        CHECK(barsModel.vThumb.height() >= std::min(minSlider, barsModel.vTrack.height()));
+        CHECK(barsModel.vTrack.contains(barsModel.vThumb) || barsModel.vThumb.isEmpty());
         std::printf(
-            "[16] bars: plot (%d,%d %dx%d)  hTrack (%d,%d %dx%d) hThumb %d px at +%d (Qt: %d at +%d, min %d)  "
+            "[16] bars: plot (%d,%d %dx%d)  hTrack (%d,%d %dx%d) hThumb %d px at +%d (expected %d at +%d)  "
             "vTrack (%d,%d %dx%d) vThumb %d px at +%d  value content %.4f..%.4f window %.4f..%.4f  frames %d..%d "
             "window %.2f..%.2f\n",
             plot.x(), plot.y(), plot.width(), plot.height(), barsModel.hTrack.x(), barsModel.hTrack.y(),
             barsModel.hTrack.width(), barsModel.hTrack.height(), barsModel.hThumb.width(),
-            barsModel.hThumb.left() - barsModel.hTrack.left(), expectedHLength, expectedHOffset, minSlider,
+            barsModel.hThumb.left() - barsModel.hTrack.left(), expectedH.width(),
+            expectedH.left() - barsModel.hTrack.left(),
             barsModel.vTrack.x(), barsModel.vTrack.y(), barsModel.vTrack.width(), barsModel.vTrack.height(),
             barsModel.vThumb.height(), barsModel.vThumb.top() - barsModel.vTrack.top(), valueLo, valueHi,
             editor.scale().valueMin(), editor.scale().valueMax(), frames.min(), frames.max(), frameWindowLo,
@@ -2876,18 +3130,34 @@ int main(int argc, char** argv) {
         CHECK(barsModel.vThumb.bottom() <= barsModel.vTrack.bottom());
 
         // THE DIRECTION, both axes: the pill moves WITH the window. A frame window at
-        // the project's START puts the horizontal pill at the lane's left; at its END
-        // the pill is flush RIGHT (offset + length == the track). The value axis is
-        // inverted along its lane, so a window at HIGH values puts the pill at the TOP
-        // and a window at LOW values at the BOTTOM. The frame window is PLACED exactly
-        // (setFrameWindow maps a pushed window with no ladder rounding), so "at the
-        // start" and "at the end" are the content's own edges and not a fit's padding.
+        // the project's START puts the horizontal pill at the lane's left. At the
+        // range's END it is NOT flush with the lane: the track carries the timeline's
+        // trailing margin past the last frame, so a window ending on the last frame
+        // sits a margin short of the track's end (flush right needs viewportEnd >=
+        // frameEnd, as the timeline's own handle does). The value axis is inverted
+        // along its lane, so a window at HIGH values puts the pill at the TOP and a
+        // window at LOW values at the BOTTOM. The frame window is PLACED exactly
+        // (setFrameWindow maps a pushed window with no ladder rounding).
         editor.setFrameWindow(double(frames.min()), double(frames.min()) + 5.0);
         const gui::GraphPanelModel atStart = gui::buildGraphPanelModel(editor, viewport, palette);
         CHECK(atStart.hThumb.left() == atStart.hTrack.left());
         editor.setFrameWindow(double(frames.max()) - 5.0, double(frames.max()));
         const gui::GraphPanelModel atEnd = gui::buildGraphPanelModel(editor, viewport, palette);
-        CHECK(atEnd.hThumb.right() == atEnd.hTrack.right());
+        {
+            const double endMargin =
+                double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+            const QRect expectedEnd = timelineThumb(
+                atEnd.hTrack, true, false, double(frames.min()), double(frames.max()) + endMargin,
+                double(frames.max()) - 5.0, double(frames.max())
+            );
+            CHECK(atEnd.hThumb == expectedEnd);
+            CHECK(atEnd.hThumb.right() < atEnd.hTrack.right());
+            std::printf(
+                "[16] direction: at the range end the pill is x %d..%d of the lane %d..%d (hand: %d..%d)\n",
+                atEnd.hThumb.left(), atEnd.hThumb.right(), atEnd.hTrack.left(), atEnd.hTrack.right(),
+                expectedEnd.left(), expectedEnd.right()
+            );
+        }
         editor.clearFrameAxis(); // the frame axis is the panel's own again
         editor.scale().setRect(panel);
         editor.scale().setValueWindow(valueHi - 0.1f * (valueHi - valueLo), valueHi);
@@ -2897,10 +3167,9 @@ int main(int argc, char** argv) {
         const gui::GraphPanelModel atBottom = gui::buildGraphPanelModel(editor, viewport, palette);
         CHECK(atBottom.vThumb.bottom() == atBottom.vTrack.bottom());
         std::printf(
-            "[16] direction: frame window at the range start -> pill x %d..%d; at the range end -> %d..%d (lane "
-            "%d..%d); value window at the top -> pill y %d..%d; at the bottom -> %d..%d (lane %d..%d)\n",
-            atStart.hThumb.left(), atStart.hThumb.right(), atEnd.hThumb.left(), atEnd.hThumb.right(),
-            atStart.hTrack.left(), atStart.hTrack.right(), atTop.vThumb.top(), atTop.vThumb.bottom(),
+            "[16] direction: frame window at the range start -> pill x %d..%d; value window at the top -> pill y "
+            "%d..%d; at the bottom -> %d..%d (lane %d..%d)\n",
+            atStart.hThumb.left(), atStart.hThumb.right(), atTop.vThumb.top(), atTop.vThumb.bottom(),
             atBottom.vThumb.top(), atBottom.vThumb.bottom(), atTop.vTrack.top(), atTop.vTrack.bottom()
         );
 
@@ -2928,35 +3197,43 @@ int main(int argc, char** argv) {
         CHECK(!full.vTrack.isEmpty());
         CHECK(full.plot == barsModel.plot);
 
-        // A NARROW WINDOW YIELDS THE MINIMUM THUMB. The frame axis is given a
-        // HALF-FRAME window (setFrameWindow maps a pushed window exactly - no ladder
-        // rung rounds it) and the value axis a thousandth of the key extent; both
-        // fractions are far under the style's floor, so both thumbs are exactly that
-        // floor and not the fraction. The floor is QStyle::PM_ScrollBarSliderMin, the
-        // same number Qt's own QScrollBar would use (measured below, not assumed).
-        editor.setFrameWindow(10.0, 10.5);
-        editor.scale().setValueWindow(50.0f, 50.001f);
-        const gui::GraphPanelModel narrow = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf(
-            "[16] narrow windows: frame window %.3f..%.3f of %d..%d -> hThumb %d px  value window %.4f..%.4f of "
-            "%.4f..%.4f -> vThumb %d px  (floor %d = PM_ScrollBarSliderMin)\n",
-            editor.scale().frameAtPixel(double(narrow.plot.left())),
-            editor.scale().frameAtPixel(double(narrow.plot.right() + 1)), frames.min(), frames.max(),
-            narrow.hThumb.width(), editor.scale().valueMin(), editor.scale().valueMax(), valueLo, valueHi,
-            narrow.vThumb.height(), minSlider
-        );
-        CHECK(narrow.hThumb.width() == minSlider);
-        CHECK(narrow.vThumb.height() == minSlider);
+        // A NARROW WINDOW GETS THE HANDLE THE TIMELINE WOULD DRAW - the visible
+        // fraction, edge-rounded, floored at one pixel. The frame axis is given a
+        // HALF-FRAME window (about 11px of the frame track) and the value axis a
+        // thousandth of the key extent (far under one track pixel, so the 1px floor);
+        // both are asserted against handleRect written out.
+        {
+            editor.setFrameWindow(10.0, 10.5);
+            editor.scale().setValueWindow(50.0f, 50.001f);
+            const gui::GraphPanelModel narrow = gui::buildGraphPanelModel(editor, viewport, palette);
+            const double narrowMargin =
+                double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+            const QRect narrowH = timelineThumb(
+                narrow.hTrack, true, false, double(frames.min()), double(frames.max()) + narrowMargin, 10.0, 10.5
+            );
+            const QRect narrowV = timelineThumb(
+                narrow.vTrack, false, true, double(valueLo), double(valueHi),
+                double(editor.scale().valueMin()), double(editor.scale().valueMax())
+            );
+            std::printf(
+                "[16] narrow windows: frame window 10..10.5 -> hThumb %d px (hand %d, lane %d); value window "
+                "%.4f..%.4f -> vThumb %d px (hand %d, lane %d)\n",
+                narrow.hThumb.width(), narrowH.width(), narrow.hTrack.width(), editor.scale().valueMin(),
+                editor.scale().valueMax(), narrow.vThumb.height(), narrowV.height(), narrow.vTrack.height()
+            );
+            CHECK(narrow.hThumb == narrowH);
+            CHECK(narrow.hThumb.width() >= 1);
+            CHECK(narrow.vThumb == narrowV);
+            CHECK(narrow.vThumb.height() >= 1);
+        }
 
         // A SHARED WINDOW NARROWER THAN THE CONTENT PUBLISHES A RUN - the delta this
-        // block exists for, stated as the model's own rule. The window below is the
+        // block exists for, stated as the timeline's own rule. The window below is the
         // MIDDLE THIRD of the project's frame range, pushed through setFrameWindow
-        // (the live dock's path: the timeline hands its visible window to the
-        // editor), and the panel must publish an hThumb whose length is that visible
-        // FRACTION of the track. The failure it pins is the one the user reported: a
-        // bar that never appears while the timeline is zoomed in. An empty run is
-        // correct ONLY while the whole content is on screen, which is why the
-        // full-range window is asserted beside it - not instead of it.
+        // (the live dock's path: the timeline hands its visible window to the editor),
+        // and the panel publishes the handle handleRect draws for it: the union track
+        // is [rangeStart, rangeEnd + 24px/ppf], and the span's edges are rounded.
+        // An empty run is correct ONLY while the window covers that union.
         {
             const double contentSpan = double(frames.max() - frames.min());
             CHECK(contentSpan > 0.0);
@@ -2964,18 +3241,19 @@ int main(int argc, char** argv) {
             const double hi = double(frames.min()) + 2.0 * contentSpan / 3.0;
             editor.setFrameWindow(lo, hi);
             const gui::GraphPanelModel third = gui::buildGraphPanelModel(editor, viewport, palette);
-            const int track = third.hTrack.width();
-            const int expectedLength =
-                std::clamp(int(std::lround((hi - lo) / contentSpan * track)), minSlider, track);
-            std::printf(
-                "[16] shared window %.3f..%.3f of %d..%d -> hThumb %d px at +%d of a %d px lane (Qt: %d, floor "
-                "%d)\n",
-                lo, hi, frames.min(), frames.max(), third.hThumb.width(),
-                third.hThumb.left() - third.hTrack.left(), track, expectedLength, minSlider
+            const double thirdMargin =
+                double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+            const QRect thirdExpected = timelineThumb(
+                third.hTrack, true, false, double(frames.min()), double(frames.max()) + thirdMargin, lo, hi
             );
-            CHECK(!third.hThumb.isEmpty());
-            CHECK(third.hThumb.width() == expectedLength);
-            CHECK(third.hThumb.width() < track); // TRAVEL: the run does not fill its lane
+            std::printf(
+                "[16] shared window %.3f..%.3f of %d..%d -> hThumb %d px at +%d of a %d px lane (hand: %d at +%d)\n",
+                lo, hi, frames.min(), frames.max(), third.hThumb.width(),
+                third.hThumb.left() - third.hTrack.left(), third.hTrack.width(), thirdExpected.width(),
+                thirdExpected.left() - third.hTrack.left()
+            );
+            CHECK(third.hThumb == thirdExpected);
+            CHECK(third.hThumb.width() < third.hTrack.width()); // TRAVEL: the run does not fill its lane
             CHECK(third.hTrack.contains(third.hThumb));
 
             // THE WINDOW IS THE MAPPING'S, NOT THE CALLER'S RECT. The scaler fits the
@@ -2989,85 +3267,88 @@ int main(int argc, char** argv) {
             editor.scale().setRect(QRect(QPoint(0, 0), QSize(400, 720)));
             editor.setFrameWindow(lo, hi);
             const gui::GraphPanelModel mapped = gui::buildGraphPanelModel(editor, viewport, palette);
-            const int mappedTrack = mapped.hTrack.width();
-            const int mappedExpected =
-                std::clamp(int(std::lround((hi - lo) / contentSpan * mappedTrack)), minSlider, mappedTrack);
+            const double mappedMargin =
+                double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+            const QRect mappedExpected = timelineThumb(
+                mapped.hTrack, true, false, double(frames.min()), double(frames.max()) + mappedMargin, lo, hi
+            );
             std::printf(
                 "[16] window fitted over a 400px rect, model built for the %dx%d panel: hThumb %d px of a %d px "
-                "lane (expected %d)\n",
-                viewport.width(), viewport.height(), mapped.hThumb.width(), mappedTrack, mappedExpected
+                "lane (hand %d)\n",
+                viewport.width(), viewport.height(), mapped.hThumb.width(), mapped.hTrack.width(),
+                mappedExpected.width()
             );
-            CHECK(!mapped.hThumb.isEmpty());
-            CHECK(mapped.hThumb.width() == mappedExpected);
-            CHECK(mapped.hThumb.width() < mappedTrack);
+            CHECK(mapped.hThumb == mappedExpected);
+            CHECK(mapped.hThumb.width() < mapped.hTrack.width());
             editor.scale().setRect(panel);
 
-            // ANY STRICTLY POSITIVE TRAVEL PUBLISHES A RUN - the rule the near-full
-            // case turns on. The timeline's own slider draws a pill when a couple of
-            // frames are left, and the panel must too: (a) a window 1.7% short of the
-            // content is a run only slightly shorter than the track, and (b) a window
-            // ONE TENTH OF A FRAME short has a length that ROUNDS UP TO THE TRACK -
-            // where a "the rounded length reached the track, so remove it" test
-            // deleted the bar while the window was strictly narrower than the content.
+            // A WINDOW ALMOST THE FULL RANGE STILL DRAWS THE HANDLE THE TIMELINE
+            // DRAWS: 1.7% short is a run just under the track, and a tenth of a frame
+            // short is still short by the trailing margin (24px) - the margin is part
+            // of the track, which is why the timeline's own full-range pill does not
+            // fill its lane.
             {
-                const double contentSpan = double(frames.max() - frames.min());
-                editor.setFrameWindow(double(frames.min()) + 0.01 * contentSpan,
-                                      double(frames.min()) + 0.993 * contentSpan);
+                editor.setFrameWindow(
+                    double(frames.min()) + 0.01 * contentSpan, double(frames.min()) + 0.993 * contentSpan
+                );
                 const gui::GraphPanelModel near = gui::buildGraphPanelModel(editor, viewport, palette);
-                const int nearTrack = near.hTrack.width();
-                const double nearSpan = 0.983 * contentSpan;
-                const int nearExpected = std::clamp(
-                    int(std::lround(nearSpan / contentSpan * nearTrack)), minSlider,
-                    std::max(minSlider, nearTrack - 1)
+                const double nearMargin =
+                    double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+                const QRect nearExpected = timelineThumb(
+                    near.hTrack, true, false, double(frames.min()), double(frames.max()) + nearMargin,
+                    double(frames.min()) + 0.01 * contentSpan, double(frames.min()) + 0.993 * contentSpan
                 );
                 std::printf(
-                    "[16] near-full window (%.3f of the range): hThumb %d px of a %d px lane (expected %d)\n",
-                    nearSpan / contentSpan, near.hThumb.width(), nearTrack, nearExpected
+                    "[16] near-full window (%.3f of the range): hThumb %d px of a %d px lane (hand %d)\n",
+                    0.983, near.hThumb.width(), near.hTrack.width(), nearExpected.width()
                 );
-                CHECK(!near.hThumb.isEmpty());
-                CHECK(near.hThumb.width() == nearExpected);
-                CHECK(near.hThumb.width() < nearTrack);
+                CHECK(near.hThumb == nearExpected);
+                CHECK(near.hThumb.width() < near.hTrack.width());
 
-                // ...and the case whose length ROUNDS TO THE TRACK: a tenth of a
-                // frame of travel (the timeline reports fractional window edges), i.e.
-                // just over one track pixel. Its pill is the track MINUS one pixel -
-                // never the whole track, which would read as "nothing to scroll".
                 editor.setFrameWindow(double(frames.min()), double(frames.max()) - 0.1);
                 const gui::GraphPanelModel sliver = gui::buildGraphPanelModel(editor, viewport, palette);
-                const int sliverTrack = sliver.hTrack.width();
-                std::printf(
-                    "[16] tenth-of-a-frame window: hThumb %d px of a %d px lane (the visible fraction rounds to"
-                    " %d)\n",
-                    sliver.hThumb.width(), sliverTrack,
-                    int(std::lround((contentSpan - 0.1) / contentSpan * sliverTrack))
+                const double sliverMargin =
+                    double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+                const QRect sliverExpected = timelineThumb(
+                    sliver.hTrack, true, false, double(frames.min()), double(frames.max()) + sliverMargin,
+                    double(frames.min()), double(frames.max()) - 0.1
                 );
-                CHECK(!sliver.hThumb.isEmpty());
-                CHECK(sliver.hThumb.width() == sliverTrack - 1);
-
-                // ...and SUB-PIXEL travel reads as NO travel: the length would round to
-                // the whole track either way, so the slider fills its groove and the bar
-                // cannot be panned. A window equal to its content to within the
-                // mapping's own floating noise lands here too.
-                editor.setFrameWindow(double(frames.min()), double(frames.max()) - 0.005);
-                const gui::GraphPanelModel noise = gui::buildGraphPanelModel(editor, viewport, palette);
                 std::printf(
-                    "[16] sub-pixel travel: hThumb %d px of a %d px lane, lane laid out %d\n",
-                    noise.hThumb.width(), noise.hTrack.width(), int(!noise.hTrack.isEmpty())
+                    "[16] tenth-of-a-frame window: hThumb %d px of a %d px lane (hand %d)\n",
+                    sliver.hThumb.width(), sliver.hTrack.width(), sliverExpected.width()
                 );
-                CHECK(noise.hThumb == noise.hTrack); // reads as no travel: the groove is full
-                CHECK(!noise.hTrack.isEmpty());
+                CHECK(sliver.hThumb == sliverExpected);
             }
 
-            // ...and the window that COVERS the content draws the FULL slider (not a
-            // removed bar): the zero-travel state is the one the user sees beside a
+            // ...and the window that COVERS the union track draws the FULL handle (not
+            // a removed bar): the zero-travel state is the one the user sees beside a
             // timeline that always shows its own, so it must not be the one state with
             // no bar at all.
-            editor.setFrameWindow(double(frames.min()), double(frames.max()));
+            editor.setFrameWindow(double(frames.min()), double(frames.max()) + contentSpan);
             const gui::GraphPanelModel whole = gui::buildGraphPanelModel(editor, viewport, palette);
-            std::printf("[16] full-range shared window: hThumb %d px of a %d px lane, lane laid out %d\n",
+            std::printf("[16] covering shared window: hThumb %d px of a %d px lane, lane laid out %d\n",
                         whole.hThumb.width(), whole.hTrack.width(), int(!whole.hTrack.isEmpty()));
             CHECK(whole.hThumb == whole.hTrack);
             CHECK(!whole.hTrack.isEmpty());
+
+            // THE PROJECT'S OWN RANGE IS NOT A FULL HANDLE: the track reaches one
+            // kTimeLineMargin past the last frame, exactly as the timeline's does, so a
+            // window ending on the last frame leaves that margin of run.
+            editor.setFrameWindow(double(frames.min()), double(frames.max()));
+            const gui::GraphPanelModel range = gui::buildGraphPanelModel(editor, viewport, palette);
+            const double rangeMargin =
+                double(ctrl::graph::Scaler::kScrollBarTrailingMargin) / editor.scale().framePpf();
+            const QRect rangeExpected = timelineThumb(
+                range.hTrack, true, false, double(frames.min()), double(frames.max()) + rangeMargin,
+                double(frames.min()), double(frames.max())
+            );
+            std::printf(
+                "[16] full-range shared window: hThumb %d px of a %d px lane (hand %d; the trailing margin is "
+                "the difference)\n",
+                range.hThumb.width(), range.hTrack.width(), rangeExpected.width()
+            );
+            CHECK(range.hThumb == rangeExpected);
+            CHECK(range.hThumb.width() < range.hTrack.width());
         }
         editor.clearFrameAxis(); // the frame axis is the panel's own again for what follows
 

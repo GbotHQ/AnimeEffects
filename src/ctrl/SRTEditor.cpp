@@ -34,9 +34,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
 
     if (mKeyOwner.ownsMoveKey) {
         mKeyOwner.moveKey = new MoveKey();
-        util::Easing::Param aParam;
-        aParam.range = util::Easing::rangeToEnum(QString());
-        aParam.type = util::Easing::easingToEnum(QString());
+        const util::Easing::Param aParam = util::Easing::defaultParam();
         for (int component = 0; component < MoveKey::kComponents; ++component) {
             mKeyOwner.moveKey->data().easing(component) = aParam;
         }
@@ -50,9 +48,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
     mKeyOwner.ownsRotateKey = !rotateMap.contains(frame);
     if (mKeyOwner.ownsRotateKey) {
         mKeyOwner.rotateKey = new RotateKey();
-        util::Easing::Param aParam;
-        aParam.range = util::Easing::rangeToEnum(QString());
-        aParam.type = util::Easing::easingToEnum(QString());
+        const util::Easing::Param aParam = util::Easing::defaultParam();
         for (int component = 0; component < RotateKey::kComponents; ++component) {
             mKeyOwner.rotateKey->data().easing(component) = aParam;
         }
@@ -65,9 +61,7 @@ bool SRTEditor::initializeKey(TimeLine& aLine, QString* aMessage) {
     mKeyOwner.ownsScaleKey = !scaleMap.contains(frame);
     if (mKeyOwner.ownsScaleKey) {
         mKeyOwner.scaleKey = new ScaleKey();
-        util::Easing::Param aParam;
-        aParam.range = util::Easing::rangeToEnum(QString());
-        aParam.type = util::Easing::easingToEnum(QString());
+        const util::Easing::Param aParam = util::Easing::defaultParam();
         for (int component = 0; component < ScaleKey::kComponents; ++component) {
             mKeyOwner.scaleKey->data().easing(component) = aParam;
         }

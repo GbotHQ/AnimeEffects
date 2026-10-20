@@ -323,6 +323,7 @@ namespace ctrl {
         mPanPointer(),
         mScrollBarAxis(ScrollBar_None),
         mScrollBarPointer(),
+        mScrollBarContentPerPixel(0.0),
         mScrollBarWheelRemainder(0),
         mMoveLine(nullptr),
         mMoveNode(nullptr),
@@ -728,7 +729,7 @@ namespace ctrl {
         // itself (whose x is the frame already showing) moved nothing at all, which is
         // the "grabbing the playhead does nothing" report. The seek arms no command,
         // but it is a gesture and it owns the pointer until its release.
-        if (mDragging || mSeeking)
+        if (mDragging || mSeeking || mWindowing)
             return true;
 
         graph::Scaler scale = mScale;
@@ -748,10 +749,17 @@ namespace ctrl {
 
         // THE RULER BAND: the timeline's seek, on the timeline's geometry. Claimed
         // before the bars (the band is above the plot, the bars beside/below it) and
-        // only while a seek delegate exists - without one the band belongs to nobody
-        // and a press there is not the panel's to swallow.
-        if (mSeekFrame && aCursor.emitsLeftPressedEvent() && rulerBandRect(scale).contains(point))
-            return true;
+        // only while a band delegate exists - without one the band belongs to nobody
+        // and a press there is not the panel's to swallow. A SHIFT-press is the
+        // band's other gesture, the temporary playback window (see
+        // setPlayWindowDelegate), so it needs the window delegate rather than the
+        // seek's; the two presses are told apart by the modifier.
+        if (aCursor.emitsLeftPressedEvent() && rulerBandRect(scale).contains(point)) {
+            if (mSetPlayWindow && mModifiers.testFlag(Qt::ShiftModifier))
+                return true;
+            if (mSeekFrame)
+                return true;
+        }
 
         // THE SCROLL BARS, before every other hit: a press on a track or a thumb is
         // the panel's own window gesture (see THE SCROLL BARS in the header), and it
@@ -858,6 +866,18 @@ namespace ctrl {
             endDrag();
 
             const QVector<Entry> entries = buildEntries();
+
+            // THE RULER BAND'S SHIFT GESTURE (see setPlayWindowDelegate): the
+            // temporary playback window, the timeline's own second ruler gesture.
+            // The press only ANCHORS (the timeline shows nothing until the first
+            // drag), and it takes precedence over the seek - exactly as Shift does
+            // over the header seek in ctrl::TimeLineEditor::updateCursor.
+            if (mSetPlayWindow && rulerBandRect(mScale).contains(point)
+                && mModifiers.testFlag(Qt::ShiftModifier)) {
+                mWindowing = true;
+                mSetPlayWindow(TimeLineEditor::PlayWindowStep::Begin, core::Frame(mScale.frameAt(point.x())));
+                return true;
+            }
 
             // THE RULER BAND'S SEEK (see setFrameSeekDelegate): the frame under the
             // press, then one per move - the timeline's own gesture, whose every step
@@ -1080,6 +1100,15 @@ namespace ctrl {
         }
 
         if (aCursor.emitsLeftDraggedEvent()) {
+            // THE WINDOW'S DRAG: the band's Shift-press keeps setting the window
+            // wherever the pointer goes (the frame is clamped inside the timeline's
+            // own step), and it is checked before the seek because a press starts
+            // one gesture or the other, never both.
+            if (mWindowing) {
+                if (mSetPlayWindow)
+                    mSetPlayWindow(TimeLineEditor::PlayWindowStep::Drag, core::Frame(mScale.frameAt(point.x())));
+                return true;
+            }
             // THE SEEK'S DRAG: the band's press keeps seeking wherever the pointer
             // goes (the frame clamps into the range inside the timeline's own setter),
             // and it is checked before the drags because a seek arms none of them.
@@ -1099,16 +1128,35 @@ namespace ctrl {
                 // (TimeLineWidget::beginScrollbarDrag: a rightward drag advances the
                 // viewport), and it is the OPPOSITE of the middle-button pan's sign -
                 // a pan drags the CONTENT, a scroll bar drags the VIEWPORT - which is
-                // why the two do not share panFramesByPixels. The pointer may leave the
-                // lane: ownsCursor keeps the gesture (mDragging), and a pointer past
-                // the end keeps scrolling rather than sticking.
+                // why the two do not share panFramesByPixels.
+                //
+                // THE DELTA IS THE BAR'S OWN RATIO, not the axis' page-per-panel
+                // fraction (mScrollBarContentPerPixel, anchored at press exactly as
+                // TimeLineWidget::beginScrollbarDrag anchors its ratio). A scroll bar
+                // whose window is P of a C-unit content moves its handle by dx when the
+                // window moves by dx * C/T; converting the pointer through the page
+                // fraction P/T instead moved the handle by dx * P/C and left it sliding
+                // out from under the pointer. The pointer may leave the lane: ownsCursor
+                // keeps the gesture (mDragging), and a pointer past the end keeps
+                // scrolling rather than sticking.
                 const QPoint delta = point - mScrollBarPointer;
                 mScrollBarPointer = point;
                 if (!delta.isNull()) {
-                    if (mScrollBarAxis == ScrollBar_Horizontal)
-                        scrollFramesByBarPixels(mScale, delta.x());
-                    else
-                        scrollValueByBarPixels(mScale, -delta.y());
+                    if (mScrollBarAxis == ScrollBar_Horizontal) {
+                        const double frameDelta = double(delta.x()) * mScrollBarContentPerPixel;
+                        if (mFrameWindowShared) {
+                            if (mScrollFrames)
+                                mScrollFrames(frameDelta);
+                        } else {
+                            mScale.panFrame(-frameDelta * mScale.framePpf());
+                        }
+                    } else {
+                        const double valueDelta = -double(delta.y()) * mScrollBarContentPerPixel;
+                        const double height = double(mScale.plotRect().height());
+                        const double span = double(mScale.valueMax()) - double(mScale.valueMin());
+                        if (height > 0.0 && span > 0.0)
+                            mScale.panValue(valueDelta * height / span);
+                    }
                 }
                 return true;
             }
@@ -1131,6 +1179,18 @@ namespace ctrl {
         }
 
         if (aCursor.emitsLeftReleasedEvent()) {
+            // THE WINDOW'S RELEASE: the timeline's ending rule (a Shift-click, or a
+            // drag that collapsed to one frame, dismisses; a real drag keeps what it
+            // set) is applied by the owner of the window, on the release's own frame.
+            // The modifier is deliberately NOT consulted: the timeline's gesture does
+            // not ask for Shift on the release either, so letting go of Shift mid-drag
+            // still commits the window it made.
+            if (mWindowing) {
+                if (mSetPlayWindow)
+                    mSetPlayWindow(TimeLineEditor::PlayWindowStep::End, core::Frame(mScale.frameAt(point.x())));
+                mWindowing = false;
+                return true;
+            }
             if (mSeeking) {
                 // The release's own position is the last frame the user aimed at.
                 if (mSeekFrame)
@@ -1497,8 +1557,10 @@ namespace ctrl {
         // changing either zoom.
         //
         // Both axes, in the one place the pixel-to-frame sign lives for the frame
-        // half (panFramesByPixels, which the scroll bar's thumb drag goes through
-        // too) and the panel's own panValue for the value half.
+        // half (panFramesByPixels) and the panel's own panValue for the value half.
+        // The scroll bars' THUMB DRAG does not come through here: it converts
+        // through the bar's own ratio (see mScrollBarContentPerPixel), while their
+        // PAGE and WHEEL use scrollFramesByBarPixels/scrollValueByBarPixels.
         panFramesByPixels(mScale, delta.x());
         mScale.panValue(delta.y());
     }
@@ -1517,10 +1579,8 @@ namespace ctrl {
         // handed over, which is the timeline's own unit - its pixels-per-frame is
         // its own, and the shared quantity is the window (see the header). The sign
         // is the drag's: moving right moves the content right, which shows EARLIER
-        // frames, so the frame delta is the negative of the pixel delta. This is the
-        // CONTENT drag, and the middle-button pan is its only caller now - the scroll
-        // bars move the WINDOW and go through scrollFramesByBarPixels, whose sign is
-        // the other way round.
+        // frames, so the frame delta is the negative of the pixel delta. The
+        // middle-button pan is its only caller.
         if (mFrameWindowShared) {
             if (mScrollFrames)
                 mScrollFrames(-static_cast<double>(aPixelDelta) / aScale.framePpf());
@@ -1675,10 +1735,15 @@ namespace ctrl {
         }
 
         // The drag is armed AFTER the page, at the press position: every later move
-        // is that pointer's delta.
+        // is that pointer's delta. The ratio is the TIMELINE's own anchored ratio
+        // (beginScrollbarDrag): content units per lane pixel at press, so a pointer
+        // delta dx moves the WINDOW by dx * ratio and the handle's offset by exactly
+        // dx - a 1:1 drag, not the page-per-track fraction a scroll bar's own value
+        // mapping would give.
         mDragging = true;
         mScrollBarAxis = axis;
         mScrollBarPointer = aPos;
+        mScrollBarContentPerPixel = horizontal ? aBars.hContentPerPixel : aBars.vContentPerPixel;
         return true;
     }
 
@@ -2645,8 +2710,10 @@ namespace ctrl {
         mPanning = false;
         // The seek arms no command, but it is still a gesture this editor owns: a
         // press elsewhere, or the panel going away mid-drag, must end it so the next
-        // pass cannot keep moving the frame.
+        // pass cannot keep moving the frame. The band's window gesture is the same
+        // kind of state (its release normally ends it; this is the abort path).
         mSeeking = false;
+        mWindowing = false;
         mDragKey = nullptr;
         mDragItem = -1;
         mDragSegment = -1;
@@ -2657,6 +2724,7 @@ namespace ctrl {
         // it left is exactly where the next gesture finds it.
         mScrollBarAxis = ScrollBar_None;
         mScrollBarPointer = QPoint();
+        mScrollBarContentPerPixel = 0.0;
 
         // The marquee's box goes with it: a gesture that ends without applying it
         // (a hide, or a press that closed it) must not leave a rectangle behind
@@ -2890,7 +2958,11 @@ namespace ctrl {
     bool GraphEditor::setSelectedKeysAutoHandles() {
         // Automatic handles are per-side MODES, so the preset is a Custom curve
         // with both sides deriving from their own neighbour. It is deliberately
-        // NOT the retired Type_Auto: no easing id is written.
+        // NOT the retired Type_Auto: no easing id is written. This is the Auto
+        // PRESET the user chose, so it writes HandleMode_Auto - Blender's
+        // Automatic, named Auto. (The application's DEFAULT automatic pair, used
+        // when a legacy Auto is migrated or a stored Auto default creates a key,
+        // is kDefaultAutomaticHandleMode, which clamps.)
         return assignSelectedKeysEasing([](const util::Easing::Param& aCurrent) {
             util::Easing::Param next = aCurrent;
             next.type = util::Easing::Type_Custom;

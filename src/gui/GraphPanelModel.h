@@ -2,6 +2,7 @@
 #define GUI_GRAPHPANELMODEL_H
 
 #include <QColor>
+#include <QFont>
 #include <QPointF>
 #include <QRect>
 #include <QString>
@@ -115,13 +116,14 @@ struct PanelChannelRow {
 
 // One tangent handle of one segment, ready to stroke and to dot. A pair is
 // published per segment that HAS handles: index 0 leaves the segment's `from`
-// key, 1 arrives at its `to` key. Two kinds of pair exist and they are NOT
-// interchangeable (see PanelHandle::ghost):
-//   * a Custom segment's STORED pair (Curve::handle), the one a drag writes; and
-//   * an Auto segment's DERIVED pair (Curve::ghostHandles), which the document
-//     does not hold - it is recomputed from the key's neighbours, which is why
-//     it cannot be stored - so the drawing layer can show that the segment's
-//     tangent is implicit and a drag would convert it.
+// key, 1 arrives at its `to` key. Each handle is of one of TWO kinds, and they
+// are NOT interchangeable (see PanelHandle::ghost) - and the kind is decided per
+// SIDE, so one segment's two handles can differ:
+//   * a STORED side (its mode Free/Aligned), what a drag writes; and
+//   * a DERIVED side (Vector/Auto/AutoClamped), which the document does not hold
+//     - it is recomputed from the key's neighbours, which is why it cannot be
+//     stored - so the drawing layer can show that the side's tangent is implicit
+//     and a drag would free it.
 // Either way the drawing layer never has to know the easing model: only where to
 // put a stem and a dot.
 struct PanelHandle {
@@ -130,13 +132,15 @@ struct PanelHandle {
     QPointF base;     // where the stem starts (the key the handle belongs to)
     QPointF dot;      // where the user grabs (mapped through the scaler)
     int radius = 0;   // the dot's drawn radius
-    // TRUE for an Auto segment's DERIVED pair and false for a Custom one's
-    // STORED pair. It is the whole of what distinguishes them: a ghost handle is
-    // not in the document (dragging one converts the key to Custom), so the
+    // TRUE when THIS side is derived (Vector/Auto/AutoClamped) and false when it
+    // is stored (Free/Aligned). The kind is PER SIDE: a Custom segment can derive
+    // its outgoing handle and store the incoming one, so the segment's two
+    // PanelHandles may differ. It is the whole of what distinguishes them: a
+    // ghost handle is not in the document (dragging one frees that side), so the
     // drawing layer draws it as a SOLID dot of the channel's hue at a smaller
-    // radius and a thinner-alpha ring, while a stored handle is the raised surface
-    // - and a consumer that grabbed a handle knows which kind of write it would
-    // start.
+    // radius and a thinner-alpha ring, while a stored handle is the raised
+    // surface - and a consumer that grabbed a handle knows which kind of write it
+    // would start.
     bool ghost = false;
 };
 
@@ -216,8 +220,9 @@ struct PanelCurve {
 };
 
 // One piece of text and the box it goes in. The box is what the model decides;
-// the text itself may be drawn centred in it (frame numbers) or right-aligned
-// (value numbers) by the drawing layer.
+// the text itself is anchored LEFT in it for frame numbers (the box is the
+// timeline's reserved slot and TimeRuler draws with Qt's default left alignment)
+// or right-aligned for value numbers, by the drawing layer.
 struct PanelLabel {
     QRect rect;
     QString text;
@@ -453,7 +458,12 @@ enum class GraphPanelHost {
 //               tier once it has 64px of room), not only for majors. Every box
 //               RESERVES frameRuler::kNumberCharWidth (6px) per character, centred on
 //               its tick and nudged inside the BAND, and the number's own frame
-//               travels beside the text in PanelLabel::frame. The project's FIRST and
+//               travels beside the text in PanelLabel::frame. That box is
+//               TimeRuler's own slot: its left edge is `tickX - (reserve >> 1)` and
+//               the drawing layer anchors the run at that edge with Qt's default left
+//               alignment - the box is NOT re-centred on the glyph's measured advance
+//               (that subtraction is the 1px left shift of every digit count). The
+//               project's FIRST and
 //               LAST frames are forced in when they are visible (the timeline's own
 //               "the range's first/last frame owns the end of the ruler"), and a
 //               narrow window collapses them into one "first–last" label
@@ -498,12 +508,14 @@ enum class GraphPanelHost {
 //               at the UI font) is DROPPED, not published overflowing, exactly as
 //               the frame axis drops a number wider than the plot; its
 //               valueTickY entry is still published.
-//   The boxes are measured with the default UI font (QFontMetrics(QFont())):
-//   the model has no painter, and the rects are advisory geometry, not a text
-//   layout. A drawing layer with its own font puts the glyphs in the box it was
-//   handed. The column is measured with that same font (it is the scaler that
-//   measures it), so the split obligation is still "put the glyphs in the box",
-//   not "make them fit".
+//   The boxes are measured with the font the CALLER hands in (buildGraphPanelModel's
+//   aMeasuredFont; QFont() when omitted): the model has no painter, and the rects are
+//   advisory geometry, not a text layout. The drawing host passes its own widget font,
+//   which is also the timeline's (both inherit the dock's stylesheet font), so a box the
+//   two views compare - the playhead pill - is measured with the same font in both. A
+//   drawing layer with its own font puts the glyphs in the box it was handed. The column
+//   is measured with that same font (it is the scaler that measures it), so the split
+//   obligation is still "put the glyphs in the box", not "make them fit".
 //
 // CURVES
 //   One PanelCurve per VISIBLE channel of every target that has keys - the same
@@ -560,22 +572,20 @@ enum class GraphPanelHost {
 //   key the handle belongs to, mapped through the scaler (handle 0's base is the
 //   segment's `from` key, handle 1's the `to` key - each control's stem leaves
 //   the key it moves).
-//   A CUSTOM segment publishes its STORED pair (ghost == false): dot is
-//   ctrl::graph::handlePoint(scale, segment, index) - the SAME mapping the
-//   editor's hit-test grabs through, so a grab at the dot is the drag the editor
-//   performs.
-//   An AUTO segment publishes its DERIVED pair (ghost == true): dot is
-//   ctrl::graph::handlePointAt over Curve::ghostHandles(segment.from), i.e. the
-//   SAME mapping through the same function (x is always the third and two thirds
-//   of the segment's span; the two y values come from the key's neighbours), so
-//   a stored pair and a derived one cannot drift apart. The document holds no
-//   such pair - it is recomputed - which is exactly what `ghost` tells a
-//   consumer: a solid dot of the channel's hue (smaller and lighter than the
-//   raised, stored dot) is how the layer shows a tangent the key does not
-//   store.
+//   a Custom segment publishes a handle per side, each of ITS OWN KIND: a STORED
+//   side (ghost == false) gets dot = ctrl::graph::handlePoint(scale, segment,
+//   index) - the SAME mapping the editor's hit-test grabs through, so a grab at
+//   the dot is the drag the editor performs - and a DERIVED side (ghost == true,
+//   Curve::derivesHandle) gets dot = ctrl::graph::handlePointAt over the side's
+//   effective control point (the third and two thirds of the span in x; the two
+//   y values come from the key's neighbours), so a stored pair and a derived one
+//   cannot drift apart. The document holds no derived pair - it is recomputed -
+//   which is exactly what `ghost` tells a consumer: a solid dot of the channel's
+//   hue (smaller and lighter than the raised, stored dot) is how the layer shows
+//   a tangent the key does not store. The kind is PER SIDE, never per segment: a
+//   segment with one derived side still publishes its stored side as stored.
 //   Every other easing type (the analytic curves) publishes nothing for that
-//   segment, so a curve with no Custom and no Auto segment has an empty
-//   `handles`.
+//   segment, so a curve with no Custom segment has an empty `handles`.
 //   radius is ctrl::graph::kHandleRadius (the dot's drawn radius); the grab
 //   radius is the larger ctrl::graph::kHandleHitRadius, and the two are
 //   deliberately different (the same visual/hit split as a key's).
@@ -853,9 +863,21 @@ struct GraphPanelModel {
 // when nothing does), which can HIDE the ruler band but moves nothing else - see THE
 // OCCLUDED TOP above; and aHost is the floor the panel is on, republished in the model and
 // used for no geometry - see GraphPanelHost.
+//
+// aMeasuredFont is the font the model MEASURES its strings with. The drawing host must
+// pass its own QWidget::font(): that is the font the timeline's ruler measures with
+// (TimeRuler/TimeCursor call QFontMetrics(aPainter.font())), and the APPLICATION stylesheet
+// gives every widget of the dock one font size (MainWindow's locale stylesheet), so the
+// panel's playhead pill comes out exactly as wide as the timeline's TimeCursor pill. A
+// default-constructed QFont() is the APPLICATION default font, which the stylesheet does
+// NOT apply to the widgets - the shipped locale sheet sets QWidget { font-size: 8pt }
+// while QFont() keeps the platform's 9pt: measuring the pill with QFont() made it 2px
+// wider than the timeline's on a 3-digit frame (and shifted its left edge 1px). The
+// default is kept for headless callers that only read the font-independent geometry
+// (channels), so an existing call site is never silently measured with a widget font.
 GraphPanelModel buildGraphPanelModel(
     ctrl::GraphEditor& aEditor, const QSize& aViewport, const theme::Graph& aTheme, int aTopInset = 0,
-    GraphPanelHost aHost = GraphPanelHost::Overlay
+    GraphPanelHost aHost = GraphPanelHost::Overlay, const QFont& aMeasuredFont = QFont()
 );
 
 } // namespace gui

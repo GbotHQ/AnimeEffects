@@ -31,8 +31,8 @@ public:
         Type_Round,
         // ID 14 IS RETIRED. It was Type_Auto, and it is deliberately NOT
         // reused: a 0.14 file that holds it loads as Type_Custom with BOTH
-        // handle sides Auto (see Deserializer::read), which is what that value
-        // meant. Type_TERM deliberately keeps the value 14 so nothing above it
+        // handle sides AutoClamped (see Deserializer::read), which is what that
+        // value meant. Type_TERM deliberately keeps the value 14 so nothing above it
         // can quietly take the retired slot.
         Type_TERM,
     };
@@ -86,7 +86,23 @@ public:
         }
     };
 
+    // The automatic handle mode the APPLICATION uses when it CREATES a default
+    // automatic easing: a stored Auto default written before 0.15, or a 0.14
+    // Type_Auto migrated into the per-side model. Both clamped unconditionally
+    // (that is what the retired type meant), so they become AutoClamped;
+    // unclamped Auto would change the shape and can overshoot. The explicit
+    // "Auto" PRESET a user picks - the picker's Auto tile and the header's Auto
+    // quick button - is a deliberate choice and writes HandleMode_Auto, so its
+    // user-facing name reads Auto (see getParamName).
+    static constexpr HandleMode kDefaultAutomaticHandleMode = HandleMode_AutoClamped;
+
     struct Param {
+        // THE PRE-REFACTOR DEFAULT, preserved: an unedited key is a LINEAR curve
+        // (range InOut, weight 1, and the smoothstep bezier stored for the day the
+        // key is switched to Custom) with two stored (linked) sides. It is NOT an
+        // automatic curve. The handle modes are inert on a non-Custom type, and a
+        // key nobody edited must keep the shape it has always played; automatic
+        // handles are a user-chosen preset, never the default shape.
         Param()
             :
             type(Type_Linear), range(Range_InOut), weight(1.0f) {}
@@ -119,6 +135,10 @@ public:
         bool valid = false;
         float frame = 0.0f; // frame offset from the segment's from key
         float value = 0.0f; // (v - vFrom) / (vTo - vFrom)
+        bool operator==(const AutoKey& aRhs) const {
+            return valid == aRhs.valid && frame == aRhs.frame && value == aRhs.value;
+        }
+        bool operator!=(const AutoKey& aRhs) const { return !(*this == aRhs); }
     };
 
     // The keys around a segment's two ends. A segment of a two-key channel has
@@ -130,6 +150,15 @@ public:
         AutoKey prev; // the key before the segment's from key
         AutoKey next; // the key after the segment's to key
         HandleMode inMode = HandleMode_Aligned;
+        // FULL equality, inMode included. A context is what a derived curve is
+        // DRAWN from, and the arriving side's mode is half of that derivation: a
+        // consumer that caches the context (the timeline chip) must repaint when
+        // only the TO key's mode changes, so comparing the neighbours alone would
+        // leave a stale glyph.
+        bool operator==(const AutoContext& aRhs) const {
+            return prev == aRhs.prev && next == aRhs.next && inMode == aRhs.inMode;
+        }
+        bool operator!=(const AutoContext& aRhs) const { return !(*this == aRhs); }
     };
 
     // Whether a handle mode derives its control point instead of reading the
@@ -165,6 +194,24 @@ public:
     // The translated name of one handle mode, from the same EasingName catalog
     // the type names come from.
     static QString getHandleModeName(HandleMode aMode);
+    // A Param's USER-FACING name, in the same vocabulary as getTypeName. For a
+    // non-Custom interpolation it IS getTypeName(type). A Custom curve is named by
+    // its two handle MODES, because that is where its identity lives now that
+    // Type_Auto is retired:
+    //   both Auto        -> "Auto"
+    //   both AutoClamped -> "Auto Clamped"
+    //   both Aligned     -> "Aligned"
+    //   both Vector      -> "Vector"
+    //   both Free        -> "Free"
+    //   mixed            -> the two side names, INCOMING first: "Auto / Free".
+    static QString getParamName(const Param& aParam);
+    // A newly created key's easing, from the stored defaults. The ONE reader of
+    // "generalsettings/easing" for key creation, so every path (SRT, Pose, FFD,
+    // the dock's key knockers, the object tree) agrees. A stored value that meant
+    // the retired Auto type (the name "Auto", or the pre-0.15 ordinal 14) becomes
+    // the automatic pair on a Custom curve, at kDefaultAutomaticHandleMode; everything
+    // else keeps the stored type. The range comes from its own setting.
+    static Param defaultParam();
     // Picker display order: Linear, Floor and Round lead (the entries whose
     // shape is not one of the family's parameters - a straight line and the two
     // stepped holds), then the analytic curve family, then the bezier "Custom"

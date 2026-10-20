@@ -33,8 +33,9 @@
 //                per-side modes, HandleMode handleOut then handleIn (Free,
 //                Aligned, Vector, Auto, AutoClamped; Blender's five). The
 //                retired Type_Auto id (14) is NOT reused: a 0.14 param of that
-//                type loads as Type_Custom with BOTH sides Auto, which is what
-//                it meant. An older file's one flag maps to both sides
+//                type loads as Type_Custom with BOTH sides AutoClamped (the
+//                clamp the retired type always applied). An older file's one
+//                flag maps to both sides
 //                (Aligned/Free), and a pre-0.13 file has neither and loads Free
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_MINOR_VERSION 15

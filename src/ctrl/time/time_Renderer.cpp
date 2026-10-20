@@ -65,14 +65,6 @@ namespace time {
         const QBrush kBrushSepa(mTheme.trackSeperatorColor());
         const int textWidth = 100;
         const int textLeft = aCameraRect.center().x() - textWidth / 2;
-        // Design s1: a name is never drawn under the playhead's own pill — the
-        // pill carries the only number in its column. The test is the pill's
-        // own half-width about the playhead's x, i.e. exactly the rule the
-        // ruler applies to its numbers (the mock suppresses both the same
-        // way), so the lane names and the ruler cannot disagree about which
-        // column the pill owns. The label's x is its own centre: its
-        // placement is unchanged (centred on the viewport).
-        const bool labelUnderPlayhead = qAbs(textLeft + textWidth / 2 - mPlayheadX) < mPlayheadHalfWidth;
 
         for (const TimeLineRow& row : aRows) {
             const QRect rect = row.rect;
@@ -111,25 +103,29 @@ namespace time {
                     mPainter.drawLine(v0, v1);
                 }
 
-                // draw type labels: in the channel's hue at 0.42 (design s1),
-                // and not at all when the playhead's pill owns this column.
-                if (!labelUnderPlayhead) {
-                    int i = 0;
-                    for (int typei = 0; typei < TimeKeyType_TERM; ++typei) {
-                        auto type = TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
-                        if (row.node->timeLine()->isEmpty(type)) {
-                            continue;
-                        }
-
-                        const float h = static_cast<float>(rect.height()) / sepa;
-                        mPainter.setPen(QPen(withAlpha(keyColor(type), kLabelAlpha), 1));
-                        mPainter.drawText(
-                            QRect(textLeft, rect.top() + static_cast<int>(i * h), textWidth, static_cast<int>(h)),
-                            TimeLine::getTimeKeyName(type),
-                            QTextOption(Qt::AlignCenter)
-                        );
-                        ++i;
+                // draw type labels: in the channel's hue at 0.42 (design s1).
+                // A lane's name is NOT the ruler's number. The ruler blanks its
+                // number under the playhead because the pill carries that same
+                // number in the same column; nothing carries the lane's name,
+                // so the name is drawn whatever the playhead does and the 1px
+                // playhead line simply crosses it (the playhead is painted
+                // after this pass). The box, the centre placement and the ink
+                // are unchanged.
+                int i = 0;
+                for (int typei = 0; typei < TimeKeyType_TERM; ++typei) {
+                    auto type = TimeLine::getTimeKeyTypeInOrderOfOperations(typei);
+                    if (row.node->timeLine()->isEmpty(type)) {
+                        continue;
                     }
+
+                    const float h = static_cast<float>(rect.height()) / sepa;
+                    mPainter.setPen(QPen(withAlpha(keyColor(type), kLabelAlpha), 1));
+                    mPainter.drawText(
+                        QRect(textLeft, rect.top() + static_cast<int>(i * h), textWidth, static_cast<int>(h)),
+                        TimeLine::getTimeKeyName(type),
+                        QTextOption(Qt::AlignCenter)
+                    );
+                    ++i;
                 }
             }
 

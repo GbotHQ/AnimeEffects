@@ -7,6 +7,7 @@
 #include "gui/prop/EasingPickWidget.h" // gui::prop::paintEasingCurve (the tile glyph)
 #include "gui/prop/prop_Items.h"
 #include "gui/theme/Colors.h"
+#include "core/KeyEasing.h"
 #include "ctrl/TimeLineEditor.h"
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/graph/graph_Curve.h"
@@ -53,20 +54,15 @@ const int kTextButtonRadius = 4;
 const int kQuickEaseGlyphSize = 18;
 const int kQuickEaseGap = 2;
 
-// The AutoContext the quick-easing Auto button draws with: the SAME canonical
-// neighbour pair the picker's Auto tile uses (kAutoTileContext in
-// EasingPickWidget.cpp) - one segment away on each side, at the segment's own
-// end values. A quick easing is a TYPE shortcut, so its button is a catalog
-// image of the type, not a preview of the selected keys (whose neighbours
-// differ per selection): with the real, empty context Auto's derived handles
-// collapse to the identity and the button would read as Linear. The pair makes
-// the REAL auto-clamp rule shape the canonical ease-in-out, and with
-// aAutoHandles it also shows the control points.
-constexpr util::Easing::AutoContext kQuickEaseAutoContext = {
-    { true, -1.0f, 0.0f }, // prev: one segment before, at the from key's value
-    { true, 2.0f, 1.0f },  // next: one segment after, at the to key's value
-    util::Easing::HandleMode_Auto, // the arriving side is derived too (the preset)
-};
+// The Auto preview context the quick-easing Auto button draws with is the SAME
+// one the picker's Auto tile uses - gui::prop::autoPreviewContext() (defined in
+// EasingPickWidget.cpp) - so the two images cannot be two different curves. A
+// quick easing is a TYPE shortcut, so its button is a catalog image of the
+// easing, not a preview of the selected keys (whose neighbours differ per
+// selection): with the real, empty context Auto's derived handles collapse to the
+// identity and the button would read as Linear. The canonical pair makes the REAL
+// derivation shape the canonical ease-in-out, and with aAutoHandles it also shows
+// the control points.
 #ifdef AE_ENABLE_IMGUI
 // The tab strip: the mock's own numbers for a tab (.tl-tabs button - 11px text,
 // 3px/8px of padding, a 4px radius) and the bar it sits in (a 2px gap between the
@@ -186,14 +182,15 @@ public:
     QuickEaseButton(
         util::Easing::Type aType, bool aAutoPreset, QWidget* aParent
     ): QAbstractButton(aParent), mAutoPreset(aAutoPreset) {
-        // The Auto preset is a Custom curve with BOTH sides deriving; the other
-        // three are plain types.
+        // The Auto preset is a Custom curve with BOTH sides on HandleMode_Auto -
+        // Blender's automatic handles, the unclamped preset the picker's Auto tile
+        // writes - and the other three are plain types.
         mParam.type = aAutoPreset ? util::Easing::Type_Custom : aType;
         if (aAutoPreset) {
             mParam.handleIn = util::Easing::HandleMode_Auto;
             mParam.handleOut = util::Easing::HandleMode_Auto;
         }
-        mAuto = kQuickEaseAutoContext;
+        mAuto = gui::prop::autoPreviewContext();
         // Keyboard reachable: Tab moves between the bar's buttons and Space (or
         // Return, handled below) activates one, exactly as the text button is.
         this->setFocusPolicy(Qt::StrongFocus);
@@ -340,13 +337,14 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     // order is transport | quick easings | chip (the bar reads the type shortcut
     // first and then the control that names the selection).
     //
-    // The four types, in the picker catalog's own display head (its first tile
-    // row). Their names come from util::Easing::getTypeName - the application's
-    // one public type vocabulary, which the picker's menus and the general
-    // settings also read - rather than from literals here, so the bar cannot
-    // introduce a name of its own. getTypeName is already translated (its
-    // "EasingName" context), so its result is used as-is and must not be wrapped
-    // in tr() again.
+    // The four entries, in the picker catalog's own display head (its first tile
+    // row). Their names come from util::Easing::getParamName - the Param's
+    // user-facing name, which for a type is its getTypeName and for the automatic
+    // preset is the handle pair it writes ("Auto Clamped"). That is the same
+    // function the chip and the picker's tiles read, so the bar cannot introduce
+    // a name of its own. getParamName is already translated (its "EasingName"
+    // context), so its result is used as-is and must not be wrapped in tr()
+    // again.
     //
     // WIDTH IS RESERVED, NOT MEASURED: each button is a fixed 28x28 box
     // (QuickEaseButton::setFixedSize) whose size hint never depends on the
@@ -360,8 +358,8 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         { util::Easing::Type_Linear, false },
         { util::Easing::Type_Floor, false },
         { util::Easing::Type_Round, false },
-        // The Auto preset: Custom with both handle sides Auto (the glyph's derived
-        // pair), not a retired easing type.
+        // The Auto preset: Custom with both handle sides Auto (the glyph's
+        // derived pair), not a retired easing type.
         { util::Easing::Type_Custom, true },
     };
     auto* quickBox = new QWidget(this);
@@ -370,9 +368,16 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     quickLay->setSpacing(kQuickEaseGap);
     for (const QuickDef& quick : quickDefs) {
         auto* button = new QuickEaseButton(quick.type, quick.autoPreset, quickBox);
-        const QString name = quick.autoPreset
-            ? util::Easing::getHandleModeName(util::Easing::HandleMode_Auto)
-            : util::Easing::getTypeName(quick.type);
+        // The SAME user-facing name the chip derives from the modes: an
+        // ordinary quick easing is its type name, the preset is the two handle
+        // sides it writes (Auto Clamped).
+        util::Easing::Param quickParam;
+        quickParam.type = quick.autoPreset ? util::Easing::Type_Custom : quick.type;
+        if (quick.autoPreset) {
+            quickParam.handleIn = util::Easing::HandleMode_Auto;
+            quickParam.handleOut = util::Easing::HandleMode_Auto;
+        }
+        const QString name = util::Easing::getParamName(quickParam);
         // A glyph-only control has no text for assistive technology to read, so
         // the easing's name IS its accessible text; the tooltip keeps naming the
         // action for the pointer.
@@ -572,20 +577,19 @@ void TimeLineHeader::onEasingChipClicked() {
 }
 
 void TimeLineHeader::onQuickEasingClicked(util::Easing::Type aType, bool aAutoPreset) {
-    // THE SAME EDIT AS THE PICKER'S TILE, through the application's own
-    // selection-easing action. The action lives on the panel's editor
-    // (ctrl::GraphEditor::setSelectedKeysEasing / setSelectedKeysAutoHandles),
-    // which holds the TIMELINE'S live selection (MainDisplayWidget::
-    // syncGraphPanelSharedState wires it with setSelectionSource), so this
-    // button needs no copy of the edit path: one macro, one history entry for
-    // the whole selection, and the same skips the picker's own commit makes.
-    // The editor is reached through the widget that owns it.
-    MainDisplayWidget* display = this->window() ? this->window()->findChild<MainDisplayWidget*>() : nullptr;
-    if (display) {
+    // THE SAME EDIT AS THE PICKER'S TILE, through the surface that owns the keys:
+    // the timeline's selection is the set both the picker and the quick easings
+    // act on, and TimeLineEditorWidget::applyEasingToSelection writes every
+    // component the selection names as ONE undo step. It must NOT go through the
+    // graph panel's editor: that action walks graph CHANNELS, and a Pose or FFD
+    // key - which carries one shared easing but publishes no channel - was
+    // silently skipped there, so the quick buttons never acted on (or lit for)
+    // those keys. This route covers every key type that carries an easing.
+    if (mInner) {
         if (aAutoPreset)
-            display->applyAutoHandlesToSelection();
+            mInner->applyAutoHandlesToSelection();
         else
-            display->applyEasingToSelection(aType);
+            mInner->applyEasingToSelection(aType);
     }
 
     // The document's own notification re-reads the chip and the surfaces; the BAR's
@@ -596,12 +600,16 @@ void TimeLineHeader::onQuickEasingClicked(util::Easing::Type aType, bool aAutoPr
 void TimeLineHeader::refreshQuickEasings() {
     // WHICH OF THE FOUR IS ACTIVE, and whether any of them can act at all, from
     // the timeline's own live selection: every selected key that carries an
-    // easing and whose channel playback interpolates (the image offset does not,
-    // and setSelectedKeysEasing refuses it) votes for its easing. The Auto button
-    // votes for the PRESET - Custom with both sides Auto - because automatic
-    // handles are modes now, not a type. Nothing to vote with - no selection, or
-    // only keys of types with no easing - leaves every button disabled; a split
-    // vote lights none of them.
+    // easing votes for its easing. Pose and FFD vote with their single shared
+    // param (component 0): they have no graph channel but their easing shapes the
+    // interval playback plays, so the buttons must be able to act on them.
+    // Component 0 of an Image key is readable too, but the image offset is
+    // step-held - playback never consults the param - so an image key does not
+    // vote (no quick easing could change a played sample). The Auto button votes
+    // for the PRESET - Custom with both sides Auto - because automatic handles
+    // are modes now, not a type. Nothing to vote with - no selection, or only
+    // keys of types with no easing - leaves every button disabled; a split vote
+    // lights none of them.
     ctrl::TimeLineEditor* editor = mTimeLine ? mTimeLine->editor() : nullptr;
     bool votable = false;
     bool mixedType = false;
@@ -617,13 +625,19 @@ void TimeLineHeader::refreshQuickEasings() {
             core::TimeKey* key = pos.key();
             if (!key)
                 continue; // a stale entry names a key the document no longer holds
+            // The stored component count, not the graph channel count: Pose/FFD
+            // answer 1 here and 0 there.
+            const int stored = core::easingStorageCount(pos.type());
             const int component =
                 (item.component == ctrl::time::Selection::kKeyLevel) ? 0 : item.component;
-            const util::Easing::Param* param = ctrl::graph::Curve::easingOf(*key, pos.type(), component);
+            if (stored <= 0 || component < 0 || stored <= component)
+                continue; // a type that carries no easing, or no such component
+            const util::Easing::Param* param =
+                ctrl::graph::Curve::easingOf(*key, pos.type(), component);
             if (!param)
-                continue; // a key of a type that carries no easing
+                continue; // bone/mesh
             if (!ctrl::graph::Channel(pos.type(), 0).isInterpolated())
-                continue; // step-held: playback never consults its param
+                continue; // step-held (the image offset): its param is never played
             const bool preset = param->type == util::Easing::Type_Custom
                 && param->handleIn == util::Easing::HandleMode_Auto
                 && param->handleOut == util::Easing::HandleMode_Auto;
@@ -696,52 +710,15 @@ void TimeLineHeader::zoomByNotch(bool aZoomIn) {
 }
 
 void TimeLineHeader::fitFrameRange() {
-    if (!mTimeLine)
-        return;
-    ctrl::TimeLineEditor* editor = mTimeLine->editor();
-    if (!editor)
-        return;
-
-    // The timeline's frame axis has no fit of its own - the graph panel's fit lives
-    // inside ctrl::graph::Scaler, on THAT panel's axis - so this composes the three
-    // primitives the timeline does expose, in the order the panel's own fit uses:
-    //
-    //   * the ladder's inverse (time::Scaler::indexForRate) for the rung whose rate
-    //     still fits,
-    //   * the wheel's anchored zoom (zoomFramesAbout) to move to that rung,
-    //   * a frame scroll (scrollFramesBy) to put the range's start at the left edge.
-    //
-    // The span is the frame range's own on-screen extent: the first frame's tick sits
-    // one margin in from the content origin, so the range occupies
-    // (max - min) * pixelsPerFrame() px, whatever the current zoom.
-    //
-    // Each primitive that really moves the view reports it (onViewRangeChanged), and
-    // that report is what repaints the docked panel with the new window
-    // (MainDisplayWidget::syncGraphPanelSharedState).
-    const util::Range range = editor->frameRange();
-    double lo = 0.0;
-    double hi = 0.0;
-    mTimeLine->visibleFrameWindow(lo, hi);
-    if (!(hi > lo))
-        return; // no surface to fit into (an unlaid-out timeline, or no project)
-
-    // The viewport's width in the same units: the fractional-frames window it shows,
-    // times the rate it shows them at. Never a whole-frame window: a rounded span
-    // would fit to the wrong rung.
-    const double viewportPx = (hi - lo) * editor->pixelsPerFrame();
-    const double span = std::max(1.0, static_cast<double>(range.diff()));
-    const int targetIndex = editor->timeScale().indexForRate(viewportPx / span);
-    const int currentIndex = editor->timeScale().index();
-    if (targetIndex != currentIndex) {
-        mTimeLine->zoomFramesAbout((currentIndex - targetIndex) * kZoomNotch,
-                                   static_cast<double>(range.min()));
-    }
-
-    // The zoom above holds the range start's pixel; this puts that pixel back on the
-    // viewport's left edge, so the fit shows the range from its first frame and no
-    // earlier. Re-read the window: the zoom just moved it.
-    mTimeLine->visibleFrameWindow(lo, hi);
-    mTimeLine->scrollFramesBy(static_cast<double>(range.min()) - lo);
+    // ONE FIT IMPLEMENTATION: the composition of the ladder's inverse, the anchored
+    // zoom and the view scroll lives on the timeline widget now
+    // (gui::TimeLineWidget::fitFrameRange), because the new-project path needs the
+    // same fit and two implementations would drift. It centres the frame range with
+    // an equal gutter at each end (see ctrl::TimeLineEditor::fitFrameRange) and
+    // reports the new window through onViewRangeChanged, which is what repaints the
+    // docked panel with it.
+    if (mTimeLine)
+        mTimeLine->fitFrameRange();
 }
 
 void TimeLineHeader::refreshZoomIcons() {

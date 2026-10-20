@@ -191,6 +191,30 @@ int main(int argc, char** argv) {
                     && int(value.type) == int(util::Easing::typeAtDisplayIndex(i - 1));
         }
         order = order && catalog == util::Easing::displayCount();
+
+        // (a2) The Auto preset's CHECKED STATE and its label both come from the
+        // Param it writes: clicking the tile must check that tile and no other,
+        // and the button's name must be the Param's user-facing name (the two
+        // handle modes), never the interpolation type "Custom".
+        QToolButton* autoTile = w.findChild<QToolButton*>(QStringLiteral("tile-3"));
+        bool checkedOnlyAuto = autoTile != nullptr;
+        if (autoTile) {
+            autoTile->click();
+            app.processEvents();
+            for (int i = 0; i < catalog; ++i) {
+                QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
+                checkedOnlyAuto = checkedOnlyAuto && tile && tile->isChecked() == (i == 3);
+            }
+            const QString shown = util::Easing::getParamName(w.value());
+            checkedOnlyAuto = checkedOnlyAuto && shown == QLatin1String("Auto")
+                && shown == autoTile->accessibleName();
+            fprintf(stderr, "Auto preset: checked only tile-3=%d, name='%s' -> %s\n",
+                    int(checkedOnlyAuto), qPrintable(shown), checkedOnlyAuto ? "OK" : "FAIL");
+        }
+        if (!checkedOnlyAuto) {
+            fprintf(stderr, "FAIL  the Auto preset's checked state/name is not the pair it writes\n");
+            ++failed;
+        }
         w.setValue(initial); // back to the initial draft (and the initial glyph colours)
         app.processEvents();
 
@@ -244,6 +268,37 @@ int main(int argc, char** argv) {
         if (!sameSize || glyphDiff <= 0) {
             fprintf(stderr, "FAIL  the Auto tile's glyph is missing or identical to Linear's\n");
             ++failed;
+        }
+
+        // (d) THE AUTO GLYPH'S SHAPE, from the glyph's OWN param and context: a
+        // "not equal to Linear" gate accepts any non-straight curve, including the
+        // retired clamped pair's (which dived below the start and overshot the end).
+        // The canonical automatic pair derives (1/3, 0) and (2/3, 1); assert those.
+        {
+            gui::prop::CurveGlyph* g = w.findChild<QToolButton*>(QStringLiteral("tile-3"))
+                ? w.findChild<QToolButton*>(QStringLiteral("tile-3"))
+                      ->findChild<gui::prop::CurveGlyph*>()
+                : nullptr;
+            bool canonical = g != nullptr;
+            if (g) {
+                const util::Easing::Param& p = g->param();
+                const util::Easing::AutoContext& ctx = g->autoContext();
+                canonical = p.type == util::Easing::Type_Custom
+                    && p.handleIn == util::Easing::HandleMode_Auto
+                    && p.handleOut == util::Easing::HandleMode_Auto
+                    && ctx.inMode == util::Easing::HandleMode_Auto;
+                const QPointF out = util::Easing::controlPoint(p, ctx.inMode, ctx, 1.0f, 0);
+                const QPointF in = util::Easing::controlPoint(p, ctx.inMode, ctx, 1.0f, 1);
+                canonical = canonical && std::fabs(out.x() - 1.0 / 3.0) < 1e-6
+                    && std::fabs(out.y() - 0.0) < 1e-6 && std::fabs(in.x() - 2.0 / 3.0) < 1e-6
+                    && std::fabs(in.y() - 1.0) < 1e-6;
+            }
+            fprintf(stderr, "Auto glyph control points are the canonical (1/3,0)/(2/3,1): %d\n",
+                    int(canonical));
+            if (!canonical) {
+                fprintf(stderr, "FAIL  the Auto tile is not drawing the canonical automatic pair\n");
+                ++failed;
+            }
         }
     }
 

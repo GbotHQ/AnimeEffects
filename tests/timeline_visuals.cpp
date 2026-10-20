@@ -43,10 +43,18 @@
 //     step quieter than the keys: the label's ink is closer to the hue's 0.42
 //     composite than to the old neutral text composite, and it is still nearer
 //     its own band than the full-strength hue (the "quieter" half).
-//   4 THE PILL'S COLUMN. The playhead's pill carries the only number in its
-//     column, so a lane name that would sit under it is NOT drawn: with the
-//     playhead parked on the label's own centre the label box holds no ink at
-//     all, and with the playhead away from it the same box does.
+//   4 THE LABEL DOES NOT YIELD. The playhead's pill carries the frame in its
+//     column, and the RULER blanks its number under it because the pill
+//     carries that same number there. Nothing carries a lane's name, so the
+//     lane label is drawn whatever the playhead does: with the playhead parked
+//     on the label's own centre the box carries the same label ink as with
+//     the playhead away, and the playhead line simply crosses the text.
+//   5 THE FIT IS SYMMETRIC. ctrl::TimeLineEditor::fitFrameRange (the header's
+//     fit button and the new-project fit) leaves the SAME content-pixel margin
+//     at both ends of the frame range, within the one pixel the whole-pixel
+//     view transform can express, and its gutter is part of the RUNG choice.
+//     The new-project policy (fits on attach, not on a tab switch) is asserted
+//     through the same call.
 //
 // The geometry is read off the implementation's own public mapping
 // (TimeLineEditor::timeScale(), kTimeLineMargin) rather than restated, so a
@@ -209,16 +217,6 @@ QImage renderTimeline(const ctrl::TimeLineEditor& aEditor, theme::TimeLine& aThe
 QRect labelBox(int aRowTop, int aRowBottom) {
     const int center = QRect(0, 0, kWidth, kHeight).center().x();
     return QRect(QPoint(center - 50 + 3, aRowTop + 4), QPoint(center + 50 - 3, aRowBottom - 4));
-}
-
-int inkIn(const QImage& aImage, const QRect& aBox, const Rgb& aBand) {
-    int best = 0;
-    for (int y = aBox.top(); y <= aBox.bottom(); ++y) {
-        for (int x = aBox.left(); x <= aBox.right(); ++x) {
-            best = std::max(best, chebyshev(pixelAt(aImage, x, y), aBand));
-        }
-    }
-    return best;
 }
 
 // The pixel of aBox that carries the most ink against the band: the glyph's
@@ -447,7 +445,7 @@ int main(int argc, char** argv) {
         CHECK(chebyshev(ink, bandB) < chebyshev(ink, rgbOf(colors.opaKey)));
     }
 
-    // --- 4: the lane label yields its column to the playhead's pill.
+    // --- 4: the lane label does NOT yield its column to the playhead.
     {
         // The pill's centre is margin + pixelWidth(frame) - the same mapping the
         // keys and the ruler use - so the label can be put exactly under it: the
@@ -457,25 +455,179 @@ int main(int argc, char** argv) {
         while (margin + scale.pixelWidth(playFrame + 1) <= labelCenterX)
             ++playFrame;
         const int playX = margin + scale.pixelWidth(playFrame);
-        CHECK(std::abs(playX - labelCenterX) <= 1); // the suppression's precondition
+        CHECK(std::abs(playX - labelCenterX) <= 1); // the playhead really is on the label
 
+        // Every state is rendered through the same paint path; only the frame
+        // differs, so the playhead's own column is the only thing that moves.
+        const QImage awayFromPill = renderTimeline(editor, theme);
         editor.setFrame(core::Frame(playFrame));
         const QImage underPill = renderTimeline(editor, theme);
-        const Rgb bandUnderPill = pixelAt(underPill, kBandProbeX, kRowBTop + 30);
-        // The label is not drawn at all, so its whole box - not just the pill's
-        // own column - stays bare band.
-        CHECK(inkIn(underPill, labelB, bandUnderPill) <= kClean);
-        // Row A is the selected row, so its band is the tint: compare against
-        // its own band, not row B's.
-        const Rgb bandUnderPillRowA = pixelAt(underPill, kBandProbeX, keyRowAY);
-        CHECK(inkIn(underPill, labelA, bandUnderPillRowA) <= kClean);
 
-        // The control: with the playhead away from the label's column the same
-        // box carries ink, so the suppression is the pill's doing.
-        editor.setFrame(core::Frame(10)); // x = margin + 11, far to the left
-        const QImage awayFromPill = renderTimeline(editor, theme);
-        const Rgb bandAway = pixelAt(awayFromPill, kBandProbeX, kRowBTop + 30);
-        CHECK(inkIn(awayFromPill, labelB, bandAway) > 15);
+        // The label box is bare band except for the label itself (the keys and
+        // the range markers are columns away), so ink over the band is the
+        // lane name. The playhead's own column is skipped - were a playhead
+        // line painted into this pass, it must not be mistaken for the label.
+        auto labelInk = [&](const QImage& aImage, const QRect& aBox, const Rgb& aBand) {
+            int ink = 0;
+            for (int y = aBox.top(); y <= aBox.bottom(); ++y) {
+                for (int x = aBox.left(); x <= aBox.right(); ++x) {
+                    if (std::abs(x - playX) <= 2)
+                        continue;
+                    if (chebyshev(pixelAt(aImage, x, y), aBand) > 15)
+                        ++ink;
+                }
+            }
+            return ink;
+        };
+
+        const Rgb bandB = pixelAt(underPill, kBandProbeX, kRowBTop + 30);
+        CHECK(chebyshev(bandB, pixelAt(awayFromPill, kBandProbeX, kRowBTop + 30)) <= kClean);
+        const int awayInk = labelInk(awayFromPill, labelB, bandB);
+        const int underInk = labelInk(underPill, labelB, bandB);
+        // A lane's name is not the ruler's number: the pill carries the frame,
+        // nothing carries the lane's name, so the label stays put and stays
+        // readable in BOTH states.
+        CHECK(awayInk > 15);
+        CHECK(underInk > 15);
+        CHECK(std::abs(underInk - awayInk) <= 4); // the playhead does not add or remove label ink
+
+        // Row A is the selected row, so its band is the tint: compare against
+        // its own band, not row B's. Its label obeys the same rule.
+        const Rgb bandAwayRowA = pixelAt(awayFromPill, kBandProbeX, keyRowAY);
+        const Rgb bandUnderPillRowA = pixelAt(underPill, kBandProbeX, keyRowAY);
+        CHECK(labelInk(awayFromPill, labelA, bandAwayRowA) > 15);
+        CHECK(std::abs(
+            labelInk(underPill, labelA, bandUnderPillRowA) - labelInk(awayFromPill, labelA, bandAwayRowA)
+        ) <= 4);
+
+        // The control that makes this a statement about the LABEL and not
+        // about an unchanged picture: the same ink is the hue at 0.42 over the
+        // band, read outside the playhead's column in the parked state too.
+        int best = -1;
+        Rgb strongest = bandB;
+        for (int y = labelB.top(); y <= labelB.bottom(); ++y) {
+            for (int x = labelB.left(); x <= labelB.right(); ++x) {
+                if (std::abs(x - playX) <= 2)
+                    continue;
+                const Rgb p = pixelAt(underPill, x, y);
+                const int ink = chebyshev(p, bandB);
+                if (ink > best) {
+                    best = ink;
+                    strongest = p;
+                }
+            }
+        }
+        const Rgb hueTint = over(colors.opaKey, 0.42, bandB);
+        CHECK(chebyshev(strongest, hueTint) <= 25);
+    }
+
+    // --- 5: THE FIT LEAVES THE SAME MARGIN AT BOTH ENDS, AND A NEW PROJECT OPENS
+    // FITTED. This is the timeline header's fit button and the new-project fit in one
+    // implementation: ctrl::TimeLineEditor::fitFrameRange picks the rung and the
+    // view's left content pixel, and gui::TimeLineWidget puts that pixel under the
+    // viewport's left edge (TimeLineWidget::fitFrameRange). The viewport is simulated
+    // here at the content pixel grid the view transform really uses, so the two
+    // margins are measured the way the widget produces them.
+    //
+    // The regression this pins: fitting to the range's span alone (without the two
+    // margins in the rate) and then pushing the range flush to the left edge left
+    // ZERO pixels before frame min and the whole ladder remainder after frame max.
+    {
+        const int fitMargin = ctrl::TimeLineEditor::kTimeLineMargin;
+        // Widths the timeline really gets: its minimum size hint is 280, and the
+        // docked/undocked panes go well past 1920.
+        const int widths[] = { 280, 320, 517, 640, 800, 1000, 1234, 1920 };
+        // Ranges whose spans land between ladder rungs (the interesting case: the
+        // rung barely fits, so the leftover is large), a range not starting at 0,
+        // and one entirely LEFT of frame 0 - the camera's overlap bound caps that
+        // one's rung, and the fit must still come out symmetric.
+        const util::Range ranges[] = {
+            util::Range(0, 200),
+            util::Range(1, 240),
+            util::Range(-10, 30),
+            util::Range(24, 31),
+            util::Range(-2000, -1000),
+        };
+        for (const util::Range& range : ranges) {
+            editor.setFrameRange(range);
+            const double span = std::max(1.0, static_cast<double>(range.diff()));
+            for (const int viewport : widths) {
+                const ctrl::TimeLineEditor::FrameFit fit = editor.fitFrameRange(viewport);
+                CHECK(fit.valid);
+                // Apply the fit the way the widget does: the ladder moves by whole
+                // notches (the wheel's unit), and the view's left edge lands on the
+                // fit's content pixel.
+                editor.updateWheel((editor.timeScale().index() - fit.scaleIndex) * 120, false);
+                CHECK(editor.timeScale().index() == fit.scaleIndex);
+
+                const double ppf = editor.pixelsPerFrame();
+                const double leftTick = fitMargin + ppf * static_cast<double>(range.min());
+                const double rightTick = fitMargin + ppf * static_cast<double>(range.max());
+                const double leftMargin = leftTick - fit.viewLeftPixel;
+                const double rightMargin = (fit.viewLeftPixel + viewport) - rightTick;
+
+                // The range is wholly inside the viewport...
+                CHECK(rightTick - leftTick <= viewport + 1e-9);
+                // ...with a real margin on each side...
+                CHECK(leftMargin > 0.0);
+                CHECK(rightMargin > 0.0);
+                // ...and THE SAME margin at both ends, to the one content pixel the
+                // view transform can express. (2 * half a pixel of rounding.)
+                CHECK(std::fabs(leftMargin - rightMargin) <= 1.0);
+                // The gutter was part of the RUNG choice: for a range centred on or
+                // right of the content origin, the next rung up overflows the
+                // two-gutter budget the fit reserves, which is exactly the asymmetry
+                // the old span-only rate could produce. A negative-centred range is
+                // capped earlier by the camera's bound instead, so its next rung may
+                // still fit the gutters and simply sit outside the bound.
+                const double centre = 0.5 * (range.min() + range.max());
+                if (centre >= 0.0 && fit.scaleIndex < 120) {
+                    ctrl::time::Scaler next = editor.timeScale();
+                    next.setIndex(fit.scaleIndex + 1);
+                    CHECK(next.pixelsPerFrame() * span + 2.0 * fitMargin > viewport + 1e-9);
+                }
+                // ...and the view position the fit asks for is one updateCamera's own
+                // overlap bound accepts (it clamps the view offset into
+                // [-contentSpan, viewport], so a fitted lead would otherwise be eaten
+                // by the camera rather than by the fit).
+                const int contentSpan = editor.frameEndPixel() + fitMargin;
+                CHECK(fit.viewLeftPixel >= -viewport);
+                CHECK(fit.viewLeftPixel <= contentSpan);
+                std::printf(
+                    "[F] fit %d..%d into %4dpx: index %d (%.3f px/frame), margins %.2f / %.2f px\n",
+                    range.min(), range.max(), viewport, fit.scaleIndex, ppf, leftMargin, rightMargin
+                );
+            }
+        }
+
+        // THE NEW-PROJECT POLICY. setProject fits a project that arrives from NO
+        // project (newly opened / newly created, both of which clear the timeline
+        // first); a tab switch hands over a project this widget is already showing,
+        // so the live view is kept.
+        CHECK(ctrl::TimeLineEditor::fitsOnProjectAttach(false, true));
+        CHECK(!ctrl::TimeLineEditor::fitsOnProjectAttach(true, true));
+        CHECK(!ctrl::TimeLineEditor::fitsOnProjectAttach(true, false));
+        CHECK(!ctrl::TimeLineEditor::fitsOnProjectAttach(false, false));
+
+        // A NEW PROJECT REALLY OPENS FITTED, not at the default zoom: after the frame
+        // range arrives, the default rung is what setFrameRange leaves behind, and
+        // the fit is what moves it - it zooms IN so the range fills the pane instead
+        // of occupying a fraction of it.
+        {
+            ctrl::TimeLineEditor fresh;
+            fresh.setFrameRange(util::Range(0, 200));
+            const int defaultIndex = fresh.timeScale().index();
+            const double defaultPpf = fresh.timeScale().pixelsPerFrame();
+            const ctrl::TimeLineEditor::FrameFit fit = fresh.fitFrameRange(800);
+            CHECK(fit.scaleIndex != defaultIndex);
+            CHECK(fit.scaleIndex > defaultIndex); // fitted means zoomed in here
+            // The default leaves the range in a fraction of the pane...
+            CHECK(defaultPpf * 200.0 < 800.0 - 2.0 * fitMargin);
+            // ...and the fit's rung fills it, gutters included.
+            ctrl::time::Scaler probe = fresh.timeScale();
+            probe.setIndex(fit.scaleIndex);
+            CHECK(probe.pixelsPerFrame() * 200.0 + 2.0 * fitMargin <= 800.0 + 1e-9);
+        }
     }
 
     std::printf("timeline_visuals: all checks passed\n");

@@ -428,12 +428,13 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
 
   # (1) THE PAN, which also names the playhead: a middle-drag of PAN_PIXELS must move the
   # content by exactly that many pixels. A whole-frame carrier snaps it to the nearest frame
-  # instead. The drag runs AWAY FROM THE WINDOW START: a new project opens with its first
-  # frame a few px inside the left panel edge (the timeline own margin), and the shared
-  # mapping puts the playhead there, so a drag the other way would walk it out of the panel -
-  # where the playhead own clip removes it - and out of the crop the columns are read from.
-  # The drag starts at the middle of the crop, which is the middle of the panel: inside the
-  # plot and inside the panel.
+  # instead. The drag runs AWAY FROM THE WINDOW START: a new project now opens FITTED (the
+  # timeline centres its frame range with an equal gutter at each end - see
+  # ctrl::TimeLineEditor::fitFrameRange), so the playhead of frame 1 lands the leading gutter
+  # inside the left edge of the panel, and the shared mapping puts it there, so a drag the
+  # other way would walk it out of the panel - where the clip of the playhead removes it -
+  # and out of the crop the columns are read from. The drag starts at the middle of the
+  # crop, which is the middle of the panel: inside the plot and inside the panel.
   shot "$SHOTS/anchor_02_pan_before.png"
   rawline "$SHOTS/anchor_02_pan_before.png" "$SCRATCH/pa.raw"
   xdotool mousemove --sync $((CL + CW / 2)) $MIDY

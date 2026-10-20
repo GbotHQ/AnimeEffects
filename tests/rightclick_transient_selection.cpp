@@ -33,6 +33,10 @@
 // (AbstractCursor fed QMouseEvents) establishes a persistent selection.
 // Headless: needs QApplication for QSettings/QMap internals, no GL.
 #include <QApplication>
+#include <QClipboard>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMouseEvent>
 #include <cstdio>
 #include "XCAssert.h"
@@ -41,6 +45,10 @@
 #include "core/ObjectNode.h"
 #include "core/TimeLine.h"
 #include "core/MoveKey.h"
+#include "core/PoseKey.h"
+#include "core/FFDKey.h"
+#include "core/KeyEasing.h"
+#include "ctrl/graph/graph_Curve.h"
 #include "core/AbstractCursor.h"
 #include "util/Easing.h"
 #include "ctrl/TimeLineEditor.h"
@@ -396,6 +404,236 @@ int main(int argc, char** argv) {
         CHECK(editor.selection().empty());
 
         editor.selection().onChanged.disconnect(changeSlot);
+    }
+
+    // ---- ONE CHANNEL'S EASING EDIT NEVER WRITES ITS SIBLINGS ----
+    //
+    // The picker's commit is ctrl::TimeLineEditor::assignSelectionEasing, and it
+    // writes only the COMPONENT the selection names: a graph-panel press selects
+    // Move Y, so Move X's param must come out byte-identical. (A whole-key entry -
+    // every timeline gesture - is the one case that writes them all, because it
+    // names them all.) Undo restores exactly the written component.
+    {
+        auto* key = new core::MoveKey();
+        project.commandStack().push(node.timeLine()->createPusher(core::TimeKeyType_Move, 30, key));
+
+        util::Easing::Param x;
+        x.type = util::Easing::Type_Cubic;
+        x.range = util::Easing::Range_In;
+        x.weight = 0.3f;
+        util::Easing::Param y;
+        y.type = util::Easing::Type_Elastic;
+        y.range = util::Easing::Range_Out;
+        y.weight = 0.8f;
+        key->data().easing(0) = x;
+        key->data().easing(1) = y;
+
+        core::TimeLineEvent::Target target;
+        target.node = &node;
+        target.pos = core::TimeKeyPos(*node.timeLine(), core::TimeKeyType_Move, 30);
+        CHECK(editor.selection().setMarker(target, 1)); // Move Y, not the whole key
+        CHECK(editor.selection().items().front().component == 1);
+
+        util::Easing::Param next;
+        next.type = util::Easing::Type_Sine;
+        next.range = util::Easing::Range_InOut;
+        next.weight = 1.0f;
+        CHECK(editor.assignSelectionEasing([next](const util::Easing::Param&) { return next; }));
+
+        // THE OTHER CHANNEL IS BYTE-IDENTICAL, all fields included.
+        CHECK(key->data().easing(0) == x);
+        CHECK(key->data().easing(1) == next);
+
+        // ...and undo restores only what was written.
+        bool undone = false;
+        project.commandStack().undo(&undone);
+        CHECK(undone);
+        CHECK(key->data().easing(0) == x);
+        CHECK(key->data().easing(1) == y);
+
+        // WHAT THE SELECTION NAMES - the question the picker opens on. A marker
+        // answers its own component; several markers answer the sorted union; a
+        // whole-key entry answers every component the type stores. (This is what
+        // lets openEasingPicker open on Move Y instead of collapsing to component 0,
+        // and what tells the chip that the selection spans more than the curve it
+        // paints.)
+        const QVector<int> onlyY = editor.selection().componentsOf(target, core::MoveKey::kComponents);
+        CHECK(onlyY.size() == 1 && onlyY.first() == 1);
+        CHECK(editor.selection().addMarker(target, 0));
+        const QVector<int> both = editor.selection().componentsOf(target, core::MoveKey::kComponents);
+        CHECK(both.size() == 2 && both.first() == 0 && both.at(1) == 1);
+        core::TimeLineEvent whole;
+        whole.pushTarget(node, core::TimeKeyType_Move, 30);
+        editor.selection().set(whole);
+        const QVector<int> wholeKey = editor.selection().componentsOf(target, core::MoveKey::kComponents);
+        CHECK(wholeKey.size() == 2 && wholeKey.first() == 0 && wholeKey.at(1) == 1);
+        // A type with one stored component (Rotate) answers exactly one, and an
+        // out-of-range stored count answers none.
+        CHECK(editor.selection().componentsOf(target, 1).size() == 1);
+        CHECK(editor.selection().componentsOf(target, 0).isEmpty());
+        editor.selection().clear();
+    }
+
+    // ---- THE QUICK EASINGS REACH POSE/FFD (one shared easing, no graph channel) ----
+    //
+    // The header's four quick buttons used to go through the ANIMATION GRAPH's
+    // action, which walks graph channels: Pose and FFD publish none (their count is
+    // 0 there), so the buttons could neither act on those keys nor light for them -
+    // and a key with an easing that no button can set is the regression. The route
+    // is now the same selection edit as the picker's (assignSelectionEasing), which
+    // asks the key type's STORED component count, and the read side answers the
+    // shared param through the one bridge. Both halves are pinned here.
+    {
+        auto* pose = new core::PoseKey();
+        auto* ffd = new core::FFDKey();
+        project.commandStack().push(node.timeLine()->createPusher(core::TimeKeyType_Pose, 40, pose));
+        project.commandStack().push(node.timeLine()->createPusher(core::TimeKeyType_FFD, 41, ffd));
+
+        // The graph channel count is 0 for both (they are not graphable)...
+        CHECK(core::easingComponentCount(core::TimeKeyType_Pose) == 0);
+        CHECK(core::easingComponentCount(core::TimeKeyType_FFD) == 0);
+        // ...but they STORE one shared param, which is what the timeline edits...
+        CHECK(core::easingStorageCount(core::TimeKeyType_Pose) == 1);
+        CHECK(core::easingStorageCount(core::TimeKeyType_FFD) == 1);
+        // ...and the header's read (Curve::easingOf) resolves it, where it used to
+        // answer null and leave the quick buttons disabled for these keys.
+        CHECK(ctrl::graph::Curve::easingOf(*pose, core::TimeKeyType_Pose, 0) == &pose->data().easing(0));
+        CHECK(ctrl::graph::Curve::easingOf(*ffd, core::TimeKeyType_FFD, 0) == &ffd->data().easing(0));
+
+        core::TimeLineEvent both;
+        both.pushTarget(node, core::TimeKeyType_Pose, 40);
+        both.pushTarget(node, core::TimeKeyType_FFD, 41);
+        editor.selection().set(both);
+
+        // A quick TYPE button: every selected component takes the type...
+        CHECK(editor.assignSelectionEasing([](const util::Easing::Param& aCurrent) {
+            util::Easing::Param next = aCurrent;
+            next.type = util::Easing::Type_Quad;
+            return next;
+        }));
+        CHECK(pose->data().easing(0).type == util::Easing::Type_Quad);
+        CHECK(ffd->data().easing(0).type == util::Easing::Type_Quad);
+
+        // ...and the Auto button writes the PRESET (Custom with both sides Auto).
+        CHECK(editor.assignSelectionEasing([](const util::Easing::Param& aCurrent) {
+            util::Easing::Param next = aCurrent;
+            next.type = util::Easing::Type_Custom;
+            next.handleIn = util::Easing::HandleMode_Auto;
+            next.handleOut = util::Easing::HandleMode_Auto;
+            return next;
+        }));
+        for (const util::Easing::Param* param : { &pose->data().easing(0), &ffd->data().easing(0) }) {
+            CHECK(param->type == util::Easing::Type_Custom);
+            CHECK(param->handleIn == util::Easing::HandleMode_Auto);
+            CHECK(param->handleOut == util::Easing::HandleMode_Auto);
+        }
+        editor.selection().clear();
+    }
+
+    // ---- THE CLIPBOARD'S EASING PAYLOAD (ctrl::TimeLineEditor::easingToJson /
+    // easingsFromJson, and the paste reader that consumes them) ----
+    //
+    // A copied key used to carry ONE easing: eType/eRange/eWeight from component 0,
+    // so paste broadcast that one curve over every component and a Custom curve's
+    // handle MODES (the only place its shape lives now) were lost entirely. The
+    // payload is per component, and each entry carries both modes plus the stored
+    // cubic. Drive the real reader (getTypesFromCb) with a payload built by the
+    // real writer-side codec, and assert the components come back DISTINCT and
+    // bit-identical.
+    {
+        // `util::Easing` is a CLASS, not a namespace, and block-scope `using` of a
+        // class member is ill-formed (measured: "using declaration cannot refer to
+        // class member"), so every enumerator below is qualified.
+
+        util::Easing::Param x;
+        x.type = util::Easing::Type_Custom;
+        x.range = util::Easing::Range_Out;
+        x.weight = 0.4f;
+        x.handleIn = util::Easing::HandleMode_Auto;      // the TO key's arriving side
+        x.handleOut = util::Easing::HandleMode_Free;     // the FROM key's leaving side
+        x.cubicBezier = { 0.1f, 0.2f, 0.7f, 0.8f };
+        util::Easing::Param y;
+        y.type = util::Easing::Type_Custom;
+        y.range = util::Easing::Range_In;
+        y.weight = 0.9f;
+        y.handleIn = util::Easing::HandleMode_AutoClamped;
+        y.handleOut = util::Easing::HandleMode_Vector;
+        y.cubicBezier = { 0.35f, -0.1f, 0.65f, 1.1f };
+        CHECK(!(x == y));
+
+        QJsonArray array;
+        array.append(ctrl::TimeLineEditor::easingToJson(x));
+        array.append(ctrl::TimeLineEditor::easingToJson(y));
+        // The codec alone round-trips every field, per component.
+        {
+            QJsonObject payload;
+            payload["eEasings"] = array;
+            const QVector<util::Easing::Param> back = ctrl::TimeLineEditor::easingsFromJson(payload, 2);
+            CHECK(back.size() == 2);
+            CHECK(back.at(0) == x);
+            CHECK(back.at(1) == y);
+        }
+
+        // ...and through the PASTE READER, which is what a user's copy/paste hits.
+        QJsonObject move;
+        move["Type"] = QStringLiteral("Move");
+        move["Frame"] = 5;
+        move["PosX"] = 0.0;
+        move["PosY"] = 0.0;
+        move["CentreX"] = 0.0;
+        move["CentreY"] = 0.0;
+        move["Spline"] = QStringLiteral("Linear");
+        move["eType"] = QStringLiteral("Custom"); // component 0's legacy view
+        move["eRange"] = QStringLiteral("Out");
+        move["eWeight"] = 0.4;
+        move["eEasings"] = array;
+        QJsonObject payload;
+        payload["TargetsSize"] = 1;
+        payload["Keys"] = QJsonArray{ move };
+        QGuiApplication::clipboard()->setText(
+            QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+
+        QList<core::TimeKey*> pasted = ctrl::TimeLineEditor::getTypesFromCb(project.pointee(), &node);
+        CHECK(pasted.size() == 1);
+        if (!pasted.isEmpty()) {
+            auto* pastedMove = static_cast<core::MoveKey*>(pasted.front());
+            CHECK(pastedMove->data().easing(0) == x); // modes, range, weight, cubic
+            CHECK(pastedMove->data().easing(1) == y); // the OTHER component is not x
+        }
+        qDeleteAll(pasted);
+
+        // A LEGACY payload (no per-component array) still pastes: its one easing is
+        // broadcast, and its "Auto" name is the RETIRED Auto TYPE - both sides
+        // CLAMPED - not the explicit (unclamped) preset the new writer names "Auto".
+        QJsonObject legacy;
+        legacy["Type"] = QStringLiteral("Move");
+        legacy["Frame"] = 9;
+        legacy["PosX"] = 0.0;
+        legacy["PosY"] = 0.0;
+        legacy["CentreX"] = 0.0;
+        legacy["CentreY"] = 0.0;
+        legacy["Spline"] = QStringLiteral("Linear");
+        legacy["eType"] = QStringLiteral("Auto");
+        legacy["eRange"] = QStringLiteral("All");
+        legacy["eWeight"] = 1.0;
+        QJsonObject legacyPayload;
+        legacyPayload["TargetsSize"] = 1;
+        legacyPayload["Keys"] = QJsonArray{ legacy };
+        QGuiApplication::clipboard()->setText(
+            QString::fromUtf8(QJsonDocument(legacyPayload).toJson(QJsonDocument::Compact)));
+
+        QList<core::TimeKey*> legacyPasted = ctrl::TimeLineEditor::getTypesFromCb(project.pointee(), &node);
+        CHECK(legacyPasted.size() == 1);
+        if (!legacyPasted.isEmpty()) {
+            auto* pastedMove = static_cast<core::MoveKey*>(legacyPasted.front());
+            for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+                const util::Easing::Param& got = pastedMove->data().easing(component);
+                CHECK(got.type == util::Easing::Type_Custom);
+                CHECK(got.handleIn == util::Easing::kDefaultAutomaticHandleMode);
+                CHECK(got.handleOut == util::Easing::kDefaultAutomaticHandleMode);
+            }
+        }
+        qDeleteAll(legacyPasted);
     }
 
     std::printf("rightclick_transient_selection: all checks passed\n");

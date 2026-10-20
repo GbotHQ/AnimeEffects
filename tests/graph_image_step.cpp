@@ -230,6 +230,10 @@ int sectionImageOffsetStaircase() {
 
     CHECK(node.timeLine()->map(core::TimeKeyType_Image).size() == 2);
     CHECK(ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Image, 0) == &k0->data().easing(0));
+    // EACH component, not just the first: the timeline's chip/picker read an Image
+    // key through this same bridge (core::keyEasingOf), and a component the bridge
+    // could not name would make its curve unreadable/unwritable there.
+    CHECK(ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Image, 1) == &k0->data().easing(1));
 
     const float expectedV0[2] = { 3.0f, 6.0f };
     const float expectedV1[2] = { 13.0f, 26.0f };

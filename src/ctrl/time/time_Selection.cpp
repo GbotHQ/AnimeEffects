@@ -1,5 +1,7 @@
 #include "ctrl/time/time_Selection.h"
 
+#include <algorithm>
+
 using namespace core;
 
 namespace ctrl {
@@ -41,6 +43,28 @@ namespace time {
             }
         }
         return false;
+    }
+
+    QVector<int> Selection::componentsOf(const TimeLineEvent::Target& aTarget, int aStoredCount) const {
+        QVector<int> result;
+        if (aStoredCount <= 0)
+            return result;
+        const auto add = [&result](int aComponent) {
+            if (!result.contains(aComponent))
+                result.push_back(aComponent);
+        };
+        for (const Item& item : mItems) {
+            if (!sameKey(item.target, aTarget))
+                continue;
+            if (item.component == kKeyLevel) {
+                for (int component = 0; component < aStoredCount; ++component)
+                    add(component);
+            } else if (0 <= item.component && item.component < aStoredCount) {
+                add(item.component);
+            }
+        }
+        std::sort(result.begin(), result.end());
+        return result;
     }
 
     bool Selection::sameKey(const TimeLineEvent::Target& aLhs, const TimeLineEvent::Target& aRhs) {

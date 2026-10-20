@@ -4,6 +4,7 @@
 
 #include "XC.h"
 #include "core/AutoEasing.h"
+#include "core/KeyEasingAccess.h"
 #include "core/BlurKey.h"
 #include "core/DepthKey.h"
 #include "core/HsvKey.h"
@@ -377,8 +378,18 @@ bool Curve::isCustom(const Segment& aSegment) const {
     // draw, so the panel's stored-pair fast path must use effectiveHandles()
     // instead. Analytic easings expose no handles at all, exactly as before.
     return aSegment.easing.type == util::Easing::Type_Custom
-        && !util::Easing::isDerived(aSegment.easing.handleOut)
-        && !util::Easing::isDerived(aSegment.inMode);
+        && !derivesHandle(aSegment, 0) && !derivesHandle(aSegment, 1);
+}
+
+bool Curve::derivesHandle(const Segment& aSegment, const int aHandleIndex) {
+    // Handle 0 is the FROM key's OUTGOING side, stored in aSegment.easing; handle
+    // 1 is the TO key's INCOMING side, whose mode arrives as aSegment.inMode even
+    // though its stored x2/y2 lives in the FROM param.
+    if (aSegment.easing.type != util::Easing::Type_Custom)
+        return false;
+    const util::Easing::HandleMode mode =
+        (aHandleIndex == 1) ? aSegment.inMode : aSegment.easing.handleOut;
+    return util::Easing::isDerived(mode);
 }
 
 bool Curve::effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const {
@@ -490,54 +501,15 @@ void Curve::setHandle(util::Easing::Param& aEasing, int aHandleIndex, const QPoi
 
 //-------------------------------------------------------------------------------------------------
 const util::Easing::Param* Curve::easingOf(const core::TimeKey& aKey, core::TimeKeyType aType, int aComponent) {
-    // One param per graphable component, stored on the key's single Data object.
-    // The component is the CHANNEL's (Channel::component()), so reading a Move
-    // key's y channel can never return its x param. Bone, pose, mesh and FFD
-    // have no graph channel, so the graph reports "no easing" rather than
-    // manufacture one.
-    switch (aType) {
-    case core::TimeKeyType_Move:
-        return &static_cast<const core::MoveKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Rotate:
-        return &static_cast<const core::RotateKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Scale:
-        return &static_cast<const core::ScaleKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Depth:
-        return &static_cast<const core::DepthKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Opa:
-        return &static_cast<const core::OpaKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Blur:
-        return &static_cast<const core::BlurKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_HSV:
-        return &static_cast<const core::HSVKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Image:
-        return &static_cast<const core::ImageKey&>(aKey).data().easing(aComponent);
-    default:
-        return nullptr;
-    }
+    // The application's one key -> param bridge (core/KeyEasingAccess.h). A
+    // graphable type answers the component's own param; Pose/FFD their single
+    // shared one at index 0 (the chip and the header's quick easings edit them);
+    // Image its stored (step-held) pair; Bone/Mesh null.
+    return core::keyEasingOf(aKey, aType, aComponent);
 }
 
 util::Easing::Param* Curve::easingOf(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent) {
-    switch (aType) {
-    case core::TimeKeyType_Move:
-        return &static_cast<core::MoveKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Rotate:
-        return &static_cast<core::RotateKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Scale:
-        return &static_cast<core::ScaleKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Depth:
-        return &static_cast<core::DepthKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Opa:
-        return &static_cast<core::OpaKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Blur:
-        return &static_cast<core::BlurKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_HSV:
-        return &static_cast<core::HSVKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Image:
-        return &static_cast<core::ImageKey&>(aKey).data().easing(aComponent);
-    default:
-        return nullptr;
-    }
+    return core::keyEasingOf(aKey, aType, aComponent);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -576,10 +548,23 @@ void Curve::buildPolyline(
         }
     };
     if (fromFrame < static_cast<float>(firstKey->frame())) {
-        if (wraps)
+        if (wraps) {
             appendExtension(fromFrame, static_cast<float>(firstKey->frame()));
-        else
-            aOut.append(QPointF(fromFrame, mChannel.value(*firstKey)));
+        } else {
+            // The hold is a SEGMENT of the plot, not a point: it runs from the window's left edge
+            // to the first key - or to the window's right edge when the keys sit past the whole
+            // window. Publishing a single point here would make the curve vanish (the panel draws
+            // nothing for a polyline shorter than two points) even though playback holds a value
+            // across this entire window.
+            const float firstFrame = static_cast<float>(firstKey->frame());
+            const float holdEnd = std::min(toFrame, firstFrame);
+            const float value = mChannel.value(*firstKey);
+            aOut.append(QPointF(fromFrame, value));
+            if (holdEnd < firstFrame)
+                aOut.append(QPointF(holdEnd, value));
+            // (When the window reaches the first key, the first touched segment already starts
+            // there, so the hold's far end is not appended twice.)
+        }
     }
 
     for (int i = 0; i + 1 < all.size(); ++i) {
@@ -630,10 +615,31 @@ void Curve::buildPolyline(
     // AFTER the last key, appended here so the polyline stays in frame order: the rest of the wrap, or
     // the held last value.
     if (static_cast<float>(lastKey->frame()) < toFrame) {
-        if (wraps)
+        if (wraps) {
             appendExtension(static_cast<float>(lastKey->frame()), toFrame);
-        else
-            aOut.append(QPointF(toFrame, mChannel.value(*lastKey)));
+        } else {
+            // The mirror of the hold above: from the last key to the window's right edge - and
+            // when the keys are behind the whole window, the hold spans it from the left edge,
+            // because then no segment was drawn at all and one point would draw nothing.
+            const float lastFrame = static_cast<float>(lastKey->frame());
+            const float value = mChannel.value(*lastKey);
+            if (lastFrame < fromFrame)
+                aOut.append(QPointF(fromFrame, value));
+            aOut.append(QPointF(toFrame, value));
+        }
+    }
+
+    // FLOOR: a polyline shorter than two points draws NOTHING (gui::drawPanel's size() < 2), and the
+    // only way to get here with one point is a hold whose window edge lands exactly on the one key
+    // that would have supplied the other end (a single-key channel at the plot's edge). The hold is
+    // still a real value across the window, so publish it between the window's own edges; the
+    // publication stays unclipped because these ARE the window's edges, not a cut of anything.
+    if (aOut.size() < 2 && fromFrame < toFrame) {
+        const float start = sample(core::Frame::fromDecimal(fromFrame));
+        const float end = sample(core::Frame::fromDecimal(toFrame));
+        aOut.clear();
+        aOut.append(QPointF(fromFrame, start));
+        aOut.append(QPointF(toFrame, end));
     }
 }
 

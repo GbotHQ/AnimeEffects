@@ -338,8 +338,9 @@ enum class LabelAlign { Left, Centre, Right };
 
 // Where a label's GLYPH LINE BOX sits inside its box's ROWS - an axis of its own,
 // because the horizontal alignment is the label's JOB (a value number is right-aligned
-// in its column, a frame number is centred on its tick) while the vertical one is
-// whose BOX the model published.
+// in its column; a frame number's BOX is centred on its tick and the run is anchored
+// LEFT in that box, the timeline's own rule) while the vertical one is whose BOX the
+// model published.
 //
 // WHY Top EXISTS - THE RULER'S ROW IS THE TIMELINE'S. Every label on the frame
 // ruler's number row is drawn by TimeRuler/TimeCursor as `drawText(rect, text)` with
@@ -1465,10 +1466,21 @@ void drawPanel(
             ImVec2(fx, tickBottom), ImVec2(fx, tickTop), toImU32Strength(aTheme.gridMajor(), alpha), 1.0f
         );
     }
-    // The frame numbers, centred in the boxes the model nudged inside the band's
+    // The frame numbers, LEFT-ALIGNED in the boxes the model nudged inside the band's
     // number row. Like the band itself, they are above the plot and therefore
     // outside the graph's clip. A number outside the active range is written at the
     // timeline's 0.4 alpha, so the range edge reads at a glance in both views.
+    //
+    // WHY LEFT AND NOT CENTRE. The box is a RESERVE, not a measurement: it is
+    // `kNumberCharWidth * text.size()` wide, which is the timeline's own slot
+    // (TimeRuler.cpp:108, :231), and TimeRuler draws the number with Qt's default
+    // left/top alignment inside `QRect(left, top, width + 1, kNumberHeight)` where
+    // `left = tickX - (width >> 1)`. Centring the DRAWN text in that fixed box instead
+    // subtracts half the difference between the drawing font's advance and the 6px
+    // reserve - a 1px left shift for every digit count (the panel's drawn Geist advance
+    // is a fraction over 6px per digit, so `(width - advance) / 2` is negative). The
+    // glyph's first column is the reserve's left edge on both views; what overflows the
+    // slot does so on the right, exactly as the timeline's own numbers do.
     //
     // TOP-ALIGNED ON THE TIMELINE'S INK ROW: the box is the RULER's, and
     // LabelVAlign::Top lands the run's first inked row on kRulerNumberInkTop rows
@@ -1477,7 +1489,7 @@ void drawPanel(
     // still left them one row low (the two rasterizers' bearings differ).
     for (const PanelLabel& label : aModel.frameLabels)
         drawLabel(
-            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre,
+            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Left,
             label.inActiveRange ? axisText : toImU32Strength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo,
             LabelVAlign::Top
         );
@@ -2042,27 +2054,32 @@ void drawPanel(
         aDrawList.Flags = savedPlayheadFlags;
 
         if (!aModel.playheadPill.isEmpty() && !aModel.playheadText.isEmpty()) {
-            const QByteArray utf8 = aModel.playheadText.toUtf8();
-            const ImVec2 textSize = measureText(font, fontSize, utf8.constData());
-            // TimeCursor draws the number on the ruler's own NUMBER ROW, centred on
-            // the playhead's column and top-aligned: its rect is `(mLineX - textWidth /
-            // 2, kNumberTop, textWidth, kNumberHeight)` (TimeLineEditorWidget.cpp). The
-            // box below is that rect - the number row's top, NOT the pill's, which rides
-            // one row lower (kPillTop) - so the glyph sits on the row every ruler number
-            // uses. Taking the pill's own top with centre alignment put the panel's pill
-            // glyph three rows below the timeline's.
+            // TimeCursor draws the number on the ruler's own NUMBER ROW, from the SAME
+            // measurement as its pill: `textWidth = fm.horizontalAdvance(mFrameText)`
+            // gives the pill `(mLineX - (textWidth + 2*kPillPadding)/2, kPillTop, ...)`
+            // and the number's rect `(mLineX - textWidth/2, kNumberTop, textWidth,
+            // kNumberHeight)`, drawn with Qt's default LEFT alignment
+            // (TimeLineEditorWidget.cpp:54, :94-108). The model publishes the pill from
+            // that same string with the host's font metrics, so the number box is the
+            // pill minus its padding, halved exactly as the timeline halves it - the
+            // glyph starts on the column TimeCursor's starts on, whatever font the
+            // drawing layer rasterises with. (The old lround/ceil centre alignment
+            // re-centred the run on the DRAWING font's advance, which put it a pixel
+            // left and let AA spread it one column wider: the glyph now starts on the
+            // column TimeCursor's does.)
+            const int textWidth = aModel.playheadPill.width() - 2 * gui::frameRuler::kPillPadding;
             const QRect numberBox(
-                int(std::lround(px - textSize.x * 0.5f)),
+                aModel.playheadX - textWidth / 2,
                 aModel.rulerBand.isEmpty() ? aModel.playheadPill.top()
                                            : aModel.rulerBand.top() + gui::frameRuler::kNumberTop,
-                int(std::ceil(textSize.x)), aModel.playheadPill.height()
+                textWidth, aModel.playheadPill.height()
             );
             aDrawList.AddRectFilled(
                 rectMin(aModel.playheadPill), rectMax(aModel.playheadPill), toImU32(aTheme.selected()),
                 float(gui::frameRuler::kPillRadius)
             );
             drawLabel(
-                aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Centre,
+                aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Left,
                 toImU32(aTheme.playheadText()), halo, LabelVAlign::Top
             );
         }
@@ -2631,7 +2648,11 @@ ImDrawData* runPanelFrame(
     ImDrawList* drawList = ImGui::GetBackgroundDrawList();
     const bool panelDrawn = aVisible && aEditor && drawList;
     if (panelDrawn) {
-        model = buildGraphPanelModel(*aEditor, viewport, palette, aState.topInset, aHostStyle);
+        // The host's own font is the ruler's measuring font (see buildGraphPanelModel's
+        // aMeasuredFont): the timeline measures its pill with QFontMetrics(aPainter.font())
+        // and the dock's stylesheet gives both pages the same widget font, so the panel's
+        // pill comes out exactly as wide as TimeCursor's and on the same column.
+        model = buildGraphPanelModel(*aEditor, viewport, palette, aState.topInset, aHostStyle, aHost.font());
         drawPanel(*drawList, model, palette, buildFocus(*aEditor));
     }
 

@@ -169,6 +169,13 @@ namespace prop {
         // a shape no key has.
         void setValues(const QVector<util::Easing::Param>& aValues,
                        const util::Easing::AutoContext& aAutoContext);
+        // WHAT THE SHOWN KEY'S SELECTION COVERS: empty when it names the whole key
+        // or nothing, else the component names it spans (a graph-panel selection can
+        // name Move X and Move Y without the key). The chip says so in its tooltip -
+        // its painted slots stay the mock's - because the one value it paints is
+        // then one of several, and a user must be able to tell that opening the
+        // picker will edit more than the curve shown.
+        void setScopeNote(const QString& aNote);
 
         // A live edit of the whole selection: the picker edits every key it was
         // opened for, so the chip shows the draft for all of them until the
@@ -187,6 +194,7 @@ namespace prop {
         GUIResources* mRes;
         QVector<util::Easing::Param> mValues;
         util::Easing::AutoContext mAuto;
+        QString mScopeNote;
         QPixmap mCaret;
     };
 
@@ -212,7 +220,8 @@ namespace prop {
         EasingChip* chip() { return mChip; }
 
         void setSelection(const QVector<util::Easing::Param>& aValues,
-                          const util::Easing::AutoContext& aAutoContext);
+                          const util::Easing::AutoContext& aAutoContext,
+                          const QString& aScopeNote = QString());
 
         // Re-read the theme's chip ink (the chip paints from the live palette).
         void refreshIcon();

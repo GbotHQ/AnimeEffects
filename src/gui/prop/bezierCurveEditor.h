@@ -89,6 +89,12 @@ public:
     // event's write-back doesn't revert it to a stale control point. NOT used
     // during a drag (the drag owns m_points).
     void syncFromBezier();
+    // Clamp the two control points in value space and write them into `bezier`.
+    // The paint event calls it before drawing; a DRAG calls it on every move, so
+    // the model follows the pointer rather than the next repaint (an owner that
+    // reads the draft at release - the picker's side-freeing rule - must see the
+    // dragged value even when no paint happened in between).
+    void commitPoints();
 
     QPointF         m_points[4];
 

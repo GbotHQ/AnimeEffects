@@ -81,6 +81,14 @@ namespace time {
         // component, or a key-level entry, which covers every component its key
         // owns.
         bool containsMarker(const core::TimeLineEvent::Target& aTarget, int aComponent) const;
+        // EVERY component of that key the set names, ascending and without
+        // duplicates: a key-level entry names all aStoredCount of them, a marker
+        // entry its own. Empty when no entry names the key (or when aStoredCount
+        // is 0). This is what an editor reads when it has to OPEN on one
+        // component: value(0) is the one to show, and size() > 1 says the
+        // selection spans several (so a reader must not claim the others' values
+        // are included in what it shows).
+        QVector<int> componentsOf(const core::TimeLineEvent::Target& aTarget, int aStoredCount) const;
 
         // --- key level (the timeline's currency) ---
         bool clear(); // empty the set

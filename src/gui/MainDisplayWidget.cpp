@@ -249,6 +249,18 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
             if (mTimeLine)
                 mTimeLine->setFrame(aFrame);
         });
+        // THE RULER BAND'S SHIFT GESTURE is the SAME temporary playback window the
+        // timeline's ruler defines: the graph hands its band's three steps to the
+        // timeline widget, which applies them through the surface (which emits
+        // playWindowChanged, the very notification below that pushes the window back
+        // into this editor). So a Shift-drag in either ruler moves ONE window, and the
+        // panel's overlay follows it on the same pass.
+        editor->setPlayWindowDelegate(
+            [this](ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame) {
+                if (mTimeLine)
+                    mTimeLine->updatePlayWindow(aStep, aFrame);
+            }
+        );
     }
     if (!mTimeLine || !timelineEditor) {
         // No timeline attached: the panel owns its frame axis and its selection
@@ -328,46 +340,6 @@ void MainDisplayWidget::refreshGraphPanel() {
             panel->refresh();
     }
 #endif
-}
-
-//-------------------------------------------------------------------------------------------------
-bool MainDisplayWidget::applyEasingToSelection(util::Easing::Type aEasing) {
-    // THE SELECTION-EASING EDIT, on the one editor that holds the one selection: the
-    // panel's editor writes the timeline's live set (syncGraphPanelSharedState wires
-    // it with setSelectionSource), and ctrl::GraphEditor::setSelectedKeysEasing is the
-    // application's own action for it - one macro, one notifier, one history entry for
-    // the whole selection, and it skips a key whose type carries no easing or whose
-    // value is step-held (the image offset), exactly as the graph panel's own action
-    // does. Reading the selection through the driver rather than through a cached
-    // pointer is what makes this safe across a project change.
-    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
-    if (!editor)
-        return false;
-
-    const bool changed = editor->setSelectedKeysEasing(aEasing);
-    if (changed) {
-        // The curves' own ink changed shape: both surfaces that draw them are stale.
-        this->updateRender();
-        this->refreshGraphPanel();
-    }
-    return changed;
-}
-
-bool MainDisplayWidget::applyAutoHandlesToSelection() {
-    // The same selection, the same one-undo-step route; only the written value
-    // differs (Custom with both handle sides Auto, see GraphEditor::
-    // setSelectedKeysAutoHandles). Automatic handles are MODES now, so this is
-    // not a type choice and cannot reuse applyEasingToSelection's argument.
-    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
-    if (!editor)
-        return false;
-
-    const bool changed = editor->setSelectedKeysAutoHandles();
-    if (changed) {
-        this->updateRender();
-        this->refreshGraphPanel();
-    }
-    return changed;
 }
 
 bool MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {

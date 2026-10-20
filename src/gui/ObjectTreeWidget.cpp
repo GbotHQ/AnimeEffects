@@ -1486,10 +1486,7 @@ void ObjectTreeWidget::onObjectMirrorTriggered() {
 
 template<typename T>
 void assignParam(T* key) {
-    QSettings settings;
-    util::Easing::Param aNext;
-    aNext.type = util::Easing::easingToEnum(QString());
-    aNext.range = util::Easing::rangeToEnum(QString());
+    const util::Easing::Param aNext = util::Easing::defaultParam();
     // Every component starts on the same default curve and then owns its copy.
     for (int component = 0; component < T::kComponents; ++component) {
         key->data().easing(component) = aNext;

@@ -118,6 +118,7 @@ TimeLineWidget::TimeLineWidget(
     mScrollbarDragAnchorValue(0),
     mScrollbarDragAnchorX(0),
     mScrollbarDragRatio(0),
+    mFitPending(false),
     mIsPanning(false),
     mPanButton(Qt::NoButton),
     mPanByKey(false),
@@ -194,12 +195,26 @@ TimeLineWidget::TimeLineWidget(
 }
 
 void TimeLineWidget::setProject(core::Project* aProject) {
+    // BEFORE the reset: whether this widget was showing a project a moment ago.
+    const bool hadProject = static_cast<bool>(mProject);
+
     mProject.reset();
     if (aProject) {
         mProject = aProject->pointee();
     }
     mInner->setProject(aProject);
     projectHorizontalScrollBar();
+
+    // THE NEW-PROJECT FIT. A project that arrives from NO project is newly
+    // opened or newly created (MainWindow's open/new paths both clear the
+    // timeline first), so this widget has no view of it and it opens FITTED to
+    // its frame range instead of at whatever zoom the previous document left.
+    // A tab switch hands over a project this widget is already showing - that
+    // live zoom/pan IS the saved view, so it is kept (the rule is
+    // ctrl::TimeLineEditor::fitsOnProjectAttach). When the surface has no
+    // width yet, fitFrameRange() remembers the request for updateCamera.
+    if (ctrl::TimeLineEditor::fitsOnProjectAttach(hadProject, aProject != nullptr))
+        this->fitFrameRange();
 }
 
 void TimeLineWidget::setPlayBackActivity(bool aIsActive, std::vector<audioConfig>* pConf, mediaState* mediaPlayer) {
@@ -448,6 +463,14 @@ void TimeLineWidget::scrollViewBy(int aValueDelta) {
 }
 
 void TimeLineWidget::updateCamera() {
+    // A fit requested while the surface had no width (a project opened on a hidden
+    // timeline) is applied on the first pass that knows one. fitFrameRange clears the
+    // flag before it re-enters here through setViewTransform, so this cannot loop.
+    if (mFitPending && mInner->width() > 0 && editor()) {
+        mFitPending = false;
+        fitFrameRange();
+    }
+
     // KEEP THE CONTENT IN REACH. The track never clamps the view (see the scrollbar note), so a pan
     // may float past the content - but a view that has left the content entirely is a view of
     // nothing. The bound is an OVERLAP, not a centring: the view is free to move and only stops at
@@ -869,6 +892,53 @@ void TimeLineWidget::zoomFramesAbout(int aWheelDelta, double aAnchorFrame) {
     QPoint viewTrans = viewportTransform();
     viewTrans.setX(viewTrans.x() + delta);
     setViewTransform(viewTrans);
+}
+
+void TimeLineWidget::fitFrameRange() {
+    ctrl::TimeLineEditor* controller = editor();
+    // A surface with no width cannot fit anything: remember the request and let
+    // updateCamera apply it once the widget is laid out (a project opened while
+    // the timeline is hidden). With no controller there is no axis to fit at all.
+    if (!controller || mInner->width() <= 0) {
+        mFitPending = (controller != nullptr);
+        return;
+    }
+    mFitPending = false;
+
+    // The fit's two numbers are the controller's (the ladder and the margin token
+    // are its own), and it returns a whole-pixel view position so the two gutters
+    // can differ by at most that pixel.
+    const ctrl::TimeLineEditor::FrameFit fit = controller->fitFrameRange(mInner->width());
+
+    // MOVE THE LADDER TO THE FIT'S RUNG. One notch is 120 raw delta (the scaler's
+    // kWheelValue) and updateWheel SUBTRACTS it, so the sign is current - target.
+    // The fit computed its view pixel at the target rung, so the scale is set
+    // BEFORE the translation is applied.
+    const int delta = controller->timeScale().index() - fit.scaleIndex;
+    if (delta != 0)
+        controller->updateWheel(delta * 120, false);
+
+    // CENTRE THE RANGE. The old composition zoomed for the span ALONE and then
+    // scrolled until the range's first frame sat on the viewport's left edge: that
+    // scroll is the step that threw the leading margin away (the content axis' own
+    // kTimeLineMargin gutter), and the span-only rung left only the ladder's
+    // remainder at the other end. The fit now centres instead: the view transform's
+    // horizontal component is the content origin in surface coordinates, so putting
+    // the fit's left content pixel under the viewport's left edge is
+    // -viewLeftPixel. setViewTransform re-projects the scrollbar and reports the new
+    // window (notifyViewRange), which is what the docked panel follows; updateCamera
+    // clamps the offset it just allowed.
+    QPoint viewTrans = viewportTransform();
+    viewTrans.setX(-fit.viewLeftPixel);
+    setViewTransform(viewTrans);
+}
+
+bool TimeLineWidget::updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame) {
+    // The surface is the timeline's own home of this gesture (it emits
+    // playWindowChanged and repaints both rulers, exactly as the ruler path does),
+    // so the graph's band lands on the SAME notification the timeline's Shift-drag
+    // produces - which is what pushes the new window back into the panel's editor.
+    return mInner ? mInner->updatePlayWindow(aStep, aFrame) : false;
 }
 
 } // namespace gui

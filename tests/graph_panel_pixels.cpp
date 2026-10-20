@@ -1178,7 +1178,7 @@ std::vector<Geom> geometryOf(
     }
     for (const gui::PanelLabel& label : aModel.frameLabels) {
         out.push_back(
-            {"frame_label", grow(glyphBox(label.rect, label.text, aFont, aFontSize, Align::Centre, VAlign::Top), 2)}
+            {"frame_label", grow(glyphBox(label.rect, label.text, aFont, aFontSize, Align::Left, VAlign::Top), 2)}
         );
     }
     for (const gui::PanelLabel& label : aModel.valueLabels) {
@@ -2177,7 +2177,7 @@ bool checkLabelHalo(
     REQUIRE(aModel.rulerBand.contains(label.rect), "precondition: the label box must be inside the ruler band");
 
     const QRect glyph =
-        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
+        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Left, VAlign::Top);
     REQUIRE(!glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text));
     REQUIRE(aModel.rulerBand.contains(glyph), "precondition: the glyph box must be inside the ruler band");
 
@@ -2356,7 +2356,7 @@ bool checkRulerReserve(
             qPrintable(label.text), label.rect.bottom(), gui::frameRuler::kTickLength, band.bottom()
         );
         const QRect glyph =
-            glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
+            glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Left, VAlign::Top);
         REQUIRE(
             !glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text)
         );
@@ -2405,7 +2405,7 @@ bool checkRulerReserve(
             " over-tall case",
             label.rect.height(), double(size.y)
         );
-        const QRect glyph = glyphBox(label.rect, label.text, aTight.font, aTight.fontSize, Align::Centre, VAlign::Top);
+        const QRect glyph = glyphBox(label.rect, label.text, aTight.font, aTight.fontSize, Align::Left, VAlign::Top);
         // THE CLAMP'S OWN STATEMENT, and it is about the INK: a Top-aligned label puts
         // its run's first inked row on the ruler's row whatever the font's height, so
         // an over-tall font hangs BELOW the box instead of out of its top edge. The
@@ -2478,7 +2478,7 @@ bool checkRulerRows(
     const QRect& band = aModel.rulerBand;
     const gui::PanelLabel& label = aModel.frameLabels.at(0);
     const QRect glyph =
-        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
+        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Left, VAlign::Top);
 
     // (a) THE NUMBER'S INK starts on the timeline's row: gui::kRulerNumberInkTop rows
     // below the top of its box, whatever the drawing font is. That row is what
@@ -3707,7 +3707,7 @@ bool checkValueLabels(
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the full model must carry a frame label");
     const gui::PanelLabel& frame = aModel.frameLabels.at(0);
     const QRect frameGlyph =
-        glyphBox(frame.rect, frame.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
+        glyphBox(frame.rect, frame.text, aRendered.font, aRendered.fontSize, Align::Left, VAlign::Top);
     int bestGap = -1;
     QString bestLabel;
     for (const gui::PanelLabel& label : aModel.valueLabels) {

@@ -450,6 +450,112 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto ok)\n", numCurves);
+    // 7) THE USER-FACING NAME OF A PARAM. A non-Custom interpolation is named by
+    //    getTypeName; a Custom curve is named by its TWO HANDLE MODES, because
+    //    that is where its identity lives now that Type_Auto is retired. The five
+    //    equal pairs get the mode's own name, a mixed pair names both sides in
+    //    (incoming, outgoing) order.
+    {
+        auto nameOf = [](util::Easing::HandleMode aIn, util::Easing::HandleMode aOut) {
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Custom;
+            p.handleIn = aIn;
+            p.handleOut = aOut;
+            return util::Easing::getParamName(p);
+        };
+        const util::Easing::HandleMode modes[] = {
+            util::Easing::HandleMode_Free, util::Easing::HandleMode_Aligned,
+            util::Easing::HandleMode_Vector, util::Easing::HandleMode_Auto,
+            util::Easing::HandleMode_AutoClamped,
+        };
+        for (util::Easing::HandleMode mode : modes) {
+            const QString want = util::Easing::getHandleModeName(mode);
+            XC_MSG_ASSERT(nameOf(mode, mode) == want, "both sides %d should read '%s', got '%s'",
+                          int(mode), qPrintable(want), qPrintable(nameOf(mode, mode)));
+        }
+        XC_ASSERT(nameOf(util::Easing::HandleMode_Auto, util::Easing::HandleMode_Auto) ==
+                  QStringLiteral("Auto"));
+        XC_ASSERT(nameOf(util::Easing::HandleMode_AutoClamped, util::Easing::HandleMode_AutoClamped) ==
+                  QStringLiteral("Auto Clamped"));
+        XC_ASSERT(nameOf(util::Easing::HandleMode_Auto, util::Easing::HandleMode_Auto) !=
+                  nameOf(util::Easing::HandleMode_AutoClamped, util::Easing::HandleMode_AutoClamped));
+        // A mixed pair is NOT given one side's name - it names both, incoming first.
+        const QString mixed = nameOf(util::Easing::HandleMode_Auto, util::Easing::HandleMode_Free);
+        XC_ASSERT(mixed == util::Easing::getHandleModeName(util::Easing::HandleMode_Auto)
+                      + QStringLiteral(" / ")
+                      + util::Easing::getHandleModeName(util::Easing::HandleMode_Free));
+        XC_ASSERT(mixed != util::Easing::getHandleModeName(util::Easing::HandleMode_Auto));
+        // The interpolation vocabulary is untouched: a non-Custom Param still
+        // answers its type's name (the chip's "Custom" bug was reading THIS for a
+        // mode-shaped curve).
+        util::Easing::Param cubic;
+        cubic.type = util::Easing::Type_Cubic;
+        XC_ASSERT(util::Easing::getParamName(cubic) == util::Easing::getTypeName(util::Easing::Type_Cubic));
+        util::Easing::Param linear;
+        XC_ASSERT(util::Easing::getParamName(linear) == util::Easing::getTypeName(util::Easing::Type_Linear));
+    }
+
+    // 8) THE DEFAULTS. An unedited Param is EXACTLY what it was before the
+    //    per-side refactor: the linear curve with the stored smoothstep bezier and
+    //    two linked sides. It is not automatic, and its evaluation cannot read a
+    //    neighbour, so an unedited key cannot change shape when a neighbour moves.
+    //    The application's only automatic DEFAULT - a migrated 0.14 Auto, or a
+    //    stored Auto default creating a key - is auto CLAMPED. The user's explicit
+    //    Auto preset is the unclamped mode and is named Auto (section 7).
+    {
+        const util::Easing::Param fresh;
+        XC_ASSERT(fresh.type == util::Easing::Type_Linear);
+        XC_ASSERT(fresh.range == util::Easing::Range_InOut);
+        XC_ASSERT(fresh.weight == 1.0f);
+        XC_ASSERT(fresh.cubicBezier == util::Easing::CubicBezier());
+        XC_ASSERT(fresh.handleIn == util::Easing::HandleMode_Aligned);
+        XC_ASSERT(fresh.handleOut == util::Easing::HandleMode_Aligned);
+        XC_ASSERT(!util::Easing::isDerived(fresh.handleIn));
+        XC_ASSERT(!util::Easing::isDerived(fresh.handleOut));
+
+        // Two entirely different neighbour pairs: the default curve is identical,
+        // and it is the straight line. (A derived default would move with them.)
+        util::Easing::AutoContext a;
+        a.prev = { true, -1.0f, 3.0f };
+        a.next = { true, 4.0f, -2.0f };
+        a.inMode = util::Easing::kDefaultAutomaticHandleMode;
+        util::Easing::AutoContext b;
+        b.prev = { true, -7.0f, -5.0f };
+        b.next = { true, 9.0f, 8.0f };
+        b.inMode = util::Easing::HandleMode_Auto;
+        const float span = 10.0f;
+        for (int k = 0; k <= 20; ++k) {
+            const float t = float(k) / 20.0f * span;
+            const double linear = double(t / span);
+            const double va = double(util::Easing::calculate(fresh, a, t, 0.0f, 1.0f, span));
+            const double vb = double(util::Easing::calculate(fresh, b, t, 0.0f, 1.0f, span));
+            XC_MSG_ASSERT(std::fabs(va - linear) <= 1e-6, "default ctx A t=%.2f got=%.6f", double(t), va);
+            XC_ASSERT(std::fabs(va - vb) <= 1e-9);
+        }
+
+        // The application's DEFAULT automatic pair (a migrated 0.14 Auto, or a
+        // stored Auto default creating a key) is AutoClamped, not Auto: a near,
+        // high previous key would leave unclamped Auto far above the segment (the
+        // section above measures -20/3) while the clamped default stays at 0.
+        XC_ASSERT(util::Easing::kDefaultAutomaticHandleMode == util::Easing::HandleMode_AutoClamped);
+        util::Easing::Param preset;
+        preset.type = util::Easing::Type_Custom;
+        preset.handleIn = util::Easing::kDefaultAutomaticHandleMode;
+        preset.handleOut = util::Easing::kDefaultAutomaticHandleMode;
+        XC_ASSERT(util::Easing::getParamName(preset) ==
+                  util::Easing::getHandleModeName(util::Easing::HandleMode_AutoClamped));
+
+        util::Easing::AutoContext near;
+        near.prev = { true, -1.0f, 2.0f };
+        near.inMode = util::Easing::kDefaultAutomaticHandleMode;
+        const QPointF clamped = util::Easing::controlPoint(preset, near.inMode, near, span, 0);
+        XC_ASSERT(std::fabs(clamped.y() - 0.0f) <= 1e-6);
+        preset.handleOut = util::Easing::HandleMode_Auto;
+        const QPointF unclamped = util::Easing::controlPoint(preset, near.inMode, near, span, 0);
+        XC_ASSERT(unclamped.y() < 0.0f); // the overshoot the default must not have
+    }
+
+    std::printf("easing_regression: PASS (%d curves, solver + weight + threads + auto + names + defaults ok)\n",
+                numCurves);
     return 0;
 }

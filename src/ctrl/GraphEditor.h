@@ -327,22 +327,30 @@ public:
     // (src/gui/AppStyle.cpp's CC_ScrollBar). hThumb/vThumb name that RUN, so the pill
     // the drawing layer paints and the span a press drags are one geometry.
     //
-    // WHAT THE THUMB MEANS. Qt's own QScrollBar arithmetic (graph_Scaler.cpp's
-    // scrollThumbRect): its LENGTH is pageStep/content of the track, floored at
-    // QStyle::PM_ScrollBarSliderMin, and its OFFSET is the window's fraction of the
-    // TRAVEL (content - page) across (track - length) - so the pill is flush with the
-    // track's ends when the window is at the content's. The content is the project's
-    // frame range on the frame axis and the value extent of the shown channels' keys
-    // (shownValueExtent below) on the value axis. A window that covers the content
-    // draws no bar (nothing to scroll). It is a VIEW of the window, never a command:
-    // nothing here writes the document, and no gesture below pushes anything.
+    // WHAT THE THUMB MEANS. THE TIMELINE'S handle arithmetic (graph_Scaler.cpp's
+    // timelineHandle): the track is the UNION of the content and the window - plus
+    // the timeline's kTimeLineMargin (24px, in frames) past the frame range's last
+    // frame - and the thumb is the window's two edges edge-rounded over that FULL
+    // track, its width floored at one pixel. There is NO style minimum and no
+    // track-minus-one cap: the panel is compared with the timeline's bar, not a stock
+    // QScrollBar. The content is the project's frame range on the frame axis and the
+    // value extent of the shown channels' keys (shownValueExtent below) on the value
+    // axis. The horizontal handle is drawn even at zero travel (the timeline's
+    // AlwaysOn bar); the vertical one is hidden then (its bar is AsNeeded). It is a
+    // VIEW of the window, never a command: nothing here writes the document, and no
+    // gesture below pushes anything.
     //
     // THE DIRECTION. The pill moves WITH the content window: dragging the horizontal
     // pill RIGHT shows LATER frames, dragging the vertical pill UP shows HIGHER values
     // (the same rule as the timeline's bar, whose rightward drag advances its
-    // viewport). Both axes therefore go through scrollFramesByBarPixels /
-    // scrollValueByBarPixels and NOT through the middle drag's panFramesByPixels,
-    // whose sign is the opposite one (a pan drags the content, a bar drags the view).
+    // viewport). The THUMB drag converts the pointer's delta through the bar's own
+    // content-per-lane-pixel ratio anchored at the press (the ratio
+    // TimeLineWidget::beginScrollbarDrag anchors), so the handle follows the pointer
+    // 1:1 - dx of pointer moves the handle dx. The PAGE and WHEEL routes stay in
+    // content pixels (one page is the visible window; a notch is Qt's
+    // wheelScrollLines x kScrollBarStepPixels), and neither goes through the middle
+    // drag's panFramesByPixels, whose sign is the opposite one (a pan drags the
+    // content, a bar drags the view).
     //
     // THE PRESSES (see updateCursor, and ownsCursor, which claims them before every
     // plot hit):
@@ -787,9 +795,9 @@ public:
 
     // THE AUTO PRESET. Automatic handles are per-side MODES now, not an easing
     // type: this writes Type_Custom (the curve the modes shape) with BOTH sides
-    // HandleMode_Auto on every selected component. The picker's Auto tile and the
-    // header's quick-easing Auto button both land here, so the two cannot write
-    // different things.
+    // on HandleMode_Auto on every selected component.
+    // The picker's Auto tile and the header's quick-easing Auto button both land
+    // here, so the two cannot write different things.
     bool setSelectedKeysAutoHandles();
 
     // The half-width, in pixels, of the band around a curve the insert gesture
@@ -950,6 +958,18 @@ public:
     // nothing here invents a second frame authority.
     using FrameSeekFunc = std::function<void(core::Frame aFrame)>;
     void setFrameSeekDelegate(FrameSeekFunc aSeek) { mSeekFrame = std::move(aSeek); }
+
+    // THE RULER BAND'S SHIFT GESTURE, on the TIMELINE's own state: a Shift-press
+    // in the band anchors the temporary playback window, a drag defines it, and the
+    // release applies the gesture's ending rule - the timeline's exact sequence
+    // (gui::TimeRuler's second gesture, ctrl::TimeLineEditor::PlayWindowStep). The
+    // window is not the panel's: it is the timeline editor's, so the host hands this
+    // editor the timeline's own three-step entry point
+    // (gui::TimeLineWidget::updatePlayWindow -> gui::TimeLineEditorWidget), and both
+    // rulers draw the one value that comes back through setPlayWindow. With no
+    // delegate the band keeps its seek alone and Shift-press is not claimed.
+    using PlayWindowFunc = std::function<void(TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame)>;
+    void setPlayWindowDelegate(PlayWindowFunc aWindow) { mSetPlayWindow = std::move(aWindow); }
     // Detaches: the panel's frame axis is its own again (fit, zoom and pan work
     // as they did before a timeline was ever attached).
     void clearFrameAxis();
@@ -967,10 +987,11 @@ public:
     // The timeline's ruler gesture (shift-drag) owns this window; the graph's ruler
     // overlays the SAME window (TimeRuler::renderPlayWindow's translucent band, 2px
     // bracket stems and label pills) and recesses the frames outside it exactly as the
-    // timeline recesses the frames outside its ACTIVE range. It is pushed in as a
-    // VALUE by the GUI (gui::MainDisplayWidget::syncGraphPanelSharedState) when a
-    // timeline is attached, so both views read one window and there is no second
-    // gesture state here.
+    // timeline recesses the frames outside its ACTIVE range. The VALUE is pushed in by
+    // the GUI (gui::MainDisplayWidget::syncGraphPanelSharedState) when a timeline is
+    // attached, so both views read one window, and the graph's own band SHIFT gesture
+    // (setPlayWindowDelegate) applies its steps to that same timeline state rather
+    // than storing a window of its own.
     void setPlayWindow(const TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
     const TimeLineEditor::PlayWindow& playWindow() const { return mPlayWindow; }
     // The range the ruler treats as ACTIVE: the temporary window while it is active,
@@ -1115,14 +1136,16 @@ private:
     // the WINDOW later (the viewport's left edge advances, the pill moves right and the
     // content under it slides left) - the opposite sign to panFramesByPixels, and the
     // timeline's own scroll bar direction (TimeLineWidget::beginScrollbarDrag:
-    // mHorizontalOffset = -value, value += dx * range/span). Both the thumb drag and the
-    // lane page go through here, so the bar can never disagree with the pointer.
+    // mHorizontalOffset = -value, value += dx * range/span). The PAGE and the lane
+    // WHEEL go through here; the thumb drag converts through the bar's own
+    // content-per-pixel ratio instead (see mScrollBarContentPerPixel), because a page
+    // is the window's span while the drag is the handle's travel.
     void scrollFramesByBarPixels(graph::Scaler& aScale, int aPixelDelta);
 
     // The two bars' travel, as one call each: the FRAME window (positive = later
     // frames) and the VALUE window (positive = HIGHER values, the pill moving UP its
-    // inverted lane). Only the bar's drag and page use these; a plain pan keeps its
-    // content-follows-pointer sign.
+    // inverted lane). Only the bar's page and wheel use these; a plain pan keeps its
+    // content-follows-pointer sign, and the thumb drag uses the bar's ratio.
     void scrollValueByBarPixels(graph::Scaler& aScale, int aPixelDelta);
 
     // --- the scroll bars (see the SCROLL BARS note in the public section) ---
@@ -1228,6 +1251,11 @@ private:
     FrameScrollFunc mScrollFrames;
     FrameZoomFunc mZoomFrames;
     FrameSeekFunc mSeekFrame;
+    // The band's Shift gesture (see setPlayWindowDelegate) and the gesture's own
+    // drag state: true from a Shift-press in the band to its release, so the moves
+    // and the release own the cursor even when the pointer leaves the band.
+    PlayWindowFunc mSetPlayWindow;
+    bool mWindowing = false;
     // True from a band press to its release: the seek's own drag state (the button
     // stays down while the pointer leaves the band, as every gesture here does).
     bool mSeeking = false;
@@ -1311,6 +1339,10 @@ private:
     // pushed nowhere: a scroll bar moves a window and never the document.
     int mScrollBarAxis;
     QPoint mScrollBarPointer;
+    // Content units per lane pixel, anchored at the press (the timeline's own
+    // beginScrollbarDrag ratio): a pointer delta dx moves the WINDOW by dx times this,
+    // which moves the handle by exactly dx. Zero between gestures.
+    double mScrollBarContentPerPixel;
 
     // THE WHEEL OVER A BAR LANE: the accumulated angle delta not yet spent. One
     // notch is 120 units and scrolls QApplication::wheelScrollLines() single steps of

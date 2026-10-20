@@ -132,6 +132,15 @@ public:
     // False when nothing opened (no host, no targets, or no key of a type that
     // carries an easing).
     bool openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor);
+    // THE HEADER'S QUICK-EASING BUTTONS, in the timeline's own currency: write
+    // aEasing (or the Auto preset's mode pair) to every component the live
+    // selection names, as ONE undo step. They live here rather than on the
+    // animation graph's editor because the selection is the TIMELINE's: a Pose or
+    // FFD key has one shared easing but no graph channel, and the graph's action
+    // refuses it - the quick easings must not. FALSE when nothing was written
+    // (no selection, only bone/mesh keys, or an edit that changes nothing).
+    bool applyEasingToSelection(util::Easing::Type aType);
+    bool applyAutoHandlesToSelection();
     // The MoveCanvas key (space by default) is held: the ruler lets a
     // left-press propagate to the timeline's pan instead of seeking.
     void setPanKeyHeld(bool aHeld) {
@@ -144,6 +153,28 @@ public:
     // The temporary playback window (see ctrl::TimeLineEditor::PlayWindow);
     // the renderer draws its band and brackets.
     const ctrl::TimeLineEditor::PlayWindow& playWindow() const { return mEditor->playWindow(); }
+    // THE WINDOW GESTURE FROM THE OTHER RULER: ctrl::GraphEditor's band delegates
+    // its Shift-press/drag/release here (via gui::TimeLineWidget), one step at a
+    // time, on this editor's own ctrl::TimeLineEditor::PlayWindow. Emits
+    // playWindowChanged on a value change - the same notification the timeline's
+    // own Shift-drag produces, so the graph's overlay is re-pushed with it, and the
+    // panel's copy is never a step behind the timeline's window - then repaints both
+    // rulers (the surface's track and the separate ruler strip). Returns true when
+    // the window changed.
+    //
+    // Defined here so the gesture stays one expression of the editor's own three
+    // steps; it touches only state this class already owns (mEditor, mTimeRuler, the
+    // signal).
+    bool updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame) {
+        const bool changed = mEditor->updatePlayWindow(aStep, aFrame);
+        if (changed) {
+            emit playWindowChanged();
+            this->update();
+            if (mTimeRuler)
+                mTimeRuler->update();
+        }
+        return changed;
+    }
 
     QColor headerContentColor() const;
     void setHeaderContentColor(const QColor& headerContentColor);
@@ -206,19 +237,15 @@ private:
     void onPasteKeyTriggered(bool);
     void onDeleteKeyTriggered(bool);
     void onSelectSpacingTriggered();
-    // Applies aNext to the easing of every COMPONENT the current open named and
-    // commits the results as ONE undo step (one macro, one notification naming every
-    // key written). A marker entry edits only its own component; a whole-key entry
-    // edits every component the type stores. A key whose type carries no easing is
-    // skipped, and so is a component whose value aNext would not change, so an edit
-    // that changes nothing leaves no history entry behind. This is the picker's
-    // commit path.
-    void assignEasingToTargets(const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
     // Hands the header's chip what it names: one easing per selected KEY, in
     // selection order, read from the FIRST marker the selection names for it (so a
-    // Y-only selection shows Y's curve, not the key's first component), plus the
-    // Auto context of that component, so its glyph is the curve that component
-    // plays rather than a shape no key has. A whole-key entry reads component 0.
+    // Y-only selection shows Y's curve, not the key's first component - the first
+    // component the selection names, the SAME answer openEasingPicker uses), plus
+    // the Auto context of that component, so its glyph is the curve that component
+    // plays rather than a shape no key has. A whole-key entry names every component,
+    // so it reads the first. When the shown key's selection spans SEVERAL components
+    // the chip is handed their names as a scope note (its tooltip), because its one
+    // painted value is then one of several and the picker edits them all.
     // Keys of a type that carries no easing (bone, mesh) contribute nothing, and so
     // does a selection entry whose key the document no longer holds - the key is
     // resolved from the document, as ctrl::time::Selection's contract requires (see

@@ -197,8 +197,11 @@ namespace prop {
     // inside one application - the settings list and the picker said Floor/Round/Cubic
     // while the chip beside them said Hold/Step/Ease, and the four quick easings now in
     // the header had to pick one. They pick these.
-    QString chipBaseLabel(util::Easing::Type aType) {
-        return util::Easing::getTypeName(aType);
+    QString chipBaseLabel(const util::Easing::Param& aValue) {
+        // The Param's user-facing name, not the type's: a Custom curve is named
+        // by its two handle modes, so the Auto preset reads "Auto Clamped"
+        // rather than the interpolation type "Custom".
+        return util::Easing::getParamName(aValue);
     }
 
     QString chipRangeLabel(util::Easing::Range aRange) {
@@ -210,7 +213,7 @@ namespace prop {
     // (+ range for directional curves), the delta holds the blend percentage
     // only where a weight actually blends the curve with linear.
     void chipText(const util::Easing::Param& aValue, QString& aOutName, QString& aOutDelta) {
-        aOutName = chipBaseLabel(aValue.type);
+        aOutName = chipBaseLabel(aValue);
         const bool dirShow =
             util::Easing::Type_Sine <= aValue.type && aValue.type < util::Easing::Type_Custom;
         if (dirShow) aOutName += " " + chipRangeLabel(aValue.range);
@@ -241,10 +244,10 @@ namespace prop {
 
     // The chip is handed its state on every repaint of the timeline surface (see
     // TimeLineEditorWidget::pushEasingChipState), so an unchanged state must cost
-    // nothing: a compare, not a repaint.
-    bool sameAutoKey(const util::Easing::AutoKey& aLhs, const util::Easing::AutoKey& aRhs) {
-        return aLhs.valid == aRhs.valid && aLhs.frame == aRhs.frame && aLhs.value == aRhs.value;
-    }
+    // nothing: a compare, not a repaint. The compare is the WHOLE AutoContext
+    // (util::Easing::AutoContext::operator==): the arriving side of the shown key
+    // belongs to the NEXT key, so a change to that key's In mode changes the glyph
+    // even when both neighbours stand still.
 
     // -------------------------------------------------------------------------
     // EasingChip — the selection's easing as ONE self-painting button, filling
@@ -278,14 +281,20 @@ namespace prop {
 
     void EasingChip::setValues(const QVector<util::Easing::Param>& aValues,
                                const util::Easing::AutoContext& aAutoContext) {
-        const bool sameAuto =
-            sameAutoKey(mAuto.prev, aAutoContext.prev) && sameAutoKey(mAuto.next, aAutoContext.next);
-        if (mValues == aValues && sameAuto)
+        if (mValues == aValues && mAuto == aAutoContext)
             return;
         mValues = aValues;
         mAuto = aAutoContext;
         setEnabled(!mValues.isEmpty());
         update();
+    }
+
+    void EasingChip::setScopeNote(const QString& aNote) {
+        if (mScopeNote == aNote)
+            return;
+        mScopeNote = aNote;
+        setToolTip(aNote.isEmpty() ? QCoreApplication::tr("Easing")
+                                   : QCoreApplication::tr("Easing \u2014 %1").arg(aNote));
     }
 
     void EasingChip::setDraft(const util::Easing::Param& aDraft) {
@@ -338,9 +347,14 @@ namespace prop {
             name = QCoreApplication::tr("Select keys");
         } else {
             const util::Easing::Param& first = mValues.first();
+            // "The same easing" is the same user-facing NAME, which for a Custom
+            // curve includes its two handle modes: two Custom keys have no name
+            // in common merely because their TYPE matches. A mixed selection
+            // says so instead of naming one key's shape.
+            const QString firstName = chipBaseLabel(first);
             bool agree = true;
             for (const util::Easing::Param& value : mValues) {
-                if (value.type != first.type) {
+                if (chipBaseLabel(value) != firstName) {
                     agree = false;
                     break;
                 }
@@ -515,8 +529,10 @@ namespace prop {
     }
 
     void EasingItem::setSelection(const QVector<util::Easing::Param>& aValues,
-                                  const util::Easing::AutoContext& aAutoContext) {
+                                  const util::Easing::AutoContext& aAutoContext,
+                                  const QString& aScopeNote) {
         mChip->setValues(aValues, aAutoContext);
+        mChip->setScopeNote(aScopeNote);
     }
 
     void EasingItem::onDraftChanged(const util::Easing::Param& aDraft) {

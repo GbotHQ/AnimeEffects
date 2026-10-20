@@ -26,12 +26,15 @@
 #      without it, in both directions, on the same geometry.
 #
 #   3. A LANE'S CHANNEL LABEL IS ITS CHANNEL'S HUE AT 0.42 - one step quieter than the keys
-#      - and is NOT drawn at all when the playhead's pill would cover its column. Measured
-#      by counting the pixels of ONE predicted colour in the label's own box (the box the
-#      renderer centres on the track): the 0.42 composite of the key hue the lane's own
-#      markers gave, which is a colour no full-strength key and no surface can be (they are
-#      0.58 of the hue's distance away from it). Counted with the playhead clear of the box,
-#      and again with the playhead parked on the box's centre, where it must be zero.
+#      - and it is drawn WHATEVER THE PLAYHEAD DOES. A lane's name is not the ruler's number:
+#      the pill carries the frame in its own column, which is why the RULER blanks its number
+#      there (item 4), but nothing carries the lane's name, so the label stays put and the
+#      1px playhead line simply crosses the text. Measured by counting the pixels of ONE
+#      predicted colour in the label's own box (the box the renderer centres on the track):
+#      the 0.42 composite of the key hue the lane's own markers gave, which is a colour no
+#      full-strength key and no surface can be (they are 0.58 of the hue's distance away from
+#      it). Counted with the playhead clear of the box AND with the playhead parked on the
+#      box's centre: the label must be present in BOTH states, and both counts are printed.
 #
 #   4. THE RULER'S NUMBER YIELDS TO THE PILL. The number under the playhead is not drawn;
 #      its neighbours are. Measured on a box found IN THE PICTURE (an ink run in the ruler's
@@ -512,7 +515,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   echo "CENTRE_DESEL=\"$(centre "$SHOTS/tink_06_key_deselected.png")\"" >> "$GEOM"
 
   say "phase: lane label"
-  # ---- 3. the lane label and its suppression under the pill ----
+  # ---- 3. the lane label, with the playhead away from it and parked on it ----
   # The label box: the renderer centres a 100px text rect on the track, in the lane own rows.
   # The predicted ink is the 0.42 composite of the lane own key hue over the lane own band -
   # a colour a full-strength key CANNOT be, so a key inside the box does not count as a label.
@@ -527,7 +530,7 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   # THE LABEL BOX IS FOUND IN THE PICTURE: the renderer centres it on the timeline own
   # camera rect, and nothing publishes that centre, so the box IS the ink the predicted
   # colour makes in the lane rows - its columns are the label, and their centre is the
-  # point the suppress test parks the playhead on.
+  # point the second measurement parks the playhead on.
   raw "$SHOTS/tink_04_keys_parked.png" "${PW}x${LH}+${PX}+$((TY0 + LY0))" "$SCRATCH/lblscan.raw"
   inkpx cols "$SCRATCH/lblscan.raw" $PW $LH 0 $((LH - 1)) $LBL_R $LBL_G $LBL_B $LABEL_TOL 2 \
       > "$SCRATCH/lblcols.txt"
@@ -539,8 +542,8 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   done < "$SCRATCH/lblcols.txt"
   [ "$LB_X0" -ge 0 ] || abort "no ink of the predicted label colour rgb $LBL_R $LBL_G $LBL_B in the lane: the lane label is not drawn in its channel hue at 0.42"
   # the matched columns are the label ink CORE (the fully covered glyph pixels), so the box is
-  # widened about them: any part of the label serves the suppress test, because the renderer
-  # decides once per paint whether this column draws its names at all.
+  # widened about them: any part of the label measures whether the name is drawn at all, and
+  # the renderer now draws it unconditionally - the playhead only crosses it.
   LBMID=$((PX + (LB_X0 + LB_X1) / 2))
   LBX=$((LBMID - 25)); LBW=50
   echo "LABEL_BOX=\"$LBX $LBW $LBMID\"" >> "$GEOM"
@@ -551,16 +554,23 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
   }
   echo "LABEL_AWAY=\"$(label_ink "$SHOTS/tink_04_keys_parked.png")\"" >> "$GEOM"
   echo "LABEL_AWAY2=\"$(label_ink "$SHOTS/tink_04_keys_parked.png")\"" >> "$GEOM"
+  AWAY_INK=$(label_ink "$SHOTS/tink_04_keys_parked.png")
 
-  # Park the playhead ON the label box centre and read the same box again.
+  # Park the playhead ON the label box centre and read the same box again. The playhead
+  # 1px line crosses the text now; the name is still drawn, so this box carries the label
+  # ink in BOTH states. Nothing here asserts a suppression any more: the lane name is not
+  # the ruler number (the pill carries the frame, nothing carries the lane name).
   xdotool mousemove --sync $LBMID $RBARY click 1; sleep 1.0
   shot "$SHOTS/tink_07_label_pill.png"
-  echo "LABEL_PILL=\"$(label_ink "$SHOTS/tink_07_label_pill.png")\"" >> "$GEOM"
+  PILL_INK=$(label_ink "$SHOTS/tink_07_label_pill.png")
+  echo "LABEL_PILL=\"$PILL_INK\"" >> "$GEOM"
   echo "PLAYHEAD_ON_LABEL=\"$(playhead_x "$SHOTS/tink_07_label_pill.png")\"" >> "$GEOM"
   # and away again, as a fresh state rather than the same file read twice.
   xdotool mousemove --sync $PARKX $RBARY click 1; sleep 1.0
   shot "$SHOTS/tink_08_label_back.png"
-  echo "LABEL_BACK=\"$(label_ink "$SHOTS/tink_08_label_back.png")\"" >> "$GEOM"
+  BACK_INK=$(label_ink "$SHOTS/tink_08_label_back.png")
+  echo "LABEL_BACK=\"$BACK_INK\"" >> "$GEOM"
+  say "label ink: playhead away ${AWAY_INK}px, parked on the box centre ${PILL_INK}px, away again ${BACK_INK}px - the name is drawn in every state, the playhead only crosses it"
 
   say "phase: ruler number"
   # ---- 4. the ruler number the pill owns ----
@@ -743,17 +753,23 @@ awk -v a="$(dist "$CS1" "$CS2" "$CS3" "$CU1" "$CU2" "$CU3")" 'BEGIN{ exit !(a > 
 check $? "and the focused centre differs from the plain one, so the fill change is real ($(dist "$CS1" "$CS2" "$CS3" "$CU1" "$CU2" "$CU3") apart)"
 
 # ---- 3. the lane label ----
-echo "label: expected ink rgb ${LABEL_INK_EXPECTED} (0.42 x hue ${HUE} over the band ${LANE_COLOUR}); pixels in the box with the playhead away ${LABEL_AWAY:-?} (read again ${LABEL_AWAY2:-?}), parked on the box centre ${LABEL_PILL:-?}, back away ${LABEL_BACK:-?}"
+echo "label: expected ink rgb ${LABEL_INK_EXPECTED} (0.42 x hue ${HUE} over the band ${LANE_COLOUR}); pixels of that ink in the label box: playhead away ${LABEL_AWAY:-?} (read again ${LABEL_AWAY2:-?}), parked on the box centre ${LABEL_PILL:-?} (playhead x ${PLAYHEAD_ON_LABEL:-?}, box centre ${LBMID:-?}), away again ${LABEL_BACK:-?}"
+echo "label: present with the playhead away (${LABEL_AWAY:-?}px) AND present with it parked on the label's own column (${LABEL_PILL:-?}px) - a lane's name is not the ruler's number: the pill carries the frame, nothing carries the lane's name"
 [ "${LABEL_AWAY:-0}" -ge "$TEXT_MIN" ]
 check $? "the lane label is drawn in its channel's hue at 0.42, with the playhead clear of it: ${LABEL_AWAY:-0} pixels of rgb ${LABEL_INK_EXPECTED} at the label box"
 [ "${LABEL_AWAY2:-0}" -eq "${LABEL_AWAY:-0}" ]
 check $? "and that reading is the same taken twice, so the box is a state and not a transient (${LABEL_AWAY:-?} then ${LABEL_AWAY2:-?})"
-[ "${LABEL_PILL:-999}" -eq 0 ]
-check $? "and NOTHING is drawn there once the playhead's pill owns the column: ${LABEL_PILL:-?} pixels of that ink in the same box (playhead x ${PLAYHEAD_ON_LABEL:-?}, box centre ${LBMID:-?})"
+[ "${LABEL_PILL:-0}" -ge "$TEXT_MIN" ]
+check $? "and the label is STILL drawn once the playhead is parked on its own column: ${LABEL_PILL:-0} pixels of that ink in the same box (the 1px playhead line crosses the text, it does not delete it)"
+awk -v p="${PLAYHEAD_ON_LABEL:-none}" -v c=$((LBMID - TX0)) \
+    'BEGIN{ if (p == "none" || p == "") exit 1; d = p - c; if (d < 0) d = -d; exit !(d <= 3) }'
+check $? "the second measurement really parks the playhead on the label column: playhead x ${PLAYHEAD_ON_LABEL:-none} against the box centre ${LBMID} (track-local $((LBMID - TX0)))"
+awk -v a="${LABEL_PILL:-0}" -v b="${LABEL_AWAY:-0}" 'BEGIN{ exit !(2*a >= b) }'
+check $? "and parking the playhead there takes nothing away from the name: ${LABEL_PILL:-0} of ${LABEL_AWAY:-0} pixels of the label ink survive the line (at least half; a 1px line can only cover the glyph columns it crosses)"
 [ "${LABEL_BACK:-0}" -ge "$TEXT_MIN" ]
 check $? "and the label is back with the playhead away again: ${LABEL_BACK:-0} pixels"
-awk -v a="${LABEL_AWAY:-0}" -v b="${LABEL_PILL:-0}" 'BEGIN{ exit !(a > b + 7) }'
-check $? "the suppression is the pill's column and not a lost repaint (${LABEL_AWAY:-0} -> ${LABEL_PILL:-0} -> ${LABEL_BACK:-0} pixels)"
+awk -v a="${LABEL_BACK:-0}" -v b="${LABEL_AWAY:-0}" 'BEGIN{ exit !(a >= b - 4) }'
+check $? "the same name reads the same after the playhead leaves (${LABEL_AWAY:-0} -> ${LABEL_BACK:-0} pixels), so the label is a constant of the lane and not a function of the playhead"
 
 # ---- 4. the ruler number ----
 echo "ruler: the number tested is the run [${NUMBER:-none}], its box [${NUMBER_BOX:-none}], the playhead parked at ${NUM_PILL_X:-?} track-local (box centre ${NMID} screen); the box modal colour and ink pixels: away [${NUM_MODAL_AWAY:-?}] ${NUM_AWAY:-?}px, parked on its tick [${NUM_MODAL_PILL:-?}] ${NUM_PILL:-?}px, 90px away [${NUM_MODAL_BACK:-?}] ${NUM_BACK:-?}px"

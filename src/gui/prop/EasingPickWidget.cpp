@@ -76,24 +76,12 @@ const TileDef kTileOrder[] = {
 };
 constexpr int kTileOrderCount = int(sizeof(kTileOrder) / sizeof(kTileOrder[0]));
 
-// The AutoContext the catalog's Auto PRESET tile draws with. A tile is an image
-// of the easing, not a preview of the key being edited: the picker hands it no
-// document, so with the real (empty) context the derived handles collapse to
-// the identity and the tile is indistinguishable from Linear. Give the tile the
-// pair an automatic handle pair IS instead: a neighbour one segment away on each
-// side at the segment's own end values - (frame -1, value 0) before and
-// (frame +2, value 1) after, in the segment widths the glyph evaluates over
-// (d = 1). Both ends sit on their neighbours' plateau there, so the auto-clamped
-// rule pulls both tangents flat and the control points land at (1/3, 0) and
-// (2/3, 1): the canonical ease-in-out an automatic handle pair produces, and
-// clearly not the straight line. The shape is produced by the REAL rule -
-// Easing::controlPoint - so it follows the derivation rather than a hardcoded
-// path. Both sides (the TO key's incoming mode included) are Auto.
-constexpr util::Easing::AutoContext kAutoTileContext = {
-    { true, -1.0f, 1.0f }, // prev: one segment before, holding the SEGMENT'S END value
-    { true, 2.0f, 0.0f },  // next: one segment after, holding the SEGMENT'S START value
-    util::Easing::HandleMode_Auto,
-};
+// THE Auto preview context (see the header): one segment wide, a neighbour one
+// segment away on each side at the segment's own end values, both sides Auto. The
+// REAL rule - Easing::controlPoint - turns it into the canonical ease-in-out, so
+// the shape follows the derivation rather than a hardcoded path. It is not
+// constexpr-inline in the header on purpose: ONE definition, used by the tile, the
+// header's quick button and the tests.
 
 // Which context a glyph draws with. The catalog's Auto preset tile always uses
 // the canonical pair above; every other glyph (the blend thumbnails, the motion
@@ -101,7 +89,9 @@ constexpr util::Easing::AutoContext kAutoTileContext = {
 // AutoContext of the keys it describes, so a preview stays honest.
 const util::Easing::AutoContext& glyphAutoContext(bool aAutoPreset,
                                                   const util::Easing::AutoContext& aShown) {
-    return aAutoPreset ? kAutoTileContext : aShown;
+    // One canonical pair, defined once (see autoPreviewContext).
+    static const util::Easing::AutoContext kPreset = gui::prop::autoPreviewContext();
+    return aAutoPreset ? kPreset : aShown;
 }
 
 QString tileName(int aIdx) { return QString::fromLatin1("tile-%1").arg(aIdx); }
@@ -193,6 +183,19 @@ private:
 };
 
 } // namespace
+
+// Declared in the header (gui::prop::autoPreviewContext) and DEFINED HERE, outside the
+// file's anonymous namespace: a definition inside it would be a second, file-local
+// overload, and every qualified call would then be ambiguous (measured: "call to
+// autoPreviewContext is ambiguous", and the qualified ones link-failed against this
+// one's local name).
+util::Easing::AutoContext autoPreviewContext() {
+    util::Easing::AutoContext ctx;
+    ctx.prev = { true, -1.0f, 0.0f }; // one segment before, at the from key's value
+    ctx.next = { true, 2.0f, 1.0f };  // one segment after, at the to key's value
+    ctx.inMode = util::Easing::HandleMode_Auto;
+    return ctx;
+}
 
 // BlendControl — the blending weight slider, drawn and driven by this widget
 // itself rather than by QSlider. It gates its drag on its own mDown flag, not
@@ -422,9 +425,10 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
         && (util::Easing::isDerived(aParam.handleOut) || util::Easing::isDerived(aAuto ? aAuto->inMode
                                                                                        : util::Easing::HandleMode_Aligned));
     const util::Easing::AutoContext emptyAuto;
+    const util::Easing::AutoContext presetAuto = gui::prop::autoPreviewContext();
     const bool noNeighbours = !(aAuto && aAuto->prev.valid) && !(aAuto && aAuto->next.valid);
     const util::Easing::AutoContext& autoCtx =
-        (aAutoHandles && derivedSides && noNeighbours) ? kAutoTileContext
+        (aAutoHandles && derivedSides && noNeighbours) ? presetAuto
                                                        : (aAuto ? *aAuto : emptyAuto);
 
     const int N = 64;
@@ -610,15 +614,27 @@ void EasingPickWidget::applyAppearance() {
     q += "QToolButton[easingRole=\"tile\"]:checked { background: " + rgba(c.accent, 0.22) + "; color: " + bright + "; }\n";
     q += "QPushButton[role=\"bact\"] { background: " + c.raised.name() + "; border: 0; border-radius: 4px; color: " + muted + "; font-size: 10px; padding: 5px; }\n";
     q += "QPushButton[role=\"bact\"]:hover { background: " + c.raisedHover.name() + "; color: " + text + "; }\n";
-    // bezier inputs (labeled fields, mock .fl/.fi): the app field standard —
-    // a geometry-reserving 1px border (raised at rest) that only recolors on
-    // hover/focus, matching the dock spinbox feedback (border 0 previously
-    // killed the inherited hover; no pressed/active state existed).
-    q += "QLabel[role=\"fl\"] { font-size: 9px; color: " + muted + "; }\n";
-    q += "QDoubleSpinBox[role=\"fi\"] { background: " + c.raised.name() + "; border: 1px solid " + c.raised.name() + "; border-radius: 4px; color: " + text + "; font-size: 11px; padding: 3px 5px; }\n";
-    q += "QDoubleSpinBox[role=\"fi\"]:hover { border-color: " + c.hover.name() + "; }\n";
-    q += "QDoubleSpinBox[role=\"fi\"]:focus { border-color: " + c.focus.name() + "; }\n";
-    q += "QDoubleSpinBox[role=\"fi\"]:hover:pressed { background: " + c.recessed.name() + "; }\n";
+    // The value column of a labelled field (.fi). A combo is a FIELD like every
+    // other value in the picker, so it carries the application's field standard
+    // (propertywidget.ssa: raised at rest, a geometry-reserving 1px border that
+    // only recolors on hover/focus, the caret-down drop-down) rather than
+    // whatever the platform style would paint for it. There is no per-widget
+    // stylesheet on either combo.
+    const QString field =
+        "QLabel[role=\"fl\"] { font-size: 9px; color: " + muted + "; }\n"
+        "QDoubleSpinBox[role=\"fi\"], QComboBox[role=\"fi\"] { background: " + c.raised.name()
+        + "; border: 1px solid " + c.raised.name() + "; border-radius: 4px; color: " + text
+        + "; font-size: 11px; padding: 3px 5px; }\n"
+        "QDoubleSpinBox[role=\"fi\"]:hover, QComboBox[role=\"fi\"]:hover { border-color: "
+        + c.hover.name() + "; }\n"
+        "QDoubleSpinBox[role=\"fi\"]:focus, QComboBox[role=\"fi\"]:focus { border-color: "
+        + c.focus.name() + "; }\n"
+        "QDoubleSpinBox[role=\"fi\"]:hover:pressed { background: " + c.recessed.name() + "; }\n"
+        "QComboBox[role=\"fi\"]::drop-down { subcontrol-origin: padding; subcontrol-position: right;"
+        " width: 1em; height: 1em; border: 0; background: transparent; }\n"
+        "QComboBox[role=\"fi\"]::down-arrow { image: url(" + theme::iconDir()
+        + "/caret-down.svg); width: 0.625em; height: 0.625em; }\n";
+    q += field;
     setStyleSheet(q);
 }
 
@@ -802,7 +818,7 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     }
     g->setParam(glyph);
     // The Auto preset tile draws the canonical automatic-handle pair, not the
-    // edited key's neighbours (a tile is a catalog image; see kAutoTileContext).
+    // edited key's neighbours (a tile is a catalog image; see autoPreviewContext).
     g->setAutoContext(glyphAutoContext(def.autoPreset, mAuto));
     // The preset's catalog image must SAY it is a bezier with derived handles:
     // draw the two control points and their stems. No other tile (nor the blend
@@ -810,6 +826,14 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     g->setAutoHandlesVisible(def.autoPreset);
     g->setGlyphColor(C().textMutedDim);
     vl->addWidget(g, 0, Qt::AlignCenter);
+    // The tile's NAME is the user-facing name of the Param it writes, from the
+    // same function the chip and the header read: an ordinary type tile is its
+    // easing name, and the mode preset is named by its two handle sides ("Auto
+    // Clamped" for the clamped pair this tile creates). A glyph-only button has
+    // no text, so this is also its accessible text.
+    const QString tileLabel = util::Easing::getParamName(glyph);
+    tile->setAccessibleName(tileLabel);
+    tile->setToolTip(tr("Set the easing to %1").arg(tileLabel));
     connect(tile, &QToolButton::clicked, this, [this, def] {
         if (def.autoPreset)
             this->setAutoHandlesPreset();
@@ -931,12 +955,19 @@ QWidget* EasingPickWidget::buildBezierPanel() {
     // handleIn). They are separate controls because the two sides derive
     // independently - dragging one side is what frees it, and the other keeps
     // deriving.
+    //
+    // Each is an ordinary labelled FIELD in the picker's own row geometry - the
+    // same bfield/.fl/.fi structure, 12px label and 24px value, 5px between the
+    // two columns as the x1/y1/x2/y2 row above - so it aligns with every other
+    // input in the panel. The combos carry NO local stylesheet and are painted
+    // by the app field rule in applyAppearance (the .ssa field standard), not by
+    // a bespoke look; their layout is the panel's, nothing more.
     {
         QWidget* modes = new QWidget(panel);
         modes->setObjectName("handle-modes");
         QHBoxLayout* ml = new QHBoxLayout(modes);
         ml->setContentsMargins(0, 0, 0, 0);
-        ml->setSpacing(6);
+        ml->setSpacing(5);
         const struct {
             bool incoming;
             const char* label;
@@ -946,12 +977,19 @@ QWidget* EasingPickWidget::buildBezierPanel() {
             { false, QT_TR_NOOP("Out"), "handle-out" },
         };
         for (const auto& def : defs) {
-            QLabel* lab = new QLabel(tr(def.label), modes);
+            QWidget* field = new QWidget(modes);
+            field->setProperty("role", "bfield");
+            QVBoxLayout* f = new QVBoxLayout(field);
+            f->setContentsMargins(0, 0, 0, 0);
+            f->setSpacing(2);
+            QLabel* lab = new QLabel(tr(def.label), field);
             lab->setProperty("role", "fl");
-            ml->addWidget(lab);
-            QComboBox* box = new QComboBox(modes);
+            lab->setFixedHeight(12);
+            f->addWidget(lab);
+            QComboBox* box = new QComboBox(field);
             box->setObjectName(QString::fromLatin1(def.name));
             box->setProperty("role", "fi");
+            box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             box->setFixedHeight(24);
             for (int m = 0; m < util::Easing::HandleMode_TERM; ++m) {
                 const auto mode = static_cast<util::Easing::HandleMode>(m);
@@ -961,7 +999,8 @@ QWidget* EasingPickWidget::buildBezierPanel() {
             connect(box, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, box, incoming](int) {
                 this->setHandleMode(incoming, static_cast<util::Easing::HandleMode>(box->currentData().toInt()));
             });
-            ml->addWidget(box, 1);
+            f->addWidget(box);
+            ml->addWidget(field, 1);
             (incoming ? mHandleIn : mHandleOut) = box;
         }
         l->addWidget(modes);
@@ -995,6 +1034,9 @@ QWidget* EasingPickWidget::buildBezierPanel() {
         const util::Easing::Param old = mDraft;
         mDraft.cubicBezier = { (float)v[0], (float)v[1], (float)v[2], (float)v[3] };
         if (mDraft == old) return;
+        // A pasted control point is a STORED value: any side it changed and that
+        // derived its point must read it from now on (the drag's own rule).
+        freeEditedSides(old.cubicBezier);
         pushState(old); // paste is a discrete edit
         renderBezier();
         emit changed(mDraft);
@@ -1012,6 +1054,25 @@ QWidget* EasingPickWidget::buildBezierPanel() {
     return panel;
 }
 
+bool EasingPickWidget::freeEditedSides(const util::Easing::CubicBezier& aBefore) {
+    if (mDraft.type != util::Easing::Type_Custom)
+        return false; // the modes are inert on an analytic type: nothing to free
+    bool freed = false;
+    // x1/y1 LEAVES the segment's from key: it is this param's handleOut.
+    if ((mDraft.cubicBezier.x1 != aBefore.x1 || mDraft.cubicBezier.y1 != aBefore.y1)
+        && util::Easing::isDerived(mDraft.handleOut)) {
+        mDraft.handleOut = util::Easing::HandleMode_Free;
+        freed = true;
+    }
+    // x2/y2 ARRIVES at the segment's to key: it is this param's handleIn.
+    if ((mDraft.cubicBezier.x2 != aBefore.x2 || mDraft.cubicBezier.y2 != aBefore.y2)
+        && util::Easing::isDerived(mDraft.handleIn)) {
+        mDraft.handleIn = util::Easing::HandleMode_Free;
+        freed = true;
+    }
+    return freed;
+}
+
 void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
     const util::Easing::Param old = mDraft;
     util::Easing::CubicBezier& b = mDraft.cubicBezier;
@@ -1020,10 +1081,13 @@ void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
     else if (aIndex == 2) b.x2 = (float)aValue;
     else b.y2 = (float)aValue;
     if (mDraft == old) return;
+    // The typed side becomes stored if it was derived; the other side is untouched.
+    freeEditedSides(old.cubicBezier);
     pushState(old); // typed bezier value is a discrete edit
     // Sync the handle points from the new bezier so the paint event's
-    // write-back keeps it (otherwise it reverts to a stale control point).
-    if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
+    // write-back keeps it (otherwise it reverts to a stale control point), and
+    // re-read the mode combos when a side was freed.
+    renderBezier();
     emit changed(mDraft);
 }
 
@@ -1031,6 +1095,8 @@ void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
 void EasingPickWidget::setType(util::Easing::Type aType) {
     const util::Easing::Param old = mDraft;
     mDraft.type = aType;
+    // A TYPE tile leaves the Custom panel (the only one that can be forced open).
+    mForceBezierPanel = false;
     if (mDraft == old) return;
     pushState(old); // discrete edit: one undo step
     refresh();
@@ -1040,6 +1106,7 @@ void EasingPickWidget::setRange(util::Easing::Range aRange) {
     const util::Easing::Param old = mDraft;
     if (mDraft.type == util::Easing::Type_Custom)
         mDraft.type = util::Easing::Type_Cubic;
+    mForceBezierPanel = false;
     mDraft.range = aRange;
     if (mDraft == old) return;
     pushState(old);
@@ -1057,23 +1124,42 @@ void EasingPickWidget::setWeight(float aWeight) {
 }
 void EasingPickWidget::setCustom() {
     const util::Easing::Param old = mDraft;
+    // An explicit click on the Custom segment OPENS THE BEZIER PANEL, whatever the
+    // draft is - including the Auto preset, whose pair already makes the type
+    // Custom. Without this flag that click could neither change the model nor
+    // reach the controls (the preset is routed to the catalog; see refresh).
+    mForceBezierPanel = true;
     mDraft.type = util::Easing::Type_Custom;
-    if (mDraft == old) return;
-    pushState(old);
+    // 'changed' is the SIGNAL: a local of that name shadows it and the emit below
+    // becomes a call on a bool (measured: clang reports "called object type 'bool'").
+    const bool didChange = !(mDraft == old);
+    if (didChange)
+        pushState(old);
     refresh();
     renderBezier();
-    emit changed(mDraft);
+    if (didChange)
+        emit changed(mDraft);
 }
 
 void EasingPickWidget::setAutoHandlesPreset() {
     const util::Easing::Param old = mDraft;
     // The preset is the handle MODES, not a type: a Custom curve (the only kind
     // whose controls the modes shape) with both sides deriving from their own
-    // neighbour.
+    // neighbour. This is the EXPLICIT Automatic preset the user picked, so it is
+    // Blender's unclamped Auto and reads Auto; the application's own default
+    // automatic pair (a migrated legacy type / stored default) is
+    // kDefaultAutomaticHandleMode, which clamps.
+    mForceBezierPanel = false; // the preset is a CATALOG state (its tile stays visible)
     mDraft.type = util::Easing::Type_Custom;
     mDraft.handleIn = util::Easing::HandleMode_Auto;
     mDraft.handleOut = util::Easing::HandleMode_Auto;
-    if (mDraft == old) return;
+    if (mDraft == old) {
+        // Already the preset: no model change, but the popover must SHOW the
+        // catalog with the tile checked (a draft reached here from the bezier
+        // panel by the combos would otherwise stay on the bezier panel).
+        refresh();
+        return;
+    }
     pushState(old);
     refresh();
     renderBezier();
@@ -1105,6 +1191,7 @@ void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
     mUndo.clear();
     mRedo.clear();
     mGestureActive = false;
+    mForceBezierPanel = false; // a loaded draft opens where its own state routes
     refresh();
 }
 
@@ -1113,7 +1200,7 @@ void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext)
     // derives from them (the motion preview on its next tick, and the blend
     // thumbnails) so an Auto draft is never shown as a shape no key has. The
     // picker's Auto TILE is exempt by design: it is a catalog image and draws the
-    // canonical automatic-handle pair (see kAutoTileContext).
+    // canonical automatic-handle pair (see autoPreviewContext).
     mAuto = aContext;
     refreshTiles();
 }
@@ -1134,7 +1221,12 @@ void EasingPickWidget::beginGesture() {
 void EasingPickWidget::endGesture() {
     if (!mGestureActive) return;
     mGestureActive = false;
+    // A bezier drag wrote stored control points: free whichever side it moved if
+    // that side derived its point (the canvas drag's own rule; see the header).
+    const bool freed = freeEditedSides(mGestureStart.cubicBezier);
     if (mDraft != mGestureStart) pushState(mGestureStart); // one entry per drag
+    if (freed)
+        refresh(); // the mode combos and panel must show the freed side
     emit changed(mDraft); // ensure derived views see the final draft
 }
 
@@ -1156,7 +1248,17 @@ void EasingPickWidget::redo() {
 
 // ---- render -----------------------------------------------------------------
 void EasingPickWidget::refresh() {
-    const bool inBezier = mDraft.type == util::Easing::Type_Custom;
+    // THE ROUTING. Custom means the bezier panel - except when the draft IS the
+    // Auto preset, which is a catalog state: its tile must remain visible and
+    // checked, otherwise a preset selected by the tile (or loaded from a key)
+    // lands on a panel where the tile cannot be seen and the popover cannot say
+    // the preset is current. The Custom segment click sets mForceBezierPanel, so
+    // the bezier controls stay reachable on a preset without changing the pair.
+    const bool autoPreset = mDraft.type == util::Easing::Type_Custom
+        && mDraft.handleIn == util::Easing::HandleMode_Auto
+        && mDraft.handleOut == util::Easing::HandleMode_Auto;
+    const bool inBezier =
+        mDraft.type == util::Easing::Type_Custom && (mForceBezierPanel || !autoPreset);
     mAnimT = 0.0; // restart the motion preview on any change
     refreshSeg();
     mNormalPanel->setVisible(!inBezier);
@@ -1164,8 +1266,12 @@ void EasingPickWidget::refresh() {
     // In Custom mode the top motion-preview bar is hidden (the animated value
     // rides the gauge beside the curve instead), matching the reference mock.
     if (mPipeline) mPipeline->setVisible(!inBezier);
+    // Run the tiles even while the Custom panel hides them: their checked state
+    // is the draft's, and a stale check left on another tile would be the truth
+    // the moment the catalog is shown again. (The Auto preset itself switches to
+    // Custom, so this is exactly the path that used to leave two tiles checked.)
+    refreshTiles();
     if (inBezier) renderBezier();
-    else refreshTiles();
     updateBlend();
     // Pin the popup's height to the known per-mode height. The popup is a
     // top-level Qt::Popup with a fixed width; its height is deterministic

@@ -23,7 +23,6 @@
 #include "core/FilterFrame.h"
 #include "ctrl/Driver.h"
 #include "ctrl/Painter.h"
-#include "util/Easing.h"
 #include "gui/MainViewSetting.h"
 #include "gui/CanvasMover.h"
 // The channel list's rows travel from the panel's model to this widget's menus
@@ -121,17 +120,6 @@ public:
     // hidden channel are listed like any other: that is how it is turned back on.
     // Nothing happens with no rows, and no list is shown.
     void showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos);
-    // Applies aEasing to every key the shared SELECTION names, through the panel's own
-    // editor (ctrl::GraphEditor::setSelectedKeysEasing: ONE undo step for the whole
-    // selection, keys whose type carries no easing and step-held channels skipped).
-    // False when there is no editor or nothing would change. The header's four quick
-    // easings call this; the timeline's chip and picker keep their own route (the same
-    // edit, reached from the widget that hosts the picker).
-    bool applyEasingToSelection(util::Easing::Type aEasing);
-    // THE AUTO PRESET: Custom with BOTH handle sides Auto on every selected key
-    // (automatic handles are modes now, not a type). Same selection, same
-    // one-undo-step route as applyEasingToSelection.
-    bool applyAutoHandlesToSelection();
     void updateRender();
     void resetCamera();
     void setViewportBackground(const QColor& aColor);
@@ -196,8 +184,8 @@ private:
     void syncGraphPanelSharedState();
     // Asks the DOCK's Graph page for a repaint. The panel is a QOpenGLWidget of its
     // own, so nothing this widget paints shows it: every state this widget pushes into
-    // the panel's editor - the frame window (syncGraphPanelSharedState) and the keys'
-    // easing (applyEasingToSelection) - has to ask the page itself. A no-op in a build
+    // the panel's editor - the frame window and the shared selection
+    // (syncGraphPanelSharedState) - has to ask the page itself. A no-op in a build
     // without the panel and in a window without the dock.
     void refreshGraphPanel();
     QSize deviceSize() const { return this->size() * mDevicePixelRatio; }

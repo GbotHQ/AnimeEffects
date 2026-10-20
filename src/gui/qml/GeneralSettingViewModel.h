@@ -156,6 +156,19 @@ public:
 
     QVariantList languageOptions() const;
     QVariantList easingOptions() const;
+    // THE AUTO CLAMPED OPTION. Automatic handles are per-side MODES, not an easing
+    // TYPE, so the display table cannot carry them - but the default keyframe
+    // easing CAN be the automatic pair (a migrated 0.14 Auto, or a stored "Auto"),
+    // and a combo that showed Linear for it would misname the default every new key
+    // gets. The option is appended after the table's non-Custom entries, labelled
+    // with the handle-mode name, and SAVED as the retired ordinal 14
+    // (util::Easing::Type_TERM), the one value util::Easing::defaultParam maps to
+    // Custom + kDefaultAutomaticHandleMode. optionForSetting resolves a stored
+    // value (name or ordinal, the legacy forms included) to an option index, and
+    // storedValueForOption is the inverse for the save path.
+    static int autoClampedOptionIndex();
+    static int optionForSetting(const QVariant& aStored);
+    static int storedValueForOption(int aOptionIndex);
     QVariantList rangeOptions() const;
     QVariantList timeFormatOptions() const;
     QVariantList themeOptions() const { return mThemeOptions; }

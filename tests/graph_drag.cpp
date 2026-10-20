@@ -870,8 +870,13 @@ int main(int argc, char** argv) {
     //   * WHERE THEY ARE: the application's 12px lanes, FLUSH with the panel's bottom
     //     and right edges (the timeline's own bar layout), with the plot's right and
     //     bottom inset being exactly that lane (Scaler::kScrollBarReserve);
-    //   * the pill's LENGTH and OFFSET by Qt's own QScrollBar arithmetic, floored at
-    //     QStyle::PM_ScrollBarSliderMin;
+    //   * the pill's LENGTH and OFFSET by the TIMELINE's own handle arithmetic
+    //     (gui::TimelineScrollBar::handleRect): the window's edges over the union
+    //     track, each rounded, with the frame axis carrying the timeline's trailing
+    //     24px margin - no style minimum and no track-minus-one cap;
+    //   * THE DRAG IS 1:1: the pointer delta moves the WINDOW through the bar's own
+    //     content-per-lane-pixel ratio (the ratio TimeLineWidget::beginScrollbarDrag
+    //     anchors), so the pill travels exactly with the pointer on both axes;
     //   * THE DIRECTION on both axes: dragging the horizontal pill RIGHT shows LATER
     //     frames, dragging the vertical pill UP shows HIGHER values - the window
     //     follows the pill, and the content under it moves the other way (as a scroll
@@ -895,11 +900,12 @@ int main(int argc, char** argv) {
         CHECK(frames.max() > frames.min());
 
         // A WINDOW WITH A PARTIAL THUMB, so a press can be told apart from a thumb
-        // press: the frame axis asked for frames 0..10 of the project's range (a short
-        // window at the START of the range, so the thumb sits at the track's left) and
-        // the value axis for 0..10 of the curve's 0..90 (the thumb at the TOP, the
-        // value axis being inverted along its track).
-        editor.scale().fitFrameAxis(core::Frame(0), core::Frame(10));
+        // press: the frame axis asked for frames 10..20 of the project's range (a
+        // short window INSIDE the range, so the union track is the project's own and
+        // stays put for the whole drag) and the value axis for 0..10 of the curve's
+        // 0..90 (the thumb at the BOTTOM, the value axis being inverted along its
+        // track).
+        editor.scale().fitFrameAxis(core::Frame(10), core::Frame(20));
         editor.scale().setValueWindow(0.0f, 10.0f);
         const Scaler::ScrollBars bars = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
 
@@ -925,27 +931,49 @@ int main(int argc, char** argv) {
         CHECK(bars.vTrack.left() > plot.right());
         CHECK(bars.hTrack.contains(bars.hThumb)); // a thumb never leaves its track
         CHECK(bars.vTrack.contains(bars.vThumb));
-        CHECK(bars.hThumb.width() < bars.hTrack.width()); // the window is narrower than the content
-        CHECK(bars.vThumb.height() < bars.vTrack.height());
-        CHECK(bars.hThumb.left() == bars.hTrack.left()); // the window starts at the range's first frame
-        // The LENGTH is Qt's pageStep/content fraction of the track, floored at the
-        // style's own minimum - asked from the style, never written as a literal.
-        const int minSlider = Scaler::scrollBarSliderMin();
-        CHECK(minSlider > 0);
-        const double hWindow = scale.frameAtPixel(double(plot.right() + 1)) - scale.frameAtPixel(double(plot.left()));
-        const int expectedHLength = std::clamp(
-            int(std::lround(hWindow / double(frames.max() - frames.min()) * bars.hTrack.width())),
-            std::min(minSlider, bars.hTrack.width()), bars.hTrack.width()
-        );
-        CHECK(bars.hThumb.width() == expectedHLength);
 
-        // (1) A THUMB DRAG MOVES THE WINDOW WITH THE PILL, by exactly the pixels
-        // dragged. The frame half moves the MAPPING's origin the other way (the window
-        // advances, so the content under it slides left) - measured through
-        // pixelXOfFrame, the mapping itself and not a rounded pixel - and leaves the
-        // value window bit-identical; the value half does the same to the value window
-        // and leaves the frame axis alone.
+        // The timeline's handleRect, written out: union track, edge-rounded, 1px
+        // floor (the exact rule Scaler::scrollBars implements).
+        const auto timelineThumb = [](const QRect& aTrack, bool aHorizontal, bool aInverted,
+                                      double aContentLo, double aContentHi, double aWindowLo,
+                                      double aWindowHi) {
+            const int trackLength = aHorizontal ? aTrack.width() : aTrack.height();
+            const double windowLo = aInverted ? -std::max(aWindowLo, aWindowHi) : std::min(aWindowLo, aWindowHi);
+            const double windowHi = aInverted ? -std::min(aWindowLo, aWindowHi) : std::max(aWindowLo, aWindowHi);
+            const double contentLo = aInverted ? -std::max(aContentLo, aContentHi) : std::min(aContentLo, aContentHi);
+            const double contentHi = aInverted ? -std::min(aContentLo, aContentHi) : std::max(aContentLo, aContentHi);
+            const double trackLo = std::min(contentLo, windowLo);
+            const double trackHi = std::max(contentHi, windowHi);
+            const auto edge = [&](double aValue) {
+                return int((aValue - trackLo) / (trackHi - trackLo) * trackLength + 0.5);
+            };
+            const int start = edge(windowLo);
+            const int length = std::max(edge(windowHi) - start, 1);
+            return aHorizontal ? QRect(aTrack.left() + start, aTrack.top(), length, aTrack.height())
+                               : QRect(aTrack.left(), aTrack.top() + start, aTrack.width(), length);
+        };
+        const double hMargin = double(Scaler::kScrollBarTrailingMargin) / scale.framePpf();
+        const double hWindowLo = scale.frameAtPixel(double(plot.left()));
+        const double hWindowHi = scale.frameAtPixel(double(plot.right() + 1));
+        const QRect expectedH = timelineThumb(
+            bars.hTrack, true, false, double(frames.min()), double(frames.max()) + hMargin, hWindowLo, hWindowHi
+        );
+        CHECK(bars.hThumb == expectedH);
+        CHECK(bars.hThumb.left() > bars.hTrack.left()); // inside the range, not at its start
+        CHECK(bars.hThumb.width() < bars.hTrack.width()); // the window is narrower than the track
+        const QRect expectedV = timelineThumb(
+            bars.vTrack, false, true, double(valueLo), double(valueHi), double(scale.valueMin()),
+            double(scale.valueMax())
+        );
+        CHECK(bars.vThumb == expectedV);
+
+        // (1) A THUMB DRAG MOVES THE PILL WITH THE POINTER, 1:1. The bar's own ratio
+        // is the timeline's (range/span, anchored at press): a pointer delta dx moves
+        // the WINDOW by dx * content/(lane length), which moves the handle by exactly
+        // dx. The old conversion went through the page-per-panel fraction and left the
+        // pill sliding out from under the pointer (a 37px drag moved it ~7px).
         const QPoint hGrab = bars.hThumb.center();
+        const int hThumbBefore = bars.hThumb.left();
         const double frameOriginBefore = scale.pixelXOfFrame(0.0);
         const double frameAtLeftBefore = scale.frameAtPixel(double(plot.left()));
         const float valueMinBefore = scale.valueMin();
@@ -972,15 +1000,25 @@ int main(int argc, char** argv) {
         // fail here.
         CHECK(editor.ownsCursor(camera, hCur));
         CHECK(sendRelease(editor, camera, hCur, hGrab + hDelta));
-        // Dragging the pill RIGHT shows LATER frames: the viewport advances, so the
-        // content's origin moves LEFT by exactly the pixels dragged (the double's own
-        // arithmetic, so an 11px drag is not 10 or 12).
-        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - frameOriginBefore + 37.0) < 1e-9);
+        // Dragging the pill RIGHT shows LATER frames: the viewport advances and the
+        // content's origin moves LEFT by the same content length the bar's ratio
+        // names (the window's delta = 37 * content/lane pixels, converted to panel
+        // pixels by the axis' rate). The pill itself moved with the pointer, 1:1.
+        const double hOriginShift = -double(hDelta.x()) * bars.hContentPerPixel * scale.framePpf();
+        CHECK(std::fabs((scale.pixelXOfFrame(0.0) - frameOriginBefore) - hOriginShift) < 1e-9);
+        const Scaler::ScrollBars hAfter = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+        CHECK(std::abs((hAfter.hThumb.left() - hThumbBefore) - hDelta.x()) <= 1);
         CHECK(scale.frameAtPixel(double(plot.left())) > frameAtLeftBefore); // the window really is later
         CHECK(scale.valueMin() == valueMinBefore); // and not one value in the process
         CHECK(scale.valueMax() == valueMaxBefore);
         CHECK(editor.selectionCount() == selectionBefore); // no plot gesture ran
         CHECK(editor.marqueeRect().isEmpty());            // and no marquee was opened
+        std::printf(
+            "[B] thumb drag: pointer +%d px -> handle %+d px (1:1 within the edge rounding), window %+.3f "
+            "frames, content origin %+.2f px\n",
+            hDelta.x(), hAfter.hThumb.left() - hThumbBefore,
+            double(hDelta.x()) * bars.hContentPerPixel, scale.pixelXOfFrame(0.0) - frameOriginBefore
+        );
 
         // (2) A LANE PRESS IS ONE PAGE TOWARD THE PRESS, THEN A DRAG. A press on the
         // lane beside the run moves the window by its OWN span - a page is the visible
@@ -1008,13 +1046,20 @@ int main(int argc, char** argv) {
         // ONE PAGE: the frame that was at the window's right edge is now at its left.
         CHECK(std::fabs(scale.frameAtPixel(jumpPlot.left()) - rightFrameBeforePage) < 1e-9);
         CHECK(scale.frameAtPixel(jumpPlot.left()) > leftFrameBeforePage); // it really moved forward
+        const Scaler::ScrollBars afterPage = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+        const int pageThumb = afterPage.hThumb.left();
         const double jumpedOrigin = scale.pixelXOfFrame(0.0);
         const QPoint jumpDelta(-11, 0);
         CHECK(sendMove(editor, camera, jumpCur, trackPress + jumpDelta));
         CHECK(sendRelease(editor, camera, jumpCur, trackPress + jumpDelta));
         // ...and the drag after the page scrolls the same way the thumb drag does: a
-        // LEFTWARD drag shows earlier frames, so the content moves RIGHT by 11px.
-        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - jumpedOrigin - 11.0) < 1e-9);
+        // LEFTWARD pointer delta moves the window back by the bar's content-per-pixel
+        // ratio, and the handle follows the pointer by the same -11px (1:1).
+        const double jumpShift = -double(jumpDelta.x()) * jump.hContentPerPixel * scale.framePpf();
+        CHECK(std::fabs((scale.pixelXOfFrame(0.0) - jumpedOrigin) - jumpShift) < 1e-9);
+        const Scaler::ScrollBars afterLaneDrag =
+            scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+        CHECK(std::abs((afterLaneDrag.hThumb.left() - pageThumb) - jumpDelta.x()) <= 1);
 
         // (3) THE VERTICAL BAR, the same two gestures on the value axis: a thumb drag
         // moves the value window (and the frame axis not at all), and a lane press
@@ -1026,11 +1071,11 @@ int main(int argc, char** argv) {
         editor.scale().setValueWindow(0.0f, 10.0f);
         const Scaler::ScrollBars vBars = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
         const QPoint vGrab = vBars.vThumb.center();
+        const int vThumbBefore = vBars.vThumb.top();
         const double vFrameOriginBefore = scale.pixelXOfFrame(0.0);
         const float vSpanBefore = scale.valueMax() - scale.valueMin();
         const float vMinBeforeDrag = scale.valueMin();
         const float vMaxBeforeDrag = scale.valueMax();
-        const double valueUnderGrab = scale.valueAtPixel(vGrab.y());
         core::AbstractCursor vCur;
         {
             QMouseEvent down(
@@ -1040,18 +1085,25 @@ int main(int argc, char** argv) {
         }
         CHECK(editor.ownsCursor(camera, vCur));
         CHECK(editor.updateCursor(camera, vCur));
-        // DRAGGING THE PILL UP SHOWS HIGHER VALUES: the window's two bounds both rise,
-        // and the content under the pointer slides DOWN by the pixels dragged (the
-        // value that was under the pointer is 24px lower now) - a scroll, not a pan
-        // (whose content follows the pointer) and not a zoom (the span is untouched).
+        // DRAGGING THE PILL UP SHOWS HIGHER VALUES: the window's two bounds both rise.
+        // The window moves by the bar's own content-per-pixel ratio (the timeline's
+        // anchored drag), so the handle follows the pointer by exactly the -24px
+        // dragged; the span is untouched (a scroll, not a zoom) and the frame axis
+        // does not move.
         const QPoint vDelta(0, -24);
         CHECK(sendMove(editor, camera, vCur, vGrab + vDelta));
         CHECK(sendRelease(editor, camera, vCur, vGrab + vDelta));
         CHECK(scale.valueMin() > vMinBeforeDrag); // the window went UP the value axis
         CHECK(scale.valueMax() > vMaxBeforeDrag);
-        CHECK(std::fabs(scale.valueAtPixel(vGrab.y() + 24) - valueUnderGrab) < 1e-3);
+        const Scaler::ScrollBars vAfter = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+        CHECK(std::abs((vThumbBefore - vAfter.vThumb.top()) + vDelta.y()) <= 1); // 1:1 with the pointer
         CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanBefore) < 1e-5f);
         CHECK(scale.pixelXOfFrame(0.0) == vFrameOriginBefore); // the frame axis did not move
+        std::printf(
+            "[B] value thumb drag: pointer %+d px -> handle %+d px (1:1 within the edge rounding), valueMin "
+            "%.4f -> %.4f\n",
+            vDelta.y(), vAfter.vThumb.top() - vThumbBefore, vMinBeforeDrag, scale.valueMin()
+        );
 
         editor.scale().setValueWindow(0.0f, 10.0f);
         const Scaler::ScrollBars vJump = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
@@ -1273,6 +1325,144 @@ int main(int argc, char** argv) {
             "(first %d, last %d at x %d..%d)  commands pushed 0  band unclaimed without a delegate\n",
             band.x(), band.y(), band.width(), band.height(), plot.y(), plot.top(), int(seeks.size()),
             seeks.value(0), seeks.last(), pressX, releaseX
+        );
+    }
+
+    // --- 0a-iii: THE BAND'S SHIFT GESTURE IS THE TIMELINE'S PLAYBACK WINDOW.
+    // The panel does not own a second window: a Shift-press anchors the timeline
+    // editor's window, a drag defines it, the release applies the timeline's own
+    // ending rule, and the pushed value comes back through setPlayWindow (what the
+    // GUI's playWindowChanged slot does). Every expectation below is the timeline's
+    // documented sequence - press anchors nothing, drag materialises, a click or a
+    // collapsed drag dismisses, a release ignores the modifier, the frames clamp
+    // into the project range.
+    {
+        const ctrl::graph::Scaler bandScale = editor.scale();
+        const QRect plot = bandScale.plotRect();
+        CHECK(!plot.isEmpty());
+        const QRect band(
+            plot.left(), plot.top() - ctrl::graph::Scaler::kMargin - ctrl::graph::Scaler::kRulerBandHeight,
+            plot.width(), ctrl::graph::Scaler::kRulerBandHeight
+        );
+        CHECK(!band.intersects(plot));
+        const int bandY = band.center().y();
+        const int xLeft = band.left() + band.width() / 4;
+        const int xRight = band.left() + (3 * band.width()) / 4;
+        const auto frameAt = [&](int aX) { return bandScale.frameAt(aX).get(); };
+        CHECK(frameAt(xLeft) != frameAt(xRight));
+
+        // The window's own state: a real timeline editor, with a range wide enough
+        // that the band's frames are inside it. In the application this is the
+        // timeline widget's editor, reached through a straight forward from
+        // gui::MainDisplayWidget's delegate.
+        ctrl::TimeLineEditor windowEditor;
+        windowEditor.setFrameRange(util::Range(-100000, 100000));
+        int seekCount = 0;
+        editor.setFrameSeekDelegate([&](core::Frame) { ++seekCount; });
+        editor.setPlayWindowDelegate(
+            [&](ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame) {
+                windowEditor.updatePlayWindow(aStep, aFrame);
+            }
+        );
+
+        // --- a Shift-PRESS anchors and shows nothing (the seek must not also fire) ---
+        core::AbstractCursor cursor;
+        CHECK(sendPress(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(!windowEditor.playWindow().active());
+        CHECK(seekCount == 0);
+        // ...and the press is a gesture this editor owns, even while it shows nothing.
+        CHECK(editor.ownsCursor(camera, cursor));
+
+        // --- the DRAG materialises the window, end to end ---
+        CHECK(sendMove(editor, camera, cursor, QPoint(xRight, bandY), Qt::ShiftModifier));
+        CHECK(windowEditor.playWindow().active());
+        CHECK(windowEditor.playWindow().start == frameAt(xLeft));
+        CHECK(windowEditor.playWindow().end == frameAt(xRight));
+        CHECK(seekCount == 0);
+        CHECK(editor.ownsCursor(camera, cursor));
+
+        // --- a release WITHOUT Shift still commits the drag: the timeline's ending
+        // rule does not read the modifier on the release (letting go of Shift before
+        // the button is not a different gesture) ---
+        CHECK(sendRelease(editor, camera, cursor, QPoint(xRight, bandY)));
+        CHECK(windowEditor.playWindow().active());
+        CHECK(!editor.ownsCursor(camera, cursor));
+        CHECK(seekCount == 0);
+
+        // --- THE PANEL'S OVERLAY FOLLOWS THE PUSHED VALUE, not a copy of its own:
+        // this is what the GUI does on playWindowChanged, and activeRange (the
+        // recession basis) then names the window ---
+        editor.setPlayWindow(windowEditor.playWindow());
+        CHECK(editor.playWindow().start == frameAt(xLeft));
+        CHECK(editor.playWindow().end == frameAt(xRight));
+        CHECK(editor.activeRange().min() == frameAt(xLeft));
+        CHECK(editor.activeRange().max() == frameAt(xRight));
+
+        // --- a release WITH Shift commits too (both modifier states at release) ---
+        CHECK(sendPress(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, cursor, QPoint(xRight, bandY), Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, cursor, QPoint(xRight, bandY), Qt::ShiftModifier));
+        CHECK(windowEditor.playWindow().active());
+
+        // --- a SHIFT-CLICK (press and release with no drag) dismisses the window ---
+        CHECK(sendPress(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(sendRelease(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(!windowEditor.playWindow().active());
+        CHECK(seekCount == 0);
+
+        // --- a drag that COLLAPSES to one frame is a click in disguise: it shows
+        // while the button is down and is dismissed on the release (a 1-frame active
+        // window would gate playback to a frame while drawing no band) ---
+        CHECK(sendPress(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(sendMove(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(windowEditor.playWindow().active());
+        CHECK(windowEditor.playWindow().start == windowEditor.playWindow().end);
+        CHECK(sendRelease(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(!windowEditor.playWindow().active());
+
+        // --- the frames are CLAMPED into the project range by the shared step, the
+        // same clamp the timeline's ruler applies (this is the editor's own code,
+        // called directly because no band position can be out of range here) ---
+        {
+            ctrl::TimeLineEditor narrow;
+            narrow.setFrameRange(util::Range(10, 20));
+            narrow.updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep::Begin, core::Frame(0));
+            narrow.updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep::Drag, core::Frame(100));
+            CHECK(narrow.playWindow().start == 10);
+            CHECK(narrow.playWindow().end == 20);
+            narrow.updatePlayWindow(ctrl::TimeLineEditor::PlayWindowStep::End, core::Frame(100));
+            CHECK(narrow.playWindow().active()); // a real drag keeps it
+        }
+
+        // --- WITHOUT the window delegate a Shift-press is only the seek: the band
+        // has no other gesture to give it ---
+        editor.setPlayWindowDelegate(nullptr);
+        const int seeksBefore = seekCount;
+        CHECK(sendPress(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(seekCount == seeksBefore + 1);
+        CHECK(sendRelease(editor, camera, cursor, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(seekCount == seeksBefore + 2);
+
+        // --- with ONLY the window delegate the Shift-press is still the panel's
+        // (the seek does not own the band) ---
+        editor.setFrameSeekDelegate(nullptr);
+        editor.setPlayWindowDelegate(
+            [&](ctrl::TimeLineEditor::PlayWindowStep aStep, core::Frame aFrame) {
+                windowEditor.updatePlayWindow(aStep, aFrame);
+            }
+        );
+        core::AbstractCursor onlyWindow;
+        CHECK(sendPress(editor, camera, onlyWindow, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(editor.ownsCursor(camera, onlyWindow));
+        CHECK(sendRelease(editor, camera, onlyWindow, QPoint(xLeft, bandY), Qt::ShiftModifier));
+        CHECK(!editor.ownsCursor(camera, onlyWindow));
+
+        editor.setPlayWindowDelegate(nullptr);
+        editor.setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
+        std::printf(
+            "[B] ruler band Shift gesture: press anchors (nothing drawn), drag %d..%d, release without "
+            "Shift commits, click and 1-frame drag dismiss, frames clamp to the project range\n",
+            frameAt(xLeft), frameAt(xRight)
         );
     }
 
@@ -3284,7 +3474,6 @@ int main(int argc, char** argv) {
         CHECK(!seamBars.isEmpty() && !seamBars.hThumb.isEmpty());
         const QPoint seamThumbGrab = seamBars.hThumb.center();
         CHECK(seamThumbGrab.y() > sharedPlot.bottom()); // the grab is on the bar, outside the plot
-        const double seamPpfAtBarDrag = editor.scale().framePpf();
         const double seamOriginBeforeBar = editor.scale().pixelXOfFrame(0.0);
         const double scrolledBeforeBar = scrolledFrames;
         const int scrollCallsBeforeBar = scrollCalls;
@@ -3294,10 +3483,11 @@ int main(int argc, char** argv) {
         CHECK(sendMove(editor, camera, seamBarCur, seamThumbGrab + seamBarDelta));
         CHECK(sendRelease(editor, camera, seamBarCur, seamThumbGrab + seamBarDelta));
         CHECK(scrollCalls == scrollCallsBeforeBar + 1); // the timeline's SCROLL delegate heard it...
-        // ...as +30 px of viewport travel: a rightward pill drag shows LATER frames, which
-        // is the positive direction of scrollFramesByBarPixels (and the timeline's own
-        // scrollViewBy), so the delegate receives 30 / framePpf frames.
-        CHECK(std::fabs((scrolledFrames - scrolledBeforeBar) - 30.0 / seamPpfAtBarDrag) < 1e-9);
+        // ...as the window delta the BAR's own ratio names: a rightward pill drag
+        // shows LATER frames, and the handle follows the pointer 1:1 because the
+        // delegate receives 30 * content-per-lane-pixel frames (the ratio the panel's
+        // press anchored - the same one TimeLineWidget::beginScrollbarDrag uses).
+        CHECK(std::fabs((scrolledFrames - scrolledBeforeBar) - 30.0 * seamBars.hContentPerPixel) < 1e-9);
         CHECK(editor.scale().pixelXOfFrame(0.0) == seamOriginBeforeBar); // and the panel's own X was not written
         CHECK(zoomCalls == 5); // a scroll bar is not a wheel
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
@@ -3310,7 +3500,8 @@ int main(int argc, char** argv) {
             "Ctrl+Shift notch both reach the frame ZOOM delegate (the frame axis alone, then both axes) and "
             "NEVER the scroll one, a 40px middle-drag pan and a 30px scroll-bar thumb drag reach the SCROLL "
             "delegate with -40/framePpf (the pan moves the content right, i.e. earlier frames) and "
-            "+30/framePpf frames (the pill drag advances the window) - all leaving the panel's own X exactly "
+            "30 * content-per-lane-pixel frames (the pill drag advances the window 1:1) - all leaving the panel's "
+            "own X exactly "
             "where the timeline put it, while a Ctrl wheel moves only the value axis\n",
             pushedLo, pushedHi, sharedPpf, sharedPanel.width(), sharedPanel.height(), sharedPlot.width(),
             sharedPlot.height()

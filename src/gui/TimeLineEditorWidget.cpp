@@ -12,6 +12,7 @@
 #include "cmnd/BasicCommands.h"
 #include "cmnd/ScopedMacro.h"
 #include "ctrl/CmndName.h"
+#include "ctrl/graph/graph_Curve.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/MouseSetting.h"
 #include "gui/obj/obj_Item.h"
@@ -626,19 +627,25 @@ static void addTfToObj(QJsonObject* json, int keyType, const core::TimeKey* time
 template<typename keyData>
 static void addStandardToObj(QJsonObject* json, keyData data, const int keyType, core::TimeKey* timeKey) {
     addTfToObj(json, keyType, timeKey);
-    // The clipboard payload has one easing slot per key, so it carries component
-    // 0's curve; the paste broadcasts it to every component (a lossless reading
-    // of a one-easing payload). Per-component round trips travel in the .anie
-    // file, which stores all of them. "Auto" is written for the Auto PRESET
-    // (Custom with both handle sides Auto), which is what an old payload's
-    // retired Auto type meant too; the reader turns it back into those modes.
-    const util::Easing::Param& easing = data.easing(0);
-    const bool autoPreset = easing.type == util::Easing::Type_Custom
-        && easing.handleIn == util::Easing::HandleMode_Auto
-        && easing.handleOut == util::Easing::HandleMode_Auto;
-    json->insert("eType", autoPreset ? QStringLiteral("Auto") : util::Easing::getTypeName(easing.type));
-    json->insert("eRange", util::Easing::getRangeName(easing.range));
-    json->insert("eWeight", easing.weight);
+    // ONE ENTRY PER COMPONENT, so a copy keeps each curve: a Move key's X and Y,
+    // a Blur key's three, Pose/FFD's single shared one. The top-level eType/
+    // eRange/eWeight stay component 0's, which is what a build without the
+    // per-component reader understands; "eEasings" is the exact payload this
+    // build reads (see ctrl::TimeLineEditor::easingToJson, the ONE description of
+    // its fields, shared with the reader).
+    const int stored = core::easingStorageCount(static_cast<core::TimeKeyType>(keyType));
+    QJsonArray easings;
+    for (int component = 0; component < stored; ++component) {
+        const QJsonObject easing = ctrl::TimeLineEditor::easingToJson(data.easing(component));
+        if (component == 0) {
+            json->insert("eType", easing["eType"]);
+            json->insert("eRange", easing["eRange"]);
+            json->insert("eWeight", easing["eWeight"]);
+        }
+        easings.append(easing);
+    }
+    if (stored > 0)
+        json->insert("eEasings", easings);
 }
 
 QJsonObject getKeyTypeSerialized(int keyType, core::TimeKey* timeKey, core::ObjectNode* node) {
@@ -713,7 +720,9 @@ QJsonObject getKeyTypeSerialized(int keyType, core::TimeKey* timeKey, core::Obje
         auto data = dynamic_cast<const core::PoseKey*>(timeKey)->data();
         // Data types: Same as the bone key.
         QJsonObject pose;
-        addTfToObj(&pose, keyType, timeKey);
+        // Pose carries ONE shared easing (kComponents == 1); write it like every
+        // other key's so a copy keeps it.
+        addStandardToObj(&pose, data, keyType, timeKey);
         QJsonArray boneArray;
         for (auto bone : data.topBones()) {
             QJsonObject topBone;
@@ -851,129 +860,40 @@ void TimeLineEditorWidget::onPasteKeyTriggered(bool) {
     mOnPasting = false;
 }
 
-// The easing a timeline key carries for ONE graphable component, BY REFERENCE:
-// the picker reads it (the header chip's state) and writes it (a commit), so
-// there is one per-type table here rather than a reader and a writer that can
-// drift apart. aComponent is the component being edited - a selection item's own
-// component (item.component) or 0 for a whole-key entry, whose whole-key edit
-// iterates every component instead of collapsing onto the first.
-//
-// Null for a type that carries no easing at all (bone, mesh) and for an image
-// key, whose offset is step-held - playback never consults its param, and the
-// timeline's easing edit has never covered it (see core/AutoEasing.h's note on
-// image keys). Pose and FFD are NOT in that group: their single shared easing
-// (component 0) shapes the interval playback plays, so they are edited here like
-// any other.
-util::Easing::Param* keyEasingOf(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent) {
-    switch (aType) {
-    case core::TimeKeyType_Move:
-        return &static_cast<core::MoveKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Rotate:
-        return &static_cast<core::RotateKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Scale:
-        return &static_cast<core::ScaleKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Depth:
-        return &static_cast<core::DepthKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Opa:
-        return &static_cast<core::OpaKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Pose:
-        return &static_cast<core::PoseKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_FFD:
-        return &static_cast<core::FFDKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_HSV:
-        return &static_cast<core::HSVKey&>(aKey).data().easing(aComponent);
-    case core::TimeKeyType_Blur:
-        return &static_cast<core::BlurKey&>(aKey).data().easing(aComponent);
-    default:
-        return nullptr;
-    }
+// The header's quick-easing buttons, in the timeline's own currency: aNext maps
+// EVERY selected component's live param to the value to write (a TYPE writes its
+// type; the Auto preset writes the two handle modes). Pose and FFD answer their
+// one shared param at component 0, so they take the preset like any other key -
+// their easing shapes the interval playback plays. Image is offered too: it
+// stores a param (the chip reads it), and an edit to a step-held channel simply
+// does not change a played sample.
+bool TimeLineEditorWidget::applyEasingToSelection(const util::Easing::Type aType) {
+    if (!mEditor)
+        return false;
+    // A TYPE shortcut, like the picker's tile (setType): each component keeps its
+    // range, weight and stored bezier and takes the new type. Writing a whole
+    // default Param here would reset an edited range/blend on the way past.
+    return mEditor->assignSelectionEasing([aType](const util::Easing::Param& aCurrent) {
+        util::Easing::Param value = aCurrent;
+        value.type = aType;
+        return value;
+    });
 }
 
-void TimeLineEditorWidget::assignEasingToTargets(
-    const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext) {
-    if (!mProject)
-        return;
-
-    // WHAT CAN BE WRITTEN, collected BEFORE the macro is opened: cmnd::Stack
-    // appends a macro even when it holds no command and counts it as an edit, so an
-    // edit that found nothing to write must not open one (the same guard the graph
-    // panel's own selection-easing action carries).
-    struct Edit {
-        util::Easing::Param* param;
-        util::Easing::Param next;
-        core::ObjectNode* node;
-        core::TimeKeyType type;
-        int frame;
-    };
-    QVector<Edit> edits;
-    if (mEditor) {
-        // The live selection, which is the same set mTargets came from and the
-        // only one that names a COMPONENT: a timeline gesture selects whole keys
-        // (kKeyLevel), a graph-panel press selects one marker. A whole-key entry
-        // edits every component the type stores; a marker edits only its own.
-        for (const ctrl::time::Selection::Item& item : mEditor->selection().items()) {
-            // The selection is iterated by CONST reference, but TimeKeyPos::key() is
-            // a non-const member (it hands out the mutable key), so the position is
-            // taken by value and asked there: three words of copy, no cast, and the
-            // key it names is the document's own.
-            core::TimeLineEvent::Target target = item.target;
-            core::TimeKeyPos pos = target.pos;
-            core::TimeKey* key = pos.key();
-            if (!key || !target.node)
-                continue; // a stale selection names a key that is not in the document
-
-            const int stored = core::easingStorageCount(pos.type());
-            const bool wholeKey = (item.component == ctrl::time::Selection::kKeyLevel);
-            if (!wholeKey && (item.component < 0 || stored <= item.component))
-                continue;
-
-            for (int component = 0; component < stored; ++component) {
-                if (!wholeKey && component != item.component)
-                    continue;
-
-                util::Easing::Param* param = keyEasingOf(*key, pos.type(), component);
-                if (!param)
-                    continue; // a key of a type that carries no easing (image included)
-                // The type's single shared easing (Pose, FFD) is addressable at 0 only.
-                const util::Easing::Param next = aNext(*param);
-                if (next == *param)
-                    continue; // nothing would change: no history entry for a non-change
-                edits.push_back({param, next, target.node, pos.type(), key->frame()});
-            }
-        }
-    }
-    if (edits.isEmpty())
-        return;
-
-    // ONE macro and ONE notifier for the whole selection, so a multi-key edit is
-    // ONE entry in the history - the picker commits a whole session at once, and
-    // the keys it was opened for must not need one undo per key. The shape is the
-    // graph panel's own selection-easing action
-    // (ctrl::GraphEditor::setSelectedKeysEasing), and the command per key is the
-    // one the timeline's per-key route pushes (TimeLineUtil::assignKeyEasing: a
-    // cmnd::Assign of the key's util::Easing::Param plus a Type_ChangeKeyValue
-    // notifier). That per-key helper CANNOT be called in this loop: it opens a
-    // macro of its own, and cmnd::Stack::beginMacro asserts on a nested one.
-    cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("Change key(s) easing"));
-    auto* notifier = new ctrl::TimeLineUtil::Notifier(*mProject);
-    notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
-    macro.grabListener(notifier);
-    for (const Edit& edit : edits) {
-        // One notification per KEY: the components of one key are one change to
-        // its timeline.
-        bool named = false;
-        for (const core::TimeLineEvent::Target& pushed : notifier->event().targets()) {
-            if (pushed.node == edit.node && pushed.pos.type() == edit.type
-                && pushed.pos.index() == edit.frame) {
-                named = true;
-                break;
-            }
-        }
-        if (!named) {
-            notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
-        }
-        mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.param, edit.next));
-    }
+bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
+    // The Auto PRESET (the same pair the picker's Auto tile writes): Custom with
+    // BOTH sides on HandleMode_Auto, never the retired Auto type.
+    if (!mEditor)
+        return false;
+    return mEditor->assignSelectionEasing([](const util::Easing::Param& aCurrent) {
+        // Range, weight and the stored bezier ride along untouched; only the type
+        // and the two modes are the preset's.
+        util::Easing::Param value = aCurrent;
+        value.type = util::Easing::Type_Custom;
+        value.handleIn = util::Easing::HandleMode_Auto;
+        value.handleOut = util::Easing::HandleMode_Auto;
+        return value;
+    });
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
@@ -1280,6 +1200,7 @@ void TimeLineEditorWidget::pushEasingChipState() {
 
     QVector<util::Easing::Param> values;
     util::Easing::AutoContext autoContext;
+    QString scopeNote;
     if (mEditor) {
         const ctrl::time::Selection& selection = mEditor->selection();
         bool haveShown = false;
@@ -1303,11 +1224,16 @@ void TimeLineEditorWidget::pushEasingChipState() {
                 continue; // a stale entry names a key the document no longer holds
             // ONE EASING PER KEY for the CHIP'S DISPLAY. Each marker now carries
             // its own curve, so the value read is the component of the FIRST
-            // entry naming this key; the WRITE path (assignEasingToTargets) is
+            // entry naming this key; the WRITE path (ctrl::TimeLineEditor::assignSelectionEasing) is
             // per component and does not collapse them. Keeping one value per
             // key is what makes the chip's "N key(s)" count true.
-            const int component =
-                (item.component == ctrl::time::Selection::kKeyLevel) ? 0 : item.component;
+            // THE COMPONENT THIS KEY SHOWS: the first one the selection names for
+            // it (processor order - a single marker answers itself, a whole-key
+            // entry answers 0). The same question openEasingPicker asks, so the chip
+            // and the picker cannot open on two different curves.
+            const QVector<int> named =
+                selection.componentsOf(target, core::easingStorageCount(target.pos.type()));
+            const int component = named.isEmpty() ? 0 : named.first();
             bool alreadyNamed = false;
             for (int j = 0; j < i; ++j) {
                 const core::TimeLineEvent::Target& earlier = selection.items()[j].target;
@@ -1319,7 +1245,8 @@ void TimeLineEditorWidget::pushEasingChipState() {
             }
             if (alreadyNamed)
                 continue;
-            const util::Easing::Param* value = keyEasingOf(*key, target.pos.type(), component);
+            const util::Easing::Param* value =
+                ctrl::graph::Curve::easingOf(*key, target.pos.type(), component);
             if (!value)
                 continue;
             values.push_back(*value);
@@ -1328,11 +1255,24 @@ void TimeLineEditorWidget::pushEasingChipState() {
             // context, which is a document fact (prop::autoContextOf).
             if (!haveShown) {
                 autoContext = prop::autoContextOf(target, *key, component);
+                // ...AND IF THAT KEY'S SELECTION SPANS SEVERAL COMPONENTS, SAY SO:
+                // the chip paints one component's curve, while the picker's commit
+                // writes every component the selection names. A whole-key entry
+                // spans every component its type stores; a graph-panel selection
+                // can name a subset (X but not Y). The tooltip names them, in the
+                // same channel vocabulary the panel uses.
+                if (named.size() > 1) {
+                    QStringList names;
+                    for (const int namedComponent : named) {
+                        names << ctrl::graph::Channel(target.pos.type(), namedComponent).componentName();
+                    }
+                    scopeNote = names.join(QStringLiteral(", "));
+                }
                 haveShown = true;
             }
         }
     }
-    mEasingHost->setSelection(values, autoContext);
+    mEasingHost->setSelection(values, autoContext, scopeNote);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1354,7 +1294,8 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
     // The one commit path: the control hands every edit the picker commits here,
     // and this widget writes the keys the open named.
     mEasingHost->onEasingApplied = [this](util::Easing::Param aEasing) {
-        assignEasingToTargets([aEasing](const util::Easing::Param&) { return aEasing; });
+        if (mEditor)
+            mEditor->assignSelectionEasing([aEasing](const util::Easing::Param&) { return aEasing; });
     };
     // The popover is gone, so a right-click's temporary selection ends with it:
     // those keys were lent for the open, and the open is over. Clearing the
@@ -1377,35 +1318,36 @@ bool TimeLineEditorWidget::openEasingPicker(const core::TimeLineEvent& aTargets,
     // stores no control points, so without them the tile would draw a shape no key
     // plays). A key of a type that carries no easing is skipped; a target list of
     // only those opens nothing, and nothing is ever written.
-    // The COMPONENT the open names, when the shared selection names one: a
-    // graph-panel press selects a marker (Move X), and the picker must open on
-    // that component's curve rather than the key's first. A whole-key selection
-    // (every timeline gesture) has no marker entry and reads component 0.
-    const auto componentOf = [this](const core::TimeLineEvent::Target& aTarget) -> int {
+    //
+    // THE COMPONENT is the one the shared selection NAMES for that key
+    // (Selection::componentsOf), not always the key's first: a graph-panel press
+    // selects a marker (Move X), and the picker must open on that marker's curve.
+    // A whole-key entry names every component, and then componentsOf answers them
+    // ascending, so the first is component 0 as before; where the selection names
+    // SEVERAL, pushEasingChipState puts them in the chip's tooltip (see there), so
+    // the open never silently claims the shown curve is the only one edited.
+    const auto componentOf = [this](const core::TimeLineEvent::Target& aTarget,
+                                    core::TimeKeyType aType) -> int {
         if (!mEditor)
             return 0;
-        for (const ctrl::time::Selection::Item& item : mEditor->selection().items()) {
-            if (item.component != ctrl::time::Selection::kKeyLevel && item.target.node == aTarget.node
-                && item.target.pos.type() == aTarget.pos.type()
-                && item.target.pos.index() == aTarget.pos.index()) {
-                return item.component;
-            }
-        }
-        return 0;
+        const QVector<int> named =
+            mEditor->selection().componentsOf(aTarget, core::easingStorageCount(aType));
+        return named.isEmpty() ? 0 : named.first();
     };
 
     util::Easing::Param shown;
     util::Easing::AutoContext autoContext;
     bool hasShown = false;
     for (const core::TimeLineEvent::Target& target : aTargets.targets()) {
-        // By value, for the same reason as in assignEasingToTargets: the target list
+        // By value, for the same reason as in assignSelectionEasing: the target list
         // is const here and TimeKeyPos::key() is not a const member.
         core::TimeKeyPos pos = target.pos;
         core::TimeKey* key = pos.key();
         if (!key)
             continue;
-        const int component = componentOf(target);
-        const util::Easing::Param* easing = keyEasingOf(*key, pos.type(), component);
+        const int component = componentOf(target, pos.type());
+        const util::Easing::Param* easing =
+            ctrl::graph::Curve::easingOf(*key, pos.type(), component);
         if (easing) {
             shown = *easing;
             autoContext = prop::autoContextOf(target, *key, component);
