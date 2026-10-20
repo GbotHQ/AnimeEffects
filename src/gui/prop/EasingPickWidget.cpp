@@ -80,8 +80,8 @@ constexpr int kTileOrderCount = int(sizeof(kTileOrder) / sizeof(kTileOrder[0]));
 // Type_Auto through Easing::calculate(param, ctx, ...) -> autoHandles - so it
 // follows the derivation rather than a hardcoded path.
 constexpr util::Easing::AutoContext kAutoTileContext = {
-    { true, -1.0f, 0.0f }, // prev: one segment before, at the from key's value
-    { true, 2.0f, 1.0f },  // next: one segment after, at the to key's value
+    { true, -1.0f, 1.0f }, // prev: one segment before, holding the SEGMENT'S END value
+    { true, 2.0f, 0.0f },  // next: one segment after, holding the SEGMENT'S START value
 };
 
 // Which context a glyph draws with. The catalog's Auto tile always uses the
@@ -401,9 +401,21 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
         return;
     }
 
-    const int N = 64;
+    // THE AUTO ICON SHOWS THE TYPE, NOT ONE KEY'S LUCK. With no neighbouring keys
+    // the derived handles are the identity, so Auto's curve would be Linear's
+    // straight line - the glyph the user could not tell apart from Linear's. A
+    // menu entry names a TYPE (every other tile draws that type's canonical
+    // shape), so an Auto entry with no neighbours draws the type's characteristic
+    // curve: a segment whose BOTH sides continue (neighbours outside the value
+    // range), which is the flat-at-both-ends shape an automatic handle produces.
     const util::Easing::AutoContext emptyAuto;
-    const util::Easing::AutoContext& autoCtx = aAuto ? *aAuto : emptyAuto;
+    const bool noNeighbours = !(aAuto && aAuto->prev.valid) && !(aAuto && aAuto->next.valid);
+    const util::Easing::AutoContext& autoCtx =
+        (aAutoHandles && aParam.type == util::Easing::Type_Auto && noNeighbours)
+            ? kAutoTileContext
+            : (aAuto ? *aAuto : emptyAuto);
+
+    const int N = 64;
     QPainterPath path;
     bool first = true;
     for (int i = 0; i <= N; ++i) {
@@ -443,13 +455,15 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
         const QPointF h2 = toValueSpace(2.0 / 3.0, y2);
 
         QPen stemPen(aColor);
-        stemPen.setWidthF(qMax(0.75, aStrokeWidth * 0.6));
+        stemPen.setWidthF(qMax(0.9, aStrokeWidth * 0.75));
         stemPen.setCapStyle(Qt::RoundCap);
         p.setPen(stemPen);
         p.drawLine(from, h1);
         p.drawLine(to, h2);
 
-        const qreal dotR = qBound(1.0, qMin(w, h) * 0.06, 2.5);
+        // Sized to READ at a 16-18px button: the old 6% floor drew a ~1px speck
+        // that disappeared into the stroke beside it.
+        const qreal dotR = qBound(1.6, qMin(w, h) * 0.085, 2.4);
         p.setPen(Qt::NoPen);
         p.setBrush(aColor);
         p.drawEllipse(h1, dotR, dotR);

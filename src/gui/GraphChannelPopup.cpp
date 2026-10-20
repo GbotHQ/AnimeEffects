@@ -250,15 +250,10 @@ void GraphChannelPopup::paintEntry(QPainter& aPainter, int aIndex) const {
     const Entry& entry = mEntries.at(aIndex);
 
     if (entry.heading) {
-        // A heading is structure, not a control. The 1px seam above a FOLLOWING group
-        // is the mock's .gp-chgroup + .gp-chgroup rule.
-        if (aIndex > 0) {
-            const int y = entry.rect.top() - kHeadingGap;
-            aPainter.setPen(Qt::NoPen);
-            aPainter.setBrush(colors.hairline);
-            aPainter.drawRect(QRect(mBody.left(), y, mBody.width(), 1));
-        }
-
+        // A heading is structure, not a control. It separates the groups ON ITS OWN:
+        // the 1px seam the mock drew above a following group was removed (it landed
+        // in the gap above the heading and read as a broken rule; a title needs no
+        // second separator).
         QFont font = this->font();
         font.setPixelSize(kHeadingFontSize);
         aPainter.setFont(font);
