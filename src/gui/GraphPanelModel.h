@@ -350,8 +350,8 @@ enum class GraphPanelHost {
 //              and top, minus the MEASURED label column on the left
 //              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth), minus
 //              the RULER BAND's 22 rows at the top (Scaler::kRulerBandHeight)
-//              and kMargin + kScrollBarReserve at the right and bottom for the
-//              two bars: the graph's own surface starts BELOW the ruler, exactly
+//              and kScrollBarReserve at the right and bottom for the two bars'
+//              lanes: the graph's own surface starts BELOW the ruler, exactly
 //              as the timeline's surface starts below its TimeRuler strip. Empty
 //              on a viewport too small for those insets; see emptyState.
 //   valueColumn == the left column the value numbers sit in, the deleted painter
@@ -368,9 +368,12 @@ enum class GraphPanelHost {
 //   hTrack/hThumb, vTrack/vThumb == the panel's two SCROLL BARS, outside the plot
 //              and inside the panel: the frame axis' along the plot's bottom edge,
 //              the value axis' along its right edge (see the struct's SCROLL BARS
-//              note). The scaler reserves their 14px at those two edges
-//              (Scaler::kScrollBarReserve: a 2px gap + the app's 12px lane), so
-//              they touch neither the plot nor the value column nor the ruler band,
+//              note). The lanes are the application's scroll bars on the timeline's
+//              own edges: the panel's last 12 rows (horizontal, its whole width) and
+//              its last 12 columns (vertical, from the plot's first row) - flush with
+//              the panel's bottom and right edges, no gap, no trough. The plot's
+//              right/bottom inset IS that lane (Scaler::kScrollBarReserve == 12), so
+//              the tracks touch neither the plot, the value column nor the ruler band,
 //              and the plot's own top-left corner is where it always was.
 //
 // THE OCCLUDED TOP (rulerBandTop)
@@ -728,22 +731,24 @@ struct GraphPanelModel {
     //     one walk), and the window is the scaler's valueMin()..valueMax(), so the
     //     value axis is inverted along the track: a window at high values draws its
     //     thumb at the TOP.
-    // The tracks are OUTSIDE the plot and inside the panel: the APPLICATION's scroll
-    // bar lane, 12px thick with a 2px gap from the plot
-    // (ctrl::graph::Scaler::kScrollBarThickness/kScrollBarGap), whose reserve the
-    // scaler takes out of the plot's right and bottom edges - so these rects never
-    // overlap the plot, the value column or the ruler band. hThumb/vThumb span the
-    // lane and name the SLIDER'S RUN: the drawing layer paints the app's 4px,
-    // radius-2 pill centred in the lane across that run, and the trough paints
-    // NOTHING (AppStyle.cpp's CC_ScrollBar). They are
-    // DISJOINT from each other: the horizontal track spans the plot's columns on rows
-    // entirely below the plot, the vertical one the plot's rows in columns entirely
-    // right of it.
+    // The tracks are the APPLICATION's scroll bar lanes, on the TIMELINE'S edges: the
+    // horizontal one is the panel's last 12 rows across its whole width, the vertical
+    // one the panel's last 12 columns from the plot's first row down to the row above
+    // the horizontal lane (ctrl::graph::Scaler::kScrollBarThickness ==
+    // kScrollBarReserve == 12, no gap) - flush with the panel's bottom and right edges,
+    // and the scaler takes exactly that lane out of the plot's right and bottom edges,
+    // so these rects never overlap the plot, the value column or the ruler band.
+    // hThumb/vThumb span the lane and name the SLIDER'S RUN: the drawing layer paints
+    // the app's 4px, radius-2 pill centred in the lane across that run, and the trough
+    // paints NOTHING (AppStyle.cpp's CC_ScrollBar). They are DISJOINT from each other
+    // (the corner is the horizontal bar's).
     //
-    // Run length is the window/content fraction of the track, floored at 16px and
-    // capped at the track, so a window that covers the content (or a content with no
-    // extent at all - no key, or no frame span) fills its track and the model then
-    // publishes an empty run (nothing to scroll, nothing drawn, nothing hit). The four
+    // Run LENGTH and OFFSET are Qt's own QScrollBar arithmetic (length =
+    // pageStep/content of the track, floored at QStyle::PM_ScrollBarSliderMin, offset =
+    // the window's fraction of the travel over track-length), so a window that covers
+    // the content (or a content with no extent at all - no key, or no frame span)
+    // fills its track and the model then publishes an empty run (nothing to scroll,
+    // nothing drawn, nothing hit). The four
     // rects are EMPTY while the plot is empty: there is nowhere to lay a bar out, and
     // the drawing layer draws nothing for an empty rect.
     //

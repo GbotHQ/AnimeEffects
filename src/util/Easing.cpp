@@ -8,20 +8,16 @@ namespace {
 // Picker display order, mirrored by the Easing::display* helpers. The enum
 // ordinal is serialization order; this is the order pickers show.
 //
-// The head is the four NON-CURVE entries - the two stepped holds, the straight
-// line, and Automatic, whose shape is derived rather than picked - then the
+// The head is the three NON-CURVE entries - the two stepped holds and the
+// straight line, whose shape is not one of the family's parameters - then the
 // analytic curve family (Cubic, Sine, Quad, ...), then the drawn Custom curve.
-// Auto used to sit last, just before Custom, which read as "the odd one out at
-// the end" while it is really a sibling of Floor/Round/Linear: a type whose
-// shape is not one of the family's parameters. The picker's tile catalog
-// (EasingPickWidget.cpp's kTileOrder) carries the same head and puts its
-// hairline separator right after Auto, so the first tile row is exactly these
-// four and the family follows.
+// Automatic handles are a per-side MODE of the Custom bezier now (see
+// HandleMode), not an entry here: the picker's Auto preset writes both modes.
 //
 // Type_Custom stays LAST: the default-easing combo indexes this table directly
 // and excludes the final entry (a custom curve is not a preset it can copy).
 constexpr util::Easing::Type kEasingDisplayOrder[] = {
-    util::Easing::Type_Linear, util::Easing::Type_Floor, util::Easing::Type_Round, util::Easing::Type_Auto,
+    util::Easing::Type_Linear, util::Easing::Type_Floor, util::Easing::Type_Round,
     util::Easing::Type_Cubic, util::Easing::Type_Sine, util::Easing::Type_Quad, util::Easing::Type_Quart,
     util::Easing::Type_Quint, util::Easing::Type_Expo, util::Easing::Type_Circ, util::Easing::Type_Back,
     util::Easing::Type_Elastic, util::Easing::Type_Bounce, util::Easing::Type_Custom,
@@ -31,11 +27,6 @@ constexpr int kEasingDisplayOrderCount = int(sizeof(kEasingDisplayOrder) / sizeo
 
 namespace util {
 
-// Type_Auto's evaluation (defined next to the calculate() overloads below): the
-// same solve a Custom bezier does, over handles DERIVED from the segment's
-// neighbouring keys instead of read from the param.
-float calculateAuto(const Easing::Param&, const Easing::AutoContext&, float t, float b, float c, float d);
-
 //-------------------------------------------------------------------------------------------------
 bool Easing::Param::isValidParam() const {
     if (type < 0 || Type_TERM <= type)
@@ -44,12 +35,18 @@ bool Easing::Param::isValidParam() const {
         return false;
     if (weight < 0.0f || 1.0f < weight)
         return false;
+    // Type 14 IS Type_TERM now, so the range test above rejects the retired
+    // Type_Auto id: it names no easing and a 0.15 file must never carry it.
+    if (handleIn < 0 || HandleMode_TERM <= handleIn)
+        return false;
+    if (handleOut < 0 || HandleMode_TERM <= handleOut)
+        return false;
     return true;
 }
 
 bool Easing::Param::operator==(const Param& aRhs) const {
     return type == aRhs.type && range == aRhs.range && weight == aRhs.weight &&
-        cubicBezier == aRhs.cubicBezier && aligned == aRhs.aligned;
+        cubicBezier == aRhs.cubicBezier && handleIn == aRhs.handleIn && handleOut == aRhs.handleOut;
 }
 //-------------------------------------------------------------------------------------------------
 int Easing::displayIndexOf(const Type aType) {
@@ -101,8 +98,25 @@ QString Easing::getTypeName(const Type aType) {
         return EasingName::tr("Custom");
     case Type_Round:
         return EasingName::tr("Round");
-    case Type_Auto:
+    default:
+        return "";
+    }
+}
+
+QString Easing::getHandleModeName(const HandleMode aMode) {
+    // The names are Blender's, through the same EasingName catalog as the type
+    // names, so every picker/combo shows one vocabulary.
+    switch (aMode) {
+    case HandleMode_Free:
+        return EasingName::tr("Free");
+    case HandleMode_Aligned:
+        return EasingName::tr("Aligned");
+    case HandleMode_Vector:
+        return EasingName::tr("Vector");
+    case HandleMode_Auto:
         return EasingName::tr("Auto");
+    case HandleMode_AutoClamped:
+        return EasingName::tr("Auto Clamped");
     default:
         return "";
     }
@@ -170,7 +184,11 @@ Easing::Type Easing::easingToEnum(QString easing) {
     if (aEasing == "Round")
         return Type_Round;
     if (aEasing == "Auto")
-        return Type_Auto;
+        // The retired name: a project file's lane JSON or a stored default can
+        // still say it. There is no Auto TYPE any more - the caller that reads
+        // a saved easing (objToEasing) turns it into a Custom param with both
+        // handle sides Auto, which is what it meant.
+        return Type_Custom;
     if (aEasing == "Custom")
         return Type_Custom;
     return Type_Linear;
@@ -219,13 +237,6 @@ float Easing::calculate(
         return t / d < 0.5f ? b : b + c;
     case Type_Linear:
         return c * (t / d) + b;
-    case Type_Auto:
-        // Auto's handles are DERIVED from the neighbouring keys, which a bare
-        // Type cannot carry - the context lives in the Param overload below. So
-        // a context-free call gets the shape an Auto segment with no neighbours
-        // has: the identity, i.e. Linear. Returning `b` (the default below)
-        // would silently freeze a segment instead.
-        return c * (t / d) + b;
     case Type_Sine:
         RETURN_BY_EASING_FUNCTION(sine);
     case Type_Quad:
@@ -265,10 +276,10 @@ float calculateBezier(const Easing::Param& aParam, const float t, const float b,
     // Weight is deliberately NOT applied here: a custom bezier is exactly the
     // drawn curve, and its handles already span every shape weight could reach.
     // Custom mode has no blend control in the picker at all (its own panel
-    // replaces the normal one); the stepped holds and Auto do show one whose
-    // weight this math ignores. Keeping weight out of the math means a stale
-    // weight on a Custom or Auto key (a value left over from another easing
-    // type, or one read from a saved file) can never silently skew a curve.
+    // replaces the normal one); the stepped holds do show one whose weight this
+    // math ignores. Keeping weight out of the maths means a stale weight on a
+    // Custom key (a value left over from another easing type, or one read from a
+    // saved file) can never silently skew a curve.
     return b + c * static_cast<float>(bezier.solve(x, UnitBezier::kBezierEpsilon));
 }
 
@@ -276,9 +287,6 @@ float Easing::calculate(const Param& aParam, const float t, const float b, const
     // Param, relative frame, 0, 1, current frame, is bezier?
     if (aParam.type == Type_Custom) {
         return calculateBezier(aParam, t, b, c, d);
-    }
-    if (aParam.type == Type_Auto) {
-        return calculateAuto(aParam, AutoContext(), t, b, c, d);
     }
     const float result = calculate(aParam.type, aParam.range, t, b, c, d);
     if (Type_Sine <= aParam.type && aParam.type < Type_Custom) {
@@ -289,126 +297,107 @@ float Easing::calculate(const Param& aParam, const float t, const float b, const
 
 float Easing::calculate(
     const Param& aParam, const AutoContext& aCtx, const float t, const float b, const float c, const float d) {
-    if (aParam.type == Type_Auto) {
-        return calculateAuto(aParam, aCtx, t, b, c, d);
+    if (aParam.type != Type_Custom) {
+        return calculate(aParam, t, b, c, d);
     }
-    return calculate(aParam, t, b, c, d);
+    // Same solve a stored Custom pair gets, over control points that each side
+    // derives by its own mode (see controlPoint). aCtx.inMode is the TO key's
+    // incoming mode: the arriving side belongs to the TO key even though its
+    // stored value lives in aParam.
+    const QPointF first = controlPoint(aParam, aCtx.inMode, aCtx, d, 0);
+    const QPointF second = controlPoint(aParam, aCtx.inMode, aCtx, d, 1);
+    const UnitBezier bezier(
+        static_cast<float>(first.x()), static_cast<float>(first.y()),
+        static_cast<float>(second.x()), static_cast<float>(second.y()));
+    return b + c * static_cast<float>(bezier.solve(t / d, UnitBezier::kBezierEpsilon));
 }
 
 //-------------------------------------------------------------------------------------------------
-// Blender-style automatic handles, ported from the multi-key curve tool this
-// feature came from (dev/curves/easing-demo.html: computeAllTangents /
-// getBezierTangents / recalcHandles). That tool shapes a whole key sequence;
-// this port keeps its arithmetic but runs it for ONE segment, because that is
-// the unit an AnimeEffects easing shapes. Every rule of the original is here:
+// PER-SIDE HANDLE DERIVATION.
 //
-//  * an interior key's tangent is the central difference of its neighbours,
-//    (y[i+1] - y[i-1]) / (x[i+1] - x[i-1]) - the "uniform" tangent mode, the one
-//    Blender's own auto handles use;
-//  * an endpoint has no such triple, so its tangent is derived from the handle
-//    of the key it faces: 1.5 - 0.5 * m, i.e. the direction from the endpoint
-//    toward that key's own bezier handle;
-//  * either tangent is then CLAMPED so neither of its handles leaves the value
-//    range its three keys span ("auto clamped");
-//  * each control point sits a third of the way across its interval, so only y
-//    is ever derived.
+// Each side of a Custom segment carries its own HandleMode and derives its own
+// control point; one derivation feeds playback (core::TimeKeyBlender), the graph
+// (ctrl::graph::Curve) and the picker's previews, so the drawn curve and the
+// played curve cannot disagree.
 //
-// In the ported tool the neighbours are absolute (frame, value) points; here
-// they arrive normalized to the segment (0 at the from key, 1 at the to key),
-// which is the space the whole Easing class speaks and makes the arithmetic
-// independent of the channel's units.
-void Easing::autoHandles(const AutoContext& aCtx, const float aSpan, float& aY1, float& aY2) {
-    // The identity handles: a cubic with its controls at the thirds of the
-    // diagonal IS the straight line, i.e. Linear.
-    aY1 = 1.0f / 3.0f;
-    aY2 = 2.0f / 3.0f;
+// The segment is normalized to (0,0) -> (1,1): x is progress across the frame
+// span, y is the value in units of the segment's own change. The neighbours in
+// AutoContext use exactly that space, so the arithmetic is independent of the
+// channel's units (pixels, radians, 0..1 opacity).
+//
+// Auto reads the neighbour on ITS OWN outside:
+//   * the OUTGOING side (at the from key) reads `prev`, the key before the from
+//     key: its slope is the secant arriving at the key, (0 - py) / (0 - px),
+//     so the leaving tangent continues the incoming curve - the one-sided
+//     central difference that makes a key smooth;
+//   * the INCOMING side (at the to key) reads `next`, the key after the to key:
+//     its slope is (ny - 1) / (nx - 1), the secant leaving the key.
+//
+// This is the whole answer to "when the key is auto and I drag any of the
+// handles, it changes both tangents to manual": the two sides read DIFFERENT
+// neighbours and are derived independently, so dragging one side (which writes
+// that side's mode Free) leaves the other side Auto and still deriving from its
+// own neighbour.
+//
+// A side with no such neighbour falls back to the segment's own chord, i.e. its
+// identity third point, which is what a two-key channel (or an endpoint) has to
+// derive from. The handle x stays at the third (Blender's automatic handle), so
+// only y is ever derived.
+QPointF Easing::controlPoint(
+    const Param& aFrom, const HandleMode aInMode, const AutoContext& aCtx, const float aSpan, const int aSide) {
+    const bool outSide = (aSide == 0);
+    const HandleMode mode = outSide ? aFrom.handleOut : aInMode;
+    const CubicBezier& stored = aFrom.cubicBezier;
 
-    if (aSpan <= 0.0f) {
-        return;
+    if (!isDerived(mode)) {
+        // Free and Aligned read the stored pair: Aligned's collinearity is
+        // enforced by the gestures that write it, never inferred here.
+        return outSide ? QPointF(stored.x1, stored.y1) : QPointF(stored.x2, stored.y2);
     }
 
-    // The neighbours in the segment's own units: x in segment widths, y in
-    // segment value changes. The from key is (0,0), the to key (1,1).
-    const bool hasPrev = aCtx.prev.valid;
-    const bool hasNext = aCtx.next.valid;
-    const float px = hasPrev ? aCtx.prev.frame / aSpan : 0.0f; // < 0
-    const float py = hasPrev ? aCtx.prev.value : 0.0f;
-    const float nx = hasNext ? aCtx.next.frame / aSpan : 0.0f; // > 1
-    const float ny = hasNext ? aCtx.next.value : 0.0f;
-
-    // The tangent slope at each end of the segment. An end with a neighbour gets
-    // the central difference over its own triple; the other end is filled in
-    // below from the handle it faces.
-    //
-    // start: triple (prev, from, to): (py - 0) / (px - 1) is the same central
-    // difference written as (1 - py) / (1 - px).
-    float m0 = 0.0f;
-    if (hasPrev) {
-        const float dxPrev = 1.0f - px; // > 0
-        m0 = (1.0f - py) / dxPrev;
-    }
-    // end: triple (from, to, next): (ny - 0) / (nx - 0).
-    float m1 = 0.0f;
-    if (hasNext) {
-        m1 = nx != 0.0f ? ny / nx : 0.0f;
+    if (mode == HandleMode_Vector) {
+        // Blender's Vector: on the chord to the segment's other key, at the
+        // third points - a straight segment. The point stays inside the cubic's
+        // own domain, which is why the outside chord (which would put x < 0 or
+        // x > 1) is not what a vector handle means.
+        return outSide ? QPointF(1.0 / 3.0, 1.0 / 3.0) : QPointF(2.0 / 3.0, 2.0 / 3.0);
     }
 
-    // Clamp each interior tangent so BOTH of its handles stay inside the value
-    // range its three keys span. Each handle is measured from its own key: the
-    // one leaving the key sits at +m*(dxRight/3), the one arriving at it at
-    // -m*(dxLeft/3), and the two constraints are intersected. Both intervals are
-    // well ordered here (every segment share below is positive), so a plain
-    // clamp is the whole rule.
-    if (hasPrev) {
-        const float loY = std::min(std::min(py, 0.0f), 1.0f);
-        const float hiY = std::max(std::max(py, 0.0f), 1.0f);
-        const float left = -px / 3.0f; // previous segment's share of this key
-        const float right = 1.0f / 3.0f; // this segment's share
-        const float loM = std::max(loY / right, -hiY / left);
-        const float hiM = std::min(hiY / right, -loY / left);
-        m0 = std::min(std::max(m0, loM), hiM);
-    }
-    if (hasNext) {
-        const float loY = std::min(std::min(0.0f, 1.0f), ny);
-        const float hiY = std::max(std::max(0.0f, 1.0f), ny);
-        const float left = 1.0f / 3.0f; // this segment's share
-        const float right = (nx - 1.0f) / 3.0f; // next segment's share
-        const float loM = std::max(right != 0.0f ? (loY - 1.0f) / right : 0.0f, -(hiY - 1.0f) / left);
-        const float hiM = std::min(right != 0.0f ? (hiY - 1.0f) / right : 0.0f, -(loY - 1.0f) / left);
-        if (right != 0.0f) {
-            m1 = std::min(std::max(m1, loM), hiM);
+    // Auto / AutoClamped: the one-sided secant from this side's neighbour.
+    // The identity fallbacks are the thirds of the diagonal.
+    double y = outSide ? 1.0 / 3.0 : 2.0 / 3.0;
+    if (aSpan > 0.0f) {
+        if (outSide) {
+            if (aCtx.prev.valid) {
+                const double px = static_cast<double>(aCtx.prev.frame) / aSpan; // < 0
+                const double py = aCtx.prev.value;
+                const double slope = px != 0.0 ? py / px : 1.0;
+                y = slope / 3.0;
+                if (mode == HandleMode_AutoClamped) {
+                    // Keep the handle inside the value range the key and its
+                    // neighbours span. The segment's own end (y = 1) is one of
+                    // those values, so a monotone rise keeps its slope while a
+                    // local extremum is pulled flat.
+                    const double lo = std::min(std::min(py, 0.0), 1.0);
+                    const double hi = std::max(std::max(py, 0.0), 1.0);
+                    y = std::min(std::max(y, lo), hi);
+                }
+            }
+        } else {
+            if (aCtx.next.valid) {
+                const double nx = static_cast<double>(aCtx.next.frame) / aSpan; // > 1
+                const double ny = aCtx.next.value;
+                const double slope = nx != 1.0 ? (ny - 1.0) / (nx - 1.0) : 1.0;
+                y = 1.0 - slope / 3.0;
+                if (mode == HandleMode_AutoClamped) {
+                    const double lo = std::min(std::min(0.0, 1.0), ny);
+                    const double hi = std::max(std::max(0.0, 1.0), ny);
+                    y = std::min(std::max(y, lo), hi);
+                }
+            }
         }
     }
-
-    // Fill in the ends that have no neighbour, now that the tangent they are
-    // derived from is final. Both missing means the segment says nothing about
-    // its own shape, and the identity handles above are already the answer.
-    if (hasPrev && !hasNext) {
-        m1 = 1.5f - 0.5f * m0;
-    } else if (!hasPrev && hasNext) {
-        m0 = 1.5f - 0.5f * m1;
-    }
-
-    // A segment with NEITHER neighbour carries no tangent to derive, so the
-    // identity handles written above must survive: m0 = m1 = 0 would overwrite
-    // them with the step (0, 1), and a two-key channel (or a preview with no
-    // document) would hold instead of easing.
-    if (hasPrev || hasNext) {
-        aY1 = m0 / 3.0f;
-        aY2 = 1.0f - m1 / 3.0f;
-    }
-}
-
-float calculateAuto(const Easing::Param& aParam, const Easing::AutoContext& aCtx, const float t,
-                    const float b, const float c, const float d) {
-    Q_UNUSED(aParam);
-    // Same shape as calculateBezier: derive the drawn curve, then solve it and
-    // scale onto the key range. This is the only difference - the control points
-    // are computed rather than read, from the keys around the segment.
-    float y1 = 0.0f, y2 = 0.0f;
-    Easing::autoHandles(aCtx, d, y1, y2);
-    const UnitBezier bezier(1.0f / 3.0f, y1, 2.0f / 3.0f, y2);
-    return b + c * static_cast<float>(bezier.solve(t / d, UnitBezier::kBezierEpsilon));
+    return outSide ? QPointF(1.0 / 3.0, y) : QPointF(2.0 / 3.0, y);
 }
 
 //-------------------------------------------------------------------------------------------------

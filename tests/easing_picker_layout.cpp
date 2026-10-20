@@ -164,9 +164,12 @@ int main(int argc, char** argv) {
     // handle pair instead of collapsing to the identity (Linear) it shows when it is
     // handed the edited key's empty neighbour context.
     {
-        // (a) Order: a tile's click writes its type into the draft, so walking the
-        // catalog reads its order back. Restored afterwards so the screenshot below
-        // renders the same draft this gate started on.
+        // (a) Order: a tile's click writes its easing into the draft, so walking
+        // the catalog reads its order back. The head is the three non-curve types;
+        // tile 3 is the AUTO PRESET (Custom with both handle sides Auto), so the
+        // curve family after it is the display table shifted by one. Restored
+        // afterwards so the screenshot below renders the same draft this gate
+        // started on.
         bool order = true;
         int catalog = 0;
         for (int i = 0;; ++i) {
@@ -175,10 +178,19 @@ int main(int argc, char** argv) {
             ++catalog;
             tile->click();
             app.processEvents();
-            order = order && i < util::Easing::displayCount() - 1 &&
-                int(w.value().type) == int(util::Easing::typeAtDisplayIndex(i));
+            const util::Easing::Param value = w.value();
+            const bool preset = value.type == util::Easing::Type_Custom
+                && value.handleIn == util::Easing::HandleMode_Auto
+                && value.handleOut == util::Easing::HandleMode_Auto;
+            if (i < 3)
+                order = order && !preset && int(value.type) == int(util::Easing::typeAtDisplayIndex(i));
+            else if (i == 3)
+                order = order && preset;
+            else
+                order = order && !preset
+                    && int(value.type) == int(util::Easing::typeAtDisplayIndex(i - 1));
         }
-        order = order && catalog == util::Easing::displayCount() - 1;
+        order = order && catalog == util::Easing::displayCount();
         w.setValue(initial); // back to the initial draft (and the initial glyph colours)
         app.processEvents();
 
@@ -217,10 +229,10 @@ int main(int argc, char** argv) {
         }
 
         fprintf(stderr,
-                "tile catalog: %d tile(s) for %d non-Custom entries, order=%d, bad column steps=%d "
+                "tile catalog: %d tile(s) for %d entries (non-Custom + the Auto preset), order=%d, bad column steps=%d "
                 "(want tile+gap, +separator between tile-3 and tile-4), "
                 "Auto-vs-Linear differing glyph pixels=%d\n",
-                catalog, util::Easing::displayCount() - 1, int(order), badSteps, glyphDiff);
+                catalog, util::Easing::displayCount(), int(order), badSteps, glyphDiff);
         if (!order) {
             fprintf(stderr, "FAIL  tile catalog order is not the display table's\n");
             ++failed;

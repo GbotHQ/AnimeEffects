@@ -508,8 +508,17 @@ static QVector2D objToVec(QJsonObject obj, const QString& varName) {
 static util::Easing::Param objToEasing(QJsonObject obj) {
     util::Easing::Param easing;
     easing.range = util::Easing::rangeToEnum(obj["aRange"].toString());
-    easing.type = util::Easing::easingToEnum(obj["eType"].toString());
+    const QString name = obj["eType"].toString();
+    easing.type = util::Easing::easingToEnum(name);
     easing.weight = static_cast<float>(obj["eWeight"].toDouble());
+    // The retired Auto type's name (and the preset's own clipboard form) is a
+    // Custom curve with BOTH handle sides Auto - what it meant. easingToEnum
+    // already answers Type_Custom for the name; the modes are the other half.
+    if (name == "Auto") {
+        easing.type = util::Easing::Type_Custom;
+        easing.handleIn = util::Easing::HandleMode_Auto;
+        easing.handleOut = util::Easing::HandleMode_Auto;
+    }
     // qDebug() << easing.type << easing.range << easing.weight;
     return easing;
 }

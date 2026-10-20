@@ -294,17 +294,16 @@ int main(int argc, char** argv) {
             verdict(ok));
 
     // ---- #10 tile catalog: every easing the table lists is REACHABLE, at the
-    // table's own position ----
+    // table's own position, and the Auto PRESET is the one MODE entry ----
     // The tiles are hand-listed in EasingPickWidget.cpp (kTileOrder) while the
     // offering itself is util::Easing's display table, so a new easing can be added
     // to the table and never appear here - which is invisible: the picker looks
     // complete and the option simply cannot be chosen. Assert the two sets agree
-    // (every display-order type except Custom, exactly once) AND that tile-i writes
-    // the table's index-i type: the catalog's order IS the display order, so its head
-    // (Linear, Floor, Round, Auto - the entries that are not curve parameters) is the
-    // table's head and Auto sits at index 3 instead of trailing the catalog. Editing
-    // one order without the other now shows up here rather than in only one of them.
-    // A tile's click must really write its type into the draft.
+    // (every display-order type except Custom, exactly once) AND that each tile
+    // writes its own entry: the three non-curve types first, then the AUTO PRESET
+    // at index 3, then the curve family in the table's order (shifted by one).
+    // Automatic handles are a per-side MODE now, so the preset writes Custom with
+    // BOTH sides Auto rather than a retired type.
     {
         QSet<int> reachable;
         bool allTilesClick = true;
@@ -317,13 +316,24 @@ int main(int argc, char** argv) {
             ++tileCount;
             tile->click();
             app.processEvents();
-            const int got = int(w.value().type);
-            reachable.insert(got);
-            allTilesClick = allTilesClick && got != int(util::Easing::Type_Custom);
-            allTilesAtTableIndex = allTilesAtTableIndex && i < util::Easing::displayCount() - 1 &&
-                got == int(util::Easing::typeAtDisplayIndex(i));
-            if (got == int(util::Easing::Type_Auto))
+            const util::Easing::Param value = w.value();
+            const int got = int(value.type);
+            const bool preset = value.type == util::Easing::Type_Custom
+                && value.handleIn == util::Easing::HandleMode_Auto
+                && value.handleOut == util::Easing::HandleMode_Auto;
+            if (preset)
                 autoTileIndex = i;
+            else
+                reachable.insert(got);
+            allTilesClick = allTilesClick && (preset || got != int(util::Easing::Type_Custom));
+            if (i < 3)
+                allTilesAtTableIndex = allTilesAtTableIndex && !preset
+                    && got == int(util::Easing::typeAtDisplayIndex(i));
+            else if (i == 3)
+                allTilesAtTableIndex = allTilesAtTableIndex && preset;
+            else
+                allTilesAtTableIndex = allTilesAtTableIndex && !preset
+                    && got == int(util::Easing::typeAtDisplayIndex(i - 1));
         }
         QSet<int> expected;
         for (int i = 0; i < util::Easing::displayCount(); ++i) {
@@ -334,15 +344,16 @@ int main(int argc, char** argv) {
         const bool complete = (reachable == expected) && allTilesClick && tileCount > 0;
         fprintf(stderr,
                 "#10 tile catalog: %d tile(s) reach %d of the %d offered easings "
-                "(missing=%d extra=%d, none is Custom=%d) -> %s\n",
+                "(missing=%d extra=%d, none is a plain Custom tile=%d) -> %s\n",
                 tileCount, int(reachable.size()), int(expected.size()),
                 int((expected - reachable).size()), int((reachable - expected).size()),
                 (int)allTilesClick, verdict(complete));
-        const bool order = allTilesAtTableIndex && autoTileIndex == 3 &&
-            tileCount == util::Easing::displayCount() - 1;
+        const bool order = allTilesAtTableIndex && autoTileIndex == 3
+            && tileCount == util::Easing::displayCount();
         fprintf(stderr,
-                "#10 tile order: every tile-i writes the display table's index i (%d tile(s) "
-                "for %d non-Custom entries), Auto's tile is index %d -> %s\n",
+                "#10 tile order: the three head types, the AUTO PRESET at index 3, then the table's "
+                "curve family shifted by one (%d tile(s) for %d non-Custom entries + the preset), "
+                "Auto preset is index %d -> %s\n",
                 tileCount, util::Easing::displayCount() - 1, autoTileIndex, verdict(order));
     }
 

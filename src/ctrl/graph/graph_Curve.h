@@ -52,6 +52,10 @@ public:
         float fromValue;
         float toValue;
         util::Easing::Param easing;
+        // The TO key's incoming handle mode. The arriving control point belongs
+        // to the TO key even though its STORED value is the FROM param's x2/y2,
+        // so a segment needs both keys' modes to derive its two sides.
+        util::Easing::HandleMode inMode = util::Easing::HandleMode_Aligned;
     };
     int segmentCount() const;
     // The drawable segment at aIndex (0 <= aIndex < segmentCount()).
@@ -62,6 +66,8 @@ public:
     // segment's value span. That normalization is what makes a handle mean the
     // same thing at any zoom, and it is the space core::TimeKeyBlender consumes.
     // aHandleIndex 0 is the handle leaving `from`, 1 the handle arriving at `to`.
+    // These read the STORED pair (what a gesture writes back); use
+    // effectiveHandles() for the pair the curve is actually drawn with.
     bool isCustom(const Segment& aSegment) const;
     static QPointF handle(const Segment& aSegment, int aHandleIndex);
     // Writes a handle back into an easing param: x is clamped into [0,1] (a
@@ -69,28 +75,22 @@ public:
     // expressible.
     static void setHandle(util::Easing::Param& aEasing, int aHandleIndex, const QPointF& aNormalized);
 
-    // A Type_Auto segment's control points, which are DERIVED rather than stored
-    // (util::Easing::autoHandles): x is always the third of the segment's span
-    // (1/3 and 2/3, Blender's automatic handle) and only the two y values come
-    // from the keys AROUND the segment, so the pair re-shapes itself when a
-    // neighbour changes - which is why it cannot live in the key's param. These
-    // are the GHOST handles: real control points the panel can map with
-    // graph_Geometry's handlePointAt and draw as a SOLID dot at the smaller
-    // radius (kHandleRadius - kGhostHandleShrink, 3.5px) filled with the
-    // channel's reduced-chroma hue, next to a Custom pair's larger (5px) dot
-    // filled with the raised surface. The pair's radius and fill are the tell,
-    // not a hollow centre.
-    //
-    // The pair is returned in the SAME normalized easing space handle() reads a
-    // Custom pair from, handle 0 first, and it is the pair the DRAWING rate uses:
-    // the same derivation sample() evaluates with (core::autoEasingContext +
-    // autoHandles over the same neighbours), so the ghost dot sits on the control
-    // point of the curve the panel draws.
-    //
-    // aFrom is the segment's FROM key - the key whose easing shapes the segment,
-    // exactly as handle() reads. EMPTY when there is nothing to derive: a segment
-    // whose easing is not Type_Auto, a key with no successor in its channel (the
-    // last key), and a channel of a type that carries no easing at all.
+    // THE PAIR THE SEGMENT IS DRAWN AND GRABBED WITH, per side: a Free/Aligned
+    // side is its stored control point, a derived side (Vector/Auto/
+    // AutoClamped) is the one util::Easing::controlPoint derives from the
+    // neighbours. False when the segment exposes no handles at all (an analytic
+    // easing, or a null segment). This is the ONE mapping the drawing layer, the
+    // editor's hit-test and a drag's starting point all use, so they cannot
+    // disagree about where a dot is.
+    bool effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const;
+
+    // A segment's DERIVED pair, or empty when neither side derives one (both
+    // modes stored, an analytic easing, the last key of a channel, or a type
+    // that carries no easing). The pair is the EFFECTIVE one - a stored side is
+    // returned as its stored control point - because the caller draws a mixed
+    // segment's two dots from one pair. Kept as a QVector (the panel's handle
+    // pass wants a pair-or-empty answer) and in the same normalized space
+    // handle() reads.
     QVector<QPointF> ghostHandles(const core::TimeKey& aFrom) const;
 
     // Polyline of the channel across [aFrom,aTo] in (frame, value) space; the caller maps it through
@@ -126,7 +126,7 @@ private:
     const core::TimeKey* findLower(core::Frame aFrame) const;
     // The keys either side of the segment aFrom -> aTo in this channel's map:
     // the blender gatherer's point(-1) / point(2). Either is null at an end of
-    // the key list. They are what a Type_Auto easing derives its handles from,
+    // the key list. They are what a derived (Auto/AutoClamped) handle reads,
     // and what the Move spline takes its Catmull-Rom velocities from.
     void neighborsOf(const core::TimeKey& aFrom, const core::TimeKey& aTo,
                      const core::TimeKey*& aPrev, const core::TimeKey*& aNext) const;

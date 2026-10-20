@@ -40,11 +40,14 @@ public:
     // rulers are one chrome (see THE RULER in GraphPanelModel.h).
     QColor rulerBand() const { return mRulerBand; }
     QColor rulerLine() const { return mRulerLine; }
-    // The playhead pill's number. THE TIMELINE'S RULER INK: the graph's pill is the
-    // timeline's pill, and the number written in it is the same number row the ruler's
-    // numbers use - theme::Colors::text (theme::TimeLine::headerContentColor() and
-    // TimeCursor's number ink). It was accentBrightText, a token the timeline uses for
-    // a different surface; the two views' number rows must be one ink.
+    // The playhead pill's number. THE PILL'S OWN TEXT TOKEN, not the ruler's:
+    // the pill is an accentBright fill, so its number is
+    // theme::Colors::accentBrightText - the cell gui::TimeCursor is handed for the
+    // same pill (TimeLineEditorWidget.cpp), and the one that reads DARK on the
+    // violet fill in the dark palette (the shipped gate measured the old
+    // Colors::text here as two near-white pixels, i.e. an invisible number). The
+    // ruler's own numbers keep Colors::text through axisText(); a number on a fill
+    // and a number on the base surface are different inks on purpose.
     QColor playheadText() const { return mPlayheadText; }
     // Value and frame labels. The FULL text token - the ink the timeline draws its own
     // ruler numbers in - not a muted one: these glyphs are the only panel content the

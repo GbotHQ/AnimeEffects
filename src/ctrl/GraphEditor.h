@@ -94,23 +94,28 @@ private:
 };
 
 // ONE HANDLE DRAG'S COMMAND: the two easing params a handle drag writes - the
-// param the GRABBED handle is stored in, and, when the key that handle belongs
-// to has a neighbour on its other side, the NEIGHBOUR segment's param that
-// receives the MIRRORED handle (see GraphEditor::updateDrag). One command for
-// both halves is what keeps the whole drag ONE undo step; modifyValues()
-// rewrites both on every later move instead of pushing a second command.
+// param the GRABBED control point is stored in, and the param that owns the
+// grabbed side's handle MODE (and, when the key has a partner, the partner's
+// stored control too). One command for both halves is what keeps the whole drag
+// ONE undo step; modifyValues() rewrites both on every later move instead of
+// pushing a second command.
 //
-// The two halves are separate Param objects even when the grabbed handle is the
-// `to` key's incoming one, whose value still lives in the segment's `from`
-// param: the mirror always lives in the NEXT/PREVIOUS segment's `from` param,
-// which is a different key's easing. aMirror is null when the key has only one
-// handle (the first and last key of a channel): there is no neighbour segment
-// to hold the opposite tangent.
+// WHICH PARAM IS WHICH depends on the grabbed side:
+//   * handle 0 (outgoing, the FROM key's) - the main param is the FROM key's
+//     param (it stores x1/y1 AND handleOut); the mirror is the PREVIOUS
+//     segment's param, which stores the partner's incoming control, when one
+//     exists.
+//   * handle 1 (incoming, the TO key's) - the main param is still the FROM
+//     key's (it stores x2/y2), while the TO key's own param owns handleIn and
+//     is therefore the mirror. When a next segment exists that param is also
+//     the next segment's FROM param, so it holds the partner's outgoing control
+//     as well. A LAST key has no partner segment, but its own param is still
+//     carried so the mode can be freed.
 //
-// A whole Param moves through each half, so the key's `aligned` flag rides the
-// same command: Alt writes it FREE inside the NEXT value (one undo restores the
-// link with both handles), and Alt+CLICK writes it LINKED while relocating both
-// handles along the neighbour chord.
+// A whole Param moves through each half, so a side's HandleMode rides the same
+// command: a drag that frees a derived side, Alt that frees any side, and
+// Alt+CLICK that sets both sides Aligned along the neighbour chord are all part
+// of the one undo step.
 class HandleDragCommand: public cmnd::Stable {
 public:
     HandleDragCommand(
@@ -217,8 +222,8 @@ public:
     // "inside the panel" cannot decide it - that would mean "inside the
     // viewport" and the graph would swallow every event the tools need. Instead:
     //   * an in-flight gesture (a handle drag, a key move, a marquee, a
-    //     middle-button pan) owns the cursor wherever it goes, so the release
-    //     that ends it reaches this class;
+    //     middle-button pan, a scroll-bar drag, or a RULER SEEK) owns the cursor
+    //     wherever it goes, so the release that ends it reaches this class;
     //   * a key or a tangent handle owns the point it is under, wherever it is;
     //   * a LEFT PRESS inside the panel's PLOT rect is the panel's, because that
     //     is where its own plot gestures begin: on a key it selects (and arms the
@@ -266,9 +271,12 @@ public:
     //   * Ctrl + Shift  - zoom BOTH axes, exactly as plain does: the two
     //                     modifiers name the two axes, so both of them name both.
     // Every combination therefore zooms at least one axis, and no notch is ever
-    // consumed by a case that moved nothing. THIS GESTURE NEVER SCROLLS: moving a
-    // window without changing its scale is the SCROLL BARS' job (and the middle
-    // drag's), so a notch can be neither a scroll nor a dead key. The wheel's Shift
+    // consumed by a case that moved nothing. THE ONE EXCEPTION IS A LANE: a notch over
+    // a scroll bar WITH TRAVEL scrolls that bar (Qt's QScrollBar wheel - wheelScrollLines
+    // single steps, accumulated - in the bar's own direction) and consumes the notch, so
+    // the wheel over a bar NEVER zooms. Over the plot itself nothing scrolls: moving a
+    // window without changing its scale is the scroll bars' job (and the middle drag's),
+    // so a notch in the plot can be neither a scroll nor a dead key. The wheel's Shift
     // branch is the frame-axis ZOOM it had before the 2026-10-19 round briefly made
     // it a scroll, and the timeline's own wheel (Shift = scroll, plain = zoom) is
     // untouched by this: it is that widget's gesture, not this editor's.
@@ -297,7 +305,7 @@ public:
     // --- THE SCROLL BARS ---
     //
     // The panel's two scroll bars are how a window MOVES without changing its scale:
-    // the horizontal one along the plot's bottom edge is the frame axis' window (the
+    // the horizontal one along the panel's bottom edge is the frame axis' window (the
     // timeline's, while a timeline owns the axis - see setFrameWindow), the vertical
     // one along its right edge is this panel's value window. They are drawn by
     // gui::drawPanel from the rects the MODEL publishes
@@ -305,33 +313,49 @@ public:
     // ctrl::graph::Scaler::scrollBars' - the one formula the editor's own hit-test
     // below reads too, so the bar a press grabs is the bar the panel paints.
     //
-    // WHERE THEY ARE. The bars live in the panel's margin OUTSIDE the plot, and the
-    // scaler reserves their 14px (2px of gap + a 12px lane) at the plot's right and
-    // bottom edges - see THE SCROLL BARS' RESERVE in graph_Scaler.h for the numbers
-    // and for what that costs the plot. An empty plot publishes no bars at all, and a
-    // bar with nothing to scroll is not published either.
+    // WHERE THEY ARE. THE TIMELINE'S OWN LANES: the horizontal one is the panel's last
+    // 12 rows across its whole width, the vertical one the panel's last 12 columns from
+    // the plot's first row (the corner belongs to the horizontal bar) - flush with the
+    // panel's bottom and right edges, no gap, no outer margin, no trough. The plot's
+    // right and bottom INSET IS the lane (12px; see THE SCROLL BARS' LANES in
+    // graph_Scaler.h). An empty plot publishes no bars at all, and a bar with nothing
+    // to scroll is not published either.
     //
     // WHAT THEY LOOK LIKE. They are the application's own scroll bars: an invisible
-    // 12px trough and a 4px, radius-2 pill across the slider's run
+    // 12px trough and a 4px, radius-2 pill across the slider's run in
+    // theme::Colors::outline, theme::Colors::hover while the pointer is on it
     // (src/gui/AppStyle.cpp's CC_ScrollBar). hThumb/vThumb name that RUN, so the pill
     // the drawing layer paints and the span a press drags are one geometry.
     //
-    // WHAT THE THUMB MEANS. Its length is the visible window's fraction of the
-    // CONTENT (the project's frame range on the frame axis, the value extent of the
-    // shown channels' keys - shownValueExtent below - on the value axis), so a window
-    // that covers the content fills its track and a zoomed-in one draws a short
-    // thumb. It is a VIEW of the window, never a command: nothing here writes the
-    // document, and no gesture below pushes anything.
+    // WHAT THE THUMB MEANS. Qt's own QScrollBar arithmetic (graph_Scaler.cpp's
+    // scrollThumbRect): its LENGTH is pageStep/content of the track, floored at
+    // QStyle::PM_ScrollBarSliderMin, and its OFFSET is the window's fraction of the
+    // TRAVEL (content - page) across (track - length) - so the pill is flush with the
+    // track's ends when the window is at the content's. The content is the project's
+    // frame range on the frame axis and the value extent of the shown channels' keys
+    // (shownValueExtent below) on the value axis. A window that covers the content
+    // draws no bar (nothing to scroll). It is a VIEW of the window, never a command:
+    // nothing here writes the document, and no gesture below pushes anything.
+    //
+    // THE DIRECTION. The pill moves WITH the content window: dragging the horizontal
+    // pill RIGHT shows LATER frames, dragging the vertical pill UP shows HIGHER values
+    // (the same rule as the timeline's bar, whose rightward drag advances its
+    // viewport). Both axes therefore go through scrollFramesByBarPixels /
+    // scrollValueByBarPixels and NOT through the middle drag's panFramesByPixels,
+    // whose sign is the opposite one (a pan drags the content, a bar drags the view).
     //
     // THE PRESSES (see updateCursor, and ownsCursor, which claims them before every
     // plot hit):
-    //   * a press ON A THUMB (its run) starts a pan of that axis by the pointer's
-    //     pixel delta - the frame half through the delegate while the timeline owns
-    //     the axis, so both views keep one window; the value half moves this panel's
-    //     own window;
+    //   * a press ON A THUMB (its run) starts a drag of that axis' window by the
+    //     pointer's pixel delta - the frame half through the delegate while the
+    //     timeline owns the axis, so both views keep one window; the value half moves
+    //     this panel's own window;
     //   * a press on the LANE beside the run moves the window ONE PAGE toward the
     //     press (a page is the visible window, the unit a QScrollBar's PageStep uses)
     //     and then continues as that same drag;
+    //   * THE WHEEL over a lane scrolls it - Qt's QScrollBar wheel, wheelScrollLines
+    //     single steps of kScrollBarStepPixels per notch, accumulated - and never
+    //     zooms (updateWheel's bar branch, which runs before every zoom branch);
     //   * SHIFT held while dragging changes nothing here - the modifier means
     //     "one axis, the dominant one" to a KEY drag, and a scroll bar is already one
     //     axis, so it is deliberately not consulted;
@@ -761,6 +785,13 @@ public:
     // image channel rather than recording a change nothing can see.
     bool setSelectedKeysEasing(util::Easing::Type aType);
 
+    // THE AUTO PRESET. Automatic handles are per-side MODES now, not an easing
+    // type: this writes Type_Custom (the curve the modes shape) with BOTH sides
+    // HandleMode_Auto on every selected component. The picker's Auto tile and the
+    // header's quick-easing Auto button both land here, so the two cannot write
+    // different things.
+    bool setSelectedKeysAutoHandles();
+
     // The half-width, in pixels, of the band around a curve the insert gesture
     // edits (see insertKeyAt's ADD note): a point whose frame the curve covers
     // and whose value is within this distance of the value the curve evaluates
@@ -951,6 +982,14 @@ public:
     }
 
 private:
+    // The shared body of the two selection-easing actions. aNext maps one
+    // component's live param to the value the action would write; only the
+    // components it actually changes are collected, and the whole selection is
+    // one macro / one undo step. Returns false (and pushes NOTHING) when nothing
+    // would change.
+    bool assignSelectedKeysEasing(
+        const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
+
     // The curve under a viewport point: which curve, which segment and - when
     // the hit is a tangent handle - which handle.
     struct Hit {
@@ -1068,7 +1107,23 @@ private:
     // own mapping when the frame axis is its own, or the timeline's delegate in the
     // frames both views share when the timeline owns the axis (the pixel-to-frame
     // sign lives HERE and nowhere else - see the SCROLL BARS note and updatePan).
+    // This is the CONTENT drag: positive pixels move the content right, so they show
+    // EARLIER frames. The middle-button pan is its one caller.
     void panFramesByPixels(graph::Scaler& aScale, int aPixelDelta);
+
+    // THE SCROLL BARS' travel, in the frame axis' pixels: positive aPixelDelta moves
+    // the WINDOW later (the viewport's left edge advances, the pill moves right and the
+    // content under it slides left) - the opposite sign to panFramesByPixels, and the
+    // timeline's own scroll bar direction (TimeLineWidget::beginScrollbarDrag:
+    // mHorizontalOffset = -value, value += dx * range/span). Both the thumb drag and the
+    // lane page go through here, so the bar can never disagree with the pointer.
+    void scrollFramesByBarPixels(graph::Scaler& aScale, int aPixelDelta);
+
+    // The two bars' travel, as one call each: the FRAME window (positive = later
+    // frames) and the VALUE window (positive = HIGHER values, the pill moving UP its
+    // inverted lane). Only the bar's drag and page use these; a plain pan keeps its
+    // content-follows-pointer sign.
+    void scrollValueByBarPixels(graph::Scaler& aScale, int aPixelDelta);
 
     // --- the scroll bars (see the SCROLL BARS note in the public section) ---
     // The bar a press grabbed: none, the horizontal one (the frame axis) or the
@@ -1256,6 +1311,14 @@ private:
     // pushed nowhere: a scroll bar moves a window and never the document.
     int mScrollBarAxis;
     QPoint mScrollBarPointer;
+
+    // THE WHEEL OVER A BAR LANE: the accumulated angle delta not yet spent. One
+    // notch is 120 units and scrolls QApplication::wheelScrollLines() single steps of
+    // kScrollBarStepPixels (24) pixels - Qt's own QScrollBar wheel convention, which
+    // is what the timeline's bar implements too - so a high-resolution wheel's
+    // partial deltas add up here until they are worth a step. It survives between
+    // notches so 4 x 30 scrolls as far as 1 x 120, and it is never a zoom.
+    int mScrollBarWheelRemainder;
 
     // The key-move gesture's armed PRESSED key, in the timeline's own currency:
     // the layer that owns the key map, the node the TimeLineEvent names, the key

@@ -368,16 +368,25 @@ QRect valueLabelBox(int aTop) {
 const QRect kMarqueeRect(155, 62, 40, 30);
 
 // THE SCROLL BARS, as this file's synthetic model publishes them: the shipping layout
-// of ctrl::graph::Scaler::scrollBars for kPlot - 2px of gap from the plot, the app's
-// 12px lane (Scaler::kScrollBarThickness), each track spanning the plot's own edge
-// along the axis it scrolls (so the two cannot meet), with a run that is the visible
-// window's fraction of the content rather than the whole track. The real model computes
-// these from the editor's scaler; this file builds its models by hand, so the drawing
-// layer is measured against exactly the four rects a model can carry. Both tracks are
-// OUTSIDE the plot and INSIDE the panel.
-const QRect kHScrollTrack(kPlot.left(), kPlot.bottom() + 1 + 2, kPlot.width(), ctrl::graph::Scaler::kScrollBarThickness);
+// of ctrl::graph::Scaler::scrollBars - the app's 12px lane (Scaler::kScrollBarThickness)
+// FLUSH with the panel's bottom and right edges, exactly as the timeline's own bar is:
+// the horizontal lane is the panel's last 12 rows across its whole width, the vertical
+// one the panel's last 12 columns from the plot's first row to the row above the
+// horizontal lane (the corner is the horizontal bar's). A run is the visible window's
+// fraction of the content rather than the whole track. The real model computes these
+// from the editor's scaler; this file builds its models by hand, so the drawing layer
+// is measured against exactly the four rects a model can carry. Both lanes are OUTSIDE
+// the plot (the plot's right/bottom inset IS the lane) and INSIDE the panel.
+const QRect kHScrollTrack(
+    kPanel.left(), kPanel.bottom() - ctrl::graph::Scaler::kScrollBarThickness + 1, kPanel.width(),
+    ctrl::graph::Scaler::kScrollBarThickness
+);
 const QRect kHScrollThumb(kHScrollTrack.left() + 60, kHScrollTrack.top(), 90, kHScrollTrack.height());
-const QRect kVScrollTrack(kPlot.right() + 1 + 2, kPlot.top(), ctrl::graph::Scaler::kScrollBarThickness, kPlot.height());
+const QRect kVScrollTrack(
+    kPanel.right() - ctrl::graph::Scaler::kScrollBarThickness + 1, kPlot.top(),
+    ctrl::graph::Scaler::kScrollBarThickness,
+    kPanel.bottom() - ctrl::graph::Scaler::kScrollBarThickness - kPlot.top() + 1
+);
 const QRect kVScrollThumb(kVScrollTrack.left(), kVScrollTrack.top() + 40, kVScrollTrack.width(), 70);
 
 // The PILL the drawing layer puts in a lane: AppStyle's 4px, and centred in the lane
@@ -2861,6 +2870,26 @@ bool checkScrollBars(
         "precondition: a pill leaves its lane/run (%d,%d %dx%d in %d,%d %dx%d)", hPill.left(), hPill.top(),
         hPill.width(), hPill.height(), hTrack.left(), hTrack.top(), hTrack.width(), hTrack.height()
     );
+    // THE LANES ARE FLUSH WITH THE PANEL'S EDGES - the timeline's own bar geometry: the
+    // horizontal lane's last row is the panel's last row and its right edge the panel's
+    // right edge; the vertical lane's right edge is the panel's right edge and it ends
+    // on the row above the horizontal lane. A lane inset from the edge is the divergence
+    // this gate exists for.
+    REQUIRE(
+        hTrack.bottom() == aModel.panel.bottom() && hTrack.right() == aModel.panel.right()
+            && hTrack.left() == aModel.panel.left(),
+        "the horizontal lane (%d,%d %dx%d) is not flush with the panel (%d,%d %dx%d): bottom %d vs %d, right %d"
+        " vs %d",
+        hTrack.left(), hTrack.top(), hTrack.width(), hTrack.height(), aModel.panel.left(), aModel.panel.top(),
+        aModel.panel.width(), aModel.panel.height(), hTrack.bottom(), aModel.panel.bottom(), hTrack.right(),
+        aModel.panel.right()
+    );
+    REQUIRE(
+        vTrack.right() == aModel.panel.right() && vTrack.bottom() + 1 == hTrack.top(),
+        "the vertical lane (%d,%d %dx%d) is not flush with the panel's right edge / not above the horizontal"
+        " lane (hTrack top %d)",
+        vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(), hTrack.top()
+    );
     // The two tokens must be tellable apart (and from the clear colour), or the
     // counts below would not know which ink a pixel is.
     REQUIRE(
@@ -2935,6 +2964,68 @@ bool checkScrollBars(
         "a pointer on the bar did not turn the whole pill hover-coloured (%d px thick)", hoveredHPill
     );
     REQUIRE(restVPill > 0, "the pointer on one bar changed the other bar's pill");
+    return true;
+}
+
+// 31b: THE RULER'S HAIRLINE IS HALF-COVERED, which is the MEASURED parity value. The
+// timeline's rule is a 1px pen centred on the boundary between its ruler strip and its
+// surface, antialiased (the painter still carries the hint ctrl::time::Renderer::
+// renderLines left on), so the stroke splits 0.5/0.5 between the two rows and only the
+// LOWER half survives - the row above is the TimeRuler widget's own, repainted opaquely
+// over it. Measured in the shipped build: rgb 51,51,51 on the base surface, which is
+// 0.5*64 + 0.5*38. The panel therefore draws that row in theme::Graph::rulerLine() at
+// gui::kRulerHairlineCoverage (0.5) and NOT at full strength; the drawing-layer constant
+// is read from the header, so this cannot drift from the panel's own configuration.
+bool checkRulerHairline(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
+    REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the model publishes no ruler band");
+    const int hairlineY = aModel.rulerBand.bottom() + 1;
+    REQUIRE(hairlineY < kViewH, "precondition: the hairline row is outside the framebuffer");
+    // The row's ink over the gate's magenta floor, at the declared coverage.
+    const QColor expected = over(withAlpha(aTheme.rulerLine(), gui::kRulerHairlineCoverage), kClear);
+    const QColor fullStrength = over(withAlpha(aTheme.rulerLine(), 1.0f), kClear);
+    // Two columns, one at each end of the band, clear of the playhead's own column (the
+    // accent line crosses every row) - the rule spans the whole band, so both must read
+    // the same ink.
+    const int probeX[] = {aModel.rulerBand.left() + 2, aModel.rulerBand.right() - 2};
+    for (int x : probeX) {
+        REQUIRE(
+            x >= 0 && x < kViewW && std::abs(x - aModel.playheadX) > 2,
+            "precondition: hairline probe column %d is outside the frame or on the playhead", x
+        );
+        const QColor c = pixelAt(aRendered.image, x, hairlineY);
+        std::printf(
+            "MEASURED ruler_hairline row=%d x=%d rgb=%s expected_half=%s full_strength=%s d_half=%d d_full=%d"
+            " coverage=%.2f\n",
+            hairlineY, x, hex(c).c_str(), hex(expected).c_str(), hex(fullStrength).c_str(),
+            colourDistance(c, expected), colourDistance(c, fullStrength), gui::kRulerHairlineCoverage
+        );
+        REQUIRE(
+            colourDistance(c, expected) <= 6,
+            "the ruler hairline at (%d,%d) is %s, not the half-covered %s the timeline draws (distance %d)",
+            x, hairlineY, hex(c).c_str(), hex(expected).c_str(), colourDistance(c, expected)
+        );
+        REQUIRE(
+            colourDistance(c, fullStrength) > 24,
+            "the ruler hairline at (%d,%d) is full strength (%s): the panel would be twice as dark as the"
+            " timeline's own rule",
+            x, hairlineY, hex(c).c_str()
+        );
+    }
+    // ...and the row ABOVE it (the band's last row) does NOT carry the hairline's half
+    // blend: the timeline's upper half is repainted by its strip, so the panel's band
+    // must be the same - a rule that bled into the band would be two grey rows where
+    // both views have one.
+    const QColor above = pixelAt(aRendered.image, probeX[0], aModel.rulerBand.bottom());
+    std::printf(
+        "MEASURED ruler_hairline_above row=%d rgb=%s (half blend %s, distance %d)\n", aModel.rulerBand.bottom(),
+        hex(above).c_str(), hex(expected).c_str(), colourDistance(above, expected)
+    );
+    REQUIRE(
+        colourDistance(above, expected) > 24,
+        "the band's last row (%d) carries the hairline's half blend %s: the rule is bleeding into the band, which"
+        " the timeline's own widget repaints over",
+        aModel.rulerBand.bottom(), hex(above).c_str()
+    );
     return true;
 }
 
@@ -3188,10 +3279,15 @@ bool checkPlayhead(
         hex(pillCorner).c_str(), hex(aTheme.selected()).c_str(), colourDistance(pillCorner, aTheme.selected()),
         kFillTol
     );
-    // THE PILL'S NUMBER is the RULER's ink (theme::Graph::playheadText(), i.e.
-    // Colors::text), not the accent's own contrasting cell: the pill must carry pixels
-    // closer to that token than to its accent fill.
+    // THE PILL'S NUMBER is the token the timeline puts ON an accent fill:
+    // theme::Graph::playheadText() == theme::Colors::accentBrightText, the cell
+    // gui::TimeCursor is handed (TimeLineEditorWidget.cpp). It is NOT the ruler's own
+    // text ink (Colors::text): a number on the violet fill and a number on the base
+    // surface are different tokens, and the wrong one measured as two near-white pixels
+    // in the shipped build - an invisible number on a pill whose dark one reads.
+    const theme::Colors& palette = theme::Colors::current();
     int pillTextInk = 0;
+    int tokenInk = 0;
     for (int y = pill.top(); y <= pill.bottom(); ++y) {
         for (int x = pill.left(); x <= pill.right(); ++x) {
             const QColor c = pixelAt(aRendered.image, x, y);
@@ -3199,13 +3295,37 @@ bool checkPlayhead(
                 && colourDistance(c, aTheme.playheadText()) <= 48) {
                 ++pillTextInk;
             }
+            if (colourDistance(c, palette.accentBrightText) <= 24)
+                ++tokenInk;
         }
     }
     std::printf(
-        "MEASURED playhead_pill_text rect=(%d,%d %dx%d) text_rgb=%s px=%d\n", pill.left(), pill.top(),
-        pill.width(), pill.height(), hex(aTheme.playheadText()).c_str(), pillTextInk
+        "MEASURED playhead_pill_text rect=(%d,%d %dx%d) text_rgb=%s px=%d accent_bright_text=%s token_px=%d"
+        " ruler_text=%s\n",
+        pill.left(), pill.top(), pill.width(), pill.height(), hex(aTheme.playheadText()).c_str(), pillTextInk,
+        hex(palette.accentBrightText).c_str(), tokenInk, hex(palette.text).c_str()
     );
     REQUIRE(pillTextInk > 0, "the playhead's pill painted no number in theme::Graph::playheadText()");
+    // THE INK IS THE PILL'S OWN TEXT TOKEN, pinned BY VALUE and not only through the
+    // accessor: the gate would pass just as happily if the theme handed back some other
+    // ink, so the token itself is compared - and the two tokens are proved different
+    // first, or the readings below say nothing.
+    REQUIRE(
+        colourDistance(palette.accentBrightText, palette.text) > 24,
+        "precondition: accentBrightText (%s) and text (%s) are the same ink, so the pill's number cannot be told"
+        " from the ruler's",
+        hex(palette.accentBrightText).c_str(), hex(palette.text).c_str()
+    );
+    REQUIRE(
+        colourDistance(aTheme.playheadText(), palette.accentBrightText) == 0,
+        "the pill's number is drawn in %s, not the accent fill's text token %s",
+        hex(aTheme.playheadText()).c_str(), hex(palette.accentBrightText).c_str()
+    );
+    REQUIRE(
+        tokenInk > 0,
+        "the pill painted no pixel of theme::Colors::accentBrightText (%s) inside its box (%d,%d %dx%d)",
+        hex(palette.accentBrightText).c_str(), pill.left(), pill.top(), pill.width(), pill.height()
+    );
     REQUIRE(
         invalidInk == 0,
         "an INVALID frame painted %d pixels in the band at the playhead's column (%d): there must be no playhead"
@@ -6246,6 +6366,11 @@ int main(int argc, char** argv) {
     );
     if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverRendered, barModel)) {
         std::printf("FAILED: the scroll bars\n");
+        return 1;
+    }
+    // 31b: THE RULER'S RULE, at the half coverage the timeline's own row carries.
+    if (!checkRulerHairline(rendered, full, palette)) {
+        std::printf("FAILED: the ruler hairline's ink\n");
         return 1;
     }
     if (!writeInkCrops(inkFringe, inkCoverage, QStringLiteral("build/shots/graph_ink"))) {

@@ -188,24 +188,24 @@ int main(int argc, char** argv) {
                 type != util::Easing::Type_Custom;
         }
         check(ordered, "every entry carries the display index as its value and the table's own name");
-        // Auto is no longer last. It sits at display index 3, with the other three
-        // entries whose shape is not a curve parameter - the straight line, the two
-        // stepped holds - so the combo offers the derived easings together and the
-        // family follows. The picker's tile catalog carries the same head
-        // (tests/picker_probe.cpp #10 pins both tables position by position).
-        const util::Easing::Type kHead[4] = { util::Easing::Type_Linear, util::Easing::Type_Floor,
-                                              util::Easing::Type_Round, util::Easing::Type_Auto };
-        bool head = options.size() >= 4;
-        for (int i = 0; head && i < 4; ++i) {
+        // The head is the three entries whose shape is not a curve parameter -
+        // the straight line and the two stepped holds. Automatic handles are a
+        // per-side MODE now, not an easing TYPE, so they have no entry here (the
+        // picker's Auto preset writes the modes on a Custom curve; its tile
+        // catalog is checked by tests/picker_probe.cpp #10).
+        const util::Easing::Type kHead[3] = { util::Easing::Type_Linear, util::Easing::Type_Floor,
+                                              util::Easing::Type_Round };
+        bool head = options.size() >= 3;
+        for (int i = 0; head && i < 3; ++i) {
             const QVariantMap map = options.at(i).toMap();
             head = map.value(QStringLiteral("value")).toInt() == i &&
                 map.value(QStringLiteral("label")).toString() == util::Easing::getTypeName(kHead[i]) &&
                 util::Easing::typeAtDisplayIndex(i) == kHead[i];
         }
-        check(head, "the head is Linear, Floor, Round, Auto - Auto is no longer the last entry");
-        check(util::Easing::displayIndexOf(util::Easing::Type_Auto) == 3,
-              QStringLiteral("Auto sits at display index 3 (%1)")
-                  .arg(util::Easing::displayIndexOf(util::Easing::Type_Auto)));
+        check(head, "the head is Linear, Floor, Round");
+        check(util::Easing::displayIndexOf(util::Easing::Type_Linear) == 0,
+              QStringLiteral("Linear sits at display index 0 (%1)")
+                  .arg(util::Easing::displayIndexOf(util::Easing::Type_Linear)));
         // ... so the entry the combo ends on is the table's last non-Custom entry
         // (Bounce), and its value is still its display index - what the save path
         // writes and the read path maps back through typeAtDisplayIndex.

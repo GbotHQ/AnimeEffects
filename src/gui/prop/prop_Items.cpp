@@ -399,13 +399,17 @@ namespace prop {
         // document plays rather than a shape no key has.
         if (showGlyph) {
             const int glyphY = (height() - kGlyph) / 2;
-            // Auto opts into the handle icon: with no neighbours its real curve IS
-            // the straight line, which cannot be told from Linear's - the glyph
-            // then draws the type's canonical automatic pair instead (see
-            // paintEasingCurve). Every other type is unaffected by the flag.
-            paintEasingCurve(p, QRectF(kBorder + kPadL, glyphY, kGlyph, kGlyph), mValues.first(),
+            // The preset opts into the handle icon: with no neighbours its real
+            // curve IS the straight line, which cannot be told from Linear's -
+            // the glyph then draws the canonical automatic pair instead (see
+            // paintEasingCurve). Every other easing is unaffected by the flag.
+            const util::Easing::Param& shown = mValues.first();
+            const bool derivedSides = shown.type == util::Easing::Type_Custom
+                && (util::Easing::isDerived(shown.handleOut)
+                    || util::Easing::isDerived(mAuto.inMode));
+            paintEasingCurve(p, QRectF(kBorder + kPadL, glyphY, kGlyph, kGlyph), shown,
                              enabled ? c.accentBright : c.textDisabled, kStroke, &mAuto,
-                             mValues.first().type == util::Easing::Type_Auto);
+                             derivedSides);
         }
 
         if (!mCaret.isNull()) {

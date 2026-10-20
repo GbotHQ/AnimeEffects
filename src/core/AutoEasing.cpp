@@ -46,6 +46,34 @@ QVector<float> flattenPose(const core::PoseKey& aKey) {
     return out;
 }
 
+// One key's easing param for a graphable component, or null for a key type that
+// carries none. Used to read the TO key's incoming handle mode for the segment's
+// arriving side; the dispatch is the same one valueOf() makes.
+const util::Easing::Param* paramOf(const core::TimeKey& aKey, int aComponent) {
+    switch (aKey.type()) {
+    case core::TimeKeyType_Move:
+        return &static_cast<const core::MoveKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Scale:
+        return &static_cast<const core::ScaleKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Blur:
+        return &static_cast<const core::BlurKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_HSV:
+        return &static_cast<const core::HSVKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Rotate:
+        return &static_cast<const core::RotateKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Depth:
+        return &static_cast<const core::DepthKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Opa:
+        return &static_cast<const core::OpaKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_Pose:
+        return &static_cast<const core::PoseKey&>(aKey).data().easing(aComponent);
+    case core::TimeKeyType_FFD:
+        return &static_cast<const core::FFDKey&>(aKey).data().easing(aComponent);
+    default:
+        return nullptr;
+    }
+}
+
 bool valueOf(
     const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::TimeKey& aTo, int aComponent, float& aOut) {
     // The caller pairs keys out of one channel's map, but a hand-built call must
@@ -165,6 +193,14 @@ bool autoEasingValue(const TimeKey& aKey, const TimeKey& aFrom, const TimeKey& a
 util::Easing::AutoContext autoEasingContext(
     const TimeKey& aFrom, const TimeKey& aTo, int aComponent, const TimeKey* aPrev, const TimeKey* aNext) {
     util::Easing::AutoContext ctx;
+
+    // The arriving side of the segment belongs to the TO key, so its mode is
+    // read there (its stored value is still the FROM param's x2/y2). Filling it
+    // here means every caller - playback, the graph, the picker previews - gets
+    // the same pair without a second lookup.
+    if (const util::Easing::Param* toEasing = paramOf(aTo, aComponent)) {
+        ctx.inMode = toEasing->handleIn;
+    }
 
     float from = 0.0f, to = 0.0f;
     if (!valueOf(aFrom, aFrom, aTo, aComponent, from) || !valueOf(aTo, aFrom, aTo, aComponent, to))

@@ -629,10 +629,16 @@ static void addStandardToObj(QJsonObject* json, keyData data, const int keyType,
     // The clipboard payload has one easing slot per key, so it carries component
     // 0's curve; the paste broadcasts it to every component (a lossless reading
     // of a one-easing payload). Per-component round trips travel in the .anie
-    // file, which stores all of them.
-    json->insert("eType", util::Easing::getTypeName(data.easing(0).type));
-    json->insert("eRange", util::Easing::getRangeName(data.easing(0).range));
-    json->insert("eWeight", data.easing(0).weight);
+    // file, which stores all of them. "Auto" is written for the Auto PRESET
+    // (Custom with both handle sides Auto), which is what an old payload's
+    // retired Auto type meant too; the reader turns it back into those modes.
+    const util::Easing::Param& easing = data.easing(0);
+    const bool autoPreset = easing.type == util::Easing::Type_Custom
+        && easing.handleIn == util::Easing::HandleMode_Auto
+        && easing.handleOut == util::Easing::HandleMode_Auto;
+    json->insert("eType", autoPreset ? QStringLiteral("Auto") : util::Easing::getTypeName(easing.type));
+    json->insert("eRange", util::Easing::getRangeName(easing.range));
+    json->insert("eWeight", easing.weight);
 }
 
 QJsonObject getKeyTypeSerialized(int keyType, core::TimeKey* timeKey, core::ObjectNode* node) {

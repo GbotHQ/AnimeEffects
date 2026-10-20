@@ -22,6 +22,8 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QComboBox>
+#include <QSignalBlocker>
 #include "gui/theme/Colors.h"
 #include "gui/theme/Icons.h"
 
@@ -52,46 +54,54 @@ constexpr int kSliderHead = 18; // knob (14px) + 2px margin top/bottom so its to
 constexpr double kVMIN = -0.35, kVMAX = 1.35;
 
 // Picker tile catalog in display order, keyed by position, not enum value. The
-// head is util::Easing's own display head - Linear, Floor, Round, Auto - so the
-// first tile row is exactly the four entries that are not curve parameters, and
-// the hairline separator is inserted after it (see buildTrow); the analytic
-// family then follows in the table's order. The two tables are asserted equal
-// position by position by tests/picker_probe.cpp #10.
-const util::Easing::Type kTileOrder[] = {
-    util::Easing::Type_Linear, util::Easing::Type_Floor,  util::Easing::Type_Round,
-    util::Easing::Type_Auto,   util::Easing::Type_Cubic,  util::Easing::Type_Sine,
-    util::Easing::Type_Quad,   util::Easing::Type_Quart,  util::Easing::Type_Quint,
-    util::Easing::Type_Expo,   util::Easing::Type_Circ,   util::Easing::Type_Back,
-    util::Easing::Type_Elastic, util::Easing::Type_Bounce,
+// head is the three non-curve entries - Linear, Floor, Round - plus the AUTO
+// PRESET, which is not a type any more: it draws a Custom curve with BOTH sides
+// Auto (Blender's automatic handles) and clicking it writes those modes. The
+// hairline separator closes that head; the analytic family then follows in the
+// table's order. The type entries are asserted equal to the display table's
+// non-Custom entries position by position by tests/picker_probe.cpp #10; the
+// preset is the one entry that is a MODE pair rather than a Type.
+struct TileDef {
+    util::Easing::Type type;
+    bool autoPreset;
+};
+const TileDef kTileOrder[] = {
+    { util::Easing::Type_Linear, false }, { util::Easing::Type_Floor, false },
+    { util::Easing::Type_Round, false },  { util::Easing::Type_Custom, true },
+    { util::Easing::Type_Cubic, false },  { util::Easing::Type_Sine, false },
+    { util::Easing::Type_Quad, false },   { util::Easing::Type_Quart, false },
+    { util::Easing::Type_Quint, false },  { util::Easing::Type_Expo, false },
+    { util::Easing::Type_Circ, false },   { util::Easing::Type_Back, false },
+    { util::Easing::Type_Elastic, false }, { util::Easing::Type_Bounce, false },
 };
 constexpr int kTileOrderCount = int(sizeof(kTileOrder) / sizeof(kTileOrder[0]));
 
-// The AutoContext the catalog's Auto TILE draws with. A tile is an image of the
-// easing, not a preview of the key being edited: the picker hands it no document,
-// so with the real (empty) context Auto's derived handles collapse to the
-// identity and the tile is indistinguishable from Linear. Give the tile the pair
-// an automatic handle pair IS instead: a neighbour one segment away on each side
-// at the segment's own end values - (frame -1, value 0) before and (frame +2,
-// value 1) after, in the segment widths the glyph evaluates over (d = 1). Both
-// ends sit on their neighbours' plateau there, so the auto-clamped rule pulls
-// both tangents flat and the control points land at (1/3, 0) and (2/3, 1): the
-// canonical ease-in-out an automatic handle pair produces, and clearly not the
-// straight line. The shape is produced by the REAL rule - CurveGlyph paints
-// Type_Auto through Easing::calculate(param, ctx, ...) -> autoHandles - so it
-// follows the derivation rather than a hardcoded path.
+// The AutoContext the catalog's Auto PRESET tile draws with. A tile is an image
+// of the easing, not a preview of the key being edited: the picker hands it no
+// document, so with the real (empty) context the derived handles collapse to
+// the identity and the tile is indistinguishable from Linear. Give the tile the
+// pair an automatic handle pair IS instead: a neighbour one segment away on each
+// side at the segment's own end values - (frame -1, value 0) before and
+// (frame +2, value 1) after, in the segment widths the glyph evaluates over
+// (d = 1). Both ends sit on their neighbours' plateau there, so the auto-clamped
+// rule pulls both tangents flat and the control points land at (1/3, 0) and
+// (2/3, 1): the canonical ease-in-out an automatic handle pair produces, and
+// clearly not the straight line. The shape is produced by the REAL rule -
+// Easing::controlPoint - so it follows the derivation rather than a hardcoded
+// path. Both sides (the TO key's incoming mode included) are Auto.
 constexpr util::Easing::AutoContext kAutoTileContext = {
     { true, -1.0f, 1.0f }, // prev: one segment before, holding the SEGMENT'S END value
     { true, 2.0f, 0.0f },  // next: one segment after, holding the SEGMENT'S START value
+    util::Easing::HandleMode_Auto,
 };
 
-// Which context a glyph draws with. The catalog's Auto tile always uses the
-// canonical pair above; every other glyph (the blend thumbnails, the motion
+// Which context a glyph draws with. The catalog's Auto preset tile always uses
+// the canonical pair above; every other glyph (the blend thumbnails, the motion
 // preview, the timeline's chip through prop::EasingItem) draws the real
-// AutoContext of the keys it describes, so a preview stays honest. Only a
-// Type_Auto param reads the context at all.
-const util::Easing::AutoContext& glyphAutoContext(util::Easing::Type aType,
+// AutoContext of the keys it describes, so a preview stays honest.
+const util::Easing::AutoContext& glyphAutoContext(bool aAutoPreset,
                                                   const util::Easing::AutoContext& aShown) {
-    return aType == util::Easing::Type_Auto ? kAutoTileContext : aShown;
+    return aAutoPreset ? kAutoTileContext : aShown;
 }
 
 QString tileName(int aIdx) { return QString::fromLatin1("tile-%1").arg(aIdx); }
@@ -401,27 +411,29 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
         return;
     }
 
-    // THE AUTO ICON SHOWS THE TYPE, NOT ONE KEY'S LUCK. With no neighbouring keys
-    // the derived handles are the identity, so Auto's curve would be Linear's
-    // straight line - the glyph the user could not tell apart from Linear's. A
-    // menu entry names a TYPE (every other tile draws that type's canonical
-    // shape), so an Auto entry with no neighbours draws the type's characteristic
+    // THE AUTO ICON SHOWS THE PRESET, NOT ONE KEY'S LUCK. With no neighbouring
+    // keys the derived handles are the identity, so an automatic pair would draw
+    // Linear's straight line - the glyph the user could not tell apart from
+    // Linear's. A menu entry names an EASING (every other tile draws its canonical
+    // shape), so an automatic entry with no neighbours draws the characteristic
     // curve: a segment whose BOTH sides continue (neighbours outside the value
     // range), which is the flat-at-both-ends shape an automatic handle produces.
+    const bool derivedSides = aParam.type == util::Easing::Type_Custom
+        && (util::Easing::isDerived(aParam.handleOut) || util::Easing::isDerived(aAuto ? aAuto->inMode
+                                                                                       : util::Easing::HandleMode_Aligned));
     const util::Easing::AutoContext emptyAuto;
     const bool noNeighbours = !(aAuto && aAuto->prev.valid) && !(aAuto && aAuto->next.valid);
     const util::Easing::AutoContext& autoCtx =
-        (aAutoHandles && aParam.type == util::Easing::Type_Auto && noNeighbours)
-            ? kAutoTileContext
-            : (aAuto ? *aAuto : emptyAuto);
+        (aAutoHandles && derivedSides && noNeighbours) ? kAutoTileContext
+                                                       : (aAuto ? *aAuto : emptyAuto);
 
     const int N = 64;
     QPainterPath path;
     bool first = true;
     for (int i = 0; i <= N; ++i) {
         const double x = (double)i / N;
-        // The 6-argument form: for every type but Auto it is the same call as
-        // before, and for Auto it is the only form that can derive the handles.
+        // The 6-argument form: it reads the stored pair for a Custom curve whose
+        // sides are both stored, and derives each side by its own mode else.
         const double y = util::Easing::calculate(aParam, autoCtx, x, 0.0f, 1.0f, 1.0f);
         const double vx = x0 + x * (x1 - x0);
         const double vy = pad + (kVMAX - y) / (kVMAX - kVMIN) * span;
@@ -431,28 +443,28 @@ void paintEasingCurve(QPainter& p, const QRectF& aRect,
     }
     p.drawPath(path);
 
-    // ---- Auto's handle glyph ------------------------------------------------
+    // ---- the automatic-handle glyph ----------------------------------------
     // The catalog tile (and a header button) draws an automatic easing as what
     // it IS: a bezier whose control points were derived from the keys, with
     // those points visible as detached dots joined to the endpoints by short
-    // stems. Auto is the only type that has derived handles and the flag is
-    // opt-in, so every other glyph - and every Auto preview that leaves the
-    // flag off - paints exactly the curve it painted before. The dot radius and
-    // stem width scale with the rect, so the same call reads at the 28px tile
-    // and at a 16-18px button.
-    if (aAutoHandles && aParam.type == util::Easing::Type_Auto) {
-        // The curve is sampled over one segment (d = 1), so derive its handles
-        // in that same span; x is fixed at the thirds and only y is derived.
-        float y1 = 1.0f / 3.0f, y2 = 2.0f / 3.0f;
-        util::Easing::autoHandles(autoCtx, 1.0f, y1, y2);
+    // stems. The flag is opt-in and only a Custom curve with a derived side
+    // reads it, so every other glyph - and every preview that leaves the flag
+    // off - paints exactly the curve it painted before. The dot radius and stem
+    // width scale with the rect, so the same call reads at the 28px tile and at
+    // a 16-18px button.
+    if (aAutoHandles && derivedSides) {
+        // The curve is sampled over one segment (d = 1), so derive its control
+        // points in that same span. A stored side returns its stored point.
+        const QPointF c1 = util::Easing::controlPoint(aParam, autoCtx.inMode, autoCtx, 1.0f, 0);
+        const QPointF c2 = util::Easing::controlPoint(aParam, autoCtx.inMode, autoCtx, 1.0f, 1);
         auto toValueSpace = [&](double aX, double aY) {
             return toScreen(x0 + aX * (x1 - x0),
                             pad + (kVMAX - aY) / (kVMAX - kVMIN) * span);
         };
         const QPointF from = toValueSpace(0.0, 0.0);
         const QPointF to = toValueSpace(1.0, 1.0);
-        const QPointF h1 = toValueSpace(1.0 / 3.0, y1);
-        const QPointF h2 = toValueSpace(2.0 / 3.0, y2);
+        const QPointF h1 = toValueSpace(c1.x(), c1.y());
+        const QPointF h2 = toValueSpace(c2.x(), c2.y());
 
         QPen stemPen(aColor);
         stemPen.setWidthF(qMax(0.9, aStrokeWidth * 0.75));
@@ -745,15 +757,15 @@ QWidget* EasingPickWidget::buildTrow() {
     mTrow->setObjectName("trow");
     FlowLayout* flow = new FlowLayout(mTrow, kTileGap);
     for (int i = 0; i < kTileOrderCount; ++i) {
-        QToolButton* tile = makeTileAt(i, kTileOrder[i]);
+        QToolButton* tile = makeTileAt(i, kTileOrder[i].type, kTileOrder[i].autoPreset);
         tile->setObjectName(tileName(i));
         flow->addWidget(tile);
         mTileBtns.append(tile);
         if (i == 3) {
             // The hairline closes the derived-easing cluster: the catalog's head
-            // is Linear, Floor, Round, Auto (kTileOrder), so the separator lands
-            // AFTER Auto and the first tile row is exactly those four with the
-            // curve family following.
+            // is Linear, Floor, Round, Auto preset (kTileOrder), so the
+            // separator lands AFTER the preset and the first tile row is exactly
+            // those four with the curve family following.
             QFrame* sep = new QFrame(mTrow);
             sep->setObjectName("vsep");
             sep->setFixedSize(kVsepW, kTile);
@@ -769,7 +781,8 @@ QWidget* EasingPickWidget::buildTrow() {
     return mTrow;
 }
 
-QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType) {
+QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, bool aAutoPreset) {
+    const TileDef def{ aType, aAutoPreset };
     QToolButton* tile = new QToolButton(mTrow);
     tile->setFixedSize(kTile, kTile);
     tile->setCursor(Qt::PointingHandCursor);
@@ -781,17 +794,28 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType) 
     CurveGlyph* g = new CurveGlyph(tile);
     g->setObjectName("t-glyph");
     g->setFixedSize(kTileGlyph, kTileGlyph);
-    g->setParam(mkParam(aType, mDraft.range, mDraft.weight));
-    // Auto's tile draws the canonical automatic-handle pair, not the edited key's
-    // neighbours (a tile is a catalog image; see kAutoTileContext).
-    g->setAutoContext(glyphAutoContext(aType, mAuto));
-    // Auto is the one entry whose catalog image must SAY it is a bezier with
-    // derived handles: draw the two control points and their stems. No other
-    // tile (nor the blend thumbnails) opts in, so their glyphs are unchanged.
-    g->setAutoHandlesVisible(aType == util::Easing::Type_Auto);
+    util::Easing::Param glyph = mkParam(def.type, mDraft.range, mDraft.weight);
+    if (def.autoPreset) {
+        glyph.type = util::Easing::Type_Custom;
+        glyph.handleIn = util::Easing::HandleMode_Auto;
+        glyph.handleOut = util::Easing::HandleMode_Auto;
+    }
+    g->setParam(glyph);
+    // The Auto preset tile draws the canonical automatic-handle pair, not the
+    // edited key's neighbours (a tile is a catalog image; see kAutoTileContext).
+    g->setAutoContext(glyphAutoContext(def.autoPreset, mAuto));
+    // The preset's catalog image must SAY it is a bezier with derived handles:
+    // draw the two control points and their stems. No other tile (nor the blend
+    // thumbnails) opts in, so their glyphs are unchanged.
+    g->setAutoHandlesVisible(def.autoPreset);
     g->setGlyphColor(C().textMutedDim);
     vl->addWidget(g, 0, Qt::AlignCenter);
-    connect(tile, &QToolButton::clicked, this, [this, aType] { setType(aType); });
+    connect(tile, &QToolButton::clicked, this, [this, def] {
+        if (def.autoPreset)
+            this->setAutoHandlesPreset();
+        else
+            this->setType(def.type);
+    });
     Q_UNUSED(aIndex);
     return tile;
 }
@@ -902,6 +926,47 @@ QWidget* EasingPickWidget::buildBezierPanel() {
     }
     l->addLayout(spins);
 
+    // THE PER-SIDE HANDLE MODES. Blender's five, one combo per side: the
+    // outgoing side (this param's handleOut) and the incoming side (its
+    // handleIn). They are separate controls because the two sides derive
+    // independently - dragging one side is what frees it, and the other keeps
+    // deriving.
+    {
+        QWidget* modes = new QWidget(panel);
+        modes->setObjectName("handle-modes");
+        QHBoxLayout* ml = new QHBoxLayout(modes);
+        ml->setContentsMargins(0, 0, 0, 0);
+        ml->setSpacing(6);
+        const struct {
+            bool incoming;
+            const char* label;
+            const char* name;
+        } defs[] = {
+            { true, QT_TR_NOOP("In"), "handle-in" },
+            { false, QT_TR_NOOP("Out"), "handle-out" },
+        };
+        for (const auto& def : defs) {
+            QLabel* lab = new QLabel(tr(def.label), modes);
+            lab->setProperty("role", "fl");
+            ml->addWidget(lab);
+            QComboBox* box = new QComboBox(modes);
+            box->setObjectName(QString::fromLatin1(def.name));
+            box->setProperty("role", "fi");
+            box->setFixedHeight(24);
+            for (int m = 0; m < util::Easing::HandleMode_TERM; ++m) {
+                const auto mode = static_cast<util::Easing::HandleMode>(m);
+                box->addItem(util::Easing::getHandleModeName(mode), m);
+            }
+            const bool incoming = def.incoming;
+            connect(box, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, box, incoming](int) {
+                this->setHandleMode(incoming, static_cast<util::Easing::HandleMode>(box->currentData().toInt()));
+            });
+            ml->addWidget(box, 1);
+            (incoming ? mHandleIn : mHandleOut) = box;
+        }
+        l->addWidget(modes);
+    }
+
     // These spins are fed by the editor's paintEvent (which writes the
     // clamped values back); give it the vector so it can update them.
     mBezierEditor->spinBoxes = mBezierSpins;
@@ -994,6 +1059,38 @@ void EasingPickWidget::setCustom() {
     const util::Easing::Param old = mDraft;
     mDraft.type = util::Easing::Type_Custom;
     if (mDraft == old) return;
+    pushState(old);
+    refresh();
+    renderBezier();
+    emit changed(mDraft);
+}
+
+void EasingPickWidget::setAutoHandlesPreset() {
+    const util::Easing::Param old = mDraft;
+    // The preset is the handle MODES, not a type: a Custom curve (the only kind
+    // whose controls the modes shape) with both sides deriving from their own
+    // neighbour.
+    mDraft.type = util::Easing::Type_Custom;
+    mDraft.handleIn = util::Easing::HandleMode_Auto;
+    mDraft.handleOut = util::Easing::HandleMode_Auto;
+    if (mDraft == old) return;
+    pushState(old);
+    refresh();
+    renderBezier();
+    emit changed(mDraft);
+}
+
+void EasingPickWidget::setHandleMode(bool aIncoming, util::Easing::HandleMode aMode) {
+    if (aMode < 0 || util::Easing::HandleMode_TERM <= aMode)
+        return;
+    const util::Easing::Param old = mDraft;
+    util::Easing::HandleMode& mode = aIncoming ? mDraft.handleIn : mDraft.handleOut;
+    if (mode == aMode) return;
+    mode = aMode;
+    // A mode only shapes a Custom curve; the combos live in that panel, so the
+    // type is already Custom there. Programmatic callers get the same rule: a
+    // mode written onto an analytic type is inert by design (the type's formula
+    // is its shape), not silently switched underneath them.
     pushState(old);
     refresh();
     renderBezier();
@@ -1094,8 +1191,12 @@ void EasingPickWidget::refreshSeg() {
 void EasingPickWidget::refreshTiles() {
     for (int i = 0; i < mTileBtns.size(); ++i) {
         QToolButton* tile = mTileBtns[i];
-        const util::Easing::Type type = kTileOrder[i];
-        const bool on = mDraft.type == type;
+        const TileDef& def = kTileOrder[i];
+        const bool on = def.autoPreset
+            ? (mDraft.type == util::Easing::Type_Custom
+               && mDraft.handleIn == util::Easing::HandleMode_Auto
+               && mDraft.handleOut == util::Easing::HandleMode_Auto)
+            : (mDraft.type == def.type);
         tile->setChecked(on);
         if (CurveGlyph* g = tile->findChild<CurveGlyph*>()) {
             // The selected tile's curve is accentBright (purple) on the
@@ -1103,10 +1204,16 @@ void EasingPickWidget::refreshTiles() {
             // rather than relying on the QSS `color` reaching the glyph's
             // palette (it does not repaint on check-state change alone).
             g->setGlyphColor(on ? C().accentBright : C().textMutedDim);
-            g->setParam(mkParam(type, mDraft.range, mDraft.weight));
-            // Auto keeps its canonical catalog pair here too, so this refresh
-            // cannot turn the Auto tile back into a straight line.
-            g->setAutoContext(glyphAutoContext(type, mAuto));
+            util::Easing::Param glyph = mkParam(def.type, mDraft.range, mDraft.weight);
+            if (def.autoPreset) {
+                glyph.type = util::Easing::Type_Custom;
+                glyph.handleIn = util::Easing::HandleMode_Auto;
+                glyph.handleOut = util::Easing::HandleMode_Auto;
+            }
+            g->setParam(glyph);
+            // The preset keeps its canonical catalog pair here too, so this
+            // refresh cannot turn its tile back into a straight line.
+            g->setAutoContext(glyphAutoContext(def.autoPreset, mAuto));
         }
     }
 }
@@ -1122,6 +1229,16 @@ void EasingPickWidget::renderBezier() {
     // points first so a programmatic bezier change (spin/paste/setValue) is
     // not reverted by the paint event's write-back.
     if (mBezierEditor) { mBezierEditor->syncFromBezier(); mBezierEditor->update(); }
+    // The two mode combos show the draft's own sides; a programmatic change
+    // (the Auto preset, a paste, setValue) must move them without re-emitting.
+    if (mHandleIn) {
+        const QSignalBlocker block(mHandleIn);
+        mHandleIn->setCurrentIndex(int(mDraft.handleIn));
+    }
+    if (mHandleOut) {
+        const QSignalBlocker block(mHandleOut);
+        mHandleOut->setCurrentIndex(int(mDraft.handleOut));
+    }
 }
 
 void EasingPickWidget::resizeEvent(QResizeEvent* aEvent) {

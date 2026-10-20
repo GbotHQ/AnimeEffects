@@ -128,6 +128,10 @@ public:
     // easings call this; the timeline's chip and picker keep their own route (the same
     // edit, reached from the widget that hosts the picker).
     bool applyEasingToSelection(util::Easing::Type aEasing);
+    // THE AUTO PRESET: Custom with BOTH handle sides Auto on every selected key
+    // (automatic handles are modes now, not a type). Same selection, same
+    // one-undo-step route as applyEasingToSelection.
+    bool applyAutoHandlesToSelection();
     void updateRender();
     void resetCamera();
     void setViewportBackground(const QColor& aColor);

@@ -91,11 +91,13 @@ void Serializer::write(const util::Easing::Param& aValue) {
     mOut.write((float32)aValue.cubicBezier.y1);
     mOut.write((float32)aValue.cubicBezier.x2);
     mOut.write((float32)aValue.cubicBezier.y2);
-    // The key's handle-link type (see util::Easing::Param::aligned). Appended
-    // LAST so every field an older reader consumes keeps its offset; a file
-    // written before this field existed is read FREE by Deserializer, which is
-    // what such a key actually did (a handle drag never moved its partner).
-    mOut.write((uint32)aValue.aligned); // a uint32 like every other bool here (write(bool) above)
+    // The key's two handle modes (see util::Easing::Param::handleIn/handleOut).
+    // Appended LAST so every field an older reader consumes keeps its offset.
+    // A file written before 0.15 carries ONE uint32 (the old `aligned` flag) at
+    // this offset; Deserializer reads that as the two modes. A 0.14 file with
+    // the retired Type_Auto id migrates to Custom with both sides Auto.
+    mOut.write((uint32)aValue.handleOut);
+    mOut.write((uint32)aValue.handleIn);
 }
 
 void Serializer::writeEasings(const util::Easing::Param* aValue, int aCount) {

@@ -234,12 +234,19 @@ int main(int argc, char** argv) {
         XC_ASSERT(!(a.cubicBezier == diff.cubicBezier));
     }
 
-    // 6) Type_Auto: the handles are DERIVED from the segment's neighbours, so
-    //    these cases pin the derivation itself. Each expected pair is worked out
-    //    by hand from the algorithm (interior tangent = central difference of
-    //    the neighbours; an end with no neighbour follows the handle it faces,
-    //    1.5 - 0.5*m; each handle is clamped into the value range its three keys
-    //    span), not copied from the implementation's output.
+    // 6) PER-SIDE HANDLES: a Custom curve's two control points are derived by
+    //    their OWN HandleMode. These cases pin the derivation itself. Each
+    //    expected value is worked out by hand from the algorithm:
+    //      * Auto's OUTGOING side reads the PREVIOUS key: slope = py/px in the
+    //        segment's normalized space (the secant arriving at the key);
+    //      * Auto's INCOMING side reads the NEXT key: slope = (ny-1)/(nx-1)
+    //        (the secant leaving the key);
+    //      * a side with no such neighbour falls back to the segment's own chord
+    //        (the identity third);
+    //      * AutoClamped clamps the derived y into the value range the key and
+    //        its neighbours span.
+    //    Nothing here reads the OTHER side: that independence is what lets a
+    //    dragged side become Free while its partner keeps deriving.
     {
         const float span = 10.0f; // the segment 0 -> 10, values 0 -> 1
 
@@ -254,47 +261,64 @@ int main(int argc, char** argv) {
             ctx.next.valid = aHasNext;
             ctx.next.frame = aNextFrame;
             ctx.next.value = aNextValue;
+            ctx.inMode = util::Easing::HandleMode_Auto;
             return ctx;
         };
 
         struct HandleCase {
             util::Easing::AutoContext ctx;
+            util::Easing::HandleMode outMode;
             float y1, y2;
             const char* name;
         };
         const HandleCase cases[] = {
             // No neighbours at all: the segment says nothing about its own shape,
-            // so the controls sit on the diagonal and the curve IS Linear.
-            {make(false, 0, 0, false, 0, 0), 1.0f / 3.0f, 2.0f / 3.0f, "isolated segment"},
-            // Both neighbours: interior rules on both ends.
-            //   m0 = (1 - (-0.5)) / (1 - (-1))  = 0.75
-            //   m1 = 2 / 2.5                    = 0.8
-            {make(true, -10.0f, -0.5f, true, 25.0f, 2.0f), 0.25f, 1.0f - 0.8f / 3.0f, "both neighbours"},
-            // Only a next key: its tangent (3/2 = 1.5) drives the start's, 1.5 - 0.5*1.5 = 0.75.
-            {make(false, 0, 0, true, 20.0f, 3.0f), 0.25f, 1.0f - 1.5f / 3.0f, "first key of the channel"},
-            // Only a previous key: m0 = 2/1.5, then the end follows it: 1.5 - 0.5*m0.
-            {make(true, -5.0f, -1.0f, false, 0, 0), (2.0f / 1.5f) / 3.0f, 1.0f - (1.5f - 0.5f * (2.0f / 1.5f)) / 3.0f,
-             "last key of the channel"},
-            // A near, high previous key: the raw start tangent is (1-2)/1.1 and
-            // NEGATIVE (the curve would dip below the start key). The clamp holds
-            // it at the range's floor, 0, so the handle is flat instead.
-            {make(true, -1.0f, 2.0f, false, 0, 0), 0.0f, 0.5f, "clamped start"},
+            // so both sides fall back to the diagonal's thirds and the curve IS
+            // Linear.
+            {make(false, 0, 0, false, 0, 0), util::Easing::HandleMode_Auto,
+             1.0f / 3.0f, 2.0f / 3.0f, "isolated segment"},
+            // Both neighbours, both sides Auto:
+            //   outgoing: slope = py/px = (-0.5)/(-1) = 0.5 -> y1 = 1/6
+            //   incoming: slope = (2-1)/(2.5-1) = 2/3 -> y2 = 1 - (2/3)/3
+            {make(true, -10.0f, -0.5f, true, 25.0f, 2.0f), util::Easing::HandleMode_Auto,
+             0.5f / 3.0f, 1.0f - (2.0f / 3.0f) / 3.0f, "both neighbours"},
+            // Only a next key: the outgoing side has no previous neighbour, so it
+            // is the identity third; the incoming side reads next (slope 2).
+            {make(false, 0, 0, true, 20.0f, 3.0f), util::Easing::HandleMode_Auto,
+             1.0f / 3.0f, 1.0f - 2.0f / 3.0f, "first key of the channel"},
+            // Only a previous key: outgoing reads prev (slope 2); incoming has no
+            // next neighbour and stays the identity third.
+            {make(true, -5.0f, -1.0f, false, 0, 0), util::Easing::HandleMode_Auto,
+             2.0f / 3.0f, 2.0f / 3.0f, "last key of the channel"},
+            // A near, high previous key: the raw outgoing slope is -20, so the
+            // handle would sit far ABOVE the segment (y = -6.67). AutoClamped
+            // holds it at the range floor, 0, while Auto leaves it there.
+            {make(true, -1.0f, 2.0f, false, 0, 0), util::Easing::HandleMode_AutoClamped,
+             0.0f, 2.0f / 3.0f, "clamped start"},
         };
 
         for (const HandleCase& c : cases) {
-            float y1 = 0.0f, y2 = 0.0f;
-            util::Easing::autoHandles(c.ctx, span, y1, y2);
-            XC_MSG_ASSERT(std::fabs(y1 - c.y1) <= 1e-6, "auto handles %s: y1=%.6f want %.6f",
-                          c.name, double(y1), double(c.y1));
-            XC_MSG_ASSERT(std::fabs(y2 - c.y2) <= 1e-6, "auto handles %s: y2=%.6f want %.6f",
-                          c.name, double(y2), double(c.y2));
-
-            // The evaluated curve must be the bezier those handles draw, and it
-            // must pass through both keys (a handle pair that missed them would
-            // make the segment jump).
             util::Easing::Param p;
-            p.type = util::Easing::Type_Auto;
-            const util::UnitBezier expect(1.0f / 3.0f, c.y1, 2.0f / 3.0f, c.y2);
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = c.outMode;
+            p.handleIn = util::Easing::HandleMode_Auto;
+            p.cubicBezier = util::Easing::CubicBezier{0.4f, 0.1f, 0.8f, 0.9f};
+
+            const QPointF c1 = util::Easing::controlPoint(p, c.ctx.inMode, c.ctx, span, 0);
+            const QPointF c2 = util::Easing::controlPoint(p, c.ctx.inMode, c.ctx, span, 1);
+            XC_MSG_ASSERT(std::fabs(c1.x() - 1.0 / 3.0) <= 1e-9, "%s: outgoing x %.6f", c.name, c1.x());
+            XC_MSG_ASSERT(std::fabs(c2.x() - 2.0 / 3.0) <= 1e-9, "%s: incoming x %.6f", c.name, c2.x());
+            XC_MSG_ASSERT(std::fabs(c1.y() - c.y1) <= 1e-6, "handles %s: y1=%.6f want %.6f",
+                          c.name, c1.y(), double(c.y1));
+            XC_MSG_ASSERT(std::fabs(c2.y() - c.y2) <= 1e-6, "handles %s: y2=%.6f want %.6f",
+                          c.name, c2.y(), double(c.y2));
+
+            // The evaluated curve must be the bezier those control points draw,
+            // and it must pass through both keys (a pair that missed them would
+            // make the segment jump).
+            const util::UnitBezier expect(
+                static_cast<float>(c1.x()), static_cast<float>(c1.y()),
+                static_cast<float>(c2.x()), static_cast<float>(c2.y()));
             for (int k = 0; k <= 20; ++k) {
                 const float x = float(k) / 20.0f;
                 const double got = double(util::Easing::calculate(p, c.ctx, x * span, 0.0f, 1.0f, span));
@@ -306,29 +330,97 @@ int main(int argc, char** argv) {
             XC_ASSERT(std::fabs(util::Easing::calculate(p, c.ctx, span, 0.0f, 1.0f, span) - 1.0f) <= 1e-6);
         }
 
-        // A local extremum is FLAT, which is the whole point of auto handles: a
-        // start key whose previous key sits at the same value as its next one has
-        // a zero central difference, so the curve leaves it horizontally.
+        // THE CLAMP IS THE ONLY DIFFERENCE between Auto and AutoClamped: the same
+        // near, high previous key leaves Auto's outgoing control far above the
+        // segment (-6.667) while AutoClamped holds it at 0. A curve that
+        // overshoots is exactly what a user picks Auto over AutoClamped for.
         {
             util::Easing::Param p;
-            p.type = util::Easing::Type_Auto;
-            const auto flat = make(true, -10.0f, 1.0f, true, 10.0f, 2.0f);
-            float y1 = 9.0f, y2 = 9.0f;
-            util::Easing::autoHandles(flat, span, y1, y2);
-            XC_ASSERT(std::fabs(y1) <= 1e-6);
-            // and the drawn curve really is flat there (not just the handle)
-            const double a = util::Easing::calculate(p, flat, 0.2f, 0.0f, 1.0f, span);
-            const double b = util::Easing::calculate(p, flat, 0.4f, 0.0f, 1.0f, span);
-            XC_ASSERT(a < 0.03 && b < 0.06);
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = util::Easing::HandleMode_Auto;
+            p.handleIn = util::Easing::HandleMode_Auto;
+            const auto ctx = make(true, -1.0f, 2.0f, false, 0, 0);
+            const QPointF c1 = util::Easing::controlPoint(p, ctx.inMode, ctx, span, 0);
+            XC_ASSERT(std::fabs(c1.y() - (-20.0 / 3.0)) <= 1e-5);
+            XC_ASSERT(c1.y() < 0.0f);
         }
 
-        // Weight and range are inert, exactly as they are for Custom: an Auto
-        // curve is the derived curve, and a stale weight (from another type, or
-        // read out of a saved file) can never skew it.
+        // THE USER'S QUESTION, at the math level: an AUTO side keeps deriving
+        // while the OTHER side is what changed. Side 0 (outgoing) reads `prev`
+        // only, side 1 (incoming) reads `next` only, so changing `next` moves
+        // side 1 and leaves side 0 byte-identical.
         {
-            util::Easing::AutoContext ctx = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = util::Easing::HandleMode_Auto;
+            p.handleIn = util::Easing::HandleMode_Auto;
+            const auto ctxA = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
+            auto ctxB = ctxA;
+            ctxB.next.value = 5.0f; // the neighbour AFTER the to key changed
+
+            const QPointF outA = util::Easing::controlPoint(p, ctxA.inMode, ctxA, span, 0);
+            const QPointF inA = util::Easing::controlPoint(p, ctxA.inMode, ctxA, span, 1);
+            const QPointF outB = util::Easing::controlPoint(p, ctxB.inMode, ctxB, span, 0);
+            const QPointF inB = util::Easing::controlPoint(p, ctxB.inMode, ctxB, span, 1);
+            XC_ASSERT(outA == outB); // the untouched Auto side did not move
+            XC_ASSERT(inA != inB);   // ... and the other one is STILL DERIVING
+        }
+
+        // A side's own mode decides its control point, and the arriving side's
+        // mode comes from the TO key (aInMode), NEVER from aFrom.handleIn. A
+        // stored side reads its stored control point even when the other side is
+        // derived.
+        {
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = util::Easing::HandleMode_Free;
+            p.handleIn = util::Easing::HandleMode_Auto; // the FROM key's incoming side: irrelevant here
+            p.cubicBezier = util::Easing::CubicBezier{0.4f, 0.1f, 0.8f, 0.9f};
+            const auto ctx = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
+
+            const QPointF c1 = util::Easing::controlPoint(p, util::Easing::HandleMode_Free, ctx, span, 0);
+            const QPointF c2 = util::Easing::controlPoint(p, util::Easing::HandleMode_Free, ctx, span, 1);
+            XC_ASSERT(c1 == QPointF(0.4f, 0.1f)); // stored: Free is the truth
+            XC_ASSERT(c2 == QPointF(0.8f, 0.9f)); // stored via inMode, not p.handleIn
+
+            const QPointF d2 = util::Easing::controlPoint(p, util::Easing::HandleMode_Auto, ctx, span, 1);
+            XC_ASSERT(d2 != c2); // the same stored side derives when the TO key says Auto
+        }
+
+        // Vector is the segment's own chord: both sides sit on the diagonal, so
+        // the segment is a straight line (Blender's Vector), whatever the
+        // neighbours are.
+        {
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = util::Easing::HandleMode_Vector;
+            p.handleIn = util::Easing::HandleMode_Vector;
+            auto ctx = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
+            // The arriving side's mode is the TO key's, which calculate() reads
+            // from aCtx.inMode - NOT from p.handleIn (that is the FROM key's own
+            // incoming side, i.e. the PREVIOUS segment). With inMode Auto the
+            // incoming handle would derive from `next` and the segment would not
+            // be the straight chord this case asserts.
+            ctx.inMode = util::Easing::HandleMode_Vector;
+            const QPointF c1 = util::Easing::controlPoint(p, ctx.inMode, ctx, span, 0);
+            const QPointF c2 = util::Easing::controlPoint(p, ctx.inMode, ctx, span, 1);
+            XC_ASSERT(c1 == QPointF(1.0 / 3.0, 1.0 / 3.0));
+            XC_ASSERT(c2 == QPointF(2.0 / 3.0, 2.0 / 3.0));
+            for (int k = 0; k <= 10; ++k) {
+                const float t = float(k) / 10.0f * span;
+                XC_ASSERT(std::fabs(util::Easing::calculate(p, ctx, t, 0.0f, 1.0f, span) - t / span) <= 1e-5);
+            }
+        }
+
+        // Weight and range are inert for a Custom curve, exactly as they were
+        // before: the derived pair is the shape, and a stale weight (from
+        // another type, or read out of a saved file) can never skew it.
+        {
+            const auto ctx = make(true, -10.0f, -0.5f, true, 25.0f, 2.0f);
             util::Easing::Param base;
-            base.type = util::Easing::Type_Auto;
+            base.type = util::Easing::Type_Custom;
+            base.handleOut = util::Easing::HandleMode_Auto;
+            base.handleIn = util::Easing::HandleMode_Auto;
             for (float w : {0.0f, 0.25f, 1.0f}) {
                 util::Easing::Param p = base;
                 p.weight = w;
@@ -342,12 +434,18 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            // A context-free Auto param (what a preview with no document has) is
-            // the identity, never a hold.
-            base.weight = 0.5f;
+            // A Custom curve with both sides STORED is exactly its stored pair -
+            // no context needed, which is the common path.
+            util::Easing::Param stored = base;
+            stored.handleOut = util::Easing::HandleMode_Free;
+            stored.handleIn = util::Easing::HandleMode_Free;
+            stored.cubicBezier = util::Easing::CubicBezier{0.4f, 0.2f, 0.6f, 0.8f};
+            const util::UnitBezier bez(0.4f, 0.2f, 0.6f, 0.8f);
             for (int k = 0; k <= 10; ++k) {
-                const double t = double(k) / 10.0;
-                XC_ASSERT(std::fabs(double(util::Easing::calculate(base, float(t), 0.0f, 1.0f, 1.0f)) - t) <= 1e-5);
+                const float t = float(k) / 10.0f * span;
+                const double got = util::Easing::calculate(stored, t, 0.0f, 1.0f, span);
+                const double ref = bez.solve(double(t / span), util::UnitBezier::kBezierEpsilon);
+                XC_ASSERT(std::fabs(got - ref) <= 1e-5);
             }
         }
     }

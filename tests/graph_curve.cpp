@@ -1071,16 +1071,16 @@ int sectionScaler() {
     // the top. So the curve rectangle is:
     //   x      = kMargin + the measured axis-label column
     //   y      = kMargin + kRulerBandHeight     <- the band's bottom + 1
-    //   width  = 600 - 2*kMargin - axisLabelWidth() - kScrollBarReserve
-    //   height = 400 - 2*kMargin - kRulerBandHeight - kScrollBarReserve
+    //   width  = 600 - kMargin - axisLabelWidth() - kScrollBarReserve
+    //   height = 400 - kMargin - kRulerBandHeight - kScrollBarReserve
     // and no curve/key/handle/chip can be clipped into the ruler's rows. The left
     // column is the scaler's OWN format-derived reserve, not a constant (margin 4,
     // then axisLabelWidth()'s column, then the plot, then the margin again); it is
     // written as the rule rather than the number the font happens to produce, so
     // this pins the inset arithmetic and not a magic 46. The RIGHT and BOTTOM insets
-    // are one reserve more than the left and top: those two edges carry the panel's
-    // SCROLL BARS (2px of gap + the application's 12px lane), which is why the plot's
-    // top-left corner is the only one that does not move for them.
+    // are the SCROLL BARS' LANES (the application's 12px lane, exactly - no gap, no
+    // outer margin), which is why the plot's top-left corner is the only one that does
+    // not move for them.
     CHECK(scaler.axisLabelWidth() >= Scaler::kAxisLabelWidth); // never below the floor
     CHECK(scaler.axisLabelWidth() <= Scaler::kMaxAxisLabelWidth); // never past the ceiling
     // The 22px band is the timeline's own kHeaderHeight (GraphPanelModel.cpp's
@@ -1090,33 +1090,35 @@ int sectionScaler() {
         scaler.plotRect()
         == QRect(
             Scaler::kMargin + scaler.axisLabelWidth(), Scaler::kMargin + Scaler::kRulerBandHeight,
-            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth() - Scaler::kScrollBarReserve,
-            400 - 2 * Scaler::kMargin - Scaler::kRulerBandHeight - Scaler::kScrollBarReserve
+            600 - Scaler::kMargin - scaler.axisLabelWidth() - Scaler::kScrollBarReserve,
+            400 - Scaler::kMargin - Scaler::kRulerBandHeight - Scaler::kScrollBarReserve
         )
     );
-    // ...and the two bars' own strips fit in what the plot gave up: the reserve is the
-    // gap plus the bar, and the tracks sit between the plot's edge and the panel's.
-    CHECK(Scaler::kScrollBarReserve == Scaler::kScrollBarGap + Scaler::kScrollBarThickness);
+    // ...and the two bars' lanes are the application's 12px scroll bar on the
+    // TIMELINE'S edges - the reserve is exactly the lane (no gap, no outer margin),
+    // and the horizontal lane is the panel's last 12 rows across its whole width.
+    CHECK(Scaler::kScrollBarReserve == Scaler::kScrollBarThickness);
     // The dimensions are the application's own scroll bar (AppStyle.cpp's
     // CC_ScrollBar: a 12px invisible lane and a 4px, radius-2 pill), not a look of
     // this panel's invention.
     CHECK(Scaler::kScrollBarThickness == 12);
     CHECK(Scaler::kScrollBarPillThickness == 4);
     CHECK(Scaler::kScrollBarPillRadius == 2);
+    CHECK(Scaler::kScrollBarStepPixels == 24); // the timeline's own kVerticalStep
     {
         const Scaler::ScrollBars bars = scaler.scrollBars(1.0, 60.0, -10.0f, 10.0f);
         CHECK(!bars.isEmpty());
-        CHECK(bars.hTrack.top() == scaler.plotRect().bottom() + 1 + Scaler::kScrollBarGap);
+        CHECK(bars.hTrack.top() == scaler.plotRect().bottom() + 1);
         CHECK(bars.hTrack.height() == Scaler::kScrollBarThickness);
-        CHECK(bars.hTrack.left() == scaler.plotRect().left());
-        CHECK(bars.hTrack.width() == scaler.plotRect().width());
-        CHECK(bars.hTrack.bottom() < scaler.rect().bottom()); // the panel's own margin survives
-        CHECK(bars.vTrack.left() == scaler.plotRect().right() + 1 + Scaler::kScrollBarGap);
+        CHECK(bars.hTrack.left() == scaler.rect().left());
+        CHECK(bars.hTrack.width() == scaler.rect().width());
+        CHECK(bars.hTrack.bottom() == scaler.rect().bottom()); // FLUSH with the panel's bottom
+        CHECK(bars.hTrack.right() == scaler.rect().right());   // ...and its right
+        CHECK(bars.vTrack.left() == scaler.plotRect().right() + 1);
         CHECK(bars.vTrack.width() == Scaler::kScrollBarThickness);
         CHECK(bars.vTrack.top() == scaler.plotRect().top());
-        CHECK(bars.vTrack.height() == scaler.plotRect().height());
-        CHECK(bars.vTrack.right() < scaler.rect().right());
-        CHECK(scaler.rect().contains(bars.hTrack) && scaler.rect().contains(bars.vTrack));
+        CHECK(bars.vTrack.bottom() + 1 == bars.hTrack.top()); // the corner is the horizontal bar's
+        CHECK(bars.vTrack.right() == scaler.rect().right());  // FLUSH with the panel's right
         CHECK(!bars.hTrack.intersects(bars.vTrack));
         // A thumb is published only when there is travel (Scaler::scrollBars removes a
         // full-track thumb), so the containment is asserted for the thumbs that EXIST;
@@ -1286,20 +1288,20 @@ int sectionScaler() {
     return 0;
 }
 // ---------------------------------------------------------------------------
-// 11. Type_Auto: the derived curve is the played curve.
+// 11. PER-SIDE HANDLES: the derived curve is the played curve.
 //
-// An Auto easing keeps no controls of its own - core::TimeKeyBlender derives
-// them from the keys AROUND the segment (core/AutoEasing.h) - so two things can
-// go wrong and both are pinned here: the derivation reads the VALUES OF THE
-// COMPONENT BEING EVALUATED (an Auto Move x curve reads x, its y curve reads y),
-// and the graph draws what playback plays. The oracle comparison is the one
-// section 2 runs, over channels whose keys are all Auto.
+// A Custom curve's two control points are derived by their OWN HandleMode (see
+// util::Easing::HandleMode). Two things can go wrong and both are pinned here:
+// the derivation reads the VALUES OF THE COMPONENT BEING EVALUATED (a Move x
+// curve reads x, its y curve reads y), and the graph draws what playback plays.
+// The oracle comparison is the one section 2 runs.
 //
-// Every expected number below is worked out by hand from the derivation (the
-// segment's neighbours, the central difference at an inner key, 1.5 - 0.5*m at
-// an end with no neighbour, and the clamp into the three keys' value range).
-// With the segment's own value change as the unit and both control x at 1/3 and
-// 2/3, the bezier's x IS the progress, so a rate can be read off the curve.
+// The four-key channel below is the user's question made concrete: P - A - B -
+// C. A's OUTGOING side is Auto and reads P (the previous key); B's INCOMING side
+// is Auto and reads C (the next key). Changing P moves A's outgoing handle and
+// leaves B's incoming one untouched; changing C does the reverse. That is what
+// "an untouched Auto side keeps deriving while the other is dragged" means at
+// the curve level; the gesture itself is tests/graph_drag.cpp's section.
 // ---------------------------------------------------------------------------
 int sectionAutoEasing() {
     using core::TimeKeyType;
@@ -1307,118 +1309,167 @@ int sectionAutoEasing() {
     using core::TimeKeyType_Scale;
     using core::TimeKeyType_Opa;
 
-
-    // A three-key Rotate, all Auto: the middle segment has neighbours on both
-    // sides, and the arrival at 100 is a local maximum (0 below, 40 above), so
-    // the automatic handle must flatten there.
+    // P -50@-10, A 0@0, B 100@10, C 40@20. A Custom+Auto pair on A and B; every
+    // other key's sides stay stored.
     core::TestNode node;
     cmnd::Stack stack;
     {
+        auto* kp = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, -10);
         auto* k0 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 0);
         auto* k1 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 10);
         auto* k2 = pushKey<core::RotateKey>(node, stack, TimeKeyType_Rotate, 20);
+        kp->data().setRotate(-50.0f);
         k0->data().setRotate(0.0f);
         k1->data().setRotate(100.0f);
         k2->data().setRotate(40.0f);
-        k0->data().easing(0).type = util::Easing::Type_Auto;
-        k1->data().easing(0).type = util::Easing::Type_Auto;
+        k0->data().easing(0).type = util::Easing::Type_Custom;
+        k0->data().easing(0).handleOut = util::Easing::HandleMode_Auto;
+        k1->data().easing(0).type = util::Easing::Type_Custom;
+        k1->data().easing(0).handleOut = util::Easing::HandleMode_AutoClamped;
+        k1->data().easing(0).handleIn = util::Easing::HandleMode_Auto;
     }
 
     const ctrl::graph::Curve rotate(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
-    CHECK(rotate.segmentCount() == 2);
+    CHECK(rotate.segmentCount() == 3);
 
-    // Precondition the numbers below rely on: Auto is not treated as a Custom
-    // curve with draggable handles.
-    CHECK(!rotate.isCustom(rotate.segment(0)));
+    // A curve with a derived side is NOT "fully authored": the panel must read
+    // its pair through effectiveHandles, not the stored fields.
+    CHECK(!rotate.isCustom(rotate.segment(1))); // A -> B: A's outgoing is Auto
+    {
+        const QVector<QPointF> ghosts = rotate.ghostHandles(*rotate.segment(1).from);
+        CHECK(ghosts.size() == 2); // a stored side rides along in the same pair
+    }
 
     // The graph equals playback over the whole span, key frames included.
-    for (int frame = 0; frame <= 20; ++frame) {
+    for (int frame = -10; frame <= 20; ++frame) {
         const BlenderOracle oracle(node, core::Frame(frame));
         CHECK(matchesPlayback(oracle, rotate, core::Frame(frame)));
     }
 
-    // Segment 0 (0 -> 100, next key 40 at frame 20): m1 = 0.4/2 = 0.2, but the
-    // outgoing handle at the arrival key would leave the range the three keys
-    // span ([0,1] here), so the clamp holds m1 at 0 - a flat arrival at the
-    // maximum 100. The start then follows that handle: m0 = 1.5 - 0.5*0 = 1.5.
-    // Handles (1/3, 0.5) and (2/3, 1): the rate at half way is
-    // 1.5t(1-t)^2 + 3t^2(1-t) + t^3 at t = 0.5 = 0.6875 -> 68.75 degrees.
-    CHECK(nearly(rotate.sample(core::Frame(5)), 68.75f, 0.5f));
-    // (Linear would hold exactly 50 there, so the assertion above cannot pass
-    //  with an Auto easing that fell back to Linear.)
-    CHECK(!nearly(rotate.sample(core::Frame(5)), 50.0f, 1.0f));
+    const ctrl::graph::Curve::Segment ab = rotate.segment(1); // A -> B
+    const ctrl::graph::Curve::Segment bc = rotate.segment(2); // B -> C
 
-    // Segment 1 (100 -> 40, previous key 0 at frame 0): the previous value in
-    // the segment's own units is (0-100)/(40-100) = 5/3, so the central
-    // difference at the start is (1 - 5/3)/2 = -1/3; flat, then clamped to the
-    // range floor 0, because 100 is the maximum of the three keys. The end then
-    // follows: m1 = 1.5 - 0 = 1.5 -> handles (1/3, 0) and (2/3, 0.5), whose rate
-    // at half way is 1.5t^2(1-t) + t^3 = 0.3125 -> 100 - 60*0.3125 = 81.25.
-    CHECK(nearly(rotate.sample(core::Frame(15)), 81.25f, 0.5f));
-
-    // ...and the SAME pair the drawing rate uses is published as the segment's
-    // GHOST handles (Curve::ghostHandles): derived, not stored, at the third
-    // points - so the panel can draw them hollow where a Custom pair is filled,
-    // and a drag can turn one into a Custom pair without the curve moving.
+    // Hand-worked control points of A -> B (values 0 -> 100, span 10):
+    //   outgoing at A reads P: px = -1, py = (-50-0)/100 = -0.5,
+    //     slope = py/px = 0.5 -> y1 = 0.5/3 = 1/6.
+    //   incoming at B reads C: next nx = 2, ny = (40-0)/100 = 0.4,
+    //     slope = (0.4-1)/(2-1) = -0.6 -> y2 = 1 - (-0.6)/3 = 1.2.
+    // (Auto is unclamped, so the 1.2 overshoot survives.)
     {
-        const QVector<QPointF> ghost0 = rotate.ghostHandles(*rotate.segment(0).from);
-        CHECK(ghost0.size() == 2);
-        CHECK(nearly(static_cast<float>(ghost0[0].x()), 1.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(ghost0[0].y()), 0.5f, 1e-4f));
-        CHECK(nearly(static_cast<float>(ghost0[1].x()), 2.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(ghost0[1].y()), 1.0f, 1e-4f));
+        QPointF pair[2];
+        CHECK(rotate.effectiveHandles(ab, pair));
+        CHECK(nearly(static_cast<float>(pair[0].x()), 1.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(pair[0].y()), 1.0f / 6.0f, 1e-5f));
+        CHECK(nearly(static_cast<float>(pair[1].x()), 2.0f / 3.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(pair[1].y()), 1.2f, 1e-5f));
+        // A context-free evaluation of a Custom param with no derived side reads
+        // the stored pair; the derived form reads these controls.
+        const float atHalf = rotate.sample(core::Frame(5));
+        CHECK(!nearly(atHalf, 50.0f, 0.01f)); // the four-key channel is shaped
+    }
 
-        const QVector<QPointF> ghost1 = rotate.ghostHandles(*rotate.segment(1).from);
-        CHECK(ghost1.size() == 2);
-        CHECK(nearly(static_cast<float>(ghost1[0].x()), 1.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(ghost1[0].y()), 0.0f, 1e-4f));
-        CHECK(nearly(static_cast<float>(ghost1[1].x()), 2.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(ghost1[1].y()), 0.5f, 1e-4f));
+    // B -> C: B's outgoing is AutoClamped and reads A: change = 40-100 = -60,
+    // py = (0-100)/(-60) = 5/3, px = -1, slope = -5/3 -> y1 = -5/9, clamped into
+    // [0, 5/3] -> 0 (B is the local maximum, so the curve leaves it flat).
+    // C's incoming side is stored (Aligned), so x2/y2 are the stored pair.
+    {
+        QPointF pair[2];
+        CHECK(rotate.effectiveHandles(bc, pair));
+        CHECK(nearly(static_cast<float>(pair[0].y()), 0.0f, 1e-6f));
+        CHECK(nearly(static_cast<float>(pair[1].x()), static_cast<float>(bc.easing.cubicBezier.x2), 1e-6f));
+        CHECK(nearly(static_cast<float>(pair[1].y()), static_cast<float>(bc.easing.cubicBezier.y2), 1e-6f));
+    }
 
-        // ...and the pair is the curve: the cubic with those controls passes the
-        // values the section above read out of the document, so a ghost dot drawn
-        // at the third really is a control point of the drawn curve.
-        CHECK(nearly(rotate.sample(core::Frame(5)), 100.0f * 0.6875f, 0.5f));
-
-        // The LAST key of a channel has no segment to derive over - and a key
-        // whose easing is not Auto derives nothing either - so the answer is
-        // EMPTY, which is how a caller tells "these handles are ghosts" from
-        // "these handles are stored".
-        CHECK(rotate.ghostHandles(*rotate.segment(1).to).isEmpty());
+    // THE ACCEPTANCE PROPERTY. Change the PREVIOUS key's value (P): A's outgoing
+    // derived handle moves, B's incoming derived handle does not. Then change the
+    // NEXT key's value (C): the reverse. The two sides are independent because
+    // each reads its own outside neighbour.
+    {
+        const auto controlsOf = [&]() -> QPair<QPointF, QPointF> {
+            QPointF pair[2];
+            const ctrl::graph::Curve fresh(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+            fresh.effectiveHandles(fresh.segment(1), pair); // A -> B
+            return QPair<QPointF, QPointF>(pair[0], pair[1]);
+        };
         {
-            core::TestNode plain;
-            cmnd::Stack plainStack;
-            auto* p0 = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 0);
-            auto* p1 = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 10);
-            p0->data().setRotate(0.0f);
-            p1->data().setRotate(90.0f);
-            const ctrl::graph::Curve linear(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
-            CHECK(linear.segmentCount() == 1);
-            CHECK(linear.ghostHandles(*linear.segment(0).from).isEmpty()); // Linear stores nothing to ghost
+            QPointF probe[2];
+            CHECK(rotate.effectiveHandles(ab, probe));
+        }
+        const auto before = controlsOf();
 
-            p0->data().easing(0).type = util::Easing::Type_Custom;
-            const ctrl::graph::Curve custom(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
-            CHECK(custom.ghostHandles(*custom.segment(0).from).isEmpty()); // Custom's pair is STORED
+        auto* kp = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, -10));
+        CHECK(kp);
+        kp->setRotate(-80.0f); // P changed: py = -0.8 -> slope 0.8 -> y1 = 0.2667
+        const auto afterPrev = controlsOf();
+        CHECK(afterPrev.first != before.first); // A's outgoing is STILL DERIVING
+        CHECK(afterPrev.second == before.second); // ... and B's incoming did not move
+
+        auto* k2 = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, 20));
+        CHECK(k2);
+        k2->setRotate(10.0f); // C changed: ny = 0.1 -> slope -0.9 -> y2 = 1.3
+        const auto afterNext = controlsOf();
+        CHECK(afterNext.second != afterPrev.second); // B's incoming is STILL DERIVING
+        CHECK(afterNext.first == afterPrev.first); // ... and A's outgoing did not move
+    }
+
+    // "DRAGGED": free A's outgoing side (what a drag writes) and CHANGE P again.
+    // The dragged side now reads its stored value and stays put; B's incoming
+    // side is still Auto and still follows C. This is the defect the retired
+    // whole-key Auto type had: it converted BOTH tangents to manual.
+    {
+        auto* k0 = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, 0));
+        CHECK(k0);
+        k0->data().easing(0).handleOut = util::Easing::HandleMode_Free;
+        k0->data().easing(0).cubicBezier.x1 = 0.4f;
+        k0->data().easing(0).cubicBezier.y1 = 0.25f;
+
+        const ctrl::graph::Curve freed(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+        QPointF pair[2];
+        CHECK(freed.effectiveHandles(freed.segment(1), pair));
+        CHECK(pair[0] == QPointF(0.4f, 0.25f)); // the stored (dragged) value is the truth
+
+        const QPointF incomingBefore = pair[1];
+        auto* k2 = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, 20));
+        k2->setRotate(80.0f);
+        const ctrl::graph::Curve after(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+        CHECK(after.effectiveHandles(after.segment(1), pair));
+        CHECK(pair[0] == QPointF(0.4f, 0.25f)); // the freed side does not move
+        CHECK(pair[1] != incomingBefore); // the OTHER side is still deriving
+    }
+
+    // Aligned and Free both read the stored pair; Vector is the chord (a straight
+    // segment); AutoClamped flattens an extremum where Auto does not.
+    {
+        core::TestNode plain;
+        cmnd::Stack plainStack;
+        auto* a = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 0);
+        auto* b = pushKey<core::RotateKey>(plain, plainStack, TimeKeyType_Rotate, 10);
+        a->data().setRotate(0.0f);
+        b->data().setRotate(90.0f);
+        a->data().easing(0).type = util::Easing::Type_Custom;
+        a->data().easing(0).handleOut = util::Easing::HandleMode_Free;
+        a->data().easing(0).cubicBezier = util::Easing::CubicBezier{0.4f, 0.1f, 0.8f, 0.9f};
+        b->data().easing(0).handleIn = util::Easing::HandleMode_Aligned;
+
+        const ctrl::graph::Curve stored(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+        QPointF pair[2];
+        CHECK(stored.isCustom(stored.segment(0)));
+        CHECK(stored.effectiveHandles(stored.segment(0), pair));
+        CHECK(pair[0] == QPointF(0.4f, 0.1f));
+        CHECK(pair[1] == QPointF(0.8f, 0.9f));
+        CHECK(stored.ghostHandles(*stored.segment(0).from).isEmpty()); // both stored: nothing derived
+
+        b->data().easing(0).handleIn = util::Easing::HandleMode_Vector;
+        a->data().easing(0).handleOut = util::Easing::HandleMode_Vector;
+        const ctrl::graph::Curve vec(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
+        for (int frame = 0; frame <= 10; ++frame) {
+            const float t = float(frame) / 10.0f;
+            CHECK(nearly(vec.sample(core::Frame(frame)), 90.0f * t, 0.01f));
         }
     }
 
-    // The rate leaves a key whose neighbours are equal FLAT, which is the whole
-    // point of an automatic handle. (Above, at frame 10 the arrival is flat too;
-    // this checks the property on the drawn curve, not on a handle value.)
-    {
-        const float before = rotate.sample(core::Frame(9));
-        const float at = rotate.sample(core::Frame(10));
-        const float after = rotate.sample(core::Frame(11));
-        CHECK(at > before && at > after); // a real maximum, not a linear ramp
-        CHECK(at - before < 18.0f); // and the approach is eased, not straight (Linear: 100)
-        CHECK(at - after < 18.0f);
-    }
-
-    // The value basis is the COMPONENT'S OWN values. Each channel now carries its
-    // own easing, so Scale's y channel with an Auto param is shaped by y (a flat
-    // x's Auto param, by contrast, has no change to derive from and stays
-    // Linear). Both components are set Auto here so the comparison is about the
-    // per-component basis, not about one shared curve.
+    // The value basis is the COMPONENT'S OWN values, with the mode on each key of
+    // that component's param.
     {
         core::TestNode scaleNode;
         cmnd::Stack scaleStack;
@@ -1429,8 +1480,11 @@ int sectionAutoEasing() {
         s1->data().setScale(QVector2D(1.0f, 3.0f));
         s2->data().setScale(QVector2D(1.0f, 2.0f));
         for (int component = 0; component < core::ScaleKey::kComponents; ++component) {
-            s0->data().easing(component).type = util::Easing::Type_Auto;
-            s1->data().easing(component).type = util::Easing::Type_Auto;
+            s0->data().easing(component).type = util::Easing::Type_Custom;
+            s0->data().easing(component).handleOut = util::Easing::HandleMode_Auto;
+            s1->data().easing(component).type = util::Easing::Type_Custom;
+            s1->data().easing(component).handleOut = util::Easing::HandleMode_AutoClamped;
+            s1->data().easing(component).handleIn = util::Easing::HandleMode_Auto;
         }
 
         const ctrl::graph::Curve scaleY(*scaleNode.timeLine(), ctrl::graph::Channel(TimeKeyType_Scale, 1));
@@ -1441,22 +1495,13 @@ int sectionAutoEasing() {
             CHECK(matchesPlayback(oracle, scaleY, core::Frame(frame)));
             CHECK(matchesPlayback(oracle, scaleX, core::Frame(frame)));
         }
-
-        // Segment 1 (y 3 -> 2, previous y 1 at frame 0): the previous value in
-        // the segment's units is (1-3)/(2-3) = 2, so the inner tangent is
-        // (1-2)/2 = -0.5, clamped to 0 (3 is the maximum of 1, 3, 2), and the
-        // end follows it: handles (1/3, 0) and (2/3, 0.5) -> rate 0.3125 at half
-        // way -> 3 - 1*0.3125 = 2.6875.
-        CHECK(nearly(scaleY.sample(core::Frame(15)), 2.6875f, 0.005f));
-        CHECK(!nearly(scaleY.sample(core::Frame(15)), 2.5f, 0.01f));
-        // The still component stays exactly still: Auto shapes the rate, it
-        // never invents a change of its own.
+        // The still component stays exactly still: a derived handle never invents
+        // a change of its own.
         CHECK(nearly(scaleX.sample(core::Frame(15)), 1.0f));
     }
 
-    // A two-key channel has no neighbours at all, so Auto has nothing to derive
-    // and degenerates to Linear - the documented fallback, and the same curve
-    // the derivation's identity handles give.
+    // A two-key channel has no neighbours at all, so both Auto sides fall back to
+    // the identity thirds and the segment is Linear.
     {
         core::TestNode solo;
         cmnd::Stack soloStack;
@@ -1464,17 +1509,14 @@ int sectionAutoEasing() {
         auto* b = pushKey<core::OpaKey>(solo, soloStack, TimeKeyType_Opa, 8);
         a->data().setOpacity(0.2f);
         b->data().setOpacity(1.0f);
-        a->data().easing(0).type = util::Easing::Type_Auto;
+        a->data().easing(0).type = util::Easing::Type_Custom;
+        a->data().easing(0).handleOut = util::Easing::HandleMode_Auto;
+        b->data().easing(0).handleIn = util::Easing::HandleMode_Auto;
         const ctrl::graph::Curve line(*solo.timeLine(), ctrl::graph::Channel(TimeKeyType_Opa, 0));
         for (int frame = 0; frame <= 8; ++frame) {
             const float t = float(frame) / 8.0f;
             CHECK(nearly(line.sample(core::Frame(frame)), 0.2f + 0.8f * t));
         }
-
-        // The ghost pair says the same thing the samples do: the derivation's
-        // IDENTITY handles, (1/3, 1/3) and (2/3, 2/3), whose cubic IS the
-        // straight line - so an Auto segment with no neighbours has ghost
-        // handles exactly on the diagonal it draws.
         const QVector<QPointF> soloGhosts = line.ghostHandles(*line.segment(0).from);
         CHECK(soloGhosts.size() == 2);
         CHECK(nearly(static_cast<float>(soloGhosts[0].x()), 1.0f / 3.0f, 1e-6f));
@@ -1483,51 +1525,27 @@ int sectionAutoEasing() {
         CHECK(nearly(static_cast<float>(soloGhosts[1].y()), 2.0f / 3.0f, 1e-6f));
     }
 
-    // Deleting a key changes what is AROUND the survivors, so the surviving
-    // segment's Auto curve re-shapes itself. After removing the key at frame 20
-    // the channel is two keys (0 and 10) and has neither neighbour at all, so
-    // the derivation's identity handles apply and the segment is Linear again -
-    // which is the whole point of an automatic handle: it is a function of the
-    // keys around it, not a stored shape. The oracle comparison over the span
-    // pins that the graph still draws exactly what playback plays.
-    {
-        const float shaped = rotate.sample(core::Frame(5));
-        CHECK(!nearly(shaped, 50.0f, 0.5f)); // the three-key channel is shaped
-        auto* victim = static_cast<core::RotateKey*>(node.timeLine()->timeKey(TimeKeyType_Rotate, 20));
-        CHECK(victim);
-        stack.push(node.timeLine()->createRemover(TimeKeyType_Rotate, 20));
-        const ctrl::graph::Curve narrowed(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
-        CHECK(narrowed.segmentCount() == 1);
-        for (int frame = 0; frame <= 10; ++frame) {
-            const float t = float(frame) / 10.0f;
-            CHECK(nearly(narrowed.sample(core::Frame(frame)), 100.0f * t));
-        }
-        CHECK(nearly(narrowed.sample(core::Frame(5)), 50.0f, 0.01f));
-        for (int frame = 0; frame <= 10; ++frame) {
-            const BlenderOracle oracle(node, core::Frame(frame));
-            CHECK(matchesPlayback(oracle, narrowed, core::Frame(frame)));
-        }
-    }
-
     return 0;
 }
 
 // ---- 11 THE EASING PARAM'S ON-DISK FORM ----
 //
-// A key's handle LINK state (`util::Easing::Param::aligned`) is document state
-// and travels with the param. The one write and the one read are
+// A key's HANDLE MODES (util::Easing::Param::handleOut/handleIn) are document
+// state and travel with the param. The one write and the one read are
 // core::Serializer::write(Param) / core::Deserializer::read(Param), so this
 // section drives exactly those:
 //
-//   * a round trip at the CURRENT format version keeps the flag AND every other
-//     field bit-identical, for both flag values;
-//   * a file written BEFORE the field existed (the same bytes with the trailing
-//     flag removed, read at the previous version) still loads, and its key reads
-//     FREE - which is what such a key actually did: a handle drag never moved
-//     its partner before the field existed.
-//
-// The old-file bytes are the new write minus its LAST four bytes, which is the
-// appended field itself; nothing else in the layout moved.
+//   * a round trip at the CURRENT version (0.15) keeps both modes AND every
+//     other field bit-identical;
+//   * a 0.14 file carried ONE link flag where 0.15 writes two modes: the same
+//     bytes with the trailing handleIn word removed. Reading it at 0.14 maps
+//     the flag to BOTH sides (Aligned or Free), which is what it meant;
+//   * a 0.12 file had no flag at all (both trailing words removed) and loads
+//     FREE;
+//   * THE RETIRED TYPE: id 14 was Type_Auto, which had no stored handles. A
+//     0.14 param of that type must load as Type_Custom with BOTH sides Auto
+//     (its exact meaning, in the new vocabulary), and the same id at 0.15 is
+//     invalid - the slot is not reused.
 class ParamSerializationReporter : public util::IProgressReporter {
 public:
     void setSection(const QString&) override {}
@@ -1554,7 +1572,7 @@ bool readParam(const std::string& aBytes, const QVersionNumber& aVersion, util::
 }
 
 int sectionEasingParamSerialization() {
-    const auto param = [](bool aAligned) {
+    const auto param = [](util::Easing::HandleMode aOut, util::Easing::HandleMode aIn) {
         util::Easing::Param p;
         p.type = util::Easing::Type_Custom;
         p.range = util::Easing::Range_In;
@@ -1563,7 +1581,8 @@ int sectionEasingParamSerialization() {
         p.cubicBezier.y1 = 0.1f;
         p.cubicBezier.x2 = 0.8f;
         p.cubicBezier.y2 = 0.9f;
-        p.aligned = aAligned;
+        p.handleOut = aOut;
+        p.handleIn = aIn;
         return p;
     };
     const auto writeParam = [](const util::Easing::Param& aParam) {
@@ -1574,55 +1593,102 @@ int sectionEasingParamSerialization() {
         return stream.str();
     };
 
-    // The field is APPENDED: dropping these four bytes gives the old layout.
-    constexpr std::size_t kFlagBytes = sizeof(uint32);
+    // The fields are APPENDED: dropping four bytes gives the 0.14 layout (one
+    // flag word), eight the 0.12 layout (none).
+    constexpr std::size_t kModeBytes = sizeof(uint32);
+    constexpr std::size_t kTwoModeBytes = 2 * sizeof(uint32);
 
-    // (1) ROUND TRIP AT 0.13, the version that added the flag, both values.
-    for (const bool linked : { true, false }) {
-        const util::Easing::Param written = param(linked);
+    // (1) ROUND TRIP AT 0.15, every mode pair.
+    const util::Easing::HandleMode pairs[][2] = {
+        { util::Easing::HandleMode_Free, util::Easing::HandleMode_Aligned },
+        { util::Easing::HandleMode_Auto, util::Easing::HandleMode_AutoClamped },
+        { util::Easing::HandleMode_Vector, util::Easing::HandleMode_Free },
+    };
+    for (const auto& pair : pairs) {
+        const util::Easing::Param written = param(pair[0], pair[1]);
         const std::string bytes = writeParam(written);
         util::Easing::Param readBack;
-        readBack.aligned = !linked; // a stale in-memory value must be overwritten
-        const bool okRead = readParam(bytes, QVersionNumber(0, 13), readBack);
-        std::printf("[11] param round trip linked=%d: bytes=%zu read=%d equal=%d aligned=%d type=%d range=%d\n",
-                    int(linked), bytes.size(), int(okRead), int(readBack == written), int(readBack.aligned),
-                    int(readBack.type), int(readBack.range));
+        readBack.handleOut = util::Easing::HandleMode_Auto; // stale: must be overwritten
+        readBack.handleIn = util::Easing::HandleMode_Auto;
+        const bool okRead = readParam(bytes, QVersionNumber(0, 15), readBack);
+        std::printf("[11] param round trip out=%d in=%d: bytes=%zu read=%d equal=%d\n",
+                    int(pair[0]), int(pair[1]), bytes.size(), int(okRead), int(readBack == written));
         CHECK(okRead);
         CHECK(readBack == written);
-        CHECK(readBack.aligned == linked);
+        CHECK(readBack.handleOut == pair[0]);
+        CHECK(readBack.handleIn == pair[1]);
         CHECK(readBack.cubicBezier == written.cubicBezier);
     }
 
-    // (2) OLD FILE: the version before the field. The trailing flag is gone, so
-    // the read must not consume anything past the bezier, and the key must come
-    // out FREE (a linked key is not what the file described).
-    {
-        const util::Easing::Param written = param(true);
+    // (2) 0.14 ONE FLAG -> BOTH SIDES. The remaining word is the old `aligned`
+    // bool; a linked key becomes Aligned/Aligned, an unlinked one Free/Free.
+    for (const bool linked : { true, false }) {
+        const util::Easing::Param written = param(
+            linked ? util::Easing::HandleMode_Aligned : util::Easing::HandleMode_Free,
+            util::Easing::HandleMode_Vector); // the second word is the 0.15 addition
         const std::string current = writeParam(written);
-        CHECK(current.size() > kFlagBytes);
-        const std::string oldFile = current.substr(0, current.size() - kFlagBytes);
+        CHECK(current.size() > kModeBytes);
+        const std::string oldFile = current.substr(0, current.size() - kModeBytes);
 
         util::Easing::Param oldRead;
-        oldRead.aligned = true; // must be overwritten to false by the gate
-        CHECK(readParam(oldFile, QVersionNumber(0, 12), oldRead));
-        CHECK(!oldRead.aligned);
+        oldRead.handleOut = util::Easing::HandleMode_Auto; // must be overwritten
+        oldRead.handleIn = util::Easing::HandleMode_Auto;
+        CHECK(readParam(oldFile, QVersionNumber(0, 14), oldRead));
+        CHECK(oldRead.handleOut == (linked ? util::Easing::HandleMode_Aligned : util::Easing::HandleMode_Free));
+        CHECK(oldRead.handleIn == oldRead.handleOut);
         CHECK(oldRead.type == written.type);
         CHECK(oldRead.range == written.range);
         CHECK(oldRead.weight == written.weight);
         CHECK(oldRead.cubicBezier == written.cubicBezier);
 
-        // The other direction of the gate: the SAME old bytes read at the new
-        // version are a TRUNCATED param, and the bool read fails (the stream is
-        // empty) - proving the field really is what the bump added, rather than
-        // the reader silently accepting either layout.
+        // The other direction of the gate: the SAME old bytes read at 0.15 are a
+        // TRUNCATED param (the handleIn word is missing) and the read fails.
         util::Easing::Param truncated;
-        CHECK(!readParam(oldFile, QVersionNumber(0, 13), truncated));
+        CHECK(!readParam(oldFile, QVersionNumber(0, 15), truncated));
+    }
+
+    // (3) 0.12: no flag word at all -> both sides FREE.
+    {
+        const util::Easing::Param written = param(util::Easing::HandleMode_Aligned,
+                                                  util::Easing::HandleMode_Aligned);
+        const std::string current = writeParam(written);
+        CHECK(current.size() > kTwoModeBytes);
+        const std::string oldFile = current.substr(0, current.size() - kTwoModeBytes);
+        util::Easing::Param oldRead;
+        oldRead.handleOut = util::Easing::HandleMode_Auto;
+        oldRead.handleIn = util::Easing::HandleMode_Auto;
+        CHECK(readParam(oldFile, QVersionNumber(0, 12), oldRead));
+        CHECK(oldRead.handleOut == util::Easing::HandleMode_Free);
+        CHECK(oldRead.handleIn == util::Easing::HandleMode_Free);
+        CHECK(oldRead.cubicBezier == written.cubicBezier);
+    }
+
+    // (4) THE RETIRED TYPE_AUTO ID. A 0.14 param whose type word is 14 loads as
+    // Type_Custom with BOTH sides Auto, losslessly in meaning.
+    {
+        util::Easing::Param legacy;
+        legacy.type = static_cast<util::Easing::Type>(14); // Type_Auto's retired id
+        legacy.range = util::Easing::Range_InOut;
+        legacy.weight = 1.0f;
+        const std::string current = writeParam(legacy);
+        const std::string oldFile = current.substr(0, current.size() - kModeBytes);
+
+        util::Easing::Param oldRead;
+        CHECK(readParam(oldFile, QVersionNumber(0, 14), oldRead));
+        CHECK(oldRead.type == util::Easing::Type_Custom);
+        CHECK(oldRead.handleOut == util::Easing::HandleMode_Auto);
+        CHECK(oldRead.handleIn == util::Easing::HandleMode_Auto);
+
+        // ... and the id is NOT reused at 0.15: the same bytes (with both mode
+        // words) are rejected rather than silently accepted as some new type.
+        util::Easing::Param rejected;
+        CHECK(!readParam(current, QVersionNumber(0, 15), rejected));
     }
 
     std::printf(
-        "[S] easing param: the handle-link flag round-trips at 0.13 (both values); the same bytes "
-        "without its trailing field load at 0.12 as FREE with every other field intact, and reading "
-        "them at 0.13 fails as truncated\n"
+        "[S] easing param: both handle modes round-trip at 0.15; a 0.14 flag maps to both sides; "
+        "a 0.12 param loads Free/Free; the retired type 14 loads at 0.14 as Custom with BOTH sides "
+        "Auto and is invalid at 0.15\n"
     );
     return 0;
 }
@@ -1709,7 +1775,7 @@ int sectionPerComponentEasing() {
         CHECK(curveY.segment(0).easing == yCurve);
     }
 
-    // (2) 0.14 ROUND TRIP: two different components survive a write and a read.
+    // (2) CURRENT-FORMAT ROUND TRIP: two different components survive a write and a read.
     {
         core::MoveKey written;
         written.data().easing(0) = xCurve;
@@ -1732,7 +1798,7 @@ int sectionPerComponentEasing() {
         CHECK(readBack.pos() == written.pos());
         CHECK(readBack.centroid() == written.centroid());
         CHECK(readBack.data().spline() == written.data().spline());
-        std::printf("[12] 0.14 Move round trip: components differ and %zu bytes survive\n", bytes.size());
+        std::printf("[12] Move round trip at the current format: components differ and %zu bytes survive\n", bytes.size());
     }
 
     // (3) 0.13 GATE: ONE param on disk, broadcast to both components, and the
@@ -1741,11 +1807,30 @@ int sectionPerComponentEasing() {
         std::ostringstream stream(std::ios::out | std::ios::binary);
         util::StreamWriter writer(stream);
         core::Serializer serializer(writer);
-        serializer.write(xCurve); // the single param a key wrote before 0.14
+        // The single param a key wrote before 0.14, in its 0.13 ON-DISK form:
+        // type (i32), range (i32), weight (f32), bezier x1/y1/x2/y2 (4 x f32)
+        // and ONE handle-link flag (u32) - 32 bytes, followed by the key's own
+        // spline (i32), pos (2 x f32) and centroid (2 x f32). It must be emitted
+        // field by field, not with Serializer::write(Param): that writes the
+        // 0.15 form (the same 28 bytes then TWO u32 handle modes, 8 extra
+        // bytes), which shifts every following field by four bytes and makes
+        // the fixture a file no 0.13 writer ever produced.
+        serializer.write(static_cast<int>(xCurve.type));
+        serializer.write(static_cast<int>(xCurve.range));
+        serializer.write(xCurve.weight);
+        serializer.write(xCurve.cubicBezier.x1);
+        serializer.write(xCurve.cubicBezier.y1);
+        serializer.write(xCurve.cubicBezier.x2);
+        serializer.write(xCurve.cubicBezier.y2);
+        serializer.write(true); // 0.13's single link flag: linked == Aligned
         serializer.write(static_cast<int>(core::MoveKey::SplineType_CatmullRom));
         serializer.write(QVector2D(7.0f, -8.0f));
         serializer.write(QVector2D(0.25f, 0.75f));
         const std::string oldBytes = stream.str();
+        // 32-byte param + 4-byte spline + two 8-byte vectors: the exact size of
+        // a 0.13 Move key. A serializer change that grows the param would make
+        // this fixture stop being a 0.13 file, so the size is part of the gate.
+        CHECK(oldBytes.size() == 52);
 
         core::MoveKey oldKey;
         oldKey.data().easing(1) = yCurve; // a stale in-memory value the gate must overwrite

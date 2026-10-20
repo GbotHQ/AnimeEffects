@@ -118,10 +118,11 @@ public:
     // (GraphPanelModel publishes it at plot.top() - kRulerBandHeight), so the plot's
     // first row is the graph's, never the ruler's.
     //
-    // THE RIGHT AND BOTTOM MARGINS ALSO HOLD THE SCROLL BARS: they are kMargin +
-    // kScrollBarReserve there and kMargin on the left and top, so the plot keeps its
-    // top-left corner (and the ruler band above it) and gives up the 14px the two
-    // bars occupy at its right and bottom edges - see THE SCROLL BARS' RESERVE.
+    // THE RIGHT AND BOTTOM INSETS ARE THE SCROLL BARS' LANES: they are
+    // kScrollBarReserve (12, the lane's own thickness) there and kMargin (+ the label
+    // column / the ruler band) on the left and top, so the plot keeps its top-left
+    // corner (and the ruler band above it) and its last row/column are the lane's
+    // neighbours - see THE SCROLL BARS' LANES.
     QRect plotRect() const;
 
     // The width of the left label column: the reserve described in THE LABEL
@@ -161,62 +162,72 @@ public:
     // reads plotRect().left() + mFrameOffset, and only the shared path writes an offset
     // that starts at the panel's left edge.
 
-    // ---- THE SCROLL BARS' RESERVE ----
+    // ---- THE SCROLL BARS' LANES ----
     //
     // The panel's two scroll bars (the frame axis' along the bottom, the value
-    // axis' along the right) live in the panel's margin, OUTSIDE the plot and
-    // inside the panel. They are the APPLICATION'S scroll bars, not a look of this
+    // axis' along the right) are the APPLICATION'S scroll bars, not a look of this
     // panel's own: src/gui/AppStyle.cpp's CC_ScrollBar draws a 12px lane whose
     // trough is INVISIBLE and a 4px, radius-2 pill across the slider's run
-    // (theme::Colors::outline at rest, theme::Colors::hover when hot). The lane is
-    // therefore kScrollBarThickness = 12, it keeps kScrollBarGap = 2 clear of the
-    // plot, and the plot gives up kScrollBarReserve = 14 at those two edges - the
-    // outer kMargin rows/columns stay the panel's own edge.
+    // (theme::Colors::outline at rest, theme::Colors::hover when hot). The timeline's
+    // own bar (gui::TimeLineWidget's TimelineScrollBar) is that style on a lane flush
+    // with its page's bottom and right edges, with no gap and no outer margin - so
+    // the panel's lanes are FLUSH the same way: the horizontal lane is the panel's
+    // last 12 rows, across its whole width, and the vertical lane the panel's last 12
+    // columns, from the plot's first row down to the row above the horizontal lane
+    // (the corner belongs to the horizontal bar, which is what keeps the two rects
+    // disjoint).
     //
-    // THE PLOT'S BOTTOM AND RIGHT INSETS THEREFORE GROW BY kScrollBarReserve:
-    // plotRect() is inset kMargin on the LEFT and TOP and kMargin +
-    // kScrollBarReserve on the right and bottom, so the plot's top-left corner (and
-    // with it the ruler band above it and the label column beside it) is exactly
-    // where it always was, while its width and height give up the 14px the bars
-    // need. That is a PLOT-SHAPE decision and not a per-frame one: the reserve is
-    // unconditional, so the plot never moves because a key appeared or a bar did.
-    // With a 800x600 panel and a 68px label column, for instance, the plot is
-    // (72, 26, 710, 556):
-    //   * hTrack: (72, 584, 710, 12) - plot.bottom() + 1 + gap, the plot's full width
-    //   * vTrack: (784, 26, 12, 556) - plot.right() + 1 + gap, the plot's full height
-    // leaving the kMargin rows/columns of the panel below and right of each bar, and
-    // the two tracks disjoint (the horizontal one lies entirely below the vertical
-    // one's last row).
-    //
-    // THE PILL'S THICKNESS AND RADIUS ARE ALSO APPSTYLE'S (kPillThickness and
-    // kPillRadius in AppStyle.cpp): the lane's LENGTH is the slider's run, which the
-    // model publishes as hThumb/vThumb, and the drawing layer centres the pill in
-    // the lane inside that run. The pill is not a second geometry - a press anywhere
-    // on the run drags, exactly as a QScrollBar's slider subcontrol spans the lane.
+    // THE PLOT'S INSET IS THE LANE: plotRect() gives up exactly
+    // kScrollBarReserve == kScrollBarThickness (12) at its right and bottom edges and
+    // nothing else, so the plot's last row is the row above the horizontal lane's
+    // first one and its last column the one left of the vertical lane's. The LEFT and
+    // TOP insets are unchanged (kMargin + the label column, kMargin + the ruler
+    // band), so the plot's top-left corner - and with it the band and the value
+    // column - does not move. The reserve is unconditional (a PLOT-SHAPE decision):
+    // the plot never moves because a bar appeared. With a 800x600 panel and a 68px
+    // label column the numbers are:
+    //   * plot:   (72, 26, 716, 562) - right/bottom = panel.right()/bottom() - 12
+    //   * hTrack: (0, 588, 800, 12)  - the panel's last 12 rows, its whole width
+    //   * vTrack: (788, 26, 12, 562) - the panel's last 12 columns, from plot.top() to
+    //                                  the row above hTrack.top() (row 587)
+    // The MEASURED reference is the timeline's own bar in the dock at 1440x900: its
+    // page's last row is 494, its lane rows 483..494 and its pill rows 487..490 - the
+    // panel's lane and pill rows are the same numbers, because the lanes are the same
+    // rows of the same page.
     static constexpr int kScrollBarThickness = 12;    // AppStyle.cpp's 12px invisible lane
     static constexpr int kScrollBarPillThickness = 4; // AppStyle.cpp's kPillThickness
     static constexpr int kScrollBarPillRadius = 2;    // AppStyle.cpp's kPillRadius
-    static constexpr int kScrollBarGap = 2;
-    static constexpr int kScrollBarReserve = kScrollBarThickness + kScrollBarGap;
+    static constexpr int kScrollBarReserve = kScrollBarThickness; // the plot's inset == the lane
+
+    // One wheel notch over a LANE scrolls the window this many pixels times the
+    // application's wheelScrollLines: the timeline's own step (gui::kVerticalStep = 24
+    // content pixels, set as its scroll bar's singleStep), so a notch is 3 x 24 = 72px
+    // on either bar here, exactly the travel the timeline's bar makes.
+    static constexpr int kScrollBarStepPixels = 24;
+
     // The shortest a thumb may be drawn, whatever the window/content fraction is:
-    // a window a hundred times the content would otherwise draw a thumb too small
-    // to see, let alone grab. Never longer than its track (a short track wins).
-    static constexpr int kScrollBarMinThumb = 16;
+    // Qt's own PM_ScrollBarSliderMin, asked from the application style at runtime
+    // (src/gui/AppStyle.cpp inherits it; nothing here hardcodes a length). Never
+    // longer than its track (a short track wins).
+    static int scrollBarSliderMin();
 
     // THE TWO SCROLL BARS' GEOMETRY, as one structure: the editor's press routing
     // and the model's drawing read THIS, so the bar a press grabs and the bar the
     // panel paints are one geometry (the rule the whole panel follows).
     //
-    //   * hTrack: below the plot, spanning the plot's own columns; the 12px lane.
-    //   * vTrack: right of the plot, spanning the plot's own rows; the 12px lane.
+    //   * hTrack: the panel's last 12 rows, its whole width (flush with the
+    //     panel's bottom AND right edges, as the timeline's bar is).
+    //   * vTrack: the panel's last 12 columns, from plot.top() to the row above
+    //     hTrack (flush with the panel's right edge).
     //   * hThumb/vThumb: the SLIDER'S RUN - the visible WINDOW inside the CONTENT,
-    //     laid out along the track and spanning the lane's thickness. Run length =
-    //     window/content fraction x track length, never shorter than
-    //     kScrollBarMinThumb and never longer than the track - so a window that
-    //     covers the content fills its track and is then removed (nothing to
-    //     scroll, no bar). The drawing layer paints a kScrollBarPillThickness pill
-    //     centred in the lane across this run, and nothing else: the trough is
-    //     invisible.
+    //     laid out along the track and spanning the lane's thickness, by Qt's own
+    //     arithmetic (see scrollBars): run length = pageStep/content x track length,
+    //     floored at QStyle::PM_ScrollBarSliderMin and never longer than the track,
+    //     and its offset = the window's own fraction of the TRAVEL (content -
+    //     page) across (track - length). A window that covers the content fills its
+    //     track and is then removed (nothing to scroll, no bar). The drawing layer
+    //     paints a kScrollBarPillThickness pill centred in the lane across this run,
+    //     and nothing else: the trough is invisible.
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).

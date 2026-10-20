@@ -423,7 +423,10 @@ int main(int argc, char** argv) {
         CHECK(palette.rulerBand() == colors.base);       // TimeLine::headerBackgroundColor
         CHECK(palette.rulerLine() == colors.hairline);   // TimeLine::rulerLineColor
         CHECK(palette.axisText() == colors.text);        // TimeLine::headerContentColor
-        CHECK(palette.playheadText() == colors.text);    // the same number ink as the ruler
+        // The pill's number is DARK on its accentBright fill - gui::TimeCursor's
+        // own ink, measured on the running app: the ruler's text token there is
+        // near-white and invisible on the violet (see the parity round).
+        CHECK(palette.playheadText() == colors.accentBrightText);
     }
 
     // The oracle scaler: the editor's own axes, geometrised with the same panel
@@ -474,21 +477,21 @@ int main(int argc, char** argv) {
         CHECK(model.plot.top()
               == model.panel.top() + ctrl::graph::Scaler::kMargin
                   + ctrl::graph::Scaler::kRulerBandHeight);
-        // ...and its HEIGHT loses the two margins PLUS the one the scroll bars sit in
-        // at the bottom edge (the right margin carries the same reserve, see THE
-        // SCROLL BARS' RESERVE in graph_Scaler.h: the plot gives up 14px at those two
-        // edges - the app's 12px lane plus a 2px gap - so the bars have a strip that
-        // is outside the plot and inside the panel).
+        // ...and its HEIGHT loses the top margin, the ruler band and the lane the scroll
+        // bar sits in at the bottom edge (see THE SCROLL BARS' LANES in
+        // graph_Scaler.h: the plot's right and bottom inset IS the app's 12px lane - no
+        // gap, no extra margin - so the bar has a strip that is outside the plot and
+        // flush with the panel's own edges).
         CHECK(model.plot.height()
-              == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin
+              == model.panel.height() - ctrl::graph::Scaler::kMargin
                   - ctrl::graph::Scaler::kRulerBandHeight - ctrl::graph::Scaler::kScrollBarReserve);
         CHECK(model.plot.width()
-              == model.panel.width() - 2 * ctrl::graph::Scaler::kMargin - model.valueColumn.width()
+              == model.panel.width() - ctrl::graph::Scaler::kMargin - model.valueColumn.width()
                   - ctrl::graph::Scaler::kScrollBarReserve);
-        CHECK(model.plot.right() == model.panel.right() - ctrl::graph::Scaler::kMargin
-                  - ctrl::graph::Scaler::kScrollBarReserve);
-        CHECK(model.plot.bottom() == model.panel.bottom() - ctrl::graph::Scaler::kMargin
-                  - ctrl::graph::Scaler::kScrollBarReserve);
+        CHECK(model.plot.right()
+              == model.panel.right() - ctrl::graph::Scaler::kScrollBarReserve);
+        CHECK(model.plot.bottom()
+              == model.panel.bottom() - ctrl::graph::Scaler::kScrollBarReserve);
         // The band is on the TIMELINE'S ROW: the timeline's TimeRuler strip starts at
         // its page's top edge, and both views are pages of the same dock stack, so the
         // band must start at the panel's top row - not at the scaler's top margin
@@ -1254,10 +1257,9 @@ int main(int argc, char** argv) {
         // to leave a NON-EMPTY plot first: the label column's reserve is the value
         // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
         // than the old 46), so the plot starts 22px further right; and the right
-        // edge now reserves the scroll bars' 14px (Scaler::kScrollBarReserve: the
-        // app's 12px lane + a 2px gap), so this fixture grew with them
-        // (64 -> 80 -> 90 -> 94) to keep the premise - a plot that exists and is
-        // narrower than 16px.
+        // edge reserves the scroll bar lane (Scaler::kScrollBarReserve == the
+        // app's 12px lane, with no gap), so this fixture stays a viewport whose
+        // plot exists and is narrower than 16px.
         const QSize tooNarrow(94, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
         int narrowChips = 0;
@@ -1835,9 +1837,12 @@ int main(int argc, char** argv) {
         // apart, and a drag on a ghost dot would convert the key (the editor's own
         // job; the model only has to say WHICH kind of pair this is).
         util::Easing::Param automatic;
-        automatic.type = util::Easing::Type_Auto;
+        automatic.type = util::Easing::Type_Custom;
+        automatic.handleIn = util::Easing::HandleMode_Auto;
+        automatic.handleOut = util::Easing::HandleMode_Auto;
         for (int component = 0; component < core::MoveKey::kComponents; ++component) {
             move0->data().easing(component) = automatic;
+            move1->data().easing(component) = automatic;
         }
 
         const gui::GraphPanelModel ghosted = gui::buildGraphPanelModel(editor, viewport, palette);
@@ -1905,6 +1910,7 @@ int main(int argc, char** argv) {
         // they were written against (the trace handle is the one thing that moved).
         for (int component = 0; component < core::MoveKey::kComponents; ++component) {
             move0->data().easing(component) = custom;
+            move1->data().easing(component) = custom;
         }
         const gui::GraphPanelModel restoredHandles = gui::buildGraphPanelModel(editor, viewport, palette);
         int restoredGhosts = 0;
@@ -1940,9 +1946,12 @@ int main(int argc, char** argv) {
         // handles are dropped are exactly the rows that would have recomputed a
         // tangent nobody inks.
         util::Easing::Param automatic;
-        automatic.type = util::Easing::Type_Auto;
+        automatic.type = util::Easing::Type_Custom;
+        automatic.handleIn = util::Easing::HandleMode_Auto;
+        automatic.handleOut = util::Easing::HandleMode_Auto;
         for (int component = 0; component < core::MoveKey::kComponents; ++component) {
             move0->data().easing(component) = automatic;
+            move1->data().easing(component) = automatic;
         }
 
         const gui::GraphPanelModel unfocused = gui::buildGraphPanelModel(editor, viewport, palette);
@@ -2007,6 +2016,7 @@ int main(int argc, char** argv) {
         custom.cubicBezier.y2 = 0.9f;
         for (int component = 0; component < core::MoveKey::kComponents; ++component) {
             move0->data().easing(component) = custom;
+            move1->data().easing(component) = custom;
         }
     }
 
@@ -2768,20 +2778,31 @@ int main(int argc, char** argv) {
         const gui::GraphPanelModel barsModel = gui::buildGraphPanelModel(editor, viewport, palette);
         const QRect plot = barsModel.plot;
         CHECK(!plot.isEmpty());
+        CHECK(barsModel.panel == panel);
 
-        // THE TRACKS, hand-built from the scaler's own constants and the published
-        // plot: outside the plot by kScrollBarGap, kScrollBarThickness thick, each
-        // spanning the plot's own edge along the axis it scrolls.
-        CHECK(barsModel.hTrack
-              == QRect(
-                     plot.left(), plot.bottom() + 1 + ctrl::graph::Scaler::kScrollBarGap, plot.width(),
-                     ctrl::graph::Scaler::kScrollBarThickness
-                 ));
+        // THE LANES, hand-built from the scaler's own numbers and the published panel:
+        // the application's 12px lane FLUSH with the panel's bottom and right edges -
+        // the horizontal one the panel's last 12 rows across its whole width (the
+        // timeline's own bar is flush the same way), the vertical one the panel's last
+        // 12 columns from the plot's first row to the row above the horizontal lane.
+        const int lane = ctrl::graph::Scaler::kScrollBarThickness;
+        CHECK(lane == 12);
+        CHECK(ctrl::graph::Scaler::kScrollBarReserve == lane); // the plot's inset IS the lane
+        CHECK(barsModel.hTrack == QRect(panel.left(), panel.bottom() - lane + 1, panel.width(), lane));
         CHECK(barsModel.vTrack
-              == QRect(
-                     plot.right() + 1 + ctrl::graph::Scaler::kScrollBarGap, plot.top(),
-                     ctrl::graph::Scaler::kScrollBarThickness, plot.height()
-                 ));
+              == QRect(panel.right() - lane + 1, plot.top(), lane, panel.bottom() - lane - plot.top() + 1));
+        // FLUSH: the horizontal lane touches the panel's bottom AND right edges; the
+        // vertical lane touches its right edge and ends on the row above the horizontal
+        // one, so the corner belongs to the single bar the timeline has.
+        CHECK(barsModel.hTrack.bottom() == panel.bottom());
+        CHECK(barsModel.hTrack.right() == panel.right());
+        CHECK(barsModel.hTrack.left() == panel.left());
+        CHECK(barsModel.vTrack.right() == panel.right());
+        CHECK(barsModel.vTrack.bottom() + 1 == barsModel.hTrack.top());
+        CHECK(!barsModel.hTrack.intersects(barsModel.vTrack));
+        // ...and the plot's own insets are the lane and nothing else.
+        CHECK(plot.bottom() + 1 == barsModel.hTrack.top());
+        CHECK(plot.right() + 1 == barsModel.vTrack.left());
         CHECK(barsModel.panel.contains(barsModel.hTrack));
         CHECK(barsModel.panel.contains(barsModel.vTrack));
         CHECK(!barsModel.hTrack.intersects(plot));
@@ -2790,25 +2811,24 @@ int main(int argc, char** argv) {
         CHECK(!barsModel.vTrack.intersects(barsModel.rulerBand));
         CHECK(!barsModel.valueColumn.intersects(barsModel.hTrack));
         CHECK(!barsModel.valueColumn.intersects(barsModel.vTrack));
-        // ...the reserve is the APP's lane (12px) plus its 2px gap, and the outer
-        // kMargin of the panel survives outside each bar.
-        CHECK(ctrl::graph::Scaler::kScrollBarThickness == 12);
-        CHECK(ctrl::graph::Scaler::kScrollBarReserve == 14);
-        CHECK(barsModel.hTrack.bottom() == barsModel.panel.bottom() - ctrl::graph::Scaler::kMargin);
-        CHECK(barsModel.vTrack.right() == barsModel.panel.right() - ctrl::graph::Scaler::kMargin);
-        // ...the two bars on DIFFERENT edges, so they cannot meet in a corner.
-        CHECK(!barsModel.hTrack.intersects(barsModel.vTrack));
         CHECK(barsModel.hTrack.top() > barsModel.valueColumn.bottom());
         CHECK(barsModel.vTrack.left() > plot.right());
 
-        // THE THUMBS sit inside their tracks and say what the window covers: the
-        // length is the window/content fraction of the track (within a pixel of the
-        // rounding), never shorter than kScrollBarMinThumb and never longer than the
-        // track, and they are inside their own track's rect.
-        CHECK(barsModel.hTrack.contains(barsModel.hThumb));
-        CHECK(barsModel.vTrack.contains(barsModel.vThumb));
-        CHECK(barsModel.hThumb.width() >= std::min(ctrl::graph::Scaler::kScrollBarMinThumb, barsModel.hTrack.width()));
-        CHECK(barsModel.vThumb.height() >= std::min(ctrl::graph::Scaler::kScrollBarMinThumb, barsModel.vTrack.height()));
+        // THE THUMBS sit inside their tracks, and their LENGTH and OFFSET are Qt's own
+        // QScrollBar arithmetic - not a private fraction:
+        //   totalSteps = content - pageStep
+        //   length     = qRound(pageStep / content * track), floored at
+        //                QStyle::PM_ScrollBarSliderMin (asked from the style, not 16)
+        //   offset     = qRound((windowStart - contentStart) / totalSteps * (track - length)),
+        //                CLAMPED to [0, track - length]
+        // The clamp is Qt's: a QScrollBar's value cannot leave [minimum, maximum], so
+        // a window at - or, as here, slightly BEYOND (the frame fit's own padding
+        // starts before the content's first frame) - an edge parks the pill flush with
+        // that end instead of hanging it outside the lane. The oracle below repeats
+        // that arithmetic INCLUDING the clamp, so a change to the formula fails here
+        // rather than only in a screenshot.
+        const int minSlider = ctrl::graph::Scaler::scrollBarSliderMin();
+        CHECK(minSlider > 0);
         // The window the thumb describes is the editor's own: the frames the plot
         // covers (the mapping's inverse at its two edges) inside the project's range.
         // The oracle is a copy of the editor's LIVE scaler pinned to this panel - the
@@ -2816,23 +2836,73 @@ int main(int argc, char** argv) {
         // measured against the mapping the plot is drawn with.
         ctrl::graph::Scaler live = editor.scale();
         live.setRect(panel);
-        const double frameWindow = live.frameAtPixel(double(plot.right() + 1)) - live.frameAtPixel(double(plot.left()));
-        const double frameContent = double(frames.max() - frames.min());
-        const double expectedHThumb = double(barsModel.hTrack.width()) * frameWindow / frameContent;
-        std::printf(
-            "[16] bars: plot (%d,%d %dx%d)  hTrack (%d,%d %dx%d) hThumb %d px (expected %.1f)  vTrack (%d,%d "
-            "%dx%d) vThumb %d px  value content %.4f..%.4f window %.4f..%.4f  frames %d..%d window %.2f..%.2f\n",
-            plot.x(), plot.y(), plot.width(), plot.height(), barsModel.hTrack.x(), barsModel.hTrack.y(),
-            barsModel.hTrack.width(), barsModel.hTrack.height(), barsModel.hThumb.width(), expectedHThumb, barsModel.vTrack.x(),
-            barsModel.vTrack.y(), barsModel.vTrack.width(), barsModel.vTrack.height(), barsModel.vThumb.height(), valueLo, valueHi,
-            editor.scale().valueMin(), editor.scale().valueMax(), frames.min(), frames.max(),
-            live.frameAtPixel(double(plot.left())), live.frameAtPixel(double(plot.right() + 1))
+        const double frameWindowLo = live.frameAtPixel(double(plot.left()));
+        const double frameWindowHi = live.frameAtPixel(double(plot.right() + 1));
+        const double frameContentLo = double(frames.min());
+        const double frameContentHi = double(frames.max());
+        const double contentSpan = frameContentHi - frameContentLo;
+        const double pageSpan = frameWindowHi - frameWindowLo;
+        const int expectedHLength = std::clamp(
+            int(std::lround(pageSpan / contentSpan * barsModel.hTrack.width())), minSlider, barsModel.hTrack.width()
         );
-        CHECK(std::fabs(double(barsModel.hThumb.width()) - expectedHThumb) <= 1.0);
+        const int expectedHOffset = std::clamp(
+            int(std::lround(
+                (frameWindowLo - frameContentLo) / (contentSpan - pageSpan)
+                * (barsModel.hTrack.width() - expectedHLength)
+            )),
+            0, barsModel.hTrack.width() - expectedHLength
+        );
+        CHECK(barsModel.hThumb.width() == expectedHLength);
+        CHECK(barsModel.hThumb.left() - barsModel.hTrack.left() == expectedHOffset);
+        CHECK(barsModel.hTrack.contains(barsModel.hThumb));
+        CHECK(barsModel.vTrack.contains(barsModel.vThumb));
+        CHECK(barsModel.hThumb.width() >= std::min(minSlider, barsModel.hTrack.width()));
+        CHECK(barsModel.vThumb.height() >= std::min(minSlider, barsModel.vTrack.height()));
+        std::printf(
+            "[16] bars: plot (%d,%d %dx%d)  hTrack (%d,%d %dx%d) hThumb %d px at +%d (Qt: %d at +%d, min %d)  "
+            "vTrack (%d,%d %dx%d) vThumb %d px at +%d  value content %.4f..%.4f window %.4f..%.4f  frames %d..%d "
+            "window %.2f..%.2f\n",
+            plot.x(), plot.y(), plot.width(), plot.height(), barsModel.hTrack.x(), barsModel.hTrack.y(),
+            barsModel.hTrack.width(), barsModel.hTrack.height(), barsModel.hThumb.width(),
+            barsModel.hThumb.left() - barsModel.hTrack.left(), expectedHLength, expectedHOffset, minSlider,
+            barsModel.vTrack.x(), barsModel.vTrack.y(), barsModel.vTrack.width(), barsModel.vTrack.height(),
+            barsModel.vThumb.height(), barsModel.vThumb.top() - barsModel.vTrack.top(), valueLo, valueHi,
+            editor.scale().valueMin(), editor.scale().valueMax(), frames.min(), frames.max(), frameWindowLo,
+            frameWindowHi
+        );
         CHECK(barsModel.hThumb.left() >= barsModel.hTrack.left());
         CHECK(barsModel.hThumb.right() <= barsModel.hTrack.right());
         CHECK(barsModel.vThumb.top() >= barsModel.vTrack.top());
         CHECK(barsModel.vThumb.bottom() <= barsModel.vTrack.bottom());
+
+        // THE DIRECTION, both axes: the pill moves WITH the window. A frame window at
+        // the project's START puts the horizontal pill at the lane's left; at its END
+        // the pill is flush RIGHT (offset + length == the track). The value axis is
+        // inverted along its lane, so a window at HIGH values puts the pill at the TOP
+        // and a window at LOW values at the BOTTOM. The frame window is PLACED exactly
+        // (setFrameWindow maps a pushed window with no ladder rounding), so "at the
+        // start" and "at the end" are the content's own edges and not a fit's padding.
+        editor.setFrameWindow(double(frames.min()), double(frames.min()) + 5.0);
+        const gui::GraphPanelModel atStart = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(atStart.hThumb.left() == atStart.hTrack.left());
+        editor.setFrameWindow(double(frames.max()) - 5.0, double(frames.max()));
+        const gui::GraphPanelModel atEnd = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(atEnd.hThumb.right() == atEnd.hTrack.right());
+        editor.clearFrameAxis(); // the frame axis is the panel's own again
+        editor.scale().setRect(panel);
+        editor.scale().setValueWindow(valueHi - 0.1f * (valueHi - valueLo), valueHi);
+        const gui::GraphPanelModel atTop = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(atTop.vThumb.top() == atTop.vTrack.top());
+        editor.scale().setValueWindow(valueLo, valueLo + 0.1f * (valueHi - valueLo));
+        const gui::GraphPanelModel atBottom = gui::buildGraphPanelModel(editor, viewport, palette);
+        CHECK(atBottom.vThumb.bottom() == atBottom.vTrack.bottom());
+        std::printf(
+            "[16] direction: frame window at the range start -> pill x %d..%d; at the range end -> %d..%d (lane "
+            "%d..%d); value window at the top -> pill y %d..%d; at the bottom -> %d..%d (lane %d..%d)\n",
+            atStart.hThumb.left(), atStart.hThumb.right(), atEnd.hThumb.left(), atEnd.hThumb.right(),
+            atStart.hTrack.left(), atStart.hTrack.right(), atTop.vThumb.top(), atTop.vThumb.bottom(),
+            atBottom.vThumb.top(), atBottom.vThumb.bottom(), atTop.vTrack.top(), atTop.vTrack.bottom()
+        );
 
         // A FULL-CONTENT WINDOW SHOWS NO BAR: the frame axis asked for a window wider
         // than the project's whole range, and the value axis for one wider than every
@@ -2855,21 +2925,22 @@ int main(int argc, char** argv) {
         // A NARROW WINDOW YIELDS THE MINIMUM THUMB. The frame axis is given a
         // HALF-FRAME window (setFrameWindow maps a pushed window exactly - no ladder
         // rung rounds it) and the value axis a thousandth of the key extent; both
-        // fractions are far under the 16px floor, so both thumbs are exactly that
-        // floor and not the fraction.
+        // fractions are far under the style's floor, so both thumbs are exactly that
+        // floor and not the fraction. The floor is QStyle::PM_ScrollBarSliderMin, the
+        // same number Qt's own QScrollBar would use (measured below, not assumed).
         editor.setFrameWindow(10.0, 10.5);
         editor.scale().setValueWindow(50.0f, 50.001f);
         const gui::GraphPanelModel narrow = gui::buildGraphPanelModel(editor, viewport, palette);
         std::printf(
             "[16] narrow windows: frame window %.3f..%.3f of %d..%d -> hThumb %d px  value window %.4f..%.4f of "
-            "%.4f..%.4f -> vThumb %d px  (floor %d)\n",
+            "%.4f..%.4f -> vThumb %d px  (floor %d = PM_ScrollBarSliderMin)\n",
             editor.scale().frameAtPixel(double(narrow.plot.left())),
             editor.scale().frameAtPixel(double(narrow.plot.right() + 1)), frames.min(), frames.max(),
             narrow.hThumb.width(), editor.scale().valueMin(), editor.scale().valueMax(), valueLo, valueHi,
-            narrow.vThumb.height(), ctrl::graph::Scaler::kScrollBarMinThumb
+            narrow.vThumb.height(), minSlider
         );
-        CHECK(narrow.hThumb.width() == ctrl::graph::Scaler::kScrollBarMinThumb);
-        CHECK(narrow.vThumb.height() == ctrl::graph::Scaler::kScrollBarMinThumb);
+        CHECK(narrow.hThumb.width() == minSlider);
+        CHECK(narrow.vThumb.height() == minSlider);
         editor.clearFrameAxis(); // the frame axis is the panel's own again for what follows
 
         // AN EMPTY PLOT PUBLISHES NO BARS AT ALL (there is nowhere to lay one out), and

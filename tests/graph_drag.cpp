@@ -16,13 +16,14 @@
 //     handle PAIR. Handle 0 is the `from` key's OUTGOING tangent and handle 1 the
 //     `to` key's INCOMING one, so the opposite tangent of that same key lives in
 //     the neighbouring segment: segment i-1's (x2,y2) for an outgoing drag,
-//     segment i+1's (x1,y1) for an incoming one. Whether the two are LINKED is
-//     the key's STORED `util::Easing::Param::aligned` (document state, default
-//     true, serialized with the key); nothing infers it from the pixel angle, so
-//     a key moved on the value axis cannot flip it. Dragging one handle of a
-//     linked key keeps the other collinear at ITS OWN LENGTH (angle linked,
-//     length independent). Alt on any step leaves the opposite untouched AND
-//     writes the key FREE for good; Alt+click on a key links it again along the
+//     segment i+1's (x1,y1) for an incoming one. Each side carries its OWN
+//     STORED mode (`util::Easing::Param::handleIn`/`handleOut`, Blender's five)
+//     and nothing infers it from the pixel angle, so a key moved on the value
+//     axis cannot flip it. Dragging an ALIGNED side keeps the other collinear at
+//     ITS OWN LENGTH (angle linked, length independent); dragging a derived side
+//     frees ONLY that side, leaving the other one deriving. Alt on any step
+//     leaves the opposite untouched AND writes THIS SIDE FREE for good;
+//     Alt+click on a key links it again along the
 //     CHORD from the previous key's anchor to the next key's anchor, each handle
 //     keeping its own length. The FIRST and LAST key have one handle only and
 //     nothing to link.
@@ -109,16 +110,20 @@
 //     playback never reads (the step-held image offset) and a request for the
 //     type the key already has all push NOTHING.
 //
-// The WHEEL is pinned in section 0b (and its delegation in section 23). It ZOOMS
-// and never scrolls: plain zooms BOTH axes about the cursor, Shift zooms the FRAME
-// axis alone (the frame-only zoom the 2026-10-19 remap had moved to Ctrl+Shift),
-// Ctrl zooms the VALUE axis alone, and Ctrl+Shift zooms BOTH - so every form moves
-// at least one axis and no notch scrolls anything. Section 0b-iii pins the COUNT
-// (four Shift notches = four x1.1 steps of the frame rate, with the value window
-// bit-identical) and the Ctrl+Shift notch's change on both axes with both anchors
-// held. THE SCROLL BARS are pinned in section 0d (their geometry, and the two
-// gestures that move a window) and in section 23 with a timeline attached: a thumb
-// drag pans by exactly the pixels dragged and a press on the lane beside it advances
+// The WHEEL is pinned in section 0b (and its delegation in section 23). Over the
+// PLOT it ZOOMS and never scrolls: plain zooms BOTH axes about the cursor, Shift
+// zooms the FRAME axis alone (the frame-only zoom the 2026-10-19 remap had moved to
+// Ctrl+Shift), Ctrl zooms the VALUE axis alone, and Ctrl+Shift zooms BOTH - so every
+// form moves at least one axis and no notch over the plot scrolls anything. Section
+// 0b-iii pins the COUNT (four Shift notches = four x1.1 steps of the frame rate,
+// with the value window bit-identical) and the Ctrl+Shift notch's change on both
+// axes with both anchors held. Over a scroll bar's LANE a notch is that bar's own
+// QScrollBar wheel - `wheelScrollLines()` x kScrollBarStepPixels (3 x 24 = 72px) per
+// notch TOWARD the lane's start (wheel up = earlier frames, higher values), partial
+// deltas banked in a remainder, and NEVER a zoom (section 0d (4)). THE SCROLL BARS
+// are pinned in section 0d (their geometry, and the gestures that move a window) and
+// in section 23 with a timeline attached: a thumb drag pans by exactly the pixels
+// dragged and a press on the lane beside it advances
 // the window ONE PAGE toward the press, all of it through the same frame delegate the
 // pan uses.
 // The MIDDLE button is pinned in section 21: while the panel is up it pans the
@@ -206,14 +211,15 @@
 //     vertical drag moves both components; ctrl+A selects the shown channels' keys
 //     as one entry per key and Escape clears; and the set announces every change
 //     of its own, and only the changes.
-//   * 23f - THE HANDLE PAIR OF ONE KEY (link state, not a mirror): a three-key
-//     channel, so key B owns both an incoming (segment A-B's x2,y2) and an
-//     outgoing (segment B-C's x1,y1) handle. LINKED is the key's STORED
-//     `util::Easing::Param::aligned` - document state, not an inference from
-//     pixel collinearity - so a key moved on the value axis keeps it. On a LINKED
-//     key a drag keeps the opposite handle collinear at ITS OWN LENGTH (angle
-//     linked, length independent); on a FREE key the opposite is untouched. Alt
-//     held on any step stops writing the opposite AND writes the key FREE for
+//   * 23f - THE HANDLE PAIR OF ONE KEY (per-side modes, not a mirror): a
+//     three-key channel, so key B owns both an incoming (segment A-B's x2,y2)
+//     and an outgoing (segment B-C's x1,y1) handle. Each side's mode is STORED
+//     (`util::Easing::Param::handleIn`/`handleOut`) - document state, not an
+//     inference from pixel collinearity - so a key moved on the value axis keeps
+//     it. An ALIGNED side's drag keeps the opposite collinear at ITS OWN LENGTH
+//     (angle linked, length independent); a FREE side's drag leaves the opposite
+//     untouched, and a DERIVED side's drag frees only itself. Alt held on any
+//     step stops writing the opposite AND writes THAT SIDE FREE for
 //     good (the latest modifier state is read, and a later drag without Alt stays
 //     free); Alt+click links the pair along the CHORD between the neighbouring
 //     keys' anchors, each handle keeping its own length - the direction never
@@ -857,14 +863,19 @@ int main(int argc, char** argv) {
 
     // --- 0d: THE SCROLL BARS. The two bars are the panel's way of moving a WINDOW
     // without changing its scale (the wheel zooms, they scroll): the horizontal one
-    // along the plot's bottom edge scrolls the FRAME axis - its content is the
-    // project's frame range - and the vertical one along the plot's right edge
-    // scrolls the VALUE axis, whose content is the shown curves' key extent
-    // (shownValueExtent, the range fitValueAxis fits). This section pins:
-    //   * WHERE THEY ARE: outside the plot, inside the panel, disjoint from each
-    //     other, the application's 12px lane with the scaler's 2px gap - the reserve
-    //     the plot gave up at its right and bottom edges (Scaler::kScrollBarReserve);
-    //   * a press on a THUMB (its run) pans its axis by EXACTLY the pixels dragged;
+    // along the panel's bottom edge scrolls the FRAME axis - its content is the
+    // project's frame range - and the vertical one along its right edge scrolls the
+    // VALUE axis, whose content is the shown curves' key extent (shownValueExtent, the
+    // range fitValueAxis fits). This section pins:
+    //   * WHERE THEY ARE: the application's 12px lanes, FLUSH with the panel's bottom
+    //     and right edges (the timeline's own bar layout), with the plot's right and
+    //     bottom inset being exactly that lane (Scaler::kScrollBarReserve);
+    //   * the pill's LENGTH and OFFSET by Qt's own QScrollBar arithmetic, floored at
+    //     QStyle::PM_ScrollBarSliderMin;
+    //   * THE DIRECTION on both axes: dragging the horizontal pill RIGHT shows LATER
+    //     frames, dragging the vertical pill UP shows HIGHER values - the window
+    //     follows the pill, and the content under it moves the other way (as a scroll
+    //     bar's does);
     //   * a press on the LANE beside the run pages the window by its own span toward
     //     the press, and then continues as that same drag;
     //   * and NONE of it pushes a command: a scroll bar moves a window, and the
@@ -875,6 +886,7 @@ int main(int argc, char** argv) {
     {
         const Scaler& scale = editor.scale();
         const QRect plot = scale.plotRect();
+        CHECK(scale.rect() == panel);
         float valueLo = 0.0f;
         float valueHi = 0.0f;
         CHECK(editor.shownValueExtent(valueLo, valueHi)); // the node's rotate curve has keys
@@ -892,22 +904,23 @@ int main(int argc, char** argv) {
         const Scaler::ScrollBars bars = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
 
         CHECK(!bars.isEmpty());
-        CHECK(bars.hTrack.height() == Scaler::kScrollBarThickness);
-        CHECK(bars.hTrack.width() == plot.width());
-        CHECK(bars.hTrack.left() == plot.left());
-        CHECK(bars.hTrack.top() == plot.bottom() + 1 + Scaler::kScrollBarGap);
-        CHECK(bars.vTrack.width() == Scaler::kScrollBarThickness);
-        CHECK(bars.vTrack.height() == plot.height());
-        CHECK(bars.vTrack.top() == plot.top());
-        CHECK(bars.vTrack.left() == plot.right() + 1 + Scaler::kScrollBarGap);
+        const int lane = Scaler::kScrollBarThickness;
+        CHECK(lane == 12);
+        CHECK(bars.hTrack == QRect(panel.left(), panel.bottom() - lane + 1, panel.width(), lane));
+        CHECK(bars.vTrack
+              == QRect(panel.right() - lane + 1, plot.top(), lane, panel.bottom() - lane - plot.top() + 1));
+        // FLUSH with the panel's edges, and the plot's insets are the lane.
+        CHECK(bars.hTrack.bottom() == panel.bottom());
+        CHECK(bars.hTrack.right() == panel.right());
+        CHECK(bars.vTrack.right() == panel.right());
+        CHECK(bars.vTrack.bottom() + 1 == bars.hTrack.top());
+        CHECK(plot.bottom() + 1 == bars.hTrack.top());
+        CHECK(plot.right() + 1 == bars.vTrack.left());
         CHECK(panel.contains(bars.hTrack));
         CHECK(panel.contains(bars.vTrack));
         CHECK(!bars.hTrack.intersects(plot));
         CHECK(!bars.vTrack.intersects(plot));
         CHECK(!bars.hTrack.intersects(bars.vTrack)); // the two bars cannot overlap
-        // The value column shares the plot's rows and ends at plot.bottom(), so a
-        // track below the plot is clear of it by construction, and the vertical track
-        // starts right of the plot - where the column is not.
         CHECK(bars.hTrack.top() > plot.bottom());
         CHECK(bars.vTrack.left() > plot.right());
         CHECK(bars.hTrack.contains(bars.hThumb)); // a thumb never leaves its track
@@ -915,14 +928,26 @@ int main(int argc, char** argv) {
         CHECK(bars.hThumb.width() < bars.hTrack.width()); // the window is narrower than the content
         CHECK(bars.vThumb.height() < bars.vTrack.height());
         CHECK(bars.hThumb.left() == bars.hTrack.left()); // the window starts at the range's first frame
+        // The LENGTH is Qt's pageStep/content fraction of the track, floored at the
+        // style's own minimum - asked from the style, never written as a literal.
+        const int minSlider = Scaler::scrollBarSliderMin();
+        CHECK(minSlider > 0);
+        const double hWindow = scale.frameAtPixel(double(plot.right() + 1)) - scale.frameAtPixel(double(plot.left()));
+        const int expectedHLength = std::clamp(
+            int(std::lround(hWindow / double(frames.max() - frames.min()) * bars.hTrack.width())),
+            std::min(minSlider, bars.hTrack.width()), bars.hTrack.width()
+        );
+        CHECK(bars.hThumb.width() == expectedHLength);
 
-        // (1) A THUMB DRAG PANS BY EXACTLY THE PIXELS DRAGGED. The frame half moves
-        // the mapping's origin by the pointer's delta - measured through
+        // (1) A THUMB DRAG MOVES THE WINDOW WITH THE PILL, by exactly the pixels
+        // dragged. The frame half moves the MAPPING's origin the other way (the window
+        // advances, so the content under it slides left) - measured through
         // pixelXOfFrame, the mapping itself and not a rounded pixel - and leaves the
-        // value window bit-identical; the value half does the same to the value
-        // window and leaves the frame axis alone.
+        // value window bit-identical; the value half does the same to the value window
+        // and leaves the frame axis alone.
         const QPoint hGrab = bars.hThumb.center();
         const double frameOriginBefore = scale.pixelXOfFrame(0.0);
+        const double frameAtLeftBefore = scale.frameAtPixel(double(plot.left()));
         const float valueMinBefore = scale.valueMin();
         const float valueMaxBefore = scale.valueMax();
         core::AbstractCursor hCur;
@@ -941,11 +966,17 @@ int main(int argc, char** argv) {
         CHECK(hGrab.y() > plot.bottom()); // the grab really is on the bar, outside the plot
         const QPoint hDelta(37, 0);
         CHECK(sendMove(editor, camera, hCur, hGrab + hDelta));
+        // THE DRAG OWNS THE CURSOR TOO: the move is the bar's even when the pointer is
+        // not asked about a press - this is what the host's routing asks on every move,
+        // so a bar drag that only worked while the press event was still current would
+        // fail here.
+        CHECK(editor.ownsCursor(camera, hCur));
         CHECK(sendRelease(editor, camera, hCur, hGrab + hDelta));
-        // Exactly the pixels dragged: the origin is a double the pan adds the integer
-        // delta to, so the comparison is the mapping's own arithmetic to within the
-        // double's rounding - an 11px drag is not 10 or 12.
-        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - frameOriginBefore - 37.0) < 1e-9);
+        // Dragging the pill RIGHT shows LATER frames: the viewport advances, so the
+        // content's origin moves LEFT by exactly the pixels dragged (the double's own
+        // arithmetic, so an 11px drag is not 10 or 12).
+        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - frameOriginBefore + 37.0) < 1e-9);
+        CHECK(scale.frameAtPixel(double(plot.left())) > frameAtLeftBefore); // the window really is later
         CHECK(scale.valueMin() == valueMinBefore); // and not one value in the process
         CHECK(scale.valueMax() == valueMaxBefore);
         CHECK(editor.selectionCount() == selectionBefore); // no plot gesture ran
@@ -954,7 +985,7 @@ int main(int argc, char** argv) {
         // (2) A LANE PRESS IS ONE PAGE TOWARD THE PRESS, THEN A DRAG. A press on the
         // lane beside the run moves the window by its OWN span - a page is the visible
         // window, the unit a QScrollBar's PageStep uses - in the press's direction, and
-        // the move that follows pans from the press position exactly as a thumb grab
+        // the move that follows scrolls from the press position exactly as a thumb grab
         // does. The press here is to the RIGHT of a window sitting at the range's
         // start, so it pages FORWARD by exactly one window.
         editor.scale().fitFrameAxis(core::Frame(0), core::Frame(10)); // the thumb back to the left end
@@ -963,7 +994,7 @@ int main(int argc, char** argv) {
         CHECK(!jump.hThumb.contains(trackPress)); // a LANE press: off the run
         const QRect jumpPlot = scale.plotRect();
         const double leftFrameBeforePage = scale.frameAtPixel(jumpPlot.left());
-        const double rightFrameBeforePage = scale.frameAtPixel(jumpPlot.left() + jumpPlot.width());
+        const double rightFrameBeforePage = scale.frameAtPixel(double(jumpPlot.right() + 1));
         core::AbstractCursor jumpCur;
         {
             QMouseEvent down(
@@ -981,11 +1012,13 @@ int main(int argc, char** argv) {
         const QPoint jumpDelta(-11, 0);
         CHECK(sendMove(editor, camera, jumpCur, trackPress + jumpDelta));
         CHECK(sendRelease(editor, camera, jumpCur, trackPress + jumpDelta));
-        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - jumpedOrigin + 11.0) < 1e-9); // the drag after a page pans the same
+        // ...and the drag after the page scrolls the same way the thumb drag does: a
+        // LEFTWARD drag shows earlier frames, so the content moves RIGHT by 11px.
+        CHECK(std::fabs(scale.pixelXOfFrame(0.0) - jumpedOrigin - 11.0) < 1e-9);
 
         // (3) THE VERTICAL BAR, the same two gestures on the value axis: a thumb drag
-        // moves the value window by the pixels dragged (and the frame axis not at
-        // all), and a lane press pages the window by its own span toward the press.
+        // moves the value window (and the frame axis not at all), and a lane press
+        // pages the window by its own span toward the press.
         // The window is 0..10 of the key extent 0..90 - the content's LOW end - so,
         // the value axis being inverted along its track, its thumb sits at the track's
         // BOTTOM and the free lane is the top: a press there pages toward HIGHER
@@ -995,6 +1028,8 @@ int main(int argc, char** argv) {
         const QPoint vGrab = vBars.vThumb.center();
         const double vFrameOriginBefore = scale.pixelXOfFrame(0.0);
         const float vSpanBefore = scale.valueMax() - scale.valueMin();
+        const float vMinBeforeDrag = scale.valueMin();
+        const float vMaxBeforeDrag = scale.valueMax();
         const double valueUnderGrab = scale.valueAtPixel(vGrab.y());
         core::AbstractCursor vCur;
         {
@@ -1005,11 +1040,15 @@ int main(int argc, char** argv) {
         }
         CHECK(editor.ownsCursor(camera, vCur));
         CHECK(editor.updateCursor(camera, vCur));
-        const QPoint vDelta(0, 24);
+        // DRAGGING THE PILL UP SHOWS HIGHER VALUES: the window's two bounds both rise,
+        // and the content under the pointer slides DOWN by the pixels dragged (the
+        // value that was under the pointer is 24px lower now) - a scroll, not a pan
+        // (whose content follows the pointer) and not a zoom (the span is untouched).
+        const QPoint vDelta(0, -24);
         CHECK(sendMove(editor, camera, vCur, vGrab + vDelta));
         CHECK(sendRelease(editor, camera, vCur, vGrab + vDelta));
-        // The value that was under the pointer is now 24 px lower in the plot, with
-        // the window's SPAN untouched: a pan, never a zoom.
+        CHECK(scale.valueMin() > vMinBeforeDrag); // the window went UP the value axis
+        CHECK(scale.valueMax() > vMaxBeforeDrag);
         CHECK(std::fabs(scale.valueAtPixel(vGrab.y() + 24) - valueUnderGrab) < 1e-3);
         CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanBefore) < 1e-5f);
         CHECK(scale.pixelXOfFrame(0.0) == vFrameOriginBefore); // the frame axis did not move
@@ -1035,7 +1074,78 @@ int main(int argc, char** argv) {
         CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanAtPage) < 1e-5f);
         CHECK(sendRelease(editor, camera, vJumpCur, vTrackPress));
 
-        // (4) NOTHING WAS PUSHED, and nothing was announced: the two windows moved and
+        // (4) THE WHEEL OVER A LANE SCROLLS IT AND NEVER ZOOMS. Qt's QScrollBar wheel
+        // is wheelScrollLines() (3) single steps of kScrollBarStepPixels (24) per notch,
+        // accumulated across partial deltas, and it moves the WINDOW in the bar's own
+        // direction - wheel up means earlier frames on the horizontal bar, higher values
+        // on the vertical one (the lane's start). The SCALE must not change on either
+        // axis, which is the "scroll over the scrollbar just zooms" defect.
+        editor.scale().setRect(panel);
+        editor.scale().fitFrameAxis(core::Frame(0), core::Frame(10));
+        editor.scale().setValueWindow(0.0f, 10.0f);
+        {
+            const Scaler::ScrollBars wheelBars = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+            const int lines = qMax(1, QApplication::wheelScrollLines());
+            const int perNotch = lines * Scaler::kScrollBarStepPixels;
+            const QPoint hLane(wheelBars.hTrack.left() + 3, wheelBars.hTrack.center().y());
+            const QPoint vLane(wheelBars.vTrack.center().x(), wheelBars.vTrack.top() + 3);
+            CHECK(wheelBars.hTrack.contains(hLane));
+            CHECK(wheelBars.vTrack.contains(vLane));
+
+            // ONE NOTCH UP on the horizontal lane: the window moves 3 single steps
+            // TOWARD THE LANE'S START (earlier frames), so the content slides RIGHT by
+            // 72px - pixelXOfFrame advances by perNotch - and the SCALE does not change.
+            const double hOriginBefore = scale.pixelXOfFrame(0.0);
+            const double hPpfBefore = scale.framePpf();
+            CHECK(editor.updateWheel(camera, hLane, 120, Qt::NoModifier, false));
+            CHECK(std::fabs(scale.pixelXOfFrame(0.0) - hOriginBefore - perNotch) < 1e-9);
+            CHECK(scale.framePpf() == hPpfBefore); // scroll, never zoom
+            // ...and the other axis did not move either.
+            CHECK(scale.valueMin() == 0.0f && scale.valueMax() == 10.0f);
+            // ONE NOTCH DOWN COMES BACK: wheel up is toward the lane's START (earlier
+            // frames), so a down notch shows later frames - the window returns by exactly
+            // the same distance.
+            CHECK(editor.updateWheel(camera, hLane, -120, Qt::NoModifier, false));
+            CHECK(std::fabs(scale.pixelXOfFrame(0.0) - hOriginBefore) < 1e-9);
+            CHECK(scale.framePpf() == hPpfBefore);
+            // ACCUMULATED: three partial deltas of 40 are one notch, and the leftover is
+            // banked for the next event (40+40+40+40 is one notch and 40 still banked).
+            const double hAccumBefore = scale.pixelXOfFrame(0.0);
+            CHECK(editor.updateWheel(camera, hLane, 40, Qt::NoModifier, false));
+            CHECK(editor.updateWheel(camera, hLane, 40, Qt::NoModifier, false));
+            CHECK(std::fabs(scale.pixelXOfFrame(0.0) - hAccumBefore) < 1e-9); // 80: no notch yet
+            CHECK(editor.updateWheel(camera, hLane, 40, Qt::NoModifier, false));
+            CHECK(std::fabs(scale.pixelXOfFrame(0.0) - hAccumBefore - perNotch) < 1e-9); // 120: one notch
+            CHECK(editor.updateWheel(camera, hLane, 40, Qt::NoModifier, false));
+            CHECK(std::fabs(scale.pixelXOfFrame(0.0) - hAccumBefore - perNotch) < 1e-9); // the 40 stays banked
+            CHECK(scale.framePpf() == hPpfBefore); // and never a zoom
+
+            // ONE NOTCH on the vertical lane: the WINDOW moves UP the value axis (higher
+            // values), the span and the frame axis are untouched.
+            const float vMinBeforeWheel = scale.valueMin();
+            const float vSpanBeforeWheel = scale.valueMax() - scale.valueMin();
+            const double vOriginBeforeWheel = scale.pixelXOfFrame(0.0);
+            CHECK(editor.updateWheel(camera, vLane, 120, Qt::NoModifier, false));
+            CHECK(scale.valueMin() > vMinBeforeWheel); // higher values
+            CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanBeforeWheel) < 1e-5f);
+            CHECK(scale.pixelXOfFrame(0.0) == vOriginBeforeWheel);
+            double valueAtLaneAfter = scale.valueAtPixel(vLane.y());
+            std::printf(
+                "[B] wheel over a lane: one notch = %d lines x %d px = %d px; horizontal lane moved the window "
+                "and kept the rate (%.4f px/frame); partial 40+40+40 accumulated to one notch; vertical lane "
+                "raised valueMin %.4f -> %.4f at the same span; value at the lane row now %.4f\n",
+                lines, Scaler::kScrollBarStepPixels, perNotch, hPpfBefore, vMinBeforeWheel, scale.valueMin(),
+                valueAtLaneAfter
+            );
+
+            // THE PLOT STILL ZOOMS: the lane branch must not swallow the wheel over the
+            // graph.
+            const double plotPpfBefore = scale.framePpf();
+            CHECK(editor.updateWheel(camera, plot.center(), 120, Qt::NoModifier, false));
+            CHECK(scale.framePpf() != plotPpfBefore);
+        }
+
+        // (5) NOTHING WAS PUSHED, and nothing was announced: the two windows moved and
         // the document did not notice.
         bool barUndo = true;
         stack.undo(&barUndo);
@@ -1106,10 +1216,44 @@ int main(int argc, char** argv) {
         CHECK(sendMove(editor, camera, cursor, QPoint(moveX, band.center().y())));
         CHECK(seeks.size() == 2);
         CHECK(seeks.last() == bandScale.frameAt(moveX).get());
+        // THE DRAG OWNS THE CURSOR: this is what the host asks on every move, and with
+        // the seek missing from ownsCursor the answer used to be "nobody's" - the press
+        // seeked once and the drag and release never arrived. A seek arms no command,
+        // but it IS a gesture.
+        CHECK(editor.ownsCursor(camera, cursor));
         const int releaseX = band.left() + band.width() / 4;
         CHECK(sendRelease(editor, camera, cursor, QPoint(releaseX, band.center().y())));
         CHECK(seeks.size() == 3);
         CHECK(seeks.last() == bandScale.frameAt(releaseX).get());
+        // THE RELEASE ENDS IT: the same cursor state is nobody's again, so the next
+        // plain move passes through to the tools instead of scrubbing.
+        CHECK(!editor.ownsCursor(camera, cursor));
+
+        // A PRESS ON THE PLAYHEAD'S OWN PILL SCRUBS TOO. The pill's box is inside the
+        // band and inside the value column's columns, and the parent's capture of the
+        // shipped build found the press there moving nothing: the press DOES seek, but
+        // to the frame already showing (the pill sits on it), so the only way to tell a
+        // working pill grab from a dead one is the DRAG - which the ownership fix above
+        // is what delivers.
+        {
+            const int pillX = bandScale.pixelX(editor.currentFrame());
+            const int pillFrame = bandScale.frameAt(pillX).get();
+            const int pillDragX = pillX + 100;
+            CHECK(band.contains(QPoint(pillX, band.center().y())));
+            core::AbstractCursor pillCur;
+            const int seeksBeforePill = seeks.size();
+            CHECK(sendPress(editor, camera, pillCur, QPoint(pillX, band.center().y())));
+            CHECK(seeks.size() == seeksBeforePill + 1);
+            CHECK(seeks.last() == pillFrame); // the press lands on the frame under the pill
+            CHECK(editor.ownsCursor(camera, pillCur));
+            CHECK(sendMove(editor, camera, pillCur, QPoint(pillDragX, band.center().y())));
+            CHECK(seeks.size() == seeksBeforePill + 2);
+            CHECK(seeks.last() == bandScale.frameAt(pillDragX).get());
+            CHECK(seeks.last() > pillFrame); // ...and the drag really moved the frame
+            CHECK(editor.ownsCursor(camera, pillCur));
+            CHECK(sendRelease(editor, camera, pillCur, QPoint(pillDragX, band.center().y())));
+            CHECK(!editor.ownsCursor(camera, pillCur));
+        }
         // ...and the seek pushed NOTHING: the frame is the project's, so the stack
         // answers "nothing to undo" and the document never heard of it.
         bool seekUndo = true;
@@ -1118,7 +1262,7 @@ int main(int argc, char** argv) {
         CHECK(changeEvents == 0);
         // ...and the seek ended: a later press in the plot is the plot's, not a seek.
         CHECK(sendPress(editor, camera, cursor, plot.center()));
-        CHECK(seeks.size() == 3);
+        CHECK(seeks.size() == 6); // press, move, release, pill press, pill move, pill release
         sendRelease(editor, camera, cursor, plot.center());
 
         // NO DELEGATE, NO CLAIM: the band is not the panel's to swallow.
@@ -3150,7 +3294,10 @@ int main(int argc, char** argv) {
         CHECK(sendMove(editor, camera, seamBarCur, seamThumbGrab + seamBarDelta));
         CHECK(sendRelease(editor, camera, seamBarCur, seamThumbGrab + seamBarDelta));
         CHECK(scrollCalls == scrollCallsBeforeBar + 1); // the timeline's SCROLL delegate heard it...
-        CHECK(std::fabs((scrolledFrames - scrolledBeforeBar) + 30.0 / seamPpfAtBarDrag) < 1e-9); // ...by 30 px of frames
+        // ...as +30 px of viewport travel: a rightward pill drag shows LATER frames, which
+        // is the positive direction of scrollFramesByBarPixels (and the timeline's own
+        // scrollViewBy), so the delegate receives 30 / framePpf frames.
+        CHECK(std::fabs((scrolledFrames - scrolledBeforeBar) - 30.0 / seamPpfAtBarDrag) < 1e-9);
         CHECK(editor.scale().pixelXOfFrame(0.0) == seamOriginBeforeBar); // and the panel's own X was not written
         CHECK(zoomCalls == 5); // a scroll bar is not a wheel
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
@@ -3162,8 +3309,9 @@ int main(int argc, char** argv) {
             "(panel %dx%d, plot %dx%d) and survives a cursor pass, a target-set change and fitAll; a Shift notch and a "
             "Ctrl+Shift notch both reach the frame ZOOM delegate (the frame axis alone, then both axes) and "
             "NEVER the scroll one, a 40px middle-drag pan and a 30px scroll-bar thumb drag reach the SCROLL "
-            "delegate with 40/framePpf and 30/framePpf frames - all leaving the panel's own X exactly where "
-            "the timeline put it, while a Ctrl wheel moves only the value axis\n",
+            "delegate with -40/framePpf (the pan moves the content right, i.e. earlier frames) and "
+            "+30/framePpf frames (the pill drag advances the window) - all leaving the panel's own X exactly "
+            "where the timeline put it, while a Ctrl wheel moves only the value axis\n",
             pushedLo, pushedHi, sharedPpf, sharedPanel.width(), sharedPanel.height(), sharedPlot.width(),
             sharedPlot.height()
         );
@@ -3458,11 +3606,12 @@ int main(int argc, char** argv) {
         editor.setTargets({}); // drop the target before its owner dies
     }
 
-    // --- 23d: a GHOST-handle drag writes Type_Custom at the third points. An
-    // Auto segment's control points are DERIVED (Curve::ghostHandles), not
-    // stored, so a press must FIND them (the hit-test does now) and a drag must
-    // CONVERT: Type_Custom carrying the derived pair at (1/3, y1) and (2/3, y2),
-    // inside the drag's own cmnd::Gesture - so the conversion is one undo step.
+    // --- 23d: a DERIVED-handle drag frees ONE SIDE. A Custom curve whose side
+    // is Auto has no stored position for that dot: its control point is DERIVED
+    // (Curve::effectiveHandles) from that side's neighbour. A press must FIND it
+    // (the hit-test does) and a drag must write the pointer's position and make
+    // THAT side Free - leaving the other side's mode untouched. The write rides
+    // the drag's own cmnd::Gesture, so the mode change is one undo step too.
     {
         core::TestNode ghostNode;
         core::RotateKey* a0 = new core::RotateKey();
@@ -3474,9 +3623,12 @@ int main(int argc, char** argv) {
         core::RotateKey* a2 = new core::RotateKey();
         a2->setRotate(40.0f);
         setup.push(ghostNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 20, a2));
-        a0->data().easing(0).type = util::Easing::Type_Auto;
-        a1->data().easing(0).type = util::Easing::Type_Auto;
+        a0->data().easing(0).type = util::Easing::Type_Custom;
+        a0->data().easing(0).handleOut = util::Easing::HandleMode_Auto;
+        a1->data().easing(0).type = util::Easing::Type_Custom;
+        a1->data().easing(0).handleIn = util::Easing::HandleMode_Auto;
         const util::Easing::Param kAutoAuthored = a0->data().easing(0);
+        const util::Easing::Param kToAuthored = a1->data().easing(0);
 
         editor.setTargets({ &ghostNode });
         editor.scale().setRect(panel);
@@ -3489,12 +3641,13 @@ int main(int argc, char** argv) {
         CHECK(ghostSeg.from == a0 && ghostSeg.to == a1);
         CHECK(ghostSeg.fromValue == 0.0f && ghostSeg.toValue == 100.0f);
 
-        const QVector<QPointF> ghosts = ghostCurve.ghostHandles(*ghostSeg.from);
-        CHECK(ghosts.size() == 2);
+        QPointF ghosts[2];
+        CHECK(ghostCurve.effectiveHandles(ghostSeg, ghosts));
         CHECK(std::fabs(ghosts[0].x() - 1.0 / 3.0) < 1e-9);
         CHECK(std::fabs(ghosts[1].x() - 2.0 / 3.0) < 1e-9);
+        const QPointF otherSideBefore = ghosts[1]; // a1's Auto incoming side
 
-        // The ghost DOT, mapped exactly the way the panel's own geometry maps a
+        // The derived DOT, mapped exactly the way the panel's own geometry maps a
         // handle (graph::handlePointAt), rounded to the pixel a press can name.
         const QPointF ghostDot = ctrl::graph::handlePointAt(editor.scale(), ghostSeg, ghosts[0]);
         const QPoint ghostGrab(
@@ -3504,30 +3657,29 @@ int main(int argc, char** argv) {
 
         core::AbstractCursor ghostCur;
 
-        // (a) A drag whose move lands back ON the ghost dot: the conversion is
-        // the whole edit, so what was written is the derived pair's GEOMETRY at
-        // the thirds - the grabbed handle at its own third, and the pair's
-        // other control point left at the second third. That other point is the
-        // `to` key's INCOMING handle, NOT the dragged key's opposite handle: the
-        // grabbed handle is this segment's `from` key's OUTGOING one, that key
-        // is the channel's FIRST, and a first key has no incoming handle - so
-        // there is no neighbour to mirror onto and the derived (2/3, y2) stays.
+        // (a) A drag whose move lands back ON the dot: only the dragged side is
+        // freed and written. The other side belongs to the `to` key (a1), stays
+        // Auto and keeps its stored pair untouched.
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
-        CHECK(editor.ownsCursor(camera, ghostCur)); // the ghost dot is a grabbable handle
-        CHECK(a0->data().easing(0).type == util::Easing::Type_Auto); // the press alone edits nothing
+        CHECK(editor.ownsCursor(camera, ghostCur)); // the derived dot is a grabbable handle
+        CHECK(a0->data().easing(0) == kAutoAuthored); // the press alone edits nothing
         CHECK(sendMove(editor, camera, ghostCur, ghostGrab));
         CHECK(sendRelease(editor, camera, ghostCur, ghostGrab));
 
         CHECK(a0->data().easing(0).type == util::Easing::Type_Custom);
+        CHECK(a0->data().easing(0).handleOut == util::Easing::HandleMode_Free); // ONLY this side
+        CHECK(a0->data().easing(0).handleIn == kAutoAuthored.handleIn); // ... the other mode untouched
         CHECK(std::fabs(a0->data().easing(0).cubicBezier.x1 - 1.0f / 3.0f) < 0.01f);
-        CHECK(std::fabs(a0->data().easing(0).cubicBezier.x2 - 2.0f / 3.0f) < 0.01f);
         CHECK(std::fabs(a0->data().easing(0).cubicBezier.y1 - static_cast<float>(ghosts[0].y())) < 0.02f);
-        // The other control point is the conversion's own derived y, untouched
-        // by the drag: no mirror exists for the first key.
-        CHECK(std::fabs(a0->data().easing(0).cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
+        // The arriving side is a DIFFERENT KEY's param, and was not written; the
+        // stored x2/y2 this drag does not own stay byte-identical (they are not
+        // even read while that side is derived).
+        CHECK(a1->data().easing(0) == kToAuthored);
+        CHECK(a0->data().easing(0).cubicBezier.x2 == kAutoAuthored.cubicBezier.x2);
+        CHECK(a0->data().easing(0).cubicBezier.y2 == kAutoAuthored.cubicBezier.y2);
 
-        // ONE undo brings the Auto easing back whole (the conversion and the
-        // handle write are one command), and a second finds nothing behind it.
+        // ONE undo brings the Auto side back (the mode write and the handle write
+        // are one command), and a second finds nothing behind it.
         bool undoneGhost = false;
         CHECK(!stack.undo(&undoneGhost).isEmpty());
         CHECK(undoneGhost);
@@ -3536,17 +3688,16 @@ int main(int argc, char** argv) {
         CHECK(stack.undo(&undoneGhostAgain).isEmpty());
         CHECK(!undoneGhostAgain);
 
-        // (b) A real drag AWAY from the dot: the conversion still happens (the
-        // key becomes Custom, riding the drag's own gesture), and the drag then
-        // writes the GRABBED handle where the pointer is. The pair's other
-        // control point belongs to the `to` key, not to the dragged one, and has
-        // no mirror rule of its own: it stays at the derived second third.
+        // (b) A real drag AWAY from the dot writes the GRABBED side where the
+        // pointer is and frees it; the other side (a1's incoming, still Auto)
+        // keeps deriving from ITS neighbour.
         const QPoint ghostMoved(ghostGrab.x() + 6, ghostGrab.y() + 5);
         CHECK(sendPress(editor, camera, ghostCur, ghostGrab));
         CHECK(sendMove(editor, camera, ghostCur, ghostMoved));
         CHECK(sendRelease(editor, camera, ghostCur, ghostMoved));
 
         CHECK(a0->data().easing(0).type == util::Easing::Type_Custom);
+        CHECK(a0->data().easing(0).handleOut == util::Easing::HandleMode_Free);
         const double ghostFrameSpan = static_cast<double>(ghostSeg.to->frame() - ghostSeg.from->frame());
         const double ghostValueSpan = static_cast<double>(ghostSeg.toValue - ghostSeg.fromValue);
         const double expectedNx = (editor.scale().frameAtPixel(static_cast<double>(ghostMoved.x()))
@@ -3557,30 +3708,33 @@ int main(int argc, char** argv) {
                                   / ghostValueSpan;
         CHECK(std::fabs(a0->data().easing(0).cubicBezier.x1 - static_cast<float>(expectedNx)) < 1e-4f);
         CHECK(std::fabs(a0->data().easing(0).cubicBezier.y1 - static_cast<float>(expectedNy)) < 1e-4f);
-        // ...and the other control point is still the derived pair's own second
-        // third, in BOTH components: the drag did not touch it.
-        CHECK(std::fabs(a0->data().easing(0).cubicBezier.x2 - static_cast<float>(ghosts[1].x())) < 1e-6f);
-        CHECK(std::fabs(a0->data().easing(0).cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
+        // ...and the other side is still the derived second third: the drag did
+        // not touch a1's Auto side (nor this param's stored x2/y2).
+        CHECK(a1->data().easing(0) == kToAuthored);
+        CHECK(a0->data().easing(0).cubicBezier.x2 == kAutoAuthored.cubicBezier.x2);
+        CHECK(a0->data().easing(0).cubicBezier.y2 == kAutoAuthored.cubicBezier.y2);
+        const Curve afterGhost(*ghostNode.timeLine(), Channel(core::TimeKeyType_Rotate, 0));
+        QPointF afterPair[2];
+        CHECK(afterGhost.effectiveHandles(afterGhost.segment(0), afterPair));
+        CHECK(afterPair[1] == otherSideBefore);
 
         std::printf(
-            "[A] ghost-handle drag: an Auto segment's derived pair (1/3,%.3f)/(2/3,%.3f) was written as "
-            "Type_Custom at the thirds and undone by ONE undo; a drag away moved the grabbed handle to "
-            "(%.3f,%.3f) and left the other control point at its derived (%.3f,%.3f) - the first key has "
-            "no mirror\n",
+            "[A] derived-handle drag: the Auto side (1/3,%.3f)/(2/3,%.3f) became Free at the pointer "
+            "(%.3f,%.3f) and the OTHER side stayed Auto and derived at (%.3f,%.3f); one undo restored "
+            "the Auto side\n",
             ghosts[0].y(), ghosts[1].y(), a0->data().easing(0).cubicBezier.x1,
-            a0->data().easing(0).cubicBezier.y1, a0->data().easing(0).cubicBezier.x2,
-            a0->data().easing(0).cubicBezier.y2
+            a0->data().easing(0).cubicBezier.y1, afterPair[1].x(), afterPair[1].y()
         );
 
-        // (c) THE CULL. The hit test derives a segment's ghost pair only when one
-        // of the pair's x-pixels is within the grab radius of the pointer (see
+        // (c) THE CULL. The hit test derives a segment's pair only when a DERIVED
+        // side's x-pixel is within the grab radius of the pointer (see
         // GraphEditor::hitTest: the x is the segment's own arithmetic, so the cull
         // is exact and costs no map lookup). Both sides of that decision must
-        // behave exactly as they did before it existed: a ghost dot 8px away is
-        // STILL grabbed - an inexact cull would silently drop a handle the pointer
-        // is on - and a point 30px away grabs nothing at all, so it opens the
-        // marquee like any empty plot press.
-        a0->data().easing(0).type = util::Easing::Type_Auto; // the ghost state again: a document write, not a gesture
+        // behave as they did before it existed: a dot 8px away is STILL grabbed -
+        // an inexact cull would silently drop a handle the pointer is on - and a
+        // point 30px away grabs nothing, so it opens the marquee like any empty
+        // plot press.
+        a0->data().easing(0) = kAutoAuthored; // the derived state again: a document write, not a gesture
 
         const QPoint ghostNear(ghostGrab.x() + 8, ghostGrab.y());
         // The precondition the grab below rests on: 8px in x, plus the dot's own
@@ -3588,18 +3742,18 @@ int main(int argc, char** argv) {
         CHECK(std::fabs(ghostDot.x() - static_cast<double>(ghostNear.x())) <= 9.0);
         CHECK(sendPress(editor, camera, ghostCur, ghostNear));
         CHECK(editor.ownsCursor(camera, ghostCur));
-        CHECK(a0->data().easing(0).type == util::Easing::Type_Auto); // the press alone still edits nothing
+        CHECK(a0->data().easing(0) == kAutoAuthored); // the press alone still edits nothing
         CHECK(sendMove(editor, camera, ghostCur, ghostNear));
         CHECK(sendRelease(editor, camera, ghostCur, ghostNear));
-        CHECK(a0->data().easing(0).type == util::Easing::Type_Custom); // the reachable ghost WAS grabbed
+        CHECK(a0->data().easing(0).handleOut == util::Easing::HandleMode_Free); // the reachable dot WAS grabbed
         CHECK(!editor.hasMarquee());
 
-        a0->data().easing(0).type = util::Easing::Type_Auto; // ...and once more for the far case
+        a0->data().easing(0) = kAutoAuthored; // ...and once more for the far case
         const QPoint ghostFar(ghostGrab.x() + 30, ghostGrab.y());
         CHECK(sendPress(editor, camera, ghostCur, ghostFar));
         CHECK(editor.hasMarquee()); // no handle within reach: the plain plot press marquees
         CHECK(editor.marqueeRect().isEmpty()); // with nothing dragged yet
-        CHECK(a0->data().easing(0).type == util::Easing::Type_Auto); // nothing grabbed, nothing written
+        CHECK(a0->data().easing(0) == kAutoAuthored); // nothing grabbed, nothing written
         CHECK(sendRelease(editor, camera, ghostCur, ghostFar));
         CHECK(!editor.hasMarquee());
 
@@ -3911,13 +4065,12 @@ int main(int argc, char** argv) {
     // the `from` key's outgoing handle, segment i+1's (x1,y1) for the `to` key's
     // incoming one.
     //
-    // Whether the two are LINKED is the key's STORED
-    // `util::Easing::Param::aligned` - document state (default true) carried in
-    // the key's own param, NOT an inference from the pixel angle. The rules
-    // driven below:
-    //   (a) dragging a handle of a LINKED key keeps the other handle collinear
-    //       and KEEPS ITS OWN LENGTH (angle linked, length independent -
-    //       deliberately not a reflection);
+    // Each side's MODE is STORED on the key's own param
+    // (`handleOut`/`handleIn`, default Aligned) - document state, NOT an
+    // inference from the pixel angle. The rules driven below:
+    //   (a) dragging an ALIGNED side keeps the other handle collinear and KEEPS
+    //       ITS OWN LENGTH (angle linked, length independent - deliberately not
+    //       a reflection);
     //   (b) Alt held on any step stops writing the other handle (byte-identical
     //       afterwards) AND writes the key FREE for good, so a later drag
     //       without Alt leaves the partner alone too; the latest modifier state
@@ -3998,14 +4151,14 @@ int main(int argc, char** argv) {
 
         // The dot a handle is DRAWN at: a Custom pair is stored, an Auto pair is
         // derived - and the derivation is what the user sees and grabs.
+        // The dot a handle is DRAWN at: a stored side is its stored control,
+        // a derived side (Auto/AutoClamped/Vector) the point its mode derives.
+        // Curve::effectiveHandles is that one mapping.
         auto handlePx = [](const Scaler& aScale, const Curve& aCurve, const Curve::Segment& aSeg, int aHandle) {
-            QPointF normalized = Curve::handle(aSeg, aHandle);
-            if (aSeg.easing.type == util::Easing::Type_Auto) {
-                const QVector<QPointF> ghosts = aCurve.ghostHandles(*aSeg.from);
-                if (ghosts.size() == 2)
-                    normalized = ghosts[aHandle];
-            }
-            return ctrl::graph::handlePointAt(aScale, aSeg, normalized);
+            QPointF pair[2];
+            if (aCurve.effectiveHandles(aSeg, pair))
+                return ctrl::graph::handlePointAt(aScale, aSeg, pair[aHandle]);
+            return ctrl::graph::handlePointAt(aScale, aSeg, Curve::handle(aSeg, aHandle));
         };
 
         auto lengthPx = [](const QPointF& aKey, const QPointF& aPoint) {
@@ -4061,7 +4214,8 @@ int main(int argc, char** argv) {
         );
         const util::Easing::Param kAB = custom(0.4f, 0.1f, inNorm.x(), inNorm.y());
         const util::Easing::Param kBC = custom(outNorm.x(), outNorm.y(), 0.7f, 0.9f);
-        CHECK(kBC.aligned); // a new key starts linked
+        CHECK(kBC.handleIn == util::Easing::HandleMode_Aligned); // a new key starts linked
+        CHECK(kBC.handleOut == util::Easing::HandleMode_Aligned);
 
         // --- the FREE authoring: B's incoming (segment A-B's x2,y2) and its
         // outgoing (segment B-C's x1,y1) point in unrelated directions AND the
@@ -4069,8 +4223,10 @@ int main(int argc, char** argv) {
         // reads.
         util::Easing::Param kFreeAB = custom(0.4f, 0.1f, 0.8f, 0.9f);
         util::Easing::Param kFreeBC = custom(0.2f, -0.3f, 0.7f, 0.9f);
-        kFreeAB.aligned = false;
-        kFreeBC.aligned = false;
+        kFreeAB.handleIn = util::Easing::HandleMode_Free;
+        kFreeAB.handleOut = util::Easing::HandleMode_Free;
+        kFreeBC.handleIn = util::Easing::HandleMode_Free;
+        kFreeBC.handleOut = util::Easing::HandleMode_Free;
 
         auto setAligned = [&]() {
             fA->data().easing(0) = kAB;
@@ -4100,7 +4256,8 @@ int main(int argc, char** argv) {
         // deliberately not at the reflection, which would force the lengths
         // equal. B's stored flag is what decides this; it stays true.
         {
-            CHECK(fB->data().easing(0).aligned); // the document says LINKED
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Aligned); // the document says LINKED
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned);
             const Curve beforeA(*pairNode.timeLine(), pairChannel);
             const Curve::Segment abA = beforeA.segment(0);
             const Curve::Segment bcA = beforeA.segment(1);
@@ -4132,8 +4289,10 @@ int main(int argc, char** argv) {
             CHECK(wroteAB.cubicBezier.y1 == kAB.cubicBezier.y1);
             CHECK(wroteBC.cubicBezier.x2 == kBC.cubicBezier.x2); // C's incoming untouched
             CHECK(wroteBC.cubicBezier.y2 == kBC.cubicBezier.y2);
-            CHECK(wroteBC.aligned); // the link survived the drag
-            CHECK(wroteAB.aligned); // and A's own flag was not touched
+            CHECK(wroteBC.handleIn == util::Easing::HandleMode_Aligned); // the link survived the drag
+            CHECK(wroteBC.handleOut == util::Easing::HandleMode_Aligned);
+            CHECK(wroteAB.handleIn == util::Easing::HandleMode_Aligned); // A's own modes were not touched
+            CHECK(wroteAB.handleOut == util::Easing::HandleMode_Aligned);
 
             const Curve afterA(*pairNode.timeLine(), pairChannel);
             const QPointF outAfter = handlePx(pairScale, afterA, afterA.segment(1), 0);
@@ -4185,7 +4344,8 @@ int main(int argc, char** argv) {
             CHECK(panel.contains(step2));
 
             // PRECONDITION: linked before the act.
-            CHECK(fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Aligned);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned);
             const QPointF outBefore = handlePx(pairScale, beforeB, bcB, 0);
             const QPointF inBefore = handlePx(pairScale, beforeB, abB, 1);
             CHECK(std::fabs(pairAngle(keyB, outBefore, inBefore) - 180.0) <= kPairOffLine);
@@ -4194,23 +4354,26 @@ int main(int argc, char** argv) {
             CHECK(sendMove(editor, camera, pairCur, step1)); // no Alt: the pair follows
             const util::Easing::Param mirrored = fB->data().easing(0);
             CHECK(mirrored != kBC); // the opposite handle was written ...
-            CHECK(mirrored.aligned); // ... and the link is still on
+            CHECK(mirrored.handleIn == util::Easing::HandleMode_Aligned); // ... and the link is still on
+            CHECK(mirrored.handleOut == util::Easing::HandleMode_Aligned);
             CHECK(fB->data().easing(0) == mirrored);
 
             CHECK(sendMove(editor, camera, pairCur, step2, Qt::AltModifier)); // Alt now ...
             CHECK(fB->data().easing(0).cubicBezier == mirrored.cubicBezier); // ... the opposite handle is untouched
-            CHECK(!fB->data().easing(0).aligned); // ... and the document is FREE for good
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Free); // ... and THIS SIDE is FREE for good
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned); // ... its partner was Aligned
             const QPointF want2 = normalizedAt(pairScale, abB, step2);
             CHECK(std::fabs(fA->data().easing(0).cubicBezier.x2 - want2.x()) < 0.02); // the grabbed one still moves
             CHECK(std::fabs(fA->data().easing(0).cubicBezier.y2 - want2.y()) < 0.02);
 
             CHECK(sendMove(editor, camera, pairCur, step2 + QPoint(-6, 4), Qt::AltModifier));
             CHECK(fB->data().easing(0).cubicBezier == mirrored.cubicBezier); // every further Alt step leaves it alone
-            CHECK(!fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Free);
             CHECK(sendRelease(editor, camera, pairCur, step2, Qt::AltModifier));
             const util::Easing::Param afterAltB = fB->data().easing(0);
             CHECK(afterAltB.cubicBezier == mirrored.cubicBezier);
-            CHECK(!afterAltB.aligned);
+            CHECK(afterAltB.handleIn == util::Easing::HandleMode_Free);
+            CHECK(afterAltB.handleOut == util::Easing::HandleMode_Aligned);
 
             const Curve afterB(*pairNode.timeLine(), pairChannel);
             const QPointF outAfter = handlePx(pairScale, afterB, afterB.segment(1), 0);
@@ -4246,7 +4409,8 @@ int main(int argc, char** argv) {
             CHECK(undoneB);
             CHECK(fA->data().easing(0) == kAB);
             CHECK(fB->data().easing(0) == kBC); // flag true again
-            CHECK(fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Aligned);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned);
             bool undoneBAgain = true;
             CHECK(stack.undo(&undoneBAgain).isEmpty());
             CHECK(!undoneBAgain);
@@ -4272,7 +4436,8 @@ int main(int argc, char** argv) {
             const Curve::Segment bcC = beforeC.segment(1);
 
             // PRECONDITION: B is stored FREE before the act.
-            CHECK(!fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Free);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Free);
             const QPointF outC = handlePx(pairScale, beforeC, bcC, 0);
             const QPointF inC = handlePx(pairScale, beforeC, abC, 1);
             CHECK(std::fabs(pairAngle(keyB, outC, inC) - 180.0) > kPairOffLine);
@@ -4339,7 +4504,8 @@ int main(int argc, char** argv) {
             setAligned();
             const util::Easing::Param keepAB = fA->data().easing(0);
             const util::Easing::Param keepBC = fB->data().easing(0);
-            CHECK(keepBC.aligned);
+            CHECK(keepBC.handleIn == util::Easing::HandleMode_Aligned);
+            CHECK(keepBC.handleOut == util::Easing::HandleMode_Aligned);
             const float beforeValue = fB->rotate();
 
             const QPoint grab = keyB.toPoint();
@@ -4354,7 +4520,8 @@ int main(int argc, char** argv) {
             const float movedValue = fB->rotate();
             CHECK(fA->data().easing(0) == keepAB); // ... and neither param was rewritten ...
             CHECK(fB->data().easing(0) == keepBC); // ... flag and handles included
-            CHECK(fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Aligned);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned);
 
             // The pair is now visibly OFF the through-line in pixels (the same
             // stored handles map through different value spans) - exactly the
@@ -4377,7 +4544,8 @@ int main(int argc, char** argv) {
             CHECK(sendMove(editor, camera, pairCur, toH));
             CHECK(sendRelease(editor, camera, pairCur, toH));
 
-            CHECK(fB->data().easing(0).aligned); // the move did not unlink it
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Aligned); // the move did not unlink it
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Aligned);
             CHECK(fA->data().easing(0).cubicBezier.x1 == keepAB.cubicBezier.x1); // A's own outgoing untouched
             CHECK(fA->data().easing(0).cubicBezier.y1 == keepAB.cubicBezier.y1);
             CHECK(fA->data().easing(0).cubicBezier.x2 != keepAB.cubicBezier.x2
@@ -4435,8 +4603,10 @@ int main(int argc, char** argv) {
             );
             util::Easing::Param freeAB = custom(0.4f, 0.1f, inNormE.x(), inNormE.y());
             util::Easing::Param freeBC = custom(outNormE.x(), outNormE.y(), 0.7f, 0.9f);
-            freeAB.aligned = false;
-            freeBC.aligned = false;
+            freeAB.handleIn = util::Easing::HandleMode_Free;
+            freeAB.handleOut = util::Easing::HandleMode_Free;
+            freeBC.handleIn = util::Easing::HandleMode_Free;
+            freeBC.handleOut = util::Easing::HandleMode_Free;
             fA->data().easing(0) = freeAB;
             fB->data().easing(0) = freeBC;
 
@@ -4456,7 +4626,8 @@ int main(int argc, char** argv) {
 
             // PRECONDITION: free, the OUTGOING handle is the longer one, and the
             // old rule's direction (its own) is clearly off the chord.
-            CHECK(!fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Free);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Free);
             CHECK(outLength > inLength + 1.0);
             const double oldRuleOffChord = directionAngle(outVector, chord);
             CHECK(oldRuleOffChord > 5.0);
@@ -4468,8 +4639,10 @@ int main(int argc, char** argv) {
 
             const util::Easing::Param afterAB = fA->data().easing(0);
             const util::Easing::Param afterBC = fB->data().easing(0);
-            CHECK(afterBC.aligned); // the DOCUMENT is linked now
-            CHECK(!afterAB.aligned); // ... and only the clicked key's flag was written
+            CHECK(afterBC.handleIn == util::Easing::HandleMode_Aligned); // the DOCUMENT is linked now
+            CHECK(afterBC.handleOut == util::Easing::HandleMode_Aligned);
+            CHECK(afterAB.handleIn == util::Easing::HandleMode_Free); // ... and only the clicked key's modes were written
+            CHECK(afterAB.handleOut == util::Easing::HandleMode_Free);
             const Curve afterE(*pairNode.timeLine(), pairChannel);
             const QPointF outAfter = handlePx(pairScale, afterE, afterE.segment(1), 0);
             const QPointF inAfter = handlePx(pairScale, afterE, afterE.segment(0), 1);
@@ -4490,7 +4663,8 @@ int main(int argc, char** argv) {
             CHECK(undoneE);
             CHECK(fA->data().easing(0) == freeAB); // both params AND the flag, one undo
             CHECK(fB->data().easing(0) == freeBC);
-            CHECK(!fB->data().easing(0).aligned);
+            CHECK(fB->data().easing(0).handleIn == util::Easing::HandleMode_Free);
+            CHECK(fB->data().easing(0).handleOut == util::Easing::HandleMode_Free);
             bool undoneEAgain = true;
             CHECK(stack.undo(&undoneEAgain).isEmpty());
             CHECK(!undoneEAgain);
@@ -4599,82 +4773,89 @@ int main(int argc, char** argv) {
             );
         }
 
-        // (h) AN AUTO NEIGHBOUR IS STILL CONVERTED TO CUSTOM WHEN IT IS WRITTEN.
-        // Switch segment B-C to Type_Auto (its outgoing pair is DERIVED), store B
-        // LINKED, author B's incoming handle to be exactly opposite the derived
-        // OUTGOING one, then drag the incoming handle: the written opposite must
-        // become Custom carrying the derived pair, keep its derived LENGTH, stay
-        // collinear - and one undo must bring the Auto param back whole.
+        // (h) ONE AUTO SIDE STAYS AUTO AND STILL DERIVES WHILE THE OTHER IS
+        // DRAGGED. This is the user's report made a test: with the retired
+        // whole-key Auto type, dragging ANY handle converted BOTH tangents to
+        // manual. B's easing here is Custom with BOTH sides Auto; the drag grabs
+        // its INCOMING handle, so ONLY that side becomes Free. The outgoing side
+        // stays Auto and keeps deriving from the PREVIOUS key (A), so changing A
+        // moves it - while the dragged stored side stays put. One undo restores
+        // both params whole.
         {
-            fB->data().easing(0).type = util::Easing::Type_Auto; // a document write, not a gesture
-            fB->data().easing(0).aligned = true; // the link is the stored flag
-            const util::Easing::Param kAutoBC = fB->data().easing(0);
+            fB->data().easing(0).type = util::Easing::Type_Custom; // a document write, not a gesture
+            fB->data().easing(0).handleIn = util::Easing::HandleMode_Auto;
+            fB->data().easing(0).handleOut = util::Easing::HandleMode_Auto;
+            const util::Easing::Param autoB = fB->data().easing(0);
+            const util::Easing::Param beforeAB = fA->data().easing(0);
 
-            const Curve autoCurve(*pairNode.timeLine(), pairChannel);
-            const Curve::Segment abG = autoCurve.segment(0);
-            const Curve::Segment bcG = autoCurve.segment(1);
-            const QVector<QPointF> ghosts = autoCurve.ghostHandles(*bcG.from);
-            CHECK(ghosts.size() == 2);
-            const QPointF ghostOut = handlePx(pairScale, autoCurve, bcG, 0);
-            const double ghostLength = lengthPx(keyB, ghostOut);
-            CHECK(ghostLength > 0.0);
-
-            const QPointF ghostDir(ghostOut.x() - keyB.x(), ghostOut.y() - keyB.y());
-            const QPointF wantIn(
-                keyB.x() - ghostDir.x() / ghostLength * 60.0,
-                keyB.y() - ghostDir.y() / ghostLength * 60.0
-            );
-            const QPointF inNormG = normalizedAt(pairScale, abG, wantIn.toPoint());
-            util::Easing::Param authoredAB = kFreeAB;
-            authoredAB.cubicBezier.x2 = static_cast<float>(inNormG.x());
-            authoredAB.cubicBezier.y2 = static_cast<float>(inNormG.y());
-            fA->data().easing(0) = authoredAB;
-
-            // PRECONDITION: aligned against the DERIVED outgoing handle. The
-            // segment copies above predate the authoring, so read them again.
             const Curve beforeG(*pairNode.timeLine(), pairChannel);
-            const QPointF outBefore = handlePx(pairScale, beforeG, beforeG.segment(1), 0);
-            const QPointF inBefore = handlePx(pairScale, beforeG, beforeG.segment(0), 1);
-            CHECK(std::fabs(pairAngle(keyB, outBefore, inBefore) - 180.0) <= kPairOffLine);
+            const Curve::Segment abG = beforeG.segment(0);
+            const Curve::Segment bcG = beforeG.segment(1);
+            QPointF outPair[2];
+            QPointF inPair[2];
+            CHECK(beforeG.effectiveHandles(bcG, outPair)); // B's OUTGOING: Auto, reads A
+            CHECK(beforeG.effectiveHandles(abG, inPair));  // B's INCOMING: Auto, reads C
+            const QPointF outBefore = outPair[0];
+            const QPointF inBefore = inPair[1];
+            CHECK(outBefore != inBefore); // two different derivations, not one shared tangent
 
-            const QPoint grab = handlePixel(pairScale, beforeG.segment(0), 1);
+            const QPointF inDot = ctrl::graph::handlePointAt(pairScale, abG, inBefore);
+            const QPoint grab(static_cast<int>(std::lround(inDot.x())), static_cast<int>(std::lround(inDot.y())));
             const QPoint to = grab + QPoint(-10, 8);
             CHECK(panel.contains(grab));
             CHECK(panel.contains(to));
 
             CHECK(sendPress(editor, camera, pairCur, grab));
-            CHECK(fB->data().easing(0).type == util::Easing::Type_Auto); // the press alone edits nothing
+            CHECK(fB->data().easing(0).type == util::Easing::Type_Custom); // the press alone edits nothing
             CHECK(sendMove(editor, camera, pairCur, to));
             CHECK(sendRelease(editor, camera, pairCur, to));
 
             const util::Easing::Param wroteAB = fA->data().easing(0);
             const util::Easing::Param wroteBC = fB->data().easing(0);
-            CHECK(wroteBC.type == util::Easing::Type_Custom); // written => the derived pair was made storable
-            // The pair's OTHER control point is key C's incoming handle and
-            // stays at its derived third.
-            CHECK(std::fabs(wroteBC.cubicBezier.x2 - static_cast<float>(ghosts[1].x())) < 1e-6f);
-            CHECK(std::fabs(wroteBC.cubicBezier.y2 - static_cast<float>(ghosts[1].y())) < 1e-6f);
-            CHECK(wroteAB.cubicBezier.x1 == authoredAB.cubicBezier.x1); // A's outgoing untouched
-            CHECK(wroteAB.cubicBezier.y1 == authoredAB.cubicBezier.y1);
+            // ONLY the grabbed side became manual ...
+            CHECK(wroteBC.handleIn == util::Easing::HandleMode_Free);
+            CHECK(wroteBC.handleOut == util::Easing::HandleMode_Auto);
+            CHECK(wroteBC.type == util::Easing::Type_Custom);
+            // ... the OTHER side's stored pair was not written (it is derived,
+            // so its stored fields are not its truth anyway).
+            CHECK(wroteBC.cubicBezier.x1 == autoB.cubicBezier.x1);
+            CHECK(wroteBC.cubicBezier.y1 == autoB.cubicBezier.y1);
+            // The main param is the segment's FROM (A): the dragged incoming
+            // control is stored there.
+            CHECK(wroteAB.cubicBezier.x2 != beforeAB.cubicBezier.x2
+                  || wroteAB.cubicBezier.y2 != beforeAB.cubicBezier.y2);
 
+            const QPointF want = normalizedAt(pairScale, abG, to);
             const Curve afterG(*pairNode.timeLine(), pairChannel);
-            const QPointF outAfter = handlePx(pairScale, afterG, afterG.segment(1), 0);
-            const QPointF inAfter = handlePx(pairScale, afterG, afterG.segment(0), 1);
-            CHECK(std::fabs(lengthPx(keyB, outAfter) - ghostLength) < 0.75); // derived length kept
-            const double angle = pairAngle(keyB, outAfter, inAfter);
-            CHECK(std::fabs(angle - 180.0) <= kPairOffLine); // collinear through B
+            QPointF inAfterPair[2];
+            CHECK(afterG.effectiveHandles(afterG.segment(0), inAfterPair));
+            CHECK(std::fabs(inAfterPair[1].x() - want.x()) < 0.02); // the grabbed dot is at the pointer
+            CHECK(std::fabs(inAfterPair[1].y() - want.y()) < 0.02);
+            const QPointF storedIncoming = inAfterPair[1];
+
+            // THE UNTOUCHED SIDE IS STILL DERIVING. B's outgoing side reads the
+            // PREVIOUS key (A) only, so changing A moves it and leaves the
+            // dragged (stored) incoming side alone.
+            fA->setRotate(45.0f);
+            const Curve derived(*pairNode.timeLine(), pairChannel);
+            QPointF outAfter[2];
+            QPointF inAfter[2];
+            CHECK(derived.effectiveHandles(derived.segment(1), outAfter));
+            CHECK(derived.effectiveHandles(derived.segment(0), inAfter));
+            CHECK(outAfter[0] != outBefore); // STILL DERIVING from its neighbour
+            CHECK(inAfter[1] == storedIncoming); // the dragged side is stored, untouched
 
             bool undoneG = false;
             CHECK(!stack.undo(&undoneG).isEmpty());
             CHECK(undoneG);
-            CHECK(fA->data().easing(0) == authoredAB);
-            CHECK(fB->data().easing(0) == kAutoBC); // the Auto easing, whole
+            CHECK(fA->data().easing(0) == beforeAB);
+            CHECK(fB->data().easing(0) == autoB); // the Auto param, whole
 
             std::printf(
-                "[M] auto neighbour: a written Type_Auto became Custom carrying the derived pair, kept "
-                "its %.2f px length and stayed %.3f deg from the through-line; one undo restored the "
-                "Auto easing and A\n",
-                ghostLength, std::fabs(angle - 180.0)
+                "[M] per-side auto: dragging B's incoming handle freed ONLY that side; its outgoing "
+                "side stayed Auto and its derived control moved when A changed (%.3f -> %.3f in "
+                "value units at the same x); one undo restored both params\n",
+                outBefore.y(), outAfter[0].y()
             );
         }
 

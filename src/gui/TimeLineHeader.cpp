@@ -65,6 +65,7 @@ const int kQuickEaseGap = 2;
 constexpr util::Easing::AutoContext kQuickEaseAutoContext = {
     { true, -1.0f, 0.0f }, // prev: one segment before, at the from key's value
     { true, 2.0f, 1.0f },  // next: one segment after, at the to key's value
+    util::Easing::HandleMode_Auto, // the arriving side is derived too (the preset)
 };
 #ifdef AE_ENABLE_IMGUI
 // The tab strip: the mock's own numbers for a tab (.tl-tabs button - 11px text,
@@ -182,8 +183,16 @@ protected:
 // the four never re-measures the group (the bar's reserved-width rule).
 class QuickEaseButton: public QAbstractButton {
 public:
-    QuickEaseButton(util::Easing::Type aType, QWidget* aParent): QAbstractButton(aParent) {
-        mParam.type = aType;
+    QuickEaseButton(
+        util::Easing::Type aType, bool aAutoPreset, QWidget* aParent
+    ): QAbstractButton(aParent), mAutoPreset(aAutoPreset) {
+        // The Auto preset is a Custom curve with BOTH sides deriving; the other
+        // three are plain types.
+        mParam.type = aAutoPreset ? util::Easing::Type_Custom : aType;
+        if (aAutoPreset) {
+            mParam.handleIn = util::Easing::HandleMode_Auto;
+            mParam.handleOut = util::Easing::HandleMode_Auto;
+        }
         mAuto = kQuickEaseAutoContext;
         // Keyboard reachable: Tab moves between the bar's buttons and Space (or
         // Return, handled below) activates one, exactly as the text button is.
@@ -218,8 +227,7 @@ protected:
                                                : colors.textMutedDim;
         // Auto's derived control points and stems are part of its icon, as on the
         // picker's tile; every other type is a bare curve.
-        gui::prop::paintEasingCurve(painter, glyph, mParam, ink, 1.5, &mAuto,
-                                    mParam.type == util::Easing::Type_Auto);
+        gui::prop::paintEasingCurve(painter, glyph, mParam, ink, 1.5, &mAuto, mAutoPreset);
 
         if (this->hasFocus()) {
             painter.setPen(QPen(colors.text, 1.0));
@@ -241,6 +249,7 @@ protected:
 private:
     util::Easing::Param mParam;
     util::Easing::AutoContext mAuto;
+    bool mAutoPreset = false;
 };
 
 // A bar button (the mock's .ib): the glyph-hover pair the transport's buttons use,
@@ -344,19 +353,26 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     // enabled/checked/hover state, and the glyph itself is a fixed 18px box. The
     // group therefore contributes one constant width to this layout, and a
     // selection change cannot re-flow the bar or resize the dock.
-    const util::Easing::Type quickDefs[] = {
-        util::Easing::Type_Linear,
-        util::Easing::Type_Floor,
-        util::Easing::Type_Round,
-        util::Easing::Type_Auto,
+    const struct QuickDef {
+        util::Easing::Type type;
+        bool autoPreset;
+    } quickDefs[] = {
+        { util::Easing::Type_Linear, false },
+        { util::Easing::Type_Floor, false },
+        { util::Easing::Type_Round, false },
+        // The Auto preset: Custom with both handle sides Auto (the glyph's derived
+        // pair), not a retired easing type.
+        { util::Easing::Type_Custom, true },
     };
     auto* quickBox = new QWidget(this);
     auto* quickLay = new QHBoxLayout(quickBox);
     quickLay->setContentsMargins(0, 0, 0, 0);
     quickLay->setSpacing(kQuickEaseGap);
-    for (const util::Easing::Type type : quickDefs) {
-        auto* button = new QuickEaseButton(type, quickBox);
-        const QString name = util::Easing::getTypeName(type);
+    for (const QuickDef& quick : quickDefs) {
+        auto* button = new QuickEaseButton(quick.type, quick.autoPreset, quickBox);
+        const QString name = quick.autoPreset
+            ? util::Easing::getHandleModeName(util::Easing::HandleMode_Auto)
+            : util::Easing::getTypeName(quick.type);
         // A glyph-only control has no text for assistive technology to read, so
         // the easing's name IS its accessible text; the tooltip keeps naming the
         // action for the pointer.
@@ -364,8 +380,10 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
         button->setEnabled(false); // until a selection names a key that carries an easing
         quickLay->addWidget(button);
-        mQuickEases.push_back({button, type});
-        connect(button, &QAbstractButton::clicked, this, [this, type]() { this->onQuickEasingClicked(type); });
+        mQuickEases.push_back({button, quick.type, quick.autoPreset});
+        connect(button, &QAbstractButton::clicked, this, [this, quick]() {
+            this->onQuickEasingClicked(quick.type, quick.autoPreset);
+        });
     }
     lay->addWidget(quickBox, 0, Qt::AlignVCenter);
 
@@ -553,17 +571,22 @@ void TimeLineHeader::onEasingChipClicked() {
     mInner->openEasingPicker(targets, chip->mapToGlobal(QPoint(0, chip->height())));
 }
 
-void TimeLineHeader::onQuickEasingClicked(util::Easing::Type aType) {
+void TimeLineHeader::onQuickEasingClicked(util::Easing::Type aType, bool aAutoPreset) {
     // THE SAME EDIT AS THE PICKER'S TILE, through the application's own
     // selection-easing action. The action lives on the panel's editor
-    // (ctrl::GraphEditor::setSelectedKeysEasing), which holds the TIMELINE'S live
-    // selection (MainDisplayWidget::syncGraphPanelSharedState wires it with
-    // setSelectionSource), so this button needs no copy of the edit path: one macro,
-    // one history entry for the whole selection, and the same skips the picker's own
-    // commit makes. The editor is reached through the widget that owns it.
+    // (ctrl::GraphEditor::setSelectedKeysEasing / setSelectedKeysAutoHandles),
+    // which holds the TIMELINE'S live selection (MainDisplayWidget::
+    // syncGraphPanelSharedState wires it with setSelectionSource), so this
+    // button needs no copy of the edit path: one macro, one history entry for
+    // the whole selection, and the same skips the picker's own commit makes.
+    // The editor is reached through the widget that owns it.
     MainDisplayWidget* display = this->window() ? this->window()->findChild<MainDisplayWidget*>() : nullptr;
-    if (display)
-        display->applyEasingToSelection(aType);
+    if (display) {
+        if (aAutoPreset)
+            display->applyAutoHandlesToSelection();
+        else
+            display->applyEasingToSelection(aType);
+    }
 
     // The document's own notification re-reads the chip and the surfaces; the BAR's
     // state is re-read here, because the selection itself did not move.
@@ -571,16 +594,20 @@ void TimeLineHeader::onQuickEasingClicked(util::Easing::Type aType) {
 }
 
 void TimeLineHeader::refreshQuickEasings() {
-    // WHICH OF THE FOUR IS ACTIVE, and whether any of them can act at all, from the
-    // timeline's own live selection: every selected key that carries an easing and
-    // whose channel playback interpolates (the image offset does not, and
-    // setSelectedKeysEasing refuses it) votes for its type. Nothing to vote with - no
-    // selection, or only keys of types with no easing - leaves every button disabled;
-    // a split vote lights none of them.
+    // WHICH OF THE FOUR IS ACTIVE, and whether any of them can act at all, from
+    // the timeline's own live selection: every selected key that carries an
+    // easing and whose channel playback interpolates (the image offset does not,
+    // and setSelectedKeysEasing refuses it) votes for its easing. The Auto button
+    // votes for the PRESET - Custom with both sides Auto - because automatic
+    // handles are modes now, not a type. Nothing to vote with - no selection, or
+    // only keys of types with no easing - leaves every button disabled; a split
+    // vote lights none of them.
     ctrl::TimeLineEditor* editor = mTimeLine ? mTimeLine->editor() : nullptr;
     bool votable = false;
-    bool mixed = false;
+    bool mixedType = false;
+    bool mixedPreset = false;
     util::Easing::Type active = util::Easing::Type_TERM;
+    bool presetActive = false;
 
     if (editor) {
         for (const ctrl::time::Selection::Item& item : editor->selection().items()) {
@@ -597,18 +624,29 @@ void TimeLineHeader::refreshQuickEasings() {
                 continue; // a key of a type that carries no easing
             if (!ctrl::graph::Channel(pos.type(), 0).isInterpolated())
                 continue; // step-held: playback never consults its param
+            const bool preset = param->type == util::Easing::Type_Custom
+                && param->handleIn == util::Easing::HandleMode_Auto
+                && param->handleOut == util::Easing::HandleMode_Auto;
             if (!votable) {
                 votable = true;
                 active = param->type;
-            } else if (active != param->type) {
-                mixed = true;
+                presetActive = preset;
+            } else {
+                if (active != param->type)
+                    mixedType = true;
+                if (presetActive != preset)
+                    mixedPreset = true;
             }
         }
     }
 
     for (const QuickEase& quick : mQuickEases) {
         quick.button->setEnabled(votable);
-        quick.button->setChecked(votable && !mixed && active == quick.type);
+        quick.button->setChecked(
+            votable
+            && (quick.autoPreset ? (!mixedPreset && presetActive)
+                                 : (!mixedType && active == quick.type))
+        );
     }
 }
 

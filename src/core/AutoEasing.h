@@ -9,10 +9,11 @@ class TimeKey;
 
 namespace core {
 
-// util::Easing::Type_Auto derives a segment's bezier handles from the keys
-// around it, so it needs something the easing itself never carries: the VALUE of
-// those neighbouring keys. These two functions are that bridge, and they are the
-// only place the "which number does an Auto handle read" decision is made.
+// util::Easing's Auto/AutoClamped handle modes derive a segment's bezier control
+// points from the keys around it, so they need something the easing itself never
+// carries: the VALUE of those neighbouring keys. These two functions are that
+// bridge, and they are the only place the "which number does an Auto handle
+// read" decision is made.
 
 // The scalar the Auto easing reads from aKey, in the units of the segment
 // aFrom -> aTo. aComponent is the graphable component being evaluated: a Move

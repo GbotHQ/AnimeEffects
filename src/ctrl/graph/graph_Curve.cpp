@@ -270,22 +270,31 @@ float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, fl
     const float t = aAt - static_cast<float>(aFrom.frame());
     const int component = mChannel.component();
     const util::Easing::Param* easing = easingOf(aFrom, type, component);
+    const util::Easing::Param* toEasing = easingOf(aTo, type, component);
     float rate = 0.0f;
     if (!easing) {
         // No graphable channel reaches this: types without an easing param have
         // no components and so no Channel. A hand-made Channel gets the neutral
         // (linear) rate instead of an invented curve.
         rate = t / d;
-    } else if (easing->type == util::Easing::Type_Auto) {
-        // An Auto easing is shaped by the keys AROUND its segment, and this is
-        // the same pair core::TimeKeyBlender takes from its gatherer
-        // (point(-1)/point(2)), so the drawn curve is the played one. The
-        // component is the channel's: an Auto Move x curve reads x values.
-        const core::TimeKey* prev = nullptr;
-        const core::TimeKey* next = nullptr;
-        neighborsOf(aFrom, aTo, prev, next);
-        rate = util::Easing::calculate(
-            *easing, core::autoEasingContext(aFrom, aTo, component, prev, next), t, 0.0f, 1.0f, d);
+    } else if (easing->type == util::Easing::Type_Custom) {
+        // A Custom curve may DERIVE either side from the keys around the
+        // segment. This is the same derivation playback runs (core::
+        // autoEasingContext + HandleMode), so the drawn curve is the played one.
+        // A pair with both sides stored skips the neighbour walk entirely: the
+        // stored controls are the answer then, and they are the common case.
+        const util::Easing::HandleMode inMode =
+            toEasing ? toEasing->handleIn : util::Easing::HandleMode_Aligned;
+        if (util::Easing::isDerived(easing->handleOut) || util::Easing::isDerived(inMode)) {
+            const core::TimeKey* prev = nullptr;
+            const core::TimeKey* next = nullptr;
+            neighborsOf(aFrom, aTo, prev, next);
+            util::Easing::AutoContext ctx = core::autoEasingContext(aFrom, aTo, component, prev, next);
+            ctx.inMode = inMode;
+            rate = util::Easing::calculate(*easing, ctx, t, 0.0f, 1.0f, d);
+        } else {
+            rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
+        }
     } else {
         rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
     }
@@ -353,24 +362,54 @@ Curve::Segment Curve::segment(int aIndex) const {
     if (const util::Easing::Param* easing = easingOf(*result.from, mChannel.type(), mChannel.component())) {
         result.easing = *easing;
     }
+    // The arriving handle belongs to the TO key, so its MODE is read there while
+    // its stored value stays in result.easing (the FROM param's x2/y2).
+    if (const util::Easing::Param* toEasing = easingOf(*result.to, mChannel.type(), mChannel.component())) {
+        result.inMode = toEasing->handleIn;
+    }
     return result;
 }
 
 //-------------------------------------------------------------------------------------------------
 bool Curve::isCustom(const Segment& aSegment) const {
-    return aSegment.easing.type == util::Easing::Type_Custom;
+    // "Fully authored": a Custom curve whose BOTH sides are stored (Free or
+    // Aligned). A side that derives its control point has no stored position to
+    // draw, so the panel's stored-pair fast path must use effectiveHandles()
+    // instead. Analytic easings expose no handles at all, exactly as before.
+    return aSegment.easing.type == util::Easing::Type_Custom
+        && !util::Easing::isDerived(aSegment.easing.handleOut)
+        && !util::Easing::isDerived(aSegment.inMode);
+}
+
+bool Curve::effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const {
+    if (!mTimeLine || !aSegment.from || !aSegment.to) {
+        return false;
+    }
+    if (aSegment.easing.type != util::Easing::Type_Custom) {
+        return false;
+    }
+
+    // Only a derived side needs the neighbours; a stored pair is returned as-is
+    // by controlPoint() and costs no walk. Building the context only when it is
+    // read keeps the common (fully authored) path as cheap as it was.
+    util::Easing::AutoContext ctx;
+    if (util::Easing::isDerived(aSegment.easing.handleOut) || util::Easing::isDerived(aSegment.inMode)) {
+        const core::TimeKey* prev = nullptr;
+        const core::TimeKey* next = nullptr;
+        neighborsOf(*aSegment.from, *aSegment.to, prev, next);
+        ctx = core::autoEasingContext(
+            *aSegment.from, *aSegment.to, mChannel.component(), prev, next);
+    }
+    ctx.inMode = aSegment.inMode;
+    const float span = static_cast<float>(aSegment.to->frame() - aSegment.from->frame());
+    aOut[0] = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 0);
+    aOut[1] = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 1);
+    return true;
 }
 
 QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
     QVector<QPointF> result;
     if (!mTimeLine) {
-        return result;
-    }
-
-    // Only an Auto easing derives its pair; every other type stores one (Custom)
-    // or exposes none to drag at all (the analytic curves).
-    const util::Easing::Param* easing = easingOf(aFrom, mChannel.type(), mChannel.component());
-    if (!easing || easing->type != util::Easing::Type_Auto) {
         return result;
     }
 
@@ -387,25 +426,35 @@ QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
     if (toItr == map.constEnd()) {
         return result;
     }
-    const core::TimeKey& to = *toItr.value();
 
-    // The SAME derivation sampleOver() evaluates with: the neighbours the
-    // gatherer's point(-1)/point(2) name, and the segment's own frame span, which
-    // is the length the drawn rate runs over. This is the one place the two could
-    // drift apart, so they are written the same way.
-    const core::TimeKey* prev = nullptr;
-    const core::TimeKey* next = nullptr;
-    neighborsOf(aFrom, to, prev, next);
+    // Find the index of the from key in the key list so the segment can be built
+    // with the same code every other reader uses (including the TO key's
+    // incoming mode).
+    const QVector<const core::TimeKey*> all = keys();
+    int index = -1;
+    for (int i = 0; i + 1 < all.size(); ++i) {
+        if (all[i] == &aFrom) {
+            index = i;
+            break;
+        }
+    }
+    if (index < 0) {
+        return result;
+    }
+    const Segment seg = segment(index);
+    // Derived pair only: both sides stored means there is nothing a "ghost"
+    // caller needs (the stored pair is Curve::handle()).
+    if (seg.easing.type != util::Easing::Type_Custom
+        || (!util::Easing::isDerived(seg.easing.handleOut) && !util::Easing::isDerived(seg.inMode))) {
+        return result;
+    }
 
-    float y1 = 0.0f;
-    float y2 = 0.0f;
-    util::Easing::autoHandles(
-        core::autoEasingContext(
-            aFrom, to, mChannel.component(), prev, next), static_cast<float>(to.frame() - aFrom.frame()), y1, y2
-    );
-
-    result.append(QPointF(1.0 / 3.0, y1));
-    result.append(QPointF(2.0 / 3.0, y2));
+    QPointF pair[2];
+    if (!effectiveHandles(seg, pair)) {
+        return result;
+    }
+    result.append(pair[0]);
+    result.append(pair[1]);
     return result;
 }
 

@@ -1,7 +1,9 @@
 #include "ctrl/graph/graph_Scaler.h"
 
+#include <QApplication>
 #include <QFont>
 #include <QFontMetrics>
+#include <QStyle>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -115,15 +117,17 @@ namespace graph {
         // 22px TimeRuler strip), so its rows are taken out of the plot here - in the
         // one rect the curves, the keys, the handles, both axes and the editor's
         // hit-test share. Nothing that is clipped to the plot can reach the ruler.
-        // THE RIGHT AND BOTTOM MARGINS CARRY THE SCROLL BARS (THE SCROLL BARS'
-        // RESERVE in the header): those two edges give up kScrollBarReserve more
-        // pixels, so the plot's top-left corner - and with it the ruler band and the
-        // label column - stays exactly where it was while the two bars get their
-        // strip. The inset is unconditional: the plot never moves because a bar
-        // appeared, and the bars never move because the plot's content did.
+        // THE RIGHT AND BOTTOM INSETS ARE THE SCROLL BARS' LANES (THE SCROLL BARS'
+        // LANES in the header): the plot gives up exactly the lane - 12px, the bar's
+        // own thickness - at those two edges, because the lanes are the panel's last
+        // 12 rows and columns. So the plot's right edge is the lane's left edge and
+        // its bottom edge the lane's top edge; there is no gap and no extra margin
+        // (the timeline's bar has none either). The inset is unconditional: the plot
+        // never moves because a bar appeared, and the bars never move because the
+        // plot's content did.
         return mRect.adjusted(
-            kMargin + axisLabelWidth(), kMargin + kRulerBandHeight, -(kMargin + kScrollBarReserve),
-            -(kMargin + kScrollBarReserve)
+            kMargin + axisLabelWidth(), kMargin + kRulerBandHeight, -kScrollBarReserve,
+            -kScrollBarReserve
         );
     }
 
@@ -133,12 +137,26 @@ namespace graph {
     // so the content and the window are read in track order and the whole layout
     // below is one arithmetic for both bars.
     //
-    // aThumb is always inside aTrack: its length is the window/content fraction of
-    // the track, floored at kScrollBarMinThumb (or the track itself, whichever is
-    // shorter) and capped at the track, and its offset is the window's own fraction,
-    // clamped so the thumb cannot leave the track. A window that covers the whole
-    // content (or a content with no span at all - the caller passes lo == hi for
-    // "nothing to scroll") therefore fills the track.
+    // THE ARITHMETIC IS Qt's OWN (QScrollBarPrivate::sliderLength() and the slider
+    // position in updateScrollBar()), because the application's scroll bar is a
+    // QScrollBar and the panel's must page, step and drag like one:
+    //
+    //   totalSteps = content - pageStep                // the travel the window can make
+    //   length     = qRound(pageStep / content * track) // Qt divides by
+    //                                                  // (totalSteps + pageStep), i.e. content
+    //   offset     = qRound((windowLo - contentLo) / totalSteps * (track - length))
+    //
+    // with the LENGTH floored at QStyle::PM_ScrollBarSliderMin (the style's minimum,
+    // asked at runtime - not a literal) and capped at the track. The OFFSET is a
+    // fraction of the TRAVEL across the space the pill can use (track - length), so
+    // the pill is flush with the track's far end when the window is at the content's
+    // far end - which the old fraction-of-the-whole-track form could not do, and
+    // which is why the pill and the pointer disagreed at the ends.
+    //
+    // NOTHING TO SCROLL, NOTHING TO SHOW: a window that covers the whole content (or a
+    // content with no span at all - the caller passes lo == hi for "nothing to
+    // scroll") fills the track and is then removed, so an empty rect is drawn by
+    // nobody and claimed by nobody.
     static QRect scrollThumbRect(
         const QRect& aTrack, bool aHorizontal, bool aInverted, double aContentLo, double aContentHi,
         double aWindowLo, double aWindowHi
@@ -158,34 +176,35 @@ namespace graph {
         const double contentLo = aInverted ? -aContentHi : aContentLo;
         const double contentHi = aInverted ? -aContentLo : aContentHi;
 
-        double start = 0.0;
-        double span = 1.0;
         const double contentSpan = contentHi - contentLo;
-        if (contentSpan > 0.0 && windowHigh > windowLow) {
-            span = (windowHigh - windowLow) / contentSpan;
-            start = (windowLow - contentLo) / contentSpan;
-        }
-        // A window wider than the content shows the whole content: clamping the span
-        // to the track is what makes the thumb a scroll bar's and not an overflow
-        // indicator.
-        span = std::clamp(span, 0.0, 1.0);
-        start = std::clamp(start, 0.0, 1.0 - span);
+        const double pageSpan = windowHigh - windowLow;
+        if (!(contentSpan > 0.0) || !(pageSpan > 0.0))
+            return QRect(); // a degenerate content or window is "nothing to scroll"
+        const double travel = contentSpan - pageSpan;
+        if (!(travel > 0.0))
+            return QRect(); // the window covers the content: no bar at all
 
-        const int minThumb = std::min(Scaler::kScrollBarMinThumb, trackLength);
-        const int thumbLength = std::clamp(int(std::lround(span * trackLength)), minThumb, trackLength);
-        const int offset = std::clamp(int(std::lround(start * trackLength)), 0, trackLength - thumbLength);
-        // NOTHING TO SCROLL, NOTHING TO SHOW. A thumb that fills its track is a bar
-        // with no travel: the convention every desktop draws (macOS and GTK hide the
-        // bar outright, Windows greys its track) is to remove it, and a full-length
-        // rail down the panel's edge reads as a control that does nothing - measured
-        // on the empty graph, whose two full-length rails were the first thing the eye
-        // found. The suppression lives HERE so the drawing layer and the hit-test
-        // agree by construction: an empty rect is drawn by nobody and claimed by
-        // nobody.
+        const int minLength = std::min(Scaler::scrollBarSliderMin(), trackLength);
+        const int thumbLength = std::clamp(
+            int(std::lround(pageSpan / contentSpan * trackLength)), minLength, trackLength
+        );
         if (thumbLength >= trackLength)
             return QRect();
+        const double start = std::clamp((windowLow - contentLo) / travel, 0.0, 1.0);
+        const int offset = std::clamp(
+            int(std::lround(start * (trackLength - thumbLength))), 0, trackLength - thumbLength
+        );
         return aHorizontal ? QRect(aTrack.left() + offset, aTrack.top(), thumbLength, aTrack.height())
                            : QRect(aTrack.left(), aTrack.top() + offset, aTrack.width(), thumbLength);
+    }
+
+    int Scaler::scrollBarSliderMin() {
+        // Qt's own minimum slider length for the application's style. AppStyle is a
+        // QProxyStyle over the platform style and only overrides the EXTENT
+        // (PM_ScrollBarExtent -> 12), so this is the same number Qt's own QScrollBar
+        // would use - the whole point of asking instead of writing a constant.
+        // QStyle is a widget-module class: ctrl links Qt::Widgets already.
+        return qMax(1, QApplication::style()->pixelMetric(QStyle::PM_ScrollBarSliderMin));
     }
 
     Scaler::ScrollBars Scaler::scrollBars(
@@ -196,15 +215,16 @@ namespace graph {
         if (plot.isEmpty())
             return bars; // nowhere to lay a bar out
 
-        // The tracks: outside the plot, inside the panel, kScrollBarGap clear of the
-        // plot. Each spans the plot's OWN edge along the axis it scrolls, so the two
-        // never meet (the horizontal track is entirely below the vertical one's last
-        // row) and neither can reach the value column, the ruler band or the plot.
-        bars.hTrack = QRect(
-            plot.left(), plot.bottom() + 1 + kScrollBarGap, plot.width(), kScrollBarThickness
-        );
+        // The LANES, flush with the panel's edges (THE SCROLL BARS' LANES in the
+        // header): the horizontal one is the panel's last 12 rows over its whole
+        // width - its right edge IS the panel's right edge - and the vertical one the
+        // panel's last 12 columns from the plot's first row to the row above the
+        // horizontal lane. The corner therefore belongs to the horizontal bar,
+        // exactly as a two-bar scroll area's does, and the two rects never overlap.
+        const int lane = kScrollBarThickness;
+        bars.hTrack = QRect(mRect.left(), mRect.bottom() - lane + 1, mRect.width(), lane);
         bars.vTrack = QRect(
-            plot.right() + 1 + kScrollBarGap, plot.top(), kScrollBarThickness, plot.height()
+            mRect.right() - lane + 1, plot.top(), lane, mRect.bottom() - lane - plot.top() + 1
         );
 
         // The windows: the frames the view covers and the value window this scaler

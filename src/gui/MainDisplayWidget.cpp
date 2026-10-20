@@ -353,6 +353,23 @@ bool MainDisplayWidget::applyEasingToSelection(util::Easing::Type aEasing) {
     return changed;
 }
 
+bool MainDisplayWidget::applyAutoHandlesToSelection() {
+    // The same selection, the same one-undo-step route; only the written value
+    // differs (Custom with both handle sides Auto, see GraphEditor::
+    // setSelectedKeysAutoHandles). Automatic handles are MODES now, so this is
+    // not a type choice and cannot reuse applyEasingToSelection's argument.
+    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+    if (!editor)
+        return false;
+
+    const bool changed = editor->setSelectedKeysAutoHandles();
+    if (changed) {
+        this->updateRender();
+        this->refreshGraphPanel();
+    }
+    return changed;
+}
+
 bool MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {
     if (!mTimeLine)
         return false; // no timeline to open its menu from (and no document to act on)

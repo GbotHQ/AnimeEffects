@@ -81,10 +81,17 @@ void Graph::assignFrom(const Colors& aColors) {
     // (see GraphPanelModel.h), so the two surfaces cannot drift.
     mRulerBand = aColors.base;
     mRulerLine = aColors.hairline;
-    // The playhead pill's number: the ruler's own text token, i.e. the ink the
-    // timeline writes every ruler number, the playhead's included
-    // (theme::TimeLine::headerContentColor() == Colors::text).
-    mPlayheadText = aColors.text;
+    // THE PLAYHEAD PILL'S NUMBER IS NOT THE RULER'S NUMBER INK. The pill is an
+    // accentBright FILL (Colors::accentBright, the same cell TimeCursor fills), so
+    // its number takes the token the timeline puts on that fill:
+    // theme::Colors::accentBrightText (TimeLineEditorWidget.cpp sets
+    // TimeCursor::setNumberColor to it, "max-contrast text on an accentBright
+    // pill"). It was Colors::text - the ink of a number on the BASE surface - which
+    // is near-white in the dark palette: near-white on the violet fill, measured at
+    // 2 lit pixels of (240,238,246) in the shipped build, i.e. an invisible number
+    // where the timeline draws a dark one. A pill's number is read against the
+    // PILL, so it takes the pill's text token.
+    mPlayheadText = aColors.accentBrightText;
 
     // Label halo: the palette's opaque floater body. The panel paints no
     // background of its own (see GraphPanelModel's header), so the halo is the

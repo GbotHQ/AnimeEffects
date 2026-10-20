@@ -317,23 +317,28 @@ float getEasingRateFromTwoKeys(const TimeKeyGatherer& aGatherer, int aComponent)
     XC_ASSERT(frame != 0.0f);
 
     const tKey* k0 = static_cast<const tKey*>(p0.key);
+    const tKey* k1 = static_cast<const tKey*>(p1.key);
 
     // The component's OWN param: dragging one component's handle must not warp
     // another's curve, so every component reads the rate of its own index.
     const util::Easing::Param& easing = k0->data().easing(aComponent);
 
-    // An Auto easing is shaped by the keys AROUND its segment, and the gatherer
-    // already holds them: point(-1)/point(2) are the neighbouring keys of this
-    // channel, loop-aware and null at either end of the key list. Deriving the
-    // rate here therefore needs no new plumbing and changes no value-combining
-    // line below.
-    if (easing.type == util::Easing::Type_Auto) {
-        const tKey* k1 = static_cast<const tKey*>(p1.key);
-        const auto prev = aGatherer.point(-1);
-        const auto next = aGatherer.point(2);
-        const auto ctx = core::autoEasingContext(
-            *k0, *k1, aComponent, prev ? prev.key : nullptr, next ? next.key : nullptr);
-        return util::Easing::calculate(easing, ctx, -p0.relativeFrame, 0.0f, 1.0f, frame);
+    // A Custom curve's two control points are derived per side: handleOut from
+    // the FROM key's param, handleIn from the TO key's (the arriving handle
+    // belongs to the TO key even though its stored value lives in the FROM
+    // key's param). The neighbours the automatic sides read are the gatherer's
+    // point(-1)/point(2), loop-aware and null at either end of the key list, so
+    // deriving them here needs no new plumbing. Both sides use ONE context, so
+    // playback and the graph draw the same pair.
+    if (easing.type == util::Easing::Type_Custom) {
+        const util::Easing::HandleMode inMode = k1->data().easing(aComponent).handleIn;
+        if (util::Easing::isDerived(easing.handleOut) || util::Easing::isDerived(inMode)) {
+            const auto prev = aGatherer.point(-1);
+            const auto next = aGatherer.point(2);
+            auto ctx = core::autoEasingContext(
+                *k0, *k1, aComponent, prev ? prev.key : nullptr, next ? next.key : nullptr);
+            return util::Easing::calculate(easing, ctx, -p0.relativeFrame, 0.0f, 1.0f, frame);
+        }
     }
 
     // calculate easing

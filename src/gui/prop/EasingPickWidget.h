@@ -22,6 +22,7 @@ class QHBoxLayout;
 class QVBoxLayout;
 class FlowLayout;
 class QDoubleSpinBox;
+class QComboBox;
 class BezierCurveEditor; // global ns (see bezierCurveEditor.h)
 
 namespace gui {
@@ -42,20 +43,21 @@ class CurveGlyph : public QWidget {
 public:
     explicit CurveGlyph(QWidget* aParent = nullptr);
     void setParam(const util::Easing::Param& aParam);
-    // The neighbouring keys an Auto curve is shaped by. Only a Type_Auto param
-    // reads it; an empty context is the neutral (straight) curve. The picker's
-    // Auto TILE is the one caller that hands in a FIXED pair rather than the
-    // document's keys, so the catalog image does not change with the selection
-    // (see kAutoTileContext in EasingPickWidget.cpp).
+    // The neighbouring keys a derived (Auto/AutoClamped) side is shaped by, plus
+    // the TO key's incoming mode (AutoContext::inMode). Only a Custom param with
+    // a derived side reads it; an empty context is the neutral (straight) curve.
+    // The picker's Auto PRESET tile is the one caller that hands in a FIXED pair
+    // rather than the document's keys, so the catalog image does not change with
+    // the selection (see kAutoTileContext in EasingPickWidget.cpp).
     void setAutoContext(const util::Easing::AutoContext& aContext);
     void setGlyphColor(const QColor& aColor);
     void setStrokeWidth(double aWidth); // default 1.5
-    // Also draw Auto's derived control points (two dots joined to the segment's
+    // Also draw the DERIVED control points (two dots joined to the segment's
     // endpoints by short stems) beside the curve, so the glyph reads as "a
     // bezier with automatic handles" rather than as another function plot. Off
-    // by default: the catalog tile and the header button opt in, while a
-    // preview (the blend thumbnails, the timeline chip) stays a bare curve.
-    // Non-Auto params ignore it.
+    // by default: the catalog tile and the header button opt in, while a preview
+    // (the blend thumbnails, the timeline chip) stays a bare curve. A param with
+    // no derived side ignores it.
     void setAutoHandlesVisible(bool aVisible);
 
 protected:
@@ -76,9 +78,9 @@ private:
 // (preserveAspectRatio="none"). Shared by CurveGlyph and the EasingChip so the
 // curve looks identical wherever it is drawn.
 //
-// aAutoHandles asks for the Auto icon rather than a plot: for a Type_Auto param
-// it also draws the two control points the context derives, as small dots joined
-// to the segment's endpoints by short stems. The dots/stems are sized from aRect
+// aAutoHandles asks for the Auto icon rather than a plot: for a Custom param
+// with a derived side it also draws the two control points the mode derives, as
+// small dots joined to the segment's endpoints by short stems. The dots/stems are sized from aRect
 // (not from fixed pixels), so the same call reads at the 28px catalog tile and at
 // a 16-18px header button. It is a trailing defaulted flag so every existing
 // caller - the EasingChip, the blend thumbnails - keeps painting byte-for-byte
@@ -128,7 +130,7 @@ public:
     // pre-footer value (the root layout had header 40 + body + footer 48, all
     // between 1px root margins; dropping the footer removes exactly its 48px).
     static constexpr int kNormalHeight = 202;  // In/Out/In-Out (and Linear/Cubic/etc.)
-    static constexpr int kCustomHeight = 442;  // Custom
+    static constexpr int kCustomHeight = 474;  // Custom (incl. the per-side mode row)
 
     explicit EasingPickWidget(const util::Easing::Param& aInitial, QWidget* aParent = nullptr);
     ~EasingPickWidget() override;
@@ -151,6 +153,16 @@ public:
     void setRange(util::Easing::Range aRange);
     void setWeight(float aWeight);
     void setCustom();
+    // The Auto preset: Type_Custom with BOTH handle sides Auto. Automatic
+    // handles are per-side modes now, so this writes modes (and the Custom curve
+    // that exposes them), never a retired easing type. This is what the catalog's
+    // Auto tile clicks.
+    void setAutoHandlesPreset();
+    // One side's handle mode (Blender's five). aIncoming selects the TO key's
+    // arriving side (the param's handleIn); the other writes handleOut. The
+    // Custom panel exposes both as small combos, and they are public so a
+    // harness can drive them.
+    void setHandleMode(bool aIncoming, util::Easing::HandleMode aMode);
 
     // Session undo/redo (per-step, driven by Ctrl+Z / Ctrl+Shift+Z inside the
     // popup). The whole session still commits to the model as ONE undo step on
@@ -249,7 +261,7 @@ private:
     void beginGesture();                               // snapshot draft for a drag
     void endGesture();                                 // coalesce a drag into one step
 
-    QToolButton* makeTileAt(int aIndex, util::Easing::Type aType);
+    QToolButton* makeTileAt(int aIndex, util::Easing::Type aType, bool aAutoPreset);
 
     // Re-deliver a popup-level mouse move/release to the blend slider while it
     // is mid-drag, so the drag keeps tracking after the cursor leaves the popup
@@ -258,7 +270,7 @@ private:
 
     util::Easing::Param mDraft;     // live draft (edited in the popup)
     util::Easing::Param mApplied;   // baseline: last value committed / loaded
-    util::Easing::AutoContext mAuto; // neighbour keys a Type_Auto draft is shaped by
+    util::Easing::AutoContext mAuto; // neighbours + the TO mode a derived draft is shaped by
     QVector<util::Easing::Param> mUndo; // session states to step back to
     QVector<util::Easing::Param> mRedo; // session states to re-do forward to
     util::Easing::Param mGestureStart;  // draft snapshot at drag start
@@ -298,6 +310,11 @@ private:
     BezierCurveEditor* mBezierEditor = nullptr;
     QWidget* mBezierGauge = nullptr; // PreviewGauge: animation preview beside the graph
     QVector<QDoubleSpinBox*> mBezierSpins;
+    // The two per-side handle-mode combos (Blender's Free/Aligned/Vector/Auto/
+    // Auto Clamped). They live in the Custom panel because a mode shapes a
+    // bezier and nothing else.
+    QComboBox* mHandleIn = nullptr;
+    QComboBox* mHandleOut = nullptr;
     float mBezierProgress = 0.0f;
     int mRefitAttempts = 0; // bounded retry for the popup height re-fit
 };

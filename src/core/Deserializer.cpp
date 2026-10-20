@@ -122,11 +122,12 @@ void Deserializer::read(Frame& aValue) {
 bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
     // Future: This will bite me in the ass later...
     bool postBezier = mVersion >= QVersionNumber(0, 8);
-    // The key's handle-link type landed in 0.13, appended after the bezier.
-    // A file written before it reads FREE: back then a handle drag never moved
-    // its partner, so a linked key is not what the file described.
+    // One handle-link flag landed in 0.13, appended after the bezier; 0.15
+    // replaced it with the two per-side modes (handleOut then handleIn).
     const bool postAligned = mVersion >= QVersionNumber(0, 13);
-    aValue.type = (util::Easing::Type)mIn.readSInt32();
+    const bool postHandleModes = mVersion >= QVersionNumber(0, 15);
+    const int rawType = mIn.readSInt32();
+    aValue.type = static_cast<util::Easing::Type>(rawType);
     aValue.range = (util::Easing::Range)mIn.readSInt32();
     aValue.weight = mIn.readFloat32();
     if (postBezier) {
@@ -137,10 +138,34 @@ bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
     } else {
         aValue.cubicBezier = util::Easing::CubicBezier();
     }
-    if (postAligned) {
-        read(aValue.aligned);
+    if (postHandleModes) {
+        int handleOut = 0;
+        int handleIn = 0;
+        read(handleOut);
+        read(handleIn);
+        aValue.handleOut = static_cast<util::Easing::HandleMode>(handleOut);
+        aValue.handleIn = static_cast<util::Easing::HandleMode>(handleIn);
+    } else if (postAligned) {
+        // The single link flag: LINKED was two collinear sides, FREE was two
+        // sides a drag moved independently.
+        bool linked = false;
+        read(linked);
+        aValue.handleOut = linked ? util::Easing::HandleMode_Aligned : util::Easing::HandleMode_Free;
+        aValue.handleIn = aValue.handleOut;
     } else {
-        aValue.aligned = false;
+        aValue.handleOut = util::Easing::HandleMode_Free;
+        aValue.handleIn = util::Easing::HandleMode_Free;
+    }
+    // THE RETIRED TYPE. Id 14 was Type_Auto, which had no stored handles: its
+    // pair was derived from the neighbours. It is now Type_Custom with BOTH
+    // sides Auto - exactly what that type meant - so a legacy curve keeps its
+    // derived shape. The test is only for pre-0.15 files: at 0.15 the value is
+    // Type_TERM and isValidParam() rejects it rather than silently accepting a
+    // file that should never have written it.
+    if (!postHandleModes && rawType == 14) {
+        aValue.type = util::Easing::Type_Custom;
+        aValue.handleOut = util::Easing::HandleMode_Auto;
+        aValue.handleIn = util::Easing::HandleMode_Auto;
     }
     if (!aValue.isValidParam() && errorCorrection) {
         aValue = util::Easing::Param();

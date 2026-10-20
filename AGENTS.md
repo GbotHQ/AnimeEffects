@@ -1596,114 +1596,81 @@ which layer it is driving.
 
 
 
-## The `Auto` easing: Blender's automatic bezier handles, per segment
+## Per-side handle modes: Blender's five, and Auto is not a type
 
-`util::Easing::Type_Auto` is the one easing whose shape is NOT in the key: its control points are
-**derived** from the keys around the segment every time the rate is evaluated, which is what an
-automatic handle means. The reference implementation is a standalone multi-key curve tool
-(`dev/curves/easing-demo.html` - `computeAllTangents` / `getBezierTangents` / `recalcHandles`); the
-port keeps that arithmetic and runs it for **one segment**, because a segment is the unit an
-AnimeEffects easing shapes.
+`util::Easing::Type_Auto` is RETIRED. A key's two tangents now carry a
+`util::Easing::HandleMode` each - `handleIn` and `handleOut`, Blender's five:
+**Free, Aligned, Vector, Auto, AutoClamped**. `Param::aligned` no longer exists.
+The type stays a shape family (Linear, Floor, Round, Sine..Bounce, Custom); the
+modes shape a **Custom** bezier, which is why the picker's Auto preset writes
+`Type_Custom` plus both modes rather than a type of its own.
 
-**Where the port lives, and the four rules it keeps** (`src/util/Easing.cpp::autoHandles`, called from
-`calculateAuto`). With the segment normalized to `(0,0) -> (1,1)` and the neighbouring keys as
-`(px,py)` (before the from key, `px < 0`) and `(nx,ny)` (after the to key, `nx > 1`):
+**Ids and migration.** The retired `Type_Auto` id (14) is NOT reused: `Type_TERM`
+still has the value 14 so nothing can slide into the slot, and `isValidParam`
+rejects it. Format **0.15** writes `handleOut` then `handleIn` after the bezier
+(replacing the one 0.13 flag; a 0.14 flag maps to both sides, and a pre-0.13
+param loads Free/Free). A 0.14 param whose type word is 14 loads as
+`Type_Custom` with **both sides Auto** - exactly what it meant. The clipboard's
+lane JSON keeps the same bridge: it writes `"Auto"` for Custom+Auto and reads
+that name back as the modes.
 
-- an end that HAS a neighbour takes the **central difference over its own triple** - the "uniform"
-  tangent mode, the one Blender's auto handles use: the start's is `(1 - py) / (1 - px)`, the end's
-  `ny / nx`. (Both are the reference's `(y[i+1]-y[i-1])/(x[i+1]-x[i-1])` in the segment's units.)
-- an end that has NO neighbour follows **the handle it faces**: `1.5 - 0.5 * m_other`, which is the
-  reference's geometric construction (slope from the endpoint toward the other key's control point,
-  with the chord slope = 1 in normalized space).
-- either tangent is then **clamped ("auto clamped") so neither of its handles leaves the value range
-  its three keys span**. This is what stops an automatic handle from easing PAST a key it sits
-  between - the whole reason Blender's default is *Auto Clamped* rather than *Auto*. The reference
-  exposes the clamp as a toggle; the port always clamps, because the option IS "auto clamped" and a
-  curve that overshoots its neighbour is the thing users disable an automatic handle to avoid.
-- each control point sits **a third of the way across its interval**, so only the y values are ever
-  derived.
+**Evaluation is per side, and that is the user's bug fixed.** A Custom
+segment's control points come from `util::Easing::controlPoint(param,
+toKey.handleIn, ctx, span, side)`:
 
-**A segment with NEITHER neighbour is the identity (= Linear), and that is a deliberate answer**, not
-a fallback: the segment carries no information about its own shape. The consequence to remember
-before writing a smoke test for this feature is that a two-key channel CANNOT show Auto doing
-anything at all - the drawn curve is byte-identical to Linear (its only difference is the chip's
-name). Seeing it move needs **three keys on one channel**, so that the middle segments have a
-neighbour on each side.
+- **Free** and **Aligned** return the stored `(x,y)`. Aligned's collinearity is
+  enforced by the gestures, never inferred from the pixel angle (the old
+  inference "snapped back unpredictably").
+- **Vector** is the segment's own chord at the third points - `(1/3,1/3)` /
+  `(2/3,2/3)`, i.e. a straight segment (Blender's Vector). The outside chord
+  would put x outside the cubic's domain, which is not what a vector handle is.
+- **Auto** reads the neighbour on ITS OWN outside: the outgoing side reads the
+  PREVIOUS key (`slope = py/px`), the incoming side reads the NEXT key
+  (`slope = (ny-1)/(nx-1)`), with both sides normalized to the segment's own
+  change. A side with no such neighbour falls back to the identity third. The
+  handle x stays at the third, so only y derives.
+- **AutoClamped** is the same derivation with y clamped into the value range the
+  key and its neighbours span, which flattens a local extremum.
 
-**The value an Auto handle reads, and why it is not the key's own number.** The easing must not know
-whether it is shaping pixels, radians or an opacity, and the segment decides which component of a
-multi-component key is read: `core::autoEasingValue` (`src/core/AutoEasing.h`) takes **the component
-that moves MOST across the segment**, so a y-only move is shaped by its own y and a one-bone-only
-pose by that bone (ties and a flat segment fall to the first component; a type with no scalar at all
-- bone, mesh, and image, whose offset is step-held - returns false and the context comes back empty).
-`core::autoEasingContext` then normalizes each neighbour to the SEGMENT's own change (`0` at the from
-key, `1` at the to key), which is what makes `autoHandles` unit-free. A channel that does not change
-across the segment has no shape to derive and yields the empty context, i.e. Linear - the right
-answer, since nothing changes.
+**Because the sides read DIFFERENT neighbours, they are independent**: dragging
+one side writes that side Free (a derived side cannot express a stored drag) and
+the other side, if Auto, keeps deriving. This is the fix for "when the key is
+auto and I drag any of the handles, it changes both tangents to manual" - the
+retired whole-key type converted both. `tests/graph_drag.cpp`'s per-side auto
+section and `tests/graph_curve.cpp` section 11 assert it: changing a neighbour
+moves the still-Auto side and leaves the dragged (stored) side alone.
 
-**The neighbours must come from ONE place on both paths, or the drawn curve is not the played one.**
-`core::TimeKeyBlender::getEasingRateFromTwoKeys` already holds them - `point(-1)` and `point(2)` are
-the channel's neighbouring keys, loop-aware and null at either end - so the Auto branch there is
-`core::autoEasingContext(*k0, *k1, point(-1), point(2))`. The graph panel's `ctrl::graph::Curve`
-takes the same pair through `Curve::neighborsOf` (extracted from the Move channel's own Catmull-Rom
-knot lookup, which wanted exactly the same two keys) and calls the same
-`util::Easing::calculate(param, ctx, t, 0, 1, d)`. `prop::KeyAccessor::autoContext(type)` publishes
-the same context for the dock's chip and the picker, re-read on every refresh through
-`EasingItem::setAutoContextProvider` / `EasingPickWidget::setAutoContext`, so a preview follows the
-document instead of freezing at the shape it first saw.
+**Gestures.** An Aligned side's drag keeps the partner collinear at its own
+length; a Free or derived side's drag leaves the partner alone. **Alt on any
+step** frees THAT SIDE for good (one command with the handle writes, one undo).
+**Alt+CLICK on a key** sets BOTH sides Aligned and puts them on the chord from
+the previous key's anchor to the next key's anchor, each at its own length.
 
-**Serialization and the display order.** `Type_Auto` is **appended after `Type_Round`** (id 15,
-`Type_TERM` = 16): existing ids 0-14 are serialized as-is and must never shift, and the default
-easing is stored as the ENUM ID (`int(typeAtDisplayIndex(index))`), so an old settings file keeps
-meaning what it meant. The DISPLAY order is a separate table and puts Auto at index 13, immediately
-before Custom -> **14 pickable entries** (the menu skips Custom). Anything that counted 13 had to
-move, and each of those was silent: `scripts/gui/probe_graph_overlay.sh`'s `MENU_ENTRY_ROWS`/
-`MENU_ITEM_ROWS` (the menu was one row per entry, so a stale count failed the height identity - BOTH
-constants went with the 14-row menu when the picker replaced it, and the probe read the tile catalog
-instead - it is deleted now, see below), `tests/golden/easing_picker_geometry.json` (it enumerated
-`tile-0..12` only - the 14th tile now wraps into the second row at `229,133`), and
-`grep -rn '"13"' tests/`.
+**One derivation feeds both paths.** `core::TimeKeyBlender` and
+`ctrl::graph::Curve` call the same `controlPoint`, with `core::autoEasingContext`
+supplying the neighbours and the TO key's `handleIn` (`AutoContext::inMode`).
+`Curve::effectiveHandles` is the pair the panel draws, hit-tests and grabs;
+`Curve::ghostHandles` returns it when at least one side derives. The neighbours
+come from the gatherer's `point(-1)`/`point(2)` on the playback path and
+`Curve::neighborsOf` in the panel, so the drawn curve is the played one.
 
-**A trap worth its own line: `Type_Sine <= type && type < Type_Custom` is an ORDINAL test**, used by
-the chip's name and by `calculate`'s weight blending. It reads "the analytic curves with a direction
-and a blend", and Auto (15) is outside it - which is what we want (an Auto curve is derived, so a
-stale `weight` or `range` must not skew it, exactly as for Custom). It works only because
-Sine..Bounce are contiguous below Custom, so anything APPENDED is automatically "no direction, no
-blend". Keep new entries appended for that reason too.
+**The value a derived handle reads** is still per-component: `core::
+autoEasingContext` normalizes each neighbour to the SEGMENT's change, and
+`core::autoEasingValue` picks the component's own scalar (Pose/FFD use the one
+that moves most). A channel that does not change across the segment yields an
+empty context (identity thirds), which is the right answer.
 
-**The picker shows the blend slider for a type whose weight is inert** (Floor, Round, and now Auto -
-`calculate` applies weight only inside the ordinal window above; Custom is the exception because its
-own panel replaces the normal one). That is PRE-EXISTING for the two stepped holds; Auto joins that
-set rather than making the picker inconsistent with itself.
-
-**The settings dialog's easing combo asked for a context no catalog carries** (measured 2026-10-17,
-found while adding Auto): `GeneralSettingViewModel::easingOptions()` built its own label table and
-looked it up with `QCoreApplication::translate("util::EasingName", ...)`, while the names are filed
-under `EasingName` (`util::EasingName`'s entries are all `vanished`, and lrelease drops those). It
-therefore showed **English in every language** - including the new "Auto" - while the same names were
-translated in the timeline's menu. It now builds the list from `util::Easing`'s own display table
-(`displayCount` / `typeAtDisplayIndex` / `getTypeName`), so the combo, the menu and the picker cannot
-disagree and the names translate by construction. The check that proves it, and the reason the
-measurement exists at all: build the `.qm` (`ninja -C build 'release_translations:Debug'` - lupdate
-alone does NOT refresh them, and a stale `.qm` makes every i18n claim unverifiable), then ask a real
-`QTranslator`. A lookup in the WRONG context returns the source with **no error**, so the assertion
-has to be "the answer differs from the source".
-
-**Gates.** `tests/easing_regression.cpp` hand-derives five handle cases (isolated segment, both
-neighbours, first key, last key, clamped start) and checks the solved curve against a
-`UnitBezier` built from those handles plus both endpoints, that a local extremum is flat, and that
-weight/range are inert; `tests/graph_curve.cpp` samples Auto through the panel's own curve;
-`tests/picker_probe.cpp` #10 asserts the tile catalog offers **every** display-order easing except
-Custom exactly once (remove one from `kTileOrder` and it reports `missing=1` - measured);
-`tests/easing_picker_layout.cpp` + the golden pin the tile wrap; `tests/general_setting_form.cpp`
-asserts the combo IS the table (count, order, index-as-value); `tests/anim_setting_i18n.cpp` and a
-manual `QTranslator` pass cover the catalogs. The end-to-end one WAS
-`scripts/gui/probe_graph_overlay.sh` - since the picker replaced the key menu it recognised the
-picker by its OWN source constants (`kTileOrder`), opened it from the timeline's key context menu,
-pressed a tile at a coordinate derived from the tile order and read the commit off the application's
-own state line (there is no 14-row menu left to count: 14 display-order entries now means 14 TILES).
-It is DELETED with the overlay host it drove (`aa92de2a`), and NO probe opens the picker at HEAD
-(`grep -r kTileOrder scripts/` returns 0), so that phase is a gate to RE-ADD rather than to re-run.
+**Gates.** `tests/easing_regression.cpp` hand-derives the per-side cases
+(isolated, both neighbours, first, last, clamped start) and compares the solved
+curve to a `UnitBezier`; `tests/graph_curve.cpp` section 11 checks both the
+hand-worked pair and the played/drawn identity, plus the 0.15 round trip, the
+0.14 flag migration and the retired type's migration; `tests/graph_drag.cpp`
+drives the gestures (one-side Auto, Aligned collinearity, Alt, Alt+click, the
+derived-dot grab); `tests/picker_probe.cpp` #10 and
+`tests/easing_picker_layout.cpp` pin the tile catalog (three types + the Auto
+preset at index 3 + the family); `tests/general_setting_form.cpp` asserts the
+default-easing combo is the display table minus Custom (Auto is no longer a
+default, because it is not a type).
 
 ## The graph panel as the timeline's second view: what the user's 17-item list changed (2026-10-19)
 
@@ -1844,11 +1811,11 @@ The accent is left to the two structural marks it already owned and shares with 
 playhead and the marquee.
 
 **The Auto glyph finally says "automatic handles".** `gui::prop::paintEasingCurve` gained a trailing
-`bool aAutoHandles = false`; when set on a Type_Auto param it draws the derived curve PLUS its two
-control-point dots joined to the segment's endpoints by short stems - the reference's `ease` icon,
-sized from the rect so a 28px tile and an 18px header button read the same. Every other easing's
-glyph is byte-identical (the flag is a no-op off Auto). The picker's Auto tile opts in through
-`CurveGlyph::setAutoHandlesVisible`. The four HEADER quick easings are glyph buttons built from the
+`bool aAutoHandles = false`; when set on a Custom param with a DERIVED side it draws that curve PLUS
+its two control-point dots joined to the segment's endpoints by short stems - the reference's `ease`
+icon, sized from the rect so a 28px tile and an 18px header button read the same. Every other easing's
+glyph is byte-identical (the flag is a no-op without a derived side). The picker's Auto preset tile
+opts in through `CurveGlyph::setAutoHandlesVisible`. The four HEADER quick easings are glyph buttons built from the
 same helper now (`QuickEaseButton`, 28x28 with an 18x18 glyph), placed LEFT of the easing chip, and
 their checked state is the text ink rather than the accent.
 
@@ -1924,30 +1891,36 @@ carries no `#333333`. Do not "match" it by guessing an alpha - find the cause in
 first (the dock's own splitter, which is the same token, measures 64 in the SAME capture, which is why
 the graph was left on the token).
 
-**Handles: the link is STORED, per key.** A key's outgoing handle (`cubicBezier.x1,y1` of its own
-param) and its incoming one (`x2,y2` of the previous segment's param) are LINKED when that key's
-`util::Easing::Param::aligned` says so - document state, default true, folded into `operator==`,
-serialized after the bezier controls (format 0.13; a file from before the field loads `aligned =
-false`, which is what its keys actually did). Nothing infers it from the pixel angle: an inference
-flips whenever an edit changes the pixel angles - a key moved on the value axis above all - and the
-user's verdict was that it "snaps back to aligned unpredictably". Dragging one handle of a LINKED key
-keeps the other COLLINEAR at its OWN LENGTH (angle linked, length independent); a FREE key's partner
-is never touched. **Alt on any step** leaves the partner alone for that step AND writes the key FREE
-in the same command (one undo), so a later drag without Alt stays free - "once it diverges with alt,
-the way to get it back should be an alt click". **Alt+CLICK on a key** writes `aligned = true` and
-puts BOTH handles on the line through the key along the CHORD from the previous key's anchor to the
-next key's anchor, in pixels (a bezier editor's "make smooth"), each handle keeping its own length;
-the direction never depends on which handle is longer, and a first/last key (one handle) is inert.
-A key MOVE never writes a param, so neither the flag nor either handle changes.
+**Handles: the modes are STORED, per side.** A key's outgoing handle
+(`cubicBezier.x1,y1` of its own param) and its incoming one (`x2,y2` of the
+previous segment's param) each carry their own `HandleMode` on that key's
+`util::Easing::Param` (`handleOut`/`handleIn`, folded into `operator==`,
+serialized after the bezier controls in format 0.15). Nothing infers a mode from
+the pixel angle: an inference flips whenever an edit changes the pixel angles -
+a key moved on the value axis above all - and the user's verdict was that it
+"snaps back to aligned unpredictably". Dragging an ALIGNED side keeps the other
+COLLINEAR at its OWN LENGTH (angle linked, length independent); a FREE side's
+partner is never touched; a DERIVED side becomes Free and its partner keeps
+deriving. **Alt on any step** frees THAT SIDE in the same command (one undo), so
+a later drag without Alt stays free - "once it diverges with alt, the way to get
+it back should be an alt click". **Alt+CLICK on a key** sets BOTH sides Aligned
+and puts both handles on the line through the key along the CHORD from the
+previous key's anchor to the next key's anchor, in pixels (a bezier editor's
+"make smooth"), each handle keeping its own length; the direction never depends
+on which handle is longer, and a first/last key (one handle) is inert. A key
+MOVE never writes a param, so no mode and no handle changes.
 
-**The Auto icon is the TYPE's picture, not the key's.** With no neighbouring keys the derived handles
-are the identity, so Auto's curve IS Linear's straight line - the glyph was literally indistinguishable
-from Linear's, which is what "hard to read" meant. `paintEasingCurve` now substitutes the family's
-canonical context (`kAutoTileContext`: neighbours that hold the segment's END values on both sides, i.e.
-the plateau case) whenever an Auto glyph is drawn with the handle flag and no neighbours: the real rule
-(`autoHandles`) then produces the flat-ended S, with its two control points and stems. The header chip
-opts in as well, so an Auto key without neighbours shows the type, and an Auto key WITH neighbours still
-shows the curve the document plays.
+**The Auto icon is the PRESET's picture, not the key's.** With no neighbouring
+keys a derived pair is the identity, so an automatic curve IS Linear's straight
+line - the glyph would be literally indistinguishable from Linear's, which is
+what "hard to read" meant. `paintEasingCurve` substitutes the canonical context
+(`kAutoTileContext`: neighbours that hold the segment's END values on both sides,
+i.e. the plateau case) whenever a glyph with a DERIVED side is drawn with the
+handle flag and no neighbours: the real rule (`Easing::controlPoint`) then
+produces the flat-ended S, with its two control points and stems. The picker's
+Auto preset tile and the header's Auto quick button opt in; the header chip opts
+in as well, so an automatic key without neighbours shows the shape, and one WITH
+neighbours still shows the curve the document plays.
 
 **The ruler SEEKS, because the timeline's does.** The timeline's ruler is not a picture: a press on
 it moves the document's current frame and a drag keeps moving it (`TimeRuler::mousePressEvent` ->

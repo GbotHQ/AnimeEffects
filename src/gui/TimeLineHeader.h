@@ -140,9 +140,12 @@ private:
     // TimeLineEditorWidget::setEasingItemHost).
     void onEasingChipClicked();
     // The four quick easings, in the bar's own vocabulary: one click writes that
-    // easing TYPE to every key the timeline's live selection names. The write goes
-    // through the application's own selection-easing action (see the definition).
-    void onQuickEasingClicked(util::Easing::Type aType);
+    // easing to every key the timeline's live selection names. Three are a TYPE;
+    // the fourth is the AUTO PRESET, which writes Custom with both handle sides
+    // Auto (automatic handles are per-side modes now, not a type). The write
+    // goes through the application's own selection-easing action (see the
+    // definition), in one undo step.
+    void onQuickEasingClicked(util::Easing::Type aType, bool aAutoPreset);
     void refreshQuickEasings();
     // Attaches the state the quick easings read: the one picker lives in the timeline's
     // surface, so the host is bound (setEasingItemHost) and the picker's own commit is
@@ -191,14 +194,16 @@ private:
     // The easing control: the chip in the slot above and the single picker
     // popover it opens (see prop::EasingItem).
     QScopedPointer<prop::EasingItem> mEasing;
-    // The four quick easings to the left of the chip: (button, the easing TYPE it
-    // writes). Glyph buttons that draw the same curve as the picker's tiles (Auto
-    // with its derived handles); lit in the panel's text ink while the selection
-    // agrees on that type and disabled while nothing is selected. Each button's box
-    // is fixed, so its state never changes the bar's width.
+    // The four quick easings to the left of the chip: (button, the easing it
+    // writes, whether it is the Auto preset). Glyph buttons that draw the same
+    // curve as the picker's tiles (Auto with its derived handles); lit in the
+    // panel's text ink while the selection agrees on that easing and disabled
+    // while nothing is selected. Each button's box is fixed, so its state never
+    // changes the bar's width.
     struct QuickEase {
         QAbstractButton* button;
         util::Easing::Type type;
+        bool autoPreset;
     };
     std::vector<QuickEase> mQuickEases;
 #ifdef AE_ENABLE_IMGUI

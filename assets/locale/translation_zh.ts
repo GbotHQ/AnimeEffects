@@ -752,17 +752,17 @@
         <translation type="vanished">粘贴剪贴板键</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="676"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="731"/>
         <source>Paste clipboard keys</source>
         <translation>粘贴剪贴板帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="850"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="905"/>
         <source>Paste keys</source>
         <translation>粘贴帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="915"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="970"/>
         <source>Delete keys</source>
         <translation>删除帧</translation>
     </message>
@@ -986,17 +986,17 @@
         <translation>重复文件夹</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1622"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1625"/>
         <source>create a folder object</source>
         <translation>新建文件夹项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1672"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1675"/>
         <source>Delete object</source>
         <translation>删除项目</translation>
     </message>
     <message>
-        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1831"/>
+        <location filename="../../src/gui/ObjectTreeWidget.cpp" line="1834"/>
         <source>Move object</source>
         <translation>移动项目</translation>
     </message>
@@ -1040,32 +1040,37 @@
         <translation>重命名素材</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TargetWidget.cpp" line="397"/>
+        <location filename="../../src/gui/TargetWidget.cpp" line="430"/>
         <source>Change animation settings</source>
         <translation>更改动画设置</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1800"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1037"/>
+        <source>align handles</source>
+        <translation>对齐控制柄</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2340"/>
         <source>move a key</source>
         <translation>移动关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1926"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2615"/>
         <source>change a key easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2149"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2853"/>
         <source>remove a key</source>
         <translation>删除关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2251"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2989"/>
         <source>change key easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="868"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="957"/>
         <source>Change key(s) easing</source>
         <translation>更改关键帧缓和</translation>
     </message>
@@ -1073,79 +1078,99 @@
 <context>
     <name>EasingName</name>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="77"/>
+        <location filename="../../src/util/Easing.cpp" line="74"/>
         <source>Floor</source>
         <translation>向下取整</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="79"/>
+        <location filename="../../src/util/Easing.cpp" line="76"/>
         <source>Linear</source>
         <translation>线性</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="81"/>
+        <location filename="../../src/util/Easing.cpp" line="78"/>
         <source>Sine</source>
         <translation>正弦曲线</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="83"/>
+        <location filename="../../src/util/Easing.cpp" line="80"/>
         <source>Quad</source>
         <translation>二次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="85"/>
+        <location filename="../../src/util/Easing.cpp" line="82"/>
         <source>Cubic</source>
         <translation>三次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="87"/>
+        <location filename="../../src/util/Easing.cpp" line="84"/>
         <source>Quart</source>
         <translation>四次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="89"/>
+        <location filename="../../src/util/Easing.cpp" line="86"/>
         <source>Quint</source>
         <translation>五次方</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="91"/>
+        <location filename="../../src/util/Easing.cpp" line="88"/>
         <source>Expo</source>
         <translation>指数</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="93"/>
+        <location filename="../../src/util/Easing.cpp" line="90"/>
         <source>Circ</source>
         <translation>圆形</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="95"/>
+        <location filename="../../src/util/Easing.cpp" line="92"/>
         <source>Back</source>
         <translation>回弹</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="97"/>
+        <location filename="../../src/util/Easing.cpp" line="94"/>
         <source>Elastic</source>
         <translation>伸缩</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="99"/>
+        <location filename="../../src/util/Easing.cpp" line="96"/>
         <source>Bounce</source>
         <translation>弹跳</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="101"/>
+        <location filename="../../src/util/Easing.cpp" line="98"/>
         <source>Custom</source>
         <translation>自定义</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="103"/>
+        <location filename="../../src/util/Easing.cpp" line="100"/>
         <source>Round</source>
         <translation>四舍五入</translation>
     </message>
     <message>
-        <location filename="../../src/util/Easing.cpp" line="105"/>
+        <location filename="../../src/util/Easing.cpp" line="117"/>
         <source>Auto</source>
         <translation>自动</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="111"/>
+        <source>Free</source>
+        <translation>自由</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="113"/>
+        <source>Aligned</source>
+        <translation>对齐</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="115"/>
+        <source>Vector</source>
+        <translation>矢量</translation>
+    </message>
+    <message>
+        <location filename="../../src/util/Easing.cpp" line="119"/>
+        <source>Auto Clamped</source>
+        <translation>自动限制</translation>
     </message>
 </context>
 <context>
@@ -2661,22 +2686,22 @@ The %2 encoder could not be opened either (%3).</source>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="674"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="775"/>
         <source>No keys on the selected layers</source>
         <translation>所选图层上没有关键帧</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="675"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="776"/>
         <source>Select a layer to show its curves</source>
         <translation>选择一个图层以显示其曲线</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="678"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="779"/>
         <source>All channels of the selected layers are hidden</source>
         <translation>所选图层的所有通道均已隐藏</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelModel.cpp" line="776"/>
+        <location filename="../../src/gui/GraphPanelModel.cpp" line="922"/>
         <source>No room for the graph in this viewport</source>
         <translation>此视口放不下曲线图</translation>
     </message>
@@ -3092,64 +3117,64 @@ The %2 encoder could not be opened either (%3).</source>
         <translation>经过%2次尝试后适配到%1字节（%3x%4）。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="216"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="207"/>
         <source>Y</source>
         <translation>Y</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="216"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="207"/>
         <source>X</source>
         <translation>X</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="218"/>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="226"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="209"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="217"/>
         <source>Angle</source>
         <translation>角度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="220"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="211"/>
         <source>Depth</source>
         <translation>深度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="222"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="213"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="225"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="216"/>
         <source>Radius Y</source>
         <translation>半径 Y</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="227"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="218"/>
         <source>Radius X</source>
         <translation>半径 X</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="231"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="222"/>
         <source>Saturation</source>
         <translation>饱和度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="232"/>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="238"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="223"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="229"/>
         <source>Value</source>
         <translation>明度</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="233"/>
+        <location filename="../../src/ctrl/graph/graph_Channel.cpp" line="224"/>
         <source>Hue</source>
         <translation>色相</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1665"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2205"/>
         <source>The animation graph stopped moving: the dragged key changed.</source>
         <translation>动画曲线图已停止移动：被拖动的关键帧已改变。</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1839"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2379"/>
         <source>The animation graph stopped editing: the dragged key changed.</source>
         <translation>动画曲线图已停止编辑：被拖动的关键帧已改变。</translation>
     </message>
@@ -3228,7 +3253,7 @@ The %2 encoder could not be opened either (%3).</source>
     </message>
     <message>
         <location filename="../../src/ctrl/PoseEditor.cpp" line="90"/>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="80"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="86"/>
         <source>An object with invalid posture was given.</source>
         <translation>一个姿态无效的对象。</translation>
     </message>
@@ -3244,7 +3269,7 @@ The %2 encoder could not be opened either (%3).</source>
     </message>
     <message>
         <location filename="../../src/ctrl/SRTEditor.cpp" line="31"/>
-        <location filename="../../src/ctrl/SRTEditor.cpp" line="128"/>
+        <location filename="../../src/ctrl/SRTEditor.cpp" line="134"/>
         <source>SRT Editor : </source>
         <translation>SRT编辑 ：</translation>
     </message>
@@ -4418,7 +4443,7 @@ Check FFmpeg palette generation 🗸</source>
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1966"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2219"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1，已选择 %n 个关键帧</numerusform>
@@ -4436,19 +4461,19 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">已隐藏</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1956"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2209"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>%n 个通道已显示</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="1974"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2227"/>
         <source>%1, focused: %2</source>
         <translation>%1，聚焦：%2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2003"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2256"/>
         <source>%1, selected key: %2</source>
         <translation>%1，选中的关键帧：%2</translation>
     </message>
@@ -4467,22 +4492,22 @@ Check FFmpeg palette generation 🗸</source>
         <translation type="vanished">显示通道列表</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2034"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2287"/>
         <source>Fit graph</source>
         <translation>适配曲线图</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2035"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2288"/>
         <source>double-click the plot</source>
         <translation>双击绘图区</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2051"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2304"/>
         <source>Key menu</source>
         <translation>关键帧菜单</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2052"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2305"/>
         <source>right-click the key</source>
         <translation>右键点击关键帧</translation>
     </message>
@@ -5824,22 +5849,22 @@ The log is available below.</source>
 <context>
     <name>gui::TimeLineEditorWidget</name>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="160"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="178"/>
         <source>Copy key</source>
         <translation>复制键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="163"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="181"/>
         <source>Paste key</source>
         <translation>粘贴键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="166"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="184"/>
         <source>Delete key</source>
         <translation>删除键</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="169"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="187"/>
         <source>Copy key to clipboard</source>
         <translation>将帧复制到剪贴板</translation>
     </message>
@@ -5912,12 +5937,12 @@ The log is available below.</source>
         <translation type="vanished">全部</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="174"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="192"/>
         <source>Select spacing between keys</source>
         <translation>选择关键帧之间的间隔</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="469"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="522"/>
         <source>Clear playback window</source>
         <translation>清除播放窗口</translation>
     </message>
@@ -5926,12 +5951,12 @@ The log is available below.</source>
         <translation type="vanished">更改关键帧缓和...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="782"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="848"/>
         <source>Operation Error</source>
         <translation>操作错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="782"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="848"/>
         <source>Failed to paste keys. 
 (If you want to paste across objects copy the key to the clipboard and right-click and paste to the node instead)</source>
         <translation>粘贴关键帧失败。
@@ -5942,37 +5967,37 @@ The log is available below.</source>
         <translation type="vanished">粘贴关键帧失败。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="952"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1053"/>
         <source>A minimum of two keys in different frames are needed.</source>
         <translation>至少需要两个位于不同帧的关键帧。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="953"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1054"/>
         <source>Not enough targets</source>
         <translation>目标不足</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="988"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1089"/>
         <source>Key spacing</source>
         <translation>关键帧间隔</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="990"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1091"/>
         <source>Number of frames the selected keys should be spaced by:</source>
         <translation>选定关键帧之间应间隔的帧数：</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1039"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1140"/>
         <source>Key conflict detected for key type </source>
         <translation>检测到关键帧类型冲突。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1040"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1141"/>
         <source> in node </source>
         <translation>在节点中</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1040"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1141"/>
         <source> at frame </source>
         <translation>帧中</translation>
     </message>
@@ -5985,17 +6010,17 @@ The log is available below.</source>
         <translation type="vanished">超出了项目的最大帧范围，忽略将关键帧移动到该帧的尝试。</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1042"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1143"/>
         <source>Move error</source>
         <translation>移动错误</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1043"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1144"/>
         <source>Unable to move </source>
         <translation>无法移动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1043"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1144"/>
         <source> key(s), due to the following reasons: </source>
         <translation>由于以下原因，无法移动关键帧：</translation>
     </message>
@@ -6003,50 +6028,52 @@ The log is available below.</source>
 <context>
     <name>gui::TimeLineHeader</name>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="205"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="313"/>
         <source>Timeline</source>
         <translation>时间轴</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="206"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="314"/>
         <source>Graph</source>
         <translation>曲线图</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="271"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="380"/>
         <source>Set the selected keys&apos; easing to %1</source>
         <translation>将所选关键帧的缓动设为 %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="290"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="425"/>
         <source>Which channels are drawn</source>
         <translation>显示的通道</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="305"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="460"/>
         <source>Zoom out</source>
         <translation>缩小</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="307"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="462"/>
         <source>Zoom in</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="313"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="468"/>
         <source>Fit the frame range</source>
         <translation>适配帧范围</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="604"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="606"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="435"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="781"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="783"/>
         <source>%n channel(s)</source>
         <translation>
             <numerusform>%n 个通道</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="608"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="436"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="785"/>
         <source>%1 of %2</source>
         <translation>%2 中的 %1</translation>
     </message>
@@ -6286,22 +6313,32 @@ The log is available below.</source>
 <context>
     <name>gui::prop::EasingPickWidget</name>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="584"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="650"/>
         <source>Easing</source>
         <translation>缓动</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="593"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="659"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="854"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="945"/>
+        <source>In</source>
+        <translation>入</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="946"/>
+        <source>Out</source>
+        <translation>出</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="977"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="857"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="980"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
