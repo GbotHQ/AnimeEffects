@@ -292,6 +292,26 @@ void TargetWidget::onSurfaceChanged(TimeLineHeader::Surface aSurface) {
     // (Qt lays out and paints only the current page).
     if (graph)
         mGraphPanel->refresh();
+
+    // THE TAB THAT BECOMES CURRENT TAKES THE KEYBOARD. Both views own keys the
+    // timeline's own tab strip is the only way to reach - Ctrl+A selects every key
+    // in whichever view is up - and until this line the surface had ClickFocus
+    // only, so switching to a tab and pressing Ctrl+A did nothing until the body
+    // was clicked. The press that switched the tab is a deliberate move to that
+    // view; the keyboard follows it.
+    // THE TIMELINE'S KEY HANDLER LIVES ON THE INNER SURFACE, not on the scroll area
+    // that hosts it: gui::TimeLineWidget is a QAbstractScrollArea and
+    // gui::TimeLineEditorWidget (its viewport child) is the widget whose
+    // keyPressEvent owns Ctrl+A and Escape. Focusing the scroll area would give the
+    // keys to a widget with no handler - the same "nothing happens" the tab switch
+    // was meant to fix - so the lookup is the one the rest of this class uses.
+    QWidget* target = mGraphPanel;
+    if (!graph) {
+        target = mTimeLine;
+        if (auto* surface = mTimeLine->findChild<TimeLineEditorWidget*>())
+            target = surface;
+    }
+    target->setFocus(Qt::TabFocusReason);
 }
 #endif
 
