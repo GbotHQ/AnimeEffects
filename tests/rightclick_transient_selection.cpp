@@ -102,7 +102,7 @@ void notifyTimelineModified(ctrl::TimeLineEditor& aEditor) { aEditor.updateKey()
 // route that writes this now; the key menus carry no easing entry), minus the
 // command plumbing. The selection must survive it.
 void editKeyEasingDataOnly(core::TimeKey* aKey) {
-    static_cast<core::MoveKey*>(aKey)->data().easing().type = util::Easing::Type_Linear;
+    static_cast<core::MoveKey*>(aKey)->data().easing(0).type = util::Easing::Type_Linear;
 }
 
 // A plain click through the real gesture path (press + release at one point).
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
         // a data-only edit, like the one a menu action would fire on the loaned
         // target, notifies the timeline: the loan survives updateKey()
         editKeyEasingDataOnly(keyA);
-        CHECK(keyA->data().easing().type == util::Easing::Type_Linear);
+        CHECK(keyA->data().easing(0).type == util::Easing::Type_Linear);
         notifyTimelineModified(editor);
         core::TimeLineEvent during;
         CHECK(editor.retrieveSelectionTargets(during));

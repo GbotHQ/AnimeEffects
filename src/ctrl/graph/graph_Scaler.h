@@ -120,7 +120,7 @@ public:
     //
     // THE RIGHT AND BOTTOM MARGINS ALSO HOLD THE SCROLL BARS: they are kMargin +
     // kScrollBarReserve there and kMargin on the left and top, so the plot keeps its
-    // top-left corner (and the ruler band above it) and gives up the 10px the two
+    // top-left corner (and the ruler band above it) and gives up the 14px the two
     // bars occupy at its right and bottom edges - see THE SCROLL BARS' RESERVE.
     QRect plotRect() const;
 
@@ -142,36 +142,60 @@ public:
     // the column would be sized for text nobody draws.
     static QString valueAxisText(float aValue);
 
-    // The shared window is inset by this many pixels at both plot edges, so a key on the window's
-    // first or last frame is drawn and picked whole. WHY 8: the hit rect is +/-kKeyRadius (5) and
-    // the drawn marker kKeyDotRadius (3.75), plus the two pixels an end can land closer to its
-    // edge than the arithmetic asks (an integer origin step and the rounding that places it).
-    static constexpr int kFrameWindowMargin = 8;
+    // ---- THE SHARED WINDOW'S MAPPING ----
+    //
+    // While a timeline owns the frame axis, applyFrameWindow maps the timeline's own
+    // visible window (TimeLineWidget::visibleFrameWindow: the frames at the timeline
+    // viewport's two edges, FRACTIONAL) ACROSS THE PANEL: frame aLo lands on
+    // panel.left(), frame aHi on panel.left() + panel.width(). It is deliberately not
+    // the plot's width and it has no edge inset: the panel and the timeline's viewport
+    // are the same columns of the same dock page (measured: page left 257, viewport
+    // 638 for both), so this mapping makes the graph's frame coordinate the timeline's
+    // PIXEL for that frame. That identity is the point - switching timeline -> graph
+    // leaves the ruler, its ticks and its numbers exactly where they were, and both
+    // views show one window at one zoom. The value column and the scroll bars are
+    // reserves the plot gives up at its edges, not a second frame mapping: a frame
+    // under them is still at the timeline's pixel, just hidden by chrome.
+    //
+    // The graph's own (unshared) axis keeps its origin inside the plot: pixelXOfFrame
+    // reads plotRect().left() + mFrameOffset, and only the shared path writes an offset
+    // that starts at the panel's left edge.
 
     // ---- THE SCROLL BARS' RESERVE ----
     //
     // The panel's two scroll bars (the frame axis' along the bottom, the value
     // axis' along the right) live in the panel's margin, OUTSIDE the plot and
-    // inside the panel. A bar is kScrollBarThickness pixels thick and keeps
-    // kScrollBarGap pixels clear of the plot, so the margin the plot leaves at
-    // those two edges has to hold kScrollBarReserve pixels - 2 + 8 = 10 - of which
-    // the outer kMargin rows/columns stay the panel's own edge.
+    // inside the panel. They are the APPLICATION'S scroll bars, not a look of this
+    // panel's own: src/gui/AppStyle.cpp's CC_ScrollBar draws a 12px lane whose
+    // trough is INVISIBLE and a 4px, radius-2 pill across the slider's run
+    // (theme::Colors::outline at rest, theme::Colors::hover when hot). The lane is
+    // therefore kScrollBarThickness = 12, it keeps kScrollBarGap = 2 clear of the
+    // plot, and the plot gives up kScrollBarReserve = 14 at those two edges - the
+    // outer kMargin rows/columns stay the panel's own edge.
     //
     // THE PLOT'S BOTTOM AND RIGHT INSETS THEREFORE GROW BY kScrollBarReserve:
     // plotRect() is inset kMargin on the LEFT and TOP and kMargin +
     // kScrollBarReserve on the right and bottom, so the plot's top-left corner (and
     // with it the ruler band above it and the label column beside it) is exactly
-    // where it always was, while its width and height give up the 10px the bars
+    // where it always was, while its width and height give up the 14px the bars
     // need. That is a PLOT-SHAPE decision and not a per-frame one: the reserve is
     // unconditional, so the plot never moves because a key appeared or a bar did.
     // With a 800x600 panel and a 68px label column, for instance, the plot is
-    // (72, 26, 714, 560) instead of (72, 26, 724, 570):
-    //   * hTrack: (72, 588, 714, 8)  - plot.bottom() + 1 + gap, the plot's full width
-    //   * vTrack: (788, 26, 8, 560)  - plot.right() + 1 + gap, the plot's full height
+    // (72, 26, 710, 556):
+    //   * hTrack: (72, 584, 710, 12) - plot.bottom() + 1 + gap, the plot's full width
+    //   * vTrack: (784, 26, 12, 556) - plot.right() + 1 + gap, the plot's full height
     // leaving the kMargin rows/columns of the panel below and right of each bar, and
     // the two tracks disjoint (the horizontal one lies entirely below the vertical
     // one's last row).
-    static constexpr int kScrollBarThickness = 8;
+    //
+    // THE PILL'S THICKNESS AND RADIUS ARE ALSO APPSTYLE'S (kPillThickness and
+    // kPillRadius in AppStyle.cpp): the lane's LENGTH is the slider's run, which the
+    // model publishes as hThumb/vThumb, and the drawing layer centres the pill in
+    // the lane inside that run. The pill is not a second geometry - a press anywhere
+    // on the run drags, exactly as a QScrollBar's slider subcontrol spans the lane.
+    static constexpr int kScrollBarThickness = 12;    // AppStyle.cpp's 12px invisible lane
+    static constexpr int kScrollBarPillThickness = 4; // AppStyle.cpp's kPillThickness
+    static constexpr int kScrollBarPillRadius = 2;    // AppStyle.cpp's kPillRadius
     static constexpr int kScrollBarGap = 2;
     static constexpr int kScrollBarReserve = kScrollBarThickness + kScrollBarGap;
     // The shortest a thumb may be drawn, whatever the window/content fraction is:
@@ -183,12 +207,16 @@ public:
     // and the model's drawing read THIS, so the bar a press grabs and the bar the
     // panel paints are one geometry (the rule the whole panel follows).
     //
-    //   * hTrack: below the plot, spanning the plot's own columns.
-    //   * vTrack: right of the plot, spanning the plot's own rows.
-    //   * hThumb/vThumb: the visible WINDOW inside the CONTENT, laid out along the
-    //     track. Thumb length = window/content fraction x track length, never
-    //     shorter than kScrollBarMinThumb and never longer than the track - so a
-    //     window that covers the content fills its track.
+    //   * hTrack: below the plot, spanning the plot's own columns; the 12px lane.
+    //   * vTrack: right of the plot, spanning the plot's own rows; the 12px lane.
+    //   * hThumb/vThumb: the SLIDER'S RUN - the visible WINDOW inside the CONTENT,
+    //     laid out along the track and spanning the lane's thickness. Run length =
+    //     window/content fraction x track length, never shorter than
+    //     kScrollBarMinThumb and never longer than the track - so a window that
+    //     covers the content fills its track and is then removed (nothing to
+    //     scroll, no bar). The drawing layer paints a kScrollBarPillThickness pill
+    //     centred in the lane across this run, and nothing else: the trough is
+    //     invisible.
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).
@@ -225,8 +253,12 @@ public:
         return mFramePpf > 0.0 ? mFramePpf : static_cast<double>(mFrameScale.pixelsPerFrame());
     }
 
-    // Maps the pushed window [aLo, aHi] (fractional frames) into the plot's inset
-    // width exactly. False when there is no plot width or no span to map.
+    // Maps the pushed window [aLo, aHi] (fractional frames) ACROSS THE PANEL:
+    // frame aLo at panel.left(), frame aHi at panel.left() + panel.width(), rate
+    // panel.width() / (aHi - aLo). This is the TIMELINE's own window and the
+    // timeline's own columns, so pixelX() of a frame is the timeline's pixel for it
+    // (see THE SHARED WINDOW'S MAPPING). False when there is no panel width or no
+    // span to map.
     bool applyFrameWindow(double aLo, double aHi);
 
     // Back to the ladder's own rung: the panel's own frame axis.
@@ -286,7 +318,10 @@ private:
 
     ctrl::time::Scaler mFrameScale;
     QRect mRect;
-    double mFrameOffset; // content pixel of frame 0, relative to plotRect().left()
+    double mFrameOffset; // content pixel of frame 0, relative to plotRect().left().
+                         // The shared mapping (applyFrameWindow) writes it so the
+                         // window's first frame lands on panel.left(); the plot starts
+                         // to the right of that column, so the offset is negative.
     // The shared window's mapping, when one is applied: pixels per frame as a
     // DOUBLE (see framePpf). 0 while the frame mapping is the ladder's own rung.
     double mFramePpf;

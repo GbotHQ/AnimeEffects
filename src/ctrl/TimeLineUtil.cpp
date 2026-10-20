@@ -245,7 +245,7 @@ namespace TimeLineUtil {
             }
             macro.grabListener(notifier);
 
-            auto command = new cmnd::Assign<util::Easing::Param>(&(key->data().easing()), aNewData);
+            auto command = new cmnd::Assign<util::Easing::Param>(&(key->data().easing(0)), aNewData);
             aProject.commandStack().push(command);
         }
     }

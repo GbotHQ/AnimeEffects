@@ -176,11 +176,12 @@ namespace graph {
         const int offset = std::clamp(int(std::lround(start * trackLength)), 0, trackLength - thumbLength);
         // NOTHING TO SCROLL, NOTHING TO SHOW. A thumb that fills its track is a bar
         // with no travel: the convention every desktop draws (macOS and GTK hide the
-        // bar outright, Windows greys its track) is to remove it, and an 8px bright
-        // rail down the panel's edge reads as a divider otherwise - measured on the
-        // empty graph, whose two full-length rails were the first thing the eye found.
-        // The suppression lives HERE so the drawing layer and the hit-test agree by
-        // construction: an empty rect is drawn by nobody and claimed by nobody.
+        // bar outright, Windows greys its track) is to remove it, and a full-length
+        // rail down the panel's edge reads as a control that does nothing - measured
+        // on the empty graph, whose two full-length rails were the first thing the eye
+        // found. The suppression lives HERE so the drawing layer and the hit-test
+        // agree by construction: an empty rect is drawn by nobody and claimed by
+        // nobody.
         if (thumbLength >= trackLength)
             return QRect();
         return aHorizontal ? QRect(aTrack.left() + offset, aTrack.top(), thumbLength, aTrack.height())
@@ -206,11 +207,16 @@ namespace graph {
             plot.right() + 1 + kScrollBarGap, plot.top(), kScrollBarThickness, plot.height()
         );
 
-        // The windows: the frames the plot covers (the mapping's own inverse at its
-        // two edges) and the value window this scaler holds.
+        // The windows: the frames the view covers and the value window this scaler
+        // holds. WHICH COLUMNS the frame window spans is the mapping's own answer: the
+        // shared window spans the PANEL (applyFrameWindow), while the graph's own axis
+        // fills the plot. Using the plot in the shared case would make the run shorter
+        // than the window actually shown - the timeline's slider measures its viewport,
+        // and so must this one.
+        const QRect frameWindow = mFramePpf > 0.0 ? mRect : plot;
         bars.hThumb = scrollThumbRect(
-            bars.hTrack, true, false, aFrameContentLo, aFrameContentHi, frameAtPixel(plot.left()),
-            frameAtPixel(plot.right() + 1)
+            bars.hTrack, true, false, aFrameContentLo, aFrameContentHi,
+            frameAtPixel(frameWindow.left()), frameAtPixel(frameWindow.left() + frameWindow.width())
         );
         bars.vThumb = scrollThumbRect(
             bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
@@ -243,15 +249,22 @@ namespace graph {
 
     //-------------------------------------------------------------------------------------------------
     bool Scaler::applyFrameWindow(double aLo, double aHi) {
-        const double inset = plotRect().width() - 2.0 * kFrameWindowMargin;
-        if (!(inset > 0.0) || !(aHi > aLo))
+        // THE TIMELINE'S WINDOW ACROSS THE TIMELINE'S COLUMNS. The pushed window is
+        // TimeLineWidget::visibleFrameWindow: the frames at the timeline viewport's
+        // two edges, and the panel covers the same columns of the same dock page.
+        // Mapping it across the PANEL (not the plot, and with no inset) therefore
+        // gives every frame the pixel the timeline gives it - the identity a tab
+        // switch depends on. The value column and the scroll bars hide the plot's
+        // outermost columns; they do not move the mapping.
+        const double panelWidth = static_cast<double>(mRect.width());
+        if (!(panelWidth > 0.0) || !(aHi > aLo))
             return false;
 
-        // The window fills the plot's inset exactly: it can never be clipped, and the
-        // frame under the cursor keeps its fraction of the window, so the timeline's
-        // own anchored zoom arrives here already anchored.
-        mFramePpf = inset / (aHi - aLo);
-        mFrameOffset = kFrameWindowMargin - mFramePpf * aLo;
+        mFramePpf = panelWidth / (aHi - aLo);
+        // Frame aLo at panel.left(): pixelXOfFrame() reads
+        // plotRect().left() + mFrameOffset + ppf * frame, so the offset carries the
+        // distance from the plot's left edge back to the panel's.
+        mFrameOffset = static_cast<double>(mRect.left() - plotRect().left()) - mFramePpf * aLo;
 
         // The ladder now only picks the tick classification's density; positions come from the
         // mapping (pixelX), so a fractional rate cannot desync them. indexForRate inverts the

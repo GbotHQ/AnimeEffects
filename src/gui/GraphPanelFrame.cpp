@@ -147,11 +147,6 @@ bool tickInActiveRange(const GraphPanelModel& aModel, int aIndex) {
 // gestures are the same shape.
 constexpr float kMarqueeRounding = 6.0f;
 
-// The SCROLL BARS' corner radius, in pixels: the bars are chrome of the same family
-// as the marquee's box and the playhead's pill, and 4 is the radius their 8px
-// thickness can carry without the two ends of a short thumb meeting.
-constexpr float kScrollBarRounding = 4.0f;
-
 // The label halo: the same glyphs drawn at the eight compass offsets of radius 1
 // and radius 2, so the ring reaches 2px past the glyph ink in every direction.
 // Read only while gui::kDrawTextHalo is on (shipped off: see addHaloedText).
@@ -1351,7 +1346,7 @@ void drawPanel(
     // The hairline sits one row UNDER the band, as the timeline draws it on the first
     // track row below its header.
     const QRect rulerBand = aModel.rulerBand.isEmpty()
-        ? QRect(plot.left(), aModel.rulerBandTop, plot.width(), gui::frameRuler::kBandHeight)
+        ? QRect(aModel.panel.left(), aModel.rulerBandTop, aModel.panel.width(), gui::frameRuler::kBandHeight)
         : aModel.rulerBand;
     if (!aModel.rulerBand.isEmpty()) {
         aDrawList.AddRectFilled(rectMin(aModel.rulerBand), rectMax(aModel.rulerBand), toImU32(aTheme.rulerBand()));
@@ -1369,8 +1364,10 @@ void drawPanel(
     // (TimeLineEditorWidget.cpp's paintEvent), so this is that row.
     if (!aModel.rulerBand.isEmpty() && aModel.rulerBand.bottom() + 1 <= plot.bottom()) {
         const float hairlineY = float(aModel.rulerBand.bottom() + 1);
+        // The hairline is the band's own rule, so it spans the BAND's columns - the
+        // whole panel, including the value column's top corner the band now covers.
         aDrawList.AddLine(
-            ImVec2(float(plot.left()), hairlineY), ImVec2(float(plot.right() + 1), hairlineY),
+            ImVec2(float(aModel.rulerBand.left()), hairlineY), ImVec2(float(aModel.rulerBand.right() + 1), hairlineY),
             toImU32(aTheme.rulerLine()), 1.0f
         );
     }
@@ -1934,19 +1931,25 @@ void drawPanel(
     if (aModel.playheadX >= 0) {
         const float px = float(aModel.playheadX);
         const float lineTop = float(aModel.playheadLineTop >= 0 ? aModel.playheadLineTop : plot.top());
-        // The playhead's own clip: the columns of the plot, from the band's top (the
-        // pill lives there) to the plot's bottom. Without a band the line starts at
-        // the plot's top, and the clip is the plot.
+        // The playhead's own clip: the PANEL's columns, from the band's top (the
+        // pill lives there) to the panel's bottom. The timeline's playhead crosses
+        // its whole body, and the graph's body is the panel: the line runs through
+        // the value column's rows and down to the panel's last row, not only through
+        // the plot's. (The two bar lanes are painted after this and cover the rows
+        // they own, exactly as the timeline's scroll bar covers the last rows of its
+        // body.) The panel's columns, not the plot's, are also what lets a playhead
+        // that sits over the value column draw at all - the shared mapping puts
+        // frames on the timeline's pixels, and some of those pixels are chrome.
         const int clipTop = aModel.rulerBand.isEmpty() ? int(lineTop) : aModel.rulerBand.top();
         aDrawList.PushClipRect(
-            ImVec2(float(plot.left()), float(clipTop)),
-            ImVec2(float(plot.right() + 1), float(plot.bottom() + 1)), true
+            ImVec2(float(aModel.panel.left()), float(clipTop)),
+            ImVec2(float(aModel.panel.right() + 1), float(aModel.panel.bottom() + 1)), true
         );
         const ImDrawListFlags savedPlayheadFlags = aDrawList.Flags;
         aDrawList.Flags = savedPlayheadFlags & ~ImDrawListFlags_AntiAliasedLines;
         aDrawList.AddLine(
-            ImVec2(px, lineTop - 0.5f), ImVec2(px, float(plot.bottom()) + 0.5f), toImU32(aTheme.selected()),
-            1.0f
+            ImVec2(px, lineTop - 0.5f), ImVec2(px, float(aModel.panel.bottom()) + 0.5f),
+            toImU32(aTheme.selected()), 1.0f
         );
         aDrawList.Flags = savedPlayheadFlags;
 
@@ -1978,51 +1981,55 @@ void drawPanel(
     // for them - see Scaler's kScrollBarReserve), exactly as the value column's
     // numbers are.
     //
-    // THE INK: the track is the raised surface (theme::Colors::raised - the panel's
-    // own "a control sits here" tone) with a 1px edge in theme::Colors::floaterEdge,
-    // and the thumb is theme::Colors::textMuted at rest and theme::Graph::axisText()
-    // - the palette's full text ink, which IS theme::Colors::text - while the pointer
-    // is on that bar. The pointer is the whole of "hovered or dragged" here, and that
-    // is not an approximation: a thumb drag pans the window by the pointer's own
-    // delta, so the thumb travels WITH the pointer and the pointer stays on it (see
-    // GraphEditor's SCROLL BARS note).
+    // THE INK IS THE APPLICATION'S SCROLL BAR (src/gui/AppStyle.cpp's CC_ScrollBar):
+    // an INVISIBLE 12px trough and a kScrollBarPillThickness (4px), radius-2 pill
+    // centred in the lane across the slider's run (the model's hThumb/vThumb).
+    // theme::Colors::outline at rest and theme::Colors::hover while the pointer is on
+    // that bar - or while that bar is being dragged, which the pointer alone cannot
+    // say (a thumb drag pans by the pointer's delta, so the pointer can leave the
+    // lane): the hot test therefore also reads the press that is still down.
     //
-    // THE SHAPE: both rects are INTEGER and rounded by kScrollBarRounding, and the 1px
-    // edge is drawn with the draw list's line AA OFF exactly as the ruler's hairline
-    // and the axes' marks are: an integer-column edge is exact with the hard-edged
-    // path, and an AA'd 1px rule would spread one column's ink over two. The fill's
-    // own AA is left alone (it is a filled shape, not a 1px rule). The two flags are
-    // put back exactly as they were found.
+    // THE SHAPE: the run rects are INTEGER, and the pill's fill AA is left alone (a
+    // filled shape, not a 1px rule). The line-AA flag is saved and restored around
+    // the whole block because the axis marks above set it.
     if (!aModel.hTrack.isEmpty() || !aModel.vTrack.isEmpty()) {
         const theme::Colors& colors = theme::Colors::current();
-        const ImVec2 pointer = ImGui::GetIO().MousePos;
-        const QPoint hovered(int(pointer.x), int(pointer.y));
+        const ImGuiIO& io = ImGui::GetIO();
+        const QPoint hovered(int(io.MousePos.x), int(io.MousePos.y));
+        const QPoint pressed(int(io.MouseClickedPos[0].x), int(io.MouseClickedPos[0].y));
+        const bool buttonDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
         const ImDrawListFlags savedBarFlags = aDrawList.Flags;
         aDrawList.Flags = savedBarFlags & ~ImDrawListFlags_AntiAliasedLines;
         aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
-        const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb) {
-            // A bar with NOTHING TO SCROLL is not drawn at all - not even its track.
-            // The model publishes an empty thumb exactly then (Scaler::scrollBars), and
-            // an 8px `raised` trough along the panel's edge reads as a divider, not as
-            // a control: measured on the empty graph, where the two full-length troughs
-            // framed the panel like a border. The TRACK's rect is still reserved in the
-            // layout, so the plot does not move when the content appears.
+        const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb, bool aHorizontal) {
+            // A bar with NOTHING TO SCROLL is not drawn at all. The model publishes an
+            // empty run exactly then (Scaler::scrollBars), and an empty lane would put
+            // nothing on screen anyway - the trough paints NOTHING, so there is no
+            // full-length rail to mistake for a divider. The TRACK's rect is still
+            // reserved in the layout, so the plot does not move when content appears.
             if (aTrack.isEmpty() || aThumb.isEmpty())
                 return;
+            // The pill: 4px centred in the lane, spanning the run. This is AppStyle's
+            // own arithmetic (its pill's cap axis follows the orientation), restated
+            // here because the lane and the run are the model's.
+            const int pillThickness = ctrl::graph::Scaler::kScrollBarPillThickness;
+            const QRect pill = aHorizontal
+                ? QRect(
+                      aThumb.left(), aTrack.top() + (aTrack.height() - pillThickness) / 2, aThumb.width(),
+                      pillThickness
+                  )
+                : QRect(
+                      aTrack.left() + (aTrack.width() - pillThickness) / 2, aThumb.top(), pillThickness,
+                      aThumb.height()
+                  );
+            const bool hot = aTrack.contains(hovered) || (buttonDown && aTrack.contains(pressed));
             aDrawList.AddRectFilled(
-                rectMin(aTrack), rectMax(aTrack), toImU32(colors.raised), kScrollBarRounding
-            );
-            aDrawList.AddRectFilled(
-                rectMin(aThumb), rectMax(aThumb),
-                toImU32(aTrack.contains(hovered) ? aTheme.axisText() : colors.textMuted), kScrollBarRounding
-            );
-            aDrawList.AddRect(
-                rectMin(aTrack), rectMax(aTrack), toImU32(colors.floaterEdge), kScrollBarRounding, ImDrawFlags_None,
-                1.0f
+                rectMin(pill), rectMax(pill), toImU32(hot ? colors.hover : colors.outline),
+                float(ctrl::graph::Scaler::kScrollBarPillRadius)
             );
         };
-        drawBar(aModel.hTrack, aModel.hThumb);
-        drawBar(aModel.vTrack, aModel.vThumb);
+        drawBar(aModel.hTrack, aModel.hThumb, true);
+        drawBar(aModel.vTrack, aModel.vThumb, false);
         aDrawList.PopClipRect();
         aDrawList.Flags = savedBarFlags;
     }
@@ -2231,7 +2238,7 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
         const core::TimeLine* line = target.pos.line();
         const core::TimeKey* key = line ? line->timeKey(target.pos.type(), target.pos.index()) : nullptr;
         const util::Easing::Param* easing =
-            key ? ctrl::graph::Curve::easingOf(*key, target.pos.type()) : nullptr;
+            key ? ctrl::graph::Curve::easingOf(*key, target.pos.type(), 0) : nullptr;
         if (easing) {
             const QString keyLabel = core::TimeLine::getTimeKeyName(target.pos.type()) + QStringLiteral(" ")
                 + util::Easing::getTypeName(easing->type);

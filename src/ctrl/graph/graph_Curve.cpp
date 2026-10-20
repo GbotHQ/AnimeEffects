@@ -268,7 +268,8 @@ float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, fl
     // offset inside the segment (t = frame - k0->frame), never at the segment's
     // endpoints and never with the `to` key's param.
     const float t = aAt - static_cast<float>(aFrom.frame());
-    const util::Easing::Param* easing = easingOf(aFrom, type);
+    const int component = mChannel.component();
+    const util::Easing::Param* easing = easingOf(aFrom, type, component);
     float rate = 0.0f;
     if (!easing) {
         // No graphable channel reaches this: types without an easing param have
@@ -278,12 +279,13 @@ float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, fl
     } else if (easing->type == util::Easing::Type_Auto) {
         // An Auto easing is shaped by the keys AROUND its segment, and this is
         // the same pair core::TimeKeyBlender takes from its gatherer
-        // (point(-1)/point(2)), so the drawn curve is the played one.
+        // (point(-1)/point(2)), so the drawn curve is the played one. The
+        // component is the channel's: an Auto Move x curve reads x values.
         const core::TimeKey* prev = nullptr;
         const core::TimeKey* next = nullptr;
         neighborsOf(aFrom, aTo, prev, next);
         rate = util::Easing::calculate(
-            *easing, core::autoEasingContext(aFrom, aTo, prev, next), t, 0.0f, 1.0f, d);
+            *easing, core::autoEasingContext(aFrom, aTo, component, prev, next), t, 0.0f, 1.0f, d);
     } else {
         rate = util::Easing::calculate(*easing, t, 0.0f, 1.0f, d);
     }
@@ -348,7 +350,7 @@ Curve::Segment Curve::segment(int aIndex) const {
     // A COPY, never a reference: the curve does not own the document, and a
     // segment handed to the renderer may outlive the edit that follows the
     // paint (an undo removing the key would dangle a reference).
-    if (const util::Easing::Param* easing = easingOf(*result.from, mChannel.type())) {
+    if (const util::Easing::Param* easing = easingOf(*result.from, mChannel.type(), mChannel.component())) {
         result.easing = *easing;
     }
     return result;
@@ -367,7 +369,7 @@ QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
 
     // Only an Auto easing derives its pair; every other type stores one (Custom)
     // or exposes none to drag at all (the analytic curves).
-    const util::Easing::Param* easing = easingOf(aFrom, mChannel.type());
+    const util::Easing::Param* easing = easingOf(aFrom, mChannel.type(), mChannel.component());
     if (!easing || easing->type != util::Easing::Type_Auto) {
         return result;
     }
@@ -398,7 +400,8 @@ QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
     float y1 = 0.0f;
     float y2 = 0.0f;
     util::Easing::autoHandles(
-        core::autoEasingContext(aFrom, to, prev, next), static_cast<float>(to.frame() - aFrom.frame()), y1, y2
+        core::autoEasingContext(
+            aFrom, to, mChannel.component(), prev, next), static_cast<float>(to.frame() - aFrom.frame()), y1, y2
     );
 
     result.append(QPointF(1.0 / 3.0, y1));
@@ -437,52 +440,52 @@ void Curve::setHandle(util::Easing::Param& aEasing, int aHandleIndex, const QPoi
 }
 
 //-------------------------------------------------------------------------------------------------
-const util::Easing::Param* Curve::easingOf(const core::TimeKey& aKey, core::TimeKeyType aType) {
-    // Every graphable type carries exactly one param, on its single Data object.
-    // Bone, pose, mesh and FFD have no Data easing at all, so the graph must
-    // report "no easing" rather than manufacture one - playback applies no
-    // easing there. The cast is the caller's pairing of a key with its own type,
-    // the same contract Channel::value() carries.
+const util::Easing::Param* Curve::easingOf(const core::TimeKey& aKey, core::TimeKeyType aType, int aComponent) {
+    // One param per graphable component, stored on the key's single Data object.
+    // The component is the CHANNEL's (Channel::component()), so reading a Move
+    // key's y channel can never return its x param. Bone, pose, mesh and FFD
+    // have no graph channel, so the graph reports "no easing" rather than
+    // manufacture one.
     switch (aType) {
     case core::TimeKeyType_Move:
-        return &static_cast<const core::MoveKey&>(aKey).data().easing();
+        return &static_cast<const core::MoveKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Rotate:
-        return &static_cast<const core::RotateKey&>(aKey).data().easing();
+        return &static_cast<const core::RotateKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Scale:
-        return &static_cast<const core::ScaleKey&>(aKey).data().easing();
+        return &static_cast<const core::ScaleKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Depth:
-        return &static_cast<const core::DepthKey&>(aKey).data().easing();
+        return &static_cast<const core::DepthKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Opa:
-        return &static_cast<const core::OpaKey&>(aKey).data().easing();
+        return &static_cast<const core::OpaKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Blur:
-        return &static_cast<const core::BlurKey&>(aKey).data().easing();
+        return &static_cast<const core::BlurKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_HSV:
-        return &static_cast<const core::HSVKey&>(aKey).data().easing();
+        return &static_cast<const core::HSVKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Image:
-        return &static_cast<const core::ImageKey&>(aKey).data().easing();
+        return &static_cast<const core::ImageKey&>(aKey).data().easing(aComponent);
     default:
         return nullptr;
     }
 }
 
-util::Easing::Param* Curve::easingOf(core::TimeKey& aKey, core::TimeKeyType aType) {
+util::Easing::Param* Curve::easingOf(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent) {
     switch (aType) {
     case core::TimeKeyType_Move:
-        return &static_cast<core::MoveKey&>(aKey).data().easing();
+        return &static_cast<core::MoveKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Rotate:
-        return &static_cast<core::RotateKey&>(aKey).data().easing();
+        return &static_cast<core::RotateKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Scale:
-        return &static_cast<core::ScaleKey&>(aKey).data().easing();
+        return &static_cast<core::ScaleKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Depth:
-        return &static_cast<core::DepthKey&>(aKey).data().easing();
+        return &static_cast<core::DepthKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Opa:
-        return &static_cast<core::OpaKey&>(aKey).data().easing();
+        return &static_cast<core::OpaKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Blur:
-        return &static_cast<core::BlurKey&>(aKey).data().easing();
+        return &static_cast<core::BlurKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_HSV:
-        return &static_cast<core::HSVKey&>(aKey).data().easing();
+        return &static_cast<core::HSVKey&>(aKey).data().easing(aComponent);
     case core::TimeKeyType_Image:
-        return &static_cast<core::ImageKey&>(aKey).data().easing();
+        return &static_cast<core::ImageKey&>(aKey).data().easing(aComponent);
     default:
         return nullptr;
     }

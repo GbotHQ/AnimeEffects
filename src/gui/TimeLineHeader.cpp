@@ -590,7 +590,9 @@ void TimeLineHeader::refreshQuickEasings() {
             core::TimeKey* key = pos.key();
             if (!key)
                 continue; // a stale entry names a key the document no longer holds
-            const util::Easing::Param* param = ctrl::graph::Curve::easingOf(*key, pos.type());
+            const int component =
+                (item.component == ctrl::time::Selection::kKeyLevel) ? 0 : item.component;
+            const util::Easing::Param* param = ctrl::graph::Curve::easingOf(*key, pos.type(), component);
             if (!param)
                 continue; // a key of a type that carries no easing
             if (!ctrl::graph::Channel(pos.type(), 0).isInterpolated())

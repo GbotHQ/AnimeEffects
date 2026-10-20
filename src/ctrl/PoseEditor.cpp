@@ -150,7 +150,7 @@ bool PoseEditor::initializeKey(TimeLine& aLine) {
         util::Easing::Param aParam;
         aParam.range = util::Easing::rangeToEnum(QString());
         aParam.type = util::Easing::easingToEnum(QString());
-        mKeyOwner.key->data().easing() = aParam;
+        mKeyOwner.key->data().easing(0) = aParam;
         return true;
     }
 

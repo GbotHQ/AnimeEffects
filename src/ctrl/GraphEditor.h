@@ -106,6 +106,11 @@ private:
 // which is a different key's easing. aMirror is null when the key has only one
 // handle (the first and last key of a channel): there is no neighbour segment
 // to hold the opposite tangent.
+//
+// A whole Param moves through each half, so the key's `aligned` flag rides the
+// same command: Alt writes it FREE inside the NEXT value (one undo restores the
+// link with both handles), and Alt+CLICK writes it LINKED while relocating both
+// handles along the neighbour chord.
 class HandleDragCommand: public cmnd::Stable {
 public:
     HandleDragCommand(
@@ -301,9 +306,15 @@ public:
     // below reads too, so the bar a press grabs is the bar the panel paints.
     //
     // WHERE THEY ARE. The bars live in the panel's margin OUTSIDE the plot, and the
-    // scaler reserves their 10px (2px of gap + 8px of bar) at the plot's right and
+    // scaler reserves their 14px (2px of gap + a 12px lane) at the plot's right and
     // bottom edges - see THE SCROLL BARS' RESERVE in graph_Scaler.h for the numbers
-    // and for what that costs the plot. An empty plot publishes no bars at all.
+    // and for what that costs the plot. An empty plot publishes no bars at all, and a
+    // bar with nothing to scroll is not published either.
+    //
+    // WHAT THEY LOOK LIKE. They are the application's own scroll bars: an invisible
+    // 12px trough and a 4px, radius-2 pill across the slider's run
+    // (src/gui/AppStyle.cpp's CC_ScrollBar). hThumb/vThumb name that RUN, so the pill
+    // the drawing layer paints and the span a press drags are one geometry.
     //
     // WHAT THE THUMB MEANS. Its length is the visible window's fraction of the
     // CONTENT (the project's frame range on the frame axis, the value extent of the
@@ -314,12 +325,13 @@ public:
     //
     // THE PRESSES (see updateCursor, and ownsCursor, which claims them before every
     // plot hit):
-    //   * a press ON A THUMB starts a pan of that axis by the pointer's pixel delta -
-    //     the frame half through the delegate while the timeline owns the axis, so
-    //     both views keep one window; the value half moves this panel's own window;
-    //   * a press on the TRACK (the bar's surface beside the thumb) CENTRES the
-    //     window on the pressed point and then continues as that same drag, which is
-    //     a scroll bar's jump;
+    //   * a press ON A THUMB (its run) starts a pan of that axis by the pointer's
+    //     pixel delta - the frame half through the delegate while the timeline owns
+    //     the axis, so both views keep one window; the value half moves this panel's
+    //     own window;
+    //   * a press on the LANE beside the run moves the window ONE PAGE toward the
+    //     press (a page is the visible window, the unit a QScrollBar's PageStep uses)
+    //     and then continues as that same drag;
     //   * SHIFT held while dragging changes nothing here - the modifier means
     //     "one axis, the dominant one" to a KEY drag, and a scroll bar is already one
     //     axis, so it is deliberately not consulted;
@@ -717,15 +729,17 @@ public:
     //
     // WHICH KEYS IT WRITES. The selection is the timeline's own currency
     // (retrieveSelection; selectKey sets it, and a right-click on a key in the
-    // panel sets it the same way the timeline's key menu does). retrieveSelection
-    // hands the set out ONE TARGET PER KEY, markers included - a key a user selected
-    // in both of its components is one key here - so no key is written twice. A
-    // target whose frame holds no key any more is skipped - a stale selection names
-    // a key that is not in the document - and so is a key whose type carries no easing
-    // (graph::Curve::easingOf answers null) and a key whose easing type is
-    // ALREADY aType, so a menu entry that changes nothing leaves no history entry
-    // behind. Nothing else is dropped silently: the ones that are written all
-    // appear in the notifier's event.
+    // panel sets it the same way the timeline's key menu does). Every entry is
+    // written at the component it names - a marker edits ITS OWN curve, so
+    // choosing an easing for Move X leaves Move Y alone - while a key-level entry
+    // (the timeline's unit, and the panel's marquee/Ctrl+A) covers every
+    // component its key owns. A target whose frame holds no key any more is
+    // skipped - a stale selection names a key that is not in the document - and
+    // so is a key whose type carries no easing (graph::Curve::easingOf answers
+    // null) and a component whose easing type is ALREADY aType, so a menu entry
+    // that changes nothing leaves no history entry behind. Nothing else is
+    // dropped silently: the ones that are written all appear in the notifier's
+    // event, once per key.
     //
     // EMPTY SELECTION (or a selection of which nothing survives the rules above):
     // returns false and pushes NOTHING. That is not a micro-optimisation -
@@ -756,9 +770,10 @@ public:
     // genuinely empty stretch of a curve inserts.
     static constexpr int kCurveBandRadius = 6;
 
-    // The shared frame window's edge margin: the mapping lives in graph::Scaler
-    // (kFrameWindowMargin, where the WHY 8 is measured).
-    static constexpr int kFrameWindowMargin = graph::Scaler::kFrameWindowMargin;
+    // There is NO shared-window edge margin: the shared mapping is the timeline's
+    // pixel-for-pixel mapping across the panel (graph::Scaler's THE SHARED WINDOW'S
+    // MAPPING), so a frame's x here is the frame's x there. The graph's own fit
+    // keeps its content off the plot's edges with fitFrameAxis's pad instead.
 
     // --- sticky focus ---
     // The panel marks ONE shown channel as focused: the channel a press last hit
@@ -871,11 +886,14 @@ public:
     // below. The panel's own X is written by setFrameWindow and by nothing else (see
     // fitFrameAxis, updateWheel, updatePan, the SCROLL BARS note).
     //
-    // The window is FRACTIONAL frames, mapped into the plot's inset exactly
+    // The window is FRACTIONAL frames, mapped ACROSS THE PANEL exactly
     // (graph::Scaler::applyFrameWindow): the timeline's viewport is expressed in content
     // pixels, so its frame edges are not whole numbers, and a camera carried as whole
-    // frames cannot hold a point still - it snaps. The panel's pixels-per-frame follows
-    // from the fit (fractional too), so one notch moves both views by the same factor.
+    // frames cannot hold a point still - it snaps. The panel covers the timeline's own
+    // columns, so this is the timeline's pixel-for-pixel mapping: a frame's x here is
+    // its x there, and switching views moves nothing. The panel's pixels-per-frame
+    // follows from the fit (fractional too), so one notch moves both views by the same
+    // factor.
     void setFrameWindow(double aFramesLo, double aFramesHi);
     // Re-applies the pushed window for a panel covering aViewportSize, for the pushes
     // that arrive before the viewport is laid out (the plot has no width to map into
@@ -883,7 +901,7 @@ public:
     void syncFrameWindowFor(const QSize& aViewportSize);
     // The two horizontal gestures, in the units each side owns: a scroll (the pan,
     // the vertical scroll bar's value half being this panel's own, and the HORIZONTAL
-    // scroll bar's thumb drag and track jump) by aFrameDelta FRAMES - so 50 px of
+    // scroll bar's thumb drag and lane page) by aFrameDelta FRAMES - so 50 px of
     // pointer travel is 50 / framePpf() frames - and a wheel notch about
     // aAnchorFrame, the frame under the panel's cursor (fractional, so the timeline
     // can anchor on it exactly).
@@ -1065,11 +1083,12 @@ private:
     // built entries, so a caller that already has them pays no second build.
     graph::Scaler::ScrollBars scrollBarsFor(const graph::Scaler& aScale, const QVector<Entry>& aItems) const;
 
-    // The press routing's own bar test: true when aPos is on a track and a gesture
-    // was armed for it. A press on the THUMB starts the drag where it is; a press on
-    // the TRACK first CENTRES the window on the pressed point (a jump) and then
-    // continues as that same drag. Sets mDragging (so ownsCursor keeps the cursor
-    // for every later move and the release) and the axis, and pushes nothing.
+    // The press routing's own bar test: true when aPos is on a bar WITH TRAVEL and a
+    // gesture was armed for it. A press on the RUN (the slider's span) starts the drag
+    // where it is; a press on the LANE beside the run first moves the window ONE PAGE
+    // toward it (a page = the visible window) and then continues as that same drag.
+    // Sets mDragging (so ownsCursor keeps the cursor for every later move and the
+    // release) and the axis, and pushes nothing.
     bool beginScrollBarPress(const graph::Scaler::ScrollBars& aBars, const QPoint& aPos);
 
     // The value extent of a built entry list: the union of every curve's key values
@@ -1142,14 +1161,15 @@ private:
     // re-derived when the panel rect moves), and the two delegates are the gestures
     // that go back to the timeline. Cleared together by clearFrameAxis.
     //
-    // mAppliedLo/mAppliedHi/mAppliedPlotWidth are what the mapping was last computed
-    // from, so syncFrameWindow() maps only on a real change.
+    // mAppliedLo/mAppliedHi/mAppliedPanelWidth are what the mapping was last computed
+    // from (the panel's width, which the left-to-right mapping spans), so
+    // syncFrameWindow() maps only on a real change.
     bool mFrameWindowShared;
     double mFrameWindowLo;
     double mFrameWindowHi;
     double mAppliedLo;
     double mAppliedHi;
-    int mAppliedPlotWidth;
+    int mAppliedPanelWidth;
     FrameScrollFunc mScrollFrames;
     FrameZoomFunc mZoomFrames;
     FrameSeekFunc mSeekFrame;

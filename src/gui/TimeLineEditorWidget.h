@@ -206,20 +206,24 @@ private:
     void onPasteKeyTriggered(bool);
     void onDeleteKeyTriggered(bool);
     void onSelectSpacingTriggered();
-    // Applies aNext to the easing of every key the current open named and commits
-    // the results as ONE undo step (one macro, one notification naming every key
-    // written). A key whose type carries no easing is skipped, and so is one whose
-    // value aNext would not change, so an edit that changes nothing leaves no
-    // history entry behind. This is the picker's commit path.
+    // Applies aNext to the easing of every COMPONENT the current open named and
+    // commits the results as ONE undo step (one macro, one notification naming every
+    // key written). A marker entry edits only its own component; a whole-key entry
+    // edits every component the type stores. A key whose type carries no easing is
+    // skipped, and so is a component whose value aNext would not change, so an edit
+    // that changes nothing leaves no history entry behind. This is the picker's
+    // commit path.
     void assignEasingToTargets(const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
-    // Hands the header's chip what it names: one easing per SELECTED key, in
-    // selection order, plus the Auto context of the key the chip shows (the first),
-    // so its glyph is the curve that key plays rather than a shape no key has. Keys
-    // of a type that carries no easing (bone, mesh) contribute nothing, and so does a
-    // selection entry whose key the document no longer holds - the key is resolved
-    // from the document, as ctrl::time::Selection's contract requires (see the
-    // definition). IDEMPOTENT: prop::EasingChip ignores a state equal to the one it
-    // holds, so an extra call costs one compare.
+    // Hands the header's chip what it names: one easing per selected KEY, in
+    // selection order, read from the FIRST marker the selection names for it (so a
+    // Y-only selection shows Y's curve, not the key's first component), plus the
+    // Auto context of that component, so its glyph is the curve that component
+    // plays rather than a shape no key has. A whole-key entry reads component 0.
+    // Keys of a type that carries no easing (bone, mesh) contribute nothing, and so
+    // does a selection entry whose key the document no longer holds - the key is
+    // resolved from the document, as ctrl::time::Selection's contract requires (see
+    // the definition). IDEMPOTENT: prop::EasingChip ignores a state equal to the one
+    // it holds, so an extra call costs one compare.
     //
     // Called from the paint (see paintEvent), when a host is attached or the picker
     // opens, on a document modification (see onTimeLineModified), and - the source

@@ -476,9 +476,9 @@ int main(int argc, char** argv) {
                   + ctrl::graph::Scaler::kRulerBandHeight);
         // ...and its HEIGHT loses the two margins PLUS the one the scroll bars sit in
         // at the bottom edge (the right margin carries the same reserve, see THE
-        // SCROLL BARS' RESERVE in graph_Scaler.h: the plot gives up 10px at those two
-        // edges so the bars have a strip that is outside the plot and inside the
-        // panel).
+        // SCROLL BARS' RESERVE in graph_Scaler.h: the plot gives up 14px at those two
+        // edges - the app's 12px lane plus a 2px gap - so the bars have a strip that
+        // is outside the plot and inside the panel).
         CHECK(model.plot.height()
               == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin
                   - ctrl::graph::Scaler::kRulerBandHeight - ctrl::graph::Scaler::kScrollBarReserve);
@@ -497,7 +497,12 @@ int main(int argc, char** argv) {
         // kMargin rows now sit BETWEEN the band's hairline and the plot, so the plot
         // (the editor's hit geometry) does not move.
         CHECK(model.rulerBand.top() == model.panel.top());
-        CHECK(model.rulerBand.left() == model.plot.left());
+        // THE BAND SPANS THE PANEL: the shared frame mapping puts frames on the
+        // timeline's own columns, so the ruler must cover all of them - including the
+        // value column's top-left corner, which a plot-wide band left bare.
+        CHECK(model.rulerBand.left() == model.panel.left());
+        CHECK(model.rulerBand.width() == model.panel.width());
+        CHECK(model.rulerBand.right() == model.panel.right());
         CHECK(model.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin == model.plot.top());
         CHECK(model.rulerBand.bottom() + 1 < model.plot.top());
         CHECK(!model.plot.intersects(model.rulerBand));
@@ -704,8 +709,11 @@ int main(int argc, char** argv) {
         // with a Major one when the ruler names them (their labels are active or the
         // two are merged) - the timeline's boundary rule (TimeRuler.cpp:139-182). The
         // model's own vectors are never used as their own oracle.
-        const core::Frame windowFirst = scale.frameAt(model.plot.left());
-        const core::Frame windowLast = scale.frameAt(model.plot.right());
+        // The axis is enumerated over the RULER BAND - the panel's columns - because
+        // that is where the ticks are drawn now (the band spans the panel, and the
+        // frame mapping is the timeline's).
+        const core::Frame windowFirst = scale.frameAt(model.rulerBand.left());
+        const core::Frame windowLast = scale.frameAt(model.rulerBand.right());
         QVector<int> ladderTicks;
         QVector<int> ladderLevels;
         int classified = 0;
@@ -716,7 +724,7 @@ int main(int argc, char** argv) {
                 continue;
             ++classified;
             const int x = scale.pixelX(core::Frame(frame));
-            if (x < model.plot.left() || model.plot.right() < x)
+            if (x < model.rulerBand.left() || model.rulerBand.right() < x)
                 continue;
             if (ladderTicks.isEmpty() || ladderTicks.last() != x) {
                 ladderTicks.append(x);
@@ -730,13 +738,15 @@ int main(int argc, char** argv) {
         const bool hasBoundaryRange = boundaryFirstFrame < boundaryLastFrame;
         const int boundaryFirstX = hasBoundaryRange ? scale.pixelX(core::Frame(boundaryFirstFrame)) : -1;
         const int boundaryLastX = hasBoundaryRange ? scale.pixelX(core::Frame(boundaryLastFrame)) : -1;
-        const auto inPlot = [&model](int aX) { return model.plot.left() <= aX && aX <= model.plot.right(); };
+        const auto inBand = [&model](int aX) {
+            return model.rulerBand.left() <= aX && aX <= model.rulerBand.right();
+        };
         const int majorLevel = int(ctrl::time::Scaler::TickLevel::Major);
         const auto levelOf = [&scale](int aFrame) {
             return int(scale.frameScale().attributeAt(aFrame, scale.framePpf()).level);
         };
-        const bool firstInView = hasBoundaryRange && inPlot(boundaryFirstX);
-        const bool lastInView = hasBoundaryRange && inPlot(boundaryLastX);
+        const bool firstInView = hasBoundaryRange && inBand(boundaryFirstX);
+        const bool lastInView = hasBoundaryRange && inBand(boundaryLastX);
         const bool firstActive = firstInView && levelOf(boundaryFirstFrame) != majorLevel;
         const bool lastActive = lastInView && levelOf(boundaryLastFrame) != majorLevel;
         const QString firstBoundaryText =
@@ -1244,10 +1254,11 @@ int main(int argc, char** argv) {
         // to leave a NON-EMPTY plot first: the label column's reserve is the value
         // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
         // than the old 46), so the plot starts 22px further right; and the right
-        // edge now reserves the scroll bar's 10px (Scaler::kScrollBarReserve), so
-        // this fixture grew by those two (64 -> 80 -> 90) to keep the premise - a
-        // plot that exists and is narrower than 16px.
-        const QSize tooNarrow(90, 200);
+        // edge now reserves the scroll bars' 14px (Scaler::kScrollBarReserve: the
+        // app's 12px lane + a 2px gap), so this fixture grew with them
+        // (64 -> 80 -> 90 -> 94) to keep the premise - a plot that exists and is
+        // narrower than 16px.
+        const QSize tooNarrow(94, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
         int narrowChips = 0;
         for (const gui::PanelCurve& curve : narrowModel.curves) {
@@ -1724,7 +1735,9 @@ int main(int argc, char** argv) {
         custom.cubicBezier.y1 = 0.1f;
         custom.cubicBezier.x2 = 0.6f;
         custom.cubicBezier.y2 = 0.9f;
-        move0->data().easing() = custom;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            move0->data().easing(component) = custom;
+        }
 
         const gui::GraphPanelModel handled = gui::buildGraphPanelModel(editor, viewport, palette);
         ctrl::graph::Scaler oracle = editor.scale();
@@ -1823,7 +1836,9 @@ int main(int argc, char** argv) {
         // job; the model only has to say WHICH kind of pair this is).
         util::Easing::Param automatic;
         automatic.type = util::Easing::Type_Auto;
-        move0->data().easing() = automatic;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            move0->data().easing(component) = automatic;
+        }
 
         const gui::GraphPanelModel ghosted = gui::buildGraphPanelModel(editor, viewport, palette);
         ctrl::graph::Scaler ghostOracle = editor.scale();
@@ -1888,7 +1903,9 @@ int main(int argc, char** argv) {
 
         // Back to the Custom pair, so the blocks after this one measure the geometry
         // they were written against (the trace handle is the one thing that moved).
-        move0->data().easing() = custom;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            move0->data().easing(component) = custom;
+        }
         const gui::GraphPanelModel restoredHandles = gui::buildGraphPanelModel(editor, viewport, palette);
         int restoredGhosts = 0;
         for (const gui::PanelCurve& curve : restoredHandles.curves) {
@@ -1924,7 +1941,9 @@ int main(int argc, char** argv) {
         // tangent nobody inks.
         util::Easing::Param automatic;
         automatic.type = util::Easing::Type_Auto;
-        move0->data().easing() = automatic;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            move0->data().easing(component) = automatic;
+        }
 
         const gui::GraphPanelModel unfocused = gui::buildGraphPanelModel(editor, viewport, palette);
         int unfocusedPairs = 0;
@@ -1986,7 +2005,9 @@ int main(int argc, char** argv) {
         custom.cubicBezier.y1 = 0.1f;
         custom.cubicBezier.x2 = 0.6f;
         custom.cubicBezier.y2 = 0.9f;
-        move0->data().easing() = custom;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            move0->data().easing(component) = custom;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -2035,10 +2056,31 @@ int main(int argc, char** argv) {
         CHECK(!ruled.rulerBand.isEmpty());
         CHECK(ruled.rulerBand.top() == ruled.rulerBandTop);
         CHECK(ruled.rulerBand.top() == ruled.panel.top());
-        CHECK(ruled.rulerBand.width() == ruled.plot.width());
+        // The band is as wide as the PANEL, not the plot: the frame mapping is the
+        // timeline's, so the ruler covers the value column's top corner too.
+        CHECK(ruled.rulerBand.left() == ruled.panel.left());
+        CHECK(ruled.rulerBand.width() == ruled.panel.width());
         CHECK(ruled.rulerBand.height() == kBandHeight);
         CHECK(ruled.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin == ruled.plot.top());
         CHECK(!ruled.plot.intersects(ruled.rulerBand));
+        // EVERY TICK IS THE SCALER'S PIXEL FOR ITS FRAME, and the ticks reach the
+        // panel's own columns: the band is the ruler's whole width, so a tick at the
+        // value column's top (x < plot.left()) is published, not dropped.
+        int ticksLeftOfPlot = 0;
+        int tickMismatch = 0;
+        for (const int x : ruled.frameTickX) {
+            if (scale.pixelX(scale.frameAt(x)) != x)
+                ++tickMismatch;
+            if (x < ruled.plot.left())
+                ++ticksLeftOfPlot;
+        }
+        std::printf(
+            "[11] ticks=%d  left of the plot=%d  pixel mismatches=%d\n", isz(ruled.frameTickX), ticksLeftOfPlot,
+            tickMismatch
+        );
+        CHECK(tickMismatch == 0);
+        CHECK(ruled.rulerBand.contains(ruled.valueColumn.left(), ruled.rulerBand.top()));
+        CHECK(ruled.rulerBand.contains(ruled.valueColumn.right(), ruled.rulerBand.top()));
         CHECK(labels > 0);
         CHECK(insideBand == labels);
         CHECK(inNumberRow == labels);
@@ -2748,6 +2790,12 @@ int main(int argc, char** argv) {
         CHECK(!barsModel.vTrack.intersects(barsModel.rulerBand));
         CHECK(!barsModel.valueColumn.intersects(barsModel.hTrack));
         CHECK(!barsModel.valueColumn.intersects(barsModel.vTrack));
+        // ...the reserve is the APP's lane (12px) plus its 2px gap, and the outer
+        // kMargin of the panel survives outside each bar.
+        CHECK(ctrl::graph::Scaler::kScrollBarThickness == 12);
+        CHECK(ctrl::graph::Scaler::kScrollBarReserve == 14);
+        CHECK(barsModel.hTrack.bottom() == barsModel.panel.bottom() - ctrl::graph::Scaler::kMargin);
+        CHECK(barsModel.vTrack.right() == barsModel.panel.right() - ctrl::graph::Scaler::kMargin);
         // ...the two bars on DIFFERENT edges, so they cannot meet in a corner.
         CHECK(!barsModel.hTrack.intersects(barsModel.vTrack));
         CHECK(barsModel.hTrack.top() > barsModel.valueColumn.bottom());

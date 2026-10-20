@@ -105,39 +105,17 @@ handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Se
 //
 // A key owns TWO tangent handles: its OUTGOING one, stored as (x1,y1) of the
 // segment that STARTS at the key, and its INCOMING one, stored as (x2,y2) of
-// the segment that ENDS at it. The key is ALIGNED when those two dots are
-// collinear with the key on opposite sides - the usual "smooth" state of a
-// bezier editor - and FREE otherwise. Alignment is NOT stored anywhere: it is
-// inferred from the geometry every time it is needed, so the document format
-// keeps exactly the two control points it always had.
+// the segment that ENDS at it. Whether those two dots are LINKED - a bezier
+// editor's "smooth" node type, the pair staying collinear through the key - is
+// the key's own `util::Easing::Param::aligned`, i.e. DOCUMENT state written by
+// the gestures below and serialized with the key.
 //
-// The comparison runs on PIXELS, not on the normalized easing space: each
-// segment divides y by its OWN value span, so two handles can be collinear on
-// screen (and in playback) while their normalized vectors are not. The angle
-// between the two pixel vectors - one from the key to each handle - is compared
-// with 180 degrees: aligned handles point away from the key in OPPOSITE
-// directions. THE TOLERANCE IS 2 DEGREES, which absorbs the half-pixel rounding
-// of the integer pixel mappings (pixelY / handlePointAt) plus float precision
-// without accepting a visibly bent tangent.
-constexpr double kAlignToleranceDegrees = 2.0;
-constexpr double kDegreesPerRadian = 57.2957795130823208768;
-
-// True when aOutgoing and aIncoming, as pixels, sit on one line through aKey on
-// OPPOSITE sides. A zero-length handle has no direction and is never aligned
-// (it cannot define a tangent to preserve).
-bool handlesAligned(const QPointF& aKey, const QPointF& aOutgoing, const QPointF& aIncoming) {
-    const QPointF out(aOutgoing.x() - aKey.x(), aOutgoing.y() - aKey.y());
-    const QPointF in(aIncoming.x() - aKey.x(), aIncoming.y() - aKey.y());
-    const double outLength = std::hypot(out.x(), out.y());
-    const double inLength = std::hypot(in.x(), in.y());
-    if (!(outLength > 0.0) || !(inLength > 0.0))
-        return false;
-
-    const double cosAngle =
-        qBound(-1.0, (out.x() * in.x() + out.y() * in.y()) / (outLength * inLength), 1.0);
-    const double angle = std::acos(cosAngle) * kDegreesPerRadian;
-    return std::fabs(angle - 180.0) <= kAlignToleranceDegrees;
-}
+// It used to be INFERRED from the pixel geometry within 2 degrees. That is gone
+// on purpose: the pixel angle of a stored pair changes whenever the value axis
+// of either neighbouring segment changes - a key moved on the value axis above
+// all - so an inference flipped the state under the user's hands and the next
+// drag snapped the partner back to the line it no longer was on. A stored flag
+// cannot drift: only a gesture writes it.
 
 // The pair of handles a segment actually SHOWS: its stored Custom pair, or -
 // for Type_Auto, whose pair is DERIVED - the ghost pair the curve draws. Both
@@ -335,7 +313,7 @@ namespace ctrl {
         mFrameWindowHi(0.0),
         mAppliedLo(0.0),
         mAppliedHi(0.0),
-        mAppliedPlotWidth(0), // nothing mapped yet: the first sync always maps
+        mAppliedPanelWidth(0), // nothing mapped yet: the first sync always maps
         mScrollFrames(),
         mZoomFrames(),
         mModifiers(Qt::NoModifier),
@@ -545,7 +523,7 @@ namespace ctrl {
         mFrameWindowShared = false;
         mFrameWindowLo = mFrameWindowHi = 0.0;
         mAppliedLo = mAppliedHi = 0.0;
-        mAppliedPlotWidth = 0;
+        mAppliedPanelWidth = 0;
         mScale.clearFrameWindow();
         mScrollFrames = nullptr;
         mZoomFrames = nullptr;
@@ -555,11 +533,14 @@ namespace ctrl {
         if (!mFrameWindowShared)
             return;
 
-        const int plotWidth = mScale.plotRect().width();
-        if (plotWidth <= 0)
-            return; // no plot to map into (an unlaid-out panel): keep the window
+        // The mapping spans the PANEL now (Scaler::applyFrameWindow), so the width
+        // that matters is the panel's, not the plot's: a change of the label column's
+        // measured reserve must not re-map the shared window.
+        const int panelWidth = mScale.rect().width();
+        if (panelWidth <= 0)
+            return; // no panel laid out yet: keep the window
 
-        if (mFrameWindowLo == mAppliedLo && mFrameWindowHi == mAppliedHi && plotWidth == mAppliedPlotWidth)
+        if (mFrameWindowLo == mAppliedLo && mFrameWindowHi == mAppliedHi && panelWidth == mAppliedPanelWidth)
             return;
 
         if (!mScale.applyFrameWindow(mFrameWindowLo, mFrameWindowHi))
@@ -567,7 +548,7 @@ namespace ctrl {
 
         mAppliedLo = mFrameWindowLo;
         mAppliedHi = mFrameWindowHi;
-        mAppliedPlotWidth = plotWidth;
+        mAppliedPanelWidth = panelWidth;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -722,11 +703,14 @@ namespace ctrl {
     //-------------------------------------------------------------------------------------------------
     namespace {
     // The ruler band's slot, exactly as gui::GraphPanelModel publishes it: the
-    // scaler's own kRulerBandHeight rows directly above the plot, as wide as the
-    // plot. A press here is the ruler's seek (the timeline's TimeRuler gesture), so
-    // this rect is HIT geometry and must not be derived anywhere else.
+    // scaler's own kRulerBandHeight rows directly above the plot, as wide as the PANEL
+    // (the shared frame mapping puts frames on the timeline's columns, and the band
+    // covers every one of them, including the value column's top corner). A press
+    // here is the ruler's seek (the timeline's TimeRuler gesture), so this rect is HIT
+    // geometry and must not be derived anywhere else.
     QRect rulerBandRect(const graph::Scaler& aScale) {
         const QRect plot = aScale.plotRect();
+        const QRect panel = aScale.rect();
         if (plot.isEmpty())
             return QRect();
         // The scaler's MARGIN rows sit between the hairline and the plot (see
@@ -735,7 +719,7 @@ namespace ctrl {
         // panel's top. A band rect derived from plot.top() alone would cover the margin
         // and miss the band's own first rows.
         return QRect(
-            plot.left(), plot.top() - graph::Scaler::kMargin - graph::Scaler::kRulerBandHeight, plot.width(),
+            panel.left(), plot.top() - graph::Scaler::kMargin - graph::Scaler::kRulerBandHeight, panel.width(),
             graph::Scaler::kRulerBandHeight
         );
     }
@@ -782,7 +766,12 @@ namespace ctrl {
         // question "is this press on a bar" is the only one wanted here.
         if (aCursor.emitsLeftPressedEvent()) {
             const graph::Scaler::ScrollBars bars = scrollBarsFor(scale, entries);
-            if (bars.hTrack.contains(point) || bars.vTrack.contains(point))
+            // Only a bar WITH TRAVEL is the panel's: a run the model removed means
+            // nothing is drawn there, so a press on that lane belongs to whoever is
+            // under the panel (see Scaler::scrollBars' no-travel rule).
+            const bool onHorizontal = !bars.hThumb.isEmpty() && bars.hTrack.contains(point);
+            const bool onVertical = !bars.vThumb.isEmpty() && bars.vTrack.contains(point);
+            if (onHorizontal || onVertical)
                 return true;
         }
 
@@ -941,23 +930,21 @@ namespace ctrl {
                 setFocusedChannel(*entries[hit.item].node, channel);
 
                 if (mModifiers.testFlag(Qt::AltModifier)) {
-                    // ALT+CLICK ON A KEY IS THE ALIGN ACTION: make the key's two
-                    // handles collinear through it, each keeping its own length.
-                    // The LONGER handle defines the direction (its stored
-                    // position is left exactly as it is) and the other is placed
-                    // on its OPPOSITE side at its own distance from the key. A
-                    // length tie goes to the OUTGOING handle - the one leaving
-                    // the key, i.e. the segment with the lower index - which
-                    // makes the choice deterministic without reading the
-                    // document's layout. A first/last key owns one handle, so it
-                    // has nothing to align and the press is inert.
+                    // ALT+CLICK ON A KEY IS THE LINK ACTION ("make smooth"): the
+                    // key's two handles are made collinear through it along the
+                    // CHORD from the PREVIOUS key's anchor to the NEXT key's
+                    // anchor, in PIXELS - a bezier editor's smooth tangent - and
+                    // each handle keeps its own pixel length. The direction is
+                    // READ FROM THE NEIGHBOURS ALONE, so it cannot depend on
+                    // which handle happens to be longer, and it is the same
+                    // direction every time the click is repeated.
                     //
-                    // Alignment is INFERRED from geometry (see handlesAligned):
-                    // this action exists to CREATE that geometry on a free key,
-                    // and it reads the current pair only to pick the winner. The
-                    // write is ONE command over BOTH params in ONE macro, so one
-                    // undo restores the free pair whole - and an Auto param is
-                    // converted only when it is the side actually written.
+                    // A first/last key owns one handle, so it has nothing to
+                    // pair and the press is inert (it needs BOTH neighbouring
+                    // anchors to have a chord). The write is ONE command over
+                    // BOTH params in ONE macro, so one undo restores the free
+                    // pair AND the flag whole - and an Auto param is converted
+                    // only when it is the side actually written.
                     const Entry& entry = entries[hit.item];
                     core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
                     const core::TimeKeyType type = entry.channel.type();
@@ -973,13 +960,15 @@ namespace ctrl {
                             inIndex = s;
                     }
 
-                    util::Easing::Param* outParam = key ? graph::Curve::easingOf(*key, type) : nullptr;
+                    // The clicked key's own param carries the flag; the previous
+                    // key's param holds the clicked key's INCOMING handle.
+                    util::Easing::Param* outParam = key ? graph::Curve::easingOf(*key, type, entry.channel.component()) : nullptr;
                     core::TimeKey* prevKey =
                         (line && inIndex >= 0)
                         ? line->timeKey(type, entry.curve.segment(inIndex).from->frame())
                         : nullptr;
                     util::Easing::Param* inParam =
-                        prevKey ? graph::Curve::easingOf(*prevKey, type) : nullptr;
+                        prevKey ? graph::Curve::easingOf(*prevKey, type, entry.channel.component()) : nullptr;
 
                     QPointF outPair[2];
                     QPointF inPair[2];
@@ -988,48 +977,59 @@ namespace ctrl {
                         && effectiveHandles(entry.curve, entry.curve.segment(inIndex), inPair)) {
                         const graph::Curve::Segment outSegment = entry.curve.segment(outIndex);
                         const graph::Curve::Segment inSegment = entry.curve.segment(inIndex);
+                        const core::TimeKey* nextKey = outSegment.to;
                         const QPointF keyPixel =
                             graph::keyDot(mScale, core::Frame(key->frame()), entry.curve.valueOf(*key));
-                        const QPointF outPixel = graph::handlePointAt(mScale, outSegment, outPair[0]);
-                        const QPointF inPixel = graph::handlePointAt(mScale, inSegment, inPair[1]);
-                        const QPointF outVector(
-                            outPixel.x() - keyPixel.x(), outPixel.y() - keyPixel.y()
+                        const QPointF prevPixel = graph::keyDot(
+                            mScale, core::Frame(prevKey->frame()), entry.curve.valueOf(*prevKey)
                         );
-                        const QPointF inVector(
-                            inPixel.x() - keyPixel.x(), inPixel.y() - keyPixel.y()
+                        const QPointF nextPixel = graph::keyDot(
+                            mScale, core::Frame(nextKey->frame()), entry.curve.valueOf(*nextKey)
                         );
-                        const double outLength = std::hypot(outVector.x(), outVector.y());
-                        const double inLength = std::hypot(inVector.x(), inVector.y());
+                        const QPointF chord(
+                            nextPixel.x() - prevPixel.x(), nextPixel.y() - prevPixel.y()
+                        );
+                        const double chordLength = std::hypot(chord.x(), chord.y());
 
-                        // The longer wins; the tie goes to the outgoing handle.
-                        const bool outgoingWins = outLength >= inLength;
-                        const QPointF winnerVector = outgoingWins ? outVector : inVector;
-                        const double winnerLength = outgoingWins ? outLength : inLength;
-                        if (winnerLength > 0.0) {
+                        if (chordLength > 0.0) {
+                            const QPointF direction(
+                                chord.x() / chordLength, chord.y() / chordLength
+                            );
+                            const QPointF outPixel = graph::handlePointAt(mScale, outSegment, outPair[0]);
+                            const QPointF inPixel = graph::handlePointAt(mScale, inSegment, inPair[1]);
+                            const double outLength = pixelDistance(keyPixel, outPixel);
+                            const double inLength = pixelDistance(keyPixel, inPixel);
+
+                            // The OUTGOING handle continues along the chord (it
+                            // leaves toward the next anchor); the INCOMING one
+                            // sits on the opposite ray, on the side the previous
+                            // anchor came from. Both at their own lengths.
+                            const QPointF outWant(
+                                keyPixel.x() + direction.x() * outLength,
+                                keyPixel.y() + direction.y() * outLength
+                            );
+                            const QPointF inWant(
+                                keyPixel.x() - direction.x() * inLength,
+                                keyPixel.y() - direction.y() * inLength
+                            );
+
                             util::Easing::Param outNext = *outParam;
                             util::Easing::Param inNext = *inParam;
-                            bool written = false;
-                            if (outgoingWins) {
-                                const QPointF loserPixel(
-                                    keyPixel.x() - winnerVector.x() / winnerLength * inLength,
-                                    keyPixel.y() - winnerVector.y() / winnerLength * inLength
-                                );
-                                written = alignedHandleParam(
-                                    mScale, inSegment, *inParam, inPair, 1, loserPixel, inNext
-                                );
-                            } else {
-                                const QPointF loserPixel(
-                                    keyPixel.x() - winnerVector.x() / winnerLength * outLength,
-                                    keyPixel.y() - winnerVector.y() / winnerLength * outLength
-                                );
-                                written = alignedHandleParam(
-                                    mScale, outSegment, *outParam, outPair, 0, loserPixel, outNext
-                                );
-                            }
+                            const bool writtenOut = alignedHandleParam(
+                                mScale, outSegment, *outParam, outPair, 0, outWant, outNext
+                            );
+                            const bool writtenIn = alignedHandleParam(
+                                mScale, inSegment, *inParam, inPair, 1, inWant, inNext
+                            );
+                            // The flag belongs to the clicked key, i.e. the param
+                            // holding its outgoing handle - not to the previous
+                            // key whose param merely stores the incoming one.
+                            outNext.aligned = true;
 
-                            // Already aligned and already in that exact place:
-                            // the click changed nothing, so it pushes nothing.
-                            if (written && (outNext != *outParam || inNext != *inParam)) {
+                            // Already linked and already in that exact place: the
+                            // click changed nothing, so it pushes nothing.
+                            if (writtenOut && writtenIn
+                                && (outNext != *outParam || inNext != *inParam)) {
                                 cmnd::ScopedMacro macro(
                                     mProject->commandStack(), CmndName::tr("align handles")
                                 );
@@ -1563,31 +1563,49 @@ namespace ctrl {
         if (aBars.isEmpty())
             return false;
 
+        // A bar exists only while it has travel: the model publishes an empty run
+        // exactly when the window covers its content (Scaler::scrollBars), and the
+        // panel draws nothing there - so there is nothing for a press to grab either.
         int axis = ScrollBar_None;
-        if (aBars.hTrack.contains(aPos))
+        if (!aBars.hThumb.isEmpty() && aBars.hTrack.contains(aPos))
             axis = ScrollBar_Horizontal;
-        else if (aBars.vTrack.contains(aPos))
+        else if (!aBars.vThumb.isEmpty() && aBars.vTrack.contains(aPos))
             axis = ScrollBar_Vertical;
         if (axis == ScrollBar_None)
             return false;
 
-        // A press on the TRACK (the surface beside the thumb) is a JUMP: the window
-        // is centred on the pressed point, so the frame or value under the pointer
-        // comes to the middle of the plot. It is applied as the pan the drag below
-        // would have made from the pointer to the track's centre, so both routes
-        // move the window through the same one call.
-        const QRect& track = axis == ScrollBar_Horizontal ? aBars.hTrack : aBars.vTrack;
-        const QRect& thumb = axis == ScrollBar_Horizontal ? aBars.hThumb : aBars.vThumb;
-        if (!thumb.contains(aPos)) {
-            if (axis == ScrollBar_Horizontal)
-                panFramesByPixels(mScale, track.center().x() - aPos.x());
+        // A press on the RUN (the slider's span of the lane, which is what hThumb/
+        // vThumb name) starts the drag. A press on the LANE beside it is ONE PAGE
+        // toward the press - a page is the VISIBLE WINDOW, the unit a QScrollBar's
+        // PageStep uses (the timeline's own bar sets its page step to the viewport
+        // width) - and only then the drag begins, so a page followed by a drag is one
+        // continuous gesture with no accumulated offset. The page is applied through
+        // the same call the drag below uses, so both routes move one window.
+        const bool horizontal = axis == ScrollBar_Horizontal;
+        const QRect& thumb = horizontal ? aBars.hThumb : aBars.vThumb;
+        const int pos = horizontal ? aPos.x() : aPos.y();
+        const int runStart = horizontal ? thumb.left() : thumb.top();
+        const int runEnd = horizontal ? thumb.right() : thumb.bottom();
+        if (pos < runStart || runEnd < pos) {
+            // TOWARD the press: before the run means earlier frames / higher values
+            // (the value axis runs downward), after it means later / lower. A page is
+            // the VISIBLE WINDOW's own pixel length: the PANEL's width while the
+            // shared mapping spans the panel, the plot's width while the graph's own
+            // axis fills the plot, and the plot's height for the value window. The
+            // timeline's own bar uses its viewport width as the page step, which is
+            // the same rule.
+            const int toward = pos < runStart ? 1 : -1;
+            const int pagePixels = horizontal
+                ? (mFrameWindowShared ? mScale.rect().width() : mScale.plotRect().width())
+                : mScale.plotRect().height();
+            if (horizontal)
+                panFramesByPixels(mScale, toward * pagePixels);
             else
-                mScale.panValue(track.center().y() - aPos.y());
+                mScale.panValue(toward * pagePixels);
         }
 
-        // The drag is armed AFTER the jump, at the press position: every later move
-        // is that pointer's delta, so a jump followed by a drag is one continuous
-        // gesture with no accumulated offset.
+        // The drag is armed AFTER the page, at the press position: every later move
+        // is that pointer's delta.
         mDragging = true;
         mScrollBarAxis = axis;
         mScrollBarPointer = aPos;
@@ -2299,7 +2317,8 @@ namespace ctrl {
 
         core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
         core::TimeKey* key = line ? line->timeKey(entry.channel.type(), mDragKey->frame()) : nullptr;
-        util::Easing::Param* easing = key ? graph::Curve::easingOf(*key, entry.channel.type()) : nullptr;
+        util::Easing::Param* easing =
+            key ? graph::Curve::easingOf(*key, entry.channel.type(), entry.channel.component()) : nullptr;
         if (!easing)
             return; // the type carries no easing: nothing this graph could be editing
 
@@ -2357,29 +2376,33 @@ namespace ctrl {
         //   handle 1 (incoming, belongs to `to`): the key's outgoing handle is
         //     segment i+1's (x1,y1), stored in THAT segment's `from` param.
         //
-        // What happens to the opposite handle follows the two states every
-        // bezier editor has (see handlesAligned):
+        // What happens to the opposite handle follows the key's STORED
+        // `aligned` flag (see the alignment note at the top of this file):
         //
-        //   * ALIGNED (the key's two handles are collinear through it, within
-        //     kAlignToleranceDegrees): the opposite handle keeps its OWN LENGTH
+        //   * LINKED (aligned == true): the opposite handle keeps its OWN LENGTH
         //     and stays collinear with the dragged one - the angle is linked,
         //     the length is independent. It is deliberately NOT the reflection
         //     of the dragged dot: a reflection forces the two lengths equal and
         //     turns a smooth key into a symmetric segment-space pair, which is
         //     not what the handle model means.
-        //   * FREE (not collinear): the opposite handle is not touched at all.
-        //     In particular a free key does NOT become aligned by dragging one
-        //     of its handles.
+        //   * FREE (aligned == false): the opposite handle is not touched at
+        //     all. Nothing here reads the two dots' angle, so a key moved on
+        //     the value axis - which changes that angle in pixels - cannot
+        //     silently re-link or unlink it.
         //
-        // ALT BREAKS THE PAIR. Alt is read from mModifiers on EVERY step, not
-        // just at the press (the widget feeds the latest state in; see
+        // ALT UNLINKS THE KEY FOR GOOD. Alt is read from mModifiers on EVERY
+        // step, not just at the press (the widget feeds the latest state in; see
         // setModifiers), so pressing Alt mid-drag stops writing the opposite
-        // handle at once and releasing it re-arms the pair. Alt+click on a key
-        // is the ALIGN action instead (see updateCursor's press branch).
+        // handle at once - and writes aligned = false into the key's param for
+        // good, in the SAME command as the handle positions, so one undo
+        // restores the link AND the handles. Releasing Alt on a later step does
+        // not re-link: the key now reads FREE and the partner stays put. Alt+
+        // CLICK is the way back (see updateCursor's press branch).
         //
         // The FIRST key has no previous segment and the LAST key has no next
         // one: their single handle has no opposite, so the drag writes the
-        // grabbed handle and leaves everything else alone.
+        // grabbed handle and leaves everything else alone (a key with no pair
+        // has no link state for a drag to observe).
         //
         // THE COLLINEARITY IS IN PIXELS, NOT IN NORMALIZED SPACE. Each segment
         // normalizes y by its OWN value span, so a normalized construction
@@ -2410,11 +2433,25 @@ namespace ctrl {
         // with, so the pair is built about the pixel the marker is actually drawn at.
         const QPointF keyPixel = graph::keyDot(mScale, core::Frame(ownerFrame), ownerValue);
 
+        // The KEY this handle belongs to, whose param carries `aligned`: the
+        // segment's `from` for handle 0 (the very param this drag writes),
+        // its `to` for handle 1.
+        util::Easing::Param* ownerEasing = nullptr;
+        if (draggedIsSecond) {
+            core::TimeKey* ownerKey =
+                line ? line->timeKey(entry.channel.type(), segment.to->frame()) : nullptr;
+            ownerEasing =
+                ownerKey ? graph::Curve::easingOf(*ownerKey, entry.channel.type(), entry.channel.component()) : nullptr;
+        } else {
+            ownerEasing = easing;
+        }
+
         const int neighbourIndex = draggedIsSecond ? mDragSegment + 1 : mDragSegment - 1;
         const int neighbourHandle = draggedIsSecond ? 0 : 1;
 
-        // Alt breaks the pair for THIS step: mModifiers is the latest state the
-        // widget fed in, so this follows it mid-drag (see the note above).
+        // Alt unlinks for THIS step (and the flag below makes it permanent):
+        // mModifiers is the latest state the widget fed in, so this follows it
+        // mid-drag (see the note above).
         const bool altHeld = mModifiers.testFlag(Qt::AltModifier);
 
         util::Easing::Param* mirrorEasing = nullptr;
@@ -2427,7 +2464,9 @@ namespace ctrl {
             core::TimeKey* neighbourKey =
                 line ? line->timeKey(entry.channel.type(), neighbour.from->frame()) : nullptr;
             util::Easing::Param* neighbourEasing =
-                neighbourKey ? graph::Curve::easingOf(*neighbourKey, entry.channel.type()) : nullptr;
+                neighbourKey
+                ? graph::Curve::easingOf(*neighbourKey, entry.channel.type(), entry.channel.component())
+                : nullptr;
 
             if (neighbourEasing) {
                 // The command carries the opposite param whether or not THIS
@@ -2439,15 +2478,13 @@ namespace ctrl {
                 mirrorNext = *neighbourEasing;
                 mirrorFrame = neighbour.from->frame();
 
-                // Classification uses the pair BEFORE this step moved the
-                // grabbed dot: alignment is a property the key must already
-                // have, not something a drag can create.
-                QPointF draggedPair[2];
+                // The link is the key's STORED flag, read LIVE from the owner's
+                // param: the first Alt step has already written it FREE, so
+                // every later step of the same gesture sees free without any
+                // inference. The grabbed dot's pre-step position is not read at
+                // all - nothing here classifies by geometry.
                 QPointF neighbourPair[2];
-                if (effectiveHandles(entry.curve, segment, draggedPair)
-                    && effectiveHandles(entry.curve, neighbour, neighbourPair)) {
-                    const QPointF draggedBefore =
-                        graph::handlePointAt(mScale, segment, draggedPair[mDragHandle]);
+                if (effectiveHandles(entry.curve, neighbour, neighbourPair)) {
                     const QPointF otherBefore =
                         graph::handlePointAt(mScale, neighbour, neighbourPair[neighbourHandle]);
 
@@ -2461,8 +2498,7 @@ namespace ctrl {
                     );
                     const double otherLength = std::hypot(otherVector.x(), otherVector.y());
 
-                    if (!altHeld && handlesAligned(keyPixel, draggedBefore, otherBefore)
-                        && draggedLength > 0.0) {
+                    if (!altHeld && ownerEasing && ownerEasing->aligned && draggedLength > 0.0) {
                         // The opposite keeps its own length and takes the
                         // opposite direction of the PLACED (clamped) dragged
                         // handle - the dot the user sees.
@@ -2477,6 +2513,28 @@ namespace ctrl {
                     }
                 }
             }
+        }
+
+        // ALT UNLINKS THE KEY FOR GOOD: the flag goes into the OWNER key's
+        // param, in the SAME command as the handle positions, so one undo puts
+        // the link back with both handles. It is written on EVERY Alt step
+        // (idempotent), not only on the first: a step may be the gesture's
+        // first commit or follow an undo that dropped the stack's modifiable
+        // link, and both must leave the document FREE.
+        if (altHeld && ownerEasing) {
+            if (ownerEasing == easing) {
+                next.aligned = false;
+            } else if (mirrorEasing == ownerEasing) {
+                mirrorNext.aligned = false;
+                // The mirror's HANDLE is untouched, but its param changed, so
+                // this step rewrites and notifies it like any other write.
+                mirrorWritten = true;
+            }
+            // Otherwise the owner is the LAST key's own param (handle 1 with no
+            // next segment), which this command does not carry: with no pair
+            // there is no link state a drag can observe, so Alt leaves it alone
+            // (as Alt+click on an end key is inert). A FIRST key's owner IS the
+            // main param, so its flag is written like any other key's.
         }
 
         if (mGesture.continues()) {
@@ -2778,6 +2836,11 @@ namespace ctrl {
         // when it holds no command, and counts it as an edit, so an action that
         // opened the macro and then found nothing to write would leave an empty
         // undo step behind - the defect removeSelectedKey's own guard avoids.
+        //
+        // ONE EDIT PER COMPONENT, not per key: a selection may name one marker
+        // (Move X) or a whole key, which covers every component it owns. Each
+        // component writes ITS OWN param, so choosing an easing for Move X does
+        // not re-shape Move Y.
         struct Edit {
             util::Easing::Param* easing;
             core::ObjectNode* node;
@@ -2786,32 +2849,22 @@ namespace ctrl {
         };
         QVector<Edit> edits;
 
-        // The selection as ONE snapshot in the timeline's own currency, for the
-        // same reason removeSelectedKey takes one: it may be the timeline's set,
-        // and the edits below notify.
-        core::TimeLineEvent selection;
-        mSelection->assign(selection);
-
-        for (core::TimeLineEvent::Target& target : selection.targets()) {
+        for (const time::Selection::Item& item : mSelection->items()) {
             // The mutable target: the action writes the keys through the map the
             // TimeLinePos names, and it is TimeKeyPos::line()'s non-const overload
             // that hands out a writable map.
+            core::TimeLineEvent::Target target = item.target;
             core::TimeLine* line = target.pos.line();
             if (!line || !target.node)
                 continue; // a hand-made target with no owner: nothing to address
 
+            const core::TimeKeyType type = target.pos.type();
+
             // The key must BE there. A selection can outlive the key it names (an
             // undo, or another view's edit), and a stale one must not push a
             // command against a frame that holds nothing.
-            core::TimeKey* key = line->timeKey(target.pos.type(), target.pos.index());
+            core::TimeKey* key = line->timeKey(type, target.pos.index());
             if (!key)
-                continue;
-
-            // The type has to carry an easing at all: bone, pose, mesh and FFD
-            // keys are structural and easingOf answers null for them, which is
-            // also why the panel has no channel for them.
-            util::Easing::Param* easing = graph::Curve::easingOf(*key, target.pos.type());
-            if (!easing)
                 continue;
 
             // ...and playback has to CONSULT that easing. The image offset is the
@@ -2820,17 +2873,33 @@ namespace ctrl {
             // changes no drawn sample and no played value: refusing it is the
             // timeline's own behaviour with Image, not a special case invented
             // here.
-            if (!graph::Channel(target.pos.type(), 0).isInterpolated())
+            if (!graph::Channel(type, 0).isInterpolated())
                 continue;
 
-            // Already at the requested type: writing it would push a command whose
-            // exec and undo are the same value - a history entry for a change that
-            // did not happen. So a menu entry that matches the key's current easing
-            // leaves the document and the history exactly as they are.
-            if (easing->type == aType)
+            // A key-level entry covers every component; a marker entry covers the
+            // one component it names.
+            const int componentCount = graph::Channel::componentCount(type);
+            const bool wholeKey = (item.component == time::Selection::kKeyLevel);
+            if (!wholeKey && (item.component < 0 || componentCount <= item.component))
                 continue;
 
-            edits.append(Edit{easing, target.node, target.pos.type(), key->frame()});
+            for (int component = 0; component < componentCount; ++component) {
+                if (!wholeKey && component != item.component)
+                    continue;
+
+                util::Easing::Param* easing = graph::Curve::easingOf(*key, type, component);
+                if (!easing)
+                    continue;
+
+                // Already at the requested type: writing it would push a command
+                // whose exec and undo are the same value - a history entry for a
+                // change that did not happen. So a menu entry that matches the
+                // component's current easing leaves it exactly as it is.
+                if (easing->type == aType)
+                    continue;
+
+                edits.append(Edit{easing, target.node, type, key->frame()});
+            }
         }
 
         if (edits.isEmpty())
@@ -2852,17 +2921,28 @@ namespace ctrl {
 
             util::Easing::Param next;
             for (const Edit& edit : edits) {
-                // The key's OWN param with its type replaced: the range, the
-                // weight and the Custom bezier's two controls belong to the key,
-                // and the action only chooses the type.
+                // The component's OWN param with its type replaced: the range,
+                // the weight and the Custom bezier's two controls belong to that
+                // component, and the action only chooses the type.
                 next = *edit.easing;
                 next.type = aType;
 
                 // The frame the key is at NOW rather than the one the selection
                 // names: they are the same for a live key (the lookup above went
                 // through the same frame), and the key's own is the one the
-                // document answers with.
-                notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
+                // document answers with. One notification per KEY: several
+                // components of one key are one change to its timeline.
+                bool named = false;
+                for (const core::TimeLineEvent::Target& pushed : notifier->event().targets()) {
+                    if (pushed.node == edit.node && pushed.pos.type() == edit.type
+                        && pushed.pos.index() == edit.frame) {
+                        named = true;
+                        break;
+                    }
+                }
+                if (!named) {
+                    notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
+                }
                 mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.easing, next));
             }
         }

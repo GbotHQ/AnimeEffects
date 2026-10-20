@@ -49,7 +49,7 @@ bool Easing::Param::isValidParam() const {
 
 bool Easing::Param::operator==(const Param& aRhs) const {
     return type == aRhs.type && range == aRhs.range && weight == aRhs.weight &&
-        cubicBezier == aRhs.cubicBezier;
+        cubicBezier == aRhs.cubicBezier && aligned == aRhs.aligned;
 }
 //-------------------------------------------------------------------------------------------------
 int Easing::displayIndexOf(const Type aType) {

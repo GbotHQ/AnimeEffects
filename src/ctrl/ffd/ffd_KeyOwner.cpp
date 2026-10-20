@@ -42,7 +42,7 @@ namespace ffd {
             util::Easing::Param aParam;
             aParam.range = util::Easing::rangeToEnum(QString());
             aParam.type = util::Easing::easingToEnum(QString());
-            key->data().easing() = aParam;
+            key->data().easing(0) = aParam;
             parentKey = aAreaKey;
         }
     }

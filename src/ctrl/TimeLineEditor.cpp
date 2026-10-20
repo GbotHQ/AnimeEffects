@@ -514,6 +514,16 @@ static util::Easing::Param objToEasing(QJsonObject obj) {
     return easing;
 }
 
+// The clipboard payload carries ONE easing per key, which is what every key had
+// before per-component easing. Pasting it onto every component of the new key is
+// lossless for that payload and matches what a key used to mean.
+template<typename TKey>
+static void assignClipboardEasing(TKey* aKey, const util::Easing::Param& aEasing) {
+    for (int component = 0; component < TKey::kComponents; ++component) {
+        aKey->data().easing(component) = aEasing;
+    }
+}
+
 static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> project, bool isFolder, ObjectNode* aOwner) {
     TimeKeyType type = TimeLine::getTimeKeyType(obj["Type"].toString());
     // We're losing precision for float casts from json strings because
@@ -528,35 +538,35 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
             moveKey->data().setPos(pos);
             moveKey->data().setCentroid(centre);
             moveKey->data().setSpline(spline);
-            moveKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(moveKey, objToEasing(obj));
             moveKey->setFrame(obj["Frame"].toInt());
             return moveKey;
         }
         case TimeKeyType_Rotate: {
             auto* rotateKey = new RotateKey;
             rotateKey->setRotate(obj["Rotate"].toDouble());
-            rotateKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(rotateKey, objToEasing(obj));
             rotateKey->setFrame(obj["Frame"].toInt());
             return rotateKey;
         }
         case TimeKeyType_Scale: {
             auto* scaleKey = new ScaleKey;
             scaleKey->setScale(objToVec(obj, "Scale"));
-            scaleKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(scaleKey, objToEasing(obj));
             scaleKey->setFrame(obj["Frame"].toInt());
             return scaleKey;
         }
         case TimeKeyType_Depth: {
             auto* depthKey = new DepthKey;
             depthKey->setDepth(static_cast<float>(obj["Depth"].toDouble()));
-            depthKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(depthKey, objToEasing(obj));
             depthKey->setFrame(obj["Frame"].toInt());
             return depthKey;
         }
         case TimeKeyType_Opa: {
             auto* opaKey = new OpaKey;
             opaKey->setOpacity(static_cast<float>(obj["Opacity"].toDouble()));
-            opaKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(opaKey, objToEasing(obj));
             opaKey->setFrame(obj["Frame"].toInt());
             return opaKey;
         }
@@ -604,7 +614,7 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
         }
         case TimeKeyType_FFD: {
             FFDKey* ffdKey = new FFDKey;
-            ffdKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(ffdKey, objToEasing(obj));
             ffdKey->deserializeFromJson(obj);
             ffdKey->setFrame(obj["Frame"].toInt());
             return ffdKey;
@@ -615,7 +625,7 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
                 return nullptr;
             }
             auto* imageKey = new ImageKey;
-            imageKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(imageKey, objToEasing(obj));
             if (imageKey->deserializeFromJson(obj, project)) {
                 return imageKey;
             }
@@ -623,7 +633,7 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
         }
         case TimeKeyType_HSV: {
             auto* hsvKey = new HSVKey;
-            hsvKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(hsvKey, objToEasing(obj));
             QList hsv{obj["Hue"].toInt(), obj["Saturation"].toInt(), obj["Value"].toInt(), obj["Absolute"].toInt()};
             hsvKey->setHSV(hsv);
             hsvKey->setFrame(obj["Frame"].toInt());
@@ -631,7 +641,7 @@ static TimeKey* getKeyFromObj(QJsonObject obj, util::LifeLink::Pointee<Project> 
         }
         case TimeKeyType_Blur: {
             auto* blurKey = new BlurKey;
-            blurKey->data().easing() = objToEasing(obj);
+            assignClipboardEasing(blurKey, objToEasing(obj));
             blurKey->setAmount(obj["Amount"].toDouble());
             // directional data only exists in newer clipboard payloads; fall back to the
             // isotropic amount otherwise

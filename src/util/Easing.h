@@ -67,6 +67,15 @@ public:
         Range range;
         float weight;
         mutable CubicBezier cubicBezier;
+        // Whether this key's OUTGOING and INCOMING handles are LINKED (a
+        // bezier node's "smooth" type): while true, dragging one handle carries
+        // the other around the key at its own length. It is DOCUMENT state, not
+        // a view property - the key's own type - so it lives here rather than
+        // being inferred from the two control points (an inference flips
+        // whenever an edit changes the pixel angles, a key moved on the value
+        // axis above all). A new key starts LINKED: aligned is the default
+        // state, and Alt is what deliberately unlinking it (see GraphEditor).
+        bool aligned = true;
     };
 
     // ---- Type_Auto's derived handles -------------------------------------

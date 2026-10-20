@@ -1490,7 +1490,10 @@ void assignParam(T* key) {
     util::Easing::Param aNext;
     aNext.type = util::Easing::easingToEnum(QString());
     aNext.range = util::Easing::rangeToEnum(QString());
-    key->data().easing() = aNext;
+    // Every component starts on the same default curve and then owns its copy.
+    for (int component = 0; component < T::kComponents; ++component) {
+        key->data().easing(component) = aNext;
+    }
 }
 void knockKeys(core::Project* mProject, core::ObjectNode& aTarget) {
     const auto tl = aTarget.timeLine();

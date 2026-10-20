@@ -90,12 +90,14 @@ struct PanelFocus {
 // is lifted toward axisText from io.MousePos), the box-select marquee, the name CHIP
 // of every curve in play, and the empty state. The PLAYHEAD is drawn last, outside
 // the plot clip and over the chips, from the pill's row in the band through the
-// plot's last row, so no chip can cover it. The two SCROLL BARS are drawn after
-// everything else and clipped to the PANEL (they are outside the plot by
-// construction, in the margin the scaler reserves for them): the track in
-// theme::Colors::raised under a 1px theme::Colors::floaterEdge edge, the thumb in
-// theme::Colors::textMuted, or theme::Graph::axisText() while the pointer is on
-// that bar - an empty rect draws nothing, so an empty plot has no bar at all. It
+// PANEL's last row (the timeline's playhead crosses its whole body), so no chip can
+// cover it. The two SCROLL BARS are drawn after everything else and clipped to the
+// PANEL (they are outside the plot by construction, in the margin the scaler reserves
+// for them): they are the application's scroll bar - an INVISIBLE 12px trough and a
+// 4px, radius-2 pill across the slider's run, in theme::Colors::outline at rest and
+// theme::Colors::hover while the pointer is on that bar or the bar is being dragged
+// (src/gui/AppStyle.cpp's CC_ScrollBar). An empty run draws nothing, so a bar with
+// nothing to scroll is not there at all. It
 // keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),

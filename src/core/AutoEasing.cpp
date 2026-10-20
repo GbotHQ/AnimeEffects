@@ -46,7 +46,8 @@ QVector<float> flattenPose(const core::PoseKey& aKey) {
     return out;
 }
 
-bool valueOf(const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::TimeKey& aTo, float& aOut) {
+bool valueOf(
+    const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::TimeKey& aTo, int aComponent, float& aOut) {
     // The caller pairs keys out of one channel's map, but a hand-built call must
     // not read a Move key through a Scale cast.
     if (aKey.type() != aFrom.type() || aKey.type() != aTo.type())
@@ -54,60 +55,57 @@ bool valueOf(const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::
 
     switch (aKey.type()) {
     case core::TimeKeyType_Move: {
-        const QVector2D from = static_cast<const core::MoveKey&>(aFrom).data().pos();
-        const QVector2D to = static_cast<const core::MoveKey&>(aTo).data().pos();
+        if (aComponent != 0 && aComponent != 1)
+            return false;
         const QVector2D val = static_cast<const core::MoveKey&>(aKey).data().pos();
-        Dominant d;
-        d.consider(0, from.x(), to.x());
-        d.consider(1, from.y(), to.y());
-        aOut = (d.index == 0) ? val.x() : val.y();
+        aOut = (aComponent == 0) ? val.x() : val.y();
         return true;
     }
     case core::TimeKeyType_Scale: {
-        const QVector2D from = static_cast<const core::ScaleKey&>(aFrom).data().scale();
-        const QVector2D to = static_cast<const core::ScaleKey&>(aTo).data().scale();
+        if (aComponent != 0 && aComponent != 1)
+            return false;
         const QVector2D val = static_cast<const core::ScaleKey&>(aKey).data().scale();
-        Dominant d;
-        d.consider(0, from.x(), to.x());
-        d.consider(1, from.y(), to.y());
-        aOut = (d.index == 0) ? val.x() : val.y();
+        aOut = (aComponent == 0) ? val.x() : val.y();
         return true;
     }
     case core::TimeKeyType_Blur: {
-        const core::BlurKey::Data& from = static_cast<const core::BlurKey&>(aFrom).data();
-        const core::BlurKey::Data& to = static_cast<const core::BlurKey&>(aTo).data();
         const core::BlurKey::Data& val = static_cast<const core::BlurKey&>(aKey).data();
-        Dominant d;
-        d.consider(0, from.blurX(), to.blurX());
-        d.consider(1, from.blurY(), to.blurY());
-        d.consider(2, from.angleDeg(), to.angleDeg());
-        aOut = (d.index == 0) ? val.blurX() : ((d.index == 1) ? val.blurY() : val.angleDeg());
-        return true;
+        switch (aComponent) {
+        case 0: aOut = val.blurX(); return true;
+        case 1: aOut = val.blurY(); return true;
+        case 2: aOut = val.angleDeg(); return true;
+        default: return false;
+        }
     }
     case core::TimeKeyType_HSV: {
-        const QList<int>& from = static_cast<const core::HSVKey&>(aFrom).data().hsv();
-        const QList<int>& to = static_cast<const core::HSVKey&>(aTo).data().hsv();
         const QList<int>& val = static_cast<const core::HSVKey&>(aKey).data().hsv();
         // Playback blends the first three entries; the fourth is a flag.
-        if (from.size() < 3 || to.size() < 3 || val.size() < 3)
+        if (val.size() < 3 || aComponent < 0 || 2 < aComponent)
             return false;
-        Dominant d;
-        for (int i = 0; i < 3; ++i) {
-            d.consider(i, static_cast<float>(from.at(i)), static_cast<float>(to.at(i)));
-        }
-        aOut = static_cast<float>(val.at(d.index));
+        aOut = static_cast<float>(val.at(aComponent));
         return true;
     }
     case core::TimeKeyType_Rotate:
+        if (aComponent != 0)
+            return false;
         aOut = static_cast<const core::RotateKey&>(aKey).data().rotate();
         return true;
     case core::TimeKeyType_Depth:
+        if (aComponent != 0)
+            return false;
         aOut = static_cast<const core::DepthKey&>(aKey).data().depth();
         return true;
     case core::TimeKeyType_Opa:
+        if (aComponent != 0)
+            return false;
         aOut = static_cast<const core::OpaKey&>(aKey).data().opacity();
         return true;
     case core::TimeKeyType_Pose: {
+        // Pose carries ONE easing for the whole key. Its derived shape reads the
+        // bone that moves most, so a single rotating bone is not shaped by a
+        // still one.
+        if (aComponent != 0)
+            return false;
         const QVector<float> from = flattenPose(static_cast<const core::PoseKey&>(aFrom));
         const QVector<float> to = flattenPose(static_cast<const core::PoseKey&>(aTo));
         const QVector<float> val = flattenPose(static_cast<const core::PoseKey&>(aKey));
@@ -121,6 +119,10 @@ bool valueOf(const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::
         return true;
     }
     case core::TimeKeyType_FFD: {
+        // FFD carries ONE easing for the whole mesh: the vertex AND axis that
+        // moves most across the segment decides.
+        if (aComponent != 0)
+            return false;
         const core::FFDKey::Data& from = static_cast<const core::FFDKey&>(aFrom).data();
         const core::FFDKey::Data& to = static_cast<const core::FFDKey&>(aTo).data();
         const core::FFDKey::Data& val = static_cast<const core::FFDKey&>(aKey).data();
@@ -156,16 +158,16 @@ bool valueOf(const core::TimeKey& aKey, const core::TimeKey& aFrom, const core::
 
 namespace core {
 
-bool autoEasingValue(const TimeKey& aKey, const TimeKey& aFrom, const TimeKey& aTo, float& aOut) {
-    return valueOf(aKey, aFrom, aTo, aOut);
+bool autoEasingValue(const TimeKey& aKey, const TimeKey& aFrom, const TimeKey& aTo, int aComponent, float& aOut) {
+    return valueOf(aKey, aFrom, aTo, aComponent, aOut);
 }
 
 util::Easing::AutoContext autoEasingContext(
-    const TimeKey& aFrom, const TimeKey& aTo, const TimeKey* aPrev, const TimeKey* aNext) {
+    const TimeKey& aFrom, const TimeKey& aTo, int aComponent, const TimeKey* aPrev, const TimeKey* aNext) {
     util::Easing::AutoContext ctx;
 
     float from = 0.0f, to = 0.0f;
-    if (!valueOf(aFrom, aFrom, aTo, from) || !valueOf(aTo, aFrom, aTo, to))
+    if (!valueOf(aFrom, aFrom, aTo, aComponent, from) || !valueOf(aTo, aFrom, aTo, aComponent, to))
         return ctx;
 
     // The segment's own change is the axis the neighbours are expressed in. A
@@ -177,7 +179,7 @@ util::Easing::AutoContext autoEasingContext(
     const float fromFrame = static_cast<float>(aFrom.frame());
     auto fill = [&](const TimeKey* aKey, util::Easing::AutoKey& aOut) {
         float value = 0.0f;
-        if (!aKey || !valueOf(*aKey, aFrom, aTo, value))
+        if (!aKey || !valueOf(*aKey, aFrom, aTo, aComponent, value))
             return;
         aOut.valid = true;
         aOut.frame = static_cast<float>(aKey->frame()) - fromFrame;

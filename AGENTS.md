@@ -1924,14 +1924,21 @@ carries no `#333333`. Do not "match" it by guessing an alpha - find the cause in
 first (the dock's own splitter, which is the same token, measures 64 in the SAME capture, which is why
 the graph was left on the token).
 
-**Handles: aligned is the DEFAULT STATE, and it is geometric.** A key is aligned when its outgoing
-handle (`cubicBezier.x1,y1` of the from key's param) and its incoming one (`x2,y2` of the neighbour's)
-are collinear through the key within 2 degrees, in PIXELS. Dragging one handle of an aligned key keeps
-the other COLLINEAR at its OWN LENGTH (angle linked, length independent - the old code reflected the
-vector, which is why length was forced); an Alt-drag leaves the other handle untouched on every step
-(read `mModifiers` per step, not at the press); an Alt+CLICK on a key aligns a free pair (the LONGER
-handle defines the direction, the shorter is placed on its opposite side, both lengths preserved).
-No serialized field: alignment is inferred from geometry, so the file format is untouched.
+**Handles: the link is STORED, per key.** A key's outgoing handle (`cubicBezier.x1,y1` of its own
+param) and its incoming one (`x2,y2` of the previous segment's param) are LINKED when that key's
+`util::Easing::Param::aligned` says so - document state, default true, folded into `operator==`,
+serialized after the bezier controls (format 0.13; a file from before the field loads `aligned =
+false`, which is what its keys actually did). Nothing infers it from the pixel angle: an inference
+flips whenever an edit changes the pixel angles - a key moved on the value axis above all - and the
+user's verdict was that it "snaps back to aligned unpredictably". Dragging one handle of a LINKED key
+keeps the other COLLINEAR at its OWN LENGTH (angle linked, length independent); a FREE key's partner
+is never touched. **Alt on any step** leaves the partner alone for that step AND writes the key FREE
+in the same command (one undo), so a later drag without Alt stays free - "once it diverges with alt,
+the way to get it back should be an alt click". **Alt+CLICK on a key** writes `aligned = true` and
+puts BOTH handles on the line through the key along the CHORD from the previous key's anchor to the
+next key's anchor, in pixels (a bezier editor's "make smooth"), each handle keeping its own length;
+the direction never depends on which handle is longer, and a first/last key (one handle) is inert.
+A key MOVE never writes a param, so neither the flag nor either handle changes.
 
 **The Auto icon is the TYPE's picture, not the key's.** With no neighbouring keys the derived handles
 are the identity, so Auto's curve IS Linear's straight line - the glyph was literally indistinguishable
@@ -1989,6 +1996,37 @@ the bus reports FOCUSED. On the Graph tab it names the panel; on the Timeline ta
 `filler` - `QAccessible`'s role for a plain `QWidget` subclass, i.e. the editor surface - once the
 lookup was `mTimeLine->findChild<TimeLineEditorWidget*>()`. A key press that vanishes has two
 causes (no focus, or focus with no handler) and this is the one that tells them apart.
+
+**The easing is PER CHANNEL now, and that is Blender's model.** `util::Easing::Param` used to be one
+per key, shared by every component it drives - so shaping Move's X re-shaped Move's Y, and any
+per-key state (the handle link) was shared too. The industry answer, from their own docs: Blender's
+F-Curve is per `array_index` with `handle_left_type`/`handle_right_type` per keyframe, and After
+Effects separates temporal from spatial interpolation and offers Separate Dimensions. So a key now
+holds one Param per GRAPHABLE component (`std::array<Param, kComponents>`, counts in the new
+`src/core/KeyEasing.h` - the single declaration `ctrl::graph::Channel::componentCount` reads), the
+blender evaluates each component at its own rate, and the graph/dock read the CHANNEL's component
+(`Curve::easingOf(key, type, component)`) - never the key's first one. Format 0.14; a 0.13 key
+writes ONE param and the reader broadcasts it to every component (lossless for what it described).
+Structural keys (pose, FFD) keep one shared easing and are still not graphable; Image stores two and
+stays step-held.
+
+**The ruler's mapping is the TIMELINE's, and that is the whole point.** The graph used to fit the
+shared frame window into its PLOT (minus a margin inset), so its frames-per-pixel and its origin
+differed from the timeline's: switching tabs moved every tick, and the band stopped at the plot's
+left edge (the "corner" report). `Scaler::applyFrameWindow` now maps `lo -> panel.left()` and
+`hi -> panel.left()+panel.width()`, exactly the timeline viewport's own edges, so a frame's x in the
+graph IS its x in the timeline (asserted as a formula in `tests/graph_curve.cpp`). Consequences, all
+deliberate: the band spans the panel (covering the value column's top), the playhead spans the panel
+(as the timeline's crosses its whole body), and the plot shows a SUB-RANGE of the shared window -
+the leftmost frames sit behind the value column, which is what keeps one window and one zoom.
+
+**The panel's scroll bars are the APP's scroll bars, not a design of their own.** The real ones live
+in `src/gui/AppStyle.cpp`'s `CC_ScrollBar` branch (QSS only sets `background: none`): a 12px lane
+with an INVISIBLE trough and a 4px, radius-2 pill in `Colors::outline`, `Colors::hover` while hot.
+The panel's first version invented an 8px `raised` trough with an 8px bright thumb, which the user
+read - correctly - as arbitrary. The bars are now that pill on both axes (`kScrollBarLane` 12,
+`kPillThickness` 4, reserve 14), a lane press is ONE PAGE toward the press (Qt's page step, the
+visible window), and a bar with no travel is not drawn at all.
 
 **Two small ones, both reported.** The channels popup's group separators are gone (a heading already
 separates; the seam landed in the gap above it and read as a broken rule). And a tab that becomes

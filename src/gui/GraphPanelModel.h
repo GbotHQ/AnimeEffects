@@ -346,14 +346,14 @@ enum class GraphPanelHost {
 //              animation), and this model never hardcodes a size: whatever that
 //              function returns is the panel.
 //   plot    == the editor's own scaler, given `panel`, i.e.
-//              ctrl::graph::Scaler::plotRect() = panel minus kMargin on all
-//              sides, minus the MEASURED label column on the left
-//              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth) and
-//              minus the RULER BAND's 22 rows at the top
-//              (Scaler::kRulerBandHeight): the graph's own surface starts BELOW
-//              the ruler, exactly as the timeline's surface starts below its
-//              TimeRuler strip. Empty on a viewport too small for those insets;
-//              see emptyState.
+//              ctrl::graph::Scaler::plotRect() = panel minus kMargin on the left
+//              and top, minus the MEASURED label column on the left
+//              (Scaler::axisLabelWidth(); its floor is kAxisLabelWidth), minus
+//              the RULER BAND's 22 rows at the top (Scaler::kRulerBandHeight)
+//              and kMargin + kScrollBarReserve at the right and bottom for the
+//              two bars: the graph's own surface starts BELOW the ruler, exactly
+//              as the timeline's surface starts below its TimeRuler strip. Empty
+//              on a viewport too small for those insets; see emptyState.
 //   valueColumn == the left column the value numbers sit in, the deleted painter
 //              renderer's layout, kept as the panel's convention:
 //              QRect(panel.left() + kMargin, plot.top(), scale.axisLabelWidth(),
@@ -368,10 +368,10 @@ enum class GraphPanelHost {
 //   hTrack/hThumb, vTrack/vThumb == the panel's two SCROLL BARS, outside the plot
 //              and inside the panel: the frame axis' along the plot's bottom edge,
 //              the value axis' along its right edge (see the struct's SCROLL BARS
-//              note). The scaler reserves their 10px at those two edges
-//              (Scaler::kScrollBarReserve), so they touch neither the plot nor the
-//              value column nor the ruler band, and the plot's own top-left corner
-//              is where it always was.
+//              note). The scaler reserves their 14px at those two edges
+//              (Scaler::kScrollBarReserve: a 2px gap + the app's 12px lane), so
+//              they touch neither the plot nor the value column nor the ruler band,
+//              and the plot's own top-left corner is where it always was.
 //
 // THE OCCLUDED TOP (rulerBandTop)
 //   A widget may float ABOVE the viewport and cover the panel's first rows - the
@@ -405,7 +405,9 @@ enum class GraphPanelHost {
 //
 // THE AXES (no grid, no rules)
 //   frameTickX: the x of every frame the ladder classifies (time::Scaler's
-//               TickLevel != None) inside the plot, ascending, plus the project's
+//               TickLevel != None) inside the RULER BAND - the panel's columns, which
+//               is where the shared mapping puts the timeline's frames, ascending -
+//               plus the project's
 //               forced BOUNDARY ticks (see LABELS below - the timeline's own rule that
 //               the first and last frames own their slots). The drawing layer draws a
 //               SHORT mark UP from the band's last row at each - frameRuler::kTickLength
@@ -447,7 +449,7 @@ enum class GraphPanelHost {
 //               whose Attribute::showNumber is set (Major always, the intermediate
 //               tier once it has 64px of room), not only for majors. Every box
 //               RESERVES frameRuler::kNumberCharWidth (6px) per character, centred on
-//               its tick and nudged inside the plot, and the number's own frame
+//               its tick and nudged inside the BAND, and the number's own frame
 //               travels beside the text in PanelLabel::frame. The project's FIRST and
 //               LAST frames are forced in when they are visible (the timeline's own
 //               "the range's first/last frame owns the end of the ruler"), and a
@@ -639,7 +641,10 @@ enum class GraphPanelHost {
 //   playheadText is that frame written with the ruler's own formatter; playheadPill
 //   is the 14px rounded pill the timeline's TimeCursor draws about the column (null
 //   when there is no frame or no band), and playheadLineTop is the row the playhead's
-//   1px line starts on - under the pill, as TimeCursor's does. The pill's own number
+//   1px line starts on - under the pill, as TimeCursor's does. The line crosses the
+//   whole PANEL (the timeline's playhead crosses its whole body), so it runs from that
+//   row to panel.bottom() and through the chart's chrome; the two bar lanes are
+//   painted after it. The pill's own number
 //   suppresses every ruler label whose centre falls inside its half-width, so the
 //   column carries one number.
 //
@@ -712,29 +717,35 @@ struct GraphPanelModel {
     //
     //   * hTrack/hThumb - along the plot's bottom edge: the FRAME axis' window. The
     //     content is the project's frame range (ctrl::GraphEditor::frameRange()) and
-    //     the window is the frames the plot covers, so the thumb is where the visible
-    //     window sits inside the range and how much of it is visible. While a
+    //     the window is the visible frame window, so the thumb is where that window
+    //     sits inside the range and how much of it is visible. While a
     //     timeline owns the frame axis (ctrl::GraphEditor::hasTimelineFrameAxis) this
-    //     IS the timeline's window - one window, two views.
+    //     IS the timeline's window - one window, two views - and its span follows
+    //     from the panel-wide mapping (Scaler::applyFrameWindow).
     //   * vTrack/vThumb - along the plot's right edge: the VALUE axis' window. The
     //     content is the value extent of every SHOWN channel's keys (exactly the
     //     range ctrl::GraphEditor::fitValueAxis fits, both read through the editor's
     //     one walk), and the window is the scaler's valueMin()..valueMax(), so the
     //     value axis is inverted along the track: a window at high values draws its
     //     thumb at the TOP.
-    // The tracks are OUTSIDE the plot and inside the panel, 8px thick with a 2px gap
-    // from the plot (ctrl::graph::Scaler::kScrollBarThickness/kScrollBarGap), whose
-    // reserve the scaler takes out of the plot's right and bottom edges - so these
-    // rects never overlap the plot, the value column or the ruler band. They are
+    // The tracks are OUTSIDE the plot and inside the panel: the APPLICATION's scroll
+    // bar lane, 12px thick with a 2px gap from the plot
+    // (ctrl::graph::Scaler::kScrollBarThickness/kScrollBarGap), whose reserve the
+    // scaler takes out of the plot's right and bottom edges - so these rects never
+    // overlap the plot, the value column or the ruler band. hThumb/vThumb span the
+    // lane and name the SLIDER'S RUN: the drawing layer paints the app's 4px,
+    // radius-2 pill centred in the lane across that run, and the trough paints
+    // NOTHING (AppStyle.cpp's CC_ScrollBar). They are
     // DISJOINT from each other: the horizontal track spans the plot's columns on rows
     // entirely below the plot, the vertical one the plot's rows in columns entirely
     // right of it.
     //
-    // Thumb length is the window/content fraction of the track, floored at 16px and
+    // Run length is the window/content fraction of the track, floored at 16px and
     // capped at the track, so a window that covers the content (or a content with no
-    // extent at all - no key, or no frame span) fills its track. The four rects are
-    // EMPTY while the plot is empty: there is nowhere to lay a bar out, and the
-    // drawing layer draws nothing for an empty rect.
+    // extent at all - no key, or no frame span) fills its track and the model then
+    // publishes an empty run (nothing to scroll, nothing drawn, nothing hit). The four
+    // rects are EMPTY while the plot is empty: there is nowhere to lay a bar out, and
+    // the drawing layer draws nothing for an empty rect.
     //
     // THE GEOMETRY IS ctrl::graph::Scaler::scrollBars()'s, computed here from this
     // model's own scaler - the SAME function ctrl::GraphEditor::updateCursor runs its
@@ -752,9 +763,12 @@ struct GraphPanelModel {
     // plot.top() instead (see THE OCCLUDED TOP above); an empty plot publishes
     // plot.bottom() + 1.
     int rulerBandTop = -1;
-    // THE RULER BAND: the plot's own width by frameRuler::kBandHeight rows from
+    // THE RULER BAND: the PANEL's own width by frameRuler::kBandHeight rows from
     // rulerBandTop - the timeline's ruler strip, at the panel's top edge, with the
-    // scaler's kMargin rows between its hairline and the plot. The drawing layer fills
+    // scaler's kMargin rows between its hairline and the plot. It is as wide as the
+    // panel (not the plot) because the shared frame mapping puts frame ticks on the
+    // timeline's own columns, including the value column's top-left corner: the
+    // timeline's strip spans its viewport, and so does this one. The drawing layer fills
     // it with theme::Graph::rulerBand(), rules the row under it with
     // theme::Graph::rulerLine() and draws the ticks up from its last row; the band's
     // row is OUTSIDE the plot clip, so no curve, key, handle or chip can paint into

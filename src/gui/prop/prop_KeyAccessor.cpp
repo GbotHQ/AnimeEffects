@@ -147,7 +147,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::MoveKey, core::TimeKeyType_Move>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::MoveKey, core::TimeKeyType_Move>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::MoveKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignMoveKeyData(*mProject, *mTarget, frame, newData);
     }
@@ -190,7 +192,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::RotateKey, core::TimeKeyType_Rotate>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::RotateKey, core::TimeKeyType_Rotate>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::RotateKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignRotateKeyData(*mProject, *mTarget, frame, newData);
     }
@@ -212,7 +216,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::ScaleKey, core::TimeKeyType_Scale>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::ScaleKey, core::TimeKeyType_Scale>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::ScaleKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
         ctrl::TimeLineUtil::assignScaleKeyData(*mProject, *mTarget, frame, newData);
     }
 
@@ -233,7 +239,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::DepthKey, core::TimeKeyType_Depth>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::DepthKey, core::TimeKeyType_Depth>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::DepthKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignDepthKeyData(*mProject, *mTarget, frame, newData);
     }
@@ -283,7 +291,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::OpaKey, core::TimeKeyType_Opa>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::OpaKey, core::TimeKeyType_Opa>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::OpaKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignOpaKeyData(*mProject, *mTarget, frame, newData);
     }
@@ -294,7 +304,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::HSVKey, core::TimeKeyType_HSV>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::HSVKey, core::TimeKeyType_HSV>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::HSVKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignHSVKeyData(*mProject, *mTarget, frame, newData);
     }
@@ -334,12 +346,17 @@ namespace prop {
         util::Easing::Param aNext;
         aNext.type = util::Easing::easingToEnum(QString());
         aNext.range = util::Easing::rangeToEnum(QString());
-        key->data().easing() = aNext;
+        // A new key starts with every component on the same default curve; each
+        // component then owns its own copy, so editing one cannot warp another.
+        for (int component = 0; component < T::kComponents; ++component) {
+            key->data().easing(component) = aNext;
+        }
     }
 
     //-------------------------------------------------------------------------------------------------
 
-    util::Easing::AutoContext autoContextOf(const core::TimeLineEvent::Target& aTarget, const core::TimeKey& aKey) {
+    util::Easing::AutoContext autoContextOf(
+        const core::TimeLineEvent::Target& aTarget, const core::TimeKey& aKey, int aComponent) {
         const core::TimeLine* line = aTarget.pos.line();
         if (!line)
             return util::Easing::AutoContext();
@@ -366,7 +383,7 @@ namespace prop {
             if (n != map.constEnd())
                 next = n.value();
         }
-        return core::autoEasingContext(*from.value(), *to.value(), prev, next);
+        return core::autoEasingContext(*from.value(), *to.value(), aComponent, prev, next);
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -480,7 +497,9 @@ namespace prop {
         const int frame = getFrame();
         ensureKey<core::BlurKey, core::TimeKeyType_Blur>(*mProject, *mTarget, frame);
         auto newData = getKeyData<core::BlurKey, core::TimeKeyType_Blur>(*mTarget, frame);
-        newData.easing() = aNext;
+        for (int component = 0; component < core::BlurKey::kComponents; ++component) {
+            newData.easing(component) = aNext;
+        }
 
         ctrl::TimeLineUtil::assignBlurKeyData(*mProject, *mTarget, frame, newData);
     }

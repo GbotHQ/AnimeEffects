@@ -190,13 +190,12 @@
 //         numbers themselves are the editor's and are gated where the gesture is
 //         (tests/graph_drag.cpp); what this asserts is that they reach the screen at
 //         the pointer or not at all;
-//      31 THE SCROLL BARS: the four rects the model publishes are DRAWN where they
-//         say - the track in theme::Colors::raised under its 1px floaterEdge edge, the
-//         thumb in textMuted - with no thumb ink outside its own rect, NOTHING at all
-//         in those regions when the rects are empty (the state an empty plot
-//         publishes), and the hovered bar's thumb lifted to the full text ink while
-//         the other bar's stays at rest. Read against the same model's empty-rects
-//         pass, so each claim is about the drawing layer and not the fixture.
+//      31 THE SCROLL BARS ARE THE APPLICATION'S: the model's lanes and runs are drawn
+//         as src/gui/AppStyle.cpp's CC_ScrollBar - a 4px, radius-2 pill in
+//         theme::Colors::outline, an INVISIBLE trough - with no ink outside the pills,
+//         and the hovered bar's pill in theme::Colors::hover while the other bar's
+//         stays at rest. Read against the same model's empty-rects pass, so each
+//         claim is about the drawing layer and not the fixture.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
 // (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's key menu), a
@@ -369,16 +368,27 @@ QRect valueLabelBox(int aTop) {
 const QRect kMarqueeRect(155, 62, 40, 30);
 
 // THE SCROLL BARS, as this file's synthetic model publishes them: the shipping layout
-// of ctrl::graph::Scaler::scrollBars for kPlot - 2px of gap from the plot, 8px thick,
-// each track spanning the plot's own edge along the axis it scrolls (so the two cannot
-// meet), with a thumb that is the visible window's fraction of the content rather than
-// the whole track. The real model computes these from the editor's scaler; this file
-// builds its models by hand, so the drawing layer is measured against exactly the four
-// rects a model can carry. Both tracks are OUTSIDE the plot and INSIDE the panel.
-const QRect kHScrollTrack(kPlot.left(), kPlot.bottom() + 1 + 2, kPlot.width(), 8);
+// of ctrl::graph::Scaler::scrollBars for kPlot - 2px of gap from the plot, the app's
+// 12px lane (Scaler::kScrollBarThickness), each track spanning the plot's own edge
+// along the axis it scrolls (so the two cannot meet), with a run that is the visible
+// window's fraction of the content rather than the whole track. The real model computes
+// these from the editor's scaler; this file builds its models by hand, so the drawing
+// layer is measured against exactly the four rects a model can carry. Both tracks are
+// OUTSIDE the plot and INSIDE the panel.
+const QRect kHScrollTrack(kPlot.left(), kPlot.bottom() + 1 + 2, kPlot.width(), ctrl::graph::Scaler::kScrollBarThickness);
 const QRect kHScrollThumb(kHScrollTrack.left() + 60, kHScrollTrack.top(), 90, kHScrollTrack.height());
-const QRect kVScrollTrack(kPlot.right() + 1 + 2, kPlot.top(), 8, kPlot.height());
+const QRect kVScrollTrack(kPlot.right() + 1 + 2, kPlot.top(), ctrl::graph::Scaler::kScrollBarThickness, kPlot.height());
 const QRect kVScrollThumb(kVScrollTrack.left(), kVScrollTrack.top() + 40, kVScrollTrack.width(), 70);
+
+// The PILL the drawing layer puts in a lane: AppStyle's 4px, and centred in the lane
+// across the run (the model's thumb rect). The tests measure the ink against this, so
+// the geometry the two files agree on is stated once here as well as in the renderer.
+QRect scrollPill(const QRect& aTrack, const QRect& aRun, bool aHorizontal) {
+    const int thickness = ctrl::graph::Scaler::kScrollBarPillThickness;
+    return aHorizontal
+        ? QRect(aRun.left(), aTrack.top() + (aTrack.height() - thickness) / 2, aRun.width(), thickness)
+        : QRect(aTrack.left() + (aTrack.width() - thickness) / 2, aRun.top(), thickness, aRun.height());
+}
 
 const core::TimeKeyType kTypeA = core::TimeKeyType_Move;
 const core::TimeKeyType kTypeB = core::TimeKeyType_Scale;
@@ -1134,7 +1144,9 @@ std::vector<Geom> geometryOf(
     if (aModel.playheadX >= 0) {
         const int lineTop = aModel.playheadLineTop >= 0 ? aModel.playheadLineTop : aModel.plot.top();
         out.push_back(
-            {"playhead", grow(QRect(aModel.playheadX, lineTop, 1, aModel.plot.bottom() - lineTop + 1), 2)}
+            // The line now runs to the PANEL's last row (the timeline's playhead
+            // crosses its whole body), so the ink bound ends there.
+            {"playhead", grow(QRect(aModel.playheadX, lineTop, 1, aModel.panel.bottom() - lineTop + 1), 2)}
         );
     }
     for (const gui::PanelCurve& curve : aModel.curves) {
@@ -2799,28 +2811,30 @@ bool checkZeroRule(const Rendered& aWithRule, const Rendered& aWithoutRule, cons
     return true;
 }
 
-// 31: THE SCROLL BARS. The four rects the model publishes are drawn where they say:
-// the track in theme::Colors::raised under its 1px theme::Colors::floaterEdge edge,
-// the thumb in theme::Colors::textMuted while the pointer is off the panel (the "at
-// rest" ink - a pointer over a track lifts the thumb to theme::Graph::axisText(), which
-// the second pass below exercises), and NOTHING of either ink lands outside the rect
-// that owns it. The pair of passes is the whole contract: the same model with the four
-// rects EMPTY leaves both regions byte-identical to the clear colour, because the bars
-// are the only thing the panel draws outside the plot besides the ruler and the value
-// column - so "an empty plot publishes no bars" and "no bar paints anywhere else" are
-// the same measurement.
+// 31: THE SCROLL BARS ARE THE APPLICATION'S. The four rects the model publishes are
+// lanes and runs; the panel paints AppStyle.cpp's CC_ScrollBar inside them - a 4px
+// pill across the run in theme::Colors::outline, and NOTHING for the trough. The
+// proof is a PAIR of passes: the same model with the four rects EMPTY. Outside the
+// two pills (grown by 1px for the fill's antialiased cap) every pixel of the two
+// frames must be identical, so a trough - or any other bar ink - is caught wherever
+// it falls, including over the playhead's column, which crosses the panel and
+// therefore the horizontal lane. The third pass moves io.MousePos onto the horizontal
+// bar: that bar's pill takes theme::Colors::hover while the vertical one stays
+// outline.
 bool checkScrollBars(
-    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHovered, const gui::GraphPanelModel& aModel,
-    const theme::Graph& aTheme
+    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHovered,
+    const gui::GraphPanelModel& aModel
 ) {
     const theme::Colors& colors = theme::Colors::current();
     const QRect hTrack = aModel.hTrack;
-    const QRect hThumb = aModel.hThumb;
+    const QRect hRun = aModel.hThumb;
     const QRect vTrack = aModel.vTrack;
-    const QRect vThumb = aModel.vThumb;
+    const QRect vRun = aModel.vThumb;
+    const QRect hPill = scrollPill(hTrack, hRun, true);
+    const QRect vPill = scrollPill(vTrack, vRun, false);
 
     REQUIRE(
-        !hTrack.isEmpty() && !hThumb.isEmpty() && !vTrack.isEmpty() && !vThumb.isEmpty(),
+        !hTrack.isEmpty() && !hRun.isEmpty() && !vTrack.isEmpty() && !vRun.isEmpty(),
         "precondition: the model must publish four bar rects"
     );
     // The layout the panel promises: outside the plot, inside the panel, the two
@@ -2833,79 +2847,94 @@ bool checkScrollBars(
     REQUIRE(aModel.panel.contains(hTrack) && aModel.panel.contains(vTrack), "precondition: a track leaves the panel");
     REQUIRE(!hTrack.intersects(vTrack), "precondition: the two tracks overlap");
     REQUIRE(!hTrack.intersects(kValueColumn) && !vTrack.intersects(kValueColumn), "precondition: a track covers the value column");
-    REQUIRE(hTrack.contains(hThumb) && vTrack.contains(vThumb), "precondition: a thumb leaves its track");
-    // The three tokens must be tellable apart, or the counts below would not know
-    // which ink a pixel is.
+    REQUIRE(hTrack.contains(hRun) && vTrack.contains(vRun), "precondition: a run leaves its track");
+    // The lane and the pill are the application's numbers, and the pill is centred in
+    // the lane across the run.
     REQUIRE(
-        colors.raised != colors.textMuted && colors.floaterEdge != colors.textMuted
-            && colors.raised != aTheme.axisText() && colors.textMuted != aTheme.axisText(),
-        "precondition: the bar tokens are not distinct (raised %s, textMuted %s, floaterEdge %s, axisText %s)",
-        hex(colors.raised).c_str(), hex(colors.textMuted).c_str(), hex(colors.floaterEdge).c_str(),
-        hex(aTheme.axisText()).c_str()
-    );
-
-    const int hTrackInk = toneCount(aWithBars.image, hTrack, colors.raised);
-    const int hThumbInk = toneCount(aWithBars.image, hThumb, colors.textMuted);
-    const int vTrackInk = toneCount(aWithBars.image, vTrack, colors.raised);
-    const int vThumbInk = toneCount(aWithBars.image, vThumb, colors.textMuted);
-    std::printf(
-        "MEASURED scroll_bars raised=%s textMuted=%s floaterEdge=%s  hTrack(%d,%d %dx%d)=%d raised px"
-        " hThumb(%d,%d %dx%d)=%d textMuted px  vTrack(%d,%d %dx%d)=%d  vThumb(%d,%d %dx%d)=%d  (areas %d/%d/%d/%d)\n",
-        hex(colors.raised).c_str(), hex(colors.textMuted).c_str(), hex(colors.floaterEdge).c_str(), hTrack.left(),
-        hTrack.top(), hTrack.width(), hTrack.height(), hTrackInk, hThumb.left(), hThumb.top(), hThumb.width(),
-        hThumb.height(), hThumbInk, vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(), vTrackInk,
-        vThumb.left(), vThumb.top(), vThumb.width(), vThumb.height(), vThumbInk, hTrack.width() * hTrack.height(),
-        hThumb.width() * hThumb.height(), vTrack.width() * vTrack.height(), vThumb.width() * vThumb.height()
-    );
-    REQUIRE(hTrackInk > 0, "the horizontal track painted no raised pixel: the track is not drawn where the model says");
-    REQUIRE(vTrackInk > 0, "the vertical track painted no raised pixel");
-    REQUIRE(hThumbInk > 0, "the horizontal thumb painted no textMuted pixel: the thumb is not drawn where the model says");
-    REQUIRE(vThumbInk > 0, "the vertical thumb painted no textMuted pixel");
-    // The thumb's own body, against the track it sits in: the rest of the track is the
-    // track's ink, so the two fills really are two fills.
-    REQUIRE(
-        hThumbInk < hTrack.width() * hTrack.height(),
-        "the horizontal thumb covered its whole track: the window's fraction is not drawn"
+        hTrack.height() == ctrl::graph::Scaler::kScrollBarThickness
+            && vTrack.width() == ctrl::graph::Scaler::kScrollBarThickness,
+        "precondition: the lanes are not the app's 12px (%d x %d)", hTrack.height(), vTrack.width()
     );
     REQUIRE(
-        vThumbInk < vTrack.width() * vTrack.height(),
-        "the vertical thumb covered its whole track: the window's fraction is not drawn"
+        hTrack.contains(hPill) && vTrack.contains(vPill) && hPill.width() == hRun.width()
+            && vPill.height() == vRun.height(),
+        "precondition: a pill leaves its lane/run (%d,%d %dx%d in %d,%d %dx%d)", hPill.left(), hPill.top(),
+        hPill.width(), hPill.height(), hTrack.left(), hTrack.top(), hTrack.width(), hTrack.height()
+    );
+    // The two tokens must be tellable apart (and from the clear colour), or the
+    // counts below would not know which ink a pixel is.
+    REQUIRE(
+        colors.outline != colors.hover && clearDistance(colors.outline) > kInkMin
+            && clearDistance(colors.hover) > kInkMin,
+        "precondition: the pill tokens are not distinct (outline %s, hover %s)",
+        hex(colors.outline).c_str(), hex(colors.hover).c_str()
     );
 
-    // NO THUMB INK OUTSIDE THE THUMB, and no thumb ink outside its track: the grown
-    // rects absorb the antialiased edge of the rounded fill.
-    const int hStray = toneCount(aWithBars.image, grow(hTrack, 1), colors.textMuted)
-        - toneCount(aWithBars.image, grow(hThumb, 1), colors.textMuted);
-    const int vStray = toneCount(aWithBars.image, grow(vTrack, 1), colors.textMuted)
-        - toneCount(aWithBars.image, grow(vThumb, 1), colors.textMuted);
-    std::printf("MEASURED scroll_bars_stray h=%d v=%d (textMuted pixels of a track that are outside its thumb)\n", hStray, vStray);
-    REQUIRE(hStray == 0, "the horizontal thumb painted %d pixels outside its own rect", hStray);
-    REQUIRE(vStray == 0, "the vertical thumb painted %d pixels outside its own rect", vStray);
-
-    // NOTHING DRAWN WHEN THE BARS ARE ABSENT. Both bar regions in the empty-rects pass
-    // must be byte-identical to the clear colour: the panel draws nothing there, which
-    // is what "the bars are added in the margin, and the margin has nothing else in it"
-    // means at the pixel level.
-    const int absentH = inkCount(aWithoutBars.image, grow(hTrack, 1));
-    const int absentV = inkCount(aWithoutBars.image, grow(vTrack, 1));
+    // FOUR PIXELS THICK, measured across the pill's middle: the horizontal pill's
+    // column at the centre of the run, and the vertical pill's row.
+    const int hPillThickness =
+        toneCount(aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline);
+    const int vPillThickness =
+        toneCount(aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline);
+    const int hPillInk = toneCount(aWithBars.image, hPill, colors.outline);
+    const int vPillInk = toneCount(aWithBars.image, vPill, colors.outline);
     std::printf(
-        "MEASURED scroll_bars_absent hTrack_region_ink=%d vTrack_region_ink=%d (of %d/%d pixels)\n", absentH, absentV,
-        grow(hTrack, 1).width() * grow(hTrack, 1).height(), grow(vTrack, 1).width() * grow(vTrack, 1).height()
+        "MEASURED scroll_bars outline=%s hover=%s lane=%d  hTrack(%d,%d %dx%d) hPill(%d,%d %dx%d) ink=%d thick=%d"
+        "  vTrack(%d,%d %dx%d) vPill(%d,%d %dx%d) ink=%d thick=%d  (expected thickness %d)\n",
+        hex(colors.outline).c_str(), hex(colors.hover).c_str(), ctrl::graph::Scaler::kScrollBarThickness,
+        hTrack.left(), hTrack.top(), hTrack.width(), hTrack.height(), hPill.left(), hPill.top(), hPill.width(),
+        hPill.height(), hPillInk, hPillThickness, vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(),
+        vPill.left(), vPill.top(), vPill.width(), vPill.height(), vPillInk, vPillThickness,
+        ctrl::graph::Scaler::kScrollBarPillThickness
     );
-    REQUIRE(absentH == 0, "the margin held %d inked pixels with no bar published: something else draws there", absentH);
-    REQUIRE(absentV == 0, "the margin held %d inked pixels with no bar published", absentV);
+    REQUIRE(hPillInk > 0, "the horizontal pill painted no outline pixel: the pill is not where the model says");
+    REQUIRE(vPillInk > 0, "the vertical pill painted no outline pixel");
+    REQUIRE(
+        hPillThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "the horizontal pill is %dpx thick, not the app's %d", hPillThickness,
+        ctrl::graph::Scaler::kScrollBarPillThickness
+    );
+    REQUIRE(
+        vPillThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "the vertical pill is %dpx thick, not the app's %d", vPillThickness,
+        ctrl::graph::Scaler::kScrollBarPillThickness
+    );
 
-    // THE HOVERED THUMB LIFTS TO THE FULL TEXT INK. The pointer is put on the
-    // HORIZONTAL track (a third pass differing only in io.MousePos): that bar's thumb
-    // becomes theme::Graph::axisText() while the VERTICAL one stays textMuted.
-    const int hoveredHThumb = toneCount(aHovered.image, hThumb, aTheme.axisText());
-    const int restVThumb = toneCount(aHovered.image, vThumb, colors.textMuted);
+    // THE TROUGH PAINTS NOTHING. Adding the four rects to the model may change pixels
+    // ONLY inside the pills (grown by 1px for the fill's antialiased cap): every other
+    // pixel of the two frames is identical.
+    const QRect hPillReach = grow(hPill, 1);
+    const QRect vPillReach = grow(vPill, 1);
+    int stray = 0;
+    for (int y = 0; y < aWithBars.image.height(); ++y) {
+        for (int x = 0; x < aWithBars.image.width(); ++x) {
+            if (hPillReach.contains(x, y) || vPillReach.contains(x, y))
+                continue;
+            if (pixelAt(aWithBars.image, x, y) != pixelAt(aWithoutBars.image, x, y))
+                ++stray;
+        }
+    }
     std::printf(
-        "MEASURED scroll_bars_hover hovered_h_thumb_axisText_px=%d  rest_v_thumb_textMuted_px=%d\n", hoveredHThumb,
-        restVThumb
+        "MEASURED scroll_bars_stray %d px differ between the published bars and no bars outside the pills"
+        " (of %d)\n",
+        stray, aWithBars.image.width() * aWithBars.image.height()
     );
-    REQUIRE(hoveredHThumb > 0, "a pointer on the bar did not lift its thumb to the text ink");
-    REQUIRE(restVThumb > 0, "the pointer on one bar changed the other bar's thumb");
+    REQUIRE(stray == 0, "the bars painted %d pixels outside their pills: the trough is not invisible", stray);
+
+    // THE HOVERED PILL TAKES theme::Colors::hover, and the other bar does not.
+    const int hoveredHPill = toneCount(
+        aHovered.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.hover
+    );
+    const int restVPill = toneCount(aHovered.image, vPill, colors.outline);
+    std::printf(
+        "MEASURED scroll_bars_hover hovered_h_pill_hover_px_at_centre=%d  rest_v_pill_outline_px=%d\n",
+        hoveredHPill, restVPill
+    );
+    REQUIRE(
+        hoveredHPill == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "a pointer on the bar did not turn the whole pill hover-coloured (%d px thick)", hoveredHPill
+    );
+    REQUIRE(restVPill > 0, "the pointer on one bar changed the other bar's pill");
     return true;
 }
 
@@ -3056,11 +3085,11 @@ bool checkHandles(
 
 // 17: THE PLAYHEAD'S OWN EXTENT. The panel's playhead is the document's frame, drawn
 // as one 1px column in theme::Graph::selected() from the RULER's pill column (under
-// the pill) through the plot's last row: the structural accent is the one mark that
-// crosses the section boundary, exactly as the timeline's playhead crosses its ruler
-// and tracks. Its extent is measured rather than assumed: it must ink the band's rows
-// from playheadLineTop, reach the plot's first row and stop at its last, be exactly
-// one pixel wide and put nothing outside its two sections.
+// the pill) through the PANEL's last row: the timeline's playhead crosses its whole
+// body, and this one crosses the graph's, so the structural accent passes the section
+// boundary and the plot's last row. Its extent is measured rather than assumed: it
+// must ink the band's rows from playheadLineTop and run to the panel's last row, be
+// exactly one pixel wide inside the plot and put nothing outside its sections.
 bool checkPlayhead(
     const Rendered& aRendered, const Rendered& aNoFrame, const gui::GraphPanelModel& aModel,
     const gui::GraphPanelModel& aNoFrameModel, const theme::Graph& aTheme
@@ -3082,14 +3111,15 @@ bool checkPlayhead(
         aModel.playheadLineTop, aModel.rulerBand.top(), aModel.plot.top()
     );
 
-    // THE LINE: every row from the model's playheadLineTop to the plot's bottom, on the
-    // playhead's column, carries theme::Graph::selected(). The rows above it are the
-    // pill's (and the ruler band's) - the line starts under the pill, as TimeCursor's
-    // does.
+    // THE LINE: every row from the model's playheadLineTop to the PANEL's bottom, on
+    // the playhead's column, carries theme::Graph::selected() (except rows the scroll
+    // bars paint over, which this model does not publish - the full model has none).
+    // The rows above it are the pill's (and the ruler band's) - the line starts under
+    // the pill, as TimeCursor's does.
     int missingRows = 0;
     int firstRow = -1;
     int lastRow = -1;
-    for (int y = aModel.playheadLineTop; y <= kPlot.bottom(); ++y) {
+    for (int y = aModel.playheadLineTop; y <= kPanel.bottom(); ++y) {
         const QColor c = pixelAt(aRendered.image, aModel.playheadX, y);
         if (colourDistance(c, aTheme.selected()) > kFillTol) {
             ++missingRows;
@@ -3105,14 +3135,14 @@ bool checkPlayhead(
     std::printf(
         "MEASURED playhead x=%d line=%d..%d rows_without_playhead_colour=%d first=%d last=%d"
         " probe_row=%d left_clear_distance=%d right_clear_distance=%d\n",
-        aModel.playheadX, aModel.playheadLineTop, kPlot.bottom(), missingRows, firstRow, lastRow, widthProbeRow,
+        aModel.playheadX, aModel.playheadLineTop, kPanel.bottom(), missingRows, firstRow, lastRow, widthProbeRow,
         clearDistance(left), clearDistance(right)
     );
     REQUIRE(
         missingRows == 0,
-        "the playhead does not cover the plot's rows from its own top (y=%d) to its last (y=%d): %d rows lack it"
+        "the playhead does not cover the panel's rows from its own top (y=%d) to its last (y=%d): %d rows lack it"
         " (first %d, last %d)",
-        aModel.playheadLineTop, kPlot.bottom(), missingRows, firstRow, lastRow
+        aModel.playheadLineTop, kPanel.bottom(), missingRows, firstRow, lastRow
     );
     REQUIRE(
         clearDistance(left) <= kInkMin && clearDistance(right) <= kInkMin,
@@ -5739,11 +5769,10 @@ int main(int argc, char** argv) {
             palette.keyEdge(), palette.channelColor(kTypeA, 0), palette.channelColor(kTypeB, 1),
             palette.marqueeFill(), palette.marqueeEdge(), palette.menuBody(), palette.menuText(),
             palette.menuHover(), palette.menuHoverText(), palette.menuSeparator(),
-            // The scroll bars' own three tokens (assertion 31): the track's fill and
-            // edge and the thumb's rest ink are read out of the framebuffer by colour,
-            // so each has to be far from the clear colour like every other ink here.
-            theme::Colors::current().raised, theme::Colors::current().textMuted,
-            theme::Colors::current().floaterEdge,
+            // The scroll bars' own two tokens (assertion 31): the pill's rest and
+            // hover inks are read out of the framebuffer by colour, so each has to be
+            // far from the clear colour like every other ink here.
+            theme::Colors::current().outline, theme::Colors::current().hover,
         };
         for (const QColor& color : painted) {
             if (clearDistance(color) <= 60) {
@@ -6215,7 +6244,7 @@ int main(int argc, char** argv) {
     const Rendered barsHoverRendered = renderPass(
         barModel, palette, focus, "scroll_bars_hover", ImVec2(float(kHScrollThumb.center().x()), float(kHScrollTrack.center().y()))
     );
-    if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverRendered, barModel, palette)) {
+    if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverRendered, barModel)) {
         std::printf("FAILED: the scroll bars\n");
         return 1;
     }

@@ -31,6 +31,12 @@
 //     sample() does, and comes out as steps when the channel holds
 //   8 the Scaler's two axes: the frame round trip, the zoom's anchor rule, and
 //     the value window including a degenerate (constant) span
+//  11 the easing param's on-disk form: the handle-link flag round-trips at 0.13
+//     (the version that added it), and a file written before the field existed
+//     still loads and reads FREE (the old file's key never moved its partner)
+//  12 per-component easing: a Move key's x and y play and draw independently,
+//     a 0.14 key round-trips two different components, and a 0.13 key's single
+//     param is broadcast to every component
 //
 // Headless: QApplication for the timeline's QObject/translation internals, no
 // widgets, no GL, no .anie fixture. The one property that cannot be observed
@@ -48,6 +54,8 @@
 #include "cmnd/Stack.h"
 #include "core/BlurKey.h"
 #include "core/DepthKey.h"
+#include "core/Deserializer.h"
+#include "core/FormatVersion.h"
 #include "core/Frame.h"
 #include "core/HsvKey.h"
 #include "core/MoveKey.h"
@@ -55,6 +63,7 @@
 #include "core/OpaKey.h"
 #include "core/RotateKey.h"
 #include "core/ScaleKey.h"
+#include "core/Serializer.h"
 #include "core/TimeInfo.h"
 #include "core/TimeKeyBlender.h"
 #include "core/TimeKeyExpans.h"
@@ -63,7 +72,13 @@
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/graph/graph_Curve.h"
 #include "ctrl/graph/graph_Scaler.h"
+#include "gl/DeviceInfo.h"
 #include "util/Easing.h"
+#include "util/IProgressReporter.h"
+#include "util/StreamReader.h"
+#include "util/StreamWriter.h"
+#include <sstream>
+#include <string>
 
 // core::Project.cpp (pulled in by the core library) references the GUI
 // AudioPlaybackWidget::deserialize only to load a .aemus sidecar, which this
@@ -374,14 +389,14 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k0->data().setRotate(0.0f);
         k1->data().setRotate(100.0f);
         k2->data().setRotate(40.0f);
-        util::Easing::Param& e0 = k0->data().easing();
+        util::Easing::Param& e0 = k0->data().easing(0);
         e0.type = util::Easing::Type_Custom;
         e0.cubicBezier.x1 = 1.0f / 3.0f;
         e0.cubicBezier.y1 = 0.0f;
         e0.cubicBezier.x2 = 2.0f / 3.0f;
         e0.cubicBezier.y2 = 0.5f;
-        k1->data().easing().type = util::Easing::Type_Expo;
-        k1->data().easing().range = util::Easing::Range_Out;
+        k1->data().easing(0).type = util::Easing::Type_Expo;
+        k1->data().easing(0).range = util::Easing::Range_Out;
     }
 
     // Opa: Quad/InOut then Floor, so the second segment is a step-held one.
@@ -395,9 +410,9 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k0->data().setOpacity(0.25f);
         k1->data().setOpacity(1.0f);
         k2->data().setOpacity(0.5f);
-        k0->data().easing().type = util::Easing::Type_Quad;
-        k0->data().easing().range = util::Easing::Range_InOut;
-        k1->data().easing().type = util::Easing::Type_Floor;
+        k0->data().easing(0).type = util::Easing::Type_Quad;
+        k0->data().easing(0).range = util::Easing::Range_InOut;
+        k1->data().easing(0).type = util::Easing::Type_Floor;
     }
 
     // Scale: Back/Out overshoots the segment's value span (the scale setter
@@ -410,10 +425,15 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k0->data().setScale(QVector2D(2.0f, 3.0f));
         k1->data().setScale(QVector2D(6.0f, 0.5f));
         k2->data().setScale(QVector2D(1.0f, 1.0f));
-        k0->data().easing().type = util::Easing::Type_Back;
-        k0->data().easing().range = util::Easing::Range_Out;
-        k1->data().easing().type = util::Easing::Type_Cubic;
-        k1->data().easing().range = util::Easing::Range_In;
+        // Every component carries the curve: each channel is sampled against
+        // playback on its own, and per-component storage means component 1 would
+        // otherwise be Linear.
+        for (int component = 0; component < core::ScaleKey::kComponents; ++component) {
+            k0->data().easing(component).type = util::Easing::Type_Back;
+            k0->data().easing(component).range = util::Easing::Range_Out;
+            k1->data().easing(component).type = util::Easing::Type_Cubic;
+            k1->data().easing(component).range = util::Easing::Range_In;
+        }
     }
 
     // Depth: Linear then Expo/InOut.
@@ -424,8 +444,8 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k0->data().setDepth(5.0f);
         k1->data().setDepth(25.0f);
         k2->data().setDepth(10.0f);
-        k1->data().easing().type = util::Easing::Type_Expo;
-        k1->data().easing().range = util::Easing::Range_InOut;
+        k1->data().easing(0).type = util::Easing::Type_Expo;
+        k1->data().easing(0).range = util::Easing::Range_InOut;
     }
 
     // Blur: Elastic/Out (a rate that overshoots and oscillates, so the three
@@ -443,10 +463,12 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k2->data().setBlurX(6.0f);
         k2->data().setBlurY(6.0f);
         k2->data().setAngleDeg(-20.0f);
-        k0->data().easing().type = util::Easing::Type_Elastic;
-        k0->data().easing().range = util::Easing::Range_Out;
-        k1->data().easing().type = util::Easing::Type_Bounce;
-        k1->data().easing().range = util::Easing::Range_Out;
+        for (int component = 0; component < core::BlurKey::kComponents; ++component) {
+            k0->data().easing(component).type = util::Easing::Type_Elastic;
+            k0->data().easing(component).range = util::Easing::Range_Out;
+            k1->data().easing(component).type = util::Easing::Type_Bounce;
+            k1->data().easing(component).range = util::Easing::Range_Out;
+        }
     }
 
     // HSV: Linear then Round. The values are chosen so the blended channel is
@@ -460,7 +482,9 @@ void buildSamplerNode(core::TestNode& aNode, cmnd::Stack& aStack) {
         k0->data().setHSV(QList<int>{ 0, 0, 0, 0 });
         k1->data().setHSV(QList<int>{ 101, 202, 303, 0 });
         k2->data().setHSV(QList<int>{ 30, 60, 90, 0 });
-        k1->data().easing().type = util::Easing::Type_Round;
+        for (int component = 0; component < core::HSVKey::kComponents; ++component) {
+            k1->data().easing(component).type = util::Easing::Type_Round;
+        }
     }
 
     // Move: three positions, so the first segment has a neighbour key that
@@ -494,16 +518,16 @@ int sectionSamplerMatchesPlayback() {
 
     // The easing that shapes a segment is the FROM key's, and the arrival key's
     // must not leak into it: restyling the second key's easing leaves the first
-    // segment's samples untouched (playback reads k0->data().easing() for the
+    // segment's samples untouched (playback reads k0->data().easing(0) for the
     // whole interval, whatever the arrival key carries).
     {
         const ctrl::graph::Curve rotate(*node.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
         const float before = rotate.sample(core::Frame(5));
         auto* arrival = static_cast<core::RotateKey*>(node.timeLine()->timeKey(core::TimeKeyType_Rotate, 10));
         CHECK(arrival);
-        arrival->data().easing().type = util::Easing::Type_Elastic;
-        arrival->data().easing().range = util::Easing::Range_InOut;
-        arrival->data().easing().weight = 0.25f;
+        arrival->data().easing(0).type = util::Easing::Type_Elastic;
+        arrival->data().easing(0).range = util::Easing::Range_InOut;
+        arrival->data().easing(0).weight = 0.25f;
         CHECK(rotate.sample(core::Frame(5)) == before);
     }
     return 0;
@@ -628,7 +652,7 @@ int sectionEasingIdentities() {
 
     // Linear: the rate at the midpoint is exactly 0.5, so the sample is the
     // exact average of the two keys (0 -> 100 is 50).
-    CHECK(k0->data().easing().type == util::Easing::Type_Linear);
+    CHECK(k0->data().easing(0).type == util::Easing::Type_Linear);
     CHECK(curve.sample(core::Frame(5)) == 50.0f);
     CHECK(curve.sample(core::Frame(0)) == 0.0f);
     CHECK(curve.sample(core::Frame(10)) == 100.0f);
@@ -636,7 +660,7 @@ int sectionEasingIdentities() {
     // Floor: the rate is 0 across the whole interval, so every interior frame
     // holds the lower key's value; the next key's own frame is that key's value
     // (the gatherer's hasSameFrame path, not the easing).
-    k0->data().easing().type = util::Easing::Type_Floor;
+    k0->data().easing(0).type = util::Easing::Type_Floor;
     for (int frame = 1; frame <= 9; ++frame) {
         CHECK(curve.sample(core::Frame(frame)) == 0.0f);
     }
@@ -650,7 +674,7 @@ int sectionEasingIdentities() {
     // (x(s)=s), so the rate at a frame is y(s) for the same s. For y1=0, y2=0.5
     // the curve is y(s) = 1.5s^2 - 0.5s^3: 0.0859375 at s=0.25 and 0.3125 at
     // s=0.5. Those are points ON the curve, not a second implementation of it.
-    util::Easing::Param& easing = k0->data().easing();
+    util::Easing::Param& easing = k0->data().easing(0);
     easing.type = util::Easing::Type_Custom;
     easing.cubicBezier.x1 = 1.0f / 3.0f;
     easing.cubicBezier.y1 = 0.0f;
@@ -677,10 +701,10 @@ int sectionEasingIdentities() {
     CHECK(segment.fromValue == 0.0f && segment.toValue == 100.0f);
     CHECK(curve.isCustom(segment));
     CHECK(segment.easing.type == util::Easing::Type_Custom);
-    CHECK(ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Rotate) == &k0->data().easing());
+    CHECK(ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Rotate, 0) == &k0->data().easing(0));
     CHECK(
-        ctrl::graph::Curve::easingOf(static_cast<const core::RotateKey&>(*k0), core::TimeKeyType_Rotate) ==
-        &k0->data().easing()
+        ctrl::graph::Curve::easingOf(static_cast<const core::RotateKey&>(*k0), core::TimeKeyType_Rotate, 0) ==
+        &k0->data().easing(0)
     );
     return 0;
 }
@@ -811,7 +835,7 @@ int sectionEasingHandles() {
     k0->data().setOpacity(0.0f);
     k1->data().setOpacity(1.0f);
 
-    util::Easing::Param& easing = k0->data().easing();
+    util::Easing::Param& easing = k0->data().easing(0);
     easing.type = util::Easing::Type_Custom;
     easing.cubicBezier.x1 = 0.2f;
     easing.cubicBezier.y1 = -0.4f;
@@ -855,14 +879,14 @@ int sectionEasingHandles() {
     CHECK(r0.y() == -0.75);
 
     // A segment that is not Custom exposes no handles to draw.
-    k0->data().easing().type = util::Easing::Type_Linear;
+    k0->data().easing(0).type = util::Easing::Type_Linear;
     CHECK(!curve.isCustom(curve.segment(0)));
 
     // The drag writes the document's own param (Curve::easingOf is that bridge),
     // so moving a handle moves the curve the panel draws. Going back to Custom
     // first, because that is the only type that has handles.
-    util::Easing::Param* live = ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Opa);
-    CHECK(live == &k0->data().easing());
+    util::Easing::Param* live = ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Opa, 0);
+    CHECK(live == &k0->data().easing(0));
     live->type = util::Easing::Type_Custom;
     ctrl::graph::Curve::setHandle(*live, 0, QPointF(0.25, 0.0));
     ctrl::graph::Curve::setHandle(*live, 1, QPointF(0.75, 0.5));
@@ -883,8 +907,8 @@ int sectionPolyline() {
     auto* k1 = pushKey<core::RotateKey>(node, stack, core::TimeKeyType_Rotate, 10);
     k0->data().setRotate(0.0f);
     k1->data().setRotate(100.0f);
-    k0->data().easing().type = util::Easing::Type_Cubic;
-    k0->data().easing().range = util::Easing::Range_InOut;
+    k0->data().easing(0).type = util::Easing::Type_Cubic;
+    k0->data().easing(0).range = util::Easing::Range_InOut;
 
     const ctrl::graph::Curve curve(*node.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
     const core::Frame from(0);
@@ -947,7 +971,7 @@ int sectionPolyline() {
     // hold. The keys here sit on the range's own ends (0 and 10 of a 0..10 range, span 11), so the
     // wrapped segment is the last key's easing over the one frame that is left of the period.
     {
-        k0->data().easing().type = util::Easing::Type_Linear; // linear, so the wrapped values are readable
+        k0->data().easing(0).type = util::Easing::Type_Linear; // linear, so the wrapped values are readable
         // A range ONE PERIOD wide with the keys inside it (0..20, keys at 0 and 10): past the last key
         // the wrap runs to the first key one span ahead, and past the RANGE the frame clamps, so the
         // curve is flat there rather than extrapolating.
@@ -986,7 +1010,7 @@ int sectionPolyline() {
             if (point.x() > 20.0 + 1e-6)
                 CHECK(nearly(static_cast<float>(point.y()), atRangeEnd));
         }
-        k0->data().easing().type = util::Easing::Type_Cubic;
+        k0->data().easing(0).type = util::Easing::Type_Cubic;
     }
 
     // The value HOLDS outside the keys (what sample() reports there), so the polyline reaches the
@@ -1014,7 +1038,7 @@ int sectionPolyline() {
     // carries the lower key's value and the window end carries the arrival
     // key's. (The image channel is the other step-held one and cannot be built
     // headless -- section 5.)
-    k0->data().easing().type = util::Easing::Type_Floor;
+    k0->data().easing(0).type = util::Easing::Type_Floor;
     QVector<QPointF> steps;
     curve.buildPolyline(from, to, 10, steps);
     CHECK(steps.size() >= 2);
@@ -1055,8 +1079,8 @@ int sectionScaler() {
     // written as the rule rather than the number the font happens to produce, so
     // this pins the inset arithmetic and not a magic 46. The RIGHT and BOTTOM insets
     // are one reserve more than the left and top: those two edges carry the panel's
-    // SCROLL BARS (2px of gap + an 8px bar), which is why the plot's top-left corner
-    // is the only one that does not move for them.
+    // SCROLL BARS (2px of gap + the application's 12px lane), which is why the plot's
+    // top-left corner is the only one that does not move for them.
     CHECK(scaler.axisLabelWidth() >= Scaler::kAxisLabelWidth); // never below the floor
     CHECK(scaler.axisLabelWidth() <= Scaler::kMaxAxisLabelWidth); // never past the ceiling
     // The 22px band is the timeline's own kHeaderHeight (GraphPanelModel.cpp's
@@ -1073,6 +1097,12 @@ int sectionScaler() {
     // ...and the two bars' own strips fit in what the plot gave up: the reserve is the
     // gap plus the bar, and the tracks sit between the plot's edge and the panel's.
     CHECK(Scaler::kScrollBarReserve == Scaler::kScrollBarGap + Scaler::kScrollBarThickness);
+    // The dimensions are the application's own scroll bar (AppStyle.cpp's
+    // CC_ScrollBar: a 12px invisible lane and a 4px, radius-2 pill), not a look of
+    // this panel's invention.
+    CHECK(Scaler::kScrollBarThickness == 12);
+    CHECK(Scaler::kScrollBarPillThickness == 4);
+    CHECK(Scaler::kScrollBarPillRadius == 2);
     {
         const Scaler::ScrollBars bars = scaler.scrollBars(1.0, 60.0, -10.0f, 10.0f);
         CHECK(!bars.isEmpty());
@@ -1125,9 +1155,11 @@ int sectionScaler() {
     }
     // The section boundary itself: the band's 22 rows sit immediately above the
     // plot, and the plot's first row is the graph's - the exact arithmetic a pixel
-    // capture must show (band.top() == kMargin, band.bottom() + 1 == plot.top()).
+    // capture must show (band.bottom() + 1 == plot.top()). The band is as wide as the
+    // PANEL (the model publishes it that way: the shared mapping puts frames on the
+    // timeline's columns), which is why this rect is not derived from the plot.
     const QRect sectionBand(
-        scaler.plotRect().left(), Scaler::kMargin, scaler.plotRect().width(), Scaler::kRulerBandHeight
+        scaler.rect().left(), Scaler::kMargin, scaler.rect().width(), Scaler::kRulerBandHeight
     );
     CHECK(sectionBand.bottom() + 1 == scaler.plotRect().top());
     CHECK(scaler.plotRect().top() == Scaler::kMargin + Scaler::kRulerBandHeight);
@@ -1213,18 +1245,55 @@ int sectionScaler() {
     CHECK(scaler.updateValueZoom(2.0f, anchorY));
     CHECK(nearly(scaler.valueAt(anchorY), anchorValue, 1e-3f));
     CHECK(nearly(scaler.valueMax() - scaler.valueMin(), 50.0f, 1e-2f));
+
+    // THE SHARED WINDOW IS THE TIMELINE'S MAPPING, pixel for pixel. The gui pushes
+    // TimeLineWidget::visibleFrameWindow - the frames at the timeline viewport's two
+    // edges, fractional - and the panel covers the same columns, so
+    //
+    //   graphPixelX(frame) == panel.left() + (frame - lo) * panel.width() / (hi - lo)
+    //
+    // must hold for the WHOLE window, with panel.left() (not the plot's left, and no
+    // margin) as the origin. The right-hand side is a synthetic timeline: it is the
+    // expression the timeline's own view transform evaluates, written here from the
+    // window the gui hands over rather than from the scaler. If the scaler ever mapped
+    // across the plot or inset the window again, the first/last-frame assertions below
+    // would move by the label column's width.
+    {
+        const QRect panel = scaler.rect();
+        const double lo = 12.0;
+        const double hi = 88.0;
+        CHECK(scaler.applyFrameWindow(lo, hi));
+        const double timelinePpf = static_cast<double>(panel.width()) / (hi - lo);
+        const auto timelinePixelX = [&panel, lo, timelinePpf](double aFrame) {
+            return static_cast<double>(panel.left()) + (aFrame - lo) * timelinePpf;
+        };
+        for (const double frame : { lo, lo + 0.5, (lo + hi) / 2.0, hi - 0.25, hi })
+            CHECK(std::fabs(scaler.pixelXOfFrame(frame) - timelinePixelX(frame)) <= 1e-9);
+        CHECK(std::fabs(scaler.framePpf() - timelinePpf) <= 1e-12);
+        // Both window edges are the timeline's own columns: the panel's first and one
+        // past its last. pixelX rounds, and these are whole pixels by construction.
+        CHECK(scaler.pixelX(core::Frame(int(lo))) == panel.left());
+        CHECK(scaler.pixelX(core::Frame(int(hi))) == panel.left() + panel.width());
+        // ...and NOT the plot's: the value column and the bar reserve live inside the
+        // panel's columns now, and they must not shift the mapping.
+        CHECK(scaler.pixelX(core::Frame(int(lo))) != plot.left());
+        // Leaving the shared axis only drops the pushed RATE: the graph's own axis
+        // writes its own origin on its next fit, zoom or pan (clearFrameWindow's
+        // contract), so the rate - not the stale origin - is what this pins.
+        scaler.clearFrameWindow();
+        CHECK(std::fabs(scaler.framePpf() - static_cast<double>(scaler.frameScale().pixelsPerFrame())) <= 1e-12);
+    }
     return 0;
 }
-
 // ---------------------------------------------------------------------------
 // 11. Type_Auto: the derived curve is the played curve.
 //
 // An Auto easing keeps no controls of its own - core::TimeKeyBlender derives
 // them from the keys AROUND the segment (core/AutoEasing.h) - so two things can
-// go wrong and both are pinned here: the derivation reads the component that
-// moves MOST across the segment, and the graph draws what playback plays. The
-// oracle comparison is the one section 2 runs, over channels whose keys are all
-// Auto.
+// go wrong and both are pinned here: the derivation reads the VALUES OF THE
+// COMPONENT BEING EVALUATED (an Auto Move x curve reads x, its y curve reads y),
+// and the graph draws what playback plays. The oracle comparison is the one
+// section 2 runs, over channels whose keys are all Auto.
 //
 // Every expected number below is worked out by hand from the derivation (the
 // segment's neighbours, the central difference at an inner key, 1.5 - 0.5*m at
@@ -1251,8 +1320,8 @@ int sectionAutoEasing() {
         k0->data().setRotate(0.0f);
         k1->data().setRotate(100.0f);
         k2->data().setRotate(40.0f);
-        k0->data().easing().type = util::Easing::Type_Auto;
-        k1->data().easing().type = util::Easing::Type_Auto;
+        k0->data().easing(0).type = util::Easing::Type_Auto;
+        k1->data().easing(0).type = util::Easing::Type_Auto;
     }
 
     const ctrl::graph::Curve rotate(*node.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
@@ -1327,7 +1396,7 @@ int sectionAutoEasing() {
             CHECK(linear.segmentCount() == 1);
             CHECK(linear.ghostHandles(*linear.segment(0).from).isEmpty()); // Linear stores nothing to ghost
 
-            p0->data().easing().type = util::Easing::Type_Custom;
+            p0->data().easing(0).type = util::Easing::Type_Custom;
             const ctrl::graph::Curve custom(*plain.timeLine(), ctrl::graph::Channel(TimeKeyType_Rotate, 0));
             CHECK(custom.ghostHandles(*custom.segment(0).from).isEmpty()); // Custom's pair is STORED
         }
@@ -1345,10 +1414,11 @@ int sectionAutoEasing() {
         CHECK(at - after < 18.0f);
     }
 
-    // The value basis is the component that moves MOST across the segment. Scale
-    // with a still X and a moving Y must therefore be shaped by Y - a flat X
-    // would carry no shape at all and leave the segment Linear, which lands on
-    // exactly 2.5 at half way instead of 2.6875.
+    // The value basis is the COMPONENT'S OWN values. Each channel now carries its
+    // own easing, so Scale's y channel with an Auto param is shaped by y (a flat
+    // x's Auto param, by contrast, has no change to derive from and stays
+    // Linear). Both components are set Auto here so the comparison is about the
+    // per-component basis, not about one shared curve.
     {
         core::TestNode scaleNode;
         cmnd::Stack scaleStack;
@@ -1358,8 +1428,10 @@ int sectionAutoEasing() {
         s0->data().setScale(QVector2D(1.0f, 1.0f));
         s1->data().setScale(QVector2D(1.0f, 3.0f));
         s2->data().setScale(QVector2D(1.0f, 2.0f));
-        s0->data().easing().type = util::Easing::Type_Auto;
-        s1->data().easing().type = util::Easing::Type_Auto;
+        for (int component = 0; component < core::ScaleKey::kComponents; ++component) {
+            s0->data().easing(component).type = util::Easing::Type_Auto;
+            s1->data().easing(component).type = util::Easing::Type_Auto;
+        }
 
         const ctrl::graph::Curve scaleY(*scaleNode.timeLine(), ctrl::graph::Channel(TimeKeyType_Scale, 1));
         const ctrl::graph::Curve scaleX(*scaleNode.timeLine(), ctrl::graph::Channel(TimeKeyType_Scale, 0));
@@ -1392,7 +1464,7 @@ int sectionAutoEasing() {
         auto* b = pushKey<core::OpaKey>(solo, soloStack, TimeKeyType_Opa, 8);
         a->data().setOpacity(0.2f);
         b->data().setOpacity(1.0f);
-        a->data().easing().type = util::Easing::Type_Auto;
+        a->data().easing(0).type = util::Easing::Type_Auto;
         const ctrl::graph::Curve line(*solo.timeLine(), ctrl::graph::Channel(TimeKeyType_Opa, 0));
         for (int frame = 0; frame <= 8; ++frame) {
             const float t = float(frame) / 8.0f;
@@ -1440,6 +1512,262 @@ int sectionAutoEasing() {
     return 0;
 }
 
+// ---- 11 THE EASING PARAM'S ON-DISK FORM ----
+//
+// A key's handle LINK state (`util::Easing::Param::aligned`) is document state
+// and travels with the param. The one write and the one read are
+// core::Serializer::write(Param) / core::Deserializer::read(Param), so this
+// section drives exactly those:
+//
+//   * a round trip at the CURRENT format version keeps the flag AND every other
+//     field bit-identical, for both flag values;
+//   * a file written BEFORE the field existed (the same bytes with the trailing
+//     flag removed, read at the previous version) still loads, and its key reads
+//     FREE - which is what such a key actually did: a handle drag never moved
+//     its partner before the field existed.
+//
+// The old-file bytes are the new write minus its LAST four bytes, which is the
+// appended field itself; nothing else in the layout moved.
+class ParamSerializationReporter : public util::IProgressReporter {
+public:
+    void setSection(const QString&) override {}
+    void setMaximum(int) override {}
+    void setProgress(int) override {}
+    bool wasCanceled() const override { return false; }
+};
+
+bool readParam(const std::string& aBytes, const QVersionNumber& aVersion, util::Easing::Param& aOut) {
+    std::istringstream stream(aBytes, std::ios::in | std::ios::binary);
+    util::LEStreamReader reader(stream);
+    core::Deserializer::IDSolverType solver;
+    gl::DeviceInfo device;
+    device.vender = "test";
+    device.renderer = "test";
+    device.version = "4";
+    device.maxTextureSize = 16384;
+    device.maxRenderBufferSize = 16384;
+    ParamSerializationReporter reporter;
+    core::Deserializer deserializer(
+        reader, solver, aBytes.size(), aVersion, device, reporter, 0
+    );
+    return deserializer.read(aOut, false) && deserializer.checkStream();
+}
+
+int sectionEasingParamSerialization() {
+    const auto param = [](bool aAligned) {
+        util::Easing::Param p;
+        p.type = util::Easing::Type_Custom;
+        p.range = util::Easing::Range_In;
+        p.weight = 0.5f;
+        p.cubicBezier.x1 = 0.4f;
+        p.cubicBezier.y1 = 0.1f;
+        p.cubicBezier.x2 = 0.8f;
+        p.cubicBezier.y2 = 0.9f;
+        p.aligned = aAligned;
+        return p;
+    };
+    const auto writeParam = [](const util::Easing::Param& aParam) {
+        std::ostringstream stream(std::ios::out | std::ios::binary);
+        util::StreamWriter writer(stream);
+        core::Serializer serializer(writer);
+        serializer.write(aParam); // an ostringstream cannot fail
+        return stream.str();
+    };
+
+    // The field is APPENDED: dropping these four bytes gives the old layout.
+    constexpr std::size_t kFlagBytes = sizeof(uint32);
+
+    // (1) ROUND TRIP AT 0.13, the version that added the flag, both values.
+    for (const bool linked : { true, false }) {
+        const util::Easing::Param written = param(linked);
+        const std::string bytes = writeParam(written);
+        util::Easing::Param readBack;
+        readBack.aligned = !linked; // a stale in-memory value must be overwritten
+        const bool okRead = readParam(bytes, QVersionNumber(0, 13), readBack);
+        std::printf("[11] param round trip linked=%d: bytes=%zu read=%d equal=%d aligned=%d type=%d range=%d\n",
+                    int(linked), bytes.size(), int(okRead), int(readBack == written), int(readBack.aligned),
+                    int(readBack.type), int(readBack.range));
+        CHECK(okRead);
+        CHECK(readBack == written);
+        CHECK(readBack.aligned == linked);
+        CHECK(readBack.cubicBezier == written.cubicBezier);
+    }
+
+    // (2) OLD FILE: the version before the field. The trailing flag is gone, so
+    // the read must not consume anything past the bezier, and the key must come
+    // out FREE (a linked key is not what the file described).
+    {
+        const util::Easing::Param written = param(true);
+        const std::string current = writeParam(written);
+        CHECK(current.size() > kFlagBytes);
+        const std::string oldFile = current.substr(0, current.size() - kFlagBytes);
+
+        util::Easing::Param oldRead;
+        oldRead.aligned = true; // must be overwritten to false by the gate
+        CHECK(readParam(oldFile, QVersionNumber(0, 12), oldRead));
+        CHECK(!oldRead.aligned);
+        CHECK(oldRead.type == written.type);
+        CHECK(oldRead.range == written.range);
+        CHECK(oldRead.weight == written.weight);
+        CHECK(oldRead.cubicBezier == written.cubicBezier);
+
+        // The other direction of the gate: the SAME old bytes read at the new
+        // version are a TRUNCATED param, and the bool read fails (the stream is
+        // empty) - proving the field really is what the bump added, rather than
+        // the reader silently accepting either layout.
+        util::Easing::Param truncated;
+        CHECK(!readParam(oldFile, QVersionNumber(0, 13), truncated));
+    }
+
+    std::printf(
+        "[S] easing param: the handle-link flag round-trips at 0.13 (both values); the same bytes "
+        "without its trailing field load at 0.12 as FREE with every other field intact, and reading "
+        "them at 0.13 fails as truncated\n"
+    );
+    return 0;
+}
+
+// ---- 12 PER-COMPONENT EASING: STORAGE, PLAYBACK AND THE FORMAT GATE ----
+//
+// A Move key now stores one util::Easing::Param per component. This section
+// proves the three things that can go wrong independently:
+//
+//   * the two components are INDEPENDENT for playback - editing x's curve alone
+//     leaves y's values on their own curve (core::TimeKeyBlender reads each),
+//   * a 0.14 file round-trips two DIFFERENT components (the writer emits the
+//     whole array),
+//   * a 0.13 file wrote ONE param, and the reader BROADCASTS it to every
+//     component - lossless, and the following fields still land where they
+//     belong (which is what a wrong read would break).
+//
+// The old-format bytes are written by hand here: one param, then the MoveKey's
+// own spline/pos/centroid. That is exactly the layout every key had at 0.13.
+bool readMoveKey(const std::string& aBytes, const QVersionNumber& aVersion, core::MoveKey& aOut) {
+    std::istringstream stream(aBytes, std::ios::in | std::ios::binary);
+    util::LEStreamReader reader(stream);
+    core::Deserializer::IDSolverType solver;
+    gl::DeviceInfo device;
+    device.vender = "test";
+    device.renderer = "test";
+    device.version = "4";
+    device.maxTextureSize = 16384;
+    device.maxRenderBufferSize = 16384;
+    ParamSerializationReporter reporter;
+    core::Deserializer deserializer(reader, solver, aBytes.size(), aVersion, device, reporter, 0);
+    return aOut.deserialize(deserializer) && deserializer.checkStream();
+}
+
+int sectionPerComponentEasing() {
+    using core::TimeKeyType;
+    using ctrl::graph::Channel;
+
+    util::Easing::Param xCurve;
+    xCurve.type = util::Easing::Type_Quad;
+    xCurve.range = util::Easing::Range_In;
+    util::Easing::Param yCurve;
+    yCurve.type = util::Easing::Type_Linear;
+    yCurve.range = util::Easing::Range_InOut;
+    CHECK(xCurve != yCurve);
+
+    // (1) INDEPENDENT PLAYBACK. Two Move keys along the diagonal (a linear
+    // spline path, so a rate maps straight to a coordinate), x on Quad/In and y
+    // on Linear: at the midpoint x must be eased to 0.25 and y must stay 0.5.
+    {
+        core::TestNode node;
+        cmnd::Stack stack;
+        auto* k0 = pushKey<core::MoveKey>(node, stack, core::TimeKeyType_Move, 0);
+        auto* k1 = pushKey<core::MoveKey>(node, stack, core::TimeKeyType_Move, 10);
+        k0->setPos(QVector2D(0.0f, 0.0f));
+        k1->setPos(QVector2D(100.0f, 100.0f));
+        // Both components start on the same curve, then X ALONE is edited
+        // through the graph's own write bridge (Curve::easingOf names the
+        // component, so it cannot reach Y).
+        k0->data().easing(0) = yCurve;
+        k0->data().easing(1) = yCurve;
+        util::Easing::Param* liveX = ctrl::graph::Curve::easingOf(*k0, core::TimeKeyType_Move, 0);
+        CHECK(liveX == &k0->data().easing(0));
+        *liveX = xCurve;
+        CHECK(k0->data().easing(0) == xCurve);
+        CHECK(k0->data().easing(1) == yCurve); // untouched by the X edit
+        CHECK(k0->data().easing(0) != k0->data().easing(1));
+
+        const BlenderOracle oracle(node, core::Frame(5));
+        const float x = oracle.value(Channel(core::TimeKeyType_Move, 0));
+        const float y = oracle.value(Channel(core::TimeKeyType_Move, 1));
+        std::printf("[12] playback at frame 5: Move x %.4f (Quad/In), Move y %.4f (Linear)\n", x, y);
+        CHECK(nearly(x, 25.0f, 0.01f));
+        CHECK(nearly(y, 50.0f, 0.01f));
+        CHECK(!nearly(x, y, 1.0f));
+
+        // The graph draws the same split (its sampler reads the channel's own
+        // component), so the two views cannot disagree about what plays.
+        const ctrl::graph::Curve curveX(*node.timeLine(), Channel(core::TimeKeyType_Move, 0));
+        const ctrl::graph::Curve curveY(*node.timeLine(), Channel(core::TimeKeyType_Move, 1));
+        CHECK(nearly(curveX.sample(core::Frame(5)), x, 0.01f));
+        CHECK(nearly(curveY.sample(core::Frame(5)), y, 0.01f));
+        CHECK(curveX.segment(0).easing == xCurve);
+        CHECK(curveY.segment(0).easing == yCurve);
+    }
+
+    // (2) 0.14 ROUND TRIP: two different components survive a write and a read.
+    {
+        core::MoveKey written;
+        written.data().easing(0) = xCurve;
+        written.data().easing(1) = yCurve;
+        written.data().setSpline(core::MoveKey::SplineType_Linear);
+        written.setPos(QVector2D(3.0f, -4.5f));
+        written.setCentroid(QVector2D(1.5f, 2.5f));
+
+        std::ostringstream stream(std::ios::out | std::ios::binary);
+        util::StreamWriter writer(stream);
+        core::Serializer serializer(writer);
+        CHECK(written.serialize(serializer));
+        const std::string bytes = stream.str();
+
+        core::MoveKey readBack;
+        CHECK(readMoveKey(bytes, QVersionNumber(0, AE_PROJECT_FORMAT_MINOR_VERSION), readBack));
+        CHECK(readBack.data().easing(0) == xCurve);
+        CHECK(readBack.data().easing(1) == yCurve);
+        CHECK(readBack.data().easing(0) != readBack.data().easing(1));
+        CHECK(readBack.pos() == written.pos());
+        CHECK(readBack.centroid() == written.centroid());
+        CHECK(readBack.data().spline() == written.data().spline());
+        std::printf("[12] 0.14 Move round trip: components differ and %zu bytes survive\n", bytes.size());
+    }
+
+    // (3) 0.13 GATE: ONE param on disk, broadcast to both components, and the
+    // fields after it still read correctly.
+    {
+        std::ostringstream stream(std::ios::out | std::ios::binary);
+        util::StreamWriter writer(stream);
+        core::Serializer serializer(writer);
+        serializer.write(xCurve); // the single param a key wrote before 0.14
+        serializer.write(static_cast<int>(core::MoveKey::SplineType_CatmullRom));
+        serializer.write(QVector2D(7.0f, -8.0f));
+        serializer.write(QVector2D(0.25f, 0.75f));
+        const std::string oldBytes = stream.str();
+
+        core::MoveKey oldKey;
+        oldKey.data().easing(1) = yCurve; // a stale in-memory value the gate must overwrite
+        CHECK(readMoveKey(oldBytes, QVersionNumber(0, 13), oldKey));
+        CHECK(oldKey.data().easing(0) == xCurve);
+        CHECK(oldKey.data().easing(1) == xCurve); // broadcast, not left stale
+        CHECK(oldKey.data().easing(0) == oldKey.data().easing(1));
+        CHECK(oldKey.data().spline() == core::MoveKey::SplineType_CatmullRom);
+        CHECK(oldKey.pos() == QVector2D(7.0f, -8.0f));
+        CHECK(oldKey.centroid() == QVector2D(0.25f, 0.75f));
+
+        // The other direction of the gate: the same one-param bytes read at 0.14
+        // consume the spline word as a SECOND param, so the key is not silently
+        // accepted as if the layouts were interchangeable.
+        core::MoveKey mismatched;
+        CHECK(!readMoveKey(oldBytes, QVersionNumber(0, AE_PROJECT_FORMAT_MINOR_VERSION), mismatched));
+        std::printf("[12] 0.13 key: one param broadcast to both components; old bytes rejected at 0.14\n");
+    }
+
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1468,6 +1796,10 @@ int main(int argc, char** argv) {
     if (sectionScaler())
         return 1;
     if (sectionAutoEasing())
+        return 1;
+    if (sectionEasingParamSerialization())
+        return 1;
+    if (sectionPerComponentEasing())
         return 1;
 
 

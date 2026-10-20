@@ -163,9 +163,10 @@ void GraphPanelWidget::paintGL() {
     ctrl::GraphEditor* editor = graphEditor();
 
     // THE EDITOR'S GEOMETRY, PINNED TO THIS WIDGET. The frame window the panel shares
-    // with the timeline is mapped in PIXELS - pixels per frame, computed from the plot's
-    // width - so the mapping left behind by the viewport's frame (or by a previous size
-    // of this one) must not be what the panel is built from. This is the call
+    // with the timeline is mapped in PIXELS - pixels per frame, computed from the
+    // PANEL's width (the timeline's own columns, see Scaler::applyFrameWindow) - so the
+    // mapping left behind by the viewport's frame (or by a previous size of this one)
+    // must not be what the panel is built from. This is the call
     // MainDisplayWidget::paintEvent makes, for exactly this reason, and it is idempotent
     // when nothing changed. The WINDOW itself and the SELECTION are the timeline's, wired
     // once by MainDisplayWidget::syncGraphPanelSharedState: nothing here sets them.

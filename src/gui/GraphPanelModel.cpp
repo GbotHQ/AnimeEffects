@@ -72,8 +72,10 @@ constexpr int kMaxSamplesPerSegment = 256;
 
 // The frame axis: THE TIMELINE'S RULER (see THE AXES and LABELS in the header).
 //
-// The frame window is the plot's edges through the frame mapping: a ladder can be far
-// denser than the plot is wide, and only what is visible is published. Ticks are
+// The frame window is the RULER BAND's edges through the frame mapping (the band spans
+// the panel, and the shared mapping puts frames on the timeline's own columns): a
+// ladder can be far denser than the ruler is wide, and only what is visible is
+// published. Ticks are
 // positions, never spans - there is no grid. Each tick's TIER travels beside its
 // position in frameTickLevel (same order, same length): the ladder that decided the
 // tick also said which tier it is, so the classification is read here rather than
@@ -109,6 +111,13 @@ void buildFrameAxis(
             aModel.playheadLineTop = plot.top();
         return;
     }
+    // THE RULER'S OWN COLUMNS. The band spans the PANEL, and the frame mapping is the
+    // timeline's (graph_Scaler.h: THE SHARED WINDOW'S MAPPING), so the axis is
+    // enumerated over the band - not over the plot, whose left columns are the value
+    // column's and whose right ones belong to the scroll bar's reserve. A tick or a
+    // number outside the band would be ink on nothing; one the plot alone allowed
+    // would be missing from the ruler's own width.
+    const QRect& band = aModel.rulerBand;
 
     // THE PLAYHEAD PILL, before the labels, because its width is what suppresses
     // them: the model writes the frame with the SAME formatter the ruler numbers use
@@ -142,8 +151,8 @@ void buildFrameAxis(
     // is aligned to the stride, which is what the levels are tested against.
     const double framePpf = aScale.framePpf();
     const int stride = aScale.frameScale().tickStride(framePpf);
-    const int firstFrame = aScale.frameAt(plot.left()).get();
-    const int lastFrame = aScale.frameAt(plot.right()).get();
+    const int firstFrame = aScale.frameAt(band.left()).get();
+    const int lastFrame = aScale.frameAt(band.right()).get();
 
     struct Tick {
         int frame;
@@ -161,9 +170,9 @@ void buildFrameAxis(
         if (attribute.level == ctrl::time::Scaler::TickLevel::None)
             continue; // the ladder says this frame sits too close to its neighbours to mark
         const int x = aScale.pixelX(core::Frame(frame));
-        // pixelX rounds, so a frame whose mapping falls a pixel outside the plot
-        // would otherwise be ticked in the margin.
-        if (x < plot.left() || plot.right() < x)
+        // pixelX rounds, so a frame whose mapping falls a pixel outside the band
+        // would otherwise be ticked in the panel's margin.
+        if (x < band.left() || band.right() < x)
             continue;
         if (!ticks.isEmpty() && ticks.last().x == x)
             continue;
@@ -185,13 +194,13 @@ void buildFrameAxis(
     const auto levelAt = [&aScale, framePpf](int aFrame) {
         return int(aScale.frameScale().attributeAt(aFrame, framePpf).level);
     };
-    const auto inPlot = [&plot](int aX) { return plot.left() <= aX && aX <= plot.right(); };
+    const auto inBand = [&band](int aX) { return band.left() <= aX && aX <= band.right(); };
     const int firstBoundary = aFrameRange.min();
     const int lastBoundary = aFrameRange.max();
     const int firstX = hasRange ? aScale.pixelX(core::Frame(firstBoundary)) : -1;
     const int lastX = hasRange ? aScale.pixelX(core::Frame(lastBoundary)) : -1;
-    const bool firstInView = hasRange && inPlot(firstX);
-    const bool lastInView = hasRange && inPlot(lastX);
+    const bool firstInView = hasRange && inBand(firstX);
+    const bool lastInView = hasRange && inBand(lastX);
     const bool firstActive = firstInView && levelAt(firstBoundary) != int(ctrl::time::Scaler::TickLevel::Major);
     const bool lastActive = lastInView && levelAt(lastBoundary) != int(ctrl::time::Scaler::TickLevel::Major);
     const QString firstText = firstInView ? numberText(firstBoundary) : QString();
@@ -256,10 +265,10 @@ void buildFrameAxis(
     }
 
     // The box every label is drawn in: the reserve centred on the tick and nudged
-    // inside the plot, so a number at the window's edge stays readable instead of
+    // inside the band, so a number at the ruler's edge stays readable instead of
     // being cut off. The model never publishes a box it cannot clamp.
-    const auto boxFor = [&plot, labelTop](int aCentre, int aWidth) {
-        const int left = std::clamp(aCentre - (aWidth >> 1), plot.left(), plot.right() - aWidth + 1);
+    const auto boxFor = [&band, labelTop](int aCentre, int aWidth) {
+        const int left = std::clamp(aCentre - (aWidth >> 1), band.left(), band.right() - aWidth + 1);
         return QRect(left, labelTop, aWidth, kNumberHeight);
     };
     const auto collides = [](const QRect& aBox, const QRect& aOther) {
@@ -277,17 +286,17 @@ void buildFrameAxis(
             // The timeline's merged label is inside the active range only when BOTH
             // of its frames are (TimeRuler::renderHeader's mergedAlpha).
             const bool inRange = aActiveRange.contains(firstBoundary) && aActiveRange.contains(lastBoundary);
-            if (width <= plot.width() && !underPill(mergedCentre))
+            if (width <= band.width() && !underPill(mergedCentre))
                 boundaryMerged = {
                     boxFor(mergedCentre, width), mergedText, firstBoundary, lastBoundary, inRange
                 };
         } else {
-            if (firstActive && !underPill(firstX) && firstWidth <= plot.width())
+            if (firstActive && !underPill(firstX) && firstWidth <= band.width())
                 boundaryFirst = {
                     boxFor(firstX, firstWidth), firstText, firstBoundary, -1,
                     aActiveRange.contains(firstBoundary)
                 };
-            if (lastActive && !underPill(lastX) && lastWidth <= plot.width())
+            if (lastActive && !underPill(lastX) && lastWidth <= band.width())
                 boundaryLast = {
                     boxFor(lastX, lastWidth), lastText, lastBoundary, -1,
                     aActiveRange.contains(lastBoundary)
@@ -298,7 +307,7 @@ void buildFrameAxis(
     // THE LABELS, in one list: the forced boundary ones first (see below), then the
     // ladder's numbers - every showNumber tier - each yielding to a boundary slot, to
     // the pill's column, and to a label already accepted (on the CLAMPED boxes, so the
-    // margin rule holds whatever the plot's edges did to a box).
+    // margin rule holds whatever the band's edges did to a box).
     QVector<gui::PanelLabel> labels;
     const auto accepted = [&labels, &collides](const QRect& aBox) {
         for (const gui::PanelLabel& label : labels) {
@@ -309,7 +318,7 @@ void buildFrameAxis(
     };
     // The boundary labels are accepted FIRST, so the forced first/last number always
     // wins its slot; the margin test is still applied between them (a clamped pair on a
-    // very narrow plot cannot stack).
+    // very narrow band cannot stack).
     for (const gui::PanelLabel& boundary : {boundaryFirst, boundaryLast, boundaryMerged}) {
         if (!boundary.rect.isEmpty() && !accepted(boundary.rect))
             labels.append(boundary);
@@ -323,8 +332,8 @@ void buildFrameAxis(
             continue;
         const QString text = numberText(tick.frame);
         const int width = numberWidth(text);
-        if (width > plot.width())
-            continue; // the number cannot fit inside the plot at all
+        if (width > band.width())
+            continue; // the number cannot fit inside the band at all
         if (underPill(tick.x))
             continue; // the pill owns its column
         bool yields = false;
@@ -830,7 +839,14 @@ namespace gui {
         const int bandTop = model.plot.top() - ctrl::graph::Scaler::kMargin - frameRuler::kBandHeight;
         if (!model.plot.isEmpty() && inset <= bandTop) {
             model.rulerBandTop = bandTop;
-            model.rulerBand = QRect(model.plot.left(), bandTop, model.plot.width(), frameRuler::kBandHeight);
+            // THE BAND SPANS THE PANEL, not the plot. The timeline's TimeRuler strip is
+            // as wide as its viewport, and the shared frame mapping puts the graph's
+            // frames on the timeline's own columns (graph_Scaler.h: THE SHARED WINDOW'S
+            // MAPPING) - so the band must cover every column a frame tick can land on,
+            // including the value column's top-left corner. A band as wide as the plot
+            // left that corner bare and cut the ruler at the first frame the plot
+            // showed, which is the divergence a tab switch made visible.
+            model.rulerBand = QRect(model.panel.left(), bandTop, model.panel.width(), frameRuler::kBandHeight);
         } else if (!model.plot.isEmpty()) {
             model.rulerBandTop = model.plot.top();
         } else {

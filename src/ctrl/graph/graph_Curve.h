@@ -114,10 +114,11 @@ public:
     bool isLooped() const;
 
 
-    // The easing param that shapes the segment starting at one key, for a
-    // graphable type. Null for a type that carries no easing.
-    static const util::Easing::Param* easingOf(const core::TimeKey& aKey, core::TimeKeyType aType);
-    static util::Easing::Param* easingOf(core::TimeKey& aKey, core::TimeKeyType aType);
+    // The easing param that shapes one key's segment of a graph channel, for a
+    // graphable type and one of its components. Null for a type that carries no
+    // easing (bone, mesh, pose, FFD) and for a component the type does not have.
+    static const util::Easing::Param* easingOf(const core::TimeKey& aKey, core::TimeKeyType aType, int aComponent);
+    static util::Easing::Param* easingOf(core::TimeKey& aKey, core::TimeKeyType aType, int aComponent);
 
 private:
     // The key whose segment starts at or before aFrame, and its successor.

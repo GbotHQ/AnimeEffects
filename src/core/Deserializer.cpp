@@ -122,6 +122,10 @@ void Deserializer::read(Frame& aValue) {
 bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
     // Future: This will bite me in the ass later...
     bool postBezier = mVersion >= QVersionNumber(0, 8);
+    // The key's handle-link type landed in 0.13, appended after the bezier.
+    // A file written before it reads FREE: back then a handle drag never moved
+    // its partner, so a linked key is not what the file described.
+    const bool postAligned = mVersion >= QVersionNumber(0, 13);
     aValue.type = (util::Easing::Type)mIn.readSInt32();
     aValue.range = (util::Easing::Range)mIn.readSInt32();
     aValue.weight = mIn.readFloat32();
@@ -133,6 +137,11 @@ bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
     } else {
         aValue.cubicBezier = util::Easing::CubicBezier();
     }
+    if (postAligned) {
+        read(aValue.aligned);
+    } else {
+        aValue.aligned = false;
+    }
     if (!aValue.isValidParam() && errorCorrection) {
         aValue = util::Easing::Param();
         qDebug("Correcting bytes.");
@@ -140,6 +149,25 @@ bool Deserializer::read(util::Easing::Param& aValue, bool errorCorrection) {
         return true;
     }
     return aValue.isValidParam();
+}
+
+bool Deserializer::readEasings(util::Easing::Param* aValue, int aCount, bool errorCorrection) {
+    // Per-component easing landed in 0.14. Before it, a key wrote exactly ONE
+    // param shared by every component it drove: reading that one and copying it
+    // to all of them is lossless (they were the same value by construction).
+    const bool perComponent = mVersion >= QVersionNumber(0, 14);
+    const int writeCount = perComponent ? aCount : 1;
+    for (int i = 0; i < writeCount; ++i) {
+        if (!read(aValue[i], errorCorrection)) {
+            return false;
+        }
+    }
+    if (!perComponent) {
+        for (int i = 1; i < aCount; ++i) {
+            aValue[i] = aValue[0];
+        }
+    }
+    return true;
 }
 
 void Deserializer::read(QPolygonF& aValue) {

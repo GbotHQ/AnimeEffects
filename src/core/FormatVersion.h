@@ -18,8 +18,18 @@
 //   0.11 -> 0.12 the global block's reserve also carries the optional viewport
 //                background (a presence byte then an ARGB word, after the
 //                frame range start); older files load as no override
+//   0.12 -> 0.13 a key's easing param carries the handle-link flag (util::
+//                Easing::Param::aligned) after its bezier controls; older
+//                files load with aligned = false, which is what their keys did
+//   0.13 -> 0.14 a key writes ONE easing param PER GRAPHABLE COMPONENT (Move x
+//                and y, Scale x and y, Blur x/y/angle, HSV hue/sat/value,
+//                Image x/y; see core::easingComponentCount in
+//                src/core/KeyEasing.h) instead of one shared by every
+//                component. Older files held exactly one param, which the
+//                reader broadcasts to every component (Deserializer::
+//                readEasings) - lossless, since every component shared it
 #define AE_PROJECT_FORMAT_MAJOR_VERSION 0
-#define AE_PROJECT_FORMAT_MINOR_VERSION 12
+#define AE_PROJECT_FORMAT_MINOR_VERSION 14
 
 #define AE_PROJECT_FORMAT_OLDEST_MAJOR_VERSION 0
 #define AE_PROJECT_FORMAT_OLDEST_MINOR_VERSION 4

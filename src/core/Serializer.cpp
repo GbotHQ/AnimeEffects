@@ -91,6 +91,20 @@ void Serializer::write(const util::Easing::Param& aValue) {
     mOut.write((float32)aValue.cubicBezier.y1);
     mOut.write((float32)aValue.cubicBezier.x2);
     mOut.write((float32)aValue.cubicBezier.y2);
+    // The key's handle-link type (see util::Easing::Param::aligned). Appended
+    // LAST so every field an older reader consumes keeps its offset; a file
+    // written before this field existed is read FREE by Deserializer, which is
+    // what such a key actually did (a handle drag never moved its partner).
+    mOut.write((uint32)aValue.aligned); // a uint32 like every other bool here (write(bool) above)
+}
+
+void Serializer::writeEasings(const util::Easing::Param* aValue, int aCount) {
+    // Every key writes its whole array. An older file wrote one param per key,
+    // which the reader broadcasts; a new-file reader needs all of them, so this
+    // loop is what makes the components independent on disk.
+    for (int i = 0; i < aCount; ++i) {
+        write(aValue[i]);
+    }
 }
 
 void Serializer::write(const QPolygonF& aValue) {
