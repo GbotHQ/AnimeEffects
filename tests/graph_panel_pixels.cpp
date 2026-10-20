@@ -3120,22 +3120,23 @@ bool checkScrollBars(
     return true;
 }
 
-// 31b: THE RULER'S HAIRLINE IS HALF-COVERED, which is the MEASURED parity value. The
-// timeline's rule is a 1px pen centred on the boundary between its ruler strip and its
-// surface, antialiased (the painter still carries the hint ctrl::time::Renderer::
-// renderLines left on), so the stroke splits 0.5/0.5 between the two rows and only the
-// LOWER half survives - the row above is the TimeRuler widget's own, repainted opaquely
-// over it. Measured in the shipped build: rgb 51,51,51 on the base surface, which is
-// 0.5*64 + 0.5*38. The panel therefore draws that row in theme::Graph::rulerLine() at
-// gui::kRulerHairlineCoverage (0.5) and NOT at full strength; the drawing-layer constant
-// is read from the header, so this cannot drift from the panel's own configuration.
+// 31b: THE RULER'S HAIRLINE IS THE PALETTE TOKEN, OPAQUE, on both views. The timeline's
+// rule is a 1px pen on the integer row under its band with antialiasing OFF
+// (TimeLineEditorWidget::paintEvent sets the hint itself, so the editor's renderer cannot
+// leave it split across the boundary), and the panel draws theme::Graph::rulerLine() at
+// full strength. Both resolve to Colors::hairline over Colors::base - rgb 64 over 38 in
+// the dark palette, where the stray-AA build measured the timeline at 51. This gate reads
+// the panel's row over its magenta floor at the full token AND proves the old half blend
+// is gone, so reintroducing a coverage factor (or the timeline's stray AA) fails here.
 bool checkRulerHairline(const Rendered& aRendered, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme) {
     REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the model publishes no ruler band");
     const int hairlineY = aModel.rulerBand.bottom() + 1;
     REQUIRE(hairlineY < kViewH, "precondition: the hairline row is outside the framebuffer");
-    // The row's ink over the gate's magenta floor, at the declared coverage.
-    const QColor expected = over(withAlpha(aTheme.rulerLine(), gui::kRulerHairlineCoverage), kClear);
-    const QColor fullStrength = over(withAlpha(aTheme.rulerLine(), 1.0f), kClear);
+    // The row's ink over the gate's magenta floor: the token at full strength.
+    const QColor expected = over(withAlpha(aTheme.rulerLine(), 1.0f), kClear);
+    // The negative control: the same token at half coverage, the stray-AA blend this gate
+    // used to expect. It is what a regression to a half-coverage factor would draw.
+    const QColor halfCovered = over(withAlpha(aTheme.rulerLine(), 0.5f), kClear);
     // Two columns, one at each end of the band, clear of the playhead's own column (the
     // accent line crosses every row) - the rule spans the whole band, so both must read
     // the same ink.
@@ -3147,35 +3148,33 @@ bool checkRulerHairline(const Rendered& aRendered, const gui::GraphPanelModel& a
         );
         const QColor c = pixelAt(aRendered.image, x, hairlineY);
         std::printf(
-            "MEASURED ruler_hairline row=%d x=%d rgb=%s expected_half=%s full_strength=%s d_half=%d d_full=%d"
-            " coverage=%.2f\n",
-            hairlineY, x, hex(c).c_str(), hex(expected).c_str(), hex(fullStrength).c_str(),
-            colourDistance(c, expected), colourDistance(c, fullStrength), gui::kRulerHairlineCoverage
+            "MEASURED ruler_hairline row=%d x=%d rgb=%s expected_token=%s half_coverage=%s d_token=%d d_half=%d\n",
+            hairlineY, x, hex(c).c_str(), hex(expected).c_str(), hex(halfCovered).c_str(),
+            colourDistance(c, expected), colourDistance(c, halfCovered)
         );
         REQUIRE(
             colourDistance(c, expected) <= 6,
-            "the ruler hairline at (%d,%d) is %s, not the half-covered %s the timeline draws (distance %d)",
+            "the ruler hairline at (%d,%d) is %s, not the opaque token %s the timeline draws (distance %d)",
             x, hairlineY, hex(c).c_str(), hex(expected).c_str(), colourDistance(c, expected)
         );
         REQUIRE(
-            colourDistance(c, fullStrength) > 24,
-            "the ruler hairline at (%d,%d) is full strength (%s): the panel would be twice as dark as the"
-            " timeline's own rule",
-            x, hairlineY, hex(c).c_str()
+            colourDistance(c, halfCovered) > 24,
+            "the ruler hairline at (%d,%d) is %s: the panel reproduces the timeline's stray-AA half coverage"
+            " again (%s at 0.5), so the two rules are 0.5/1 apart",
+            x, hairlineY, hex(c).c_str(), hex(halfCovered).c_str()
         );
     }
-    // ...and the row ABOVE it (the band's last row) does NOT carry the hairline's half
-    // blend: the timeline's upper half is repainted by its strip, so the panel's band
-    // must be the same - a rule that bled into the band would be two grey rows where
-    // both views have one.
+    // ...and the row ABOVE it (the band's last row) does NOT carry the hairline: the
+    // timeline's band is repainted by its strip, so the panel's band must be the same -
+    // a rule that bled into the band would be two grey rows where both views have one.
     const QColor above = pixelAt(aRendered.image, probeX[0], aModel.rulerBand.bottom());
     std::printf(
-        "MEASURED ruler_hairline_above row=%d rgb=%s (half blend %s, distance %d)\n", aModel.rulerBand.bottom(),
+        "MEASURED ruler_hairline_above row=%d rgb=%s (token %s, distance %d)\n", aModel.rulerBand.bottom(),
         hex(above).c_str(), hex(expected).c_str(), colourDistance(above, expected)
     );
     REQUIRE(
         colourDistance(above, expected) > 24,
-        "the band's last row (%d) carries the hairline's half blend %s: the rule is bleeding into the band, which"
+        "the band's last row (%d) carries the hairline's ink %s: the rule is bleeding into the band, which"
         " the timeline's own widget repaints over",
         aModel.rulerBand.bottom(), hex(above).c_str()
     );
@@ -6540,7 +6539,7 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the scroll bars\n");
         return 1;
     }
-    // 31b: THE RULER'S RULE, at the half coverage the timeline's own row carries.
+    // 31b: THE RULER'S RULE, the opaque token both views draw on that row.
     if (!checkRulerHairline(rendered, full, palette)) {
         std::printf("FAILED: the ruler hairline's ink\n");
         return 1;

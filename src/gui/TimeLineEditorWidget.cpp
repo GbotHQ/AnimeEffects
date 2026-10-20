@@ -463,7 +463,19 @@ void TimeLineEditorWidget::paintEvent(QPaintEvent* aEvent) {
         // The hairline under the ruler separates it from the track area. It
         // sits on the first track row (y = kHeaderHeight), below the ruler
         // widget, and stays fixed like the strip it frames.
+        //
+        // THE HINT IS SET HERE, NOT INHERITED. This pen is 1px on an integer
+        // row whose upper edge is the band's boundary, and the rule is meant
+        // to be one opaque row; the renderer's last pass (renderKeys) leaves
+        // Antialiasing ON, so a painter that just carried the hint split the
+        // stroke 0.5/0.5 across the boundary - the band's half is repainted
+        // opaquely by TimeRuler's own widget, leaving a half-tone row. Turning
+        // it off here states the rule's rasterisation where the rule is drawn,
+        // instead of making this widget's ink depend on the editor's last hint
+        // (restoring the hint inside renderLines alone would not help: the
+        // passes after it set the hint again).
         painter.translate(-origin);
+        painter.setRenderHint(QPainter::Antialiasing, false);
         painter.setPen(QPen(QBrush(mTimelineTheme.rulerLineColor()), 1));
         painter.drawLine(0, ctrl::TimeLineEditor::kHeaderHeight, this->width(), ctrl::TimeLineEditor::kHeaderHeight);
     }

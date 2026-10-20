@@ -1419,22 +1419,22 @@ void drawPanel(
     // draws its ruler line on the first track row below the header
     // (TimeLineEditorWidget.cpp's paintEvent), so this is that row.
     //
-    // THE INK IS HALF-COVERED, and that is the timeline's own value: its 1px pen is
-    // centred on this row's upper boundary and rasterised with the antialiasing
-    // ctrl::time::Renderer::renderLines left on, so the stroke splits 0.5/0.5 between
-    // the band's last row and this one; the band's last row is the TimeRuler widget's
-    // own, repainted opaquely above it, so only this row's half is visible - 64 over
-    // 38 at 50%, i.e. rgb 51 as measured in the shipped build, not the 64 of a
-    // full-strength rule. kRulerHairlineCoverage (GraphPanelFrame.h) carries the
-    // whole derivation; the same half-covered row over the same base floor is what
-    // makes the two rulers' rules one rule.
+    // THE INK IS THE TOKEN, OPAQUE. The timeline draws its ruler line as a 1px
+    // pen on the first track row below its header, with antialiasing OFF
+    // (TimeLineEditorWidget::paintEvent sets the hint itself), so the rule is one
+    // solid row of theme::TimeLine::rulerLineColor() - which is the same palette
+    // cell as theme::Graph::rulerLine() (Colors::hairline). The panel therefore
+    // draws its own row at full strength, just as it paints the band above it at
+    // full strength: the two rulers' rules are one rule, and the parity probe
+    // compares their measured MODAL colours, so neither can drift to a different
+    // coverage without the probe failing.
     if (!aModel.rulerBand.isEmpty() && aModel.rulerBand.bottom() + 1 <= plot.bottom()) {
         const float hairlineY = float(aModel.rulerBand.bottom() + 1);
         // The hairline is the band's own rule, so it spans the BAND's columns - the
         // whole panel, including the value column's top corner the band now covers.
         aDrawList.AddLine(
             ImVec2(float(aModel.rulerBand.left()), hairlineY), ImVec2(float(aModel.rulerBand.right() + 1), hairlineY),
-            toImU32Strength(aTheme.rulerLine(), kRulerHairlineCoverage), 1.0f
+            toImU32(aTheme.rulerLine()), 1.0f
         );
     }
     // ...UP from the ruler band's LAST ROW, exactly as the timeline's ruler draws them

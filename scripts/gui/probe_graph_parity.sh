@@ -544,10 +544,11 @@ xvfb-run -a --server-args="-screen 0 1440x900x24" bash -c '
     # ---- the hairline under the band (the band bottom witness) ----
     # The ROW is the band own arithmetic (the row under the band, as TimeRuler draws its
     # rule on the first track row and the panel draws it one row under its band). It is
-    # READ as a row: its modal colour differs from the band last row (the rule is
-    # there) and covers the page own columns (the rule spans the page). Its EXACT value is
-    # the rasteriser coverage - the timeline AA pen is centred on the boundary and the
-    # panel reproduces the half-cover - so the VALUE is not compared, only the row.
+    # READ as a row: its modal colour differs from the band last row (the rule is there)
+    # and covers the page own columns (the rule spans the page). Its VALUE is the shared
+    # palette token: both views draw the rule OPAQUE (the timeline turns the AA hint off
+    # for its 1px pen, the panel draws theme::Graph::rulerLine at full strength), so the
+    # modal colours of the two pages are compared below.
     raw "$s" "${w}x1+${pl}+${hair_y}" "$SCRATCH/$tag.hairrow.raw"
     local hmodal
     hmodal=$(inkpx modal "$SCRATCH/$tag.hairrow.raw" "$w" 1 0 0 "$w" 1)
@@ -736,8 +737,8 @@ AE=${PAGES_AE:-0}
 assert_rendered "$SHOTS/parity_01_timeline.png" "the timeline page"
 assert_rendered "$SHOTS/parity_02_graph.png" "the graph page"
 
-echo "measured: timeline page [${T_PL:-?}..$((T_RR - 1))] x [${T_BT:-?}..${T_PB:-?}]: band rows ${T_btop:-?}..${T_bbot:-?}, hairline row ${T_hy:-?}, number rows ${T_n0:-?}..${T_n1:-?}, tick rows ${T_k0:-?}..${T_k1:-?}, pill box page-relative x ${T_px:-?}+${T_pw:-?} at rows ${T_ay:-?}..$((T_ay + T_ph - 1)) (${T_ph:-?} tall), fill ${TFR:-?},${TFG:-?},${TFB:-?}, number ink ${T_ir:-?},${T_ig:-?},${T_ib:-?} (${T_in:-0} px, ${T_id:-?} away from the fill) over glyph rows ${T_g0:-?}..${T_g1:-?} in ${T_gc:-0} columns, playhead line page-relative x ${T_line:-?}, lane rows ${T_lt:-?}..${T_PB:-?} with pill rows ${T_lpt:-?}..$((T_lpt + T_lh - 1)) (${T_lh:-?} thick) at x ${T_lx:-?}+${T_lw:-?}"
-echo "measured: graph page [${G_PL:-?}..$((G_RR - 1))] x [${G_BT:-?}..${G_PB:-?}]: band rows ${G_btop:-?}..${G_bbot:-?}, hairline row ${G_hy:-?}, number rows ${G_n0:-?}..${G_n1:-?}, tick rows ${G_k0:-?}..${G_k1:-?}, pill box page-relative x ${G_px:-?}+${G_pw:-?} at rows ${G_ay:-?}..$((G_ay + G_ph - 1)) (${G_ph:-?} tall), fill ${GFR:-?},${GFG:-?},${GFB:-?}, number ink ${G_ir:-?},${G_ig:-?},${G_ib:-?} (${G_in:-0} px, ${G_id:-?} away from the fill) over glyph rows ${G_g0:-?}..${G_g1:-?} in ${G_gc:-0} columns, playhead line page-relative x ${G_line:-?}, lane rows ${G_lt:-?}..${G_PB:-?} with pill rows ${G_lpt:-?}..$((G_lpt + G_lh - 1)) (${G_lh:-?} thick) at x ${G_lx:-?}+${G_lw:-?}"
+echo "measured: timeline page [${T_PL:-?}..$((T_RR - 1))] x [${T_BT:-?}..${T_PB:-?}]: band rows ${T_btop:-?}..${T_bbot:-?}, hairline row ${T_hy:-?} (rgb ${T_hrr:-?},${T_hgg:-?},${T_hbb:-?}), number rows ${T_n0:-?}..${T_n1:-?}, tick rows ${T_k0:-?}..${T_k1:-?}, pill box page-relative x ${T_px:-?}+${T_pw:-?} at rows ${T_ay:-?}..$((T_ay + T_ph - 1)) (${T_ph:-?} tall), fill ${TFR:-?},${TFG:-?},${TFB:-?}, number ink ${T_ir:-?},${T_ig:-?},${T_ib:-?} (${T_in:-0} px, ${T_id:-?} away from the fill) over glyph rows ${T_g0:-?}..${T_g1:-?} in ${T_gc:-0} columns, playhead line page-relative x ${T_line:-?}, lane rows ${T_lt:-?}..${T_PB:-?} with pill rows ${T_lpt:-?}..$((T_lpt + T_lh - 1)) (${T_lh:-?} thick) at x ${T_lx:-?}+${T_lw:-?}"
+echo "measured: graph page [${G_PL:-?}..$((G_RR - 1))] x [${G_BT:-?}..${G_PB:-?}]: band rows ${G_btop:-?}..${G_bbot:-?}, hairline row ${G_hy:-?} (rgb ${G_hrr:-?},${G_hgg:-?},${G_hbb:-?}), number rows ${G_n0:-?}..${G_n1:-?}, tick rows ${G_k0:-?}..${G_k1:-?}, pill box page-relative x ${G_px:-?}+${G_pw:-?} at rows ${G_ay:-?}..$((G_ay + G_ph - 1)) (${G_ph:-?} tall), fill ${GFR:-?},${GFG:-?},${GFB:-?}, number ink ${G_ir:-?},${G_ig:-?},${G_ib:-?} (${G_in:-0} px, ${G_id:-?} away from the fill) over glyph rows ${G_g0:-?}..${G_g1:-?} in ${G_gc:-0} columns, playhead line page-relative x ${G_line:-?}, lane rows ${G_lt:-?}..${G_PB:-?} with pill rows ${G_lpt:-?}..$((G_lpt + G_lh - 1)) (${G_lh:-?} thick) at x ${G_lx:-?}+${G_lw:-?}"
 echo "geometry: dock with the Timeline page up [${DOCK_T:-none}], dock with the Graph page up [${DOCK_G:-none}], panel [${PANEL:-none}] published by [${PANEL_NAME:-none}], the two page captures differ by ${AE} px (bar ${PAGES_CHANGE_MIN}), tabs Timeline [${TAB_T_AT_TL:-none}]/[${TAB_T_AT_G:-none}] Graph [${TAB_G_AT_TL:-none}]/[${TAB_G_AT_G:-none}] (widths ${t1w:-?}/${t2w:-?} and ${g1w:-?}/${g2w:-?})"
 
 maxdiff() { awk -v a="$1" -v b="$2" 'BEGIN { d = a - b; if (d < 0) d = -d; print d }'; }
@@ -797,7 +798,15 @@ near "${T_hy:-0}" "${G_hy:-0}" 1 || hair_ok=0
 [ "$(dist3 "${G_hrr:-0}" "${G_hgg:-0}" "${G_hbb:-0}" "${G_blr:-0}" "${G_blg:-0}" "${G_blb:-0}")" -gt 3 ] || hair_ok=0
 [ "${T_hn:-0}" -ge "$((T_RR - T_PL - 8))" ] || hair_ok=0
 [ "${G_hn:-0}" -ge "$((G_RR - G_PL - 8))" ] || hair_ok=0
-check "$((1 - hair_ok))" "and the hairline under the band is the SAME ROW on both, one row under each band: row ${T_hy:-?} (band bottom ${T_bbot:-?}) against row ${G_hy:-?} (band bottom ${G_bbot:-?}); it is INKED there (row modal differs from the band's last row: ${T_hrr:-?},${T_hgg:-?},${T_hbb:-?} vs ${T_blr:-?},${T_blg:-?},${T_blb:-?} on the timeline, ${G_hrr:-?},${G_hgg:-?},${G_hbb:-?} vs ${G_blr:-?},${G_blg:-?},${G_blb:-?} on the graph) and spans the page's columns (${T_hn:-0} of ${T_RR:-?}-${T_PL:-?} on the timeline, ${G_hn:-0} of ${G_RR:-?}-${G_PL:-?} on the graph). The rule's VALUE is the rasteriser's coverage - the timeline's AA pen is centred on the boundary and the panel reproduces the half-cover - so the VALUE is not compared, only the row"
+# THE RULE'S VALUE IS THE TOKEN ON BOTH PAGES. Both views draw it opaque - the timeline
+# turns the AA hint off for its 1px pen and the panel draws theme::Graph::rulerLine at
+# full strength - so the two rows' modal colours must be the same colour. The tolerance
+# is the capture's own channel rounding; the half-tone defect is 13 steps away (51
+# against 64 on the dark palette), so it cannot hide inside it.
+near "${T_hrr:-0}" "${G_hrr:-0}" 2 || hair_ok=0
+near "${T_hgg:-0}" "${G_hgg:-0}" 2 || hair_ok=0
+near "${T_hbb:-0}" "${G_hbb:-0}" 2 || hair_ok=0
+check "$((1 - hair_ok))" "and the hairline under the band is THE SAME ROW WITH THE SAME INK on both, one row under each band: row ${T_hy:-?} (band bottom ${T_bbot:-?}) against row ${G_hy:-?} (band bottom ${G_bbot:-?}), carrying modal rgb ${T_hrr:-?},${T_hgg:-?},${T_hbb:-?} on the timeline against ${G_hrr:-?},${G_hgg:-?},${G_hbb:-?} on the graph, within 2 steps per channel. The VALUE is compared because both views now draw the one palette token opaque (timeline ${T_hrr:-?},${T_hgg:-?},${T_hbb:-?}; graph ${G_hrr:-?},${G_hgg:-?},${G_hbb:-?}): a return of either the timeline's stray-AA half tone or the panel's old half-coverage reproduction moves one page to 51,51,51 and fails here. The rule is also INKED there (row modal differs from the band's last row: ${T_hrr:-?},${T_hgg:-?},${T_hbb:-?} vs ${T_blr:-?},${T_blg:-?},${T_blb:-?} on the timeline, ${G_hrr:-?},${G_hgg:-?},${G_hbb:-?} vs ${G_blr:-?},${G_blg:-?},${G_blb:-?} on the graph) and spans the page's columns (${T_hn:-0} of ${T_RR:-?}-${T_PL:-?} on the timeline, ${G_hn:-0} of ${G_RR:-?}-${G_PL:-?} on the graph)"
 
 # ---- 2. THE NUMBER GLYPH ROWS AND THE TICK ROWS ----
 num_ok=1

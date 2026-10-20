@@ -129,36 +129,6 @@ void drawPanel(
 // only thing that switches it off, so the two can still be compared.
 constexpr bool kDrawTextHalo = false;
 
-// THE RULER HAIRLINE'S COVERAGE. The panel's rule under the ruler band is drawn in
-// theme::Graph::rulerLine() at this fraction of its alpha, and that fraction is
-// MEASURED off the timeline rather than chosen:
-//
-//   * the timeline draws the line with a 1px pen at y = kHeaderHeight, i.e. with
-//     its CENTRELINE on the boundary between the ruler strip's last row and the
-//     surface's first row (TimeLineEditorWidget::paintEvent);
-//   * by the time it does, ctrl::time::Renderer::renderLines has left
-//     QPainter::Antialiasing ON (its last act; the surface's paint never turns it
-//     back off), so the stroke's two half-pixel halves are rasterised SEPARATELY:
-//     0.5 coverage in each of the two rows;
-//   * the row above is the TimeRuler WIDGET's own last row, repainted opaquely by
-//     that widget after the surface (children paint over parents), so only the
-//     LOWER half survives.
-//
-// The visible row is therefore the hairline at 0.5 coverage over the base surface:
-// 0.5*64 + 0.5*38 = 51 per channel, which is exactly what the shipped build
-// measured at page+31 (rgb 51,51,51) against the panel's full-strength 64. The
-// 0.5 is not a guessed opacity - it is the coverage of one half of a 1px stroke
-// centred on a pixel boundary (the same arithmetic the pixel gate measures as
-// `capsuleCoverage(0.5, 1, 0.5) == 0.5`), and the row it lands in is the row the
-// band does not cover. REPRODUCING IT IS THE PARITY RULE: the two rulers' rules are
-// one rule, and the panel draws the same half-covered row over the same floor.
-//
-// (The timeline's half-tone is a side effect of that stray AA state - its comment
-// says "1px" - so the one-line fix there would be to turn the hint off before the
-// draw; that is the timeline's file, not this one, and it is reported rather than
-// silently diverged from. Until then the reference is the measured pixel.)
-constexpr float kRulerHairlineCoverage = 0.5f;
-
 // The gutter a VALUE label keeps from the right edge of its box, when the box has
 // that much room to spare (see drawLabel's right-alignment): the top value label and
 // the plot's first frame number otherwise land 7px apart on the same rows and read as

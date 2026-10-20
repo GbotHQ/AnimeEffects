@@ -1887,12 +1887,16 @@ the timeline."
 scaler's 4px margin, so the graph's strip started 4 rows BELOW the timeline's. The band is now anchored
 to the panel's top (`band.top() == panel.top()`), and the 4 margin rows sit BETWEEN the hairline and the
 plot. Measured on one capture, both tabs: strip rows page+9..page+30, hairline page+31, plot page+35 -
-identical in both views. THE RESIDUAL, measured and unattributed: the timeline's hairline renders
-`(51,51,51)` = `#404040` blended 50% over `#262626`, while the graph renders the same `Colors::hairline`
-token opaque `(64,64,64)`. Both read the token; neither screenshot explains the blend, and the palette
-carries no `#333333`. Do not "match" it by guessing an alpha - find the cause in the timeline's paint
-first (the dock's own splitter, which is the same token, measures 64 in the SAME capture, which is why
-the graph was left on the token).
+identical in both views. THE RESIDUAL, now explained and fixed: the timeline's hairline rendered
+`(51,51,51)` = `#404040` blended 50% over `#262626`, while the graph rendered the same `Colors::hairline`
+token opaque `(64,64,64)`. The cause was in the timeline's paint, exactly where the note pointed: the
+editor's renderer leaves `QPainter::Antialiasing` ON at the end of its passes, and
+`TimeLineEditorWidget::paintEvent` drew its 1px rule on the band boundary without clearing it, so the
+stroke split 0.5/0.5 and only the lower half survived (the band's half is repainted by the TimeRuler
+widget). The widget now sets the hint OFF for its own rule - the stroke states its own rasterisation
+rather than inheriting the editor's last pass - the panel draws the token at full strength, and
+`probe_graph_parity.sh` compares the two hairline rows' MODAL colours (both `(64,64,64)` in the dark
+palette; it fails if they diverge). The panel's half-coverage reproduction constant is deleted.
 
 **Handles: the modes are STORED, per side.** A key's outgoing handle
 (`cubicBezier.x1,y1` of its own param) and its incoming one (`x2,y2` of the
