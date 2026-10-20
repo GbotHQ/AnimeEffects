@@ -463,12 +463,19 @@ enum class GraphPanelHost {
 //               inside the playhead pill's half-width - the pill owns its column.
 //               THE BOX'S TOP EDGE IS THE ROOM A NUMBER HAS: it sits at
 //               rulerBandTop + frameRuler::kNumberTop, inside the band's number row,
-//               and a drawing layer must never put a glyph ABOVE its box's top edge -
-//               a font taller than the box is clamped into it (drawLabel in
-//               src/gui/GraphPanelFrame.cpp). That pair is what keeps the top row of
-//               numbers off the plot's top edge and out of the plot clip; the model
-//               measures the box with the ruler's fixed reserve and cannot know the
-//               drawing layer's font, so the obligation is split rather than assumed.
+//               and a drawing layer must never put a glyph ABOVE its box's top edge.
+//               The glyph LINE BOX starts ON that edge, exactly as TimeRuler's
+//               top-aligned drawText starts its own on the ruler's number row: a
+//               vertical CENTRING of the box put the panel's numbers two rows below
+//               the timeline's on one capture (same glyph, same height, shifted), and
+//               the drawing layer's LabelVAlign::Top is the parity rule. A font
+//               taller than the box then hangs BELOW the box, into the band's
+//               remaining rows - the safe direction, since the top edge is the one
+//               that borders the rows above the number row. That pair is what keeps
+//               the top row of numbers off the plot's top edge and out of the plot
+//               clip; the model measures the box with the ruler's fixed reserve and
+//               cannot know the drawing layer's font, so the obligation is split
+//               rather than assumed.
 //   valueLabels: the window's max / midpoint / min, formatted 'g' with four
 //               significant digits (the deleted painter renderer's valueText(),
 //               now ctrl::graph::Scaler::valueAxisText - the SAME function the

@@ -764,11 +764,13 @@ namespace ctrl {
         // question "is this press on a bar" is the only one wanted here.
         if (aCursor.emitsLeftPressedEvent()) {
             const graph::Scaler::ScrollBars bars = scrollBarsFor(scale, entries);
-            // Only a bar WITH TRAVEL is the panel's: a run the model removed means
-            // nothing is drawn there, so a press on that lane belongs to whoever is
-            // under the panel (see Scaler::scrollBars' no-travel rule).
-            const bool onHorizontal = !bars.hThumb.isEmpty() && bars.hTrack.contains(point);
-            const bool onVertical = !bars.vThumb.isEmpty() && bars.vTrack.contains(point);
+            // Only a bar WITH TRAVEL is the panel's. A lane whose slider fills its
+            // groove has nowhere to go - the panel still DRAWS that slider (the
+            // timeline's own horizontal bar does), but a press on it must do nothing
+            // rather than start a pan that cannot move; the lane itself is outside the
+            // plot, so the press falls through to nobody, which is exactly "nothing".
+            const bool onHorizontal = bars.hTravel() && bars.hTrack.contains(point);
+            const bool onVertical = bars.vTravel() && bars.vTrack.contains(point);
             if (onHorizontal || onVertical)
                 return true;
         }
@@ -1182,13 +1184,13 @@ namespace ctrl {
         // across events in mScrollBarWheelRemainder) - and NEVER zooms. Which lane is
         // under the pointer is asked of the same geometry the press routing and the
         // model's drawing read (scrollBarsFor), and only a bar WITH TRAVEL counts: a
-        // lane whose run the layout removed is not a bar, so a notch there falls
+        // full-length slider has nowhere to scroll, so a notch over its lane falls
         // through to the zoom exactly as it did before the bar existed.
         {
             const QVector<Entry> entries = buildEntries();
             const graph::Scaler::ScrollBars bars = scrollBarsFor(mScale, entries);
-            const bool onHorizontal = !bars.hThumb.isEmpty() && bars.hTrack.contains(aPos);
-            const bool onVertical = !bars.vThumb.isEmpty() && bars.vTrack.contains(aPos);
+            const bool onHorizontal = bars.hTravel() && bars.hTrack.contains(aPos);
+            const bool onVertical = bars.vTravel() && bars.vTrack.contains(aPos);
             if (onHorizontal || onVertical) {
                 // The bar's own direction, in notches: wheel UP (a positive Qt delta)
                 // scrolls toward the lane's START - earlier frames on the horizontal
@@ -1630,13 +1632,13 @@ namespace ctrl {
         if (aBars.isEmpty())
             return false;
 
-        // A bar exists only while it has travel: the model publishes an empty run
-        // exactly when the window covers its content (Scaler::scrollBars), and the
-        // panel draws nothing there - so there is nothing for a press to grab either.
+        // A bar is GRABBABLE only while it has travel: a full-length slider (the
+        // window covering its content) is drawn - the timeline's horizontal bar shows
+        // one - but it has nowhere to go, so a press on it is nobody's gesture.
         int axis = ScrollBar_None;
-        if (!aBars.hThumb.isEmpty() && aBars.hTrack.contains(aPos))
+        if (aBars.hTravel() && aBars.hTrack.contains(aPos))
             axis = ScrollBar_Horizontal;
-        else if (!aBars.vThumb.isEmpty() && aBars.vTrack.contains(aPos))
+        else if (aBars.vTravel() && aBars.vTrack.contains(aPos))
             axis = ScrollBar_Vertical;
         if (axis == ScrollBar_None)
             return false;

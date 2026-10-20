@@ -96,8 +96,11 @@ struct PanelFocus {
 // for them): they are the application's scroll bar - an INVISIBLE 12px trough and a
 // 4px, radius-2 pill across the slider's run, in theme::Colors::outline at rest and
 // theme::Colors::hover while the pointer is on that bar or the bar is being dragged
-// (src/gui/AppStyle.cpp's CC_ScrollBar). An empty run draws nothing, so a bar with
-// nothing to scroll is not there at all. It
+// (src/gui/AppStyle.cpp's CC_ScrollBar). THE RUN IS ALWAYS THE SLIDER: at zero travel
+// the horizontal lane paints a pill across its WHOLE width (Qt fills the groove when
+// the range is empty, and the timeline's AlwaysOn horizontal bar does the same), while
+// the vertical lane's run is empty then and paints nothing (the timeline's vertical bar
+// is AsNeeded, measured with no ink in its lane when the content fits). It
 // keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
@@ -177,6 +180,28 @@ constexpr float kRulerHairlineCoverage = 0.5f;
 // the drawn gutter against THIS number, so the bar and the drawing cannot drift (the
 // same reason kDrawTextHalo lives here).
 constexpr int kValueLabelGap = 8;
+
+// THE ROW THE RULER'S NUMBERS INK FROM: how many rows below its box's TOP row the
+// first row of a frame number (or of a playhead/window-pill number) carries ink - on
+// BOTH views. TimeRuler and TimeCursor draw their numbers with Qt's TOP-ALIGNED
+// drawText in a box whose top is `rulerTop + kNumberTop`, and on the application's own
+// capture that puts the digits' ink three rows below the box's top (Geist at the
+// panel's 12px: Qt's ascent 11.6px minus the digits' cap top 3.3px -> row 3).
+//
+// WHY IT IS A ROW AND NOT AN ALIGNMENT. Dear ImGui places text by its LINE BOX top,
+// and the same face baked for ImGui carries its ink one row deeper (4) than Qt's
+// layout - so simply starting the line box on the box's top row still left every
+// number one row below the timeline's (measured: rows 244..251 against 243..250 after
+// the centring was removed). The panel therefore aligns the INK: drawLabel's
+// LabelVAlign::Top subtracts the font's OWN top bearing at the drawing size and puts
+// the run's first inked row on `box.top() + kRulerNumberInkTop`, which is the
+// timeline's row whatever size the layer draws at (the pixel gate renders it at 10px
+// and reads the same row).
+//
+// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp asserts
+// the drawn row against THIS number, so the placement and the assertion cannot drift
+// (the same reason kDrawTextHalo, kValueLabelGap and kKeyRingOffsetPx live here).
+constexpr int kRulerNumberInkTop = 3;
 
 // How far past a key marker's own radius its SELECTION ring's centre sits, in pixels:
 // the ring the design asks for, "a 1px ring 1px clear of the marker"

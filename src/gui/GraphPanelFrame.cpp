@@ -269,6 +269,38 @@ ImVec2 measureText(ImFont* aFont, float aFontSize, const char* aText) {
     return aFont->CalcTextSizeA(aFontSize, FLT_MAX, 0.0f, aText);
 }
 
+// How far below the position ImGui is HANDED the first row of a run's ink falls: the
+// smallest top bearing among the run's glyphs, at the size it is drawn at.
+// ImFont::RenderText places each glyph at `trunc(pos.y) + glyph->Y0 * scale`, so the
+// run's ink begins on that row - the LINE BOX top plus this inset. 0 when the font
+// cannot answer (no baked size, no glyph), which degrades to the line box's own top.
+//
+// The bearing is the panel's problem at all only because Qt lays the timeline's
+// numbers out with the same face at the same size and its ink starts one row higher
+// (see gui::kRulerNumberInkTop): aligning the INK needs the font's own offset, and
+// this is it - not a constant, so a different size or face keeps working.
+float inkTopInset(ImFont* aFont, float aFontSize, const char* aText) {
+    if (!aFont || !aText || !*aText || !(aFontSize > 0.0f))
+        return 0.0f;
+    ImFontBaked* baked = aFont->GetFontBaked(aFontSize);
+    if (!baked || !(baked->Size > 0.0f))
+        return 0.0f;
+    const float scale = aFontSize / baked->Size;
+    float inset = FLT_MAX;
+    // The panel's labels are numbers: the ASCII bytes are the whole run (the run aligns
+    // by its HIGHEST glyph, so a '-' cannot drag the row down). A multi-byte character
+    // - the en dash of a merged window pill - is skipped rather than read as the first
+    // of its bytes, which would be a different glyph with a different bearing.
+    for (const char* c = aText; *c; ++c) {
+        const unsigned char byte = (unsigned char)*c;
+        if (byte < 0x20 || byte > 0x7e)
+            continue;
+        if (const ImFontGlyph* glyph = baked->FindGlyphNoFallback(ImWchar(byte)))
+            inset = ImMin(inset, glyph->Y0 * scale);
+    }
+    return inset == FLT_MAX ? 0.0f : inset;
+}
+
 // One glyph run, haloed: the 16 halo passes, then the text itself. The halo is
 // what kept a label readable over arbitrary artwork - the panel has no background
 // - and the 16 offsets are what make the ring solid rather than four smudges (see
@@ -304,6 +336,19 @@ void addHaloedText(
 
 enum class LabelAlign { Left, Centre, Right };
 
+// Where a label's GLYPH LINE BOX sits inside its box's ROWS - an axis of its own,
+// because the horizontal alignment is the label's JOB (a value number is right-aligned
+// in its column, a frame number is centred on its tick) while the vertical one is
+// whose BOX the model published.
+//
+// WHY Top EXISTS - THE RULER'S ROW IS THE TIMELINE'S. Every label on the frame
+// ruler's number row is drawn by TimeRuler/TimeCursor as `drawText(rect, text)` with
+// the rect's top at `rulerTop + kNumberTop` and Qt's default top-left alignment: the
+// glyph line box starts ON the box's first row. Centring a glyph in that 14px box
+// instead - what every label here did - put the panel's numbers two rows BELOW the
+// timeline's on the same capture: same glyph, same height, shifted.
+enum class LabelVAlign { Centre, Top };
+
 // One label inside the box the model decided, at the alignment the model
 // documented for it, with the halo. The box is the model's; only the placement
 // inside it is the drawing layer's.
@@ -316,9 +361,17 @@ enum class LabelAlign { Left, Centre, Right };
 // top row of ruler numbers came out with their caps cut off. Centring therefore
 // takes the larger of "centred" and "flush with the box's top": an over-tall font
 // hangs into the box's own interior (where there is room) instead of out of it.
+//
+// LabelVAlign::Top aligns the RUN'S INK, not its line box: the first inked row is
+// `box.top() + gui::kRulerNumberInkTop`, the row Qt's top-aligned drawText inks for
+// the timeline's numbers of the same face and size. The font's own top bearing is
+// subtracted to get there (inkTopInset), so the row is the same at any drawing size -
+// the panel's 12px layer font and the pixel gate's different face land on it alike.
+// The glyph CELL may therefore start above the box by that bearing; its ink does not,
+// and a font taller than the box hangs BELOW it, into the band's remaining rows.
 void drawLabel(
     ImDrawList& aDrawList, ImFont* aFont, float aFontSize, const QRect& aBox, const QString& aText, LabelAlign aAlign,
-    ImU32 aColor, ImU32 aHalo, int aRightGapPx = 0
+    ImU32 aColor, ImU32 aHalo, LabelVAlign aVAlign = LabelVAlign::Centre, int aRightGapPx = 0
 ) {
     if (!aFont || aText.isEmpty() || aBox.isEmpty())
         return;
@@ -338,7 +391,9 @@ void drawLabel(
         const float spare = ImMax(0.0f, float(aBox.width()) - size.x);
         x = float(aBox.left() + aBox.width()) - size.x - ImMin(float(aRightGapPx), spare);
     }
-    const float y = float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
+    const float y = aVAlign == LabelVAlign::Top
+        ? float(aBox.top() + kRulerNumberInkTop) - inkTopInset(aFont, aFontSize, utf8.constData())
+        : float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
     addHaloedText(aDrawList, aFont, aFontSize, ImVec2(x, y), aColor, aHalo, utf8.constData());
 }
 
@@ -1389,24 +1444,42 @@ void drawPanel(
     const float bandBaseline = float(rulerBand.bottom());
     // One mark per tick, each at its own tier's alpha from the model's classification
     // (walked by index, so the two vectors are read as one geometry).
+    //
+    // THE INK COVERS SIX ROWS - the baseline row AND the five above it - because that
+    // is what the timeline's `drawLine(pos, pos + QPoint(0, -kTickLength))` inks with a
+    // 1px pen: the band's last row plus five. ImGui's non-AA 1px path is HALF-OPEN
+    // (AddLine offsets BOTH ends by +0.5, so the quad spans [start+0.5, end+0.5] and a
+    // pixel centre exactly on an edge is not covered): a line passed from the baseline
+    // to (baseline - 5) spanned [255.5, 260.5] and inked rows 256..260 - one row short
+    // at the top, which is the measured "the ticks are one row short and start one row
+    // low". Half a row of inset at each end makes the span [255, 261] and inks the six
+    // rows the timeline inks; it is the same inset the playhead's line applies below.
+    const float tickTop = bandBaseline - float(kAxisTickLength) - 0.5f;
+    const float tickBottom = bandBaseline + 0.5f;
     for (int i = 0; i < aModel.frameTickX.size(); ++i) {
         const float fx = float(aModel.frameTickX.at(i));
         // The tier's alpha, receded by the timeline's fixed factor when the frame is
         // outside the ACTIVE playback range.
         const float alpha = tickAlphaOf(aModel, i) * (tickInActiveRange(aModel, i) ? 1.0f : kOutsideActiveRangeAlpha);
         aDrawList.AddLine(
-            ImVec2(fx, bandBaseline), ImVec2(fx, bandBaseline - float(kAxisTickLength)),
-            toImU32Strength(aTheme.gridMajor(), alpha), 1.0f
+            ImVec2(fx, tickBottom), ImVec2(fx, tickTop), toImU32Strength(aTheme.gridMajor(), alpha), 1.0f
         );
     }
     // The frame numbers, centred in the boxes the model nudged inside the band's
     // number row. Like the band itself, they are above the plot and therefore
     // outside the graph's clip. A number outside the active range is written at the
     // timeline's 0.4 alpha, so the range edge reads at a glance in both views.
+    //
+    // TOP-ALIGNED ON THE TIMELINE'S INK ROW: the box is the RULER's, and
+    // LabelVAlign::Top lands the run's first inked row on kRulerNumberInkTop rows
+    // below its top - the row TimeRuler's own numbers ink. Centring in the same box is
+    // what put the panel's numbers below the timeline's; aligning the line box alone
+    // still left them one row low (the two rasterizers' bearings differ).
     for (const PanelLabel& label : aModel.frameLabels)
         drawLabel(
             aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre,
-            label.inActiveRange ? axisText : toImU32Strength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo
+            label.inActiveRange ? axisText : toImU32Strength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo,
+            LabelVAlign::Top
         );
 
     // THE TEMPORARY PLAYBACK WINDOW, on top of the ruler content it washes - the
@@ -1468,8 +1541,13 @@ void drawPanel(
                 aPill.left(), aModel.rulerBand.top() + gui::frameRuler::kNumberTop, aPill.width(),
                 gui::frameRuler::kNumberHeight
             );
+            // Top-aligned like every other ruler number: TimeRuler's window text uses
+            // "the exact same rect convention as the ruler numbers (top-aligned at
+            // kNumberTop), so the pill text lines up with them precisely"
+            // (renderPlayWindow).
             drawLabel(
-                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Centre, toImU32(colors.windowText), halo
+                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Centre, toImU32(colors.windowText), halo,
+                LabelVAlign::Top
             );
         };
         if (!aModel.playWindow.mergedPill.isEmpty()) {
@@ -1966,11 +2044,18 @@ void drawPanel(
         if (!aModel.playheadPill.isEmpty() && !aModel.playheadText.isEmpty()) {
             const QByteArray utf8 = aModel.playheadText.toUtf8();
             const ImVec2 textSize = measureText(font, fontSize, utf8.constData());
-            // TimeCursor draws the number on the ruler's own number row, centred on the
-            // playhead's column; drawLabel's centre alignment is the same placement.
+            // TimeCursor draws the number on the ruler's own NUMBER ROW, centred on
+            // the playhead's column and top-aligned: its rect is `(mLineX - textWidth /
+            // 2, kNumberTop, textWidth, kNumberHeight)` (TimeLineEditorWidget.cpp). The
+            // box below is that rect - the number row's top, NOT the pill's, which rides
+            // one row lower (kPillTop) - so the glyph sits on the row every ruler number
+            // uses. Taking the pill's own top with centre alignment put the panel's pill
+            // glyph three rows below the timeline's.
             const QRect numberBox(
-                int(std::lround(px - textSize.x * 0.5f)), aModel.playheadPill.top(), int(std::ceil(textSize.x)),
-                aModel.playheadPill.height()
+                int(std::lround(px - textSize.x * 0.5f)),
+                aModel.rulerBand.isEmpty() ? aModel.playheadPill.top()
+                                           : aModel.rulerBand.top() + gui::frameRuler::kNumberTop,
+                int(std::ceil(textSize.x)), aModel.playheadPill.height()
             );
             aDrawList.AddRectFilled(
                 rectMin(aModel.playheadPill), rectMax(aModel.playheadPill), toImU32(aTheme.selected()),
@@ -1978,7 +2063,7 @@ void drawPanel(
             );
             drawLabel(
                 aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Centre,
-                toImU32(aTheme.playheadText()), halo
+                toImU32(aTheme.playheadText()), halo, LabelVAlign::Top
             );
         }
         aDrawList.PopClipRect();
@@ -2012,11 +2097,15 @@ void drawPanel(
         aDrawList.Flags = savedBarFlags & ~ImDrawListFlags_AntiAliasedLines;
         aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
         const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb, bool aHorizontal) {
-            // A bar with NOTHING TO SCROLL is not drawn at all. The model publishes an
-            // empty run exactly then (Scaler::scrollBars), and an empty lane would put
-            // nothing on screen anyway - the trough paints NOTHING, so there is no
-            // full-length rail to mistake for a divider. The TRACK's rect is still
-            // reserved in the layout, so the plot does not move when content appears.
+            // AN EMPTY RUN DRAWS NOTHING, AND A FULL ONE DRAWS THE WHOLE LANE. The run
+            // is the model's (Scaler::scrollBars): the horizontal lane's slider is
+            // drawn even at zero travel - Qt's own slider fills the groove when the
+            // range is empty, and the timeline's bar does exactly that - while the
+            // vertical lane's is absent then (the timeline's vertical bar is AsNeeded
+            // and shows no ink when its content fits). The trough paints NOTHING in
+            // either case, so there is no full-length rail to mistake for a divider,
+            // and the TRACK's rect stays reserved in the layout so the plot does not
+            // move when content appears.
             if (aTrack.isEmpty() || aThumb.isEmpty())
                 return;
             // The pill: 4px centred in the lane, spanning the run. This is AppStyle's
@@ -2061,7 +2150,8 @@ void drawPanel(
     aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
     for (const PanelLabel& label : aModel.valueLabels)
         drawLabel(
-            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo, kValueLabelGap
+            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Right, axisText, halo,
+            LabelVAlign::Centre, kValueLabelGap
         );
     aDrawList.PopClipRect();
 }

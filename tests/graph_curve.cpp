@@ -1142,18 +1142,23 @@ int sectionScaler() {
         CHECK(high.vThumb.top() < low.vThumb.top()); // a HIGHER window sits HIGHER on the track
         scaler.setValueWindow(minSave, maxSave); // the window this section goes on with
 
-        // A WINDOW THAT COVERS THE CONTENT HAS NOTHING TO SCROLL, so no thumb is
-        // published at all (Scaler::scrollBars' own rule: a full-track thumb is a rail
-        // with no travel, and the panel draws and claims only what it publishes). A
-        // degenerate content - no extent at all - reads the same way, and so does a
-        // content the FRAME window covers.
+        // A WINDOW THAT COVERS THE CONTENT HAS NOWHERE TO SCROLL - and the two lanes
+        // answer that the way the timeline's own two bars do. The VALUE lane is
+        // AsNeeded: no run at all (the timeline's vertical bar carries no ink when its
+        // tracks fit). The FRAME lane is the timeline's AlwaysOn bar: its slider FILLS
+        // the groove (Qt draws a full slider for an empty range), it simply cannot
+        // move, which is what hTravel() says. The TRACKS stay laid out either way, so
+        // the plot's rect does not move.
         const Scaler::ScrollBars whole = scaler.scrollBars(1.0, 60.0, 0.25f, 0.75f); // window 0..1 >= content
         CHECK(whole.vThumb.isEmpty());
+        CHECK(!whole.vTravel());
         CHECK(!whole.vTrack.isEmpty()); // the TRACK stays laid out: the plot's rect does not move
         const Scaler::ScrollBars none = scaler.scrollBars(1.0, 60.0, 0.0f, 0.0f); // no extent at all
         CHECK(none.vThumb.isEmpty());
         const Scaler::ScrollBars frames = scaler.scrollBars(0.0, 60.0, -10.0f, 10.0f);
-        CHECK(frames.hThumb.isEmpty());
+        CHECK(frames.hThumb == frames.hTrack); // the slider fills its groove ...
+        CHECK(!frames.hTravel());              // ... and has nowhere to go
+        CHECK(!frames.hTrack.isEmpty());
     }
     // The section boundary itself: the band's 22 rows sit immediately above the
     // plot, and the plot's first row is the graph's - the exact arithmetic a pixel

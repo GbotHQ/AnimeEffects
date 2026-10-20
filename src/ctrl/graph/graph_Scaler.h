@@ -222,12 +222,21 @@ public:
     //   * hThumb/vThumb: the SLIDER'S RUN - the visible WINDOW inside the CONTENT,
     //     laid out along the track and spanning the lane's thickness, by Qt's own
     //     arithmetic (see scrollBars): run length = pageStep/content x track length,
-    //     floored at QStyle::PM_ScrollBarSliderMin and never longer than the track,
-    //     and its offset = the window's own fraction of the TRAVEL (content -
-    //     page) across (track - length). A window that covers the content fills its
-    //     track and is then removed (nothing to scroll, no bar). The drawing layer
-    //     paints a kScrollBarPillThickness pill centred in the lane across this run,
-    //     and nothing else: the trough is invisible.
+    //     floored at QStyle::PM_ScrollBarSliderMin and capped one pixel SHORT of the
+    //     track, and its offset = the window's own fraction of the TRAVEL (content -
+    //     page) across (track - length). The drawing layer paints a
+    //     kScrollBarPillThickness pill centred in the lane across this run, and
+    //     nothing else: the trough is invisible.
+    //
+    // THE TWO LANES FOLLOW THE TIMELINE'S TWO BARS, measured per lane:
+    //   * hThumb is ALWAYS the slider - at zero travel (the window covers the content)
+    //     it IS the whole track. That is the timeline's horizontal bar, which is
+    //     AlwaysOn and draws its slider across the whole groove when the range is
+    //     empty (measured: 638 of 638px at zero travel). A full-length run cannot pan
+    //     anything, and hTravel() says so.
+    //   * vThumb is EMPTY at zero travel: the timeline's vertical bar is AsNeeded and
+    //     shows no ink when the tracks fit (measured: its right lane stays base).
+    //     A value run that fills its groove therefore means "the bar is hidden".
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).
@@ -239,6 +248,14 @@ public:
 
         // True when there is no bar to draw and nothing to hit (an empty plot).
         bool isEmpty() const { return hTrack.isEmpty() && vTrack.isEmpty(); }
+
+        // WHETHER THE RUN CAN MOVE - the question a press, a lane wheel notch and a
+        // page step all ask, and NOT the same question as "is there a run to draw":
+        // the horizontal slider is drawn at zero travel too (see above), and panning
+        // it could only be a no-op. A run shorter than its track is exactly a positive
+        // travel (scrollBars caps it one pixel short when there is one).
+        bool hTravel() const { return !hThumb.isEmpty() && hThumb.width() < hTrack.width(); }
+        bool vTravel() const { return !vThumb.isEmpty() && vThumb.height() < vTrack.height(); }
     };
 
     // The bars for THIS scaler's plot rect. The horizontal bar scrolls the FRAME
@@ -249,8 +266,9 @@ public:
     // channels' keys (aValueContentLo/Hi, the extent ctrl::GraphEditor's value fit
     // uses) and its window is valueMin()..valueMax(). A DEGENERATE content (lo ==
     // hi, i.e. no key at all, or a project with no frame span) means "nothing to
-    // scroll", and its thumb then fills the track exactly as a fully visible window
-    // does. The value axis is INVERTED along its track - valueMax is at the track's
+    // scroll", and its run then fills the track exactly as a fully visible window
+    // does - which is the full slider of the horizontal lane and, after the AsNeeded
+    // rule, no run at all for the vertical one (see ScrollBars). The value axis is INVERTED along its track - valueMax is at the track's
     // top - which the layout accounts for, so a window at high values draws its
     // thumb at the top.
     ScrollBars scrollBars(
@@ -273,7 +291,10 @@ public:
     bool applyFrameWindow(double aLo, double aHi);
 
     // Back to the ladder's own rung: the panel's own frame axis.
-    void clearFrameWindow() { mFramePpf = 0.0; }
+    void clearFrameWindow() {
+        mFramePpf = 0.0;
+        mFrameWindowRect = QRect();
+    }
 
     // --- frame axis (ctrl::time::Scaler owns the ladder) ---
     ctrl::time::Scaler& frameScale() { return mFrameScale; }
@@ -336,6 +357,17 @@ private:
     // The shared window's mapping, when one is applied: pixels per frame as a
     // DOUBLE (see framePpf). 0 while the frame mapping is the ladder's own rung.
     double mFramePpf;
+    // THE RECT THE SHARED MAPPING WAS FITTED OVER. applyFrameWindow maps the pushed
+    // window across mRect AT THAT MOMENT, and mFramePpf/mFrameOffset are that fit's
+    // numbers. A caller may hand this scaler another rect afterwards (buildGraphPanelModel
+    // does, publishing the panel it was asked for), and the frames the mapping COVERS do
+    // not move with it - so the horizontal bar's window has to be read over THIS rect,
+    // not over whatever rect the caller set. Reading it over the new rect scales the
+    // window's span by newWidth/fittedWidth: wider, and the bar reads as "the content
+    // fits" and is removed while the panel is plainly showing a narrower window (the
+    // measured "the horizontal bar is never there" report). Empty while the mapping is
+    // the ladder's own.
+    QRect mFrameWindowRect;
     float mValueMin;
     float mValueMax;
     // Memo of axisLabelWidth(), -1 while unmeasured. plotRect() is on the pixel

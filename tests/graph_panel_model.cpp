@@ -2904,19 +2904,25 @@ int main(int argc, char** argv) {
             atBottom.vThumb.top(), atBottom.vThumb.bottom(), atTop.vTrack.top(), atTop.vTrack.bottom()
         );
 
-        // A FULL-CONTENT WINDOW SHOWS NO BAR: the frame axis asked for a window wider
-        // than the project's whole range, and the value axis for one wider than every
-        // key's extent - a thumb that fills its track has no travel, so Scaler::
-        // scrollBars publishes NO thumb (and therefore nothing is drawn and nothing is
-        // claimed; see its own note). The TRACK is still laid out, which is what keeps
-        // the plot's rect - and every frame coordinate - independent of the content.
+        // A FULL-CONTENT WINDOW DRAWS A FULL-LENGTH HORIZONTAL SLIDER AND NO VERTICAL
+        // RUN. Qt's slider fills its groove when the range is empty, and that is what
+        // the timeline's AlwaysOn horizontal bar shows (measured at zero travel: 638 of
+        // its 638px lane); a bar that VANISHED there left the panel with no bars at all
+        // beside a timeline that always has one. The vertical lane follows the
+        // timeline's own vertical bar, which is AsNeeded and carries no ink when the
+        // tracks fit - so its run is empty. Neither lane can be panned, which is what
+        // hTravel()/vTravel() say. The TRACK is laid out either way, which is what
+        // keeps the plot's rect - and every frame coordinate - independent of content.
         editor.scale().fitFrameAxis(core::Frame(-500), core::Frame(500));
         editor.scale().setValueWindow(-1000.0f, 1000.0f);
         const gui::GraphPanelModel full = gui::buildGraphPanelModel(editor, viewport, palette);
-        std::printf("[16] full-content window: hThumb empty %d  vThumb empty %d  tracks laid out %d/%d\n",
-                    int(full.hThumb.isEmpty()), int(full.vThumb.isEmpty()), int(!full.hTrack.isEmpty()),
-                    int(!full.vTrack.isEmpty()));
-        CHECK(full.hThumb.isEmpty());
+        std::printf(
+            "[16] full-content window: hThumb %d px of a %d px lane  vThumb empty %d  tracks laid out %d/%d\n",
+            full.hThumb.width(), full.hTrack.width(), int(full.vThumb.isEmpty()), int(!full.hTrack.isEmpty()),
+            int(!full.vTrack.isEmpty())
+        );
+        CHECK(!full.hThumb.isEmpty());
+        CHECK(full.hThumb == full.hTrack); // the slider fills its groove: nowhere to go
         CHECK(full.vThumb.isEmpty());
         CHECK(!full.hTrack.isEmpty());
         CHECK(!full.vTrack.isEmpty());
@@ -2941,6 +2947,128 @@ int main(int argc, char** argv) {
         );
         CHECK(narrow.hThumb.width() == minSlider);
         CHECK(narrow.vThumb.height() == minSlider);
+
+        // A SHARED WINDOW NARROWER THAN THE CONTENT PUBLISHES A RUN - the delta this
+        // block exists for, stated as the model's own rule. The window below is the
+        // MIDDLE THIRD of the project's frame range, pushed through setFrameWindow
+        // (the live dock's path: the timeline hands its visible window to the
+        // editor), and the panel must publish an hThumb whose length is that visible
+        // FRACTION of the track. The failure it pins is the one the user reported: a
+        // bar that never appears while the timeline is zoomed in. An empty run is
+        // correct ONLY while the whole content is on screen, which is why the
+        // full-range window is asserted beside it - not instead of it.
+        {
+            const double contentSpan = double(frames.max() - frames.min());
+            CHECK(contentSpan > 0.0);
+            const double lo = double(frames.min()) + contentSpan / 3.0;
+            const double hi = double(frames.min()) + 2.0 * contentSpan / 3.0;
+            editor.setFrameWindow(lo, hi);
+            const gui::GraphPanelModel third = gui::buildGraphPanelModel(editor, viewport, palette);
+            const int track = third.hTrack.width();
+            const int expectedLength =
+                std::clamp(int(std::lround((hi - lo) / contentSpan * track)), minSlider, track);
+            std::printf(
+                "[16] shared window %.3f..%.3f of %d..%d -> hThumb %d px at +%d of a %d px lane (Qt: %d, floor "
+                "%d)\n",
+                lo, hi, frames.min(), frames.max(), third.hThumb.width(),
+                third.hThumb.left() - third.hTrack.left(), track, expectedLength, minSlider
+            );
+            CHECK(!third.hThumb.isEmpty());
+            CHECK(third.hThumb.width() == expectedLength);
+            CHECK(third.hThumb.width() < track); // TRAVEL: the run does not fill its lane
+            CHECK(third.hTrack.contains(third.hThumb));
+
+            // THE WINDOW IS THE MAPPING'S, NOT THE CALLER'S RECT. The scaler fits the
+            // pushed window over ITS OWN rect; the model publishes the panel it is
+            // asked for and sets that rect afterwards. A bar that measures the window
+            // over the NEW rect scales its span by the two widths' ratio - and a
+            // narrower fit (here 400px against the model's 1280px) then reads as "the
+            // content fits" and the run is REMOVED while the panel is plainly showing a
+            // window under a third of the range. That is the user-visible "the
+            // horizontal bar is never there"; scrollBars must read mFrameWindowRect.
+            editor.scale().setRect(QRect(QPoint(0, 0), QSize(400, 720)));
+            editor.setFrameWindow(lo, hi);
+            const gui::GraphPanelModel mapped = gui::buildGraphPanelModel(editor, viewport, palette);
+            const int mappedTrack = mapped.hTrack.width();
+            const int mappedExpected =
+                std::clamp(int(std::lround((hi - lo) / contentSpan * mappedTrack)), minSlider, mappedTrack);
+            std::printf(
+                "[16] window fitted over a 400px rect, model built for the %dx%d panel: hThumb %d px of a %d px "
+                "lane (expected %d)\n",
+                viewport.width(), viewport.height(), mapped.hThumb.width(), mappedTrack, mappedExpected
+            );
+            CHECK(!mapped.hThumb.isEmpty());
+            CHECK(mapped.hThumb.width() == mappedExpected);
+            CHECK(mapped.hThumb.width() < mappedTrack);
+            editor.scale().setRect(panel);
+
+            // ANY STRICTLY POSITIVE TRAVEL PUBLISHES A RUN - the rule the near-full
+            // case turns on. The timeline's own slider draws a pill when a couple of
+            // frames are left, and the panel must too: (a) a window 1.7% short of the
+            // content is a run only slightly shorter than the track, and (b) a window
+            // ONE TENTH OF A FRAME short has a length that ROUNDS UP TO THE TRACK -
+            // where a "the rounded length reached the track, so remove it" test
+            // deleted the bar while the window was strictly narrower than the content.
+            {
+                const double contentSpan = double(frames.max() - frames.min());
+                editor.setFrameWindow(double(frames.min()) + 0.01 * contentSpan,
+                                      double(frames.min()) + 0.993 * contentSpan);
+                const gui::GraphPanelModel near = gui::buildGraphPanelModel(editor, viewport, palette);
+                const int nearTrack = near.hTrack.width();
+                const double nearSpan = 0.983 * contentSpan;
+                const int nearExpected = std::clamp(
+                    int(std::lround(nearSpan / contentSpan * nearTrack)), minSlider,
+                    std::max(minSlider, nearTrack - 1)
+                );
+                std::printf(
+                    "[16] near-full window (%.3f of the range): hThumb %d px of a %d px lane (expected %d)\n",
+                    nearSpan / contentSpan, near.hThumb.width(), nearTrack, nearExpected
+                );
+                CHECK(!near.hThumb.isEmpty());
+                CHECK(near.hThumb.width() == nearExpected);
+                CHECK(near.hThumb.width() < nearTrack);
+
+                // ...and the case whose length ROUNDS TO THE TRACK: a tenth of a
+                // frame of travel (the timeline reports fractional window edges), i.e.
+                // just over one track pixel. Its pill is the track MINUS one pixel -
+                // never the whole track, which would read as "nothing to scroll".
+                editor.setFrameWindow(double(frames.min()), double(frames.max()) - 0.1);
+                const gui::GraphPanelModel sliver = gui::buildGraphPanelModel(editor, viewport, palette);
+                const int sliverTrack = sliver.hTrack.width();
+                std::printf(
+                    "[16] tenth-of-a-frame window: hThumb %d px of a %d px lane (the visible fraction rounds to"
+                    " %d)\n",
+                    sliver.hThumb.width(), sliverTrack,
+                    int(std::lround((contentSpan - 0.1) / contentSpan * sliverTrack))
+                );
+                CHECK(!sliver.hThumb.isEmpty());
+                CHECK(sliver.hThumb.width() == sliverTrack - 1);
+
+                // ...and SUB-PIXEL travel reads as NO travel: the length would round to
+                // the whole track either way, so the slider fills its groove and the bar
+                // cannot be panned. A window equal to its content to within the
+                // mapping's own floating noise lands here too.
+                editor.setFrameWindow(double(frames.min()), double(frames.max()) - 0.005);
+                const gui::GraphPanelModel noise = gui::buildGraphPanelModel(editor, viewport, palette);
+                std::printf(
+                    "[16] sub-pixel travel: hThumb %d px of a %d px lane, lane laid out %d\n",
+                    noise.hThumb.width(), noise.hTrack.width(), int(!noise.hTrack.isEmpty())
+                );
+                CHECK(noise.hThumb == noise.hTrack); // reads as no travel: the groove is full
+                CHECK(!noise.hTrack.isEmpty());
+            }
+
+            // ...and the window that COVERS the content draws the FULL slider (not a
+            // removed bar): the zero-travel state is the one the user sees beside a
+            // timeline that always shows its own, so it must not be the one state with
+            // no bar at all.
+            editor.setFrameWindow(double(frames.min()), double(frames.max()));
+            const gui::GraphPanelModel whole = gui::buildGraphPanelModel(editor, viewport, palette);
+            std::printf("[16] full-range shared window: hThumb %d px of a %d px lane, lane laid out %d\n",
+                        whole.hThumb.width(), whole.hTrack.width(), int(!whole.hTrack.isEmpty()));
+            CHECK(whole.hThumb == whole.hTrack);
+            CHECK(!whole.hTrack.isEmpty());
+        }
         editor.clearFrameAxis(); // the frame axis is the panel's own again for what follows
 
         // AN EMPTY PLOT PUBLISHES NO BARS AT ALL (there is nowhere to lay one out), and

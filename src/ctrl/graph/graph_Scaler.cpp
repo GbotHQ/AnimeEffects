@@ -153,10 +153,23 @@ namespace graph {
     // far end - which the old fraction-of-the-whole-track form could not do, and
     // which is why the pill and the pointer disagreed at the ends.
     //
-    // NOTHING TO SCROLL, NOTHING TO SHOW: a window that covers the whole content (or a
-    // content with no span at all - the caller passes lo == hi for "nothing to
-    // scroll") fills the track and is then removed, so an empty rect is drawn by
-    // nobody and claimed by nobody.
+    // A WINDOW THAT COVERS ITS CONTENT HAS A FULL-LENGTH SLIDER, NOT NO SLIDER. Qt's
+    // QScrollBar is drawn with its slider across the whole groove whenever the range is
+    // empty - the bar is still there, it simply has nowhere to go - and the timeline's
+    // own bar measures exactly that (638 of its 638px lane at zero travel). Removing
+    // the run instead left the panel with no bars at all in the common state where the
+    // window covers the content, beside a timeline that always has them.
+    //
+    // So this returns the FULL TRACK when the travel is zero (or negative: the window
+    // is wider than the content), and the run otherwise. THE TEST IS THE TRAVEL, NOT
+    // THE ROUNDED LENGTH: a window two percent short of a 600-frame content is 0.983 of
+    // it, and on a short track that fraction ROUNDS UP TO THE WHOLE TRACK - removing
+    // the run when the rounded length reached the track deleted the bar exactly where
+    // the timeline still drew one. The travel is measured in the TRACK'S OWN PIXELS:
+    // half a pixel is the resolution a pill can express, and below it the length would
+    // round to the track, i.e. read as "nothing to scroll" anyway. That also keeps the
+    // mapping's floating noise out: a window equal to its content to within 1e-13
+    // frames (frameAtPixel of its own far edge) is not travel.
     static QRect scrollThumbRect(
         const QRect& aTrack, bool aHorizontal, bool aInverted, double aContentLo, double aContentHi,
         double aWindowLo, double aWindowHi
@@ -181,15 +194,15 @@ namespace graph {
         if (!(contentSpan > 0.0) || !(pageSpan > 0.0))
             return QRect(); // a degenerate content or window is "nothing to scroll"
         const double travel = contentSpan - pageSpan;
-        if (!(travel > 0.0))
-            return QRect(); // the window covers the content: no bar at all
-
+        // The floor is the style's minimum slider, the ceiling one pixel SHORT of the
+        // track (see A WINDOW THAT COVERS ITS CONTENT above): the clamp is well-formed
+        // even for a degenerate 1px track, where floor and ceiling meet.
         const int minLength = std::min(Scaler::scrollBarSliderMin(), trackLength);
-        const int thumbLength = std::clamp(
-            int(std::lround(pageSpan / contentSpan * trackLength)), minLength, trackLength
-        );
-        if (thumbLength >= trackLength)
-            return QRect();
+        const int maxLength = std::max(minLength, trackLength - 1);
+        if (!(travel > 0.0) || !(travel / contentSpan * double(trackLength) >= 0.5))
+            return aTrack; // no travel a pill can express: the slider fills its groove
+        const int thumbLength =
+            std::clamp(int(std::lround(pageSpan / contentSpan * trackLength)), minLength, maxLength);
         const double start = std::clamp((windowLow - contentLo) / travel, 0.0, 1.0);
         const int offset = std::clamp(
             int(std::lround(start * (trackLength - thumbLength))), 0, trackLength - thumbLength
@@ -229,19 +242,31 @@ namespace graph {
 
         // The windows: the frames the view covers and the value window this scaler
         // holds. WHICH COLUMNS the frame window spans is the mapping's own answer: the
-        // shared window spans the PANEL (applyFrameWindow), while the graph's own axis
-        // fills the plot. Using the plot in the shared case would make the run shorter
-        // than the window actually shown - the timeline's slider measures its viewport,
-        // and so must this one.
-        const QRect frameWindow = mFramePpf > 0.0 ? mRect : plot;
+        // shared window spans the rect applyFrameWindow was fitted over, while the
+        // graph's own axis fills the plot. Using the plot in the shared case would make
+        // the run shorter than the window actually shown - the timeline's slider
+        // measures its viewport, and so must this one - and using the CALLER's rect
+        // instead of the fitted one (mFrameWindowRect) scales the window by the two
+        // widths' ratio, which is how a narrower window on screen came out as "no
+        // travel" and no bar at all.
+        const QRect frameWindow =
+            (mFramePpf > 0.0 && !mFrameWindowRect.isEmpty()) ? mFrameWindowRect : plot;
         bars.hThumb = scrollThumbRect(
             bars.hTrack, true, false, aFrameContentLo, aFrameContentHi,
             frameAtPixel(frameWindow.left()), frameAtPixel(frameWindow.left() + frameWindow.width())
         );
-        bars.vThumb = scrollThumbRect(
+        // THE VERTICAL LANE FOLLOWS THE TIMELINE'S OWN VERTICAL BAR, which is
+        // AsNeeded: in the state where the tracks fit, its lane carries NO ink at all
+        // (measured: columns 876..893 stay the base surface). So a value run that
+        // fills its groove is DROPPED here - the bar is hidden, not drawn full - while
+        // the horizontal one above is the timeline's AlwaysOn bar and keeps its full
+        // slider. The two policies are the reference's, measured per lane, not one
+        // rule applied twice.
+        const QRect valueRun = scrollThumbRect(
             bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
             static_cast<double>(valueMax())
         );
+        bars.vThumb = (valueRun.height() < bars.vTrack.height()) ? valueRun : QRect();
         return bars;
     }
 
@@ -281,6 +306,10 @@ namespace graph {
             return false;
 
         mFramePpf = panelWidth / (aHi - aLo);
+        // The fit's own rect: scrollBars() reads the window over THIS one (see
+        // mFrameWindowRect), so a caller that sets another rect cannot turn the run
+        // empty by widening the columns it is measured across.
+        mFrameWindowRect = mRect;
         // Frame aLo at panel.left(): pixelXOfFrame() reads
         // plotRect().left() + mFrameOffset + ppf * frame, so the offset carries the
         // distance from the plot's left edge back to the panel's.

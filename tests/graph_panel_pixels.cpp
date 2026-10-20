@@ -89,7 +89,12 @@
 //     + 1 == plot.top(), the two rects disjoint), every frame label's box is inside it
 //     and clear of the tick rows, and the glyph box the panel actually used
 //     (drawLabel's own clamped placement) is inside it - so a number that left the
-//     ruler section fails here instead.
+//     ruler section fails here instead. ROW FOR ROW WITH THE TIMELINE, on the pixels
+//     of a pair of passes: a frame number's first inked row is the box's top row plus
+//     gui::kRulerNumberInkTop (3) - the row TimeRuler's top-aligned drawText inks,
+//     read at a font size where a CENTRED glyph would start two rows lower - and a
+//     frame tick inks the band's last row AND the kTickLength rows above it (six
+//     rows, where ImGui's half-open 1px path used to drop the top one).
 //  11-15 THE CONTRAST OUTLINE AND COMPOSITE PASS (gui::outline), driven directly
 //     with hand-authored textures: a low-contrast stroke over a bright patch is
 //     ringed in black and the ring's strength follows the stroke's coverage; the
@@ -422,6 +427,11 @@ constexpr int kFillTol = 10;
 constexpr int kCurveTol = 48;
 
 enum class Align { Left, Centre, Right };
+// drawLabel's vertical axis (src/gui/GraphPanelFrame.cpp's LabelVAlign): Centre is
+// the clamped centring every non-ruler label uses, Top is the ruler numbers' own
+// placement - the glyph line box starting on the box's first row, which is what Qt's
+// top-aligned drawText does for TimeRuler.
+enum class VAlign { Centre, Top };
 
 gl::Framebuffer* gFbo = nullptr;
 
@@ -552,15 +562,42 @@ int rectGap(const QRect& a, const QRect& b) {
     return std::max(dx, dy);
 }
 
+// How far below the position ImGui is handed a run's ink starts: the smallest top
+// bearing among its glyphs at the drawing size - drawLabel's inkTopInset, mirror
+// rebuilt here so the glyph box below is the box the panel really paints in.
+float inkTopInsetOf(ImFont* aFont, float aFontSize, const QByteArray& aUtf8) {
+    if (!aFont || aUtf8.isEmpty() || !(aFontSize > 0.0f)) {
+        return 0.0f;
+    }
+    ImFontBaked* baked = aFont->GetFontBaked(aFontSize);
+    if (!baked || !(baked->Size > 0.0f)) {
+        return 0.0f;
+    }
+    const float scale = aFontSize / baked->Size;
+    float inset = FLT_MAX;
+    for (const char c : aUtf8) {
+        const unsigned char byte = (unsigned char)c;
+        if (byte < 0x20 || byte > 0x7e) {
+            continue; // a multi-byte character is not read as its first byte
+        }
+        if (const ImFontGlyph* glyph = baked->FindGlyphNoFallback(ImWchar(byte))) {
+            inset = std::min(inset, glyph->Y0 * scale);
+        }
+    }
+    return inset == FLT_MAX ? 0.0f : inset;
+}
+
 // The glyph box drawLabel's own placement produces: the same font, the same
-// alignment, the same CLAMPED vertical centring and the same right-gap rule as
-// src/gui/GraphPanelFrame.cpp's drawLabel() (the glyphs are centred in the box, never
-// above its top edge; a right-aligned label is pulled left by up to aRightGapPx,
-// never by more than the box's spare width).
+// alignment, the same CLAMPED vertical placement and the same right-gap rule as
+// src/gui/GraphPanelFrame.cpp's drawLabel() (a centred glyph is never placed above
+// the box's top edge; a Top-aligned one puts its run's INK on
+// gui::kRulerNumberInkTop rows below it; a right-aligned label is pulled left by up
+// to aRightGapPx, never by more than the box's spare width).
 // Rebuilding it here is what lets the halo assertion say "this pixel is OUTSIDE the
 // glyph box" rather than "somewhere near the text".
 QRect glyphBox(
-    const QRect& aBox, const QString& aText, ImFont* aFont, float aFontSize, Align aAlign, int aRightGapPx = 0
+    const QRect& aBox, const QString& aText, ImFont* aFont, float aFontSize, Align aAlign,
+    VAlign aVAlign = VAlign::Centre, int aRightGapPx = 0
 ) {
     if (!aFont || aText.isEmpty() || aBox.isEmpty()) {
         return QRect();
@@ -574,9 +611,12 @@ QRect glyphBox(
         const float spare = std::max(0.0f, float(aBox.width()) - size.x);
         x = float(aBox.left() + aBox.width()) - size.x - std::min(float(aRightGapPx), spare);
     }
-    // The same clamp drawLabel applies: an over-tall font hangs into the box's own
-    // interior instead of out of its top edge.
-    const float y = float(aBox.top()) + std::max((float(aBox.height()) - size.y) * 0.5f, 0.0f);
+    // The same placement drawLabel applies: Top puts the run's INK on
+    // gui::kRulerNumberInkTop rows below the box's top (the timeline's own row, so the
+    // font's bearing is subtracted), Centre clamps an over-tall font into the box.
+    const float y = aVAlign == VAlign::Top
+        ? float(aBox.top() + gui::kRulerNumberInkTop) - inkTopInsetOf(aFont, aFontSize, utf8)
+        : float(aBox.top()) + std::max((float(aBox.height()) - size.y) * 0.5f, 0.0f);
     return QRect(int(std::floor(x)), int(std::floor(y)), int(std::ceil(size.x)), int(std::ceil(size.y)));
 }
 
@@ -1137,12 +1177,17 @@ std::vector<Geom> geometryOf(
         out.push_back({"value_tick", grow(QRect(aModel.plot.left() - 1, y, 6, 1), 2)});
     }
     for (const gui::PanelLabel& label : aModel.frameLabels) {
-        out.push_back({"frame_label", grow(glyphBox(label.rect, label.text, aFont, aFontSize, Align::Centre), 2)});
+        out.push_back(
+            {"frame_label", grow(glyphBox(label.rect, label.text, aFont, aFontSize, Align::Centre, VAlign::Top), 2)}
+        );
     }
     for (const gui::PanelLabel& label : aModel.valueLabels) {
         out.push_back(
             {"value_label",
-             grow(glyphBox(label.rect, label.text, aFont, aFontSize, Align::Right, gui::kValueLabelGap), 2)}
+             grow(glyphBox(
+                      label.rect, label.text, aFont, aFontSize, Align::Right, VAlign::Centre, gui::kValueLabelGap
+                  ),
+                  2)}
         );
     }
     if (aModel.zeroY >= 0) {
@@ -2131,7 +2176,8 @@ bool checkLabelHalo(
     // starts below it), so their boxes and glyphs are bounded by the band.
     REQUIRE(aModel.rulerBand.contains(label.rect), "precondition: the label box must be inside the ruler band");
 
-    const QRect glyph = glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre);
+    const QRect glyph =
+        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
     REQUIRE(!glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text));
     REQUIRE(aModel.rulerBand.contains(glyph), "precondition: the glyph box must be inside the ruler band");
 
@@ -2309,7 +2355,8 @@ bool checkRulerReserve(
             " (%d): the numbers are not clear of the ruler's own marks",
             qPrintable(label.text), label.rect.bottom(), gui::frameRuler::kTickLength, band.bottom()
         );
-        const QRect glyph = glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre);
+        const QRect glyph =
+            glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
         REQUIRE(
             !glyph.isEmpty(), "precondition: the frame font lays out '%s' with empty metrics", qPrintable(label.text)
         );
@@ -2358,13 +2405,15 @@ bool checkRulerReserve(
             " over-tall case",
             label.rect.height(), double(size.y)
         );
-        const QRect glyph = glyphBox(label.rect, label.text, aTight.font, aTight.fontSize, Align::Centre);
-        // The clamp's own statement: the glyph box starts at or below the box's top.
+        const QRect glyph = glyphBox(label.rect, label.text, aTight.font, aTight.fontSize, Align::Centre, VAlign::Top);
+        // THE CLAMP'S OWN STATEMENT, and it is about the INK: a Top-aligned label puts
+        // its run's first inked row on the ruler's row whatever the font's height, so
+        // an over-tall font hangs BELOW the box instead of out of its top edge. The
+        // glyph CELL may start above the box by the font's own bearing; the scan below
+        // is what proves no pixel does.
         REQUIRE(
-            glyph.top() >= label.rect.top(),
-            "the frame label '%s' draws its glyph box at y=%d, above its own box's top edge (y=%d): a taller font"
-            " overflows out of the box and out of the band's number row",
-            qPrintable(label.text), glyph.top(), label.rect.top()
+            inkTopInsetOf(aTight.font, aTight.fontSize, utf8) > 0.0f,
+            "precondition: the tight font must report an ink bearing for '%s'", qPrintable(label.text)
         );
         // And the pixels: the rows band.top() .. box.top()-1, over the label's own
         // columns, are IDENTICAL to the same model drawn without this label. The tick
@@ -2377,7 +2426,7 @@ bool checkRulerReserve(
                 if (std::abs(x - tickX) <= 1)
                     tickColumn = true;
             }
-            for (int y = band.top(); y < label.rect.top(); ++y) {
+            for (int y = band.top(); y < label.rect.top() + gui::kRulerNumberInkTop; ++y) {
                 if (colourDistance(pixelAt(aTight.image, x, y), pixelAt(aTightBare.image, x, y)) > kInkMin) {
                     if (tickColumn)
                         ++tickPixels;
@@ -2403,6 +2452,110 @@ bool checkRulerReserve(
         ++tightChecked;
     }
     REQUIRE(tightChecked > 0, "precondition: the tight model must carry frame labels");
+    return true;
+}
+
+// THE RULER'S TWO ROW CLAIMS, measured on the pixels: the frame numbers start ON the
+// band's number row (not two rows below it, which is what centring a 14px box around a
+// shorter line box did), and the frame ticks ink SIX rows - the band's last row AND the
+// five above it, which is what the timeline's `drawLine(pos, pos + QPoint(0,
+// -kTickLength))` inks with a 1px pen.
+//
+// The numbers are read as a PAIR (with and without the frame labels), so a row that
+// differs is glyph ink and nothing else - the band, the ticks, the hairline and the
+// playhead are identical in both passes. The pass is rendered with a font size where a
+// CENTRED glyph would sit two rows lower than a top-aligned one (the shipped gate font
+// is 13px against the 14px box, where the two placements differ by half a row and
+// truncate to the same pixel row): at 10px the centring offset is (14 - 10) / 2 = 2
+// rows, so a regression to centring moves the first inked row from
+// `box.top() + bearing` to `box.top() + 2 + bearing` and fails the bound below.
+bool checkRulerRows(
+    const Rendered& aRendered, const Rendered& aBare, const gui::GraphPanelModel& aModel, const theme::Graph& aTheme
+) {
+    REQUIRE(!aRendered.image.isNull() && !aBare.image.isNull(), "precondition: both ruler passes must be rendered");
+    REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the model must carry a frame label");
+    REQUIRE(!aModel.rulerBand.isEmpty(), "precondition: the model must carry the ruler band");
+    const QRect& band = aModel.rulerBand;
+    const gui::PanelLabel& label = aModel.frameLabels.at(0);
+    const QRect glyph =
+        glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
+
+    // (a) THE NUMBER'S INK starts on the timeline's row: gui::kRulerNumberInkTop rows
+    // below the top of its box, whatever the drawing font is. That row is what
+    // TimeRuler's top-aligned drawText inks, so a regression to centring - or to
+    // merely starting the LINE BOX on the box's top row, which still left the panel a
+    // row low with the same face - moves it and fails here.
+    int inkTop = -1;
+    for (int y = label.rect.top(); y <= label.rect.bottom() && inkTop < 0; ++y) {
+        for (int x = glyph.left(); x <= glyph.right() && inkTop < 0; ++x) {
+            if (colourDistance(pixelAt(aRendered.image, x, y), pixelAt(aBare.image, x, y)) > kInkMin) {
+                inkTop = y;
+            }
+        }
+    }
+    REQUIRE(inkTop >= 0, "the frame number '%s' painted no ink inside its own glyph box", qPrintable(label.text));
+    const float bearing = inkTopInsetOf(aRendered.font, aRendered.fontSize, label.text.toUtf8());
+    std::printf(
+        "MEASURED ruler_number_rows label=%s box_top=%d line_box_top=%d ink_top=%d expected_ink_top=%d"
+        " font_bearing=%d/100 font_px=%d\n",
+        qPrintable(label.text), label.rect.top(), glyph.top(), inkTop,
+        label.rect.top() + gui::kRulerNumberInkTop, int(bearing * 100.0f),
+        int(std::lround(aRendered.fontSize))
+    );
+    REQUIRE(
+        inkTop == label.rect.top() + gui::kRulerNumberInkTop,
+        "the frame number '%s' starts its ink on row %d, not on row %d (its box's top row %d plus the ruler's %d):"
+        " the number is not on the timeline's own number row (its font bearing is %.2fpx, so the line box sits at"
+        " row %d)",
+        qPrintable(label.text), inkTop, label.rect.top() + gui::kRulerNumberInkTop, label.rect.top(),
+        gui::kRulerNumberInkTop, double(bearing), glyph.top()
+    );
+
+    // (b) THE TICKS: the band's last row AND the kTickLength rows above it. A tick's
+    // own column is used, chosen clear of the playhead's 1px line (which crosses every
+    // row of the band). The number boxes end at `band.top() + kNumberHeight`, well
+    // above the rows scanned here, so no label can contribute ink to them.
+    const int tickTop = band.bottom() - gui::frameRuler::kTickLength;
+    int tickX = -1;
+    for (const int x : aModel.frameTickX) {
+        if (aModel.playheadX < 0 || std::abs(x - aModel.playheadX) > 2) {
+            tickX = x;
+            break;
+        }
+    }
+    REQUIRE(tickX >= 0, "precondition: the model must carry a frame tick clear of every number box and the pill");
+    int first = -1;
+    int last = -1;
+    // The scan stops ON the band's last row: the row under it is the hairline, which
+    // spans the band's whole width and would be read as the tick's own ink.
+    for (int y = tickTop - 2; y <= band.bottom(); ++y) {
+        const bool inked =
+            colourDistance(pixelAt(aRendered.image, tickX, y), aTheme.rulerBand()) > kInkMin;
+        if (inked) {
+            if (first < 0)
+                first = y;
+            last = y;
+        }
+    }
+    std::printf(
+        "MEASURED ruler_tick_rows x=%d rows=%d..%d (band.last=%d, first expected %d, %d rows)\n", tickX, first, last,
+        band.bottom(), tickTop, gui::frameRuler::kTickLength + 1
+    );
+    REQUIRE(
+        first == tickTop,
+        "the frame tick at x=%d starts its ink on row %d, not on row %d (the band's last row minus the %dpx tick"
+        " length): ImGui's half-open 1px path dropped the tick's top row",
+        tickX, first, tickTop, gui::frameRuler::kTickLength
+    );
+    REQUIRE(
+        last == band.bottom(),
+        "the frame tick at x=%d ends its ink on row %d, not on the band's last row %d", tickX, last, band.bottom()
+    );
+    REQUIRE(
+        last - first + 1 == gui::frameRuler::kTickLength + 1,
+        "the frame tick at x=%d inks %d rows (%d..%d), not the %d the timeline's 1px pen inks", tickX, last - first + 1,
+        first, last, gui::frameRuler::kTickLength + 1
+    );
     return true;
 }
 
@@ -3504,8 +3657,10 @@ bool checkValueLabels(
         const QByteArray utf8 = label.text.toUtf8();
         const ImVec2 size = aRendered.font->CalcTextSizeA(aRendered.fontSize, FLT_MAX, 0.0f, utf8.constData());
         const float flushRight = float(label.rect.left() + label.rect.width()) - size.x;
-        const QRect glyph =
-            glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Right, gui::kValueLabelGap);
+        const QRect glyph = glyphBox(
+            label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Right, VAlign::Centre,
+            gui::kValueLabelGap
+        );
         const int shift = int(std::lround(flushRight)) - glyph.left();
         const float spare = float(label.rect.width()) - size.x;
         const int expected = int(std::min(float(gui::kValueLabelGap), spare));
@@ -3551,12 +3706,15 @@ bool checkValueLabels(
     // value label's glyph box and the nearest frame label's glyph box, in columns.
     REQUIRE(!aModel.frameLabels.isEmpty(), "precondition: the full model must carry a frame label");
     const gui::PanelLabel& frame = aModel.frameLabels.at(0);
-    const QRect frameGlyph = glyphBox(frame.rect, frame.text, aRendered.font, aRendered.fontSize, Align::Centre);
+    const QRect frameGlyph =
+        glyphBox(frame.rect, frame.text, aRendered.font, aRendered.fontSize, Align::Centre, VAlign::Top);
     int bestGap = -1;
     QString bestLabel;
     for (const gui::PanelLabel& label : aModel.valueLabels) {
-        const QRect glyph =
-            glyphBox(label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Right, gui::kValueLabelGap);
+        const QRect glyph = glyphBox(
+            label.rect, label.text, aRendered.font, aRendered.fontSize, Align::Right, VAlign::Centre,
+            gui::kValueLabelGap
+        );
         const int gap = rectGap(glyph, frameGlyph);
         if (bestGap < 0 || gap < bestGap) {
             bestGap = gap;
@@ -3568,7 +3726,7 @@ bool checkValueLabels(
         " gap_px=%d gutter=%d\n",
         qPrintable(bestLabel), qPrintable(frame.text),
         glyphBox(aModel.valueLabels.at(0).rect, aModel.valueLabels.at(0).text, aRendered.font, aRendered.fontSize,
-                 Align::Right, gui::kValueLabelGap)
+                 Align::Right, VAlign::Centre, gui::kValueLabelGap)
             .right(),
         frameGlyph.left(), bestGap, gui::kValueLabelGap
     );
@@ -3594,9 +3752,12 @@ bool checkValueLabels(
 
     // Where right-alignment alone would have put it, and where it may paint: the text
     // starts LEFT of the panel's own edge without the clip.
-    const QRect flush = glyphBox(overflowing.rect, overflowing.text, aGuarded.font, aGuarded.fontSize, Align::Right);
-    const QRect guarded =
-        glyphBox(overflowing.rect, overflowing.text, aGuarded.font, aGuarded.fontSize, Align::Right, gui::kValueLabelGap);
+    const QRect flush =
+        glyphBox(overflowing.rect, overflowing.text, aGuarded.font, aGuarded.fontSize, Align::Right, VAlign::Centre);
+    const QRect guarded = glyphBox(
+        overflowing.rect, overflowing.text, aGuarded.font, aGuarded.fontSize, Align::Right, VAlign::Centre,
+        gui::kValueLabelGap
+    );
     const QRect outsidePanel(0, 0, aGuardedModel.panel.left(), kViewH);
     const int outsideInk = inkCount(aGuarded.image, outsidePanel);
     const int insideInk = inkCount(aGuarded.image, aGuardedModel.panel);
@@ -6114,6 +6275,13 @@ int main(int argc, char** argv) {
     const Rendered fullNoFrameRendered = renderPass(fullNoFrame, palette, focus, "full_model_no_frame");
     const Rendered tightRulerBareRendered =
         renderPass(tightRulerBare, palette, focus, "full_model_tight_ruler_bare", ImVec2(-FLT_MAX, -FLT_MAX), 26.0f);
+    // THE RULER'S ROW PASSES (see checkRulerRows): the full model at a font size whose
+    // centring offset against the 14px number row is TWO rows, and the same model with
+    // its frame labels removed, so the number's own ink is read as the difference.
+    const Rendered rulerRowRendered =
+        renderPass(full, palette, focus, "full_model_ruler_rows", ImVec2(-FLT_MAX, -FLT_MAX), 10.0f);
+    const Rendered rulerRowBareRendered =
+        renderPass(fullNoLabels, palette, focus, "full_model_ruler_rows_bare", ImVec2(-FLT_MAX, -FLT_MAX), 10.0f);
 
     // The handle highlight pass: the SAME model with the pointer on the first
     // handle's dot, so the ONLY difference from `rendered` is io.MousePos - which
@@ -6263,6 +6431,10 @@ int main(int argc, char** argv) {
     }
     if (!checkRulerReserve(rendered, full, tightRulerRendered, tightRuler, tightRulerBareRendered, palette)) {
         std::printf("FAILED: the frame number's reserved band\n");
+        return 1;
+    }
+    if (!checkRulerRows(rulerRowRendered, rulerRowBareRendered, full, palette)) {
+        std::printf("FAILED: the ruler's number and tick rows\n");
         return 1;
     }
     if (!checkPlayWindowOverlay(
