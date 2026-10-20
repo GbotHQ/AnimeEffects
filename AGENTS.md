@@ -1892,3 +1892,112 @@ key, the clamp, and an Auto neighbour).
 target's LINK (`gXCAssertHandler`, `AudioPlaybackWidget`, `QMediaPlayer` undefined) because it pulls
 `libctrl`/`libcore` into a test that deliberately links neither. Panel-side wheel/zoom assertions
 belong in `graph_drag`, which already links them.
+## The third graph round: the ruler became the timeline's, and the handles became a bezier editor's (2026-10-20)
+
+The user's list was "the ruler and playhead still diverge from the timeline's - I expect full parity,
+visually AND in features; the handle symmetry is now forced, where is Alt, why is LENGTH forced too,
+and where is Alt+click to re-enable it; the Auto icon is hard to read; the channels menu's separators
+are broken and do not belong; wheel scroll was not what was asked (it scrolls diagonally) and it
+removed the per-axis zoom - what is missing are SCROLL BARS; Ctrl+A did nothing until I clicked in
+the timeline."
+
+**The ruler is the timeline's, rule for rule.** What the graph lacked, all of it now published by
+`gui::GraphPanelModel` and drawn by `GraphPanelFrame` with the timeline's tokens:
+- the 0.4 RECESSION outside the ACTIVE range (the project frame range, or the temporary play window)
+  for every tick and every number - `frameTickInActiveRange` and `PanelLabel::inActiveRange`; the
+  model still publishes classifications, the drawing layer applies the factor;
+- the PLAY WINDOW overlay (`PanelPlayWindow`): the translucent band, the two 2px bracket stems and the
+  label pills, merged into one centred "a–b" pill when they collide - `TimeRuler::renderPlayWindow` is
+  the reference, and the push runs through `MainDisplayWidget::syncGraphPanelSharedState` on the new
+  `TimeLineEditorWidget::playWindowChanged` (the window is the TIMELINE editor's view state, so the
+  graph gets it by delegation, like the frame window);
+- the pill's number in `Colors::text` (the timeline's `TimeCursor` ink; it was `accentBrightText`).
+
+**The band's row, measured.** The band used to sit at `plot.top() - 22`, and `plot.top()` includes the
+scaler's 4px margin, so the graph's strip started 4 rows BELOW the timeline's. The band is now anchored
+to the panel's top (`band.top() == panel.top()`), and the 4 margin rows sit BETWEEN the hairline and the
+plot. Measured on one capture, both tabs: strip rows page+9..page+30, hairline page+31, plot page+35 -
+identical in both views. THE RESIDUAL, measured and unattributed: the timeline's hairline renders
+`(51,51,51)` = `#404040` blended 50% over `#262626`, while the graph renders the same `Colors::hairline`
+token opaque `(64,64,64)`. Both read the token; neither screenshot explains the blend, and the palette
+carries no `#333333`. Do not "match" it by guessing an alpha - find the cause in the timeline's paint
+first (the dock's own splitter, which is the same token, measures 64 in the SAME capture, which is why
+the graph was left on the token).
+
+**Handles: aligned is the DEFAULT STATE, and it is geometric.** A key is aligned when its outgoing
+handle (`cubicBezier.x1,y1` of the from key's param) and its incoming one (`x2,y2` of the neighbour's)
+are collinear through the key within 2 degrees, in PIXELS. Dragging one handle of an aligned key keeps
+the other COLLINEAR at its OWN LENGTH (angle linked, length independent - the old code reflected the
+vector, which is why length was forced); an Alt-drag leaves the other handle untouched on every step
+(read `mModifiers` per step, not at the press); an Alt+CLICK on a key aligns a free pair (the LONGER
+handle defines the direction, the shorter is placed on its opposite side, both lengths preserved).
+No serialized field: alignment is inferred from geometry, so the file format is untouched.
+
+**The Auto icon is the TYPE's picture, not the key's.** With no neighbouring keys the derived handles
+are the identity, so Auto's curve IS Linear's straight line - the glyph was literally indistinguishable
+from Linear's, which is what "hard to read" meant. `paintEasingCurve` now substitutes the family's
+canonical context (`kAutoTileContext`: neighbours that hold the segment's END values on both sides, i.e.
+the plateau case) whenever an Auto glyph is drawn with the handle flag and no neighbours: the real rule
+(`autoHandles`) then produces the flat-ended S, with its two control points and stems. The header chip
+opts in as well, so an Auto key without neighbours shows the type, and an Auto key WITH neighbours still
+shows the curve the document plays.
+
+**The ruler SEEKS, because the timeline's does.** The timeline's ruler is not a picture: a press on
+it moves the document's current frame and a drag keeps moving it (`TimeRuler::mousePressEvent` ->
+`TimeLineEditorWidget::updateCursor`). The panel cannot move that frame itself - it is
+`core::Project`'s, owned by the timeline widget - so `GraphEditor::setFrameSeekDelegate` takes the
+timeline's own setter (`MainDisplayWidget::syncGraphPanelSharedState` hands over
+`mTimeLine->setFrame`) and the band is hit-tested at its published slot. **The band's rect is
+`plot.top() - kMargin - kRulerBandHeight`**, not `plot.top() - kRulerBandHeight`: the scaler's 4px
+margin sits BETWEEN the hairline and the plot, so a band derived from the plot alone covers the
+margin rows and misses the band's own first four - the first version of this rect was exactly that
+and graph_drag's section 0e caught it on `plot.top() == band.bottom() + 1 + kMargin`. With no
+delegate the band is claimed by nobody (nothing invents a second frame authority), the seek pushes
+no command, and a press elsewhere ends it (`endDrag` clears the state).
+
+**The wheel: per-axis zoom, no scroll.** A previous round replaced Shift with a diagonal scroll-both and
+moved the frame zoom to Ctrl+Shift; the user's verdict was that the per-axis zoom was the useful part and
+the scroll the wrong answer. The table is: plain = zoom both about the cursor, Shift = FRAME zoom, Ctrl =
+VALUE zoom, Ctrl+Shift = both. Every combination zooms at least one axis; none scrolls.
+
+**What was actually missing: scroll bars.** `ctrl::graph::Scaler::scrollBars(frameContentLo/Hi,
+valueContentLo/Hi)` owns the geometry (`kScrollBarThickness` 8, `kScrollBarGap` 2,
+`kScrollBarReserve` 10, `kScrollBarMinThumb` 16) and BOTH sides read it - the model publishes
+`hTrack/hThumb/vTrack/vThumb`, the editor hit-tests the same rects. The panel's right and bottom reserve
+10px for them, so the plot is 10px narrower and shorter than before (its top-left does not move). Thumb =
+the window's fraction of the CONTENT (frames: `frameRange()`; values: the shown channels' key extent,
+`GraphEditor::shownValueExtent`), filling the track when the content fits, never shorter than 16px. A
+press on a thumb drags it; a press on the track first CENTRES the window on the pressed point and then
+continues as that drag. No command is ever pushed - a scroll bar is the user's own movement of the window.
+
+**A scroll bar with no travel is not drawn.** The first version published a full-track thumb whenever
+the content fit, and on the empty graph that put two bright 8px rails along the panel's edges - the
+first thing the eye found. `Scaler::scrollBars` now returns an EMPTY thumb when the thumb would fill
+its track, so the drawing layer paints nothing and the hit-test claims nothing (one rule, both
+sides); the TRACK stays laid out, which is what keeps the plot's rect independent of the content.
+Three test sites had to follow the rule rather than the old arithmetic (graph_curve's two "whole
+content" cases, graph_panel_model's [16] full-content block, and its bars fixture, which now zooms
+the value axis so that a thumb exists to measure).
+
+**Focus after a tab switch: the surface, not the scroll area.** `TargetWidget::onSurfaceChanged` now
+focuses the view the tab shows, and the TIMELINE half is a trap: `gui::TimeLineWidget` is a
+`QAbstractScrollArea` and the widget whose `keyPressEvent` owns Ctrl+A/Escape is its viewport CHILD
+(`gui::TimeLineEditorWidget`), so focusing the scroll area hands the keys to a widget with no
+handler - the same "nothing happens" the fix was for. Measured with the accessibility bus, which is
+also the only way to see it: `ae focus` (a new command in `scripts/gui/ae_ui.py`) prints every node
+the bus reports FOCUSED. On the Graph tab it names the panel; on the Timeline tab it named a
+`filler` - `QAccessible`'s role for a plain `QWidget` subclass, i.e. the editor surface - once the
+lookup was `mTimeLine->findChild<TimeLineEditorWidget*>()`. A key press that vanishes has two
+causes (no focus, or focus with no handler) and this is the one that tells them apart.
+
+**Two small ones, both reported.** The channels popup's group separators are gone (a heading already
+separates; the seam landed in the gap above it and read as a broken rule). And a tab that becomes
+current now takes the keyboard (`TargetWidget::onSurfaceChanged` focuses the page it shows), so Ctrl+A
+works after switching to the Timeline tab instead of only after clicking its body - the surface is
+ClickFocus on purpose, and an explicit `setFocus` is what bridges the two.
+
+**Two traps.** A throwaway test target left in `tests/CMakeLists.txt` is DISCOVERED by
+`scripts/run_suites.sh` - it turned 46 passing targets into "47 pass", which is how it was noticed;
+delete the target and the file before the gate. And a test fixture sized against a layout constant has
+to grow with it: the narrow-viewport fixture was 80px "to keep a plot narrower than 16px", and the
+scroll bars' 10px reserve made that plot negative, so the fixture is 90 and the assertion is unchanged.
