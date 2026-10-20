@@ -231,6 +231,54 @@ struct PanelLabel {
     // project's own first and last frames are in view and their boxes collide); -1
     // for every ordinary number.
     int endFrame = -1;
+    // TRUE when the frame this label NAMES lies inside the ACTIVE playback range -
+    // the project's frame range, or the temporary play window while it is active
+    // (ctrl::TimeLineEditor::playbackRange's rule). A CLASSIFICATION, never ink: the
+    // timeline's own ruler recesses every number outside that range to an alpha of
+    // 0.4 (TimeRuler::renderHeader), and the drawing layer applies that fixed factor
+    // here. A label that names no frame (every value axis number) is always true:
+    // the value axis is not a frame axis and has no active range.
+    bool inActiveRange = true;
+};
+
+// THE TEMPORARY PLAYBACK WINDOW'S OVERLAY, exactly as TimeRuler::renderPlayWindow
+// lays it out in the timeline's ruler. It is a SECTION OF THE RULER BAND, not plot
+// content: the band rect is clipped to the visible band, the two 2px bracket stems
+// run from the pill row to the band's last row, and the labels are the bracket's
+// horizontal arms. The drawing layer paints the band first, then the stems, then the
+// pills (a merged pill wider than the window must not hide the stems' lower half),
+// with these tokens and order:
+//   * band    -> theme::Colors::windowBand (translucent)
+//   * stems   -> theme::Colors::windowEdge
+//   * pills   -> theme::Colors::windowEdge, square on the face against each stem
+//   * text    -> theme::Colors::windowText
+// and the pills' rounding is gui::frameRuler::kPillRadius (the timeline's own).
+//
+// The model publishes GEOMETRY and TEXT only. `active` is the window's own
+// classification; when it is false every rect is empty and the drawing layer draws
+// nothing. The frames the window names are the timeline's window [start, end],
+// mapped through the SAME scaler the frame ticks use, so a bracket sits on the tick
+// of its frame.
+struct PanelPlayWindow {
+    bool active = false;
+    // The translucent wash INSIDE the visible ruler band: [tick(start), tick(end)+1)
+    // clipped to the band's columns, kBandHeight tall from the band's top.
+    QRect band;
+    // The 2px bracket stems, from the label row (kPillTop) to the band's bottom row.
+    // [start] is attached to the window's first frame, [end] to its last.
+    QRect startStem;
+    QRect endStem;
+    // The label arms, attached to the inner face of their stem. EMPTY when the two
+    // would collide: the window is then narrower than its two labels and `merged` is
+    // the one centred "a–b" pill.
+    QRect startPill;
+    QRect endPill;
+    QString startText;
+    QString endText;
+    // The single centred label used when the two arms collide (window start–end in
+    // the ruler's own formatter). Empty otherwise.
+    QRect mergedPill;
+    QString mergedText;
 };
 
 // THE FRAME RULER'S METRICS, ported from the timeline's ruler so the graph's band is
@@ -317,6 +365,13 @@ enum class GraphPanelHost {
 //              - and every frame coordinate - whenever a gesture changed the
 //              numbers). It is the same width the plot was inset by, so the
 //              column and the plot are one geometry. It never overlaps the plot.
+//   hTrack/hThumb, vTrack/vThumb == the panel's two SCROLL BARS, outside the plot
+//              and inside the panel: the frame axis' along the plot's bottom edge,
+//              the value axis' along its right edge (see the struct's SCROLL BARS
+//              note). The scaler reserves their 10px at those two edges
+//              (Scaler::kScrollBarReserve), so they touch neither the plot nor the
+//              value column nor the ruler band, and the plot's own top-left corner
+//              is where it always was.
 //
 // THE OCCLUDED TOP (rulerBandTop)
 //   A widget may float ABOVE the viewport and cover the panel's first rows - the
@@ -326,17 +381,21 @@ enum class GraphPanelHost {
 //   panel) and publishes rulerBandTop: the y where the panel's TOP CONTENT (the
 //   ruler band) begins.
 //
-//   WHERE THE BAND IS, AND WHAT AN OCCLUDER MAY DO. The band is a SECTION above
-//   the plot: its natural slot is the 22 rows the scaler reserved, i.e.
-//   plot.top() - frameRuler::kBandHeight (visually the same rows it occupied when
-//   it was painted inside the plot). The band may not begin above the occluded
-//   line, and it may NOT be pushed down into the plot - those rows belong to the
-//   graph clip, and moving the ruler into them is exactly the ink-over-the-ruler
-//   defect this section removes. So the band is published only while its whole
-//   slot is at or below the occluder (inset <= plot.top() - kBandHeight); an
-//   occluder that reaches into the slot hides the strip for that frame, and
-//   rulerBandTop then names plot.top() - the y where the panel's top content may
-//   begin when there is no ruler ink above the graph.
+//   WHERE THE BAND IS, AND WHAT AN OCCLUDER MAY DO. The band is a SECTION at the
+//   panel's OWN TOP ROW - the timeline's strip starts at its page's top edge, and
+//   both docks are pages of the same stack, so the graph's rulers sit on the same
+//   rows (measured: the timeline's strip top is page.top()+9, the graph's band must
+//   be page.top()+9 too). The scaler's 22 reserved rows plus its 4px top margin put
+//   plot.top() at panel.top()+26, so the band's slot is
+//   plot.top() - kMargin - frameRuler::kBandHeight == panel.top(); the 4 margin rows
+//   between the band's hairline (band.bottom()+1) and the plot stay the panel's
+//   margin. The band may not begin above the occluded line, and it may NOT be pushed
+//   down into the plot - those rows belong to the graph clip, and moving the ruler
+//   into them is exactly the ink-over-the-ruler defect this section removes. So the
+//   band is published only while its whole slot is at or below the occluder
+//   (inset <= bandTop); an occluder that reaches into the slot hides the strip for
+//   that frame, and rulerBandTop then names plot.top() - the y where the panel's top
+//   content may begin when there is no ruler ink above the graph.
 //
 //   THE PLOT NEVER MOVES. It is ctrl::GraphEditor's own rect (the editor's
 //   hit-test geometry, and the rect the editor's scaler is pinned to), so `plot`,
@@ -584,6 +643,26 @@ enum class GraphPanelHost {
 //   suppresses every ruler label whose centre falls inside its half-width, so the
 //   column carries one number.
 //
+// ACTIVE RANGE (recession)
+//   The ruler recesses every tick and every frame number whose frame lies OUTSIDE the
+//   ACTIVE playback range, exactly as the timeline's ruler does: the ACTIVE range is
+//   the project's frame range, or the temporary play window while it is active
+//   (ctrl::TimeLineEditor::playbackRange's rule, published by
+//   ctrl::GraphEditor::activeRange()). The model publishes the classification, never
+//   the ink: frameTickInActiveRange carries one flag per tick, PanelLabel::inActiveRange
+//   one per frame label (a merged boundary label is in range only when BOTH of its
+//   frames are), and the drawing layer applies the timeline's fixed 0.4 factor to the
+//   tick's tier alpha / the number's alpha. This is what makes the active range read
+//   at a glance in both views and cannot be recovered from the tick ladder.
+//
+// PLAYBACK WINDOW
+//   playWindow publishes the temporary playback window's overlay geometry inside the
+//   ruler band - the translucent band rect, the two 2px bracket stems, the two label
+//   pills and their texts, or one centred merged pill when the arms would collide -
+//   laid out exactly as TimeRuler::renderPlayWindow lays it out (see PanelPlayWindow).
+//   It is geometry and text only; the drawing layer paints the band, the stems and the
+//   pills in that order with theme::Colors::windowBand/windowEdge/windowText.
+//
 // MARQUEE
 //   marquee == the editor's own box-select rectangle (GraphEditor::marqueeRect()),
 //   or an EMPTY rect while no marquee drag is in flight - which is the model's
@@ -626,20 +705,61 @@ struct GraphPanelModel {
     QRect panel;
     QRect plot;
     QRect valueColumn;
-    // Where the panel's top content begins: the ruler band's top, i.e.
-    // plot.top() - frameRuler::kBandHeight (the rows the scaler reserved above the
-    // plot). When a widget floating above the viewport reaches into that slot the
-    // band is hidden and this names plot.top() instead (see THE OCCLUDED TOP above);
-    // an empty plot publishes plot.bottom() + 1.
+    // THE PANEL'S TWO SCROLL BARS, as four rects: the horizontal bar's track and
+    // thumb, and the vertical bar's. They are the ONLY ink outside the plot that is
+    // not the ruler's, and they are the panel's way of moving a WINDOW without
+    // changing its scale (the wheel zooms, they scroll).
+    //
+    //   * hTrack/hThumb - along the plot's bottom edge: the FRAME axis' window. The
+    //     content is the project's frame range (ctrl::GraphEditor::frameRange()) and
+    //     the window is the frames the plot covers, so the thumb is where the visible
+    //     window sits inside the range and how much of it is visible. While a
+    //     timeline owns the frame axis (ctrl::GraphEditor::hasTimelineFrameAxis) this
+    //     IS the timeline's window - one window, two views.
+    //   * vTrack/vThumb - along the plot's right edge: the VALUE axis' window. The
+    //     content is the value extent of every SHOWN channel's keys (exactly the
+    //     range ctrl::GraphEditor::fitValueAxis fits, both read through the editor's
+    //     one walk), and the window is the scaler's valueMin()..valueMax(), so the
+    //     value axis is inverted along the track: a window at high values draws its
+    //     thumb at the TOP.
+    // The tracks are OUTSIDE the plot and inside the panel, 8px thick with a 2px gap
+    // from the plot (ctrl::graph::Scaler::kScrollBarThickness/kScrollBarGap), whose
+    // reserve the scaler takes out of the plot's right and bottom edges - so these
+    // rects never overlap the plot, the value column or the ruler band. They are
+    // DISJOINT from each other: the horizontal track spans the plot's columns on rows
+    // entirely below the plot, the vertical one the plot's rows in columns entirely
+    // right of it.
+    //
+    // Thumb length is the window/content fraction of the track, floored at 16px and
+    // capped at the track, so a window that covers the content (or a content with no
+    // extent at all - no key, or no frame span) fills its track. The four rects are
+    // EMPTY while the plot is empty: there is nowhere to lay a bar out, and the
+    // drawing layer draws nothing for an empty rect.
+    //
+    // THE GEOMETRY IS ctrl::graph::Scaler::scrollBars()'s, computed here from this
+    // model's own scaler - the SAME function ctrl::GraphEditor::updateCursor runs its
+    // press routing through, so the bar a press grabs is the bar this model names.
+    // No interaction state is published (hovered, dragged): that is the drawing
+    // layer's, exactly as a key marker's hover is, and it reads the pointer for it.
+    QRect hTrack;
+    QRect hThumb;
+    QRect vTrack;
+    QRect vThumb;
+    // Where the panel's top content begins: the ruler band's top, at the panel's own
+    // top row (the timeline's strip starts at the page top too), i.e.
+    // plot.top() - kMargin - frameRuler::kBandHeight. When a widget floating above
+    // the viewport reaches into that slot the band is hidden and this names
+    // plot.top() instead (see THE OCCLUDED TOP above); an empty plot publishes
+    // plot.bottom() + 1.
     int rulerBandTop = -1;
     // THE RULER BAND: the plot's own width by frameRuler::kBandHeight rows from
-    // rulerBandTop - the timeline's ruler strip, ABOVE the plot by construction
-    // (rulerBand.bottom() + 1 == plot.top()). The drawing layer fills it with
-    // theme::Graph::rulerBand(), rules its bottom with theme::Graph::rulerLine()
-    // and draws the ticks up from its last row; the band's row is OUTSIDE the plot
-    // clip, so no curve, key, handle or chip can paint into it. EMPTY when the strip
-    // does not fit in its reserved slot (a fully occluded top), which is also the
-    // model's "no ruler ink" signal.
+    // rulerBandTop - the timeline's ruler strip, at the panel's top edge, with the
+    // scaler's kMargin rows between its hairline and the plot. The drawing layer fills
+    // it with theme::Graph::rulerBand(), rules the row under it with
+    // theme::Graph::rulerLine() and draws the ticks up from its last row; the band's
+    // row is OUTSIDE the plot clip, so no curve, key, handle or chip can paint into
+    // it. EMPTY when the strip does not fit in its reserved slot (a fully occluded
+    // top), which is also the model's "no ruler ink" signal.
     QRect rulerBand;
     QVector<int> frameTickX;
     // The tier of each tick in frameTickX: same length, same order, so index i is
@@ -647,6 +767,19 @@ struct GraphPanelModel {
     // never appears). A CLASSIFICATION, not an appearance - the drawing layer maps a
     // tier to its own alpha (see THE AXES above).
     QVector<int> frameTickLevel;
+    // TRUE when tick i's frame lies inside the ACTIVE playback range (the project's
+    // frame range, or the play window while it is active). Same length and order as
+    // frameTickX/frameTickLevel, appended in the same step. It is the second half of
+    // the timeline's recession rule: the tier says HOW prominent a tick is, this says
+    // whether it also recedes (the timeline multiplies an out-of-range tick's tier
+    // alpha by 0.4 - TimeRuler::renderHeader). A classification, never ink: the 0.4
+    // factor lives in the drawing layer.
+    QVector<bool> frameTickInActiveRange;
+    // THE PLAYBACK WINDOW'S OVERLAY, as the timeline's ruler lays it out (see
+    // PanelPlayWindow): empty/inactive unless the editor carries an active window.
+    // It is ruler-band geometry, so the drawing layer paints it inside the band and
+    // before the playhead - never inside the plot.
+    PanelPlayWindow playWindow;
     QVector<int> valueTickY;
     QVector<PanelLabel> frameLabels;
     QVector<PanelLabel> valueLabels;

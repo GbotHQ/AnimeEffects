@@ -222,6 +222,10 @@ private:
     // (see setTimeLineWidget), and the connection to its view-range signal.
     TimeLineWidget* mTimeLine;
     util::SlotId mTimeLineRangeSlot;
+    // The timeline surface's playWindowChanged -> syncGraphPanelSharedState connection
+    // (see setTimeLineWidget). Dropped with the old timeline; auto-dropped when this
+    // widget dies.
+    QMetaObject::Connection mPlayWindowConnection;
     QColor mViewportBackground;
     bool mUsingTablet;
     MainViewSetting mViewSetting;

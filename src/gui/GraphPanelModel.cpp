@@ -88,9 +88,17 @@ constexpr int kMaxSamplesPerSegment = 256;
 // labels, its 6px-per-character reserve, its kNumberMargin, its pill-column
 // suppression, and its "number every showNumber tier"), so the two rulers cannot
 // disagree about which frames are numbered or what a frame is called.
+//
+// THE ACTIVE RANGE is the timeline's fade basis (ctrl::TimeLineEditor::playbackRange):
+// the project's frame range, or the play window while it is active. Every tick and
+// every frame label publishes whether its frame is INSIDE it, and no ink: the drawing
+// layer multiplies an outside tick's tier alpha and an outside number's alpha by the
+// timeline's fixed 0.4 (TimeRuler::renderHeader). A merged boundary label is inside
+// only when BOTH of its frames are, which is the timeline's own rule.
 void buildFrameAxis(
     gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics,
-    const core::TimeFormat& aFormat, core::TimeFormatType aFormatType, const util::Range& aFrameRange
+    const core::TimeFormat& aFormat, core::TimeFormatType aFormatType, const util::Range& aFrameRange,
+    const util::Range& aActiveRange
 ) {
     using namespace gui::frameRuler;
     const QRect& plot = aModel.plot;
@@ -142,6 +150,7 @@ void buildFrameAxis(
         int x;
         int level;
         bool showNumber;
+        bool inActiveRange;
     };
     QVector<Tick> ticks;
     int frame = firstFrame;
@@ -164,7 +173,7 @@ void buildFrameAxis(
         // drawing layer's decision (see THE AXES in the header). `showNumber` is the
         // ladder's own answer, so every tier that carries it is numbered (a major
         // always, the intermediate tier once it has 64px of room).
-        ticks.append({frame, x, int(attribute.level), attribute.showNumber});
+        ticks.append({frame, x, int(attribute.level), attribute.showNumber, aActiveRange.contains(frame)});
     }
 
     // THE BOUNDARY FRAMES: the project's own first and last frames, in view, own their
@@ -201,14 +210,14 @@ void buildFrameAxis(
     // are not merged.
     const bool drawFirstTick = firstInView && (merged || firstActive);
     const bool drawLastTick = lastInView && (merged || lastActive);
-    const auto replaceTick = [&ticks](int aFrame, int aX) {
+    const auto replaceTick = [&ticks, &aActiveRange](int aFrame, int aX) {
         for (int i = 0; i < ticks.size(); ++i) {
             if (ticks.at(i).frame == aFrame) {
                 ticks.removeAt(i);
                 break;
             }
         }
-        ticks.append({aFrame, aX, int(ctrl::time::Scaler::TickLevel::Major), true});
+        ticks.append({aFrame, aX, int(ctrl::time::Scaler::TickLevel::Major), true, aActiveRange.contains(aFrame)});
     };
     if (drawFirstTick)
         replaceTick(firstBoundary, firstX);
@@ -265,13 +274,24 @@ void buildFrameAxis(
     if (labelBoundaries) {
         if (merged) {
             const int width = numberWidth(mergedText);
+            // The timeline's merged label is inside the active range only when BOTH
+            // of its frames are (TimeRuler::renderHeader's mergedAlpha).
+            const bool inRange = aActiveRange.contains(firstBoundary) && aActiveRange.contains(lastBoundary);
             if (width <= plot.width() && !underPill(mergedCentre))
-                boundaryMerged = {boxFor(mergedCentre, width), mergedText, firstBoundary, lastBoundary};
+                boundaryMerged = {
+                    boxFor(mergedCentre, width), mergedText, firstBoundary, lastBoundary, inRange
+                };
         } else {
             if (firstActive && !underPill(firstX) && firstWidth <= plot.width())
-                boundaryFirst = {boxFor(firstX, firstWidth), firstText, firstBoundary, -1};
+                boundaryFirst = {
+                    boxFor(firstX, firstWidth), firstText, firstBoundary, -1,
+                    aActiveRange.contains(firstBoundary)
+                };
             if (lastActive && !underPill(lastX) && lastWidth <= plot.width())
-                boundaryLast = {boxFor(lastX, lastWidth), lastText, lastBoundary, -1};
+                boundaryLast = {
+                    boxFor(lastX, lastWidth), lastText, lastBoundary, -1,
+                    aActiveRange.contains(lastBoundary)
+                };
         }
     }
 
@@ -321,7 +341,7 @@ void buildFrameAxis(
         const QRect box = boxFor(tick.x, width);
         if (accepted(box))
             continue; // this number would touch one already published
-        labels.append({box, text, tick.frame, -1});
+        labels.append({box, text, tick.frame, -1, tick.inActiveRange});
     }
 
     std::sort(labels.begin(), labels.end(), [](const gui::PanelLabel& aLhs, const gui::PanelLabel& aRhs) {
@@ -330,10 +350,76 @@ void buildFrameAxis(
     aModel.frameLabels = labels;
     aModel.frameTickX.clear();
     aModel.frameTickLevel.clear();
+    aModel.frameTickInActiveRange.clear();
     for (const Tick& tick : ticks) {
         aModel.frameTickX.append(tick.x);
         aModel.frameTickLevel.append(tick.level);
+        // Appended in the same step as the position and the tier, so all three
+        // vectors are the same length by construction.
+        aModel.frameTickInActiveRange.append(tick.inActiveRange);
     }
+}
+
+// THE TEMPORARY PLAYBACK WINDOW'S OVERLAY, laid out exactly as
+// TimeRuler::renderPlayWindow lays it out in the timeline's ruler:
+//   * x0/x1 are the tick-points of the window's start/end frames, mapped through the
+//     SAME scaler the frame ticks use - the window's inclusive [start, end] spans
+//     [tick(start), tick(end)], and the end bracket lands on frame `end`'s tick;
+//   * the translucent band is [x0, x1+1) clipped to the visible ruler band and is
+//     kBandHeight tall from the band's top;
+//   * the 2px stems run from the label row (kPillTop) to the band's bottom row;
+//   * the label arms sit at the stems' inner faces, kPillPadding either side of the
+//     measured string; when they would collide they collapse into ONE pill centred on
+//     the window, carrying "start–end".
+// Nothing here decides ink: the drawing layer paints theme::Colors::windowBand,
+// windowEdge and windowText in the timeline's order.
+void buildPlayWindowOverlay(
+    gui::GraphPanelModel& aModel, const ctrl::graph::Scaler& aScale, const QFontMetrics& aMetrics,
+    const core::TimeFormat& aFormat, core::TimeFormatType aFormatType,
+    const ctrl::TimeLineEditor::PlayWindow& aWindow
+) {
+    using namespace gui::frameRuler;
+    aModel.playWindow = gui::PanelPlayWindow();
+    if (!aWindow.active() || aModel.rulerBand.isEmpty())
+        return;
+
+    const int x0 = aScale.pixelX(core::Frame(aWindow.start));
+    const int x1 = aScale.pixelX(core::Frame(aWindow.end));
+    if (x1 <= x0)
+        return; // the timeline draws nothing for a window with no width
+
+    const QRect& band = aModel.rulerBand;
+    const int pillTop = band.top() + kPillTop;
+    const int stemBottom = band.top() + kBandHeight; // exclusive: the band's last row + 1
+
+    gui::PanelPlayWindow out;
+    out.active = true;
+
+    // The wash inside the visible band (the timeline clips to its ruler widget, which
+    // is this band's columns).
+    const int c0 = std::max(x0, band.left());
+    const int c1 = std::min(x1 + 1, band.right() + 1);
+    if (c1 > c0)
+        out.band = QRect(c0, band.top(), c1 - c0, kBandHeight);
+
+    out.startStem = QRect(x0, pillTop, 2, stemBottom - pillTop);
+    out.endStem = QRect(x1 - 1, pillTop, 2, stemBottom - pillTop);
+
+    out.startText = aFormat.frameToString(aWindow.start, aFormatType);
+    out.endText = aFormat.frameToString(aWindow.end, aFormatType);
+    const int startWidth = aMetrics.horizontalAdvance(out.startText) + 2 * kPillPadding;
+    const int endWidth = aMetrics.horizontalAdvance(out.endText) + 2 * kPillPadding;
+    const QRect startPill(x0 + 2, pillTop, startWidth, kNumberHeight);
+    const QRect endPill(x1 - 1 - endWidth, pillTop, endWidth, kNumberHeight);
+    if (startPill.right() >= endPill.left()) {
+        out.mergedText = out.startText + QString::fromUtf8("\u2013") + out.endText;
+        const int width = aMetrics.horizontalAdvance(out.mergedText) + 2 * kPillPadding;
+        out.mergedPill = QRect((x0 + x1) / 2 - width / 2, pillTop, width, kNumberHeight);
+    } else {
+        out.startPill = startPill;
+        out.endPill = endPill;
+    }
+    aModel.playWindow = out;
 }
 
 // The value axis: the window's max / midpoint / min, right-aligned in the left
@@ -723,11 +809,13 @@ namespace gui {
         scale.setRect(model.panel);
 
         model.plot = scale.plotRect();
-        // THE RULER BAND LIVES ABOVE THE PLOT. The scaler reserved its 22 rows in
-        // plotRect() (Scaler::kRulerBandHeight), so the band's natural slot is the
-        // strip immediately above the plot - the same rows it occupied before the
-        // reservation, which is what keeps it visually where it was while every
-        // plot-clipped pass now starts below it.
+        // THE RULER BAND IS ON THE TIMELINE'S ROW. The scaler reserves the band's 22
+        // rows BELOW its top margin (plot.top() = panel.top() + kMargin + 22), and
+        // the timeline's TimeRuler strip starts at its own page's top edge; both views
+        // are pages of the same dock stack, so the band is published at the panel's
+        // top row - the 4 margin rows stay BETWEEN the band's hairline and the plot
+        // instead of pushing the ruler down by 4px (the measured divergence: the
+        // timeline's strip was page.top()+9, the graph's band page.top()+13).
         //
         // THE OCCLUDED TOP (aTopInset): a widget floating over the panel covers the
         // viewport's first rows. The band may not begin above that line, but it may
@@ -739,7 +827,7 @@ namespace gui {
         // may begin when there is no ruler). The plot itself never moves: it is the
         // editor's hit-test geometry too (see THE OCCLUDED TOP in the header).
         const int inset = std::max(0, aTopInset);
-        const int bandTop = model.plot.top() - frameRuler::kBandHeight;
+        const int bandTop = model.plot.top() - ctrl::graph::Scaler::kMargin - frameRuler::kBandHeight;
         if (!model.plot.isEmpty() && inset <= bandTop) {
             model.rulerBandTop = bandTop;
             model.rulerBand = QRect(model.plot.left(), bandTop, model.plot.width(), frameRuler::kBandHeight);
@@ -757,6 +845,30 @@ namespace gui {
             model.panel.left() + ctrl::graph::Scaler::kMargin, model.plot.top(), scale.axisLabelWidth(),
             model.plot.height()
         );
+
+        // THE TWO SCROLL BARS, from the scaler's own layout (see the struct's SCROLL
+        // BARS note) and the editor's own two contents: the project's frame range
+        // (the horizontal bar's content) and the value extent of the SHOWN curves'
+        // keys (the vertical one's) - the very range fitValueAxis fits, asked through
+        // the editor so the fit and the bar cannot disagree. A value extent that does
+        // not exist (no shown channel has a key) is passed on as an empty range, and
+        // the layout reads that as "the thumb fills its track".
+        //
+        // An EMPTY plot publishes no bars at all: scrollBars() answers four empty
+        // rects for a plot with no room, which is why this sits before the plot's own
+        // guard as well as after it - the early return above cannot leave a stale bar
+        // behind, there is none to leave.
+        float valueContentLo = 0.0f;
+        float valueContentHi = 0.0f;
+        if (!aEditor.shownValueExtent(valueContentLo, valueContentHi))
+            valueContentLo = valueContentHi = 0.0f;
+        const util::Range frameContent = aEditor.frameRange();
+        const ctrl::graph::Scaler::ScrollBars bars =
+            scale.scrollBars(frameContent.min(), frameContent.max(), valueContentLo, valueContentHi);
+        model.hTrack = bars.hTrack;
+        model.hThumb = bars.hThumb;
+        model.vTrack = bars.vTrack;
+        model.vThumb = bars.vThumb;
 
         // The playhead belongs to the document, not to the geometry, so it is
         // read before the plot's own guards: a currentFrame() below 0 is "no
@@ -800,7 +912,10 @@ namespace gui {
         // own glyphs in.
         const QFontMetrics metrics{QFont()};
 
-        buildFrameAxis(model, scale, metrics, format, aEditor.timeFormatType(), aEditor.frameRange());
+        buildFrameAxis(
+            model, scale, metrics, format, aEditor.timeFormatType(), aEditor.frameRange(), aEditor.activeRange()
+        );
+        buildPlayWindowOverlay(model, scale, metrics, format, aEditor.timeFormatType(), aEditor.playWindow());
         buildValueAxis(model, scale, metrics);
         buildChannels(model, aEditor, aTheme);
         buildCurves(model, aEditor, scale, metrics);

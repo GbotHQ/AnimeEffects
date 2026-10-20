@@ -79,6 +79,12 @@
 //     NON-EMPTY with a key selected, each point the same (frame, value) the editor
 //     stated mapped through the same scaler the curves use - with the count the
 //     editor reports and the label that writes it
+//  15 the marker state: which marker is selected, and whether the key it belongs
+//     to has a selected sibling - both raw answers from the editor's own queries
+//  16 the ACTIVE-range recession (one inside/outside flag per tick and per frame
+//     label, against the project range and against an active play window) and the
+//     play window's overlay geometry (band, both stems, both arms, and the one
+//     centred merged pill of a window narrower than its labels)
 // plus a read-only probe: building a model must not move the editor's scaler,
 // its targets, the project's dirty flag or the document's keys.
 //
@@ -394,6 +400,32 @@ int main(int argc, char** argv) {
     const QSize viewport(1280, 720);
     const theme::Graph palette = theme::Graph::from(theme::Colors::current());
 
+    // THE RULER TOKENS ARE THE TIMELINE'S, token for token: the graph's band, hairline,
+    // number ink and playhead-pill ink read the same palette cells the timeline's
+    // TimeLineEditorWidget publishes (theme::TimeLine maps its headerBackgroundColor to
+    // Colors::base, rulerLineColor to Colors::hairline and headerContentColor to
+    // Colors::text - see src/gui/theme/TimeLine.cpp). Measured BEFORE the band's
+    // geometry is checked, so a palette drift fails here rather than showing up as a
+    // pixel difference between the two tabs. (The timeline theme's own class is not
+    // linked into this target; its source cells are the contract.)
+    {
+        const theme::Colors& colors = theme::Colors::current();
+        std::printf(
+            "[0] tokens: band=%s line=%s numbers=%s pill=%s  timeline cells base=%s hairline=%s text=%s\n",
+            qUtf8Printable(palette.rulerBand().name(QColor::HexRgb)),
+            qUtf8Printable(palette.rulerLine().name(QColor::HexRgb)),
+            qUtf8Printable(palette.axisText().name(QColor::HexRgb)),
+            qUtf8Printable(palette.playheadText().name(QColor::HexRgb)),
+            qUtf8Printable(colors.base.name(QColor::HexRgb)),
+            qUtf8Printable(colors.hairline.name(QColor::HexRgb)),
+            qUtf8Printable(colors.text.name(QColor::HexRgb))
+        );
+        CHECK(palette.rulerBand() == colors.base);       // TimeLine::headerBackgroundColor
+        CHECK(palette.rulerLine() == colors.hairline);   // TimeLine::rulerLineColor
+        CHECK(palette.axisText() == colors.text);        // TimeLine::headerContentColor
+        CHECK(palette.playheadText() == colors.text);    // the same number ink as the ruler
+    }
+
     // The oracle scaler: the editor's own axes, geometrised with the same panel
     // rect the model derives - built by the test, never read out of the model.
     const QRect panel = ctrl::GraphEditor::panelRect(viewport);
@@ -429,6 +461,9 @@ int main(int argc, char** argv) {
         // oracle scaler is the test's own copy of the editor's axes, so the two
         // independent derivations of the column have to agree.
         CHECK(model.plot.left() == model.panel.left() + ctrl::graph::Scaler::kMargin + model.valueColumn.width());
+        // THE ONLY RECT THE BAND MAY MOVE IS ITS OWN: the plot is the editor's own
+        // scaler rect (the hit-test geometry), byte for byte, whatever the band's rows.
+        CHECK(model.plot == scale.plotRect());
         CHECK(model.valueColumn.width() == scale.axisLabelWidth());
         CHECK(ctrl::graph::Scaler::kAxisLabelWidth <= model.valueColumn.width());
         CHECK(model.valueColumn.width() <= ctrl::graph::Scaler::kMaxAxisLabelWidth);
@@ -439,16 +474,32 @@ int main(int argc, char** argv) {
         CHECK(model.plot.top()
               == model.panel.top() + ctrl::graph::Scaler::kMargin
                   + ctrl::graph::Scaler::kRulerBandHeight);
+        // ...and its HEIGHT loses the two margins PLUS the one the scroll bars sit in
+        // at the bottom edge (the right margin carries the same reserve, see THE
+        // SCROLL BARS' RESERVE in graph_Scaler.h: the plot gives up 10px at those two
+        // edges so the bars have a strip that is outside the plot and inside the
+        // panel).
         CHECK(model.plot.height()
               == model.panel.height() - 2 * ctrl::graph::Scaler::kMargin
-                  - ctrl::graph::Scaler::kRulerBandHeight);
-        // The band itself keeps the rows it always occupied: directly above the
-        // plot, so it is visually where it was while the graph moved out from under
-        // it. Its top is the panel's margin (the old plot.top), and its left edge is
-        // the new plot's (the label column still insets both by the same amount).
-        CHECK(model.rulerBand.top() == model.panel.top() + ctrl::graph::Scaler::kMargin);
+                  - ctrl::graph::Scaler::kRulerBandHeight - ctrl::graph::Scaler::kScrollBarReserve);
+        CHECK(model.plot.width()
+              == model.panel.width() - 2 * ctrl::graph::Scaler::kMargin - model.valueColumn.width()
+                  - ctrl::graph::Scaler::kScrollBarReserve);
+        CHECK(model.plot.right() == model.panel.right() - ctrl::graph::Scaler::kMargin
+                  - ctrl::graph::Scaler::kScrollBarReserve);
+        CHECK(model.plot.bottom() == model.panel.bottom() - ctrl::graph::Scaler::kMargin
+                  - ctrl::graph::Scaler::kScrollBarReserve);
+        // The band is on the TIMELINE'S ROW: the timeline's TimeRuler strip starts at
+        // its page's top edge, and both views are pages of the same dock stack, so the
+        // band must start at the panel's top row - not at the scaler's top margin
+        // (measured before this rule: timeline strip page.top()+9, graph band
+        // page.top()+13). The scaler still reserves the band's 22 rows, but the
+        // kMargin rows now sit BETWEEN the band's hairline and the plot, so the plot
+        // (the editor's hit geometry) does not move.
+        CHECK(model.rulerBand.top() == model.panel.top());
         CHECK(model.rulerBand.left() == model.plot.left());
-        CHECK(model.rulerBand.top() + gui::frameRuler::kBandHeight == model.plot.top());
+        CHECK(model.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin == model.plot.top());
+        CHECK(model.rulerBand.bottom() + 1 < model.plot.top());
         CHECK(!model.plot.intersects(model.rulerBand));
 
         // The small viewport, same invariants. What happens to the plot at this
@@ -1192,10 +1243,11 @@ int main(int argc, char** argv) {
         // A plot too small for anything at all: every chip is empty. The viewport has
         // to leave a NON-EMPTY plot first: the label column's reserve is the value
         // format's own width (Scaler::axisLabelWidth(), 68px at the UI font rather
-        // than the old 46), so the plot starts 22px further right and this fixture
-        // grew by exactly that much (64 -> 80) to keep the premise - a plot that
-        // exists and is narrower than 16px.
-        const QSize tooNarrow(80, 200);
+        // than the old 46), so the plot starts 22px further right; and the right
+        // edge now reserves the scroll bar's 10px (Scaler::kScrollBarReserve), so
+        // this fixture grew by those two (64 -> 80 -> 90) to keep the premise - a
+        // plot that exists and is narrower than 16px.
+        const QSize tooNarrow(90, 200);
         const gui::GraphPanelModel narrowModel = gui::buildGraphPanelModel(editor, tooNarrow, palette);
         int narrowChips = 0;
         for (const gui::PanelCurve& curve : narrowModel.curves) {
@@ -1459,7 +1511,9 @@ int main(int argc, char** argv) {
         // share.
         CHECK(moved.playheadLineTop > moved.rulerBand.top());
         CHECK(moved.playheadLineTop < moved.plot.top());
-        CHECK(moved.plot.top() == moved.rulerBand.bottom() + 1);
+        // The band's hairline is the last band row + 1; the scaler's margin rows sit
+        // between it and the plot (see the band alignment rule in block [1]).
+        CHECK(moved.plot.top() == moved.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin);
 
         // ...AND NO RULER NUMBER IS DRAWN UNDER IT: every label whose centre falls
         // inside the pill's half-width is dropped, so the pill's number is the only
@@ -1485,6 +1539,172 @@ int main(int argc, char** argv) {
         CHECK(!orphaned.emptyState.isEmpty());
         CHECK(orphaned.curves.isEmpty());
     }
+
+    // -------------------------------------------------------------------------
+    // 16. THE ACTIVE-RANGE RECESSION AND THE TEMPORARY PLAYBACK WINDOW OVERLAY.
+    // The timeline's ruler recesses every tick and number outside its ACTIVE range
+    // (the project frame range, or the play window while it is active) and overlays
+    // the window as a translucent band + bracket stems + label pills. The graph's
+    // ruler is the same ruler, so the model must publish (a) inside/outside per tick
+    // and per frame label - a CLASSIFICATION, no ink - and (b) the overlay's exact
+    // geometry in the ruler band. The oracle is the editor's own scalar and
+    // ctrl::TimeLineEditor's playbackRange rule.
+    {
+        editor.setProject(&project);
+        editor.setTargets({ &nodeA, &nodeB });
+        animator.setFrame(core::Frame(37));
+
+        const core::TimeFormat timeFormat(editor.frameRange(), editor.fps());
+        const QFontMetrics metrics{QFont()};
+
+        // ---- (a) no window: the project frame range is the active range ----
+        editor.setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
+        const gui::GraphPanelModel plain = gui::buildGraphPanelModel(editor, viewport, palette);
+        const util::Range projectRange = editor.frameRange();
+        CHECK(!plain.playWindow.active);
+        CHECK(plain.playWindow.band.isEmpty());
+        CHECK(plain.playWindow.startStem.isEmpty() && plain.playWindow.endStem.isEmpty());
+        CHECK(plain.playWindow.startPill.isEmpty() && plain.playWindow.endPill.isEmpty());
+        CHECK(plain.playWindow.mergedPill.isEmpty());
+
+        CHECK(plain.frameTickInActiveRange.size() == plain.frameTickX.size());
+        int plainOutsideTicks = 0;
+        int plainTickMismatch = 0;
+        for (int i = 0; i < plain.frameTickX.size(); ++i) {
+            const bool expected = projectRange.contains(scale.frameAt(plain.frameTickX.at(i)).get());
+            if (!expected)
+                ++plainOutsideTicks;
+            if (plain.frameTickInActiveRange.at(i) != expected)
+                ++plainTickMismatch;
+        }
+        int plainLabelMismatch = 0;
+        for (const gui::PanelLabel& label : plain.frameLabels) {
+            const bool expected = label.endFrame >= 0
+                ? projectRange.contains(label.frame) && projectRange.contains(label.endFrame)
+                : projectRange.contains(label.frame);
+            if (label.inActiveRange != expected)
+                ++plainLabelMismatch;
+        }
+        std::printf("[16] no window: active=%d..%d ticks=%d outside=%d tick_mismatches=%d label_mismatches=%d\n",
+                    projectRange.min(), projectRange.max(), isz(plain.frameTickX), plainOutsideTicks,
+                    plainTickMismatch, plainLabelMismatch);
+        CHECK(plainTickMismatch == 0);
+        CHECK(plainLabelMismatch == 0);
+        CHECK(plainOutsideTicks > 0); // the window of this viewport reaches outside 1..120
+
+        // ---- (b) an active window: the overlay and a window-based active range ----
+        ctrl::TimeLineEditor::PlayWindow window;
+        window.set(10, 100);
+        editor.setPlayWindow(window);
+        const gui::GraphPanelModel withWindow = gui::buildGraphPanelModel(editor, viewport, palette);
+        const int x0 = scale.pixelX(core::Frame(window.start));
+        const int x1 = scale.pixelX(core::Frame(window.end));
+        const int pillTop = withWindow.rulerBand.top() + gui::frameRuler::kPillTop;
+        const int stemHeight = gui::frameRuler::kBandHeight - gui::frameRuler::kPillTop;
+        std::printf(
+            "[16] window %d..%d: x=%d..%d band=(%d,%d %dx%d) stems=(%d,%d) pills=(%d,%d %dx%d)+(%d,%d %dx%d) "
+            "texts=\"%s\"/\"%s\"\n",
+            window.start, window.end, x0, x1, withWindow.playWindow.band.left(),
+            withWindow.playWindow.band.top(), withWindow.playWindow.band.width(),
+            withWindow.playWindow.band.height(), withWindow.playWindow.startStem.left(),
+            withWindow.playWindow.endStem.left(), withWindow.playWindow.startPill.left(),
+            withWindow.playWindow.startPill.top(), withWindow.playWindow.startPill.width(),
+            withWindow.playWindow.startPill.height(), withWindow.playWindow.endPill.left(),
+            withWindow.playWindow.endPill.top(), withWindow.playWindow.endPill.width(),
+            withWindow.playWindow.endPill.height(), qUtf8Printable(withWindow.playWindow.startText),
+            qUtf8Printable(withWindow.playWindow.endText)
+        );
+        CHECK(withWindow.playWindow.active);
+        // The band is INSIDE the ruler band and exactly the band's height.
+        CHECK(withWindow.playWindow.band.top() == withWindow.rulerBand.top());
+        CHECK(withWindow.playWindow.band.height() == gui::frameRuler::kBandHeight);
+        CHECK(withWindow.playWindow.band.left() == std::max(x0, withWindow.rulerBand.left()));
+        CHECK(withWindow.playWindow.band.right() == std::min(x1, withWindow.rulerBand.right()));
+        // The two stems: 2px, from the label row to the band's last row, on the ticks
+        // of the window's frames (the end bracket on frame `end`'s own tick).
+        CHECK(withWindow.playWindow.startStem.left() == x0);
+        CHECK(withWindow.playWindow.startStem.width() == 2);
+        CHECK(withWindow.playWindow.startStem.top() == pillTop);
+        CHECK(withWindow.playWindow.startStem.height() == stemHeight);
+        CHECK(withWindow.playWindow.endStem.left() == x1 - 1);
+        CHECK(withWindow.playWindow.endStem.width() == 2);
+        CHECK(withWindow.playWindow.endStem.top() == pillTop);
+        CHECK(withWindow.playWindow.endStem.height() == stemHeight);
+        // The label arms ride the stems' inner faces with the ruler's own text.
+        CHECK(withWindow.playWindow.startPill.left() == x0 + 2);
+        CHECK(withWindow.playWindow.endPill.right() == x1 - 2);
+        CHECK(withWindow.playWindow.startPill.top() == pillTop);
+        CHECK(withWindow.playWindow.endPill.top() == pillTop);
+        CHECK(withWindow.playWindow.startPill.height() == gui::frameRuler::kNumberHeight);
+        CHECK(withWindow.playWindow.endPill.height() == gui::frameRuler::kNumberHeight);
+        CHECK(withWindow.playWindow.startText == timeFormat.frameToString(window.start, editor.timeFormatType()));
+        CHECK(withWindow.playWindow.endText == timeFormat.frameToString(window.end, editor.timeFormatType()));
+        CHECK(withWindow.playWindow.mergedPill.isEmpty());
+        CHECK(withWindow.playWindow.mergedText.isEmpty());
+
+        // The active range is now the window: both vectors classify against it.
+        CHECK(withWindow.frameTickInActiveRange.size() == withWindow.frameTickX.size());
+        int windowOutsideTicks = 0;
+        int windowInsideTicks = 0;
+        int windowTickMismatch = 0;
+        for (int i = 0; i < withWindow.frameTickX.size(); ++i) {
+            const int frame = scale.frameAt(withWindow.frameTickX.at(i)).get();
+            const bool expected = window.start <= frame && frame <= window.end;
+            if (expected)
+                ++windowInsideTicks;
+            else
+                ++windowOutsideTicks;
+            if (withWindow.frameTickInActiveRange.at(i) != expected)
+                ++windowTickMismatch;
+        }
+        int windowLabelMismatch = 0;
+        for (const gui::PanelLabel& label : withWindow.frameLabels) {
+            const bool expected = label.endFrame >= 0
+                ? window.start <= label.frame && label.frame <= window.end && window.start <= label.endFrame
+                    && label.endFrame <= window.end
+                : window.start <= label.frame && label.frame <= window.end;
+            if (label.inActiveRange != expected)
+                ++windowLabelMismatch;
+        }
+        std::printf("[16] window active range: inside_ticks=%d outside_ticks=%d tick_mismatches=%d"
+                    " label_mismatches=%d\n",
+                    windowInsideTicks, windowOutsideTicks, windowTickMismatch, windowLabelMismatch);
+        CHECK(windowTickMismatch == 0);
+        CHECK(windowLabelMismatch == 0);
+        CHECK(windowInsideTicks > 0);
+        CHECK(windowOutsideTicks > 0);
+
+        // ---- (c) a narrow window: the two arms collide into ONE centred label ----
+        window.set(20, 21);
+        editor.setPlayWindow(window);
+        const gui::GraphPanelModel merged = gui::buildGraphPanelModel(editor, viewport, palette);
+        const int mx0 = scale.pixelX(core::Frame(window.start));
+        const int mx1 = scale.pixelX(core::Frame(window.end));
+        const QString expectedMerged =
+            timeFormat.frameToString(window.start, editor.timeFormatType()) + QString::fromUtf8("\u2013")
+            + timeFormat.frameToString(window.end, editor.timeFormatType());
+        const int expectedMergedWidth = metrics.horizontalAdvance(expectedMerged) + 2 * gui::frameRuler::kPillPadding;
+        std::printf("[16] merged window %d..%d: x=%d..%d merged=(%d,%d %dx%d) text=\"%s\"\n", window.start,
+                    window.end, mx0, mx1, merged.playWindow.mergedPill.left(), merged.playWindow.mergedPill.top(),
+                    merged.playWindow.mergedPill.width(), merged.playWindow.mergedPill.height(),
+                    qUtf8Printable(merged.playWindow.mergedText));
+        CHECK(merged.playWindow.active);
+        CHECK(!merged.playWindow.mergedPill.isEmpty());
+        CHECK(merged.playWindow.mergedText == expectedMerged);
+        CHECK(merged.playWindow.mergedPill.width() == expectedMergedWidth);
+        CHECK(merged.playWindow.mergedPill.top() == merged.rulerBand.top() + gui::frameRuler::kPillTop);
+        CHECK(merged.playWindow.mergedPill.height() == gui::frameRuler::kNumberHeight);
+        CHECK(merged.playWindow.mergedPill.left() == (mx0 + mx1) / 2 - expectedMergedWidth / 2);
+        CHECK(merged.playWindow.startPill.isEmpty() && merged.playWindow.endPill.isEmpty());
+        // The brackets are still there: a merged label covers the arms, not the stems.
+        CHECK(!merged.playWindow.startStem.isEmpty() && !merged.playWindow.endStem.isEmpty());
+
+        // The editor goes back to its no-window state for the blocks after this one.
+        editor.setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
+        CHECK(!editor.playWindow().active());
+        CHECK(editor.activeRange() == editor.frameRange());
+    }
+
 
     // -------------------------------------------------------------------------
     // 10. tangent handles: one PanelHandle pair per Custom segment, in segment
@@ -1814,9 +2034,10 @@ int main(int argc, char** argv) {
         // starts on the graph's first row, so a number that reached it would be cut.
         CHECK(!ruled.rulerBand.isEmpty());
         CHECK(ruled.rulerBand.top() == ruled.rulerBandTop);
+        CHECK(ruled.rulerBand.top() == ruled.panel.top());
         CHECK(ruled.rulerBand.width() == ruled.plot.width());
         CHECK(ruled.rulerBand.height() == kBandHeight);
-        CHECK(ruled.rulerBand.bottom() + 1 == ruled.plot.top());
+        CHECK(ruled.rulerBand.bottom() + 1 + ctrl::graph::Scaler::kMargin == ruled.plot.top());
         CHECK(!ruled.plot.intersects(ruled.rulerBand));
         CHECK(labels > 0);
         CHECK(insideBand == labels);
@@ -2467,6 +2688,155 @@ int main(int argc, char** argv) {
         // The editor is left as the blocks before this one left it: no selection, the
         // two targets, the panel's own rect in the scaler.
         editor.clearSelection();
+    }
+
+    // -------------------------------------------------------------------------
+    // 16: THE SCROLL BARS - the four rects the panel publishes, and what a thumb's
+    // LENGTH means.
+    //
+    // The bars are chrome the user DRAGS: the horizontal one along the plot's bottom
+    // edge moves the frame axis' window (the timeline's own window while a timeline
+    // owns that axis), the vertical one along the plot's right edge moves the panel's
+    // value window. Both live in the margin the scaler reserves for them, so the
+    // four rects are outside the plot, inside the panel and disjoint from everything
+    // already published - the value column included.
+    {
+        editor.setTargets({ &nodeA, &nodeB });
+        editor.scale().setRect(panel);
+        editor.fitAll();
+
+        float valueLo = 0.0f;
+        float valueHi = 0.0f;
+        CHECK(editor.shownValueExtent(valueLo, valueHi)); // the keys of both layers
+        CHECK(valueHi > valueLo);
+        const util::Range frames = editor.frameRange(); // the horizontal bar's content
+        CHECK(frames.max() > frames.min());
+
+        // THE VALUE AXIS IS ZOOMED INTO THE KEYS on purpose: fitAll fits the value
+        // window TO the key extent, i.e. the window would equal its own content, the
+        // v-thumb would fill its track and Scaler::scrollBars would publish NO thumb
+        // (nothing to scroll - see its note). A quarter-to-three-quarters window is a
+        // real thumb, so the assertions below measure a bar that exists. The frame
+        // axis keeps fitAll's fit: its CONTENT is the project's frame range, which is
+        // wider than the keys' own span either way.
+        editor.scale().setValueWindow(
+            valueLo + 0.25f * (valueHi - valueLo), valueLo + 0.75f * (valueHi - valueLo)
+        );
+
+        const gui::GraphPanelModel barsModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        const QRect plot = barsModel.plot;
+        CHECK(!plot.isEmpty());
+
+        // THE TRACKS, hand-built from the scaler's own constants and the published
+        // plot: outside the plot by kScrollBarGap, kScrollBarThickness thick, each
+        // spanning the plot's own edge along the axis it scrolls.
+        CHECK(barsModel.hTrack
+              == QRect(
+                     plot.left(), plot.bottom() + 1 + ctrl::graph::Scaler::kScrollBarGap, plot.width(),
+                     ctrl::graph::Scaler::kScrollBarThickness
+                 ));
+        CHECK(barsModel.vTrack
+              == QRect(
+                     plot.right() + 1 + ctrl::graph::Scaler::kScrollBarGap, plot.top(),
+                     ctrl::graph::Scaler::kScrollBarThickness, plot.height()
+                 ));
+        CHECK(barsModel.panel.contains(barsModel.hTrack));
+        CHECK(barsModel.panel.contains(barsModel.vTrack));
+        CHECK(!barsModel.hTrack.intersects(plot));
+        CHECK(!barsModel.vTrack.intersects(plot));
+        CHECK(!barsModel.hTrack.intersects(barsModel.rulerBand)); // the ruler's rows are above the plot
+        CHECK(!barsModel.vTrack.intersects(barsModel.rulerBand));
+        CHECK(!barsModel.valueColumn.intersects(barsModel.hTrack));
+        CHECK(!barsModel.valueColumn.intersects(barsModel.vTrack));
+        // ...the two bars on DIFFERENT edges, so they cannot meet in a corner.
+        CHECK(!barsModel.hTrack.intersects(barsModel.vTrack));
+        CHECK(barsModel.hTrack.top() > barsModel.valueColumn.bottom());
+        CHECK(barsModel.vTrack.left() > plot.right());
+
+        // THE THUMBS sit inside their tracks and say what the window covers: the
+        // length is the window/content fraction of the track (within a pixel of the
+        // rounding), never shorter than kScrollBarMinThumb and never longer than the
+        // track, and they are inside their own track's rect.
+        CHECK(barsModel.hTrack.contains(barsModel.hThumb));
+        CHECK(barsModel.vTrack.contains(barsModel.vThumb));
+        CHECK(barsModel.hThumb.width() >= std::min(ctrl::graph::Scaler::kScrollBarMinThumb, barsModel.hTrack.width()));
+        CHECK(barsModel.vThumb.height() >= std::min(ctrl::graph::Scaler::kScrollBarMinThumb, barsModel.vTrack.height()));
+        // The window the thumb describes is the editor's own: the frames the plot
+        // covers (the mapping's inverse at its two edges) inside the project's range.
+        // The oracle is a copy of the editor's LIVE scaler pinned to this panel - the
+        // same state the model's own copy was built from - so the ratio below is
+        // measured against the mapping the plot is drawn with.
+        ctrl::graph::Scaler live = editor.scale();
+        live.setRect(panel);
+        const double frameWindow = live.frameAtPixel(double(plot.right() + 1)) - live.frameAtPixel(double(plot.left()));
+        const double frameContent = double(frames.max() - frames.min());
+        const double expectedHThumb = double(barsModel.hTrack.width()) * frameWindow / frameContent;
+        std::printf(
+            "[16] bars: plot (%d,%d %dx%d)  hTrack (%d,%d %dx%d) hThumb %d px (expected %.1f)  vTrack (%d,%d "
+            "%dx%d) vThumb %d px  value content %.4f..%.4f window %.4f..%.4f  frames %d..%d window %.2f..%.2f\n",
+            plot.x(), plot.y(), plot.width(), plot.height(), barsModel.hTrack.x(), barsModel.hTrack.y(),
+            barsModel.hTrack.width(), barsModel.hTrack.height(), barsModel.hThumb.width(), expectedHThumb, barsModel.vTrack.x(),
+            barsModel.vTrack.y(), barsModel.vTrack.width(), barsModel.vTrack.height(), barsModel.vThumb.height(), valueLo, valueHi,
+            editor.scale().valueMin(), editor.scale().valueMax(), frames.min(), frames.max(),
+            live.frameAtPixel(double(plot.left())), live.frameAtPixel(double(plot.right() + 1))
+        );
+        CHECK(std::fabs(double(barsModel.hThumb.width()) - expectedHThumb) <= 1.0);
+        CHECK(barsModel.hThumb.left() >= barsModel.hTrack.left());
+        CHECK(barsModel.hThumb.right() <= barsModel.hTrack.right());
+        CHECK(barsModel.vThumb.top() >= barsModel.vTrack.top());
+        CHECK(barsModel.vThumb.bottom() <= barsModel.vTrack.bottom());
+
+        // A FULL-CONTENT WINDOW SHOWS NO BAR: the frame axis asked for a window wider
+        // than the project's whole range, and the value axis for one wider than every
+        // key's extent - a thumb that fills its track has no travel, so Scaler::
+        // scrollBars publishes NO thumb (and therefore nothing is drawn and nothing is
+        // claimed; see its own note). The TRACK is still laid out, which is what keeps
+        // the plot's rect - and every frame coordinate - independent of the content.
+        editor.scale().fitFrameAxis(core::Frame(-500), core::Frame(500));
+        editor.scale().setValueWindow(-1000.0f, 1000.0f);
+        const gui::GraphPanelModel full = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf("[16] full-content window: hThumb empty %d  vThumb empty %d  tracks laid out %d/%d\n",
+                    int(full.hThumb.isEmpty()), int(full.vThumb.isEmpty()), int(!full.hTrack.isEmpty()),
+                    int(!full.vTrack.isEmpty()));
+        CHECK(full.hThumb.isEmpty());
+        CHECK(full.vThumb.isEmpty());
+        CHECK(!full.hTrack.isEmpty());
+        CHECK(!full.vTrack.isEmpty());
+        CHECK(full.plot == barsModel.plot);
+
+        // A NARROW WINDOW YIELDS THE MINIMUM THUMB. The frame axis is given a
+        // HALF-FRAME window (setFrameWindow maps a pushed window exactly - no ladder
+        // rung rounds it) and the value axis a thousandth of the key extent; both
+        // fractions are far under the 16px floor, so both thumbs are exactly that
+        // floor and not the fraction.
+        editor.setFrameWindow(10.0, 10.5);
+        editor.scale().setValueWindow(50.0f, 50.001f);
+        const gui::GraphPanelModel narrow = gui::buildGraphPanelModel(editor, viewport, palette);
+        std::printf(
+            "[16] narrow windows: frame window %.3f..%.3f of %d..%d -> hThumb %d px  value window %.4f..%.4f of "
+            "%.4f..%.4f -> vThumb %d px  (floor %d)\n",
+            editor.scale().frameAtPixel(double(narrow.plot.left())),
+            editor.scale().frameAtPixel(double(narrow.plot.right() + 1)), frames.min(), frames.max(),
+            narrow.hThumb.width(), editor.scale().valueMin(), editor.scale().valueMax(), valueLo, valueHi,
+            narrow.vThumb.height(), ctrl::graph::Scaler::kScrollBarMinThumb
+        );
+        CHECK(narrow.hThumb.width() == ctrl::graph::Scaler::kScrollBarMinThumb);
+        CHECK(narrow.vThumb.height() == ctrl::graph::Scaler::kScrollBarMinThumb);
+        editor.clearFrameAxis(); // the frame axis is the panel's own again for what follows
+
+        // AN EMPTY PLOT PUBLISHES NO BARS AT ALL (there is nowhere to lay one out), and
+        // that is also what keeps the panel's margin clean in that state.
+        const QSize degenerate(40, 20);
+        const gui::GraphPanelModel degenerateModel = gui::buildGraphPanelModel(editor, degenerate, palette);
+        CHECK(degenerateModel.plot.isEmpty());
+        CHECK(degenerateModel.hTrack.isEmpty());
+        CHECK(degenerateModel.hThumb.isEmpty());
+        CHECK(degenerateModel.vTrack.isEmpty());
+        CHECK(degenerateModel.vThumb.isEmpty());
+
+        // The editor is left as the blocks around this one expect it.
+        editor.scale().setRect(panel);
+        editor.fitAll();
     }
 
     // -------------------------------------------------------------------------

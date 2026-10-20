@@ -43,12 +43,6 @@ namespace {
 constexpr double kValueZoomPerNotch = 1.1;
 constexpr double kWheelNotch = 120.0;
 
-// The SCROLL step of one wheel notch: the timeline's own fixed step
-// (TimeLineWidget::wheelEvent's Shift branch), applied here to BOTH axes. It is
-// a pixel count, so the frame half becomes a frame delta on the shared mapping
-// (updateWheel) and the value half is the panel's own pan.
-constexpr int kWheelScrollPixels = 50;
-
 // How many points a segment is walked through when the value axis is fitted.
 // The fit cannot read the key values alone: a Custom easing's cubic bezier (and
 // Back/Elastic) reaches values beyond BOTH of the keys it sits between, and a
@@ -83,10 +77,10 @@ double pixelDistance(const QPointF& aLhs, const QPointF& aRhs) {
 // segment has no value axis to normalize across, so the vertical component of
 // the drag has nothing to write and the handle keeps the y it had.
 //
-// aPos is a QPointF, not a QPoint, because the MIRRORED handle is not a pointer
-// pixel: it is the reflection of the dragged dot about its key, and rounding it
-// to a pixel before mapping it back would put the mirror half a pixel off the
-// line the user sees (see updateDrag).
+// aPos is a QPointF, not a QPoint, because the OPPOSITE handle of an aligned
+// key is not a pointer pixel: it is the collinear point at that handle's own
+// length, and rounding it to a pixel before mapping it back would put it half a
+// pixel off the line the user sees (see updateDrag).
 QPointF
 handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Segment& aSegment, const QPointF& aPos,
     double aFlatY) {
@@ -105,6 +99,90 @@ handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Se
     const double ny =
         (static_cast<double>(aScale.valueAtPixel(aPos.y())) - aSegment.fromValue) / valueSpan;
     return QPointF(nx, ny);
+}
+
+// ---- HANDLE ALIGNMENT (a key's two tangents) ----
+//
+// A key owns TWO tangent handles: its OUTGOING one, stored as (x1,y1) of the
+// segment that STARTS at the key, and its INCOMING one, stored as (x2,y2) of
+// the segment that ENDS at it. The key is ALIGNED when those two dots are
+// collinear with the key on opposite sides - the usual "smooth" state of a
+// bezier editor - and FREE otherwise. Alignment is NOT stored anywhere: it is
+// inferred from the geometry every time it is needed, so the document format
+// keeps exactly the two control points it always had.
+//
+// The comparison runs on PIXELS, not on the normalized easing space: each
+// segment divides y by its OWN value span, so two handles can be collinear on
+// screen (and in playback) while their normalized vectors are not. The angle
+// between the two pixel vectors - one from the key to each handle - is compared
+// with 180 degrees: aligned handles point away from the key in OPPOSITE
+// directions. THE TOLERANCE IS 2 DEGREES, which absorbs the half-pixel rounding
+// of the integer pixel mappings (pixelY / handlePointAt) plus float precision
+// without accepting a visibly bent tangent.
+constexpr double kAlignToleranceDegrees = 2.0;
+constexpr double kDegreesPerRadian = 57.2957795130823208768;
+
+// True when aOutgoing and aIncoming, as pixels, sit on one line through aKey on
+// OPPOSITE sides. A zero-length handle has no direction and is never aligned
+// (it cannot define a tangent to preserve).
+bool handlesAligned(const QPointF& aKey, const QPointF& aOutgoing, const QPointF& aIncoming) {
+    const QPointF out(aOutgoing.x() - aKey.x(), aOutgoing.y() - aKey.y());
+    const QPointF in(aIncoming.x() - aKey.x(), aIncoming.y() - aKey.y());
+    const double outLength = std::hypot(out.x(), out.y());
+    const double inLength = std::hypot(in.x(), in.y());
+    if (!(outLength > 0.0) || !(inLength > 0.0))
+        return false;
+
+    const double cosAngle =
+        qBound(-1.0, (out.x() * in.x() + out.y() * in.y()) / (outLength * inLength), 1.0);
+    const double angle = std::acos(cosAngle) * kDegreesPerRadian;
+    return std::fabs(angle - 180.0) <= kAlignToleranceDegrees;
+}
+
+// The pair of handles a segment actually SHOWS: its stored Custom pair, or -
+// for Type_Auto, whose pair is DERIVED - the ghost pair the curve draws. Both
+// are returned in the same NORMALIZED easing space Curve::handle() reads, so
+// they map through graph::handlePointAt and write back through Curve::setHandle
+// after the Auto conversion (which the caller owns, because only the caller
+// knows whether it is going to write).
+bool effectiveHandles(
+    const ctrl::graph::Curve& aCurve, const ctrl::graph::Curve::Segment& aSegment, QPointF aOut[2]
+) {
+    if (aSegment.easing.type == util::Easing::Type_Auto) {
+        const QVector<QPointF> ghosts = aCurve.ghostHandles(*aSegment.from);
+        if (ghosts.size() != 2)
+            return false;
+        aOut[0] = ghosts[0];
+        aOut[1] = ghosts[1];
+        return true;
+    }
+    aOut[0] = ctrl::graph::Curve::handle(aSegment, 0);
+    aOut[1] = ctrl::graph::Curve::handle(aSegment, 1);
+    return true;
+}
+
+// aParam with ONE handle placed at aPixel, in the segment's own normalization.
+// A Type_Auto param is converted to Custom carrying its exact DERIVED pair
+// first (a handle written into an Auto param is never read); aEffective is that
+// derived pair, and its y is the constant-segment fallback handleNormalized
+// needs. False when the caller has no effective pair to convert from.
+bool alignedHandleParam(
+    const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Segment& aSegment,
+    const util::Easing::Param& aParam, const QPointF aEffective[2], int aHandleIndex,
+    const QPointF& aPixel, util::Easing::Param& aOut
+) {
+    aOut = aParam;
+    if (aOut.type == util::Easing::Type_Auto) {
+        aOut.type = util::Easing::Type_Custom;
+        aOut.cubicBezier.x1 = static_cast<float>(aEffective[0].x());
+        aOut.cubicBezier.y1 = static_cast<float>(aEffective[0].y());
+        aOut.cubicBezier.x2 = static_cast<float>(aEffective[1].x());
+        aOut.cubicBezier.y2 = static_cast<float>(aEffective[1].y());
+    }
+    const QPointF normalized =
+        handleNormalized(aScale, aSegment, aPixel, static_cast<double>(aEffective[aHandleIndex].y()));
+    ctrl::graph::Curve::setHandle(aOut, aHandleIndex, normalized);
+    return true;
 }
 
 // The value the graph draws for one component of one key type at aFrame: what
@@ -278,6 +356,8 @@ namespace ctrl {
         mMarqueeCurrent(),
         mAddToSelection(false),
         mPanPointer(),
+        mScrollBarAxis(ScrollBar_None),
+        mScrollBarPointer(),
         mMoveLine(nullptr),
         mMoveNode(nullptr),
         mMoveType(core::TimeKeyType_TERM),
@@ -623,57 +703,44 @@ namespace ctrl {
 
     //-------------------------------------------------------------------------------------------------
     void GraphEditor::applyValueFit(const QVector<Entry>& aItems) {
-        // The union of EVERY shown curve. The focus deliberately does not narrow
-        // this: it is emphasis only (see DELIBERATE FIT in the header), and a
-        // window that answered a click would move the key the click was on.
-        bool any = false;
+        // The extent is the union of EVERY shown curve's keys and of a walk through
+        // its segments (see valueExtentOf) - the one computation the vertical scroll
+        // bar's content reads too (shownValueExtent), so the window the fit sets and
+        // the window the bar measures its thumb against cannot drift.
         float lo = 0.0f;
         float hi = 0.0f;
-
-        for (const Entry& entry : aItems) {
-            const graph::Curve& curve = entry.curve;
-
-            const QVector<const core::TimeKey*> keys = curve.keys();
-            if (keys.isEmpty())
-                continue; // no keys: the curve has no values of its own to fit
-
-            // The key values first, so a channel whose keys never interpolate
-            // (one key, or a step-held channel) still bounds the window.
-            for (const core::TimeKey* key : keys) {
-                const float value = curve.valueOf(*key);
-                lo = any ? std::min(lo, value) : value;
-                hi = any ? std::max(hi, value) : value;
-                any = true;
-            }
-
-            // Then the overshoot between them. The samples go through
-            // Curve::sample(), so the fit sees the value PLAYBACK reaches inside
-            // the segment - the Custom bezier and the Move spline included - and
-            // the segment endpoints are samples too (i = 0 and i = n), so a curve
-            // is never fitted to a range narrower than the polyline drawn from it.
-            for (int s = 0; s < curve.segmentCount(); ++s) {
-                const graph::Curve::Segment segment = curve.segment(s);
-                const float first = static_cast<float>(segment.from->frame());
-                const float last = static_cast<float>(segment.to->frame());
-                for (int i = 0; i <= kFitSamplesPerSegment; ++i) {
-                    const float frame = first + (last - first) * (static_cast<float>(i) / kFitSamplesPerSegment);
-                    const float value = curve.sample(core::Frame::fromDecimal(frame));
-                    lo = std::min(lo, value);
-                    hi = std::max(hi, value);
-                }
-            }
-        }
 
         // No shown curve has a key: the panel is empty (or every channel shown is
         // keyless), and blanking the axis here would throw away a window the user
         // zoomed. Leaving it is the only harmless answer.
-        if (!any)
+        if (!valueExtentOf(aItems, lo, hi))
             return;
 
         mScale.fitValueWindow(lo, hi);
     }
 
     //-------------------------------------------------------------------------------------------------
+    namespace {
+    // The ruler band's slot, exactly as gui::GraphPanelModel publishes it: the
+    // scaler's own kRulerBandHeight rows directly above the plot, as wide as the
+    // plot. A press here is the ruler's seek (the timeline's TimeRuler gesture), so
+    // this rect is HIT geometry and must not be derived anywhere else.
+    QRect rulerBandRect(const graph::Scaler& aScale) {
+        const QRect plot = aScale.plotRect();
+        if (plot.isEmpty())
+            return QRect();
+        // The scaler's MARGIN rows sit between the hairline and the plot (see
+        // Scaler::plotRect: top inset = kMargin + kRulerBandHeight), so the band is
+        // the 22 rows ABOVE that margin - the slot gui::GraphPanelModel anchors to the
+        // panel's top. A band rect derived from plot.top() alone would cover the margin
+        // and miss the band's own first rows.
+        return QRect(
+            plot.left(), plot.top() - graph::Scaler::kMargin - graph::Scaler::kRulerBandHeight, plot.width(),
+            graph::Scaler::kRulerBandHeight
+        );
+    }
+    } // namespace
+
     bool GraphEditor::ownsCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) const {
         // A gesture keeps the cursor even when the pointer is nowhere near an
         // item: the button is still down on something this editor is moving, and
@@ -695,6 +762,28 @@ namespace ctrl {
             && (aCursor.emitsPressedEvent() || aCursor.isPressedMiddle())
             && currentPanelRect(aCamera).contains(point)) {
             return true;
+        }
+
+        // THE RULER BAND: the timeline's seek, on the timeline's geometry. Claimed
+        // before the bars (the band is above the plot, the bars beside/below it) and
+        // only while a seek delegate exists - without one the band belongs to nobody
+        // and a press there is not the panel's to swallow.
+        if (mSeekFrame && aCursor.emitsLeftPressedEvent() && rulerBandRect(scale).contains(point))
+            return true;
+
+        // THE SCROLL BARS, before every other hit: a press on a track or a thumb is
+        // the panel's own window gesture (see THE SCROLL BARS in the header), and it
+        // must not become a plot gesture - a tangent handle can hang over the bar's
+        // rows, since a handle is grabbed wherever its dot is (see hitTest).
+        //
+        // ONLY A PRESS asks: the bars' geometry costs the value extent's walk (one
+        // sample per kFitSamplesPerSegment per segment, see valueExtentOf), and this
+        // method runs on EVERY cursor move - a hover over a bar is nobody's, and the
+        // question "is this press on a bar" is the only one wanted here.
+        if (aCursor.emitsLeftPressedEvent()) {
+            const graph::Scaler::ScrollBars bars = scrollBarsFor(scale, entries);
+            if (bars.hTrack.contains(point) || bars.vTrack.contains(point))
+                return true;
         }
 
         // A key or a tangent handle: the pointer on something the graph can act
@@ -780,6 +869,26 @@ namespace ctrl {
             endDrag();
 
             const QVector<Entry> entries = buildEntries();
+
+            // THE RULER BAND'S SEEK (see setFrameSeekDelegate): the frame under the
+            // press, then one per move - the timeline's own gesture, whose every step
+            // is a frame the user sees. Nothing is armed and no command is pushed:
+            // the frame is the project's, not the document's.
+            if (mSeekFrame && rulerBandRect(mScale).contains(point)) {
+                mSeeking = true;
+                mSeekFrame(core::Frame(mScale.frameAt(point.x())));
+                return true;
+            }
+
+            // THE SCROLL BARS: the bars are chrome OUTSIDE the plot, and a press on
+            // one is the panel's own window gesture - never the plot's, and never the
+            // tools' (ownsCursor claims it before its other hits, and this is the pass
+            // that acts on it). The test comes before the hit-test for the same reason
+            // it does there: a tangent handle can hang over the bar's rows, and the
+            // bar is what the pointer is on.
+            if (beginScrollBarPress(scrollBarsFor(mScale, entries), point))
+                return true;
+
             const Hit hit = hitTest(entries, mScale, point);
             const bool validItem = 0 <= hit.item && hit.item < entries.size();
             const bool inPlot = mScale.plotRect().contains(point);
@@ -830,10 +939,118 @@ namespace ctrl {
                 // The same hit makes this entry the focused channel, which is
                 // what the panel emphasises.
                 setFocusedChannel(*entries[hit.item].node, channel);
-                // ...and ARMS the move: a drag from this press changes the key's
-                // frame and value. Nothing is committed by the press itself, so a
-                // click that only selects leaves the history untouched.
-                beginKeyMove(hit, entries, point);
+
+                if (mModifiers.testFlag(Qt::AltModifier)) {
+                    // ALT+CLICK ON A KEY IS THE ALIGN ACTION: make the key's two
+                    // handles collinear through it, each keeping its own length.
+                    // The LONGER handle defines the direction (its stored
+                    // position is left exactly as it is) and the other is placed
+                    // on its OPPOSITE side at its own distance from the key. A
+                    // length tie goes to the OUTGOING handle - the one leaving
+                    // the key, i.e. the segment with the lower index - which
+                    // makes the choice deterministic without reading the
+                    // document's layout. A first/last key owns one handle, so it
+                    // has nothing to align and the press is inert.
+                    //
+                    // Alignment is INFERRED from geometry (see handlesAligned):
+                    // this action exists to CREATE that geometry on a free key,
+                    // and it reads the current pair only to pick the winner. The
+                    // write is ONE command over BOTH params in ONE macro, so one
+                    // undo restores the free pair whole - and an Auto param is
+                    // converted only when it is the side actually written.
+                    const Entry& entry = entries[hit.item];
+                    core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
+                    const core::TimeKeyType type = entry.channel.type();
+                    core::TimeKey* key = line ? line->timeKey(type, hit.keyFrame.get()) : nullptr;
+
+                    int outIndex = -1;
+                    int inIndex = -1;
+                    for (int s = 0; key && s < entry.curve.segmentCount(); ++s) {
+                        const graph::Curve::Segment seg = entry.curve.segment(s);
+                        if (seg.from->frame() == key->frame())
+                            outIndex = s;
+                        if (seg.to->frame() == key->frame())
+                            inIndex = s;
+                    }
+
+                    util::Easing::Param* outParam = key ? graph::Curve::easingOf(*key, type) : nullptr;
+                    core::TimeKey* prevKey =
+                        (line && inIndex >= 0)
+                        ? line->timeKey(type, entry.curve.segment(inIndex).from->frame())
+                        : nullptr;
+                    util::Easing::Param* inParam =
+                        prevKey ? graph::Curve::easingOf(*prevKey, type) : nullptr;
+
+                    QPointF outPair[2];
+                    QPointF inPair[2];
+                    if (mProject && outParam && inParam && outIndex >= 0 && inIndex >= 0
+                        && effectiveHandles(entry.curve, entry.curve.segment(outIndex), outPair)
+                        && effectiveHandles(entry.curve, entry.curve.segment(inIndex), inPair)) {
+                        const graph::Curve::Segment outSegment = entry.curve.segment(outIndex);
+                        const graph::Curve::Segment inSegment = entry.curve.segment(inIndex);
+                        const QPointF keyPixel =
+                            graph::keyDot(mScale, core::Frame(key->frame()), entry.curve.valueOf(*key));
+                        const QPointF outPixel = graph::handlePointAt(mScale, outSegment, outPair[0]);
+                        const QPointF inPixel = graph::handlePointAt(mScale, inSegment, inPair[1]);
+                        const QPointF outVector(
+                            outPixel.x() - keyPixel.x(), outPixel.y() - keyPixel.y()
+                        );
+                        const QPointF inVector(
+                            inPixel.x() - keyPixel.x(), inPixel.y() - keyPixel.y()
+                        );
+                        const double outLength = std::hypot(outVector.x(), outVector.y());
+                        const double inLength = std::hypot(inVector.x(), inVector.y());
+
+                        // The longer wins; the tie goes to the outgoing handle.
+                        const bool outgoingWins = outLength >= inLength;
+                        const QPointF winnerVector = outgoingWins ? outVector : inVector;
+                        const double winnerLength = outgoingWins ? outLength : inLength;
+                        if (winnerLength > 0.0) {
+                            util::Easing::Param outNext = *outParam;
+                            util::Easing::Param inNext = *inParam;
+                            bool written = false;
+                            if (outgoingWins) {
+                                const QPointF loserPixel(
+                                    keyPixel.x() - winnerVector.x() / winnerLength * inLength,
+                                    keyPixel.y() - winnerVector.y() / winnerLength * inLength
+                                );
+                                written = alignedHandleParam(
+                                    mScale, inSegment, *inParam, inPair, 1, loserPixel, inNext
+                                );
+                            } else {
+                                const QPointF loserPixel(
+                                    keyPixel.x() - winnerVector.x() / winnerLength * outLength,
+                                    keyPixel.y() - winnerVector.y() / winnerLength * outLength
+                                );
+                                written = alignedHandleParam(
+                                    mScale, outSegment, *outParam, outPair, 0, loserPixel, outNext
+                                );
+                            }
+
+                            // Already aligned and already in that exact place:
+                            // the click changed nothing, so it pushes nothing.
+                            if (written && (outNext != *outParam || inNext != *inParam)) {
+                                cmnd::ScopedMacro macro(
+                                    mProject->commandStack(), CmndName::tr("align handles")
+                                );
+                                auto* notifier = new TimeLineUtil::Notifier(*mProject);
+                                notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
+                                notifier->event().pushTarget(*entry.node, type, key->frame());
+                                notifier->event().pushTarget(*entry.node, type, prevKey->frame());
+                                macro.grabListener(notifier);
+                                mProject->commandStack().push(
+                                    new HandleDragCommand(outParam, outNext, inParam, &inNext)
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    // ...and ARMS the move: a drag from this press changes the
+                    // key's frame and value. Nothing is committed by the press
+                    // itself, so a click that only selects leaves the history
+                    // untouched.
+                    beginKeyMove(hit, entries, point);
+                }
             } else if (inPlot) {
                 // ONE plot, two gestures, decided by what is under the pointer:
                 // a CTRL-press on a curve's band INSERTS the key that curve
@@ -858,8 +1075,35 @@ namespace ctrl {
         }
 
         if (aCursor.emitsLeftDraggedEvent()) {
+            // THE SEEK'S DRAG: the band's press keeps seeking wherever the pointer
+            // goes (the frame clamps into the range inside the timeline's own setter),
+            // and it is checked before the drags because a seek arms none of them.
+            if (mSeeking) {
+                if (mSeekFrame)
+                    mSeekFrame(core::Frame(mScale.frameAt(point.x())));
+                return true;
+            }
             if (!mDragging)
                 return false; // a press that took nothing leaves the drag to nobody
+
+            if (mScrollBarAxis != ScrollBar_None) {
+                // THE SCROLL BAR DRAG: the window follows the pointer's own pixel
+                // delta, exactly as the middle drag's does (the two share the
+                // pixel-to-frame sign in panFramesByPixels) - the THUMB's delta and
+                // the pointer's are the same while the thumb is not clamped, and a
+                // pointer that has run past the track's end keeps scrolling rather
+                // than sticking. Shift is deliberately not consulted: this gesture is
+                // one axis already (see THE SCROLL BARS).
+                const QPoint delta = point - mScrollBarPointer;
+                mScrollBarPointer = point;
+                if (!delta.isNull()) {
+                    if (mScrollBarAxis == ScrollBar_Horizontal)
+                        panFramesByPixels(mScale, delta.x());
+                    else
+                        mScale.panValue(delta.y());
+                }
+                return true;
+            }
 
             if (mMarqueeArmed) {
                 // The marquee is a live rectangle: every move re-draws it.
@@ -879,6 +1123,13 @@ namespace ctrl {
         }
 
         if (aCursor.emitsLeftReleasedEvent()) {
+            if (mSeeking) {
+                // The release's own position is the last frame the user aimed at.
+                if (mSeekFrame)
+                    mSeekFrame(core::Frame(mScale.frameAt(point.x())));
+                mSeeking = false;
+                return true;
+            }
             if (mMarqueeArmed) {
                 // The last pointer position decides the rectangle, then it is
                 // applied to the selection.
@@ -922,20 +1173,19 @@ namespace ctrl {
 
         // THE MAPPING, axis by axis (see updateWheel's declaration for the table):
         //   * plain          - zoom BOTH axes about the cursor;
-        //   * Shift          - SCROLL both axes by 50 px per notch (the timeline's
-        //                      own Shift step), no zoom;
-        //   * Ctrl           - zoom the VALUE axis only;
-        //   * Ctrl + Shift   - zoom the FRAME axis only.
-        // Ctrl+Shift is where the old Shift-only frame zoom moved: every modifier
-        // combination now moves something, so a notch is never consumed by a case
-        // that changed neither axis.
+        //   * Shift          - zoom the FRAME axis alone (horizontal);
+        //   * Ctrl           - zoom the VALUE axis alone (vertical);
+        //   * Ctrl + Shift   - zoom BOTH axes, exactly as plain does.
+        // EVERY combination zooms at least one axis, so no notch is ever consumed by
+        // a case that moved nothing - the two modifiers name the two axes, and both
+        // of them name both. NOTHING HERE SCROLLS: the window is moved by the scroll
+        // bars and the middle drag (see the SCROLL BARS note in the header), and the
+        // wheel's Shift branch is the frame ZOOM it had before the 2026-10-19 round
+        // briefly made it a scroll.
         //
         // DIRECTION: a notch Qt reports as positive zooms OUT at 1.1 of scale, the
         // canvas mover's and the timeline scaler's own sense (see aInvertScaling for
-        // the user's own). The value axis alone used to zoom IN on that notch, which
-        // is the one thing a uniform two-axis zoom cannot have. The same signed
-        // delta drives the scroll: a positive notch moves the content right (to
-        // earlier frames, exactly like the timeline's own Shift) and down.
+        // the user's own).
         const int delta = aInvertScaling ? -aWheelDelta : aWheelDelta;
         if (delta == 0)
             // a pixel-only wheel event with no angle delta: no notch to act on
@@ -943,6 +1193,10 @@ namespace ctrl {
             return true;
         const bool shift = aModifiers.testFlag(Qt::ShiftModifier);
         const bool ctrl = aModifiers.testFlag(Qt::ControlModifier);
+        // Which axes this notch zooms: Shift alone narrows it to the frame axis,
+        // Ctrl alone to the value axis, and both modifiers (like neither) move both.
+        const bool zoomFrame = shift || !ctrl;
+        const bool zoomValue = ctrl || !shift;
 
         // The frame half of a zoom, whichever view owns the axis. While a timeline
         // owns it the notch goes to IT, about the frame under the cursor -
@@ -958,30 +1212,14 @@ namespace ctrl {
             }
         };
 
-        if (shift && ctrl) {
-            zoomFrames();
-        } else if (shift) {
-            // SCROLL both axes, by the timeline's fixed 50 px step. The frame half
-            // goes back through the timeline when it owns the axis, in the panel's
-            // own frames: a positive notch moves the content right, which is the
-            // negative frame delta (the same sign the middle-drag pan uses). The
-            // value half is always this panel's and moves down by the same pixels.
-            const int step = delta > 0 ? kWheelScrollPixels : -kWheelScrollPixels;
-            if (mFrameWindowShared) {
-                if (mScrollFrames)
-                    mScrollFrames(-static_cast<double>(step) / mScale.framePpf());
-            } else {
-                mScale.panFrame(step);
-            }
-            mScale.panValue(step);
-        } else if (ctrl) {
-            // About the cursor's row, so the number under it stays there. The
-            // negated delta is what turns Qt's notch direction into the canvas's.
+        // The two zooms, each about the cursor's own coordinate (the row for the
+        // value axis, the column for the frame axis): the point under the pointer
+        // stays under it, which is what makes a two-axis notch hold its shape. The
+        // negated delta is what turns Qt's notch direction into the canvas's.
+        if (zoomValue)
             mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
-        } else {
-            mScale.updateValueZoom(static_cast<float>(notchZoomFactor(-delta)), aPos.y());
+        if (zoomFrame)
             zoomFrames();
-        }
         // Taken even when the axes were already clamped at their floor or
         // ceiling: the pointer is over the panel, so the canvas must not also
         // zoom.
@@ -1217,24 +1455,143 @@ namespace ctrl {
         // only), so a diagonal drag moves the content diagonally without
         // changing either zoom.
         //
-        // The HORIZONTAL half is the timeline's while it owns the frame axis: the
-        // pointer's pixel delta is converted to FRAMES on this panel's ladder and
-        // handed over, which is the timeline's own unit - its pixels-per-frame is
-        // its own, and the shared quantity is the window (see the header). The
-        // sign is the pan's: dragging right moves the content right, which shows
-        // EARLIER frames, so the frame delta is the negative of the pixel delta.
-        if (mFrameWindowShared) {
-            if (mScrollFrames && delta.x() != 0)
-                mScrollFrames(-static_cast<double>(delta.x()) / mScale.framePpf());
-        } else {
-            mScale.panFrame(delta.x());
-        }
+        // Both axes, in the one place the pixel-to-frame sign lives for the frame
+        // half (panFramesByPixels, which the scroll bar's thumb drag goes through
+        // too) and the panel's own panValue for the value half.
+        panFramesByPixels(mScale, delta.x());
         mScale.panValue(delta.y());
     }
 
     void GraphEditor::endPan() {
         mPanning = false;
         mDragging = false;
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    void GraphEditor::panFramesByPixels(graph::Scaler& aScale, int aPixelDelta) {
+        if (aPixelDelta == 0)
+            return;
+        // The HORIZONTAL half is the timeline's while it owns the frame axis: the
+        // pointer's pixel delta is converted to FRAMES on this panel's ladder and
+        // handed over, which is the timeline's own unit - its pixels-per-frame is
+        // its own, and the shared quantity is the window (see the header). The sign
+        // is the drag's: moving right moves the content right, which shows EARLIER
+        // frames, so the frame delta is the negative of the pixel delta. Both the
+        // middle drag and the horizontal scroll bar go through here, so the two
+        // cannot disagree about which way "right" is.
+        if (mFrameWindowShared) {
+            if (mScrollFrames)
+                mScrollFrames(-static_cast<double>(aPixelDelta) / aScale.framePpf());
+        } else {
+            aScale.panFrame(aPixelDelta);
+        }
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    bool GraphEditor::valueExtentOf(const QVector<Entry>& aItems, float& aLo, float& aHi) {
+        // The union of EVERY shown curve. The focus deliberately does not narrow
+        // this: it is emphasis only (see DELIBERATE FIT in the header), and a
+        // window that answered a click would move the key the click was on.
+        bool any = false;
+        float lo = 0.0f;
+        float hi = 0.0f;
+
+        for (const Entry& entry : aItems) {
+            const graph::Curve& curve = entry.curve;
+
+            const QVector<const core::TimeKey*> keys = curve.keys();
+            if (keys.isEmpty())
+                continue; // no keys: the curve has no values of its own to fit
+
+            // The key values first, so a channel whose keys never interpolate
+            // (one key, or a step-held channel) still bounds the window.
+            for (const core::TimeKey* key : keys) {
+                const float value = curve.valueOf(*key);
+                lo = any ? std::min(lo, value) : value;
+                hi = any ? std::max(hi, value) : value;
+                any = true;
+            }
+
+            // Then the overshoot between them. The samples go through
+            // Curve::sample(), so the fit sees the value PLAYBACK reaches inside
+            // the segment - the Custom bezier and the Move spline included - and
+            // the segment endpoints are samples too (i = 0 and i = n), so a curve
+            // is never fitted to a range narrower than the polyline drawn from it.
+            for (int s = 0; s < curve.segmentCount(); ++s) {
+                const graph::Curve::Segment segment = curve.segment(s);
+                const float first = static_cast<float>(segment.from->frame());
+                const float last = static_cast<float>(segment.to->frame());
+                for (int i = 0; i <= kFitSamplesPerSegment; ++i) {
+                    const float frame = first + (last - first) * (static_cast<float>(i) / kFitSamplesPerSegment);
+                    const float value = curve.sample(core::Frame::fromDecimal(frame));
+                    lo = std::min(lo, value);
+                    hi = std::max(hi, value);
+                }
+            }
+        }
+
+        if (any) {
+            aLo = lo;
+            aHi = hi;
+        }
+        return any;
+    }
+
+    bool GraphEditor::shownValueExtent(float& aLo, float& aHi) const {
+        return valueExtentOf(buildEntries(), aLo, aHi);
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    graph::Scaler::ScrollBars GraphEditor::scrollBarsFor(
+        const graph::Scaler& aScale, const QVector<Entry>& aItems
+    ) const {
+        // The two CONTENTS, and nothing else: the frame range the horizontal bar
+        // scrolls and the shown curves' value extent the vertical one does. A
+        // degenerate value extent (no shown channel has a key) is passed as an empty
+        // range, which the layout reads as "the thumb fills its track" - there is
+        // nothing to scroll against.
+        float lo = 0.0f;
+        float hi = 0.0f;
+        if (!valueExtentOf(aItems, lo, hi))
+            lo = hi = 0.0f;
+
+        const util::Range frames = frameRange();
+        return aScale.scrollBars(frames.min(), frames.max(), lo, hi);
+    }
+
+    bool GraphEditor::beginScrollBarPress(const graph::Scaler::ScrollBars& aBars, const QPoint& aPos) {
+        if (aBars.isEmpty())
+            return false;
+
+        int axis = ScrollBar_None;
+        if (aBars.hTrack.contains(aPos))
+            axis = ScrollBar_Horizontal;
+        else if (aBars.vTrack.contains(aPos))
+            axis = ScrollBar_Vertical;
+        if (axis == ScrollBar_None)
+            return false;
+
+        // A press on the TRACK (the surface beside the thumb) is a JUMP: the window
+        // is centred on the pressed point, so the frame or value under the pointer
+        // comes to the middle of the plot. It is applied as the pan the drag below
+        // would have made from the pointer to the track's centre, so both routes
+        // move the window through the same one call.
+        const QRect& track = axis == ScrollBar_Horizontal ? aBars.hTrack : aBars.vTrack;
+        const QRect& thumb = axis == ScrollBar_Horizontal ? aBars.hThumb : aBars.vThumb;
+        if (!thumb.contains(aPos)) {
+            if (axis == ScrollBar_Horizontal)
+                panFramesByPixels(mScale, track.center().x() - aPos.x());
+            else
+                mScale.panValue(track.center().y() - aPos.y());
+        }
+
+        // The drag is armed AFTER the jump, at the press position: every later move
+        // is that pointer's delta, so a jump followed by a drag is one continuous
+        // gesture with no accumulated offset.
+        mDragging = true;
+        mScrollBarAxis = axis;
+        mScrollBarPointer = aPos;
+        return true;
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1607,10 +1964,12 @@ namespace ctrl {
         // Playback reads the segment's easing from its `from` key for the whole
         // span, so BOTH handles are stored in that one param - but they belong
         // to different keys: handle 0 is the `from` key's OUTGOING tangent and
-        // handle 1 the `to` key's INCOMING one. updateDrag mirrors each about
-        // the key it belongs to (the opposite tangent of that key lives in the
-        // neighbouring segment), so the anchor recorded here is the SEGMENT's
-        // `from` key, not the key the grabbed dot belongs to.
+        // handle 1 the `to` key's INCOMING one. updateDrag keeps the pair of
+        // the key the grabbed dot belongs to (the opposite tangent of that key
+        // lives in the neighbouring segment): on an ALIGNED key it stays
+        // collinear at its own length, and Alt breaks that link. The anchor
+        // recorded here is the SEGMENT's `from` key, not the key the grabbed
+        // dot belongs to.
         mDragging = true;
         mKeyMoveArmed = false; // this is a handle drag: the kinds never coexist
         mMarqueeArmed = false;
@@ -1954,13 +2313,13 @@ namespace ctrl {
         // exact derived pair at the third points (1/3, y1) and (2/3, y2), so the
         // curve the user was looking at does not move when the gesture begins;
         // The pointer's own write just below then moves the GRABBED handle, and
-        // the mirror (about the KEY that handle belongs to, see below) lands in
-        // the NEIGHBOUR segment's param, never on this pair's other control
-        // point - which belongs to the other end's key. The pair this branch
-        // writes is therefore only the gesture's STARTING point: it is what the
-        // drag rewrites on its first step. The conversion rides the SAME
-        // mGesture, so it is one undo step with the drag - the whole
-        // Auto->Custom change undone by one undo.
+        // the rest of the key's pair (an ALIGNED key's opposite handle lives in
+        // the NEIGHBOUR segment's param) is handled there - never on this
+        // pair's other control point, which belongs to the other end's key. The
+        // pair this branch writes is therefore only the gesture's STARTING
+        // point: it is what the drag rewrites on its first step. The conversion
+        // rides the SAME mGesture, so it is one undo step with the drag - the
+        // whole Auto->Custom change undone by one undo.
         //
         // Detected from the LIVE param (not a press-time flag): the first step
         // converts, and every later step sees Custom and skips this branch.
@@ -1985,7 +2344,7 @@ namespace ctrl {
         // anticipation are made of - survives.
         graph::Curve::setHandle(next, mDragHandle, normalized);
 
-        // ---- THE MIRROR IS TAKEN ABOUT THE KEY THE HANDLE BELONGS TO ----
+        // ---- THE PAIR OF THE KEY THE HANDLE BELONGS TO ----
         //
         // A key owns ONE param but plays TWO handles: its OUTGOING handle is
         // this segment's (x1,y1) when the key is the segment's `from`, and its
@@ -1998,27 +2357,43 @@ namespace ctrl {
         //   handle 1 (incoming, belongs to `to`): the key's outgoing handle is
         //     segment i+1's (x1,y1), stored in THAT segment's `from` param.
         //
-        // Mirroring INSIDE the dragged segment instead - the old (1-x,1-y)
-        // write - symmetrised the NEXT key's handle when the user grabbed this
-        // key's right-hand one, which is a different key's tangent.
+        // What happens to the opposite handle follows the two states every
+        // bezier editor has (see handlesAligned):
+        //
+        //   * ALIGNED (the key's two handles are collinear through it, within
+        //     kAlignToleranceDegrees): the opposite handle keeps its OWN LENGTH
+        //     and stays collinear with the dragged one - the angle is linked,
+        //     the length is independent. It is deliberately NOT the reflection
+        //     of the dragged dot: a reflection forces the two lengths equal and
+        //     turns a smooth key into a symmetric segment-space pair, which is
+        //     not what the handle model means.
+        //   * FREE (not collinear): the opposite handle is not touched at all.
+        //     In particular a free key does NOT become aligned by dragging one
+        //     of its handles.
+        //
+        // ALT BREAKS THE PAIR. Alt is read from mModifiers on EVERY step, not
+        // just at the press (the widget feeds the latest state in; see
+        // setModifiers), so pressing Alt mid-drag stops writing the opposite
+        // handle at once and releasing it re-arms the pair. Alt+click on a key
+        // is the ALIGN action instead (see updateCursor's press branch).
         //
         // The FIRST key has no previous segment and the LAST key has no next
-        // one: their single handle has no opposite to mirror onto, so the drag
-        // writes the grabbed handle and leaves everything else alone.
+        // one: their single handle has no opposite, so the drag writes the
+        // grabbed handle and leaves everything else alone.
         //
-        // THE MIRROR IS IN PIXELS, NOT IN NORMALIZED SPACE. Each segment
-        // normalizes y by its OWN value span, so a normalized mirror would not
-        // be collinear with the key in the picture whenever the two spans differ
-        // - the tangent would visibly bend at the key. What has to be collinear
-        // is exactly what the user sees, so the arithmetic runs through the SAME
-        // mappings the drawing uses:
+        // THE COLLINEARITY IS IN PIXELS, NOT IN NORMALIZED SPACE. Each segment
+        // normalizes y by its OWN value span, so a normalized construction
+        // would not be collinear with the key in the picture whenever the two
+        // spans differ - the tangent would visibly bend at the key. What has to
+        // be collinear is exactly what the user sees, so the arithmetic runs
+        // through the SAME mappings the drawing uses:
         //
         //   keyPixel     = mScale.pixelX(core::Frame(key frame)), mScale.pixelY(key value)
         //                  (the marker's centre; the model's keyDot/keyCenter pair)
-        //   draggedPixel = handlePointAt(dragged segment, the stored handle)
-        //   mirrorPixel  = keyPixel - (draggedPixel - keyPixel) = 2 * keyPixel - draggedPixel
+        //   draggedPixel = handlePointAt(dragged segment, the handle as PLACED)
+        //   otherPixel   = keyPixel - unit(draggedPixel - keyPixel) * otherLength
         //
-        // and mirrorPixel is then mapped back through the NEIGHBOUR segment's
+        // and otherPixel is then mapped back through the NEIGHBOUR segment's
         // inverse mapping (handleNormalized): x as a fraction of that segment's
         // frame span, y of its value span. setHandle clamps that x into [0,1];
         // the y stays free, as on the grabbed side.
@@ -2032,16 +2407,20 @@ namespace ctrl {
         const int ownerFrame = draggedIsSecond ? segment.to->frame() : segment.from->frame();
         const float ownerValue = draggedIsSecond ? segment.toValue : segment.fromValue;
         // The marker's own pixel, through the one helper the model publishes key dots
-        // with, so the mirror is about the pixel the marker is actually drawn at.
+        // with, so the pair is built about the pixel the marker is actually drawn at.
         const QPointF keyPixel = graph::keyDot(mScale, core::Frame(ownerFrame), ownerValue);
 
         const int neighbourIndex = draggedIsSecond ? mDragSegment + 1 : mDragSegment - 1;
         const int neighbourHandle = draggedIsSecond ? 0 : 1;
 
+        // Alt breaks the pair for THIS step: mModifiers is the latest state the
+        // widget fed in, so this follows it mid-drag (see the note above).
+        const bool altHeld = mModifiers.testFlag(Qt::AltModifier);
+
         util::Easing::Param* mirrorEasing = nullptr;
         util::Easing::Param mirrorNext;
         int mirrorFrame = 0;
-        bool hasMirror = false;
+        bool mirrorWritten = false; // this step actually wrote the opposite handle
 
         if (0 <= neighbourIndex && neighbourIndex < entry.curve.segmentCount()) {
             const graph::Curve::Segment neighbour = entry.curve.segment(neighbourIndex);
@@ -2050,57 +2429,62 @@ namespace ctrl {
             util::Easing::Param* neighbourEasing =
                 neighbourKey ? graph::Curve::easingOf(*neighbourKey, entry.channel.type()) : nullptr;
 
-            // The mirror is written into the neighbour param WHATEVER its
-            // easing type: the control point is stored there either way, and an
-            // analytic type simply ignores it (it draws no tangent, but the pair
-            // a later switch to Custom would show is already the mirror). Only
-            // Auto needs more than the write, because its pair is DERIVED.
             if (neighbourEasing) {
+                // The command carries the opposite param whether or not THIS
+                // step writes it, because Alt may be released on a later step
+                // and the whole gesture is still one command. Its initial value
+                // is the live param untouched; an Auto neighbour is converted
+                // only if the write below actually happens.
+                mirrorEasing = neighbourEasing;
                 mirrorNext = *neighbourEasing;
-                bool represented = true;
+                mirrorFrame = neighbour.from->frame();
 
-                // An Auto neighbour DERIVES its pair: convert it to Custom
-                // carrying that exact derived pair first - the same seamless
-                // conversion the dragged segment gets above - because a handle
-                // written into a Type_Auto param is never read.
-                if (neighbourEasing->type == util::Easing::Type_Auto) {
-                    const QVector<QPointF> ghosts = entry.curve.ghostHandles(*neighbour.from);
-                    if (ghosts.size() == 2) {
-                        mirrorNext.type = util::Easing::Type_Custom;
-                        mirrorNext.cubicBezier.x1 = static_cast<float>(ghosts[0].x());
-                        mirrorNext.cubicBezier.y1 = static_cast<float>(ghosts[0].y());
-                        mirrorNext.cubicBezier.x2 = static_cast<float>(ghosts[1].x());
-                        mirrorNext.cubicBezier.y2 = static_cast<float>(ghosts[1].y());
-                    } else {
-                        represented = false; // nothing to convert: no mirror
-                    }
-                }
+                // Classification uses the pair BEFORE this step moved the
+                // grabbed dot: alignment is a property the key must already
+                // have, not something a drag can create.
+                QPointF draggedPair[2];
+                QPointF neighbourPair[2];
+                if (effectiveHandles(entry.curve, segment, draggedPair)
+                    && effectiveHandles(entry.curve, neighbour, neighbourPair)) {
+                    const QPointF draggedBefore =
+                        graph::handlePointAt(mScale, segment, draggedPair[mDragHandle]);
+                    const QPointF otherBefore =
+                        graph::handlePointAt(mScale, neighbour, neighbourPair[neighbourHandle]);
 
-                if (represented) {
                     const QPointF draggedPixel = graph::handlePointAt(mScale, segment, placed);
-                    const QPointF mirrorPixel(
-                        2.0 * keyPixel.x() - draggedPixel.x(), 2.0 * keyPixel.y() - draggedPixel.y()
+                    const QPointF draggedVector(
+                        draggedPixel.x() - keyPixel.x(), draggedPixel.y() - keyPixel.y()
                     );
-                    // A constant neighbour has no value axis to write into: its
-                    // handle keeps the y it has, exactly as handleNormalized's
-                    // own flat fallback does for the dragged side.
-                    const double mirrorFlatY = neighbourHandle == 1
-                        ? static_cast<double>(mirrorNext.cubicBezier.y2)
-                        : static_cast<double>(mirrorNext.cubicBezier.y1);
-                    const QPointF mirrorNormalized =
-                        handleNormalized(mScale, neighbour, mirrorPixel, mirrorFlatY);
-                    graph::Curve::setHandle(mirrorNext, neighbourHandle, mirrorNormalized);
-                    mirrorEasing = neighbourEasing;
-                    mirrorFrame = neighbour.from->frame();
-                    hasMirror = true;
+                    const double draggedLength = std::hypot(draggedVector.x(), draggedVector.y());
+                    const QPointF otherVector(
+                        otherBefore.x() - keyPixel.x(), otherBefore.y() - keyPixel.y()
+                    );
+                    const double otherLength = std::hypot(otherVector.x(), otherVector.y());
+
+                    if (!altHeld && handlesAligned(keyPixel, draggedBefore, otherBefore)
+                        && draggedLength > 0.0) {
+                        // The opposite keeps its own length and takes the
+                        // opposite direction of the PLACED (clamped) dragged
+                        // handle - the dot the user sees.
+                        const QPointF otherPixel(
+                            keyPixel.x() - draggedVector.x() / draggedLength * otherLength,
+                            keyPixel.y() - draggedVector.y() / draggedLength * otherLength
+                        );
+                        mirrorWritten = alignedHandleParam(
+                            mScale, neighbour, *neighbourEasing, neighbourPair, neighbourHandle,
+                            otherPixel, mirrorNext
+                        );
+                    }
                 }
             }
         }
 
         if (mGesture.continues()) {
             // Rewrite the command this drag already pushed, so the whole drag
-            // stays ONE undo step - both halves of it.
-            mGesture.command()->modifyValues(next, hasMirror ? &mirrorNext : nullptr);
+            // stays ONE undo step - both halves of it. The opposite half is
+            // updated only on the steps that actually rewrote it (Alt leaves it
+            // where the last such step put it).
+            mGesture.command()->modifyValues(next, mirrorWritten ? &mirrorNext : nullptr);
 
             // The rewrite goes straight through the stack, so the notification
             // the first commit pushed has to be sent again here - the same event
@@ -2109,7 +2493,7 @@ namespace ctrl {
             core::TimeLineEvent event;
             event.setType(core::TimeLineEvent::Type_ChangeKeyValue);
             event.pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
-            if (hasMirror) {
+            if (mirrorWritten) {
                 event.pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
             }
             mProject->onTimeLineModified(event, false);
@@ -2117,17 +2501,21 @@ namespace ctrl {
             // The drag's first commit (or its first after an undo/redo dropped
             // the stack's modifiable link): the notifier and the assign are
             // pushed inside ONE macro, so one notification and one command are
-            // one commit.
+            // one commit. The command owns the opposite param whenever the key
+            // HAS one, even if Alt keeps this step from writing it: the gesture
+            // is one command, and a later step may release Alt.
             mGesture.begin(CmndName::tr("change a key easing"), [&](cmnd::ScopedMacro& aMacro) {
                 auto* notifier = new TimeLineUtil::Notifier(*mProject);
                 notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
                 notifier->event().pushTarget(*entry.node, entry.channel.type(), mDragKey->frame());
-                if (hasMirror) {
+                if (mirrorWritten) {
                     notifier->event().pushTarget(*entry.node, entry.channel.type(), mirrorFrame);
                 }
                 aMacro.grabListener(notifier);
 
-                return new HandleDragCommand(easing, next, mirrorEasing, hasMirror ? &mirrorNext : nullptr);
+                return new HandleDragCommand(
+                    easing, next, mirrorEasing, mirrorEasing ? &mirrorNext : nullptr
+                );
             });
         }
     }
@@ -2145,10 +2533,20 @@ namespace ctrl {
         mKeyMoveArmed = false;
         mMarqueeArmed = false;
         mPanning = false;
+        // The seek arms no command, but it is still a gesture this editor owns: a
+        // press elsewhere, or the panel going away mid-drag, must end it so the next
+        // pass cannot keep moving the frame.
+        mSeeking = false;
         mDragKey = nullptr;
         mDragItem = -1;
         mDragSegment = -1;
         mDragHandle = -1;
+        // The scroll bar's drag closes with the others. It holds no command (a scroll
+        // bar moves a WINDOW, and the window is not the document), so there is
+        // nothing to finalise - dropping the axis is the whole of it, and the window
+        // it left is exactly where the next gesture finds it.
+        mScrollBarAxis = ScrollBar_None;
+        mScrollBarPointer = QPoint();
 
         // The marquee's box goes with it: a gesture that ends without applying it
         // (a hide, or a press that closed it) must not leave a rectangle behind

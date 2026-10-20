@@ -40,10 +40,12 @@ public:
     // rulers are one chrome (see THE RULER in GraphPanelModel.h).
     QColor rulerBand() const { return mRulerBand; }
     QColor rulerLine() const { return mRulerLine; }
-    // The playhead pill's number. The timeline's playhead (gui::TimeCursor) fills its
-    // pill with accentBright and writes the frame in Colors::accentBrightText
-    // (src/gui/TimeLineEditorWidget.cpp:268-269); the graph's pill is that pill.
-    QColor accentBrightText() const { return mAccentBrightText; }
+    // The playhead pill's number. THE TIMELINE'S RULER INK: the graph's pill is the
+    // timeline's pill, and the number written in it is the same number row the ruler's
+    // numbers use - theme::Colors::text (theme::TimeLine::headerContentColor() and
+    // TimeCursor's number ink). It was accentBrightText, a token the timeline uses for
+    // a different surface; the two views' number rows must be one ink.
+    QColor playheadText() const { return mPlayheadText; }
     // Value and frame labels. The FULL text token - the ink the timeline draws its own
     // ruler numbers in - not a muted one: these glyphs are the only panel content the
     // halo does not back (it ships off), so they sit on arbitrary artwork and a mid grey
@@ -155,7 +157,7 @@ private:
     QColor mAxisLine;
     QColor mRulerBand;
     QColor mRulerLine;
-    QColor mAccentBrightText;
+    QColor mPlayheadText;
     QColor mAxisText;
     QColor mHalo;
     QColor mOutline;

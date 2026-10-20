@@ -115,9 +115,108 @@ namespace graph {
         // 22px TimeRuler strip), so its rows are taken out of the plot here - in the
         // one rect the curves, the keys, the handles, both axes and the editor's
         // hit-test share. Nothing that is clipped to the plot can reach the ruler.
+        // THE RIGHT AND BOTTOM MARGINS CARRY THE SCROLL BARS (THE SCROLL BARS'
+        // RESERVE in the header): those two edges give up kScrollBarReserve more
+        // pixels, so the plot's top-left corner - and with it the ruler band and the
+        // label column - stays exactly where it was while the two bars get their
+        // strip. The inset is unconditional: the plot never moves because a bar
+        // appeared, and the bars never move because the plot's content did.
         return mRect.adjusted(
-            kMargin + axisLabelWidth(), kMargin + kRulerBandHeight, -kMargin, -kMargin
+            kMargin + axisLabelWidth(), kMargin + kRulerBandHeight, -(kMargin + kScrollBarReserve),
+            -(kMargin + kScrollBarReserve)
         );
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    // The thumb of one bar, in its track's own pixels. aInverted says the track runs
+    // AGAINST the coordinate axis (the value axis: valueMax is at the track's top),
+    // so the content and the window are read in track order and the whole layout
+    // below is one arithmetic for both bars.
+    //
+    // aThumb is always inside aTrack: its length is the window/content fraction of
+    // the track, floored at kScrollBarMinThumb (or the track itself, whichever is
+    // shorter) and capped at the track, and its offset is the window's own fraction,
+    // clamped so the thumb cannot leave the track. A window that covers the whole
+    // content (or a content with no span at all - the caller passes lo == hi for
+    // "nothing to scroll") therefore fills the track.
+    static QRect scrollThumbRect(
+        const QRect& aTrack, bool aHorizontal, bool aInverted, double aContentLo, double aContentHi,
+        double aWindowLo, double aWindowHi
+    ) {
+        if (aTrack.isEmpty())
+            return QRect();
+        const int trackLength = aHorizontal ? aTrack.width() : aTrack.height();
+
+        // Track order. The frame axis runs WITH its content (a bigger frame is further
+        // right); the value axis runs AGAINST it (a bigger value is nearer the top), so
+        // the value coordinate is NEGATED - content [lo,hi] becomes [-hi,-lo] along the
+        // track - and both axes are then one arithmetic. Sorting the window's two
+        // edges keeps a pair handed over the other way round from drawing a negative
+        // thumb.
+        const double windowLow = aInverted ? -std::max(aWindowLo, aWindowHi) : std::min(aWindowLo, aWindowHi);
+        const double windowHigh = aInverted ? -std::min(aWindowLo, aWindowHi) : std::max(aWindowLo, aWindowHi);
+        const double contentLo = aInverted ? -aContentHi : aContentLo;
+        const double contentHi = aInverted ? -aContentLo : aContentHi;
+
+        double start = 0.0;
+        double span = 1.0;
+        const double contentSpan = contentHi - contentLo;
+        if (contentSpan > 0.0 && windowHigh > windowLow) {
+            span = (windowHigh - windowLow) / contentSpan;
+            start = (windowLow - contentLo) / contentSpan;
+        }
+        // A window wider than the content shows the whole content: clamping the span
+        // to the track is what makes the thumb a scroll bar's and not an overflow
+        // indicator.
+        span = std::clamp(span, 0.0, 1.0);
+        start = std::clamp(start, 0.0, 1.0 - span);
+
+        const int minThumb = std::min(Scaler::kScrollBarMinThumb, trackLength);
+        const int thumbLength = std::clamp(int(std::lround(span * trackLength)), minThumb, trackLength);
+        const int offset = std::clamp(int(std::lround(start * trackLength)), 0, trackLength - thumbLength);
+        // NOTHING TO SCROLL, NOTHING TO SHOW. A thumb that fills its track is a bar
+        // with no travel: the convention every desktop draws (macOS and GTK hide the
+        // bar outright, Windows greys its track) is to remove it, and an 8px bright
+        // rail down the panel's edge reads as a divider otherwise - measured on the
+        // empty graph, whose two full-length rails were the first thing the eye found.
+        // The suppression lives HERE so the drawing layer and the hit-test agree by
+        // construction: an empty rect is drawn by nobody and claimed by nobody.
+        if (thumbLength >= trackLength)
+            return QRect();
+        return aHorizontal ? QRect(aTrack.left() + offset, aTrack.top(), thumbLength, aTrack.height())
+                           : QRect(aTrack.left(), aTrack.top() + offset, aTrack.width(), thumbLength);
+    }
+
+    Scaler::ScrollBars Scaler::scrollBars(
+        double aFrameContentLo, double aFrameContentHi, double aValueContentLo, double aValueContentHi
+    ) const {
+        ScrollBars bars;
+        const QRect plot = plotRect();
+        if (plot.isEmpty())
+            return bars; // nowhere to lay a bar out
+
+        // The tracks: outside the plot, inside the panel, kScrollBarGap clear of the
+        // plot. Each spans the plot's OWN edge along the axis it scrolls, so the two
+        // never meet (the horizontal track is entirely below the vertical one's last
+        // row) and neither can reach the value column, the ruler band or the plot.
+        bars.hTrack = QRect(
+            plot.left(), plot.bottom() + 1 + kScrollBarGap, plot.width(), kScrollBarThickness
+        );
+        bars.vTrack = QRect(
+            plot.right() + 1 + kScrollBarGap, plot.top(), kScrollBarThickness, plot.height()
+        );
+
+        // The windows: the frames the plot covers (the mapping's own inverse at its
+        // two edges) and the value window this scaler holds.
+        bars.hThumb = scrollThumbRect(
+            bars.hTrack, true, false, aFrameContentLo, aFrameContentHi, frameAtPixel(plot.left()),
+            frameAtPixel(plot.right() + 1)
+        );
+        bars.vThumb = scrollThumbRect(
+            bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
+            static_cast<double>(valueMax())
+        );
+        return bars;
     }
 
     //-------------------------------------------------------------------------------------------------

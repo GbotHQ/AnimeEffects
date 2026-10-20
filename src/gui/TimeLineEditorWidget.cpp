@@ -27,6 +27,17 @@
 
 namespace gui {
 
+namespace {
+// The window's two fields, compared literally: ctrl::TimeLineEditor::PlayWindow is the
+// timeline editor's own struct and carries no operator==. Used only to decide whether
+// the playWindowChanged signal has something to announce.
+bool samePlayWindow(
+    const ctrl::TimeLineEditor::PlayWindow& aLhs, const ctrl::TimeLineEditor::PlayWindow& aRhs
+) {
+    return aLhs.start == aRhs.start && aLhs.end == aRhs.end;
+}
+} // namespace
+
 //-------------------------------------------------------------------------------------------------
 TimeCursor::TimeCursor(QWidget* aParent):
     QWidget(aParent),
@@ -241,7 +252,12 @@ void TimeLineEditorWidget::setProject(core::Project* aProject) {
         mProject.reset();
     }
 
+    const ctrl::TimeLineEditor::PlayWindow windowBefore = mEditor->playWindow();
     mEditor->setProject(aProject);
+    // ctrl::TimeLineEditor::setProject clears the temporary window (it is a gesture on
+    // one project's ruler); announce it so the graph's overlay goes with it.
+    if (!samePlayWindow(windowBefore, mEditor->playWindow()))
+        emit playWindowChanged();
     updateSize();
     // The project owns the ruler's content (frame range, fps, play window):
     // the surface repaint alone leaves the strip stale until the next
@@ -360,7 +376,14 @@ void TimeLineEditorWidget::updateLineSelection(core::ObjectNode* aRepresent) {
 }
 
 bool TimeLineEditorWidget::updateCursor(const core::AbstractCursor& aCursor, Qt::KeyboardModifiers aModifiers) {
+    const ctrl::TimeLineEditor::PlayWindow windowBefore = mEditor->playWindow();
     ctrl::TimeLineEditor::UpdateFlags flags = mEditor->updateCursor(aCursor, aModifiers);
+    // THE WINDOW'S OWN ANNOUNCEMENT: the ruler's shift-drag sets, moves or collapses
+    // the temporary playback window through this call, and it can do so without moving
+    // the current frame (so rulerFrameChanged and ModFrame are both silent). The graph
+    // panel draws the same window, so the GUI is told here, where the gesture lands.
+    if (!samePlayWindow(windowBefore, mEditor->playWindow()))
+        emit playWindowChanged();
 
     if (flags & ctrl::TimeLineEditor::UpdateFlag_ModView) {
         updateTimeCursorPos();
@@ -396,7 +419,12 @@ void TimeLineEditorWidget::updateSize() {
 }
 
 void TimeLineEditorWidget::updateProjectAttribute() {
+    const ctrl::TimeLineEditor::PlayWindow windowBefore = mEditor->playWindow();
     mEditor->updateProjectAttribute();
+    // A frame-range change invalidates the temporary window (ctrl::TimeLineEditor's
+    // rule), so the panel's overlay must be told the same thing the ruler is.
+    if (!samePlayWindow(windowBefore, mEditor->playWindow()))
+        emit playWindowChanged();
     updateTimeCursorPos();
     updateSize();
 }
@@ -492,7 +520,10 @@ void TimeLineEditorWidget::onContextMenuRequested(const QPoint& aPos) {
         QMenu menu(this);
         auto* clearWindow = menu.addAction(tr("Clear playback window"));
         clearWindow->connect(clearWindow, &QAction::triggered, [this]() {
+            const bool wasActive = mEditor->playWindow().active();
             mEditor->clearPlayWindow();
+            if (wasActive)
+                emit playWindowChanged();
             this->update();
             // The window's band and pills are the ruler's paint; the surface
             // repaint alone would leave them on screen until the next move.

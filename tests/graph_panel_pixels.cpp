@@ -189,7 +189,14 @@
 //         flight the same model, focus and pointer paint nothing at all there. The
 //         numbers themselves are the editor's and are gated where the gesture is
 //         (tests/graph_drag.cpp); what this asserts is that they reach the screen at
-//         the pointer or not at all.
+//         the pointer or not at all;
+//      31 THE SCROLL BARS: the four rects the model publishes are DRAWN where they
+//         say - the track in theme::Colors::raised under its 1px floaterEdge edge, the
+//         thumb in textMuted - with no thumb ink outside its own rect, NOTHING at all
+//         in those regions when the rects are empty (the state an empty plot
+//         publishes), and the hovered bar's thumb lifted to the full text ink while
+//         the other bar's stays at rest. Read against the same model's empty-rects
+//         pass, so each claim is about the drawing layer and not the fixture.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
 // (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's key menu), a
@@ -330,17 +337,22 @@ constexpr int kViewW = 400;
 constexpr int kViewH = 320;
 
 const QRect kPanel(0, 0, 400, 300);
-const QRect kPlot(90, 30, 290, 240);        // x 90..379, y 30..269
-// THE RULER BAND, as a SECTION ABOVE THE PLOT (the model's own new geometry): 22 rows
-// ending one row above the plot's top, so the band is outside the plot clip and no
-// curve/key/handle/chip can ink it. The viewport above it (rows 0..7) stays empty.
+// The plot's top is the panel's kMargin plus the scaler's 22 reserved band rows - the
+// shipping rule (Scaler::plotRect) - so the band's slot is the panel's top row.
+const QRect kPlot(90, 26, 290, 240);        // x 90..379, y 26..265
+// THE RULER BAND, as a SECTION AT THE PANEL'S TOP ROW (the model's own geometry):
+// 22 rows starting at panel.top(), with the scaler's kMargin rows between the band's
+// hairline and the plot's first row - the same rule the real model publishes
+// (GraphPanelModel::rulerBand). It is outside the plot clip, so no
+// curve/key/handle/chip can ink it.
 const QRect kRulerBand(
-    kPlot.left(), kPlot.top() - gui::frameRuler::kBandHeight, kPlot.width(), gui::frameRuler::kBandHeight
+    kPlot.left(), kPlot.top() - ctrl::graph::Scaler::kMargin - gui::frameRuler::kBandHeight, kPlot.width(),
+    gui::frameRuler::kBandHeight
 );
 // The value column, in the model's OWN relationship to the plot: its right edge one
 // pixel left of the plot's (GraphPanelModel.h: "It never overlaps the plot"), which is
 // what puts the value numbers where the real panel puts them.
-const QRect kValueColumn(6, 30, 83, 240);   // x 6..88, clear of the plot
+const QRect kValueColumn(6, 26, 83, 240);   // x 6..88, clear of the plot
 
 // A value label's box, in the model's own arithmetic: the column,
 // ctrl::graph::Scaler::kAxisLabelPad (4px) narrower on the right (GraphPanelModel.h's
@@ -355,6 +367,18 @@ QRect valueLabelBox(int aTop) {
 // every other piece of the full model's geometry (verified, grown by 2px, in
 // checkMarquee - a marquee body is only measurable where nothing else is painted).
 const QRect kMarqueeRect(155, 62, 40, 30);
+
+// THE SCROLL BARS, as this file's synthetic model publishes them: the shipping layout
+// of ctrl::graph::Scaler::scrollBars for kPlot - 2px of gap from the plot, 8px thick,
+// each track spanning the plot's own edge along the axis it scrolls (so the two cannot
+// meet), with a thumb that is the visible window's fraction of the content rather than
+// the whole track. The real model computes these from the editor's scaler; this file
+// builds its models by hand, so the drawing layer is measured against exactly the four
+// rects a model can carry. Both tracks are OUTSIDE the plot and INSIDE the panel.
+const QRect kHScrollTrack(kPlot.left(), kPlot.bottom() + 1 + 2, kPlot.width(), 8);
+const QRect kHScrollThumb(kHScrollTrack.left() + 60, kHScrollTrack.top(), 90, kHScrollTrack.height());
+const QRect kVScrollTrack(kPlot.right() + 1 + 2, kPlot.top(), 8, kPlot.height());
+const QRect kVScrollThumb(kVScrollTrack.left(), kVScrollTrack.top() + 40, kVScrollTrack.width(), 70);
 
 const core::TimeKeyType kTypeA = core::TimeKeyType_Move;
 const core::TimeKeyType kTypeB = core::TimeKeyType_Scale;
@@ -484,6 +508,23 @@ int inkCount(const QImage& aImage, const QRect& aRect) {
 }
 
 QRect grow(const QRect& aRect, int aPixels) { return aRect.adjusted(-aPixels, -aPixels, aPixels, aPixels); }
+
+// How many pixels of aRect carry the ink aColour ITSELF (within aColour aTolerance, 0
+// by default). The panel's chrome is drawn in opaque palette tokens, so a covered pixel
+// is the token exactly - the tolerance exists for the 1/255 of an antialiased edge and
+// is 0 wherever the assertion is about the token itself.
+int toneCount(const QImage& aImage, const QRect& aRect, const QColor& aColour, int aTolerance = 0) {
+    const QRect r = aRect.intersected(aImage.rect());
+    int count = 0;
+    for (int y = r.top(); y <= r.bottom(); ++y) {
+        for (int x = r.left(); x <= r.right(); ++x) {
+            if (colourDistance(pixelAt(aImage, x, y), aColour) <= aTolerance) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
 
 // How many pixel columns/rows separate two rects; 0 when they touch or overlap.
 int rectGap(const QRect& a, const QRect& b) {
@@ -2200,13 +2241,15 @@ bool checkRulerReserve(
     // (the model's frameRuler metrics; a model that forgot them would draw the
     // ruler at y = -1).
     const QRect band = aModel.rulerBand;
-    // THE BAND IS A SECTION ABOVE THE PLOT: its last row is the row before the plot's
-    // first, so it is outside the plot clip and no curve/key/handle/chip can ink it.
+    // THE BAND IS A SECTION AT THE PANEL'S TOP ROW, with the scaler's kMargin rows
+    // between its hairline and the plot's first row, so it is outside the plot clip
+    // and no curve/key/handle/chip can ink it.
     REQUIRE(
         aModel.rulerBandTop == band.top() && band.height() == gui::frameRuler::kBandHeight
-            && band.bottom() + 1 == kPlot.top() && !band.intersects(kPlot),
-        "precondition: the ruler band (%d,%d %dx%d) is not the model's %dpx strip above the plot (top %d)",
-        band.left(), band.top(), band.width(), band.height(), gui::frameRuler::kBandHeight, kPlot.top()
+            && band.top() == kPanel.top()
+            && band.bottom() + 1 + ctrl::graph::Scaler::kMargin == kPlot.top() && !band.intersects(kPlot),
+        "precondition: the ruler band (%d,%d %dx%d) is not the model's %dpx strip at the panel's top row (top %d)",
+        band.left(), band.top(), band.width(), band.height(), gui::frameRuler::kBandHeight, kPanel.top()
     );
 
     // A pixel of the band that is NOT the band's own surface: the glyphs, the ticks and
@@ -2339,6 +2382,137 @@ bool checkRulerReserve(
         ++tightChecked;
     }
     REQUIRE(tightChecked > 0, "precondition: the tight model must carry frame labels");
+    return true;
+}
+
+// 28: THE TEMPORARY PLAYBACK WINDOW'S OVERLAY, on the model's own geometry. The model
+// publishes the ruler-band wash, the two 2px bracket stems and the two label arms; the
+// drawing layer must paint them with the timeline's tokens, in the timeline's order
+// (band under, stems, pills over). The pass is the model with ONLY the band and the
+// overlay (no ticks, labels or playhead), so every pixel read below is the overlay's.
+// The second pass is the same window collapsed to two adjacent frames: the arms must
+// be gone and ONE centred pill must be drawn instead.
+bool checkPlayWindowOverlay(
+    const Rendered& aSplit, const gui::GraphPanelModel& aSplitModel, const Rendered& aMerged,
+    const gui::GraphPanelModel& aMergedModel, const theme::Graph& aTheme, const theme::Colors& aColors
+) {
+    REQUIRE(!aSplitModel.playWindow.band.isEmpty(), "precondition: the split pass must carry a window band");
+    REQUIRE(
+        !aSplitModel.playWindow.startPill.isEmpty() && !aSplitModel.playWindow.endPill.isEmpty(),
+        "precondition: the split pass must carry both label arms"
+    );
+    REQUIRE(
+        aSplitModel.playWindow.mergedPill.isEmpty(), "precondition: the split arms must not be merged"
+    );
+    const QRect band = aSplitModel.rulerBand;
+    REQUIRE(!band.isEmpty(), "precondition: the overlay must be in the ruler band");
+
+    // The band's own surface, where nothing of the window lands.
+    const QRect plainBand(band.left(), band.top(), aSplitModel.playWindow.band.left() - band.left(), band.height());
+    int surface = 0;
+    for (int y = plainBand.top(); y <= plainBand.bottom(); ++y)
+        for (int x = plainBand.left(); x <= plainBand.right(); ++x)
+            if (colourDistance(pixelAt(aSplit.image, x, y), aTheme.rulerBand()) <= kFillTol)
+                ++surface;
+
+    // THE WASH: the rows above the pill row are pure band + windowBand, nothing else can
+    // land there (stems and pills start at kPillTop).
+    const QRect washRows(
+        aSplitModel.playWindow.band.left(), band.top(), aSplitModel.playWindow.band.width(),
+        gui::frameRuler::kPillTop
+    );
+    const QColor washed = over(aColors.windowBand, aTheme.rulerBand());
+    int wash = 0;
+    for (int y = washRows.top(); y <= washRows.bottom(); ++y)
+        for (int x = washRows.left(); x <= washRows.right(); ++x)
+            if (colourDistance(pixelAt(aSplit.image, x, y), washed) <= kFillTol)
+                ++wash;
+
+    // THE STEMS: 2px, opaque windowEdge, exactly the published rects.
+    const auto countInk = [](const QImage& aImage, const QRect& aRect, const QColor& aInk) {
+        int count = 0;
+        for (int y = aRect.top(); y <= aRect.bottom(); ++y)
+            for (int x = aRect.left(); x <= aRect.right(); ++x)
+                if (colourDistance(pixelAt(aImage, x, y), aInk) <= kFillTol)
+                    ++count;
+        return count;
+    };
+    const int startStemInk = countInk(aSplit.image, aSplitModel.playWindow.startStem, aColors.windowEdge);
+    const int endStemInk = countInk(aSplit.image, aSplitModel.playWindow.endStem, aColors.windowEdge);
+
+    // THE PILLS: filled windowEdge with the number in windowText punched through, and
+    // the face against each stem squared (so the fill reaches the stem's column).
+    const int startPillInk = countInk(aSplit.image, aSplitModel.playWindow.startPill, aColors.windowEdge);
+    const int endPillInk = countInk(aSplit.image, aSplitModel.playWindow.endPill, aColors.windowEdge);
+    int startTextInk = 0;
+    int endTextInk = 0;
+    const auto countText = [](const QImage& aImage, const QRect& aRect, const QColor& aText, const QColor& aFill) {
+        int count = 0;
+        for (int y = aRect.top(); y <= aRect.bottom(); ++y) {
+            for (int x = aRect.left(); x <= aRect.right(); ++x) {
+                const QColor c = pixelAt(aImage, x, y);
+                if (colourDistance(c, aText) < colourDistance(c, aFill) && colourDistance(c, aText) <= 48)
+                    ++count;
+            }
+        }
+        return count;
+    };
+    startTextInk = countText(
+        aSplit.image, aSplitModel.playWindow.startPill, aColors.windowText, aColors.windowEdge
+    );
+    endTextInk = countText(aSplit.image, aSplitModel.playWindow.endPill, aColors.windowText, aColors.windowEdge);
+
+    std::printf(
+        "MEASURED play_window split: band=(%d,%d %dx%d) wash_rows=(%d,%d %dx%d) washed_px=%d"
+        " stems=%d/%d of %d/%d pills=%d/%d of %d/%d text_px=%d/%d\n",
+        aSplitModel.playWindow.band.left(), aSplitModel.playWindow.band.top(),
+        aSplitModel.playWindow.band.width(), aSplitModel.playWindow.band.height(), washRows.left(),
+        washRows.top(), washRows.width(), washRows.height(), wash,
+        startStemInk, endStemInk, aSplitModel.playWindow.startStem.width() * aSplitModel.playWindow.startStem.height(),
+        aSplitModel.playWindow.endStem.width() * aSplitModel.playWindow.endStem.height(), startPillInk,
+        endPillInk, aSplitModel.playWindow.startPill.width() * aSplitModel.playWindow.startPill.height(),
+        aSplitModel.playWindow.endPill.width() * aSplitModel.playWindow.endPill.height(), startTextInk,
+        endTextInk
+    );
+    REQUIRE(surface > 0, "the ruler band's own surface was not painted where the window does not reach");
+    REQUIRE(wash > 0, "the translucent window band painted nothing on the ruler's band");
+    REQUIRE(
+        startStemInk == aSplitModel.playWindow.startStem.width() * aSplitModel.playWindow.startStem.height(),
+        "the first bracket stem painted %d of its %d pixels", startStemInk,
+        aSplitModel.playWindow.startStem.width() * aSplitModel.playWindow.startStem.height()
+    );
+    REQUIRE(
+        endStemInk == aSplitModel.playWindow.endStem.width() * aSplitModel.playWindow.endStem.height(),
+        "the second bracket stem painted %d of its %d pixels", endStemInk,
+        aSplitModel.playWindow.endStem.width() * aSplitModel.playWindow.endStem.height()
+    );
+    REQUIRE(
+        startPillInk > 0 && endPillInk > 0, "the label arms painted no pill fill (%d/%d pixels)", startPillInk,
+        endPillInk
+    );
+    REQUIRE(startTextInk > 0, "the first label arm painted no window text");
+    REQUIRE(endTextInk > 0, "the second label arm painted no window text");
+
+    // ---- THE MERGED PASS: one centred pill, no arms ----
+    REQUIRE(
+        !aMergedModel.playWindow.mergedPill.isEmpty(), "precondition: the merged pass must carry one pill"
+    );
+    REQUIRE(
+        aMergedModel.playWindow.startPill.isEmpty() && aMergedModel.playWindow.endPill.isEmpty(),
+        "precondition: a merged window must publish no arms"
+    );
+    const int mergedInk = countInk(aMerged.image, aMergedModel.playWindow.mergedPill, aColors.windowEdge);
+    const int mergedTextInk = countText(
+        aMerged.image, aMergedModel.playWindow.mergedPill, aColors.windowText, aColors.windowEdge
+    );
+    std::printf(
+        "MEASURED play_window merged: pill=(%d,%d %dx%d) fill_px=%d text_px=%d\n",
+        aMergedModel.playWindow.mergedPill.left(), aMergedModel.playWindow.mergedPill.top(),
+        aMergedModel.playWindow.mergedPill.width(), aMergedModel.playWindow.mergedPill.height(), mergedInk,
+        mergedTextInk
+    );
+    REQUIRE(mergedInk > 0, "the merged label pill painted no fill");
+    REQUIRE(mergedTextInk > 0, "the merged label pill painted no text");
     return true;
 }
 
@@ -2625,6 +2799,116 @@ bool checkZeroRule(const Rendered& aWithRule, const Rendered& aWithoutRule, cons
     return true;
 }
 
+// 31: THE SCROLL BARS. The four rects the model publishes are drawn where they say:
+// the track in theme::Colors::raised under its 1px theme::Colors::floaterEdge edge,
+// the thumb in theme::Colors::textMuted while the pointer is off the panel (the "at
+// rest" ink - a pointer over a track lifts the thumb to theme::Graph::axisText(), which
+// the second pass below exercises), and NOTHING of either ink lands outside the rect
+// that owns it. The pair of passes is the whole contract: the same model with the four
+// rects EMPTY leaves both regions byte-identical to the clear colour, because the bars
+// are the only thing the panel draws outside the plot besides the ruler and the value
+// column - so "an empty plot publishes no bars" and "no bar paints anywhere else" are
+// the same measurement.
+bool checkScrollBars(
+    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHovered, const gui::GraphPanelModel& aModel,
+    const theme::Graph& aTheme
+) {
+    const theme::Colors& colors = theme::Colors::current();
+    const QRect hTrack = aModel.hTrack;
+    const QRect hThumb = aModel.hThumb;
+    const QRect vTrack = aModel.vTrack;
+    const QRect vThumb = aModel.vThumb;
+
+    REQUIRE(
+        !hTrack.isEmpty() && !hThumb.isEmpty() && !vTrack.isEmpty() && !vThumb.isEmpty(),
+        "precondition: the model must publish four bar rects"
+    );
+    // The layout the panel promises: outside the plot, inside the panel, the two
+    // disjoint from each other and clear of the value column.
+    REQUIRE(
+        !hTrack.intersects(kPlot) && !vTrack.intersects(kPlot),
+        "precondition: a bar track overlaps the plot (%d,%d %dx%d vs %d,%d %dx%d)", hTrack.left(), hTrack.top(),
+        hTrack.width(), hTrack.height(), vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height()
+    );
+    REQUIRE(aModel.panel.contains(hTrack) && aModel.panel.contains(vTrack), "precondition: a track leaves the panel");
+    REQUIRE(!hTrack.intersects(vTrack), "precondition: the two tracks overlap");
+    REQUIRE(!hTrack.intersects(kValueColumn) && !vTrack.intersects(kValueColumn), "precondition: a track covers the value column");
+    REQUIRE(hTrack.contains(hThumb) && vTrack.contains(vThumb), "precondition: a thumb leaves its track");
+    // The three tokens must be tellable apart, or the counts below would not know
+    // which ink a pixel is.
+    REQUIRE(
+        colors.raised != colors.textMuted && colors.floaterEdge != colors.textMuted
+            && colors.raised != aTheme.axisText() && colors.textMuted != aTheme.axisText(),
+        "precondition: the bar tokens are not distinct (raised %s, textMuted %s, floaterEdge %s, axisText %s)",
+        hex(colors.raised).c_str(), hex(colors.textMuted).c_str(), hex(colors.floaterEdge).c_str(),
+        hex(aTheme.axisText()).c_str()
+    );
+
+    const int hTrackInk = toneCount(aWithBars.image, hTrack, colors.raised);
+    const int hThumbInk = toneCount(aWithBars.image, hThumb, colors.textMuted);
+    const int vTrackInk = toneCount(aWithBars.image, vTrack, colors.raised);
+    const int vThumbInk = toneCount(aWithBars.image, vThumb, colors.textMuted);
+    std::printf(
+        "MEASURED scroll_bars raised=%s textMuted=%s floaterEdge=%s  hTrack(%d,%d %dx%d)=%d raised px"
+        " hThumb(%d,%d %dx%d)=%d textMuted px  vTrack(%d,%d %dx%d)=%d  vThumb(%d,%d %dx%d)=%d  (areas %d/%d/%d/%d)\n",
+        hex(colors.raised).c_str(), hex(colors.textMuted).c_str(), hex(colors.floaterEdge).c_str(), hTrack.left(),
+        hTrack.top(), hTrack.width(), hTrack.height(), hTrackInk, hThumb.left(), hThumb.top(), hThumb.width(),
+        hThumb.height(), hThumbInk, vTrack.left(), vTrack.top(), vTrack.width(), vTrack.height(), vTrackInk,
+        vThumb.left(), vThumb.top(), vThumb.width(), vThumb.height(), vThumbInk, hTrack.width() * hTrack.height(),
+        hThumb.width() * hThumb.height(), vTrack.width() * vTrack.height(), vThumb.width() * vThumb.height()
+    );
+    REQUIRE(hTrackInk > 0, "the horizontal track painted no raised pixel: the track is not drawn where the model says");
+    REQUIRE(vTrackInk > 0, "the vertical track painted no raised pixel");
+    REQUIRE(hThumbInk > 0, "the horizontal thumb painted no textMuted pixel: the thumb is not drawn where the model says");
+    REQUIRE(vThumbInk > 0, "the vertical thumb painted no textMuted pixel");
+    // The thumb's own body, against the track it sits in: the rest of the track is the
+    // track's ink, so the two fills really are two fills.
+    REQUIRE(
+        hThumbInk < hTrack.width() * hTrack.height(),
+        "the horizontal thumb covered its whole track: the window's fraction is not drawn"
+    );
+    REQUIRE(
+        vThumbInk < vTrack.width() * vTrack.height(),
+        "the vertical thumb covered its whole track: the window's fraction is not drawn"
+    );
+
+    // NO THUMB INK OUTSIDE THE THUMB, and no thumb ink outside its track: the grown
+    // rects absorb the antialiased edge of the rounded fill.
+    const int hStray = toneCount(aWithBars.image, grow(hTrack, 1), colors.textMuted)
+        - toneCount(aWithBars.image, grow(hThumb, 1), colors.textMuted);
+    const int vStray = toneCount(aWithBars.image, grow(vTrack, 1), colors.textMuted)
+        - toneCount(aWithBars.image, grow(vThumb, 1), colors.textMuted);
+    std::printf("MEASURED scroll_bars_stray h=%d v=%d (textMuted pixels of a track that are outside its thumb)\n", hStray, vStray);
+    REQUIRE(hStray == 0, "the horizontal thumb painted %d pixels outside its own rect", hStray);
+    REQUIRE(vStray == 0, "the vertical thumb painted %d pixels outside its own rect", vStray);
+
+    // NOTHING DRAWN WHEN THE BARS ARE ABSENT. Both bar regions in the empty-rects pass
+    // must be byte-identical to the clear colour: the panel draws nothing there, which
+    // is what "the bars are added in the margin, and the margin has nothing else in it"
+    // means at the pixel level.
+    const int absentH = inkCount(aWithoutBars.image, grow(hTrack, 1));
+    const int absentV = inkCount(aWithoutBars.image, grow(vTrack, 1));
+    std::printf(
+        "MEASURED scroll_bars_absent hTrack_region_ink=%d vTrack_region_ink=%d (of %d/%d pixels)\n", absentH, absentV,
+        grow(hTrack, 1).width() * grow(hTrack, 1).height(), grow(vTrack, 1).width() * grow(vTrack, 1).height()
+    );
+    REQUIRE(absentH == 0, "the margin held %d inked pixels with no bar published: something else draws there", absentH);
+    REQUIRE(absentV == 0, "the margin held %d inked pixels with no bar published", absentV);
+
+    // THE HOVERED THUMB LIFTS TO THE FULL TEXT INK. The pointer is put on the
+    // HORIZONTAL track (a third pass differing only in io.MousePos): that bar's thumb
+    // becomes theme::Graph::axisText() while the VERTICAL one stays textMuted.
+    const int hoveredHThumb = toneCount(aHovered.image, hThumb, aTheme.axisText());
+    const int restVThumb = toneCount(aHovered.image, vThumb, colors.textMuted);
+    std::printf(
+        "MEASURED scroll_bars_hover hovered_h_thumb_axisText_px=%d  rest_v_thumb_textMuted_px=%d\n", hoveredHThumb,
+        restVThumb
+    );
+    REQUIRE(hoveredHThumb > 0, "a pointer on the bar did not lift its thumb to the text ink");
+    REQUIRE(restVThumb > 0, "the pointer on one bar changed the other bar's thumb");
+    return true;
+}
+
 // 10: the Custom easing's tangent handles. The panel publishes each handle as a
 // stem (base -> dot) and a dot, and the drawing layer must put ink at exactly
 // those coordinates - and highlight the dot the pointer is on, in the same token
@@ -2874,6 +3158,24 @@ bool checkPlayhead(
         hex(pillCorner).c_str(), hex(aTheme.selected()).c_str(), colourDistance(pillCorner, aTheme.selected()),
         kFillTol
     );
+    // THE PILL'S NUMBER is the RULER's ink (theme::Graph::playheadText(), i.e.
+    // Colors::text), not the accent's own contrasting cell: the pill must carry pixels
+    // closer to that token than to its accent fill.
+    int pillTextInk = 0;
+    for (int y = pill.top(); y <= pill.bottom(); ++y) {
+        for (int x = pill.left(); x <= pill.right(); ++x) {
+            const QColor c = pixelAt(aRendered.image, x, y);
+            if (colourDistance(c, aTheme.playheadText()) < colourDistance(c, aTheme.selected())
+                && colourDistance(c, aTheme.playheadText()) <= 48) {
+                ++pillTextInk;
+            }
+        }
+    }
+    std::printf(
+        "MEASURED playhead_pill_text rect=(%d,%d %dx%d) text_rgb=%s px=%d\n", pill.left(), pill.top(),
+        pill.width(), pill.height(), hex(aTheme.playheadText()).c_str(), pillTextInk
+    );
+    REQUIRE(pillTextInk > 0, "the playhead's pill painted no number in theme::Graph::playheadText()");
     REQUIRE(
         invalidInk == 0,
         "an INVALID frame painted %d pixels in the band at the playhead's column (%d): there must be no playhead"
@@ -5437,6 +5739,11 @@ int main(int argc, char** argv) {
             palette.keyEdge(), palette.channelColor(kTypeA, 0), palette.channelColor(kTypeB, 1),
             palette.marqueeFill(), palette.marqueeEdge(), palette.menuBody(), palette.menuText(),
             palette.menuHover(), palette.menuHoverText(), palette.menuSeparator(),
+            // The scroll bars' own three tokens (assertion 31): the track's fill and
+            // edge and the thumb's rest ink are read out of the framebuffer by colour,
+            // so each has to be far from the clear colour like every other ink here.
+            theme::Colors::current().raised, theme::Colors::current().textMuted,
+            theme::Colors::current().floaterEdge,
         };
         for (const QColor& color : painted) {
             if (clearDistance(color) <= 60) {
@@ -5520,6 +5827,52 @@ int main(int argc, char** argv) {
     gui::GraphPanelModel fullMarquee = full;
     fullMarquee.marquee = kMarqueeRect;
 
+    // THE PLAYBACK WINDOW OVERLAY (assertion 28): a model carrying ONLY the ruler band
+    // and the window's own geometry, so every pixel inside a published rect is the
+    // overlay's ink. ONE fixture has two label arms; the other collapses them into the
+    // centred merged pill (a window narrower than its two labels).
+    gui::GraphPanelModel playWindowSplit;
+    playWindowSplit.panel = kPanel;
+    playWindowSplit.plot = kPlot;
+    playWindowSplit.valueColumn = kValueColumn;
+    playWindowSplit.rulerBandTop = kRulerBand.top();
+    playWindowSplit.rulerBand = kRulerBand;
+    playWindowSplit.playWindow.active = true;
+    playWindowSplit.playWindow.band =
+        QRect(140, kRulerBand.top(), 141, gui::frameRuler::kBandHeight);
+    playWindowSplit.playWindow.startStem = QRect(
+        140, kRulerBand.top() + gui::frameRuler::kPillTop, 2,
+        gui::frameRuler::kBandHeight - gui::frameRuler::kPillTop
+    );
+    playWindowSplit.playWindow.endStem = QRect(
+        279, kRulerBand.top() + gui::frameRuler::kPillTop, 2,
+        gui::frameRuler::kBandHeight - gui::frameRuler::kPillTop
+    );
+    playWindowSplit.playWindow.startPill =
+        QRect(142, kRulerBand.top() + gui::frameRuler::kPillTop, 30, gui::frameRuler::kNumberHeight);
+    playWindowSplit.playWindow.endPill =
+        QRect(249, kRulerBand.top() + gui::frameRuler::kPillTop, 30, gui::frameRuler::kNumberHeight);
+    playWindowSplit.playWindow.startText = QStringLiteral("20");
+    playWindowSplit.playWindow.endText = QStringLiteral("80");
+
+    gui::GraphPanelModel playWindowMerged = playWindowSplit;
+    playWindowMerged.playWindow.band = QRect(200, kRulerBand.top(), 6, gui::frameRuler::kBandHeight);
+    playWindowMerged.playWindow.startStem = QRect(
+        200, kRulerBand.top() + gui::frameRuler::kPillTop, 2,
+        gui::frameRuler::kBandHeight - gui::frameRuler::kPillTop
+    );
+    playWindowMerged.playWindow.endStem = QRect(
+        204, kRulerBand.top() + gui::frameRuler::kPillTop, 2,
+        gui::frameRuler::kBandHeight - gui::frameRuler::kPillTop
+    );
+    playWindowMerged.playWindow.startPill = QRect();
+    playWindowMerged.playWindow.endPill = QRect();
+    playWindowMerged.playWindow.startText.clear();
+    playWindowMerged.playWindow.endText.clear();
+    playWindowMerged.playWindow.mergedText = QString::fromUtf8("20\u201321");
+    playWindowMerged.playWindow.mergedPill =
+        QRect(180, kRulerBand.top() + gui::frameRuler::kPillTop, 44, gui::frameRuler::kNumberHeight);
+
     // Assertion 21's guard model: a panel that does NOT start at the framebuffer's left
     // edge and one value label whose text is far wider than its box (the model's measured
     // column cannot produce that - a drawing font wider than the model's can), so the
@@ -5529,7 +5882,7 @@ int main(int argc, char** argv) {
     overflow.panel = QRect(60, 0, 340, 300);
     overflow.plot = QRect(150, 30, 240, 240);
     overflow.valueColumn = QRect(66, 30, 83, 240);
-    overflow.rulerBandTop = overflow.plot.top() - gui::frameRuler::kBandHeight;
+    overflow.rulerBandTop = overflow.plot.top() - ctrl::graph::Scaler::kMargin - gui::frameRuler::kBandHeight;
     overflow.valueLabels = {{QRect(66, 60, 20, 14), QStringLiteral("-1.235e+07")}};
 
     // 0: the control, then one pass per model the assertions read.
@@ -5589,6 +5942,10 @@ int main(int argc, char** argv) {
     const Rendered noRuleRendered = renderPass(fullNoRule, palette, focus, "full_model_zeroY_off");
     const Rendered ghostRendered = renderPass(ghost, palette, focus, "ghost_handle");
     const Rendered marqueeRendered = renderPass(fullMarquee, palette, focus, "full_model_marquee");
+    const Rendered playWindowSplitRendered =
+        renderPass(playWindowSplit, palette, focus, "play_window_split");
+    const Rendered playWindowMergedRendered =
+        renderPass(playWindowMerged, palette, focus, "play_window_merged");
     const Rendered overflowRendered = renderPass(overflow, palette, focus, "value_label_overflow");
 
     // The same model with a focus on the curve that carries NO handles: the only
@@ -5759,6 +6116,13 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the frame number's reserved band\n");
         return 1;
     }
+    if (!checkPlayWindowOverlay(
+            playWindowSplitRendered, playWindowSplit, playWindowMergedRendered, playWindowMerged, palette,
+            theme::Colors::current()
+        )) {
+        std::printf("FAILED: the playback window overlay\n");
+        return 1;
+    }
     if (!checkChips(rendered, selectedFirst, selectedSecond, full, palette)) {
         std::printf("FAILED: the name chips\n");
         return 1;
@@ -5834,6 +6198,25 @@ int main(int argc, char** argv) {
     const Rendered stem = renderPass(makeStemModel(palette), palette, focus, "hairline_stem");
     if (!checkHairlinePlacement(playhead200, playhead201, stem, stemFringe, palette)) {
         std::printf("FAILED: the panel's 1px lines\n");
+        return 1;
+    }
+    // 31: THE SCROLL BARS, on the three passes that isolate them: the full model with
+    // the four rects published, the SAME model with them empty (the state an empty plot
+    // publishes), and a third that differs from the first only in io.MousePos (the
+    // pointer on the horizontal bar, so its thumb takes the hovered ink).
+    gui::GraphPanelModel barModel = full;
+    barModel.hTrack = kHScrollTrack;
+    barModel.hThumb = kHScrollThumb;
+    barModel.vTrack = kVScrollTrack;
+    barModel.vThumb = kVScrollThumb;
+    gui::GraphPanelModel noBarModel = full; // the four rects stay empty: nothing is drawn
+    const Rendered barsRendered = renderPass(barModel, palette, focus, "scroll_bars");
+    const Rendered noBarsRendered = renderPass(noBarModel, palette, focus, "scroll_bars_absent");
+    const Rendered barsHoverRendered = renderPass(
+        barModel, palette, focus, "scroll_bars_hover", ImVec2(float(kHScrollThumb.center().x()), float(kHScrollTrack.center().y()))
+    );
+    if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverRendered, barModel, palette)) {
+        std::printf("FAILED: the scroll bars\n");
         return 1;
     }
     if (!writeInkCrops(inkFringe, inkCoverage, QStringLiteral("build/shots/graph_ink"))) {

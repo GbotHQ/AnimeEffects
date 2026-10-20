@@ -16,6 +16,7 @@
 #include "gui/GraphChannelPopup.h"
 #include "gui/ProjectHook.h"
 #include "gui/TimeLineWidget.h"
+#include "gui/TimeLineEditorWidget.h"
 #include "gui/ViaPoint.h"
 #include "gui/ProjectTabBar.h"
 #include "gui/KeyCommandMap.h"
@@ -210,13 +211,25 @@ void MainDisplayWidget::setTimeLineWidget(TimeLineWidget* aTimeLine) {
 
     if (mTimeLine) {
         mTimeLine->onViewRangeChanged.disconnect(mTimeLineRangeSlot);
+        QObject::disconnect(mPlayWindowConnection);
     }
 
     mTimeLine = aTimeLine;
+    mPlayWindowConnection = QMetaObject::Connection();
 
     if (mTimeLine) {
         mTimeLineRangeSlot =
             mTimeLine->onViewRangeChanged.connect(this, &MainDisplayWidget::syncGraphPanelSharedState);
+        // THE TEMPORARY PLAYBACK WINDOW: the timeline's ruler gesture is not a frame
+        // move and not a view-range change (a shift-drag can set a window and leave
+        // both alone), so its own signal is what keeps the graph's overlay in step.
+        // The surface is the widget's only TimeLineEditorWidget, the same lookup the
+        // background menu uses.
+        if (auto* surface = mTimeLine->findChild<TimeLineEditorWidget*>()) {
+            mPlayWindowConnection =
+                connect(surface, &TimeLineEditorWidget::playWindowChanged,
+                        this, &MainDisplayWidget::syncGraphPanelSharedState);
+        }
     }
 
     syncGraphPanelSharedState();
@@ -228,12 +241,24 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
         return; // no panel yet (no driver, so no editor): nothing to hand it to
 
     ctrl::TimeLineEditor* timelineEditor = mTimeLine ? mTimeLine->editor() : nullptr;
+    // THE RULER BAND'S SEEK is the timeline's own gesture: the graph hands its band's
+    // frame to this same setter, so a press in either view's ruler moves ONE frame -
+    // the project's - and both rulers' playheads follow it.
+    if (timelineEditor) {
+        editor->setFrameSeekDelegate([this](core::Frame aFrame) {
+            if (mTimeLine)
+                mTimeLine->setFrame(aFrame);
+        });
+    }
     if (!mTimeLine || !timelineEditor) {
         // No timeline attached: the panel owns its frame axis and its selection
         // (its own private instance of the same set), which is the state the unit
         // tests drive it in.
         editor->clearFrameAxis();
         editor->setSelectionSource(nullptr);
+        // No timeline, no temporary playback window: its window is the timeline's
+        // state, and a detached panel must not keep drawing a stale one.
+        editor->setPlayWindow(ctrl::TimeLineEditor::PlayWindow());
         // The panel draws that state, and it is a widget of its own.
         this->refreshGraphPanel();
         return;
@@ -244,6 +269,14 @@ void MainDisplayWidget::syncGraphPanelSharedState() {
     // Delete key, its key menu) read - so a key selected in either view is
     // selected and highlighted in both.
     editor->setSelectionSource(&timelineEditor->selection());
+
+    // ONE temporary playback window: the ruler gesture's window is the timeline's
+    // state, and the panel's ruler overlays the same band, brackets and pills and
+    // recesses by the same ACTIVE range (the window while it is active). Pushing it
+    // as a VALUE means the graph's editor also derives the recession basis from the
+    // project range through ctrl::GraphEditor::activeRange(), so the two views cannot
+    // disagree about which frames are "outside".
+    editor->setPlayWindow(timelineEditor->playWindow());
 
     // ONE frame window, pushed as VALUES: the frames the timeline is showing.
     // The panel maps them onto its own plot; it never fits, zooms or pans its own

@@ -126,10 +126,31 @@ float tickAlphaOf(const GraphPanelModel& aModel, int aIndex) {
     return kMajorTickAlpha;
 }
 
+// THE TIMELINE'S RECESSION FACTOR, for a tick or a frame number whose frame lies
+// outside the ACTIVE playback range (the project's frame range, or the play window
+// while it is active). TimeRuler::renderHeader multiplies an out-of-range tick's tier
+// alpha by 0.4 and writes an out-of-range number at 0.4 alpha; the model publishes the
+// per-frame classification (frameTickInActiveRange, PanelLabel::inActiveRange) and
+// this is the one appearance decision it leaves to this layer.
+constexpr float kOutsideActiveRangeAlpha = 0.4f;
+
+// TRUE when the model says tick `aIndex` is inside the active range. A hand-built
+// model (the pixel gate) that publishes no flag keeps the old full-strength ink.
+bool tickInActiveRange(const GraphPanelModel& aModel, int aIndex) {
+    if (0 <= aIndex && aIndex < aModel.frameTickInActiveRange.size())
+        return aModel.frameTickInActiveRange.at(aIndex);
+    return true;
+}
+
 // The box-select marquee's corner radius, in pixels: the timeline's own box
 // (ctrl/time/Renderer.cpp draws a 6px rounded rect) so the two views' selection
 // gestures are the same shape.
 constexpr float kMarqueeRounding = 6.0f;
+
+// The SCROLL BARS' corner radius, in pixels: the bars are chrome of the same family
+// as the marquee's box and the playhead's pill, and 4 is the radius their 8px
+// thickness can carry without the two ends of a short thumb meeting.
+constexpr float kScrollBarRounding = 4.0f;
 
 // The label halo: the same glyphs drawn at the eight compass offsets of radius 1
 // and radius 2, so the ring reaches 2px past the glyph ink in every direction.
@@ -1363,16 +1384,95 @@ void drawPanel(
     // (walked by index, so the two vectors are read as one geometry).
     for (int i = 0; i < aModel.frameTickX.size(); ++i) {
         const float fx = float(aModel.frameTickX.at(i));
+        // The tier's alpha, receded by the timeline's fixed factor when the frame is
+        // outside the ACTIVE playback range.
+        const float alpha = tickAlphaOf(aModel, i) * (tickInActiveRange(aModel, i) ? 1.0f : kOutsideActiveRangeAlpha);
         aDrawList.AddLine(
             ImVec2(fx, bandBaseline), ImVec2(fx, bandBaseline - float(kAxisTickLength)),
-            toImU32Strength(aTheme.gridMajor(), tickAlphaOf(aModel, i)), 1.0f
+            toImU32Strength(aTheme.gridMajor(), alpha), 1.0f
         );
     }
     // The frame numbers, centred in the boxes the model nudged inside the band's
     // number row. Like the band itself, they are above the plot and therefore
-    // outside the graph's clip.
+    // outside the graph's clip. A number outside the active range is written at the
+    // timeline's 0.4 alpha, so the range edge reads at a glance in both views.
     for (const PanelLabel& label : aModel.frameLabels)
-        drawLabel(aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre, axisText, halo);
+        drawLabel(
+            aDrawList, font, fontSize, label.rect, label.text, LabelAlign::Centre,
+            label.inActiveRange ? axisText : toImU32Strength(aTheme.axisText(), kOutsideActiveRangeAlpha), halo
+        );
+
+    // THE TEMPORARY PLAYBACK WINDOW, on top of the ruler content it washes - the
+    // timeline's own order (TimeRuler::renderPlayWindow): the translucent band first,
+    // then the 2px bracket stems, then the label pills. It is ruler-band geometry, so
+    // the whole pass is clipped to the band and runs before the plot clip. The
+    // playhead is painted later and therefore above it, as TimeCursor is above the
+    // ruler in the timeline.
+    if (aModel.playWindow.active && !aModel.rulerBand.isEmpty()) {
+        const theme::Colors& colors = theme::Colors::current();
+        aDrawList.PushClipRect(rectMin(aModel.rulerBand), rectMax(aModel.rulerBand), true);
+        if (!aModel.playWindow.band.isEmpty()) {
+            aDrawList.AddRectFilled(
+                rectMin(aModel.playWindow.band), rectMax(aModel.playWindow.band), toImU32(colors.windowBand)
+            );
+        }
+        aDrawList.AddRectFilled(
+            rectMin(aModel.playWindow.startStem), rectMax(aModel.playWindow.startStem),
+            toImU32(colors.windowEdge)
+        );
+        aDrawList.AddRectFilled(
+            rectMin(aModel.playWindow.endStem), rectMax(aModel.playWindow.endStem), toImU32(colors.windowEdge)
+        );
+        // The label arms carry the window's number row. A merged label is one pill;
+        // otherwise each arm is rounded on its outer corners and SQUARE on the face
+        // against its stem (the timeline overdraws the rounded slivers with the pill
+        // colour, so the bracket joint reads continuous). The text sits on the ruler's
+        // number row, one row above the pill's top, centred on the pill.
+        const auto drawWindowPill = [&](const QRect& aPill, const QString& aText, bool aSquareLeft, bool aSquareRight) {
+            if (aPill.isEmpty() || aText.isEmpty())
+                return;
+            aDrawList.AddRectFilled(
+                rectMin(aPill), rectMax(aPill), toImU32(colors.windowEdge), float(gui::frameRuler::kPillRadius)
+            );
+            const int r = gui::frameRuler::kPillRadius;
+            const int leftX = aPill.left();
+            const int rightX = aPill.right() - r + 1;
+            if (aSquareLeft) {
+                aDrawList.AddRectFilled(
+                    rectMin(QRect(leftX, aPill.top(), r, r)), rectMax(QRect(leftX, aPill.top(), r, r)),
+                    toImU32(colors.windowEdge)
+                );
+                aDrawList.AddRectFilled(
+                    rectMin(QRect(leftX, aPill.bottom() - r + 1, r, r)),
+                    rectMax(QRect(leftX, aPill.bottom() - r + 1, r, r)), toImU32(colors.windowEdge)
+                );
+            }
+            if (aSquareRight) {
+                aDrawList.AddRectFilled(
+                    rectMin(QRect(rightX, aPill.top(), r, r)), rectMax(QRect(rightX, aPill.top(), r, r)),
+                    toImU32(colors.windowEdge)
+                );
+                aDrawList.AddRectFilled(
+                    rectMin(QRect(rightX, aPill.bottom() - r + 1, r, r)),
+                    rectMax(QRect(rightX, aPill.bottom() - r + 1, r, r)), toImU32(colors.windowEdge)
+                );
+            }
+            const QRect numberBox(
+                aPill.left(), aModel.rulerBand.top() + gui::frameRuler::kNumberTop, aPill.width(),
+                gui::frameRuler::kNumberHeight
+            );
+            drawLabel(
+                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Centre, toImU32(colors.windowText), halo
+            );
+        };
+        if (!aModel.playWindow.mergedPill.isEmpty()) {
+            drawWindowPill(aModel.playWindow.mergedPill, aModel.playWindow.mergedText, false, false);
+        } else {
+            drawWindowPill(aModel.playWindow.startPill, aModel.playWindow.startText, true, false);
+            drawWindowPill(aModel.playWindow.endPill, aModel.playWindow.endText, false, true);
+        }
+        aDrawList.PopClipRect();
+    }
 
     // Everything that belongs to the GRAPH is clipped to the plot - now starting
     // below the ruler's rows. This is the capability the painter engine lacked
@@ -1865,10 +1965,66 @@ void drawPanel(
             );
             drawLabel(
                 aDrawList, font, fontSize, numberBox, aModel.playheadText, LabelAlign::Centre,
-                toImU32(aTheme.accentBrightText()), halo
+                toImU32(aTheme.playheadText()), halo
             );
         }
         aDrawList.PopClipRect();
+    }
+
+    // THE TWO SCROLL BARS: the frame axis' along the plot's bottom edge, the value
+    // axis' along its right - the panel's only ink outside the plot that is not the
+    // ruler's. They are drawn LAST of the chrome and clipped to the PANEL, not to the
+    // plot (they are outside it by construction, in the margin the scaler reserves
+    // for them - see Scaler's kScrollBarReserve), exactly as the value column's
+    // numbers are.
+    //
+    // THE INK: the track is the raised surface (theme::Colors::raised - the panel's
+    // own "a control sits here" tone) with a 1px edge in theme::Colors::floaterEdge,
+    // and the thumb is theme::Colors::textMuted at rest and theme::Graph::axisText()
+    // - the palette's full text ink, which IS theme::Colors::text - while the pointer
+    // is on that bar. The pointer is the whole of "hovered or dragged" here, and that
+    // is not an approximation: a thumb drag pans the window by the pointer's own
+    // delta, so the thumb travels WITH the pointer and the pointer stays on it (see
+    // GraphEditor's SCROLL BARS note).
+    //
+    // THE SHAPE: both rects are INTEGER and rounded by kScrollBarRounding, and the 1px
+    // edge is drawn with the draw list's line AA OFF exactly as the ruler's hairline
+    // and the axes' marks are: an integer-column edge is exact with the hard-edged
+    // path, and an AA'd 1px rule would spread one column's ink over two. The fill's
+    // own AA is left alone (it is a filled shape, not a 1px rule). The two flags are
+    // put back exactly as they were found.
+    if (!aModel.hTrack.isEmpty() || !aModel.vTrack.isEmpty()) {
+        const theme::Colors& colors = theme::Colors::current();
+        const ImVec2 pointer = ImGui::GetIO().MousePos;
+        const QPoint hovered(int(pointer.x), int(pointer.y));
+        const ImDrawListFlags savedBarFlags = aDrawList.Flags;
+        aDrawList.Flags = savedBarFlags & ~ImDrawListFlags_AntiAliasedLines;
+        aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
+        const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb) {
+            // A bar with NOTHING TO SCROLL is not drawn at all - not even its track.
+            // The model publishes an empty thumb exactly then (Scaler::scrollBars), and
+            // an 8px `raised` trough along the panel's edge reads as a divider, not as
+            // a control: measured on the empty graph, where the two full-length troughs
+            // framed the panel like a border. The TRACK's rect is still reserved in the
+            // layout, so the plot does not move when the content appears.
+            if (aTrack.isEmpty() || aThumb.isEmpty())
+                return;
+            aDrawList.AddRectFilled(
+                rectMin(aTrack), rectMax(aTrack), toImU32(colors.raised), kScrollBarRounding
+            );
+            aDrawList.AddRectFilled(
+                rectMin(aThumb), rectMax(aThumb),
+                toImU32(aTrack.contains(hovered) ? aTheme.axisText() : colors.textMuted), kScrollBarRounding
+            );
+            aDrawList.AddRect(
+                rectMin(aTrack), rectMax(aTrack), toImU32(colors.floaterEdge), kScrollBarRounding, ImDrawFlags_None,
+                1.0f
+            );
+        };
+        drawBar(aModel.hTrack, aModel.hThumb);
+        drawBar(aModel.vTrack, aModel.vThumb);
+        aDrawList.PopClipRect();
+        aDrawList.Flags = savedBarFlags;
     }
 
     // The value numbers live in the column LEFT of the plot, so they are drawn after

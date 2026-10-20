@@ -81,9 +81,10 @@ void Graph::assignFrom(const Colors& aColors) {
     // (see GraphPanelModel.h), so the two surfaces cannot drift.
     mRulerBand = aColors.base;
     mRulerLine = aColors.hairline;
-    // The playhead pill's number, on its accentBright fill: the timeline's
-    // TimeCursor asks for exactly this pair (TimeLineEditorWidget.cpp:268-269).
-    mAccentBrightText = aColors.accentBrightText;
+    // The playhead pill's number: the ruler's own text token, i.e. the ink the
+    // timeline writes every ruler number, the playhead's included
+    // (theme::TimeLine::headerContentColor() == Colors::text).
+    mPlayheadText = aColors.text;
 
     // Label halo: the palette's opaque floater body. The panel paints no
     // background of its own (see GraphPanelModel's header), so the halo is the

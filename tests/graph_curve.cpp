@@ -1047,13 +1047,16 @@ int sectionScaler() {
     // the top. So the curve rectangle is:
     //   x      = kMargin + the measured axis-label column
     //   y      = kMargin + kRulerBandHeight     <- the band's bottom + 1
-    //   width  = 600 - 2*kMargin - axisLabelWidth()
-    //   height = 400 - 2*kMargin - kRulerBandHeight
+    //   width  = 600 - 2*kMargin - axisLabelWidth() - kScrollBarReserve
+    //   height = 400 - 2*kMargin - kRulerBandHeight - kScrollBarReserve
     // and no curve/key/handle/chip can be clipped into the ruler's rows. The left
     // column is the scaler's OWN format-derived reserve, not a constant (margin 4,
     // then axisLabelWidth()'s column, then the plot, then the margin again); it is
     // written as the rule rather than the number the font happens to produce, so
-    // this pins the inset arithmetic and not a magic 46.
+    // this pins the inset arithmetic and not a magic 46. The RIGHT and BOTTOM insets
+    // are one reserve more than the left and top: those two edges carry the panel's
+    // SCROLL BARS (2px of gap + an 8px bar), which is why the plot's top-left corner
+    // is the only one that does not move for them.
     CHECK(scaler.axisLabelWidth() >= Scaler::kAxisLabelWidth); // never below the floor
     CHECK(scaler.axisLabelWidth() <= Scaler::kMaxAxisLabelWidth); // never past the ceiling
     // The 22px band is the timeline's own kHeaderHeight (GraphPanelModel.cpp's
@@ -1063,10 +1066,63 @@ int sectionScaler() {
         scaler.plotRect()
         == QRect(
             Scaler::kMargin + scaler.axisLabelWidth(), Scaler::kMargin + Scaler::kRulerBandHeight,
-            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth(),
-            400 - 2 * Scaler::kMargin - Scaler::kRulerBandHeight
+            600 - 2 * Scaler::kMargin - scaler.axisLabelWidth() - Scaler::kScrollBarReserve,
+            400 - 2 * Scaler::kMargin - Scaler::kRulerBandHeight - Scaler::kScrollBarReserve
         )
     );
+    // ...and the two bars' own strips fit in what the plot gave up: the reserve is the
+    // gap plus the bar, and the tracks sit between the plot's edge and the panel's.
+    CHECK(Scaler::kScrollBarReserve == Scaler::kScrollBarGap + Scaler::kScrollBarThickness);
+    {
+        const Scaler::ScrollBars bars = scaler.scrollBars(1.0, 60.0, -10.0f, 10.0f);
+        CHECK(!bars.isEmpty());
+        CHECK(bars.hTrack.top() == scaler.plotRect().bottom() + 1 + Scaler::kScrollBarGap);
+        CHECK(bars.hTrack.height() == Scaler::kScrollBarThickness);
+        CHECK(bars.hTrack.left() == scaler.plotRect().left());
+        CHECK(bars.hTrack.width() == scaler.plotRect().width());
+        CHECK(bars.hTrack.bottom() < scaler.rect().bottom()); // the panel's own margin survives
+        CHECK(bars.vTrack.left() == scaler.plotRect().right() + 1 + Scaler::kScrollBarGap);
+        CHECK(bars.vTrack.width() == Scaler::kScrollBarThickness);
+        CHECK(bars.vTrack.top() == scaler.plotRect().top());
+        CHECK(bars.vTrack.height() == scaler.plotRect().height());
+        CHECK(bars.vTrack.right() < scaler.rect().right());
+        CHECK(scaler.rect().contains(bars.hTrack) && scaler.rect().contains(bars.vTrack));
+        CHECK(!bars.hTrack.intersects(bars.vTrack));
+        // A thumb is published only when there is travel (Scaler::scrollBars removes a
+        // full-track thumb), so the containment is asserted for the thumbs that EXIST;
+        // the inverted-order block below drives windows that really are narrower than
+        // their content and measures the thumbs themselves.
+        CHECK(bars.hThumb.isEmpty() || bars.hTrack.contains(bars.hThumb));
+        CHECK(bars.vThumb.isEmpty() || bars.vTrack.contains(bars.vThumb));
+
+        // THE VALUE AXIS IS INVERTED ALONG ITS TRACK: two windows of the SAME span, one
+        // at the content's low end and one at its high end, draw thumbs of the same
+        // length with the HIGH one nearer the top - the one thing a value scroll bar
+        // must not get backwards (valueMax is the track's top).
+        const float minSave = scaler.valueMin();
+        const float maxSave = scaler.valueMax();
+        scaler.setValueWindow(-10.0f, -9.0f);
+        const Scaler::ScrollBars low = scaler.scrollBars(1.0, 60.0, -10.0f, 10.0f);
+        scaler.setValueWindow(9.0f, 10.0f);
+        const Scaler::ScrollBars high = scaler.scrollBars(1.0, 60.0, -10.0f, 10.0f);
+        CHECK(low.vThumb.height() == high.vThumb.height()); // the same window span, the same thumb
+        CHECK(low.vThumb.height() < low.vTrack.height());
+        CHECK(high.vThumb.top() < low.vThumb.top()); // a HIGHER window sits HIGHER on the track
+        scaler.setValueWindow(minSave, maxSave); // the window this section goes on with
+
+        // A WINDOW THAT COVERS THE CONTENT HAS NOTHING TO SCROLL, so no thumb is
+        // published at all (Scaler::scrollBars' own rule: a full-track thumb is a rail
+        // with no travel, and the panel draws and claims only what it publishes). A
+        // degenerate content - no extent at all - reads the same way, and so does a
+        // content the FRAME window covers.
+        const Scaler::ScrollBars whole = scaler.scrollBars(1.0, 60.0, 0.25f, 0.75f); // window 0..1 >= content
+        CHECK(whole.vThumb.isEmpty());
+        CHECK(!whole.vTrack.isEmpty()); // the TRACK stays laid out: the plot's rect does not move
+        const Scaler::ScrollBars none = scaler.scrollBars(1.0, 60.0, 0.0f, 0.0f); // no extent at all
+        CHECK(none.vThumb.isEmpty());
+        const Scaler::ScrollBars frames = scaler.scrollBars(0.0, 60.0, -10.0f, 10.0f);
+        CHECK(frames.hThumb.isEmpty());
+    }
     // The section boundary itself: the band's 22 rows sit immediately above the
     // plot, and the plot's first row is the graph's - the exact arithmetic a pixel
     // capture must show (band.top() == kMargin, band.bottom() + 1 == plot.top()).

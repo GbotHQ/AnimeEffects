@@ -21,6 +21,10 @@
 // timeline's renderer highlights, so the panel holds a reference to the very
 // instance the timeline owns rather than a second set of its own.
 #include "ctrl/time/time_Selection.h"
+// The temporary playback window's own type: the graph's ruler draws and dims by the
+// timeline's rules, so the GUI pushes the timeline editor's PlayWindow VALUE into this
+// editor rather than a second copy of the struct (see setPlayWindow/activeRange below).
+#include "ctrl/TimeLineEditor.h"
 #include "util/Range.h"
 
 namespace ctrl {
@@ -218,11 +222,15 @@ public:
     //     MARQUEE (see the SELECTION note);
     //   * a MIDDLE-button event inside the viewport is the panel's too - the
     //     middle drag pans the graph while the panel is up, never the canvas
-    //     camera (see updateCursor).
-    // A plain hover, a press outside the plot and every event on a point with
-    // nothing to act on pass through: the tools keep their feedback over the
-    // whole viewport, their presses in the label column and the margins, and the
-    // camera gestures the panel does not own.
+    //     camera (see updateCursor);
+    //   * a LEFT PRESS on one of the panel's two SCROLL BARS - its track or its
+    //     thumb - is the panel's as well, and it is tested BEFORE every other hit:
+    //     a bar is chrome the user drags, and the press must not become a plot
+    //     gesture (a handle can hang over the bar's rows, see THE SCROLL BARS).
+    // A plain hover, a press outside the plot and everything that is not a bar and
+    // has nothing to act on pass through: the tools keep their feedback over the
+    // whole viewport, their presses in the label column and the margins the panel
+    // does not use for its bars, and the camera gestures the panel does not own.
     //
     // WHAT THE PLOT COSTS THE TOOLS. The plot is most of the canvas, so claiming
     // every press in it does take those presses from the viewport tools while the
@@ -240,29 +248,30 @@ public:
     bool ownsCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor) const;
     bool updateCursor(const core::CameraInfo& aCamera, const core::AbstractCursor& aCursor);
 
-    // Wheel over the panel: zoom and scroll. Returns true when the graph took the
-    // event, so the viewport does not also zoom the canvas.
+    // Wheel over the panel: ZOOM, one or both axes. Returns true when the graph
+    // took the event, so the viewport does not also zoom the canvas.
     //
     // THE MAPPING, axis by axis:
     //   * plain         - zoom BOTH axes about the cursor by the same notch factor,
     //                     so the point under the pointer stays under it;
-    //   * Shift         - SCROLL both axes by 50 px per notch, no zoom. The frame
-    //                     half is the timeline's own step and, when a timeline owns
-    //                     the frame axis, goes through its scrollFramesBy delegate
-    //                     so both views keep the same window; the value half pans
-    //                     this panel's value axis by the same pixels;
+    //   * Shift         - zoom the FRAME axis alone (horizontal), about the
+    //                     cursor's column;
     //   * Ctrl          - zoom the VALUE axis alone (vertical), about the cursor's
     //                     row;
-    //   * Ctrl + Shift  - zoom the FRAME axis alone (horizontal), about the
-    //                     cursor's column.
-    // Every combination therefore moves at least one axis, and no notch is
-    // consumed by a case that changed nothing.
+    //   * Ctrl + Shift  - zoom BOTH axes, exactly as plain does: the two
+    //                     modifiers name the two axes, so both of them name both.
+    // Every combination therefore zooms at least one axis, and no notch is ever
+    // consumed by a case that moved nothing. THIS GESTURE NEVER SCROLLS: moving a
+    // window without changing its scale is the SCROLL BARS' job (and the middle
+    // drag's), so a notch can be neither a scroll nor a dead key. The wheel's Shift
+    // branch is the frame-axis ZOOM it had before the 2026-10-19 round briefly made
+    // it a scroll, and the timeline's own wheel (Shift = scroll, plain = zoom) is
+    // untouched by this: it is that widget's gesture, not this editor's.
     //
     // The zooms use the canvas mover's and the timeline scaler's own per-notch
     // factor (1.1 per notch) and their default direction (a positive notch zooms
     // OUT), so one wheel motion does the same thing over the panel and over the
-    // viewport. A positive notch scrolls the content right (to earlier frames, the
-    // timeline's own Shift direction) and down.
+    // viewport.
     //
     // aInvertScaling is the user's zoom direction, and it inverts EVERY branch here
     // - before the frame half is delegated - so one notch cannot move the two axes
@@ -279,6 +288,55 @@ public:
         const core::CameraInfo& aCamera, const QPoint& aPos, int aWheelDelta, Qt::KeyboardModifiers aModifiers,
         bool aInvertScaling
     );
+
+    // --- THE SCROLL BARS ---
+    //
+    // The panel's two scroll bars are how a window MOVES without changing its scale:
+    // the horizontal one along the plot's bottom edge is the frame axis' window (the
+    // timeline's, while a timeline owns the axis - see setFrameWindow), the vertical
+    // one along its right edge is this panel's value window. They are drawn by
+    // gui::drawPanel from the rects the MODEL publishes
+    // (GraphPanelModel::hTrack/hThumb/vTrack/vThumb), and their geometry is
+    // ctrl::graph::Scaler::scrollBars' - the one formula the editor's own hit-test
+    // below reads too, so the bar a press grabs is the bar the panel paints.
+    //
+    // WHERE THEY ARE. The bars live in the panel's margin OUTSIDE the plot, and the
+    // scaler reserves their 10px (2px of gap + 8px of bar) at the plot's right and
+    // bottom edges - see THE SCROLL BARS' RESERVE in graph_Scaler.h for the numbers
+    // and for what that costs the plot. An empty plot publishes no bars at all.
+    //
+    // WHAT THE THUMB MEANS. Its length is the visible window's fraction of the
+    // CONTENT (the project's frame range on the frame axis, the value extent of the
+    // shown channels' keys - shownValueExtent below - on the value axis), so a window
+    // that covers the content fills its track and a zoomed-in one draws a short
+    // thumb. It is a VIEW of the window, never a command: nothing here writes the
+    // document, and no gesture below pushes anything.
+    //
+    // THE PRESSES (see updateCursor, and ownsCursor, which claims them before every
+    // plot hit):
+    //   * a press ON A THUMB starts a pan of that axis by the pointer's pixel delta -
+    //     the frame half through the delegate while the timeline owns the axis, so
+    //     both views keep one window; the value half moves this panel's own window;
+    //   * a press on the TRACK (the bar's surface beside the thumb) CENTRES the
+    //     window on the pressed point and then continues as that same drag, which is
+    //     a scroll bar's jump;
+    //   * SHIFT held while dragging changes nothing here - the modifier means
+    //     "one axis, the dominant one" to a KEY drag, and a scroll bar is already one
+    //     axis, so it is deliberately not consulted;
+    //   * none of it pushes a command: only the middle-drag pan's and the wheel's
+    //     window moves are already outside the history, and a scroll bar is one of
+    //     those.
+    // The press does not require the pointer to stay on the bar: the drag follows the
+    // pointer anywhere (ownsCursor keeps the cursor while mDragging is set), exactly
+    // as a marquee or a pan does.
+    //
+    // The VALUE EXTENT the vertical thumb is measured against: the union of every
+    // shown channel's key values and of kFitSamplesPerSegment samples per segment
+    // (the overshoot a Custom bezier or Back/Elastic reaches) - the SAME range
+    // fitValueAxis fits, computed by the same walk, so the bar and the fit cannot
+    // disagree. False when no shown channel has a key, i.e. when there is no extent
+    // at all and the thumb must fill its track.
+    bool shownValueExtent(float& aLo, float& aHi) const;
 
     // The modifier state the panel's own gestures read, fed by the widget before
     // it routes a cursor or wheel event (core::AbstractCursor carries no
@@ -808,10 +866,10 @@ public:
     //
     // X is the TIMELINE's while the panel is a second view of one: the gui pushes the
     // frames the timeline is showing (setFrameWindow) and every horizontal gesture -
-    // the wheel's frame half (its scroll and both of its zooms) and the pan's
-    // horizontal half - goes back to the timeline through the delegates below. The
-    // panel's own X is written by setFrameWindow and by nothing else (see
-    // fitFrameAxis, updateWheel, updatePan).
+    // the wheel's and the horizontal scroll bar's frame half, of every modifier form,
+    // and the pan's horizontal half - goes back to the timeline through the delegates
+    // below. The panel's own X is written by setFrameWindow and by nothing else (see
+    // fitFrameAxis, updateWheel, updatePan, the SCROLL BARS note).
     //
     // The window is FRACTIONAL frames, mapped into the plot's inset exactly
     // (graph::Scaler::applyFrameWindow): the timeline's viewport is expressed in content
@@ -824,12 +882,25 @@ public:
     // yet). Called from the draw path, where the geometry is known.
     void syncFrameWindowFor(const QSize& aViewportSize);
     // The two horizontal gestures, in the units each side owns: a scroll (the pan,
-    // and the wheel's Shift branch) by aFrameDelta FRAMES - so 50 px of scroll is
-    // 50 / framePpf() frames - and a wheel notch about aAnchorFrame, the frame under
-    // the panel's cursor (fractional, so the timeline can anchor on it exactly).
+    // the vertical scroll bar's value half being this panel's own, and the HORIZONTAL
+    // scroll bar's thumb drag and track jump) by aFrameDelta FRAMES - so 50 px of
+    // pointer travel is 50 / framePpf() frames - and a wheel notch about
+    // aAnchorFrame, the frame under the panel's cursor (fractional, so the timeline
+    // can anchor on it exactly).
     using FrameScrollFunc = std::function<void(double aFrameDelta)>;
     using FrameZoomFunc = std::function<void(int aWheelDelta, double aAnchorFrame)>;
     void setFrameGestureDelegates(FrameScrollFunc aScrollFrames, FrameZoomFunc aZoomFrames);
+
+    // THE RULER'S SEEK, on the TIMELINE's own route: a left press in the ruler band
+    // above the plot is a seek, and a drag keeps seeking - the gesture
+    // gui::TimeRuler drives for the timeline (TimeRuler::mousePressEvent ->
+    // TimeLineEditorWidget::updateCursor -> the frame moves). The panel cannot move
+    // the frame itself: the current frame is the DOCUMENT's (core::Project's
+    // currentTimeInfo), owned by the timeline widget, so the host hands this editor
+    // the timeline's own setter. With no delegate the band is not claimed at all -
+    // nothing here invents a second frame authority.
+    using FrameSeekFunc = std::function<void(core::Frame aFrame)>;
+    void setFrameSeekDelegate(FrameSeekFunc aSeek) { mSeekFrame = std::move(aSeek); }
     // Detaches: the panel's frame axis is its own again (fit, zoom and pan work
     // as they did before a timeline was ever attached).
     void clearFrameAxis();
@@ -841,6 +912,25 @@ public:
     // ONE source for it - the editor's curves and the model's own rebuild both read these.
     bool isLooping() const { return mProject && mProject->attribute().loop(); }
     util::Range frameRange() const { return mProject ? mProject->attribute().frameRange() : util::Range(); }
+
+    // --- the temporary playback window ---
+    //
+    // The timeline's ruler gesture (shift-drag) owns this window; the graph's ruler
+    // overlays the SAME window (TimeRuler::renderPlayWindow's translucent band, 2px
+    // bracket stems and label pills) and recesses the frames outside it exactly as the
+    // timeline recesses the frames outside its ACTIVE range. It is pushed in as a
+    // VALUE by the GUI (gui::MainDisplayWidget::syncGraphPanelSharedState) when a
+    // timeline is attached, so both views read one window and there is no second
+    // gesture state here.
+    void setPlayWindow(const TimeLineEditor::PlayWindow& aWindow) { mPlayWindow = aWindow; }
+    const TimeLineEditor::PlayWindow& playWindow() const { return mPlayWindow; }
+    // The range the ruler treats as ACTIVE: the temporary window while it is active,
+    // the project's frame range otherwise - ctrl::TimeLineEditor::playbackRange()'s
+    // own rule, which is the timeline ruler's fade basis. The model publishes it as a
+    // per-frame classification (inside/outside), never as ink.
+    util::Range activeRange() const {
+        return mPlayWindow.active() ? util::Range(mPlayWindow.start, mPlayWindow.end) : frameRange();
+    }
 
 private:
     // The curve under a viewport point: which curve, which segment and - when
@@ -956,6 +1046,38 @@ private:
     void updatePan(const QPoint& aPos);
     void endPan();
 
+    // Pans the FRAME axis by aPixelDelta pixels of pointer travel: this panel's
+    // own mapping when the frame axis is its own, or the timeline's delegate in the
+    // frames both views share when the timeline owns the axis (the pixel-to-frame
+    // sign lives HERE and nowhere else - see the SCROLL BARS note and updatePan).
+    void panFramesByPixels(graph::Scaler& aScale, int aPixelDelta);
+
+    // --- the scroll bars (see the SCROLL BARS note in the public section) ---
+    // The bar a press grabbed: none, the horizontal one (the frame axis) or the
+    // vertical one (the value axis). It distinguishes nothing once the drag is in
+    // flight - both pan their axis by the pointer's delta - but the axis is what
+    // the drag names.
+    enum ScrollBarAxis { ScrollBar_None = -1, ScrollBar_Horizontal = 0, ScrollBar_Vertical = 1 };
+
+    // The bars for aScale's plot rect, with the two axes' content: the project's
+    // frame range and the shown curves' value extent (valueExtentOf below; a
+    // degenerate extent - no key - fills the vertical thumb's track). aItems are the
+    // built entries, so a caller that already has them pays no second build.
+    graph::Scaler::ScrollBars scrollBarsFor(const graph::Scaler& aScale, const QVector<Entry>& aItems) const;
+
+    // The press routing's own bar test: true when aPos is on a track and a gesture
+    // was armed for it. A press on the THUMB starts the drag where it is; a press on
+    // the TRACK first CENTRES the window on the pressed point (a jump) and then
+    // continues as that same drag. Sets mDragging (so ownsCursor keeps the cursor
+    // for every later move and the release) and the axis, and pushes nothing.
+    bool beginScrollBarPress(const graph::Scaler::ScrollBars& aBars, const QPoint& aPos);
+
+    // The value extent of a built entry list: the union of every curve's key values
+    // and of kFitSamplesPerSegment samples per segment. False when no entry has a
+    // key. ONE walk for the fit (applyValueFit) and for the vertical scroll bar's
+    // content (shownValueExtent), so the two cannot drift.
+    static bool valueExtentOf(const QVector<Entry>& aItems, float& aLo, float& aHi);
+
     Hit hitTest(const QVector<Entry>& aItems, const graph::Scaler& aScale, const QPoint& aPos) const;
 
     // The entry whose curve band holds aPos, or -1 when none does. The band is
@@ -1030,6 +1152,15 @@ private:
     int mAppliedPlotWidth;
     FrameScrollFunc mScrollFrames;
     FrameZoomFunc mZoomFrames;
+    FrameSeekFunc mSeekFrame;
+    // True from a band press to its release: the seek's own drag state (the button
+    // stays down while the pointer leaves the band, as every gesture here does).
+    bool mSeeking = false;
+
+    // The temporary playback window pushed by the GUI (see setPlayWindow). Inactive by
+    // default, so an editor with no timeline attached recesses by its project range -
+    // the same basis the timeline's own ruler uses when no window is drawn.
+    TimeLineEditor::PlayWindow mPlayWindow;
 
     // The modifier state the widget fed in on the last event (see setModifiers).
     // Read by the press routing (Ctrl = insert) and by every step of a key move
@@ -1056,10 +1187,11 @@ private:
 
     // Drag state, and the flags that say WHICH drag. mDragging is true while ANY
     // of the panel's pointer gestures is in flight (a handle drag, a key move, a
-    // marquee, a middle-button pan - a press that begins one sets it, and
-    // ownsCursor keeps the cursor while it is true); mKeyMoveArmed, mMarqueeArmed
-    // and mPanning then distinguish them. They are mutually exclusive by
-    // construction: each press entry point clears the others, and endDrag clears
+    // marquee, a middle-button pan, a scroll-bar drag - a press that begins one
+    // sets it, and ownsCursor keeps the cursor while it is true); mKeyMoveArmed,
+    // mMarqueeArmed, mPanning and mScrollBarAxis then distinguish them. They are
+    // mutually exclusive by construction: each press entry point clears the others
+    // (the press routing's endDrag runs before any of them arms), and endDrag clears
     // them all.
     //
     // Handle drag: the segment's `from` key (the anchor the segment index is
@@ -1096,6 +1228,14 @@ private:
     // The middle-button pan: the pointer position the pan last moved to, so each
     // step is a pixel delta (there is no press-time origin to drift from).
     QPoint mPanPointer;
+
+    // The scroll-bar drag: which bar (ScrollBar_None when no bar drag is in flight -
+    // a plain member rather than a flag beside mDragging, because the axis IS the
+    // state) and the pointer position it last moved to, for the same pixel-delta
+    // reason mPanPointer keeps one. Cleared by endDrag with every other gesture, and
+    // pushed nowhere: a scroll bar moves a window and never the document.
+    int mScrollBarAxis;
+    QPoint mScrollBarPointer;
 
     // The key-move gesture's armed PRESSED key, in the timeline's own currency:
     // the layer that owns the key map, the node the TimeLineEvent names, the key

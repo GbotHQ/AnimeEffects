@@ -117,6 +117,11 @@ public:
     // (kRulerBandHeight). The band itself sits immediately above the returned rect
     // (GraphPanelModel publishes it at plot.top() - kRulerBandHeight), so the plot's
     // first row is the graph's, never the ruler's.
+    //
+    // THE RIGHT AND BOTTOM MARGINS ALSO HOLD THE SCROLL BARS: they are kMargin +
+    // kScrollBarReserve there and kMargin on the left and top, so the plot keeps its
+    // top-left corner (and the ruler band above it) and gives up the 10px the two
+    // bars occupy at its right and bottom edges - see THE SCROLL BARS' RESERVE.
     QRect plotRect() const;
 
     // The width of the left label column: the reserve described in THE LABEL
@@ -142,6 +147,76 @@ public:
     // the drawn marker kKeyDotRadius (3.75), plus the two pixels an end can land closer to its
     // edge than the arithmetic asks (an integer origin step and the rounding that places it).
     static constexpr int kFrameWindowMargin = 8;
+
+    // ---- THE SCROLL BARS' RESERVE ----
+    //
+    // The panel's two scroll bars (the frame axis' along the bottom, the value
+    // axis' along the right) live in the panel's margin, OUTSIDE the plot and
+    // inside the panel. A bar is kScrollBarThickness pixels thick and keeps
+    // kScrollBarGap pixels clear of the plot, so the margin the plot leaves at
+    // those two edges has to hold kScrollBarReserve pixels - 2 + 8 = 10 - of which
+    // the outer kMargin rows/columns stay the panel's own edge.
+    //
+    // THE PLOT'S BOTTOM AND RIGHT INSETS THEREFORE GROW BY kScrollBarReserve:
+    // plotRect() is inset kMargin on the LEFT and TOP and kMargin +
+    // kScrollBarReserve on the right and bottom, so the plot's top-left corner (and
+    // with it the ruler band above it and the label column beside it) is exactly
+    // where it always was, while its width and height give up the 10px the bars
+    // need. That is a PLOT-SHAPE decision and not a per-frame one: the reserve is
+    // unconditional, so the plot never moves because a key appeared or a bar did.
+    // With a 800x600 panel and a 68px label column, for instance, the plot is
+    // (72, 26, 714, 560) instead of (72, 26, 724, 570):
+    //   * hTrack: (72, 588, 714, 8)  - plot.bottom() + 1 + gap, the plot's full width
+    //   * vTrack: (788, 26, 8, 560)  - plot.right() + 1 + gap, the plot's full height
+    // leaving the kMargin rows/columns of the panel below and right of each bar, and
+    // the two tracks disjoint (the horizontal one lies entirely below the vertical
+    // one's last row).
+    static constexpr int kScrollBarThickness = 8;
+    static constexpr int kScrollBarGap = 2;
+    static constexpr int kScrollBarReserve = kScrollBarThickness + kScrollBarGap;
+    // The shortest a thumb may be drawn, whatever the window/content fraction is:
+    // a window a hundred times the content would otherwise draw a thumb too small
+    // to see, let alone grab. Never longer than its track (a short track wins).
+    static constexpr int kScrollBarMinThumb = 16;
+
+    // THE TWO SCROLL BARS' GEOMETRY, as one structure: the editor's press routing
+    // and the model's drawing read THIS, so the bar a press grabs and the bar the
+    // panel paints are one geometry (the rule the whole panel follows).
+    //
+    //   * hTrack: below the plot, spanning the plot's own columns.
+    //   * vTrack: right of the plot, spanning the plot's own rows.
+    //   * hThumb/vThumb: the visible WINDOW inside the CONTENT, laid out along the
+    //     track. Thumb length = window/content fraction x track length, never
+    //     shorter than kScrollBarMinThumb and never longer than the track - so a
+    //     window that covers the content fills its track.
+    // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
+    // They are CONTENT-free: what the window and the content are is the caller's
+    // (see scrollBars).
+    struct ScrollBars {
+        QRect hTrack;
+        QRect hThumb;
+        QRect vTrack;
+        QRect vThumb;
+
+        // True when there is no bar to draw and nothing to hit (an empty plot).
+        bool isEmpty() const { return hTrack.isEmpty() && vTrack.isEmpty(); }
+    };
+
+    // The bars for THIS scaler's plot rect. The horizontal bar scrolls the FRAME
+    // axis, so its content is the project's frame range (aFrameContentLo/Hi, in
+    // frames) and its window is the frames the plot covers -
+    // [frameAtPixel(plot.left()), frameAtPixel(plot.right() + 1)]. The vertical bar
+    // scrolls the VALUE axis, so its content is the value extent of the shown
+    // channels' keys (aValueContentLo/Hi, the extent ctrl::GraphEditor's value fit
+    // uses) and its window is valueMin()..valueMax(). A DEGENERATE content (lo ==
+    // hi, i.e. no key at all, or a project with no frame span) means "nothing to
+    // scroll", and its thumb then fills the track exactly as a fully visible window
+    // does. The value axis is INVERTED along its track - valueMax is at the track's
+    // top - which the layout accounts for, so a window at high values draws its
+    // thumb at the top.
+    ScrollBars scrollBars(
+        double aFrameContentLo, double aFrameContentHi, double aValueContentLo, double aValueContentHi
+    ) const;
 
     // Pixels per frame the mapping uses: the ladder's rung normally, the exact fit of
     // a pushed window while a timeline owns the frame axis (fractional - see

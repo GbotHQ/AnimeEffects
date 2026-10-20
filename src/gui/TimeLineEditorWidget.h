@@ -65,6 +65,12 @@ public:
     // Ruler gestures (seek / playback-window drag) move the current frame;
     // TimeLineWidget forwards this to its onFrameUpdated signal.
     Q_SIGNAL void rulerFrameChanged();
+    // The temporary playback window changed (a shift-drag on the ruler set, moved or
+    // collapsed it, or the context menu cleared it). The window is the timeline's own
+    // state, and the animation graph panel's ruler overlays it too, so the GUI needs a
+    // notification when the gesture lands - the frame window's onViewRangeChanged is
+    // not emitted by a window drag that moves no frame.
+    Q_SIGNAL void playWindowChanged();
 
     void setProject(core::Project* aProject);
     void setFrame(core::Frame aFrame);

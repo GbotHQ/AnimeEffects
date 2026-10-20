@@ -65,10 +65,15 @@ struct PanelFocus {
     bool valid = false;
 };
 
-// Draws the panel into aDrawList. The RULER is a SECTION ABOVE THE GRAPH: its band,
-// hairline, ticks and frame numbers are drawn first, outside the plot's clip (the
-// scaler reserved their rows in plotRect()), so nothing the plot draws can reach
-// them. Then, clipped to the plot: the value ticks (in the numbers' own token, each
+// Draws the panel into aDrawList. The RULER is a SECTION AT THE PANEL'S TOP ROW: its
+// band, hairline, ticks and frame numbers are drawn first, outside the plot's clip
+// (the scaler reserved their rows in plotRect()), so nothing the plot draws can reach
+// them. A tick or a number OUTSIDE the model's active range is drawn at the timeline's
+// 0.4 recession alpha. The temporary PLAYBACK WINDOW is painted over the ruler
+// content, in the timeline's order: the translucent band, the two 2px bracket stems,
+// the label pills (or one merged pill) - all in the ruler band, before the plot clip
+// and before the playhead. Then, clipped to the plot: the value ticks (in the
+// numbers' own token, each
 // frame mark at the tier's alpha the model publishes for it - one ink for the ruler,
 // the timeline's rule), the zero rule, the curves (the
 // channels that own a selected marker, or the SIBLING of one, at full colour and
@@ -85,7 +90,13 @@ struct PanelFocus {
 // is lifted toward axisText from io.MousePos), the box-select marquee, the name CHIP
 // of every curve in play, and the empty state. The PLAYHEAD is drawn last, outside
 // the plot clip and over the chips, from the pill's row in the band through the
-// plot's last row, so no chip can cover it. It keeps no state - which
+// plot's last row, so no chip can cover it. The two SCROLL BARS are drawn after
+// everything else and clipped to the PANEL (they are outside the plot by
+// construction, in the margin the scaler reserves for them): the track in
+// theme::Colors::raised under a 1px theme::Colors::floaterEdge edge, the thumb in
+// theme::Colors::textMuted, or theme::Graph::axisText() while the pointer is on
+// that bar - an empty rect draws nothing, so an empty plot has no bar at all. It
+// keeps no state - which
 // is what lets the overlay call it per frame and a headless pixel gate call it
 // once. It reads no font off the current context (the draw list carries its own),
 // but the marker hover (gui::panelKeyAt), the handle highlight and the
@@ -404,8 +415,8 @@ struct PanelFrameState {
     theme::Graph palette;
     // How many LOGICAL pixels of this host's top another widget covers. The dock's page
     // leaves it at 0 - nothing floats over the dock, the tab names the page and the
-    // header belongs to the dock - so the ruler band occupies its reserved slot above
-    // the plot. (The field and the clamp stay: the inset is the model's,
+    // header belongs to the dock - so the ruler band occupies the panel's top row. (The
+    // field and the clamp stay: the inset is the model's,
     // GraphPanelModel's THE OCCLUDED TOP, and a host that floats something over the
     // panel sets it rather than the model inferring one. The band is never pushed into
     // the plot; an occluder that reaches its slot hides the strip for that frame.)
