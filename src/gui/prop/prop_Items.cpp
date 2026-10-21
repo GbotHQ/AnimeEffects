@@ -570,6 +570,16 @@ namespace prop {
         mPicker->popUpAt(aGlobalAnchor, aAnchorWidget, aShown, aAutoContext);
     }
 
+    bool EasingItem::isPickerOpen() const { return mPicker && mPicker->isVisible(); }
+
+    bool EasingItem::refreshShown(const util::Easing::Param& aShown,
+                                  const util::Easing::AutoContext& aAutoContext) {
+        // A view, not a model: the picker decides what an external re-read may replace
+        // (nothing while a gesture is in progress in it - see
+        // EasingPickWidget::setShownValue). The control stays a pass-through.
+        return mPicker && mPicker->setShownValue(aShown, aAutoContext);
+    }
+
     //-------------------------------------------------------------------------------------------------
     IntegerItem::IntegerItem(QWidget* aParent): mBox(), mStamp(), mSignal(true) {
         mBox = new SpinBox(aParent);

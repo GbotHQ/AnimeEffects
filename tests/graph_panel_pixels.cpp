@@ -47,9 +47,10 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 //     undimmed token - and in the pass that puts its channel in play it IS the
 //     channel's own colour, except for the marker the pass SELECTS, whose fill
 //     moves toward the keyframe highlight (theme::Graph::axisText()) and which
-//     alone carries the detached 1px ring IN THAT SAME MIXED INK (opaque; the raw
-//     hue is no longer the ring's colour). Item 29 is the three marker states side
-//     by side.
+//     alone carries the detached 1px ring in the TIMELINE's ink: the channel's RAW
+//     hue at ctrl::time::kSelectRingAlpha (0.85), the same token time_Renderer's
+//     key pass draws, not the fill's mixed colour. Item 29 is the three marker
+//     states side by side.
 //   4 the label halo, behind gui::kDrawTextHalo (SHIPPED OFF): with the flag on, a
 //     pixel 1-2px outside the advance box is inked and is closer to
 //     theme::Graph::halo() than to theme::Graph::axisText(), so it is the halo and
@@ -197,10 +198,10 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 //     with no resampling;
 //      29 THE THREE MARKER STATES, on one key's two components: the SELECTED marker's
 //         fill moves toward the keyframe highlight and its detached 1px ring is drawn
-//         in that highlight ink; the SIBLING marker (its key selected on the other
-//         component) keeps a FAINT ring at the same radius that is not the selection's
-//         ink and a fill that did not brighten; the HOVERED marker brightens and adds
-//         NO ring. Read against an unflagged pass of the same model, so each claim is
+//         in the timeline's own ink - the channel's raw hue at 0.85; the SIBLING
+//         marker (its key selected on the other component) keeps a FAINT ring at the
+//         same radius, the same hue at 0.35, and a fill that did not brighten; the
+//         HOVERED marker brightens and adds NO ring. Read against an unflagged pass of the same model, so each claim is
 //         about the state and not about the fixture;
 //      30 THE DRAG READOUT: with a key move in flight the model's two numbers are
 //         painted at the pointer (the panel's own label ink), and with no move in
@@ -289,6 +290,9 @@ std::pair<core::TimeKey*, core::LayerMesh*> gui::ObjectTreeWidget::getAreaMeshIm
 #include "gui/theme/Colors.h"
 #include "gui/theme/Graph.h"
 #include "ctrl/graph/graph_Geometry.h"
+// The selected key ring is ONE token for both views: its alpha and its offset live in
+// the timeline renderer's own header, and the marker assertions below read them.
+#include "ctrl/time/time_Renderer.h"
 // The marker fixture's two LAYERS: the marker hover is answered by gui::panelKeyAt, which
 // names a key by (node, channel, frame), so a hand-built model that leaves `node` null
 // cannot be hovered (the model a real build makes never does: its rows come from the
@@ -1498,25 +1502,26 @@ int inkWidthThrough(
 }
 
 // The pixel carrying the DETACHED ring's ink, out of the two rows a 1px stroke at
-// ctrl::graph::kKeyDotRadius + gui::kKeyRingOffsetPx can land in, read on the VERTICAL
-// axis (a marker sits on its own curve, so the horizontal neighbour of a key pixel is the
-// stroke, while the row below/above it is clear).
+// ctrl::graph::kKeyDotRadius + ctrl::time::kSelectRingOffset can land in, read on the
+// VERTICAL axis (a marker sits on its own curve, so the horizontal neighbour of a key
+// pixel is the stroke, while the row below/above it is clear).
 //
-// WHY TWO ROWS AND NOT ONE. The 1px band is centred on the reference radius
-// dotRadius + kKeyRingOffsetPx = 6.35 (ImGui's AddCircle strokes about radius - 0.5, so
-// its centreline is 5.85), i.e. [5.35, 6.35] plus AA; the framebuffer samples pixel
-// centres at half-integers while a key's centre is an integer coordinate, so the two
-// rows a nominal radius can land in sample 5.5px and 6.5px out. Which one carries the
-// ink's body is a sub-pixel fact of the band's placement: MEASURED on this build, row 6
-// reads rgb=#8596a9 (channel hue #4ade80 at ~0.68 over the clear colour) while row 7 is
-// its ~0.21 fringe rgb=#da2ee5 - so a single-row probe could read the fringe and call a
-// real ring missing, or too faint to name. The reading therefore takes the stronger of
-// the two rows - which is the ring's own ink if the ring is there at all - and the
-// claims built on it are about WHICH TOKEN that ink is, never about one nominal pixel.
+// WHY TWO ROWS AND NOT ONE. The ring is the TIMELINE's token (one expression, both
+// views): its 1px band is CENTRED on dotRadius + kSelectRingOffset = 6.35, i.e.
+// [5.85, 6.85]. ImGui's AddCircle strokes INWARD, so the drawing layer asks for that
+// radius + 0.5 (the marker edge's own convention) and the band lands in the same place a
+// QPainter pen at 6.35 does. The framebuffer samples pixel centres at half-integers while
+// a key's centre is an integer coordinate, so the two rows a nominal radius can land in
+// sample 5.5px and 6.5px out: with the band at [5.85, 6.85] the OUTER row carries the
+// body and the inner one its AA fringe. A single-row probe could read the fringe and call
+// a real ring missing, or too faint to name, so the reading takes the stronger of the
+// two - which is the ring's own ink if the ring is there at all - and the claims built on
+// it are about WHICH TOKEN that ink is, never about one nominal pixel.
 //
 // The pixel is reported in aPixel so a failure can name it.
 QColor detachedRingInk(const QImage& aImage, const QPoint& aCentre, QPoint& aPixel) {
-    const int first = int(std::lround(double(ctrl::graph::kKeyDotRadius) + double(gui::kKeyRingOffsetPx))); // 6
+    const int first =
+        int(std::lround(double(ctrl::graph::kKeyDotRadius) + ctrl::time::kSelectRingOffset)); // 6
     const QPoint rows[2] = {
         QPoint(aCentre.x(), aCentre.y() - first), QPoint(aCentre.x(), aCentre.y() - first - 1)
     };
@@ -1850,9 +1855,9 @@ bool checkKeys(
                 );
             }
             // THE DETACHED RING - the marker rule's own ink, and the pair this assertion is
-            // about: the pass that SELECTS a key paints a 1px ring in THAT MARKER'S FILL
-            // INK (mixedToward(hue, axisText, 0.45), opaque), at the ring radius, and the
-            // pass that puts the same channel in play without selecting THAT key paints
+            // about: the pass that SELECTS a key paints the TIMELINE'S 1px ring (the raw
+            // channel hue at kSelectRingAlpha, 0.85) at dotRadius + kSelectRingOffset, and
+            // the pass that puts the same channel in play without selecting THAT key paints
             // NOTHING there (the marker's own ink's AA ends at ~4.5px, and these rows
             // sample 5.5px out and beyond). So the ring is
             // the selection's mark and not a bigger marker.
@@ -1861,38 +1866,46 @@ bool checkKeys(
                     clearDistance(inPlayOuterRing) > kInkMin,
                     "the selected key at (%d,%d) has no ink at the ring probe (%d,%d): a selected marker must"
                     " carry its 1px ring %.1fpx clear of the marker",
-                    centre.x(), centre.y(), outerRingPixel.x(), outerRingPixel.y(), double(gui::kKeyRingOffsetPx)
+                    centre.x(), centre.y(), outerRingPixel.x(), outerRingPixel.y(),
+                    double(ctrl::time::kSelectRingOffset)
                 );
-                // THE RING IS THE FILL'S INK, OPAQUE. The drawing layer inks both
-                // with mixedToward(curve.color, axisText(), 0.45), so the probe - a
-                // 1px stroke's partial coverage over the clear frame - must lie on
-                // the line from the clear colour to THAT ink. The projection recovers
-                // the coverage and `over` rebuilds the exact sample.
-                const QColor selectedRingInk = mixedToward(own, highlight, 0.45f);
+                // THE RING IS THE TIMELINE'S INK: the channel's RAW hue at
+                // ctrl::time::kSelectRingAlpha (217/255), not the fill's mixed
+                // colour. The probe is a 1px stroke's partial coverage over the
+                // clear frame, so it lies on the line from the clear colour to that
+                // hue; the projection recovers the COMBINED coverage (the token's
+                // 0.85 alpha times the AA coverage), and `over` rebuilds the exact
+                // sample. The bounds on that number are what pin the token: it can
+                // never exceed the token's own 0.85, and the chosen probe row carries
+                // its body (so it is well above a fringe).
+                const QColor ringHue = own;
+                const double inkAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
                 REQUIRE(
-                    colourDistance(selectedRingInk, own) > kInkMin
-                        && colourDistance(selectedRingInk, highlight) > kInkMin,
-                    "precondition: the selected fill ink rgb=%s is indistinguishable from the hue rgb=%s or the"
-                    " highlight rgb=%s, so the ring's ink cannot be named",
-                    hex(selectedRingInk).c_str(), hex(own).c_str(), hex(highlight).c_str()
+                    colourDistance(ringHue, highlight) > kInkMin,
+                    "precondition: the channel hue rgb=%s is indistinguishable from the highlight rgb=%s, so"
+                    " the ring's ink cannot be named",
+                    hex(ringHue).c_str(), hex(highlight).c_str()
                 );
-                const double ringCoverage = coverageOfTone(inPlayOuterRing, selectedRingInk);
-                const QColor ringPredicted = toneAtCoverage(selectedRingInk, ringCoverage);
+                const double ringCoverage = coverageOfTone(inPlayOuterRing, ringHue);
+                const QColor ringPredicted = toneAtCoverage(ringHue, ringCoverage);
                 REQUIRE(
-                    ringCoverage > 0.0 && colourDistance(inPlayOuterRing, ringPredicted) <= kCurveTol,
-                    "the selected key's ring pixel rgb=%s is not the fill's own ink rgb=%s at the measured"
-                    " coverage %.2f (expected %s, distance %d > %d): the selection ring must use the same"
-                    " mixed, OPAQUE colour as the fill",
-                    hex(inPlayOuterRing).c_str(), hex(selectedRingInk).c_str(), ringCoverage,
-                    hex(ringPredicted).c_str(), colourDistance(inPlayOuterRing, ringPredicted), kCurveTol
+                    ringCoverage > 0.5 * inkAlpha && ringCoverage <= inkAlpha + 0.02
+                        && colourDistance(inPlayOuterRing, ringPredicted) <= kCurveTol,
+                    "the selected key's ring pixel rgb=%s is not the channel hue rgb=%s at %.3f..%.3f"
+                    " coverage (measured %.3f, expected %s, distance %d > %d): the selection ring must be the"
+                    " timeline's hue at kSelectRingAlpha (%d/255), not a mixed fill ink",
+                    hex(inPlayOuterRing).c_str(), hex(ringHue).c_str(), 0.5 * inkAlpha, inkAlpha,
+                    ringCoverage, hex(ringPredicted).c_str(),
+                    colourDistance(inPlayOuterRing, ringPredicted), kCurveTol,
+                    ctrl::time::kSelectRingAlpha
                 );
                 // ...and it is OUTSIDE the dot's own ink: the probe rows sample 5.5px and
                 // 6.5px out, past the marker's own reach (the edge band ends at
                 // dotRadius + 0.5 = 4.25, its antialiasing at 4.5).
                 REQUIRE(
-                    gui::kKeyRingOffsetPx >= 2.0f,
+                    ctrl::time::kSelectRingOffset >= 2.0,
                     "the selection ring's centre (dotRadius + %.2f) is not at least 2px outside the dot's radius",
-                    double(gui::kKeyRingOffsetPx)
+                    double(ctrl::time::kSelectRingOffset)
                 );
             } else {
                 REQUIRE(
@@ -1977,15 +1990,15 @@ bool checkKeys(
 // the design names, and that they are told apart from each other:
 //
 //   * SELECTED - the fill brightens toward the keyframe highlight AND a 1px ring sits
-//     clear of the marker IN THE SAME INK. Read as: the centre moved TOWARD the highlight
-//     against the same marker's unflagged fill, and the ring's probe is that mixed colour
-//     (opaque) at its own antialiased coverage - the ring is no longer the raw hue.
+//     clear of the marker in THE TIMELINE'S INK. Read as: the centre moved TOWARD the
+//     highlight against the same marker's unflagged fill, and the ring's probe is the
+//     channel's RAW HUE at ctrl::time::kSelectRingAlpha (0.85) at its own antialiased
+//     coverage - the same expression time_Renderer's key pass draws, not the fill's mix.
 //   * SIBLING (not selected, its key selected on the other component) - the FAINT ring,
 //     and a fill that is NOT brightened. Read as: the ring's probe carries ink at the same
-//     radius, that ink is clearly NOT the selection's (farther from the highlight than the
-//     selected marker's ring pixel, and NEARER the channel's own hue), it is fainter (nearer
-//     the clear colour) than the selection ring, and the centre is still the channel's own
-//     colour exactly - the "no brighter fill" half of the mock's rule.
+//     radius, that ink is the same raw hue at 0.35 (so it is fainter - nearer the clear
+//     colour - than the selection ring, and never the mixed fill), and the centre is
+//     still the channel's own colour exactly - the "no brighter fill" half of the rule.
 //   * HOVERED - the fill brightens, no ring. Read as: the centre moved toward the highlight
 //     against the unflagged pass, and the ring's probe carries NOTHING.
 //
@@ -2080,18 +2093,34 @@ bool checkMarkerStates(
             clearDistance(ringPixel[0]) > kInkMin,
             "the SELECTED marker paints nothing at its ring probe: rgb=%s", hex(ringPixel[0]).c_str()
         );
-        // THE RING IS THE FILL'S INK, OPAQUE - one expression with the fill. The probe
-        // is a 1px stroke's partial coverage over the clear frame, so it must lie on
-        // the line from the clear colour to mixedToward(hue, axisText, 0.45).
-        const QColor selectedRingInk = mixedToward(hue[0], highlight, 0.45f);
-        const double ringCoverage = coverageOfTone(ringPixel[0], selectedRingInk);
-        const QColor ringPredicted = toneAtCoverage(selectedRingInk, ringCoverage);
+        // THE RING IS THE TIMELINE'S INK: the channel's RAW hue at
+        // ctrl::time::kSelectRingAlpha (217/255) - the same expression
+        // time_Renderer's key pass uses - and NOT the fill's mixed colour. The probe
+        // is a partial-coverage sample over the clear frame, so it lies on the line
+        // from the clear colour to that hue; the recovered coverage is the token's
+        // alpha times the AA coverage, so it is never above 0.85 and (on the body
+        // row) never a fringe.
+        const QColor ringHue = hue[0];
+        const double inkAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
+        const double ringCoverage = coverageOfTone(ringPixel[0], ringHue);
+        const QColor ringPredicted = toneAtCoverage(ringHue, ringCoverage);
         REQUIRE(
-            ringCoverage > 0.0 && colourDistance(ringPixel[0], ringPredicted) <= kCurveTol,
-            "the SELECTED marker's ring pixel rgb=%s is not its fill ink rgb=%s at the measured coverage %.2f"
-            " (expected %s, distance %d > %d): the selection ring is the fill's own opaque mixed colour",
-            hex(ringPixel[0]).c_str(), hex(selectedRingInk).c_str(), ringCoverage, hex(ringPredicted).c_str(),
-            colourDistance(ringPixel[0], ringPredicted), kCurveTol
+            ringCoverage > 0.5 * inkAlpha && ringCoverage <= inkAlpha + 0.02
+                && colourDistance(ringPixel[0], ringPredicted) <= kCurveTol,
+            "the SELECTED marker's ring pixel rgb=%s is not the channel hue rgb=%s at %.3f..%.3f coverage"
+            " (measured %.3f, expected %s, distance %d > %d): the selection ring is the timeline's raw hue"
+            " at kSelectRingAlpha (%d/255), not the fill's mixed ink",
+            hex(ringPixel[0]).c_str(), hex(ringHue).c_str(), 0.5 * inkAlpha, inkAlpha, ringCoverage,
+            hex(ringPredicted).c_str(), colourDistance(ringPixel[0], ringPredicted), kCurveTol,
+            ctrl::time::kSelectRingAlpha
+        );
+        // ...and the fill did NOT take the ring's ink: the centre is still the mixed
+        // highlight, which is a different colour from the hue the ring carries.
+        REQUIRE(
+            colourDistance(centrePixel[0], mixedToward(hue[0], highlight, 0.45f)) <= kFillTol,
+            "the SELECTED marker's centre rgb=%s is not its fill mix rgb=%s: the fill rule must not follow the"
+            " ring's raw-hue ink",
+            hex(centrePixel[0]).c_str(), hex(mixedToward(hue[0], highlight, 0.45f)).c_str()
         );
     }
 
@@ -2107,8 +2136,8 @@ bool checkMarkerStates(
         REQUIRE(
             clearDistance(ringPixel[0]) > clearDistance(ringPixel[1]),
             "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
-            " marker's (rgb=%s, %d): the sibling ring is the raw hue at 0.35, the selection ring the opaque"
-            " fill mix",
+            " marker's (rgb=%s, %d): both are the channel's raw hue - the sibling at 0.35, the selection ring"
+            " at kSelectRingAlpha",
             hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
             clearDistance(ringPixel[0])
         );
@@ -2122,7 +2151,8 @@ bool checkMarkerStates(
         REQUIRE(
             clearDistance(ringPixel[1]) < clearDistance(ringPixel[0]),
             "the SIBLING marker's ring (rgb=%s, %d from the clear colour) is not FAINTER than the SELECTED"
-            " marker's (rgb=%s, %d): the faint ring is raw hue at 0.35 against the opaque selection fill ink",
+            " marker's (rgb=%s, %d): the faint ring is the same raw hue at 0.35 against the selection ring's"
+            " 0.85",
             hex(ringPixel[1]).c_str(), clearDistance(ringPixel[1]), hex(ringPixel[0]).c_str(),
             clearDistance(ringPixel[0])
         );
@@ -2162,8 +2192,8 @@ bool checkMarkerStates(
     // colour and its detached ring differ; the marker's own SIZE must not. The ink
     // width is measured through the centre with a 4px reach - through the marker's own
     // edge band (centred on kKeyDotRadius) and its antialiasing, which ends 4.5px out,
-    // and short of the detached ring (whose ink starts at ~5.35px, dotRadius +
-    // kKeyRingOffsetPx - 1) - so the two passes compare the dot alone.
+    // and short of the detached ring (whose 1px band starts at 5.85px, dotRadius +
+    // ctrl::time::kSelectRingOffset - 0.5) - so the two passes compare the dot alone.
     {
         for (int c = 0; c < 2; ++c) {
             const QPointF& dot = aModel.curves.at(c).keyDots.at(0);

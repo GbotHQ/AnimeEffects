@@ -337,13 +337,14 @@ void GraphPanelWidget::mousePressEvent(QMouseEvent* aEvent) {
     const QPoint pos = aEvent->position().toPoint();
 
     // A right press is the MENU gesture - the panel's only right-button action - and it
-    // is taken here because this is the only place this host sees one. On a key it is
-    // the key menu; on the plot's background it is the timeline's own background menu
-    // (see GraphPanelWidget::openKeyMenuAt). Both are the TIMELINE'S own QMenu
-    // (QMenu::exec), so they run their own event loop and return when dismissed -
-    // exactly as the timeline's own context-menu handler runs the same menu - and the
-    // press is accepted once it has. (A left press has no control to test any more: the
-    // panel's one control is the dock header's channels button now.)
+    // is taken here because this is the only place this host sees one. On a tangent
+    // handle it is the handle-type menu, on a key the key menu, on the plot's
+    // background the timeline's own background menu plus the graph's "Fit graph" entry
+    // (see GraphPanelWidget::openKeyMenuAt, which owns the one pick that decides).
+    // All of them are QMenus (QMenu::exec), so they run their own event loop and
+    // return when dismissed, and the press is accepted once they have. (A left press
+    // has no control to test any more: the panel's one control is the dock header's
+    // channels button now.)
     if (aEvent->button() == Qt::RightButton) {
         openKeyMenuAt(pos);
         aEvent->accept();
@@ -375,26 +376,6 @@ void GraphPanelWidget::mouseReleaseEvent(QMouseEvent* aEvent) {
     // ownsCursor), which is what ends a drag that left the widget.
     routeCursor();
     aEvent->accept();
-}
-
-void GraphPanelWidget::mouseDoubleClickEvent(QMouseEvent* aEvent) {
-    if (aEvent->button() == Qt::LeftButton && doubleClickAt(aEvent->position().toPoint())) {
-        // Qt delivers the second press of a double-click HERE and not as a
-        // MouseButtonPress, so this is the only place ImGui can be told about it - and
-        // it is told here rather than at the top of the handler: the other path falls
-        // through to mousePressEvent() below, which feeds the bridge, so either way the
-        // bridge sees the event exactly once.
-        if (mBridge)
-            mBridge->handleMouseButton(*aEvent);
-        this->update();
-        aEvent->accept();
-        return;
-    }
-
-    // Not the panel's fit. QWidget's own double-click behaviour is "a press" (its
-    // default implementation calls mousePressEvent), and that is what this page wants:
-    // the second click still selects, drags or inserts in the graph.
-    QOpenGLWidget::mouseDoubleClickEvent(aEvent);
 }
 
 void GraphPanelWidget::wheelEvent(QWheelEvent* aEvent) {
@@ -611,76 +592,70 @@ bool GraphPanelWidget::event(QEvent* aEvent) {
 }
 
 //-------------------------------------------------------------------------------------------------
-bool GraphPanelWidget::doubleClickAt(const QPoint& aPos) {
-    if (!mFrame.editor)
-        return false;
-    if (!mFrame.model.plot.contains(aPos))
-        return false; // not the plot: nothing here owns a double-click outside it
-
-    // Both axes to the shown data: the panel's own fit gesture, the same one the
-    // viewport host performs on the same double-click. (There is no control to exclude
-    // any more: the panel draws none, and its published model carries none.)
-    mFrame.editor->fitAll();
-    return true;
-}
-
 bool GraphPanelWidget::openKeyMenuAt(const QPoint& aPos) {
-    if (!mFrame.editor)
+    ctrl::GraphEditor* editor = graphEditor();
+    if (!editor)
         return false; // no panel on screen: nothing to hit
-
-    // THE KEY UNDER THE POINTER, by the editor's own rule - the one hit test both hosts
-    // of the panel ask (panelKeyAt, in gui/GraphPanelFrame.h). A handle is not considered:
-    // the panel's right-click has no handle action, and the editor's own handle grab is
-    // the LEFT press's.
-    core::ObjectNode* node = nullptr;
-    ctrl::graph::Channel channel;
-    core::Frame frame;
-    if (!panelKeyAt(mFrame.model, aPos, node, channel, frame)) {
-        // NO KEY THAT CLOSE: the plot's background, and the panel offers what the
-        // TIMELINE offers on its own empty lane background - not nothing. The route is
-        // MainDisplayWidget::showGraphBackgroundMenu, which hands the timeline's own
-        // context-menu handler the same request a right-click there produces; that
-        // handler reads the shared selection and builds buildKeyMenu, so the items,
-        // their labels and the paste anchor are the timeline's (paste-only with no
-        // selection, the full key set with one). The anchor is this widget's pointer in
-        // screen coordinates, the same mapping the key route below uses.
-        MainDisplayWidget* display = appDisplay();
-        if (!display)
-            return false; // no viewport in this window: no timeline menu to reach
-        return display->showGraphBackgroundMenu(this->mapToGlobal(aPos));
-    }
-
-    core::TimeLine* line = node->timeLine();
-    if (!line)
-        return false; // an object with no keys: nothing for a key menu to act on
 
     MainDisplayWidget* display = appDisplay();
     if (!display)
         return false; // no viewport in this window: no menu to open
 
-    // THE MENU IS THE TIMELINE'S OWN, and the key is handed over as the triple the
-    // timeline names a key by - (node, type, frame), the same currency
-    // ctrl::time::Selection speaks. The timeline applies its own right-click rule to it
-    // against the one shared selection: a key already selected keeps the WHOLE selection,
-    // so with N keys selected every item acts on all N of them (this used to replace the
-    // selection with the single pressed key, which is what made the menu wrong under a
-    // multi-selection); any other key is lent to the menu for its lifetime and dropped
-    // when it closes (see TimeLineEditorWidget::openKeyMenu, which owns both halves of
-    // the rule).
-    //
-    // THE ANCHOR: this widget's own point, in GLOBAL (screen) coordinates. The two
-    // widgets are SIBLINGS - MainDisplayWidget owns the viewport, this page lives in the
-    // dock's tab stack beside it - so a QWidget::mapFrom on that widget is not a mapping
-    // between them at all: it reads this widget's point as one of ITS OWN children's
-    // coordinates (the panel is nobody's child) and translates it out of the wrong
-    // parent chain, which puts the menu where the two widget trees' positions happen to
-    // differ - near the window origin, not at the key. Screen coordinates are the one
-    // space two siblings share, so mapToGlobal() from THIS widget is the honest mapping.
-    const core::TimeLineEvent::Target pressed(*node, core::TimeKeyPos(*line, channel.type(), frame.get()), frame.get());
-    const bool opened = display->showGraphKeyMenu(pressed, this->mapToGlobal(aPos));
+    // ONE PICK, THE EDITOR'S OWN PRESS RULE. ctrl::GraphEditor::contextTargetAt asks the
+    // hit-test a left press obeys - the same nearest-and-normalised comparison between
+    // a key's grab radius and a handle's, which is also what the hover ink lights - so
+    // the menu names exactly the thing under the pointer, and a HANDLE that is
+    // relatively nearer than a key opens the handle menu instead of that key's. (The
+    // old right-click asked gui::panelKeyAt, a keys-only scan: a handle inside a key's
+    // 10px ring opened the KEY menu, whose items then acted on a key the user had not
+    // aimed at.)
+    const ctrl::GraphEditor::ContextTarget target = editor->contextTargetAt(panelCamera(), aPos);
 
-    // The menu blocked (the timeline's own menu execs), so the selection it acted on may
-    // have changed under the panel's ink by now.
+    if (target.kind == ctrl::GraphEditor::ContextTarget::Kind_Handle) {
+        // THE HANDLE'S OWN MENU: that side's five types. A handle has no key menu,
+        // because every entry there (copy, paste, spacing, delete) is about KEYS.
+        const bool opened = display->showGraphHandleMenu(target, this->mapToGlobal(aPos));
+        this->update();
+        return opened;
+    }
+
+    if (target.kind == ctrl::GraphEditor::ContextTarget::Kind_Key) {
+        core::TimeLine* line = target.node ? target.node->timeLine() : nullptr;
+        if (!line)
+            return false; // an object with no keys: nothing for a key menu to act on
+
+        // THE MENU IS THE TIMELINE'S OWN, and the key is handed over as the triple the
+        // timeline names a key by - (node, type, frame), the same currency
+        // ctrl::time::Selection speaks. The timeline applies its own right-click rule to
+        // it against the one shared selection: a key already selected keeps the WHOLE
+        // selection, so with N keys selected every item acts on all N of them; any other
+        // key is lent to the menu for its lifetime and dropped when it closes (see
+        // TimeLineEditorWidget::openKeyMenu, which owns both halves of the rule).
+        //
+        // THE ANCHOR: this widget's own point, in GLOBAL (screen) coordinates. The two
+        // widgets are SIBLINGS - MainDisplayWidget owns the viewport, this page lives in
+        // the dock's tab stack beside it - so a QWidget::mapFrom on that widget is not a
+        // mapping between them at all: it reads this widget's point as one of ITS OWN
+        // children's coordinates and translates it out of the wrong parent chain.
+        // Screen coordinates are the one space two siblings share.
+        const core::TimeLineEvent::Target pressed(
+            *target.node, core::TimeKeyPos(*line, target.channel.type(), target.frame.get()), target.frame.get()
+        );
+        const bool opened = display->showGraphKeyMenu(pressed, this->mapToGlobal(aPos));
+
+        // The menu blocked (the timeline's own menu execs), so the selection it acted on
+        // may have changed under the panel's ink by now.
+        this->update();
+        return opened;
+    }
+
+    // NEITHER: the plot's background, and the panel offers what the TIMELINE offers on
+    // its own empty lane background - not nothing - plus the graph's own "Fit graph".
+    // The route reads the SHARED SELECTION for its items; it no longer re-hit-tests the
+    // timeline's lanes with this widget's pixels (that named a different key of another
+    // row whenever the two pages' layouts differed, which is what made a menu's actions
+    // look dead: they edited a key that was not the one under the pointer).
+    const bool opened = display->showGraphBackgroundMenu(this->mapToGlobal(aPos));
     this->update();
     return opened;
 }
@@ -709,7 +684,9 @@ void GraphPanelWidget::onAccessibilityAction(int aId) {
         return;
 
     if (aId == kPanelFitItemId) {
-        // The very action the double-click on the plot performs.
+        // Both axes to the shown data - the action the panel's "Fit graph"
+        // context-menu entry performs. (It used to be the plot's double-click,
+        // removed because it is too easy to trigger by accident.)
         mFrame.editor->fitAll();
         this->update();
         return;

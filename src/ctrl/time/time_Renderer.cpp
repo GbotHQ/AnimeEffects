@@ -35,11 +35,11 @@ namespace time {
     // becomes the channel's hue at 0.42", one step quieter than the keys). The
     // value is the mock's own (hexA(hue, 0.42) in its band-name pass).
     constexpr int kLabelAlpha = 107; // 0.42
-    // The selected key's ring (the user's ruling, both views): 1px wide, in
-    // the key's OWN channel hue at 0.85 alpha, drawn OUTSIDE the marker at
-    // dotRadius + 2.6. The marker itself keeps its size.
-    constexpr int kSelectRingAlpha = 217; // 0.85
-    constexpr double kSelectRingRadius = keyRadius + 2.6;
+    // The selected key's ring is the shared token in time_Renderer.h
+    // (kSelectRingAlpha / kSelectRingOffset): the key's OWN channel hue at 0.85,
+    // 1px, drawn OUTSIDE the marker at keyRadius + 2.6. The graph panel's marker
+    // pass reads the same two cells, so the two rings cannot diverge.
+    constexpr double kSelectRingRadius = keyRadius + kSelectRingOffset;
 
     // The channel hue of a key type: THE CHANNEL HUE TABLE in theme::Colors
     // (design section 7). A timeline key belongs to the TYPE, not to one

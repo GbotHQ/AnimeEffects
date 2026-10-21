@@ -173,6 +173,11 @@ TimeLineEditorWidget::TimeLineEditorWidget(ViaPoint& aViaPoint, QWidget* aParent
     // idempotent (prop::EasingChip ignores a state equal to the one it holds), so a
     // change the chip does not show costs one compare.
     mEditor->selection().onChanged.connect(this, &TimeLineEditorWidget::pushEasingChipState);
+    // ...AND THE OPEN PICKER FOLLOWS THE SAME NOTIFICATION. A key selected in the
+    // graph panel is the same set this surface reads, so the popup must re-read what
+    // it shows for it - the other half of the chip's one-way sync (see
+    // refreshOpenPicker; the picker itself refuses a re-read mid-gesture).
+    mEditor->selection().onChanged.connect(this, &TimeLineEditorWidget::refreshOpenPicker);
 
     // The ruler strip: own paint and own input, over the track surface and
     // under the playhead (raised below so its pill overlays the window pills).
@@ -522,6 +527,12 @@ void TimeLineEditorWidget::onTimeLineModified(core::TimeLineEvent& aEvent, bool 
     // the dock's surface hidden.
     this->update();
     pushEasingChipState();
+    // THE OPEN PICKER FOLLOWS THE DOCUMENT TOO. The graph's handle drag and its mode
+    // changes modify the very key an open picker is showing, and this signal arrives
+    // whether or not either page is painted - so the popup is re-read here, not on the
+    // next time something happens to repaint it. The picker ignores the re-read while a
+    // gesture is in progress in it (a drag there wins until it ends).
+    refreshOpenPicker();
 }
 
 void TimeLineEditorWidget::onTreeRestructured(core::ObjectTreeEvent&, bool) { mCopyTargets = core::TimeLineEvent(); }
@@ -906,8 +917,9 @@ bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
     // ctrl::TimeLineEditor::assignSelectionAutoHandles): that key's type and
     // outgoing side plus the next key's incoming side, in ONE undo step. The
     // previous key's param and the key's own incoming side are NOT written - they
-    // shape the segment arriving at the key - and a last key, with no segment
-    // leaving it, is a no-op. The preset is the CLAMPED pair
+    // shape the segment arriving at the key. A LAST key (or the only key) has no
+    // segment leaving it YET, so its OWN pair is written instead - type Custom
+    // and both sides automatic. The preset is the CLAMPED pair
     // (kAutoPresetHandleMode), never the retired Auto type; unclamped Auto is a
     // deliberate per-side pick in the picker's mode combo.
     if (!mEditor)
@@ -1227,7 +1239,34 @@ void TimeLineEditorWidget::onSelectSpacingTriggered() {
     diag->deleteLater();
 }
 
-void TimeLineEditorWidget::onDeleteKeyTriggered(bool) { mEditor->deleteCheckedKeys(mTargets); }
+void TimeLineEditorWidget::onDeleteKeyTriggered(bool) {
+    // THE MENU'S DELETE ACTS ON THE SET, BUT ONLY ON THE PART THE DOCUMENT STILL
+    // HOLDS. A context menu names its keys when it OPENS, and a key can leave the
+    // document while the menu is up (an undo from another view, a paste that
+    // replaced one, the graph's own edit). ctrl::TimeLineEditor::deleteCheckedKeys
+    // builds each remover with aOptional=true, which SKIPS a frame that holds no
+    // key: a stale target therefore made the command do nothing at all while the
+    // menu still closed as if it had acted, and a set that was entirely stale
+    // pushed an EMPTY macro and cleared the selection.
+    //
+    // So the live targets are collected here, and an empty answer writes NOTHING -
+    // not even the empty history entry - which is the same "collect before you
+    // push" rule ctrl::GraphEditor::removeSelectedKey follows.
+    if (!mEditor)
+        return;
+
+    core::TimeLineEvent live;
+    live.setType(mTargets.type());
+    for (const core::TimeLineEvent::Target& target : mTargets.targets()) {
+        if (!target.node || target.pos.isNull() || !target.pos.isExist())
+            continue; // the key is not where the menu said it was any more
+        live.pushTarget(*target.node, target.pos);
+    }
+    if (live.targets().isEmpty())
+        return;
+
+    mEditor->deleteCheckedKeys(live);
+}
 
 QColor TimeLineEditorWidget::headerContentColor() const { return mTimelineTheme.headerContentColor(); }
 
@@ -1279,10 +1318,10 @@ void TimeLineEditorWidget::setTrackSeperatorColor(const QColor& trackSeperatorCo
 //-------------------------------------------------------------------------------------------------
 bool TimeLineEditorWidget::openKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos) {
     // THE KEY MENU'S ENTRY POINT for a caller whose pointer is in its own space:
-    // the animation graph panel hit-tests the key itself (gui::panelKeyAt, in the
-    // panel's pixels) and hands the triple over - it cannot name a pixel in THIS
-    // widget's lane geometry, so ctrl::TimeLineEditor::selectKeysAt's hit test is
-    // not reachable from it. What that hit test's rule decides is therefore decided
+    // the animation graph panel hit-tests the key itself (ctrl::GraphEditor::
+    // contextTargetAt, in the panel's pixels) and hands the triple over - it cannot
+    // name a pixel in THIS widget's lane geometry, so
+    // ctrl::TimeLineEditor::selectKeysAt's hit test is not reachable from it. What that hit test's rule decides is therefore decided
     // here, on the one shared selection, by key identity:
     ctrl::time::Selection& selection = mEditor->selection();
 
@@ -1485,6 +1524,11 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
     };
     mEasingHost->onEasingLiveEnd = [this] {
         endEasingEdit();
+        // A gesture just ended, so a re-read the popup REFUSED while it was dragging
+        // (a graph edit that landed mid-drag) is taken now: the popup shows what the
+        // document holds, which is the drag's own value unless something else (an
+        // undo, another view) won in the meantime.
+        refreshOpenPicker();
     };
     // The popover is gone, so a right-click's temporary selection ends with it:
     // those keys were lent for the open, and the open is over. Clearing the
@@ -1503,11 +1547,12 @@ bool TimeLineEditorWidget::openEasingPicker(const core::TimeLineEvent& aTargets,
     if (aTargets.targets().isEmpty() || !mEasingHost)
         return false; // nothing to change the easing of (or no header hosts a picker)
 
-    // What the picker opens on: the FIRST key the open names, with the Auto
+    // What the picker opens on, read by the SAME function that keeps it in step while
+    // it is open (pickerShownState): the FIRST key the open names, with the Auto
     // context that key's own neighbours give it (prop::autoContextOf - an Auto key
     // stores no control points, so without them the tile would draw a shape no key
-    // plays). A key of a type that carries no easing is skipped; a target list of
-    // only those opens nothing, and nothing is ever written.
+    // plays). A key of a type that carries no easing is skipped; a target list of only
+    // those opens nothing, and nothing is ever written.
     //
     // THE COMPONENT is the one the shared selection NAMES for that key
     // (Selection::componentsOf), not always the key's first: a graph-panel press
@@ -1516,45 +1561,110 @@ bool TimeLineEditorWidget::openEasingPicker(const core::TimeLineEvent& aTargets,
     // ascending, so the first is component 0 as before; where the selection names
     // SEVERAL, pushEasingChipState puts them in the chip's tooltip (see there), so
     // the open never silently claims the shown curve is the only one edited.
-    const auto componentOf = [this](const core::TimeLineEvent::Target& aTarget,
-                                    core::TimeKeyType aType) -> int {
-        if (!mEditor)
-            return 0;
-        const QVector<int> named =
-            mEditor->selection().componentsOf(aTarget, core::easingStorageCount(aType));
-        return named.isEmpty() ? 0 : named.first();
-    };
+    mTargets = aTargets;
 
     util::Easing::Param shown;
     util::Easing::AutoContext autoContext;
-    bool hasShown = false;
-    for (const core::TimeLineEvent::Target& target : aTargets.targets()) {
-        // By value, for the same reason as in assignSelectionEasing: the target list
-        // is const here and TimeKeyPos::key() is not a const member.
-        core::TimeKeyPos pos = target.pos;
-        core::TimeKey* key = pos.key();
-        if (!key)
-            continue;
-        const int component = componentOf(target, pos.type());
-        const util::Easing::Param* easing =
-            ctrl::graph::Curve::easingOf(*key, pos.type(), component);
-        if (easing) {
-            shown = *easing;
-            autoContext = prop::autoContextOf(target, *key, component);
-            hasShown = true;
-            break;
-        }
-    }
-    if (!hasShown)
+    if (!pickerShownState(shown, autoContext))
         return false;
 
-    mTargets = aTargets;
     // The chip names the same keys the popover edits, so the two must agree the
     // moment it opens - the anchor may be a right-click in the animation graph
     // panel, which changed the shared selection and whose repaint of this surface
     // may not have happened yet.
     pushEasingChipState();
     mEasingHost->openPicker(aGlobalAnchor, this, shown, autoContext);
+    return true;
+}
+
+//-------------------------------------------------------------------------------------------------
+bool TimeLineEditorWidget::pickerShownState(
+    util::Easing::Param& aShown, util::Easing::AutoContext& aAutoContext
+) const {
+    if (!mEditor)
+        return false;
+
+    // THE COMPONENT the shared selection NAMES for a key (see openEasingPicker).
+    const auto componentOf = [this](const core::TimeLineEvent::Target& aTarget,
+                                    core::TimeKeyType aType) -> int {
+        const QVector<int> named =
+            mEditor->selection().componentsOf(aTarget, core::easingStorageCount(aType));
+        return named.isEmpty() ? 0 : named.first();
+    };
+
+    // TWO PASSES, one rule. A key the selection STILL NAMES is preferred, so a
+    // selection change among the keys the open edits moves what the popup shows; when
+    // none of them is selected any more (the open's keys are not what the user picked,
+    // or a deletion dropped them from the set) the open's own order still decides. An
+    // entry that no longer resolves is skipped by both passes - the picker never shows
+    // a curve from a key the document has dropped.
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool preferSelected = (pass == 0);
+        for (const core::TimeLineEvent::Target& target : mTargets.targets()) {
+            // By value, for the same reason as in assignSelectionEasing: the target list
+            // is const here and TimeKeyPos::key() is not a const member.
+            core::TimeKeyPos pos = target.pos;
+            core::TimeKey* key = pos.key();
+            if (!key)
+                continue;
+            if (preferSelected && !mEditor->selection().contains(target))
+                continue;
+            const int component = componentOf(target, pos.type());
+            const util::Easing::Param* easing =
+                ctrl::graph::Curve::easingOf(*key, pos.type(), component);
+            if (!easing)
+                continue; // a type that carries no easing
+            aShown = *easing;
+            aAutoContext = prop::autoContextOf(target, *key, component);
+            return true;
+        }
+    }
+    return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+void TimeLineEditorWidget::refreshOpenPicker() {
+    if (!mEasingHost || !mEasingHost->isPickerOpen())
+        return; // no popup on screen: nothing to keep in step
+
+    util::Easing::Param shown;
+    util::Easing::AutoContext autoContext;
+    if (!pickerShownState(shown, autoContext))
+        return; // the open's keys are gone: leave the popup as it is
+
+    // The control forwards it; the PICKER decides whether this is a re-read it may take
+    // (a gesture in progress in the popup wins until it ends).
+    mEasingHost->refreshShown(shown, autoContext);
+}
+
+//-------------------------------------------------------------------------------------------------
+bool TimeLineEditorWidget::openBackgroundMenu(
+    const QPoint& aGlobalPos, const QString& aExtraText, const std::function<void()>& aExtraAction
+) {
+    if (!mEditor)
+        return false;
+
+    // THE PASTE ANCHOR: the pointer's frame, mapped through this surface's camera the
+    // way the timeline's own context menu maps it. Only the ANCHOR is taken from the
+    // point - the items are the SHARED SELECTION's, and no lane hit test runs here (a
+    // caller's pointer is in another view's space; see the header).
+    const QPoint local = this->mapFromGlobal(aGlobalPos);
+    mTargets = core::TimeLineEvent();
+    mEditor->retrieveSelectionTargets(mTargets);
+    mPastePos = mCamera ? mCamera->toWorldPos(QPointF(local)).toPoint() : local;
+
+    QMenu menu(this);
+    buildKeyMenu(menu);
+    if (!aExtraText.isEmpty() && aExtraAction) {
+        menu.addSeparator();
+        QAction* extra = menu.addAction(aExtraText);
+        extra->connect(extra, &QAction::triggered, aExtraAction);
+    }
+    menu.exec(aGlobalPos);
+
+    // The menu blocked, so the selection its items acted on may have changed under this
+    // widget's ink by now.
+    this->update();
     return true;
 }
 

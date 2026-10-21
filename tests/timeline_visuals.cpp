@@ -39,6 +39,12 @@
 //     around the focused key and the identical window around the unfocused key
 //     is clean band. The states are told apart by their centres: the mock's mix
 //     replaces the old .lighter(150) fill outright.
+//     THE RING'S OWN TOKEN IS PINNED TOO: its ink is the channel's raw hue at
+//     ctrl::time::kSelectRingAlpha (217/255) on the 1px band centred at
+//     keyRadius + ctrl::time::kSelectRingOffset, read off the pixel profile
+//     around the marker - the same two cells the graph panel's marker pass reads
+//     (tests/graph_panel_pixels.cpp measures the same ink at the same offset), so
+//     one selection cannot be inked two ways in the two views.
 //   3 THE LABEL INK. A lane's name is drawn in its channel's hue at 0.42, one
 //     step quieter than the keys: the label's ink is closer to the hue's 0.42
 //     composite than to the old neutral text composite, and it is still nearer
@@ -87,6 +93,9 @@
 #include "core/OpaKey.h"
 #include "core/TimeLine.h"
 #include "ctrl/TimeLineEditor.h"
+// The selected key's ring tokens (alpha/offset) - the same cells the graph panel's
+// marker pass reads, which is what this file and graph_panel_pixels.cpp pin together.
+#include "ctrl/time/time_Renderer.h"
 #include "cmnd/Stack.h"
 #include "gui/PillInk.h"
 #include "gui/theme/Colors.h"
@@ -155,6 +164,25 @@ Rgb over(const QColor& aSrc, double aAlpha, const Rgb& aDst) {
         return static_cast<int>(std::lround(aAlpha * aS + (1.0 - aAlpha) * aD));
     };
     return {channel(aSrc.red(), aDst.r), channel(aSrc.green(), aDst.g), channel(aSrc.blue(), aDst.b)};
+}
+
+// The inverse of over(): how much of aInk the pixel carries over aBand, projected
+// on the channel with the widest spread. A 1px stroke sampled inside its band is a
+// PARTIAL-COVERAGE blend, so "is this pixel the token" is a question about that
+// line rather than about one full-coverage sample; the projection recovers the
+// combined fraction (the token's alpha times the AA coverage) whatever it is.
+double inkFraction(const Rgb& aPixel, const Rgb& aInk, const Rgb& aBand) {
+    const int ink[3] = {aInk.r, aInk.g, aInk.b};
+    const int band[3] = {aBand.r, aBand.g, aBand.b};
+    const int pixel[3] = {aPixel.r, aPixel.g, aPixel.b};
+    double num = 0.0;
+    double den = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        const double e = double(ink[i] - band[i]);
+        num += double(pixel[i] - band[i]) * e;
+        den += e * e;
+    }
+    return den > 0.0 ? num / den : 0.0;
 }
 
 // The focused key's fill (the user's ruling for both views): the channel hue
@@ -411,6 +439,43 @@ int main(int argc, char** argv) {
             maxInkIn(image, keyFocusedX - 9, keyFocusedX - 5, keyRowAY, bandA)
         );
         CHECK(ringInk > 40);
+
+        // ...AND THE RING IS THE SHARED TOKEN, at the shared offset: the key's own
+        // channel hue at ctrl::time::kSelectRingAlpha (217/255), on the 1px band
+        // centred at keyRadius + ctrl::time::kSelectRingOffset. These two cells live
+        // in time_Renderer.h because the GRAPH panel's marker pass reads the same
+        // ones - tests/graph_panel_pixels.cpp measures the same ink at the same
+        // offset there - so one selection cannot be inked two ways.
+        //
+        // THE GEOMETRY IS READ AS A PROFILE. The renderer centres the key on a half
+        // pixel, so the pixel column +6 samples 6.0px from the centre and the column
+        // +7 samples 7.0px; the band [radius + offset - 0.5, + 0.5] = [5.85, 6.85]
+        // therefore puts the BODY on +6 (0.65 of the pixel) and its fringe on +7
+        // (0.35), while +5 (5.0px) is still the clear gap past the marker. A ring at
+        // any other offset moves that maximum and fails the profile comparison.
+        const QColor ringToken = theme::channelColor(colors, core::TimeKeyType_Move, 0);
+        const double inkAlpha = double(ctrl::time::kSelectRingAlpha) / 255.0;
+        const double offset = ctrl::time::kSelectRingOffset;
+        CHECK(std::abs(offset - 2.6) < 1e-9); // the token the graph reads is the same 2.6
+        const Rgb fullRing = over(ringToken, inkAlpha, bandA);
+        for (const int sign : { 1, -1 }) {
+            const Rgb body = pixelAt(image, keyFocusedX + sign * 6, keyRowAY);
+            const double fraction = inkFraction(body, fullRing, bandA);
+            CHECK(fraction > 0.3 && fraction <= 1.0);
+            // The sample is exactly the token at that partial coverage - not another
+            // ink, and not the fill's mixed highlight. (The tolerance covers Qt's own
+            // rounding of the blend, which the projection cannot see.)
+            CHECK(chebyshev(body, over(ringToken, inkAlpha * fraction, bandA)) <= 3);
+            CHECK(chebyshev(fullRing, bandA) > 20); // the token is distinguishable from the band
+            // The profile: the body is stronger than the fringe outside it and than
+            // the gap inside it.
+            const int bodyInk = chebyshev(body, bandA);
+            const int fringeInk = chebyshev(pixelAt(image, keyFocusedX + sign * 7, keyRowAY), bandA);
+            const int gapInk = chebyshev(pixelAt(image, keyFocusedX + sign * 5, keyRowAY), bandA);
+            CHECK(bodyInk > 0);
+            CHECK(fringeInk < bodyInk);
+            CHECK(gapInk < bodyInk);
+        }
 
         // The control: the identical window around the UNFOCUSED key (its
         // marker's edge is at +3.75, the window starts at +5) is bare band.

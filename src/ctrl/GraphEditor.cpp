@@ -52,18 +52,16 @@ constexpr double kWheelNotch = 120.0;
 // Curve::buildPolyline's drawing rate, so the fit sees what is drawn.
 constexpr int kFitSamplesPerSegment = 16;
 
-// The marquee's SLOP, in pixels: how far the pointer has to travel from the
-// press before a press on empty plot is a DRAG rather than a click. Inside it -
-// this many pixels or fewer on BOTH axes - the gesture is the click that clears
-// the selection (unless Shift recorded that this press adds, see
-// GraphEditor::endMarquee), and past it on either axis it is the rectangle.
-// The number is the design's own (mock-graph.js: `r.w > 4 || r.h > 4`), and it
-// is where the design draws the line between a click that wobbled and a drag:
-// the grab radius (graph::kKeyHitRadius, 10px) is wider than the slop, so a box
-// inside it cannot cover a key the press did not already hit - the rule is about
-// the GESTURE's meaning, and it holds the click semantics if that radius ever
-// shrinks under it.
-constexpr int kMarqueeSlop = 4;
+// THE MARQUEE'S CLICK SLOP, in pixels - the TIMELINE's own rule, adopted whole:
+// its box is `QRect(anchor, current).normalized()` and its release treats the box
+// as a click only when `box.width() < 2 && box.height() < 2` (ctrl::TimeLineEditor::
+// updateCursor's release branch). QRect's width is INCLUSIVE, so that pair is true
+// for exactly one rectangle: the one whose corners are the same point. A gesture is
+// therefore a marquee the moment the pointer moves at all, and only a press and
+// release on ONE pixel is the click. (This replaces the graph's own 4px slop, the
+// design's `r.w > 4 || r.h > 4`: two views of one selection cannot disagree about
+// whether the user dragged.)
+constexpr int kMarqueeSlop = 0;
 
 double notchZoomFactor(int aWheelDelta) {
     return std::pow(kValueZoomPerNotch, static_cast<double>(aWheelDelta) / kWheelNotch);
@@ -111,12 +109,14 @@ handleNormalized(const ctrl::graph::Scaler& aScale, const ctrl::graph::Curve::Se
 // Aligned, Vector, Auto, AutoClamped) - and the gestures below write ONE side
 // at a time:
 //
-//   * dragging a derived side (Auto/AutoClamped/Vector) writes that side FREE,
-//     because only a stored value can express the drag. The OTHER side keeps
-//     its mode and, if it is Auto, keeps deriving - it reads its own outside
-//     neighbour, never this drag;
-//   * dragging an Aligned side keeps it Aligned and moves the partner
-//     collinearly at the partner's own length (the smooth-node behaviour);
+//   * dragging any side writes that side; whether the OTHER side follows is
+//     decided by ITS stored mode:
+//       - DERIVED (Auto/AutoClamped/Vector): the pair was symmetric by
+//         construction (one slope for both sides), so the partner is mirrored
+//         about the key in angle AND length and becomes Free;
+//       - ALIGNED: the partner stays collinear at its own length (the
+//         smooth-node behaviour) and keeps its mode;
+//       - FREE: the partner is not touched.
 //   * Alt on any step sets the dragged side Free for good and freezes the
 //     partner; Alt+CLICK on a key sets BOTH sides Aligned along the
 //     previous->next anchor chord.
@@ -315,11 +315,15 @@ namespace ctrl {
         mDragItem(-1),
         mDragSegment(-1),
         mDragHandle(-1),
+        mDragPartnerMirrors(false),
         mGesture(aProject.commandStack()),
         mKeyMoveGesture(aProject.commandStack()),
         mMarqueeOrigin(),
         mMarqueeCurrent(),
-        mAddToSelection(false),
+        mMarqueeMode(Marquee_Replace),
+        mPreMarqueeSelection(),
+        mClickCollapseTarget(),
+        mClickCollapseValid(false),
         mPanPointer(),
         mScrollBarAxis(ScrollBar_None),
         mScrollBarPointer(),
@@ -604,9 +608,10 @@ namespace ctrl {
     }
 
     void GraphEditor::fitAll() {
-        // Both axes at once, which is what the panel's double-click does. The
-        // value side is the union of every shown curve; the frame side covers
-        // every shown key.
+        // Both axes at once: what the panel's "Fit graph" context-menu entry runs.
+        // (The plot's double-click used to do this and was removed - it was too
+        // easy to trigger by accident.) The value side is the union of every
+        // shown curve; the frame side covers every shown key.
         const QVector<Entry> entries = buildEntries();
         applyValueFit(entries);
         mValueBasis = basisOf(entries);
@@ -917,38 +922,40 @@ namespace ctrl {
                 setFocusedChannel(*entries[hit.item].node, entries[hit.item].channel);
                 beginDrag(hit, entries);
             } else if (hit.hitCurve && validItem) {
-                // Selecting the key's marker IS the whole update: the graph keeps
-                // its own selection (the two views can show different layers), and
-                // it is held in the timeline's currency so no second type is needed.
-                // The pointer names ONE marker - the component of the curve it is
-                // on - and the modifier chooses between replacing with it (when it
-                // is not already in the selection), extending and toggling it.
+                // THE KEY UNDER THE PRESS, written in the TIMELINE's own currency
+                // and with the timeline's own rules: a press on a marker names the
+                // KEY that owns it, and all three gestures below are the table
+                // ctrl::TimeLineEditor::updateCursor follows for a press on a key.
+                // The panel's finer marker selection is the Ctrl-insert's alone
+                // (selectMarker, see insertKeyAt).
                 const graph::Channel channel = entries[hit.item].channel;
-                if (mModifiers.testFlag(Qt::ShiftModifier)) {
-                    // Shift EXTENDS: a marker that is already covered is left alone
-                    // (extending is not toggling). This is how a key's two markers
-                    // are selected together.
-                    modifyMarkerSelection(*entries[hit.item].node, channel, hit.keyFrame, true);
-                } else if (mModifiers.testFlag(Qt::ControlModifier)) {
-                    // Ctrl TOGGLES: in when the marker is out, out when it is in.
-                    const bool in = markerIndexOf(*entries[hit.item].node, channel, hit.keyFrame) >= 0;
-                    modifyMarkerSelection(*entries[hit.item].node, channel, hit.keyFrame, !in);
-                } else if (!isMarkerSelected(*entries[hit.item].node, channel, hit.keyFrame)) {
-                    // A plain press REPLACES with the one marker under the pointer:
-                    // the key's other component is not selected, and the drawing
-                    // layer gives it the faint ring.
-                    selectMarker(*entries[hit.item].node, channel, hit.keyFrame);
+                const core::TimeLineEvent::Target target =
+                    markerTarget(*entries[hit.item].node, channel, hit.keyFrame);
+                if (!target.pos.isNull()) {
+                    if (mModifiers.testFlag(Qt::ShiftModifier)
+                        || mModifiers.testFlag(Qt::ControlModifier)) {
+                        // SHIFT AND CTRL BOTH TOGGLE the key: in when it is out, out
+                        // when it is in - the timeline treats the two alike, and its
+                        // toggle is a KEY's (the whole-key entry comes back).
+                        mSelection->toggle(target);
+                    } else {
+                        // A PLAIN PRESS: a key the selection already covers is
+                        // GRABBED - the selection is left exactly as it is, so the
+                        // drag armed below carries the whole group - while a key
+                        // that is out is what the press REPLACES the selection
+                        // with. Either way the release of a press that never moved
+                        // collapses to this one key: that is the timeline's
+                        // mPressedTarget pair, and it is what makes the group
+                        // survive a DRAG but not a CLICK.
+                        mClickCollapseTarget = target;
+                        mClickCollapseValid = true;
+                        if (!mSelection->contains(target)) {
+                            core::TimeLineEvent single;
+                            single.pushTarget(*entries[hit.item].node, channel.type(), hit.keyFrame.get());
+                            mSelection->set(single);
+                        }
+                    }
                 }
-                // ...and a press on a marker the selection ALREADY covers leaves the
-                // selection exactly as it is (the test above), which is the design's
-                // rule for a press on something selected: a plain press is how a
-                // multi-marker selection is GRABBED, not how it is collapsed. The
-                // gesture armed below is that selection, so collapsing here would
-                // make a drag move only the marker under the pointer however many
-                // markers the user had selected. (A whole-key entry - what the
-                // timeline's own gestures, a marquee and ctrl+A write - covers every
-                // component of its key, so a press on any of its markers leaves it
-                // alone too: see markerIndexOf.)
                 // The same hit makes this entry the focused channel, which is
                 // what the panel emphasises.
                 setFocusedChannel(*entries[hit.item].node, channel);
@@ -1089,10 +1096,11 @@ namespace ctrl {
                 // collide: a point on a band that carries a key is caught by the
                 // key branch above, where Ctrl means "toggle it in the
                 // selection". insertKeyAt answers whether it inserted, so this
-                // needs no second band test. The rectangle is applied on the
-                // RELEASE, so a press that never moved opens an empty one and
-                // deselects - and one that shook within the slop is the same click
-                // (see endMarquee).
+                // needs no second band test. The marquee clears the selection at
+                // the press (plain), adds or subtracts with a modifier, and applies
+                // its box on every drag step - the timeline's own gesture; only a
+                // press and release on the same pixel is the click (see
+                // endMarquee).
                 if (!(mModifiers.testFlag(Qt::ControlModifier) && insertKeyAt(aCamera, point)))
                     beginMarquee(point);
             }
@@ -1203,13 +1211,50 @@ namespace ctrl {
                 return true;
             }
             if (mMarqueeArmed) {
-                // The last pointer position decides the rectangle, then it is
-                // applied to the selection.
-                updateMarquee(point);
+                // The box was applied on the last drag step; the release only ends
+                // the gesture (and turns a no-travel press into the click it is -
+                // see endMarquee). The release's own position is NOT the box's
+                // last corner, which is the timeline's rule too.
                 endMarquee();
                 return true;
             }
             if (mDragging) {
+                // THE CLICK THAT WAS A KEY: the timeline's own release rule. A
+                // press on a key arms a move; when the move never happened (no
+                // command was pushed) the release collapses the selection to the
+                // key that was pressed - a plain click on an already-selected key
+                // is how a group is reduced to one key. A move that DID happen
+                // leaves the group selected, and the selection follows the keys to
+                // the frames they now hold (Selection::refresh, exactly as the
+                // timeline's own release does).
+                const bool moved = isMovingKeys();
+                if (moved) {
+                    mSelection->refresh();
+                } else if (mClickCollapseValid && !mClickCollapseTarget.pos.isNull()) {
+                    core::TimeLineEvent single;
+                    single.pushTarget(
+                        *mClickCollapseTarget.node, mClickCollapseTarget.pos.type(),
+                        mClickCollapseTarget.pos.index()
+                    );
+                    mSelection->set(single);
+                }
+                mClickCollapseValid = false;
+                endDrag();
+                return true;
+            }
+            if (mClickCollapseValid) {
+                // A key press that armed NO drag at all (Alt+click is the link
+                // action, which moves the key's handles and not the key): its
+                // release is still the CLICK, so the same collapse applies.
+                if (!mClickCollapseTarget.pos.isNull()) {
+                    core::TimeLineEvent single;
+                    single.pushTarget(
+                        *mClickCollapseTarget.node, mClickCollapseTarget.pos.type(),
+                        mClickCollapseTarget.pos.index()
+                    );
+                    mSelection->set(single);
+                }
+                mClickCollapseValid = false;
                 endDrag();
                 return true;
             }
@@ -1447,17 +1492,36 @@ namespace ctrl {
         mKeyMoveArmed = false;
         mMarqueeOrigin = aPos;
         mMarqueeCurrent = aPos;
-        // The Shift state is recorded AT THE PRESS: whether the marquee adds to
-        // the selection or replaces it is decided by the gesture the user began,
-        // not by what a modifier happens to be doing at the release.
-        mAddToSelection = mModifiers.testFlag(Qt::ShiftModifier);
+        // THE MODE IS THE PRESS'S, recorded here and never re-read from the
+        // modifiers: plain replaces, Shift adds, Ctrl subtracts - ctrl::
+        // TimeLineEditor::updateCursor's own assignment, in its own order (Ctrl
+        // wins when both are held). The selection those two modifier modes work
+        // from is the one the press found:
+        //   * REPLACE clears it NOW (the timeline does - the click that never
+        //     drags has already deselected by the time the button comes up);
+        //   * ADD and SUBTRACT snapshot it, because add re-applies the snapshot
+        //     to the box on every step.
+        mMarqueeMode = mModifiers.testFlag(Qt::ControlModifier)
+            ? Marquee_Subtract
+            : (mModifiers.testFlag(Qt::ShiftModifier) ? Marquee_Add
+                                                      : Marquee_Replace);
+        mPreMarqueeSelection = core::TimeLineEvent();
+        if (mMarqueeMode == Marquee_Replace) {
+            clearSelection();
+        } else {
+            mSelection->assign(mPreMarqueeSelection);
+        }
         mDragKey = nullptr;
         mDragItem = -1;
         mDragSegment = -1;
         mDragHandle = -1;
+        mDragPartnerMirrors = false;
     }
 
-    void GraphEditor::updateMarquee(const QPoint& aPos) { mMarqueeCurrent = aPos; }
+    void GraphEditor::updateMarquee(const QPoint& aPos) {
+        mMarqueeCurrent = aPos;
+        applyMarquee();
+    }
 
     QRect GraphEditor::marqueeRect() const {
         // Empty while no marquee drag is in flight, and empty for a press that
@@ -1474,64 +1538,76 @@ namespace ctrl {
         return QRect(mMarqueeOrigin, mMarqueeCurrent).normalized().intersected(mScale.plotRect());
     }
 
-    void GraphEditor::endMarquee() {
-        // The rectangle is read BEFORE the flags are cleared, since marqueeRect()
-        // is what says whether a drag happened at all - and so is the pointer's
-        // own TRAVEL, which is what decides whether this gesture was a drag in
-        // the first place: a press on empty plot and a release within
-        // kMarqueeSlop of it is the "clear the selection" click, not a marquee
-        // over whatever the pointer twitched across (see kMarqueeSlop). The
-        // travel is measured corner to corner rather than read off the rectangle
-        // because the rectangle is CROPPED to the plot: a drag that walked out of
-        // the plot sideways would shrink the box under the slop and read as a
-        // click, while the hand that dragged it clearly dragged.
-        const QRect box = marqueeRect();
-        const QPoint travel(qAbs(mMarqueeCurrent.x() - mMarqueeOrigin.x()),
-            qAbs(mMarqueeCurrent.y() - mMarqueeOrigin.y()));
-        mMarqueeArmed = false;
-        mDragging = false;
-        mMarqueeOrigin = QPoint();
-        mMarqueeCurrent = QPoint();
-
-        if (!mAddToSelection) {
-            clearSelection();
-        }
-        if (travel.x() <= kMarqueeSlop && travel.y() <= kMarqueeSlop) {
-            return; // a click that never dragged deselects and selects nothing
-        }
-
+    core::TimeLineEvent GraphEditor::marqueeTargets() const {
         // Every key whose DRAWN square's centre falls inside the box, through the
         // same graph::keyRect the hit-test and the drawing layer read, so the key
-        // a user sees inside the rectangle is the key that is selected - and the
-        // gesture selects EVERY MARKER of each of those keys, which is what one
-        // whole-key entry means (time::Selection::kKeyLevel): the box is a bulk
-        // gesture, so it takes the whole key rather than one component of it.
-        // Collected into ONE event: the same key met twice (two of its channels both
-        // drawn) is one target list entry per key because add() is a union and this
-        // event is the set's own currency, so the set's rule is not repeated here.
-        const graph::Scaler& scale = mScale;
+        // a user sees inside the rectangle is the key that is selected - written
+        // as ONE WHOLE-KEY entry per key, which is what the timeline's own box
+        // gathers too (time_Marquee.cpp walks its rows' lane maps) and what makes
+        // the two views agree key for key.
+        const QRect box = marqueeRect();
         core::TimeLineEvent hits;
+        if (box.isEmpty()) {
+            return hits;
+        }
         for (const Entry& entry : buildEntries()) {
             for (const core::TimeKey* key : entry.curve.keys()) {
                 const core::Frame frame(key->frame());
-                const QRect rect = graph::keyRect(scale, frame, entry.curve.valueOf(*key));
+                const QRect rect = graph::keyRect(mScale, frame, entry.curve.valueOf(*key));
                 if (box.contains(rect.center())) {
                     hits.pushTarget(*entry.node, entry.channel.type(), frame.get());
                 }
             }
         }
+        return hits;
+    }
 
-        if (mAddToSelection) {
-            // SHIFT ADDS to the selection, and a key that was selected in ONE of its
-            // components joins WHOLE: the box names every marker of every key it
-            // encloses, so a partial entry for an enclosed key is taken out and the
-            // whole-key entry put in its place - otherwise the flood the box promises
-            // would silently stop at the component the user had clicked before.
-            // Keys the box encloses that were not selected are untouched by the
-            // subtraction (nothing covers them yet).
-            mSelection->subtract(hits);
+    void GraphEditor::applyMarquee() {
+        // The box is committed on EVERY drag step, so the highlights stay live
+        // while the user drags and the rectangle itself stays transient - the
+        // timeline's own applyMarquee, with the same three modes:
+        //   * REPLACE: the selection IS the box;
+        //   * ADD: the snapshot taken at the press plus the box (rebuilt from the
+        //     snapshot each step, so a box that shrinks gives a key back);
+        //   * SUBTRACT: the box is taken out of the live selection as it grows -
+        //     the timeline's subtract is the set's own and is not recomputed from
+        //     the snapshot.
+        if (!mMarqueeArmed) {
+            return;
         }
-        mSelection->add(hits);
+        const core::TimeLineEvent hits = marqueeTargets();
+        if (mMarqueeMode == Marquee_Add) {
+            core::TimeLineEvent merged = mPreMarqueeSelection;
+            for (const core::TimeLineEvent::Target& target : hits.targets()) {
+                merged.pushTarget(*target.node, target.pos);
+            }
+            mSelection->set(merged);
+        } else if (mMarqueeMode == Marquee_Subtract) {
+            mSelection->subtract(hits);
+        } else {
+            mSelection->set(hits);
+        }
+    }
+
+    void GraphEditor::endMarquee() {
+        // The box stops here; it was already applied on the last drag step (the
+        // release's own position is NOT part of the gesture - the timeline's
+        // release does not move its box either). What the release still decides
+        // is the spec's one click rule: a box with no travel at all is the CLICK,
+        // and a Ctrl-click on empty plot is DESELECT ALL (the timeline clears its
+        // selection there, with a plain click having already cleared at the
+        // press and Shift keeping what it found - see kMarqueeSlop).
+        const bool degenerate = qAbs(mMarqueeCurrent.x() - mMarqueeOrigin.x()) <= kMarqueeSlop
+            && qAbs(mMarqueeCurrent.y() - mMarqueeOrigin.y()) <= kMarqueeSlop;
+        if (degenerate && mMarqueeMode == Marquee_Subtract) {
+            clearSelection();
+        }
+        mMarqueeArmed = false;
+        mDragging = false;
+        mMarqueeOrigin = QPoint();
+        mMarqueeCurrent = QPoint();
+        mMarqueeMode = Marquee_Replace;
+        mPreMarqueeSelection = core::TimeLineEvent();
     }
 
     //-------------------------------------------------------------------------------------------------
@@ -1544,6 +1620,7 @@ namespace ctrl {
         mDragItem = -1;
         mDragSegment = -1;
         mDragHandle = -1;
+        mDragPartnerMirrors = false;
         // A pan is incremental from wherever the pointer is, so there is no
         // press-time origin to keep - only the last position.
         mPanPointer = aPos;
@@ -1994,7 +2071,8 @@ namespace ctrl {
         // The inserted key is the panel's current key now: the press landed on its
         // curve, so it also focuses that channel, exactly as a press on a key
         // does. The selection is the MARKER the insert wrote - the pressed curve's
-        // component - which is the marker a press on the key would have selected.
+        // component - which is this editor's ONE marker-level write (a press on a
+        // key writes the whole key, as the timeline's own press does).
         // Neither the focus nor the selection moves a WINDOW (see DELIBERATE FIT in
         // the header), so an insert press cannot move the band under its own
         // release either.
@@ -2140,10 +2218,39 @@ namespace ctrl {
         // belong to different keys: handle 0 is the `from` key's OUTGOING
         // tangent and handle 1 the `to` key's INCOMING one. updateDrag keeps the
         // OTHER SIDE of the key the grabbed dot belongs to (it lives in the
-        // neighbouring segment): an ALIGNED side's partner stays collinear at
-        // its own length, a FREE or DERIVED side's partner is untouched, and
-        // Alt frees the grabbed side. The anchor recorded here is the SEGMENT's
-        // `from` key, not the key the grabbed dot belongs to.
+        // neighbouring segment): a DERIVED partner is mirrored about the key and
+        // freed (the pair was symmetric by construction), an ALIGNED partner
+        // stays collinear at its own length, a FREE partner is untouched, and
+        // Alt leaves the partner alone. The anchor recorded here is the
+        // SEGMENT's `from` key, not the key the grabbed dot belongs to.
+        //
+        // WHETHER THIS GESTURE MIRRORS is decided HERE, from the partner's
+        // stored mode, and kept for the whole gesture (mDragPartnerMirrors): the
+        // first move frees the partner, so a per-step read would stop mirroring
+        // it on the second move. Alt at the press arms no mirror at all, and an
+        // Alt step later clears the flag (see updateDrag).
+        mDragPartnerMirrors = false;
+        const bool grabbedSecond = (aHit.handle == 1);
+        const int partnerSegment = grabbedSecond ? aHit.segment + 1 : aHit.segment - 1;
+        if (!mModifiers.testFlag(Qt::AltModifier)
+            && 0 <= partnerSegment && partnerSegment < entry.curve.segmentCount()) {
+            // The partner's mode is stored on the key that OWNS this handle: the
+            // segment's `from` key for handle 0, its `to` key for handle 1.
+            core::TimeLine* line = entry.line ? entry.line->timeLine() : nullptr;
+            core::TimeKey* ownerKey =
+                line ? line->timeKey(entry.channel.type(), (grabbedSecond ? segment.to : segment.from)->frame())
+                     : nullptr;
+            util::Easing::Param* ownerParam =
+                ownerKey
+                ? graph::Curve::easingOf(*ownerKey, entry.channel.type(), entry.channel.component())
+                : nullptr;
+            if (ownerParam) {
+                mDragPartnerMirrors = util::Easing::isDerived(
+                    grabbedSecond ? ownerParam->handleOut : ownerParam->handleIn
+                );
+            }
+        }
+
         mDragging = true;
         mKeyMoveArmed = false; // this is a handle drag: the kinds never coexist
         mMarqueeArmed = false;
@@ -2189,6 +2296,7 @@ namespace ctrl {
         mDragKey = nullptr; // no handle: this drag moves the key, not its easing
         mDragSegment = -1;
         mDragHandle = -1;
+        mDragPartnerMirrors = false;
         mMoveLine = entry.line;
         mMoveNode = entry.node;
         mMoveType = entry.channel.type();
@@ -2515,19 +2623,24 @@ namespace ctrl {
         //   handle 1 (incoming, belongs to `to`): the key's outgoing handle is
         //     segment i+1's (x1,y1), stored in THAT segment's `from` param.
         //
-        // WHAT THE DRAG DOES TO THE OTHER SIDE follows the MODE THIS SIDE HAD,
-        // read live from the owner's param on every step:
+        // WHAT THE DRAG DOES TO THE OTHER SIDE follows the PARTNER's stored
+        // mode, read from the owner's param when the press armed the drag:
         //
-        //   * Aligned, no Alt: the partner keeps its OWN LENGTH and stays
+        //   * DERIVED (Auto/AutoClamped/Vector): the pair was symmetric by
+        //     construction - one slope for both sides - so the partner MIRRORS
+        //     the dragged handle about the key, in angle AND length, and becomes
+        //     Free. Freeing it is part of the same step: a derived side would
+        //     ignore the stored position, and the pair would stop being
+        //     symmetric the moment one side stopped deriving.
+        //   * ALIGNED, no Alt: the partner keeps its OWN LENGTH and stays
         //     collinear with the dragged one - the angle is linked, the length
         //     is independent. It is deliberately NOT a reflection: a reflection
         //     forces the two lengths equal, which is not what a smooth node
         //     means. The partner's own mode is untouched.
-        //   * Free, derived (Auto/AutoClamped/Vector), or Alt held: the partner
-        //     is NOT touched at all. A derived partner keeps DERIVING - Auto and
-        //     AutoClamped from the key's two neighbours (the reference's central
-        //     difference) - which is the whole point of the per-side model, and
-        //     the defect the retired whole-key Auto type had.
+        //   * FREE, or Alt held: the partner is NOT touched at all. Alt clears
+        //     the gesture's mirror flag, so a step that sees it freezes the
+        //     partner for the REST of the gesture too (releasing Alt does not
+        //     re-link it).
         //
         // THE DRAGGED SIDE ITSELF: a derived side cannot express a stored drag,
         // so it becomes Free (the stored value just written is the new truth). A
@@ -2596,10 +2709,20 @@ namespace ctrl {
             draggedIsSecond ? (ownerEasing ? ownerEasing->handleOut : util::Easing::HandleMode_Free)
                             : easing->handleIn;
         const bool altHeld = mModifiers.testFlag(Qt::AltModifier);
-        // The partner is carried only by an Aligned side, and only when it has a
-        // stored partner to carry (a derived partner ignores a stored write).
-        const bool carried = !altHeld && liveDraggedMode == util::Easing::HandleMode_Aligned
-            && hasPartnerSegment && !util::Easing::isDerived(livePartnerMode);
+        // Alt freezes the partner for the REST of the gesture: drop the press-time
+        // mirror decision too, so a later step without Alt cannot re-link it.
+        if (altHeld)
+            mDragPartnerMirrors = false;
+        // The DERIVED-pair mirror is the gesture's press-time decision: the first
+        // step frees the partner, so reading its live mode from then on would
+        // stop the mirroring after one move.
+        const bool mirrorDerived = !altHeld && mDragPartnerMirrors && hasPartnerSegment;
+        // An ALIGNED partner is carried collinearly at its own length - today's
+        // behaviour - and only while the dragged side is Aligned (a Free or
+        // derived dragged side has no line to keep it on).
+        const bool carried = !altHeld && !mirrorDerived
+            && liveDraggedMode == util::Easing::HandleMode_Aligned
+            && livePartnerMode == util::Easing::HandleMode_Aligned && hasPartnerSegment;
 
         // The command's mirror half: for handle 1 it is the TO key's param (the
         // one that carries the incoming mode) - the next segment's from param
@@ -2657,6 +2780,35 @@ namespace ctrl {
                         mScale, neighbour, *mirrorEasing, neighbourPair, neighbourHandle,
                         otherPixel, mirrorNext
                     );
+                }
+            }
+        } else if (mirrorDerived && mirrorEasing) {
+            const graph::Curve::Segment neighbour = entry.curve.segment(neighbourIndex);
+            QPointF neighbourPair[2];
+            if (effectiveHandles(entry.curve, neighbour, neighbourPair)) {
+                const QPointF draggedPixel = graph::handlePointAt(mScale, segment, placed);
+                const QPointF draggedVector(
+                    draggedPixel.x() - keyPixel.x(), draggedPixel.y() - keyPixel.y()
+                );
+                // The DERIVED pair was symmetric by construction (one slope for
+                // both sides), so the partner is the REFLECTION about the key -
+                // angle AND length of the placed dragged handle. That is what
+                // makes the visible pair symmetric until the user breaks it.
+                const QPointF otherPixel(
+                    keyPixel.x() - draggedVector.x(), keyPixel.y() - draggedVector.y()
+                );
+                mirrorWritten = alignedHandleParam(
+                    mScale, neighbour, *mirrorEasing, neighbourPair, neighbourHandle,
+                    otherPixel, mirrorNext
+                );
+                // The partner now has a stored position, so it must READ it:
+                // Free. The mode lives on the key that owns the handle - the
+                // main param (this segment's `from`) for handle 0, the TO key's
+                // own param (the mirror half) for handle 1.
+                if (draggedIsSecond) {
+                    mirrorNext.handleOut = util::Easing::HandleMode_Free;
+                } else {
+                    next.handleIn = util::Easing::HandleMode_Free;
                 }
             }
         }
@@ -2741,6 +2893,7 @@ namespace ctrl {
         mDragItem = -1;
         mDragSegment = -1;
         mDragHandle = -1;
+        mDragPartnerMirrors = false;
         // The scroll bar's drag closes with the others. It holds no command (a scroll
         // bar moves a WINDOW, and the window is not the document), so there is
         // nothing to finalise - dropping the axis is the whole of it, and the window
@@ -2751,10 +2904,18 @@ namespace ctrl {
 
         // The marquee's box goes with it: a gesture that ends without applying it
         // (a hide, or a press that closed it) must not leave a rectangle behind
-        // for the drawing layer to find.
+        // for the drawing layer to find - nor a mode/snapshot for the next press
+        // to inherit.
         mMarqueeOrigin = QPoint();
         mMarqueeCurrent = QPoint();
-        mAddToSelection = false;
+        mMarqueeMode = Marquee_Replace;
+        mPreMarqueeSelection = core::TimeLineEvent();
+
+        // The click a key press armed is part of the same gesture: a press that
+        // ended anywhere but its own release (a hide, another press) must not
+        // collapse the selection on some later release.
+        mClickCollapseTarget = core::TimeLineEvent::Target();
+        mClickCollapseValid = false;
 
         // The key move's command stays on the stack (it IS the gesture's one undo
         // step, whatever it was last asked to do); this drops the gesture's handle
@@ -2857,9 +3018,10 @@ namespace ctrl {
     }
 
     bool GraphEditor::selectMarker(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame) {
-        // One MARKER: the key the triple names, at the component aChannel is - the
-        // press's own gesture, so the key's OTHER components are left out of the
-        // selection (the drawing layer gives them the faint ring).
+        // One MARKER: the key the triple names, at the component aChannel is. The
+        // Ctrl-insert is the caller (insertKeyAt), so the key's OTHER components are
+        // left out of the selection (the drawing layer gives them the faint ring);
+        // the pointer's key gestures write the whole key, as the timeline's do.
         const core::TimeLineEvent::Target target = markerTarget(aNode, aChannel, aFrame);
         if (target.pos.isNull())
             return false;
@@ -2992,9 +3154,12 @@ namespace ctrl {
         // type and OUTGOING side (the curve and start tangent of the segment
         // leaving it) plus the next key's INCOMING side (that segment's end
         // tangent). The previous key is never written, and neither is this key's
-        // incoming side - they shape the segment ARRIVING here. A last key has no
-        // segment leaving it and writes nothing. The preset is still the CLAMPED
-        // pair (kAutoPresetHandleMode), never the retired Type_Auto.
+        // incoming side - they shape the segment ARRIVING here. A LAST key (or
+        // the only key) has no segment leaving it YET, so its own pair is
+        // written instead: both sides automatic and the type Custom, so the
+        // segments that appear when a neighbour is added derive on both sides.
+        // The preset is still the CLAMPED pair (kAutoPresetHandleMode), never
+        // the retired Type_Auto.
         QVector<TimeLineEditor::EasingWrite> writes;
         for (const time::Selection::Item& item : mSelection->items()) {
             core::TimeLineEvent::Target target = item.target;
@@ -3154,6 +3319,160 @@ namespace ctrl {
         // timeline editor's own pre-project default (ctrl::TimeLineEditor's mFps),
         // so an empty editor formats exactly as an empty timeline does.
         return mProject ? mProject->attribute().fps() : 60;
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    GraphEditor::ContextTarget GraphEditor::contextTargetAt(
+        const core::CameraInfo& aCamera, const QPoint& aPos
+    ) const {
+        // THE PRESS'S OWN RULE, on a panel rect pinned to the caller's camera: a
+        // public entry point cannot assume a cursor pass has written mScale (the
+        // same reason insertKeyAt pins a local copy), so the geometry the
+        // right-click is measured against is the geometry of the panel the caller
+        // is looking at.
+        graph::Scaler scale = mScale;
+        scale.setRect(currentPanelRect(aCamera));
+
+        const QVector<Entry> entries = buildEntries();
+        const Hit hit = hitTest(entries, scale, aPos);
+
+        ContextTarget target;
+        if (hit.item < 0 || hit.item >= entries.size())
+            return target; // not a key, not a handle: the background
+
+        const Entry& entry = entries[hit.item];
+        target.node = entry.node;
+        target.channel = entry.channel;
+
+        if (hit.hitHandle) {
+            if (hit.segment < 0 || hit.segment >= entry.curve.segmentCount())
+                return ContextTarget(); // a hit-test answer this document no longer holds
+            const graph::Curve::Segment segment = entry.curve.segment(hit.segment);
+            if (!segment.from || !segment.to)
+                return ContextTarget();
+
+            target.kind = ContextTarget::Kind_Handle;
+            target.segment = hit.segment;
+            target.handle = hit.handle;
+            // THE KEY THAT OWNS THE SIDE: handle 0 leaves the segment's `from` key
+            // (its handleOut), handle 1 arrives at its `to` key (its handleIn).
+            // The mode is read from the same owner, which is also where the mode
+            // combo in the picker reads it.
+            target.frame = core::Frame(hit.handle == 1 ? segment.to->frame() : segment.from->frame());
+            target.mode = (hit.handle == 1) ? segment.inMode : segment.easing.handleOut;
+            return target;
+        }
+
+        if (hit.hitCurve) {
+            target.kind = ContextTarget::Kind_Key;
+            target.frame = hit.keyFrame;
+            return target;
+        }
+
+        return ContextTarget();
+    }
+
+    //-------------------------------------------------------------------------------------------------
+    bool GraphEditor::setHandleMode(const ContextTarget& aTarget, const util::Easing::HandleMode aMode) {
+        if (!mProject || aTarget.kind != ContextTarget::Kind_Handle || !aTarget.node)
+            return false;
+
+        core::TimeLine* line = aTarget.node->timeLine();
+        if (!line)
+            return false; // a folder, or a node kind that holds no keys
+
+        const graph::Curve curve = curveFor(*line, aTarget.channel);
+        if (aTarget.segment < 0 || aTarget.segment >= curve.segmentCount())
+            return false; // the segment the menu was opened on is gone
+
+        const graph::Curve::Segment segment = curve.segment(aTarget.segment);
+        if (!segment.from || !segment.to)
+            return false;
+
+        // A SEGMENT'S CURVE IS ITS FROM KEY'S PARAM, so only a Custom one has
+        // tangents at all - and the panel publishes (and the hit-test grabs) a
+        // handle only for such a segment. An analytic one answers false rather
+        // than writing a mode nothing would read.
+        if (segment.easing.type != util::Easing::Type_Custom)
+            return false;
+
+        QPointF effective[2];
+        if (!curve.effectiveHandles(segment, effective))
+            return false;
+
+        // The MUTABLE keys of the segment: Curve hands out const ones (it only
+        // reads the document), while this action writes through the map the
+        // timeline owns - the same (type, frame) lookup the drag uses.
+        core::TimeKey* fromKey = line->timeKey(aTarget.channel.type(), segment.from->frame());
+        core::TimeKey* toKey = line->timeKey(aTarget.channel.type(), segment.to->frame());
+        if (!fromKey || !toKey)
+            return false; // the segment moved under the menu
+
+        util::Easing::Param* fromParam =
+            graph::Curve::easingOf(*fromKey, aTarget.channel.type(), aTarget.channel.component());
+        if (!fromParam)
+            return false; // the type carries no easing: nothing the graph could be editing
+
+        const bool incoming = (aTarget.handle == 1);
+        core::TimeKey* ownerKey = incoming ? toKey : fromKey;
+        util::Easing::Param* ownerParam = incoming
+            ? graph::Curve::easingOf(*toKey, aTarget.channel.type(), aTarget.channel.component())
+            : fromParam;
+        if (!ownerParam)
+            return false;
+
+        const util::Easing::HandleMode current =
+            incoming ? ownerParam->handleIn : ownerParam->handleOut;
+
+        // THE WRITES, merged per param: the mode lives on the OWNER's param, while
+        // the INCOMING side's stored control point lives in the FROM param (the
+        // segment's easing) - so one edit can name the same param twice, and an
+        // entry that is already there must be updated rather than appended twice.
+        QVector<TimeLineEditor::EasingWrite> writes;
+        const auto writeFor = [&writes, &aTarget](
+                                  core::TimeKey& aKey, util::Easing::Param* aParam) -> util::Easing::Param* {
+            for (TimeLineEditor::EasingWrite& existing : writes) {
+                if (existing.param == aParam)
+                    return &existing.next;
+            }
+            TimeLineEditor::EasingWrite entry;
+            entry.param = aParam;
+            entry.next = *aParam;
+            entry.node = aTarget.node;
+            entry.type = aTarget.channel.type();
+            entry.frame = core::Frame(aKey.frame());
+            writes.append(entry);
+            return &writes.last().next;
+        };
+
+        if (util::Easing::isDerived(current) && !util::Easing::isDerived(aMode)) {
+            // THE SIDE STARTS READING ITS STORED POINT, so that point must be the
+            // one it is SHOWN at: the derived pair the panel drew. x1/y1 is the
+            // FROM key's outgoing side, x2/y2 its incoming one - both stored in
+            // the FROM param, whatever key owns the mode.
+            util::Easing::Param* stored = writeFor(*fromKey, fromParam);
+            if (incoming) {
+                stored->cubicBezier.x2 = float(effective[1].x());
+                stored->cubicBezier.y2 = float(effective[1].y());
+            } else {
+                stored->cubicBezier.x1 = float(effective[0].x());
+                stored->cubicBezier.y1 = float(effective[0].y());
+            }
+        }
+
+        // THE MODE ITSELF, on the key that owns the side.
+        util::Easing::Param* owner = writeFor(*ownerKey, ownerParam);
+        if (incoming)
+            owner->handleIn = aMode;
+        else
+            owner->handleOut = aMode;
+
+        // The name says WHICH SIDE, because that is the question the user asked
+        // the menu - "Free" alone could be either tangent of the key.
+        const QString side = incoming ? CmndName::tr("incoming") : CmndName::tr("outgoing");
+        const QString name = CmndName::tr("Change the %1 handle to %2")
+                                 .arg(side, util::Easing::getHandleModeName(aMode));
+        return TimeLineEditor::pushEasingWrites(*mProject, writes, name);
     }
 
 } // namespace ctrl

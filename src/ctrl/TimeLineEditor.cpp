@@ -1139,8 +1139,11 @@ bool TimeLineEditor::assignSelectionAutoHandles() {
     // The Auto preset writes the SEGMENT LEAVING each selected key (see the
     // header): that segment's curve is the key's own param and its two tangents
     // are the key's OUTGOING side and the NEXT key's INCOMING side. Nothing
-    // before the key is written. appendAutoPresetWrites merges a param named
-    // twice, so a multi-key selection writes each param once.
+    // before the key is written. A key with NO next key has no leaving segment
+    // yet, so the preset writes that key's OWN pair instead - both sides plus
+    // the type - which is what makes it automatic as soon as a neighbour is
+    // added. appendAutoPresetWrites merges a param named twice, so a multi-key
+    // selection writes each param once.
     QVector<EasingWrite> writes;
     for (const time::Selection::Item& item : mSelection.items()) {
         core::TimeLineEvent::Target target = item.target;
@@ -1229,11 +1232,17 @@ void TimeLineEditor::appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectN
         aOut.append(entry);
     };
 
-    // A LAST key has no segment leaving it, so the action has nothing to shape:
-    // it is a NO-OP - not even the type is written, because that, with no next
-    // key, would preconfigure a segment that does not exist.
-    if (!next)
+    // A LAST key (including the ONLY key) has no segment leaving it YET, so the
+    // preset shapes the key's OWN pair instead: BOTH of its sides become
+    // automatic, and its type becomes Custom so either side is consulted when a
+    // segment appears beside it. The pair is then symmetric by construction -
+    // one slope for both sides - which is what the user asked Auto for even
+    // before they add the neighbour that will use it. No other param is named:
+    // there is no next incoming side to write.
+    if (!next) {
+        write(self.value(), true, true, true);
         return;
+    }
 
     // this -> next: the segment's curve IS this key's param, so its TYPE is
     // forced Custom and its OUTGOING side becomes the automatic start tangent.

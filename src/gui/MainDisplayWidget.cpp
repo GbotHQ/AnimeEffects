@@ -1,7 +1,6 @@
 #include <functional>
-#include <QContextMenuEvent>
-#include <QCoreApplication>
 #include <QInputMethodEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QOpenGLFunctions>
@@ -356,33 +355,73 @@ bool MainDisplayWidget::showGraphKeyMenu(const core::TimeLineEvent::Target& aPre
     return mTimeLine->openKeyMenu(aPressedKey, aGlobalPos);
 }
 
+bool MainDisplayWidget::showGraphHandleMenu(
+    const ctrl::GraphEditor::ContextTarget& aTarget, const QPoint& aGlobalPos
+) {
+    ctrl::GraphEditor* editor = graphEditorOrNull(mDriver);
+    if (!editor || aTarget.kind != ctrl::GraphEditor::ContextTarget::Kind_Handle)
+        return false; // no panel, or the point names no handle: no handle menu
+
+    // THE HANDLE'S OWN MENU, and it says WHICH SIDE it is about: a key owns two
+    // tangents, and "Free" alone would not tell the user (or the undo history)
+    // which one the entry changes. The section header names the owner side; the
+    // entries are the five modes, with the one the side reads now checked.
+    QMenu menu(this);
+    menu.addSection(
+        aTarget.handle == 1 ? tr("Incoming handle") : tr("Outgoing handle")
+    );
+
+    for (int i = util::Easing::HandleMode_Free; i < util::Easing::HandleMode_TERM; ++i) {
+        const auto mode = static_cast<util::Easing::HandleMode>(i);
+        QAction* action = menu.addAction(util::Easing::getHandleModeName(mode));
+        action->setCheckable(true);
+        action->setChecked(aTarget.mode == mode);
+        // The editor applies ONE side of ONE segment as ONE undo step, named for
+        // the side and the mode (ctrl::GraphEditor::setHandleMode). The document
+        // notification is what repaints the panel and the timeline; repainting
+        // here too is what makes the change visible the moment the menu closes
+        // when the page had no other reason to redraw.
+        action->connect(action, &QAction::triggered, this, [this, editor, aTarget, mode]() {
+            editor->setHandleMode(aTarget, mode);
+            this->updateRender();
+            this->refreshGraphPanel();
+        });
+    }
+
+    menu.exec(aGlobalPos);
+    return true;
+}
+
 bool MainDisplayWidget::showGraphBackgroundMenu(const QPoint& aGlobalPos) {
     if (!mTimeLine)
         return false; // no timeline: its menu is the one there is
 
     // THE TIMELINE'S OWN SURFACE, found through the widget MainWindow wired in (the
     // inner editor is that widget's only TimeLineEditorWidget). It is hidden while the
-    // dock's Graph tab is current, which is exactly when this route is used: the
-    // context-menu handler reads the editor and the shared selection, not the visible
-    // pixels, so a hidden page builds the same menu.
+    // dock's Graph tab is current, which is exactly when this route is used: the menu
+    // reads the editor and the shared selection, not the visible pixels.
     auto* surface = mTimeLine->findChild<TimeLineEditorWidget*>();
     if (!surface)
         return false;
 
-    // THE SAME REQUEST a right-click in the timeline produces: QWidget's
-    // customContextMenuRequested path (the policy is CustomContextMenu there), which
-    // calls TimeLineEditorWidget::onContextMenuRequested. That handler is the one that
-    // reads the selection at the click, anchors paste and builds the menu through
-    // buildKeyMenu - so there is no second menu and no second selection rule here.
+    // THE SAME ITEMS a right-click on empty timeline space offers (buildKeyMenu over
+    // the shared selection), opened at the pointer, plus the graph's own "Fit graph".
+    // The surface does NOT hit-test the timeline's lanes with this widget's pixels:
+    // the panel and the timeline are two different geometries, and reading one as the
+    // other named a key of whatever row those pixels happened to land in - the reason
+    // a menu's actions could edit a key the user was not looking at.
     //
-    // THE ANCHOR: the handler opens at mapToGlobal(its aPos), so handing it
-    // mapFromGlobal(aGlobalPos) makes that round trip return the pointer's own screen
-    // point. The graph page and the timeline page are pages of the same dock stack, so
-    // the mapped point also names the frame under the pointer.
-    const QPoint local = surface->mapFromGlobal(aGlobalPos);
-    QContextMenuEvent request(QContextMenuEvent::Mouse, local, aGlobalPos);
-    QCoreApplication::sendEvent(surface, &request);
-    return true;
+    // "Fit graph" is the panel's explicit fit (ctrl::GraphEditor::fitAll), the action
+    // the plot's double-click used to run and now the ONLY place the panel offers it.
+    return surface->openBackgroundMenu(
+        aGlobalPos, tr("Fit graph"), [this]() {
+            if (ctrl::GraphEditor* editor = graphEditorOrNull(mDriver)) {
+                editor->fitAll();
+                this->updateRender();
+                this->refreshGraphPanel();
+            }
+        }
+    );
 }
 
 void MainDisplayWidget::showGraphChannelMenu(const QVector<PanelChannelRow>& aRows, const QPoint& aWidgetPos) {

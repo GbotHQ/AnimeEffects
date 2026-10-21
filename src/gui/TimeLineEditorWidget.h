@@ -110,10 +110,11 @@ public:
     // key; any other pressed key is lent a temporary selection for the menu's
     // lifetime, which is dropped when the menu closes (the previous selection is NOT
     // restored). This is the entry point for callers whose pointer is in THEIR own
-    // space - the animation graph panel resolves the key with its own hit test,
-    // gui::panelKeyAt - so the rule is applied here, on the shared selection, by key
-    // identity: ctrl::TimeLineEditor::selectKeysAt resolves a click in the timeline's
-    // own pixels and cannot be reached from another view's geometry.
+    // space - the animation graph panel resolves the key with its OWN pick
+    // (ctrl::GraphEditor::contextTargetAt, the press rule in panel pixels) - so the
+    // rule is applied here, on the shared selection, by key identity:
+    // ctrl::TimeLineEditor::selectKeysAt resolves a click in the timeline's own
+    // pixels and cannot be reached from another view's geometry.
     //
     // The menu's paste entry anchors at aPressedKey's frame. False when there is no
     // menu to open: no editor, or aPressedKey is not a key the document holds.
@@ -136,6 +137,23 @@ public:
     // False when nothing opened (no host, no targets, or no key of a type that
     // carries an easing).
     bool openEasingPicker(const core::TimeLineEvent& aTargets, const QPoint& aGlobalAnchor);
+    // THE BACKGROUND MENU, for a caller whose pointer is in ANOTHER view's space: the
+    // animation graph panel's right-click on the plot's background. It offers exactly
+    // what the timeline's own empty-space menu offers - buildKeyMenu over the SHARED
+    // SELECTION, with the paste anchor mapped from aGlobalPos - and NOTHING ELSE: the
+    // point is deliberately NOT hit-tested against this surface's lanes, because the
+    // caller's pixels are the panel's and reading them as timeline model space named a
+    // key of whatever row they happened to land in (a menu whose Delete then edited a
+    // key the user was not looking at).
+    //
+    // aExtraText/aExtraAction append ONE view-specific entry after a separator, for a
+    // caller that owns an action this surface does not (the graph's "Fit graph", which
+    // runs ctrl::GraphEditor::fitAll). Empty text adds nothing. False when there is no
+    // editor to build a menu from.
+    bool openBackgroundMenu(
+        const QPoint& aGlobalPos, const QString& aExtraText = QString(),
+        const std::function<void()>& aExtraAction = std::function<void()>()
+    );
     // THE HEADER'S QUICK-EASING BUTTONS, in the timeline's own currency: write
     // aEasing (or the Auto preset's mode pair) to every component the live
     // selection names, as ONE undo step. They live here rather than on the
@@ -149,8 +167,10 @@ public:
     // incoming side (see ctrl::TimeLineEditor::assignSelectionAutoHandles). It is
     // one undo step per batch and can write up to two params per selected key; the
     // previous key's param and the key's own incoming side are NOT touched (they
-    // belong to the segment arriving at the key), and a last key - no segment
-    // leaves it - is a no-op.
+    // belong to the segment arriving at the key). A LAST key (or the only key)
+    // has no segment leaving it YET, so its OWN pair is written instead - type
+    // Custom and both sides automatic - and the segments that appear when a
+    // neighbour is added derive on both sides.
     bool applyEasingToSelection(util::Easing::Type aType);
     bool applyAutoHandlesToSelection();
     // LIVE EASING EDIT — the seam a CONTINUOUS easing gesture uses (the picker's
@@ -293,6 +313,21 @@ private:
     // (ctrl::time::Selection::onChanged), which fires whichever view made the
     // selection and needs nothing to be visible or painted.
     void pushEasingChipState();
+
+    // THE PICKER'S SHOWN STATE, re-read from the document: the param and the Auto
+    // context of the FIRST key the open (mTargets) names that CARRIES an easing -
+    // preferring one the live selection still names, so a selection change among the
+    // keys the open edits moves what the popup shows. False when nothing resolves (the
+    // open's key was deleted). ONE function for the open (openEasingPicker) and the
+    // live re-read (refreshOpenPicker), so the two cannot open on different curves.
+    bool pickerShownState(util::Easing::Param& aShown, util::Easing::AutoContext& aAutoContext) const;
+    // KEEPS THE OPEN PICKER IN STEP WITH THE DOCUMENT AND THE SELECTION: called from
+    // the selection's own change notification and from onTimeLineModified, it pushes
+    // the state pickerShownState reads to the control, which adopts it unless a drag is
+    // in progress IN THE POPUP (there the popup's value wins until the gesture ends -
+    // the picker's own rule, see EasingPickWidget::setShownValue). A no-op while the
+    // picker is closed or no host is attached.
+    void refreshOpenPicker();
 
     ViaPoint& mViaPoint;
     util::LinkPointer<core::Project> mProject;

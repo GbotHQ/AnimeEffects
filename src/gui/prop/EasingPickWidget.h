@@ -171,6 +171,25 @@ public:
     util::Easing::Param value() const { return mDraft; }
     void setValue(const util::Easing::Param& aParam);
 
+    // THE EXTERNAL RE-READ: the document's value for the thing this popup SHOWS, pushed
+    // by its owner whenever the document or the selection changes while the popup is
+    // open - the graph's handle drag, a mode change, another view's edit. The popup is
+    // a VIEW of one key's easing, so it must follow the key, not only lead it.
+    //
+    // NOTHING IS EMITTED and nothing is committed: this is a re-read, not an edit.
+    // FALSE - and the draft left exactly as it was - in three cases:
+    //   * the popup is not on screen (there is nothing to keep in step), or
+    //   * A GESTURE IS IN PROGRESS IN THE POPUP (a bezier handle drag, a spin being
+    //     typed, the blend slider being dragged): the value the user is dragging WINS
+    //     until the gesture ends, and the owner pushes again then, and
+    //   * the incoming state already is the draft's (idempotent, so a notification
+    //     storm costs one compare).
+    bool setShownValue(const util::Easing::Param& aParam, const util::Easing::AutoContext& aAutoContext);
+    // True while a gesture owns the draft (see setShownValue). The owner uses it to skip
+    // the re-read entirely; setShownValue checks it anyway, so a caller that forgets
+    // cannot clobber a drag.
+    bool isEditing() const { return mGestureActive; }
+
     // The neighbouring keys an Auto draft is shaped by. The widget cannot know
     // them (they live in the timeline), so its owner hands them in whenever the
     // edited key or its neighbours change; an empty context is correct for every
@@ -198,7 +217,9 @@ public:
     // applies to the ONE SEGMENT AFTER EACH SELECTED KEY, so the picking widget's
     // commit routes these modes to the selection-level Auto action, which writes
     // the key's type and outgoing side plus the next key's incoming side and
-    // leaves the arriving segment alone (see
+    // leaves the arriving segment alone; a last (or the only) key instead gets
+    // its OWN pair written - type Custom and both sides - because it has no
+    // segment after it yet (see
     // ctrl::TimeLineEditor::assignSelectionAutoHandles).
     void setAutoHandlesPreset();
     // One side's handle mode (Blender's five). aIncoming selects the TO key's

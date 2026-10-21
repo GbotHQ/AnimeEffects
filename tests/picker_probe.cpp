@@ -886,6 +886,105 @@ int main(int argc, char** argv) {
                 int(beganOnce), int(bothSteps), int(finishedOnce), int(oneUndo), verdict(ok));
     }
 
+    // ---- #19 THE POPUP FOLLOWS THE DOCUMENT WHILE IT IS OPEN ----
+    // The user's report: "the sync between the graph editor and the easing menu's
+    // Custom tab is only one way". The popup read the selection when it opened and
+    // never again, so a handle drag / mode change / key selection change made in the
+    // graph while it was open never reached it. The owner now pushes the document's
+    // state (setShownValue) on every selection/document change, and a gesture in the
+    // POPUP wins until it ends. This drives the widget alone - the host's push is the
+    // same call EasingItem::refreshShown makes.
+    {
+        util::Easing::Param draft;
+        draft.type = util::Easing::Type_Custom;
+        draft.handleIn = util::Easing::HandleMode_Aligned;
+        draft.handleOut = util::Easing::HandleMode_Aligned;
+        draft.cubicBezier = { 0.25f, 0.1f, 0.75f, 0.9f };
+
+        EasingPickWidget p{draft};
+        p.resize(300, p.maxContentHeight());
+        p.show();
+        p.setCustom(); // the Custom tab is the one that follows the graph
+        app.processEvents();
+
+        int changedFires = 0, appliedFires = 0;
+        QObject::connect(&p, &EasingPickWidget::changed, [&](util::Easing::Param) { ++changedFires; });
+        QObject::connect(&p, &EasingPickWidget::applied, [&](util::Easing::Param) { ++appliedFires; });
+
+        const util::Easing::AutoContext ctx;
+        auto* stage = p.findChild<BezierCurveEditor*>("bezier-stage");
+        bool uiFollowed = false;
+
+        // (a) A GRAPH EDIT WHILE THE POPUP IS IDLE IS ADOPTED, and the panel shows it.
+        util::Easing::Param fromGraph = draft;
+        fromGraph.cubicBezier.x1 = 0.55f;
+        fromGraph.cubicBezier.y1 = 0.42f;
+        const bool adopted = p.setShownValue(fromGraph, ctx) && p.value() == fromGraph;
+        app.processEvents();
+        if (stage) {
+            stage->syncFromBezier();
+            const QPointF dot = stage->m_points[BezierCurveEditor::ControlPoint1];
+            // The panel's own canvas draws the adopted control point: x is a
+            // fraction of the [0,1] box, so it lies past 0.5 of the width.
+            uiFollowed = stage->width() > 0
+                && std::fabs(dot.x() / stage->width() - 0.55) < 0.06;
+        }
+        // A re-read is NOT an edit: nothing emitted, nothing committed...
+        const bool emittedNothing = changedFires == 0 && appliedFires == 0;
+        // ...and the same state again is refused (idempotent).
+        const bool idempotent = !p.setShownValue(fromGraph, ctx);
+
+        // (b) A GESTURE IN THE POPUP WINS UNTIL IT ENDS. While a bezier handle is
+        // being dragged, a push is refused and the draft stays the pointer's value;
+        // once the gesture is over a push is taken again (an undo from another view,
+        // for instance, must reach it).
+        bool refusedMidDrag = false, dragValueKept = false, adoptedAfterDrag = false;
+        if (stage && stage->width() > 0 && stage->height() > 0) {
+            const QPoint from(stage->m_points[BezierCurveEditor::ControlPoint1].toPoint());
+            const QPoint to(from.x() + 10, from.y() - 12);
+            QMouseEvent press(QEvent::MouseButtonPress, from, stage->mapToGlobal(from),
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &press);
+            QMouseEvent move(QEvent::MouseMove, to, stage->mapToGlobal(to),
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &move);
+            app.processEvents();
+
+            util::Easing::Param midDrag = draft;
+            midDrag.cubicBezier.x1 = 0.05f;
+            midDrag.cubicBezier.y1 = 0.85f;
+            const util::Easing::Param held = p.value();
+            refusedMidDrag = p.isEditing() && !p.setShownValue(midDrag, ctx);
+            dragValueKept = p.value() == held && std::fabs(held.cubicBezier.x1 - 0.05f) > 1e-6;
+
+            QMouseEvent release(QEvent::MouseButtonRelease, to, stage->mapToGlobal(to),
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(stage, &release);
+            app.processEvents();
+
+            util::Easing::Param afterDrag = p.value(); // the document holds the drag's value
+            afterDrag.cubicBezier.x2 = 0.33f;           // another view edited the other side
+            adoptedAfterDrag = !p.isEditing() && p.setShownValue(afterDrag, ctx)
+                && p.value() == afterDrag;
+        }
+
+        p.hide(); // closes the session the drag opened
+        app.processEvents();
+
+        // (c) A CLOSED POPUP IS NEVER PUSHED INTO: the next open loads its own state.
+        const bool closedRefuses = !p.setShownValue(draft, ctx);
+
+        const bool ok = adopted && uiFollowed && emittedNothing && idempotent
+            && refusedMidDrag && dragValueKept && adoptedAfterDrag && closedRefuses;
+        fprintf(stderr,
+                "#19 two-way picker: graph value adopted=%d, panel showed it=%d, re-read is not an "
+                "edit=%d, idempotent=%d, refused mid-drag=%d (draft kept=%d), adopted after the "
+                "drag=%d, closed refused=%d -> %s\n",
+                int(adopted), int(uiFollowed), int(emittedNothing), int(idempotent),
+                int(refusedMidDrag), int(dragValueKept), int(adoptedAfterDrag),
+                int(closedRefuses), verdict(ok));
+    }
+
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");
     return gMismatches == 0 ? 0 : 1;
 }

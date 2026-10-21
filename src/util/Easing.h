@@ -122,8 +122,10 @@ public:
         // outgoing one (handleOut, stored as this param's x1/y1). A new key
         // starts Aligned on both sides - the old `aligned = true` default,
         // split into the two sides Blender edits. A gesture that drags one side
-        // writes THAT side's mode only; the other side keeps deriving if it is
-        // Auto (see GraphEditor::updateDrag).
+        // writes THAT side's mode; the other side follows according to ITS own
+        // mode: a DERIVED partner is mirrored and freed, an Aligned one stays
+        // collinear at its own length, a Free one is untouched (see
+        // GraphEditor::updateDrag).
         HandleMode handleIn = HandleMode_Aligned;
         HandleMode handleOut = HandleMode_Aligned;
     };

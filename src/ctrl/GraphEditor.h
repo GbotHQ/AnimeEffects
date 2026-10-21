@@ -401,12 +401,13 @@ public:
     // axis at once, like the viewport's own modifier-driven motions.
     //
     //   * Shift - a key drag moves on ONE axis: the dominant one of the gesture
-    //     so far (see the MOVE note); a marquee ADDS its keys to the selection
-    //     instead of replacing it (see the SELECTION note);
-    //   * Ctrl  - a press ON A CURVE'S BAND inserts a key there (see insertKeyAt).
-    //     It is the ONLY thing Ctrl does with a press now: every other press in
-    //     the plot - on a key it selects and arms the move, everywhere else it
-    //     opens the marquee - has the same meaning with or without it.
+    //     so far (see the MOVE note); a press on a KEY toggles that key in or out
+    //     of the selection, and a marquee ADDS its keys to the selection (both the
+    //     timeline's own meanings for the key under the press);
+    //   * Ctrl  - a press ON A CURVE'S BAND inserts a key there (see insertKeyAt)
+    //     - a graph-only gesture the timeline does not have. Everywhere else it is
+    //     the timeline's: a press on a key TOGGLES it, and a press on empty plot
+    //     opens a marquee that SUBTRACTS its keys from the selection.
     void setModifiers(Qt::KeyboardModifiers aModifiers);
     Qt::KeyboardModifiers modifiers() const { return mModifiers; }
 
@@ -421,37 +422,33 @@ public:
 
     // --- the selection, in the timeline's own currency ---
     //
-    // SELECTION. The panel selects MARKERS - one COMPONENT of one key, the dot on
-    // one curve - and it can select more than one: the selection is the timeline's
-    // own time::Selection, whose entries name either a whole KEY (what every
-    // timeline gesture writes: such an entry covers every component the key owns)
-    // or one component of it (what a press here writes). A press chooses between
-    // the three plain behaviours by the modifier the widget fed in:
-    //   * a plain press on a key REPLACES the selection with the one marker it
-    //     hit, so the OTHER component of that key is not selected (its curve stays
-    //     at full strength and the drawing layer gives it the faint ring - see
-    //     isMarkerSelected and hasSelectedSiblingMarker) - UNLESS that marker is
-    //     already covered by the selection, in which case the selection is left
-    //     exactly as it is: pressing something already selected GRABS it, it does
-    //     not collapse the selection to it. That is what makes a multi-marker
-    //     selection draggable by any of its own markers (the drag is armed over
-    //     the whole selection, see the MOVE note), and a whole-key entry counts as
-    //     covering every component of its key;
-    //   * Shift-press on a key ADDS that one marker if it is not already covered
-    //     (an entry that is there is left alone - Shift extends, it does not
-    //     toggle), which is how a key's two markers are selected together;
-    //   * Ctrl-press on a key TOGGLES it: in when out, out when in, where "in"
-    //     means the marker is covered by an entry - its own, or a whole-key entry.
-    // A MARQUEE - a PLAIN press in the plot on a point that is neither a key nor
-    // a handle (Ctrl on a curve's band inserts instead, see insertKeyAt) -
-    // dragged before it is released, replaces the selection with EVERY MARKER of
-    // every key whose drawn square falls inside the dragged rectangle, or, with
-    // Shift held at the press, adds those keys to the selection. It is drawn as a
-    // live rectangle while the drag is in flight (marqueeRect), and a release
-    // within 4px of the press on BOTH axes is not a drag at all: that press is the
-    // plain click, which clears the selection (see endMarquee). Ctrl+A
-    // (selectAllMarkers) is the keyboard form of the same bulk rule over the shown
-    // channels, and Escape clears (clearSelection).
+    // SELECTION. The set is the timeline's own time::Selection, and the panel's
+    // pointer gestures are the TIMELINE's, gesture for gesture - the table
+    // ctrl::TimeLineEditor::updateCursor follows, with one addition (the panel's
+    // Ctrl-insert, which is a document edit and not a selection gesture). A key
+    // owns a whole-key entry; only the Ctrl-insert writes a single COMPONENT (see
+    // selectMarker), which is what the drawing layer's faint sibling ring is for.
+    //   * a PLAIN press on a key: a key the selection already covers is GRABBED -
+    //     the selection is left exactly as it is, so the drag armed by the press
+    //     carries the whole group (the MOVE note) - and a key that is out is what
+    //     the press REPLACES the selection with. The RELEASE of a press that never
+    //     moved then collapses the selection to that one key: a click on an
+    //     already-selected key reduces a group to the key under the pointer, and a
+    //     drag keeps it (the timeline's mPressedTarget pair);
+    //   * Shift-press and Ctrl-press on a key both TOGGLE that key: in when out,
+    //     out when in (the timeline treats the two modifiers alike);
+    //   * a MARQUEE - a press in the plot on a point that is neither a key nor a
+    //     handle (Ctrl on a curve's band inserts instead, see insertKeyAt) -
+    //     applies the box to the selection on EVERY drag step: plain replaces the
+    //     selection with the keys inside, Shift ADDS them to what the press found,
+    //     Ctrl SUBTRACTS them. It is drawn as a live rectangle while the drag is in
+    //     flight (marqueeRect), and only a press and release on the SAME PIXEL is
+    //     the click instead (the timeline's `width < 2 && height < 2` degenerate
+    //     box - a QRect's width is inclusive): a plain click clears the selection
+    //     at the press, a Shift-click keeps it, and a Ctrl-click on empty plot
+    //     deselects everything. Ctrl+A (selectAllMarkers) is the keyboard form of
+    //     the same bulk rule over the shown channels, and Escape clears
+    //     (clearSelection).
     //
     // ONE SET, ONE HIGHLIGHT. The set an edit here writes is the live selection
     // of the timeline the panel is a view of (see setSelectionSource): writing it
@@ -517,13 +514,14 @@ public:
     // that names a whole key).
     bool selectKey(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame);
     // Replaces the whole selection with this one MARKER: the component of the key
-    // aChannel names, so the key's other components are left out (the press's own
-    // gesture).
+    // aChannel names, so the key's other components are left out. The Ctrl-insert
+    // is its caller (insertKeyAt selects the marker it wrote); the pointer's key
+    // gestures write the whole KEY, as the timeline's do.
     bool selectMarker(core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame);
-    // Adds (aAdd == true) or removes (aAdd == false) this one marker. Adding a
-    // marker the selection already covers, or removing one it does not, changes
-    // nothing. Removing takes out what covers the marker - its own entry, or a
-    // whole-key entry, which names it among every other component of its key.
+    // Adds (aAdd == true) or removes (aAdd == false) this one marker - the
+    // marker-level form of modifySelection below, for a caller that works on one
+    // component (the set's marker entries are what the drawing layer's faint sibling
+    // ring classifies). The key gestures do not use it: they write whole keys.
     bool modifyMarkerSelection(
         core::ObjectNode& aNode, const graph::Channel& aChannel, core::Frame aFrame, bool aAdd
     );
@@ -591,8 +589,8 @@ public:
     // The marquee's rectangle in viewport pixels, normalized (a positive width
     // and height) and clipped to the plot, or an EMPTY rect while no marquee drag
     // is in flight. A press and release with no movement gives an empty rect:
-    // nothing falls inside it, so the selection becomes empty, which is the
-    // "click empty space to deselect" gesture.
+    // nothing falls inside it, and the plain press already cleared the selection -
+    // the timeline's own "click empty space to deselect" gesture.
     QRect marqueeRect() const;
     // True while a middle-button pan is in flight.
     bool isPanning() const { return mPanning; }
@@ -635,20 +633,21 @@ public:
     // a gesture that means "select". Ctrl-press is the graph-editor convention
     // for "add a key here" (Blender's f-curve editor does exactly this), and it is
     // unambiguous here because Ctrl on a KEY also means "toggle this key in the
-    // selection": the two never overlap, since a band point has no key on it. So
-    // one press has one meaning decided by what is under the pointer: a key
-    // selects (Ctrl toggles it), a band point with Ctrl inserts, and every other
+    // selection" (as Shift does): the two never overlap, since a band point has no
+    // key on it. So one press has one meaning decided by what is under the pointer:
+    // a key selects or toggles, a band point with Ctrl inserts, and every other
     // point in the plot - a band point WITHOUT Ctrl included - opens the marquee.
     //
     // The modifier is therefore the INSERT's alone now, and the marquee's cost is
     // the plain press it takes: see ownsCursor for what that costs the viewport
     // tools inside the plot.
     //
-    // The inserted key becomes the panel's whole selection and its channel the
-    // focused channel, exactly as a pressed key would (so a following
-    // removeSelectedKey() removes it). The focus no longer moves the value
-    // window (see the class comment), so an insert press moves nothing under its
-    // own release.
+    // The inserted key becomes the panel's whole selection - as the MARKER of the
+    // pressed curve's component, the one marker-level write this editor has - and
+    // its channel becomes the focused channel, exactly as a pressed key's would be
+    // (so a following removeSelectedKey() removes it). The focus no longer moves the
+    // value window (see the class comment), so an insert press moves nothing under
+    // its own release.
     //
     // One caveat the key's own setters impose: the value is written through the
     // concrete key's setter, which clamps to that type's own bound - a
@@ -685,13 +684,15 @@ public:
     // The whole gesture is ONE undo step AND one command (KeyMoveCommand). It is
     // driven by updateCursor, like the handle drag, and the rules are:
     //   * the members are the markers the selection named when the press armed the
-    //     move (the press wrote that selection: a plain press replaces it with the
-    //     pressed marker, or leaves it as it is when the press landed on a marker
-    //     it already covers, Shift adds one, Ctrl toggles it), resolved against the
-    //     document so a stale entry is dropped. A whole-key entry (the timeline's
-    //     own selection) names every component its key owns, so it becomes one
-    //     member per graphable component of its type; a marker that is NOT
-    //     selected is not a member, and comes out of the gesture untouched;
+    //     move (the press wrote that selection with the timeline's own rules: a
+    //     plain press replaces it with the whole pressed key or leaves it as it is
+    //     when the selection already covers that key, Shift and Ctrl both toggle
+    //     it), resolved against the document so a stale entry is dropped. A
+    //     whole-key entry (what every key press here and in the timeline writes)
+    //     names every component its key owns, so it becomes one member per graphable
+    //     component of its type; a marker that is NOT selected is not a member, and
+    //     comes out of the gesture untouched (the Ctrl-insert's single-component
+    //     selection is the way to move one component alone);
     //   * the first ACCEPTED move builds ONE commit: a TimeLineUtil::MoveFrameOfKey
     //     over every member's FRAME (it already moves a whole core::TimeLineEvent,
     //     so the selection moves as one unit by one delta with its own conflict
@@ -817,9 +818,11 @@ public:
     //   * the NEXT key's INCOMING side (its type is left alone: it shapes the
     //     segment after it, which this action does not own).
     // The segment ARRIVING at K is deliberately untouched: neither the previous
-    // key's param nor K's INCOMING side is written. A LAST key has no segment
-    // leaving it, so the action is a no-op for it (not even the type is written).
-    // A multi-key selection applies the same rule to every selected key, and a
+    // key's param nor K's INCOMING side is written. A LAST key (or the only
+    // key) has no segment leaving it YET, so the preset writes K's OWN pair
+    // instead: its type becomes Custom and BOTH sides become automatic, so the
+    // segments that appear when a neighbour is added derive on both sides. A
+    // multi-key selection applies the same rule to every selected key, and a
     // param two neighbours both name is written once. Only the type and the two
     // modes are the preset's - range, weight and the stored cubic ride along
     // untouched.
@@ -828,6 +831,61 @@ public:
     // (ctrl::TimeLineEditor::assignSelectionAutoHandles), so the surfaces cannot
     // write different things.
     bool setSelectedKeysAutoHandles();
+
+    // ---- THE CONTEXT MENU'S TARGET ----
+    //
+    // What a RIGHT-CLICK at a panel point names: nothing, a key, or ONE TANGENT
+    // HANDLE of one segment. This is the press's own rule (hitTest), asked with a
+    // panel rect pinned to the caller's camera, so the point a right-click acts on
+    // is exactly the target a left press at that point would select - a handle that
+    // is relatively nearer than a key names the handle, and a key otherwise. The
+    // panel's hosts ask this instead of their own scan, which is what stops a
+    // right-click on a handle from naming a key that happens to sit inside its
+    // (wider) grab ring.
+    //
+    // A HANDLE IS NAMED BY THE KEY IT BELONGS TO as well as by its segment index,
+    // because the two things a menu says about it are the key (which param carries
+    // it) and the SIDE: index 0 is the segment's `from` key's OUTGOING side, index
+    // 1 the `to` key's INCOMING one. `mode` is that side's stored mode, so a menu
+    // can show which type is current without reading the document again.
+    struct ContextTarget {
+        enum Kind { Kind_None, Kind_Key, Kind_Handle };
+
+        Kind kind = Kind_None;
+        // The layer, for both kinds. Null for Kind_None.
+        core::ObjectNode* node = nullptr;
+        // The channel whose curve the target belongs to (its component included,
+        // so a Move Y marker names Y's param).
+        graph::Channel channel;
+        // Kind_Key: the key's frame. Kind_Handle: the frame of the key that OWNS
+        // the handle - `from` for index 0, `to` for index 1.
+        core::Frame frame;
+        // Kind_Handle only: the segment inside `channel`'s curve, and 0/1 as above.
+        int segment = -1;
+        int handle = -1;
+        // Kind_Handle only: the mode that side reads now (a stored Free/Aligned or
+        // a derived Vector/Auto/AutoClamped).
+        util::Easing::HandleMode mode = util::Easing::HandleMode_Aligned;
+    };
+    ContextTarget contextTargetAt(const core::CameraInfo& aCamera, const QPoint& aPos) const;
+
+    // THE HANDLE MENU'S ONE WRITE: make ONE SIDE of ONE segment read aMode, as ONE
+    // undo step whose name says which side (see the definition - the name is the
+    // whole reason the menu's entry can be checked in the history). The target must
+    // be a Kind_Handle one from contextTargetAt: it names the segment and the side,
+    // and its key's param is the one the mode lives on.
+    //
+    // A DERIVED SIDE THAT STARTS READING ITS STORED POINT KEEPS THE POINT IT WAS
+    // SHOWN AT: switching Vector/Auto/AutoClamped to Free/Aligned would otherwise
+    // jump the curve to a stale x1/y1 (or x2/y2, which lives in the FROM param
+    // even for the TO key's incoming side). The stored point is written from the
+    // side's EFFECTIVE pair before the mode changes, in the SAME command - so the
+    // curve stays where the user sees it until they drag the freed handle.
+    //
+    // FALSE when nothing was written: an analytic segment has no handle to name, a
+    // side already in aMode changes nothing, and a target of the wrong kind is not
+    // this action's.
+    bool setHandleMode(const ContextTarget& aTarget, util::Easing::HandleMode aMode);
 
     // The half-width, in pixels, of the band around a curve the insert gesture
     // edits (see insertKeyAt's ADD note): a point whose frame the curve covers
@@ -866,7 +924,9 @@ public:
     //
     // DELIBERATE FIT. The value window changes only when the SHOWN SET changes
     // (a new layer selection, a channel that appears or disappears) or when a
-    // caller asks for a fit (fitValueAxis, fitAll, the double-click). It never
+    // caller asks for a fit (fitValueAxis, fitAll - the panel's "Fit graph"
+    // entry, which is the ONLY explicit fit the panel offers: the double-click
+    // that used to run it was removed as an easy accident). It never
     // changes because the focus moved, because a key was selected or dragged, or
     // because the wheel or a pan was used - a user who has framed a curve keeps
     // that frame while working on it. The fit the focus used to imply was
@@ -1139,22 +1199,27 @@ private:
     );
 
     // --- marquee ---
-    // Begins the marquee a PLAIN press in the plot opens on a point that is no key,
-    // no handle and no curve's band: only the origin is recorded, so a press that
-    // never moves selects nothing (an empty rectangle contains no key) - which is
-    // the "clear the selection" gesture for that press.
+    // Begins the marquee a press in the plot opens on a point that is no key, no
+    // handle and no curve's band (Ctrl on a band inserts instead). The MODE is the
+    // press's - plain replaces (and clears NOW), Shift adds to the selection the
+    // press found, Ctrl subtracts from it - exactly ctrl::TimeLineEditor's own
+    // assignment, and it is never re-read from the modifiers afterwards.
     void beginMarquee(const QPoint& aPos);
+    // Moves the box's live corner and APPLIES it: the highlights follow the drag,
+    // as the timeline's do (see applyMarquee).
     void updateMarquee(const QPoint& aPos);
-    // Applies the marquee to the selection: every MARKER of every key whose drawn
-    // square's centre falls inside the rectangle - written as one whole-key entry
-    // per key, which IS all of its markers - replacing the selection (or added to
-    // it, when mAddToSelection - the Shift state the press recorded). A Shift-marquee
-    // over a key that was selected in ONE component therefore makes it WHOLE: the
-    // partial entry is taken out and the whole-key one put in its place. A gesture
-    // that never got 4px away from the press on either axis is the CLICK instead
-    // (it clears the selection and selects nothing): that is where the design puts
-    // the line between a click and a drag, and the live box is still drawn either
-    // way. Then clears the marquee state.
+    // The keys the box encloses, one whole-key target each, read through the same
+    // graph::keyRect the hit-test and the drawing layer use.
+    core::TimeLineEvent marqueeTargets() const;
+    // Applies the current box to the selection: REPLACE sets it, ADD sets the
+    // snapshot the press took plus the box, SUBTRACT removes the box from the live
+    // set. Called on every drag step (updateMarquee), never on the release: the
+    // timeline's release does not move its box either.
+    void applyMarquee();
+    // Ends the gesture. The box has already been applied; what is left is the
+    // click rule: a box with NO travel at all is the click, and a Ctrl-click on
+    // empty plot clears the selection (plain already cleared at the press, Shift
+    // keeps it - the timeline's release branch). Then clears the marquee state.
     void endMarquee();
 
     // --- middle-button pan ---
@@ -1318,8 +1383,9 @@ private:
     TimeLineEditor::PlayWindow mPlayWindow;
 
     // The modifier state the widget fed in on the last event (see setModifiers).
-    // Read by the press routing (Ctrl = insert) and by every step of a key move
-    // (Shift = axis snap, Shift = add-to-selection on a marquee press).
+    // Read by the press routing - Shift and Ctrl both TOGGLE a pressed key, Ctrl on
+    // a curve's band inserts, and a marquee press reads them for its MODE (Shift
+    // adds, Ctrl subtracts) - and by every step of a key move (Shift = axis snap).
     Qt::KeyboardModifiers mModifiers;
 
     // The sticky focus: the one shown channel the panel EMPHASISES. A nullptr
@@ -1364,6 +1430,14 @@ private:
     int mDragItem;
     int mDragSegment;
     int mDragHandle;
+    // Whether THIS gesture mirrors the key's OPPOSITE handle about the key and
+    // frees it, decided at the press from the partner's stored mode: a DERIVED
+    // partner (the pair was symmetric by construction) follows the dragged one
+    // in angle AND length and becomes Free. It is a member, not a per-step read,
+    // because the first step frees the partner - and the gesture must keep
+    // mirroring it on every later step. Alt clears it for the rest of the
+    // gesture, so an Alt step leaves the partner where it was for good.
+    bool mDragPartnerMirrors;
     cmnd::Gesture<HandleDragCommand> mGesture;
     // The KEY MOVE's own gesture, over the one command that carries the whole
     // selection (see KeyMoveCommand). A separate Gesture from the handle drag's
@@ -1371,14 +1445,26 @@ private:
     // edits have different command types.
     cmnd::Gesture<KeyMoveCommand> mKeyMoveGesture;
 
+    // The marquee's three-way mode, the TIMELINE's own (ctrl::TimeLineEditor's
+    // private MarqueeMode, mirrored here because the two gestures must not drift):
+    // plain replaces the selection, Shift adds to it, Ctrl subtracts from it. The
+    // press records it once; nothing re-reads the modifiers for it afterwards.
+    enum MarqueeMode { Marquee_Replace, Marquee_Add, Marquee_Subtract };
+
     // The marquee: where the press went down and where the pointer is now, both
     // in viewport pixels. The rectangle is the two corners - the box the pointer
-    // dragged, normalized when it is read (marqueeRect). mAddToSelection is the
-    // shift state the press recorded, so a Shift-press that becomes a marquee
-    // adds to the selection rather than replacing it.
+    // dragged, normalized when it is read (marqueeRect). mMarqueeMode is the
+    // timeline's own three-way mode, recorded at the press (plain/Shift/Ctrl), and
+    // mPreMarqueeSelection is the selection that press found, which Shift-add is
+    // re-applied to on every step. mClickCollapseTarget is the KEY a plain press
+    // on a key named: it is what the release collapses to when the press never
+    // became a move (the timeline's mPressedTarget/mPressedTargetValid pair).
     QPoint mMarqueeOrigin;
     QPoint mMarqueeCurrent;
-    bool mAddToSelection;
+    MarqueeMode mMarqueeMode;
+    core::TimeLineEvent mPreMarqueeSelection;
+    core::TimeLineEvent::Target mClickCollapseTarget;
+    bool mClickCollapseValid;
 
     // The middle-button pan: the pointer position the pan last moved to, so each
     // step is a pixel delta (there is no press-time origin to drift from).

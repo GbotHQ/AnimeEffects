@@ -3817,21 +3817,72 @@ int main(int argc, char** argv) {
         CHECK(sharedKept);
         CHECK(bothUndone);
 
-        // A LAST KEY HAS NO SEGMENT AFTER IT, so the preset is a NO-OP there:
-        // nothing is written - not even the type - and no history entry appears
-        // for a segment that does not exist. (The params are the undone ones.)
+        // A LAST KEY HAS NO SEGMENT AFTER IT YET, so the preset writes the key's
+        // OWN pair: its type becomes Custom and BOTH sides become automatic, so
+        // the segments that appear when a neighbour is added derive on both
+        // sides. Nothing else is named - the two earlier params stay
+        // byte-identical - and one undo restores the key.
         core::TimeLineEvent lastOnly;
         lastOnly.setType(core::TimeLineEvent::Type_PushKey);
         lastOnly.pushTarget(nodeE, core::TimeKeyType_Rotate, 20);
         timeline.selectCreatedKeys(lastOnly);
         const bool actedLast = timeline.assignSelectionAutoHandles();
-        const bool lastUntouched = eKeys[0]->data().easing(0) == eFirstBefore
+        const util::Easing::Param lastAfter = eKeys[2]->data().easing(0);
+        const bool lastPair = lastAfter.type == util::Easing::Type_Custom
+            && lastAfter.handleIn == util::Easing::kAutoPresetHandleMode
+            && lastAfter.handleOut == util::Easing::kAutoPresetHandleMode
+            && lastAfter.cubicBezier == eLastBefore.cubicBezier
+            && lastAfter.range == eLastBefore.range
+            && lastAfter.weight == eLastBefore.weight;
+        const bool lastOnlyWrote = actedLast && lastPair
+            && eKeys[0]->data().easing(0) == eFirstBefore // no other param was named
+            && eKeys[1]->data().easing(0) == eMiddleBefore;
+        project.commandStack().undo();
+        const bool lastUndone = eKeys[0]->data().easing(0) == eFirstBefore
             && eKeys[1]->data().easing(0) == eMiddleBefore
             && eKeys[2]->data().easing(0) == eLastBefore;
-        std::printf("[10f] timeline Auto on the LAST key: acted=%d (no-op)  all params untouched=%d\n",
-                    int(actedLast), int(lastUntouched));
-        CHECK(!actedLast);
-        CHECK(lastUntouched);
+        std::printf("[10f] timeline Auto on the LAST key: acted=%d  own pair automatic=%d  "
+                    "nothing else written=%d  one undo restores it=%d\n",
+                    int(actedLast), int(lastPair), int(lastOnlyWrote), int(lastUndone));
+        CHECK(actedLast);
+        CHECK(lastPair);
+        CHECK(lastOnlyWrote);
+        CHECK(lastUndone);
+
+        // THE SINGLE-KEY CHANNEL: a property with only ONE key. The same rule
+        // applies - Auto must MARK that key automatic (both sides + Custom), not
+        // silently do nothing because there is no next key yet. The key is the
+        // only param in the document, and its stored cubic, range and weight
+        // ride along untouched.
+        core::TestNode soloNode;
+        soloNode.setName(QStringLiteral("Solo"));
+        core::RotateKey* soloKey = new core::RotateKey();
+        soloKey->setRotate(25.0f);
+        setup.push(soloNode.timeLine()->createPusher(core::TimeKeyType_Rotate, 5, soloKey));
+        CHECK(soloNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 1);
+
+        core::TimeLineEvent soloCreated;
+        soloCreated.setType(core::TimeLineEvent::Type_PushKey);
+        soloCreated.pushTarget(soloNode, core::TimeKeyType_Rotate, 5);
+        timeline.selectCreatedKeys(soloCreated);
+        const util::Easing::Param soloBefore = soloKey->data().easing(0);
+        const bool soloActed = timeline.assignSelectionAutoHandles();
+        const util::Easing::Param soloAfter = soloKey->data().easing(0);
+        const bool soloPair = soloAfter.type == util::Easing::Type_Custom
+            && soloAfter.handleIn == util::Easing::kAutoPresetHandleMode
+            && soloAfter.handleOut == util::Easing::kAutoPresetHandleMode
+            && soloAfter.cubicBezier == soloBefore.cubicBezier
+            && soloAfter.range == soloBefore.range
+            && soloAfter.weight == soloBefore.weight
+            && soloNode.timeLine()->map(core::TimeKeyType_Rotate).size() == 1;
+        project.commandStack().undo();
+        const bool soloUndone = soloKey->data().easing(0) == soloBefore;
+        std::printf("[10f] timeline Auto on the ONLY key: acted=%d  both sides automatic=%d  "
+                    "one undo restores it=%d\n",
+                    int(soloActed), int(soloPair), int(soloUndone));
+        CHECK(soloActed);
+        CHECK(soloPair);
+        CHECK(soloUndone);
     }
 
     // -------------------------------------------------------------------------

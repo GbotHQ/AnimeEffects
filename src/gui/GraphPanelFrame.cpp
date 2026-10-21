@@ -35,6 +35,7 @@
 #include "ctrl/GraphEditor.h"
 #include "ctrl/graph/graph_Geometry.h"
 #include "ctrl/graph/graph_Scaler.h"
+#include "ctrl/time/time_Renderer.h"
 #include "gl/EasyShaderProgram.h"
 #include "gl/Framebuffer.h"
 #include "gl/Global.h"
@@ -456,22 +457,27 @@ void drawLabel(
 //
 //   * fill  = the channel's own hue mixed 0.45 toward the text colour - a lift toward
 //             the brightest panel ink without leaving the channel's identity;
-//   * ring  = THE SAME INK AS THE FILL: the SAME expression
-//             mixedToward(curve.color, axisText(), kKeySelectedFillMix), at full alpha
-//             (no 0.85 step), 1px, at kKeyDotRadius + kKeyRingOffsetPx (2.6px), drawn
-//             OUTSIDE the marker. A ring in the raw hue read as a second, unrelated
-//             colour against the mixed fill; one ink makes the selected marker read as
-//             a single object;
+//   * ring  = THE TIMELINE'S OWN RING (ctrl::time::kSelectRingAlpha /
+//             kSelectRingOffset, the tokens time_Renderer's key pass reads): the
+//             channel's raw hue at 0.85 (217/255), 1px wide, drawn OUTSIDE the
+//             marker at its radius + 2.6px. It is deliberately NOT the fill's ink -
+//             the two views must ink the one selection the same way, and the
+//             timeline's ring has always been the raw hue over the mixed fill;
 //   * the marker's own 1px edge stroke is drawn OUTSIDE its radius too (see the
-//     AddCircle below), so the coloured core is never eaten by its edge.
+//             AddCircle below), so the coloured core is never eaten by its edge.
+//
+// THE HALF PIXEL is the only difference between the engines: Qt's pen is centred on
+// the ring's radius, while ImGui's AddCircle strokes INWARD from the radius it is
+// given, so this pass asks for ringRadius + 0.5 - the same trick the marker's own
+// edge band uses. Both then put their 1px band on [r - 0.5, r + 0.5].
 //
 // NO DARK SLEEVE under this ring, and the reason is the ink itself: the mock's sleeve
 // exists to make a WHITE highlight ring read on arbitrary artwork
-// (mock-graph.js:865-876). This ring is the selected marker's own fill ink - the same
-// ink family as its curve - and the marker already sits inside its keyEdge() floor
-// ring. A 2.6px black band beneath it would bury the 1px stroke on the dark palette
-// and read as a second, grey selection accent, which is exactly the grey the user
-// rejected for handles.
+// (mock-graph.js:865-876). This ring is the channel's own hue - the same ink family
+// as its curve - and the marker already sits inside its keyEdge() floor ring. A 2.6px
+// black band beneath it would bury the 1px stroke on the dark palette and read as a
+// second, grey selection accent, which is exactly the grey the user rejected for
+// handles.
 constexpr float kKeySelectedFillMix = 0.45f;   // 0.45 of the way to the text colour
 constexpr float kKeyHoverFillMix = 0.4f;       // mock-graph.js lighten(hue, 0.4)
 constexpr float kKeySiblingRingAlpha = 0.35f;  // mock-graph.js hexA(hue, 0.35)
@@ -1688,21 +1694,20 @@ void drawPanel(
     // THE THREE STATES, in the model's own classification (PanelCurve::keySelected /
     // keySiblingSelected) and with the ink this layer gives each (see the marker
     // rule's tokens above for where every one of them comes from):
-    //   * SELECTED - the fill is the channel's hue mixed 0.45 toward the text colour,
-    //     and the 1px ring 2.6px clear of the marker (drawn outside its radius) is
-    //     THE SAME INK: the same mixed colour, opaque. One expression inks both, so
-    //     the ring cannot drift into a second colour. The marker's own SIZE does not
-    //     change: the fill keeps the radius and the keyEdge() stroke every marker
-    //     already has (that stroke is drawn outside the radius for every marker,
-    //     selected or not).
+    //   * SELECTED - the fill is the channel's hue mixed 0.45 toward the text colour
+    //     (the timeline's fill rule), and the 1px ring at dotRadius +
+    //     kSelectRingOffset is the TIMELINE'S RING: the channel's raw hue at
+    //     ctrl::time::kSelectRingAlpha (0.85), drawn outside the marker's radius.
+    //     The marker's own SIZE does not change: the fill keeps the radius and the
+    //     keyEdge() stroke every marker already has (that stroke is drawn outside
+    //     the radius for every marker, selected or not).
     //   * SIBLING (not selected, its key selected on another component) - the faint
     //     ring alone, at the SAME radius as the selection ring, in the channel's own
     //     hue at 0.35, and the fill is left exactly as an unselected marker's is
     //     (that channel is in play, so it is at full strength). One key, two
     //     channels, both in play - but the selection ring is never on the marker that
-    //     is not selected. The sibling ring is the raw hue at low alpha; the
-    //     selection ring is the opaque mixed ink, so the two are told apart by both
-    //     hue-toward-text and strength.
+    //     is not selected. Both rings are the raw hue; only their strength tells them
+    //     apart (0.35 against 0.85).
     //   * HOVERED (the marker gui::panelKeyAt names under the pointer, and not
     //     selected) - the fill brightens at the mock's lighter step and NO ring is
     //     added. Hover COMPOSES with the sibling state (the mock draws both: the
@@ -1718,7 +1723,10 @@ void drawPanel(
     // drawn where a 7.5px dot belongs - 2.3x the timeline's key area. The ink here
     // is the marker; the hit stays where the editor's hit-test puts it.
     const float dotRadius = float(ctrl::graph::kKeyDotRadius);
-    const float ringRadius = dotRadius + kKeyRingOffsetPx;
+    // THE TIMELINE'S RING, at ITS offset: the centre is dotRadius + the shared
+    // kSelectRingOffset, and the stroke is asked for half a pixel further out
+    // because ImGui strokes INWARD (see the marker rule's THE HALF PIXEL note).
+    const float ringRadius = dotRadius + float(ctrl::time::kSelectRingOffset) + 0.5f;
     const QColor highlightInk = aTheme.axisText();
     // THE HOVER, BY THE ONE SHARED PICK: gui::panelPickAt answers which CLASS of
     // target the pointer names - key or tangent handle - with the same rule a press
@@ -1739,10 +1747,16 @@ void drawPanel(
         const ImU32 fill = toImU32Strength(curve.color, strength);
         const ImU32 edge = toImU32Strength(aTheme.keyEdge(), strength);
         const ImU32 siblingRing = toImU32Strength(curve.color, kKeySiblingRingAlpha);
-        // THE SELECTION RING IS THE FILL'S INK, one expression with the fill below:
-        // both are mixedToward(curve.color, axisText(), kKeySelectedFillMix), opaque.
-        const QColor selectedInk = mixedToward(curve.color, highlightInk, kKeySelectedFillMix);
-        const ImU32 selectedRing = toImU32(selectedInk);
+        // THE SELECTION RING IS THE TIMELINE'S: the channel's RAW hue at
+        // ctrl::time::kSelectRingAlpha (0.85), 1px - NOT the mixed fill ink. The
+        // fill below still uses the mixed highlight ink; the two views' rings must
+        // be one expression, and this is the timeline's.
+        QColor ringInk = curve.color;
+        ringInk.setAlpha(ctrl::time::kSelectRingAlpha);
+        const ImU32 selectedRing = toImU32(ringInk);
+        // The selected FILL keeps the timeline's fill rule: the channel hue mixed
+        // 0.45 toward the text ink.
+        const QColor selectedFillInk = mixedToward(curve.color, highlightInk, kKeySelectedFillMix);
         const int keys = int(curve.keyDots.size());
         for (int k = 0; k < keys; ++k) {
             const QPointF& dot = curve.keyDots.at(k);
@@ -1759,7 +1773,7 @@ void drawPanel(
             const ImVec2 centre(float(dot.x()), float(dot.y()));
             aDrawList.AddCircleFilled(
                 centre, dotRadius,
-                selected ? toImU32(selectedInk)
+                selected ? toImU32(selectedFillInk)
                          : hoveredHere ? toImU32(mixedToward(curve.color, highlightInk, kKeyHoverFillMix))
                                        : fill
             );
@@ -1774,14 +1788,15 @@ void drawPanel(
             aDrawList.AddCircle(centre, dotRadius + 0.5f, edge, 0, 1.0f);
             if (sibling && !selected) {
                 // The faint ring, at the selection ring's own radius and geometry;
-                // it is the raw hue at 0.35, so hue-toward-text AND strength tell it
-                // apart from the selected marker's opaque mixed ink.
+                // it is the same raw hue at 0.35, so STRENGTH alone tells it apart
+                // from the selected marker's ring.
                 aDrawList.AddCircle(centre, ringRadius, siblingRing, 0, kKeyRingWidth);
             }
             if (selected) {
-                // The rule's ring: THE FILL'S OWN MIXED INK, opaque, 1px, 2.6px
-                // clear of the marker's radius - drawn outside it, so it never eats
-                // the fill.
+                // THE TIMELINE'S RING: the channel's raw hue at 0.85, 1px, centred
+                // dotRadius + kSelectRingOffset out (ringRadius is that +0.5 for
+                // ImGui's inward stroke) - drawn outside the marker, so it never
+                // eats the fill.
                 aDrawList.AddCircle(centre, ringRadius, selectedRing, 0, kKeyRingWidth);
             }
         }

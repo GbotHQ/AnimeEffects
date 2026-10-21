@@ -77,23 +77,37 @@ public:
     // rule, including the loan's drop, is the timeline's). False when nothing opened
     // (no timeline wired, or the key is not one the document holds).
     bool showGraphKeyMenu(const core::TimeLineEvent::Target& aPressedKey, const QPoint& aGlobalPos);
-    // Opens the timeline's BACKGROUND menu - the one a right-click on empty timeline
-    // space builds - at aGlobalPos (screen coordinates). The panel's right-click uses
-    // this when its own hit test (gui::panelKeyAt) finds no key under the pointer.
+    // Opens the graph's HANDLE menu at aGlobalPos (screen coordinates): the five handle
+    // types - Free / Aligned / Vector / Auto / Auto Clamped - for the ONE SIDE aTarget
+    // names, with that side's current type checked. The entries are
+    // util::Easing::getHandleModeName's, the same vocabulary the picker's two mode
+    // combos use, and activating one applies it through
+    // ctrl::GraphEditor::setHandleMode: ONE undo step whose name says which side
+    // ("Change the outgoing handle to Free"), never the key menu's actions - copy,
+    // paste, spacing and delete are about KEYS, and a tangent handle is not one.
     //
-    // NOT A SECOND MENU: the request is delivered to the timeline's own surface as the
-    // very QContextMenuEvent a right-click there produces, so it runs
-    // TimeLineEditorWidget::onContextMenuRequested and buildKeyMenu - the same paste
-    // anchor, the same selection rule and the same items. The anchor survives because
-    // the point is mapped into that surface first (mapFromGlobal) and the handler maps
-    // it back out (mapToGlobal) for QMenu::exec: the menu opens exactly at the pointer.
-    // The graph page and the timeline page sit in the same dock stack, so the point
-    // also names the frame the pointer is over.
+    // aTarget is the panel's own pick (ctrl::GraphEditor::contextTargetAt), so the
+    // side named here is the one under the pointer. False when nothing opened (no
+    // driver, or a target that is not a handle).
+    bool showGraphHandleMenu(const ctrl::GraphEditor::ContextTarget& aTarget, const QPoint& aGlobalPos);
+    // Opens the timeline's BACKGROUND menu - the one a right-click on empty timeline
+    // space builds - at aGlobalPos (screen coordinates), plus the graph's own "Fit
+    // graph" entry. The panel's right-click uses this when its pick
+    // (ctrl::GraphEditor::contextTargetAt) names neither a key nor a handle.
+    //
+    // NOT A SECOND MENU: the items are TimeLineEditorWidget::buildKeyMenu's - the same
+    // paste anchor, the same selection rule and the same labels - and they act on the
+    // SHARED SELECTION (TimeLineEditorWidget::openBackgroundMenu). THE POINT IS NOT
+    // HIT-TESTED AGAINST THE TIMELINE'S LANES: this widget's pixels are the panel's,
+    // and reading them as timeline model space named a key of some other row - which is
+    // how a menu's Edit/Delete could end up editing a key the user was not looking at.
     //
     // With NO selection the menu is paste-only (buildKeyMenu's empty-targets shape):
     // one "Paste key" item, enabled when something has been copied. With a selection it
     // offers Copy key, Copy key to clipboard, Paste key, Select spacing between keys and
-    // Delete key. False when there is no timeline wired (or no surface to deliver to).
+    // Delete key. "Fit graph" is always last and runs ctrl::GraphEditor::fitAll() - the
+    // panel's explicit fit, which replaced the plot's double-click. False when there is
+    // no timeline wired (or no surface to build the menu on).
     bool showGraphBackgroundMenu(const QPoint& aGlobalPos);
     // Shows the application's own CHANNEL LIST - the animation graph panel's ONE
     // control, which the user's design moved into the DOCK HEADER's channels button -

@@ -163,7 +163,6 @@ protected:
     void mouseMoveEvent(QMouseEvent* aEvent) override;
     void mousePressEvent(QMouseEvent* aEvent) override;
     void mouseReleaseEvent(QMouseEvent* aEvent) override;
-    void mouseDoubleClickEvent(QMouseEvent* aEvent) override;
     void wheelEvent(QWheelEvent* aEvent) override;
     void tabletEvent(QTabletEvent* aEvent) override;
     void keyPressEvent(QKeyEvent* aEvent) override;
@@ -204,21 +203,26 @@ private:
     // taken the keyboard) are stated at the definition.
     bool panelKeyAction(const QKeyEvent& aEvent);
 
-    // A double-click on the plot: fits both axes (the panel's own gesture). Returns
-    // true when it acted.
-    bool doubleClickAt(const QPoint& aPos);
-    // The panel's right-click, at aPos in this widget's pixels. On a key (the EDITOR's
-    // own distance rule, gui::panelKeyAt) it opens the TIMELINE'S OWN KEY MENU - the one
-    // a right-click on a timeline key builds, through
-    // gui::MainDisplayWidget::showGraphKeyMenu - anchored at the key in screen
-    // coordinates. The timeline applies its own right-click rule to the pressed key
-    // against the one shared selection, so with several keys selected the menu acts on
-    // all of them and a key that is not selected is lent to the menu for its lifetime.
-    // With NO key under the pointer it opens the TIMELINE'S BACKGROUND menu instead
-    // (gui::MainDisplayWidget::showGraphBackgroundMenu), anchored at the pointer: the
-    // same request a right-click on empty timeline space delivers, so the same
-    // buildKeyMenu shapes it (paste-only with no selection). Returns true when a menu
-    // opened.
+    // The panel's right-click, at aPos in this widget's pixels. ONE PICK decides
+    // which menu opens, and it is the editor's own press rule
+    // (ctrl::GraphEditor::contextTargetAt - the same nearest-and-normalised
+    // comparison a left press obeys, and the one the hover ink lights):
+    //   * on a TANGENT HANDLE it opens the HANDLE MENU - that side's Free / Aligned
+    //     / Vector / Auto / Auto Clamped - through
+    //     gui::MainDisplayWidget::showGraphHandleMenu. A handle therefore never
+    //     opens the key menu, even when a key sits inside the handle's wider grab
+    //     ring (it is the handle that is relatively nearer);
+    //   * on a KEY it opens the TIMELINE'S OWN KEY MENU - the one a right-click on
+    //     a timeline key builds, through gui::MainDisplayWidget::showGraphKeyMenu -
+    //     anchored at the key in screen coordinates. The timeline applies its own
+    //     right-click rule to the pressed key against the one shared selection, so
+    //     with several keys selected the menu acts on all of them and a key that is
+    //     not selected is lent to the menu for its lifetime;
+    //   * on NEITHER it opens the TIMELINE'S BACKGROUND menu
+    //     (gui::MainDisplayWidget::showGraphBackgroundMenu), anchored at the
+    //     pointer: the same items a right-click on empty timeline space offers,
+    //     plus the graph's own "Fit graph" entry.
+    // Returns true when a menu opened.
     bool openKeyMenuAt(const QPoint& aPos);
     // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
     // under the pointer CHANGES, and none for a move that keeps the same target. The

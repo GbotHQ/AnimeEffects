@@ -231,6 +231,19 @@ namespace prop {
         void openPicker(const QPoint& aGlobalAnchor, const QWidget* aAnchorWidget,
                         const util::Easing::Param& aShown,
                         const util::Easing::AutoContext& aAutoContext);
+        // Is that popover on screen? The one question a host asks before re-reading
+        // the document for it (see refreshShown): closed, there is nothing to keep in
+        // step, and the next open loads the state itself.
+        bool isPickerOpen() const;
+        // THE DOCUMENT CAME BACK TO THE POPUP: re-read what it shows. The host calls
+        // this from the notification it already receives (the shared selection's own
+        // onChanged and the project's timeline modification), so an edit made in the
+        // graph - a handle drag, a mode change, another key being selected - is shown
+        // by the open picker too, not only the other way round. The picker IGNORES it
+        // while a gesture is in progress in the popup (a drag there wins until it
+        // ends) and while the popup is closed; TRUE when it adopted the value.
+        bool refreshShown(const util::Easing::Param& aShown,
+                          const util::Easing::AutoContext& aAutoContext);
 
         // Every edit the picker commits, in the editor's own currency. The host
         // (the timeline surface, which knows the keys the open acts on) is the

@@ -22,6 +22,21 @@ namespace ctrl {
     constexpr double keyRadiusChildPoly = 5.0 * childRadiiFactor;
 namespace time {
 
+    // THE SELECTED KEY'S RING - one rule for BOTH views, so it is named here and
+    // read by the graph's marker pass too (gui::drawPanel):
+    //   * ink   - the key's OWN channel hue at kSelectRingAlpha (0.85), 1px wide;
+    //   * place - an ellipse centred on the marker whose radius is the marker's own
+    //             radius PLUS kSelectRingOffset, drawn OUTSIDE the marker so the
+    //             fill keeps its size. The graph's marker radius is
+    //             ctrl::graph::kKeyDotRadius, pinned to keyRadius, so the two
+    //             engines put the same band at the same distance.
+    // The timeline's pen is centred on the radius (QPainter); the graph's ImGui
+    // circle strokes INWARD, so it adds half a pixel (see its marker pass). That
+    // half pixel is the only difference, and it is the engines' stroke convention,
+    // not the rule's.
+    constexpr int kSelectRingAlpha = 217;      // 0.85 of the channel hue
+    constexpr double kSelectRingOffset = 2.6;  // px past the marker's own radius
+
     class Renderer {
     public:
         Renderer(QPainter& aPainter, const core::CameraInfo& aCamera, const theme::TimeLine& aTheme);

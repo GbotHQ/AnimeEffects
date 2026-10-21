@@ -322,11 +322,16 @@ public:
     //     the segment AFTER next, which this action does not own.
     // The segment ARRIVING at K (prev -> K) is NOT touched: its curve is the
     // previous key's param, so neither that param nor K's INCOMING side - the
-    // end tangent of that segment - is written.
-    // A LAST key has no segment leaving it and therefore writes NOTHING AT ALL
-    // (not even its type): with no next key the preset would preconfigure a
-    // segment that does not exist. So a single-key Auto writes two params, in
-    // ONE macro and therefore ONE undo step. appendAutoPresetWrites merges a
+    // end tangent of that segment - is written. (The ONE exception is a key
+    // with no next key, below: its own pair is the only thing the action can
+    // mark, and its incoming side then belongs to that pair.)
+    // A LAST key (or the only key) has no segment leaving it YET, so the preset
+    // writes the key's OWN pair instead: its type becomes Custom and BOTH its
+    // OUTGOING and INCOMING sides become automatic, so the segments that appear
+    // when a second key is added derive on both sides. No other param is
+    // written: there is no next key's incoming side to name. So a single-key
+    // Auto writes ONE param, in ONE macro and therefore ONE undo step, while
+    // the middle-key case still writes two. appendAutoPresetWrites merges a
     // param named twice (two selected neighbours), so the multi-key case writes
     // every param once.
     bool assignSelectionAutoHandles();
@@ -342,11 +347,11 @@ public:
         core::Frame frame{0};
     };
     // Appends the Auto preset's writes for ONE key and ONE easing component: the
-    // two params described on assignSelectionAutoHandles (none for the last key).
-    // An entry that is already present is MERGED, never appended twice, so a
-    // param two selected keys both name is written once with the union of the
-    // forced sides. Only the type and the two handle modes are the preset's; the
-    // stored cubic, range and weight ride along untouched.
+    // params described on assignSelectionAutoHandles (the key's own pair when it
+    // has no next key). An entry that is already present is MERGED, never
+    // appended twice, so a param two selected keys both name is written once
+    // with the union of the forced sides. Only the type and the two handle modes
+    // are the preset's; the stored cubic, range and weight ride along untouched.
     static void appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectNode& aNode,
                                        core::TimeKeyType aType, int aComponent,
                                        core::Frame aFrame, QVector<EasingWrite>& aOut);

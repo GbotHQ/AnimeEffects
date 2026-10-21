@@ -81,8 +81,8 @@ struct PanelFocus {
 // every other curve dimmed - see curveStrength), the key markers (a filled dot of
 // radius ctrl::graph::kKeyDotRadius about each key's centre, ringed in
 // theme::Graph::keyEdge(), in one of the THREE states the model classifies: a
-// selected marker brightens its fill and takes a 1px ring in THAT SAME ink clear of
-// the marker, a marker whose key has a selected sibling keeps the faint raw-hue
+// selected marker brightens its fill and takes the TIMELINE'S 1px ring - the channel's
+// raw hue at 0.85, clear of the marker, a marker whose key has a selected sibling keeps the faint raw-hue
 // ring, and the marker under the pointer brightens its fill alone - see the marker
 // pass), every segment's tangent handles (both kinds are solid dots: a stored pair
 // filled with the raised surface, an Auto segment's derived pair filled with the
@@ -192,27 +192,15 @@ constexpr int kValueLabelGap = 8;
 //
 // Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp asserts
 // the drawn row against THIS number, so the placement and the assertion cannot drift
-// (the same reason kDrawTextHalo, kValueLabelGap and kKeyRingOffsetPx live here).
+// (the same reason kDrawTextHalo and kValueLabelGap live here).
 constexpr int kRulerNumberInkTop = 3;
 
-// How far past a key marker's own radius its SELECTION ring's centre sits, in pixels:
-// the ring the design asks for, "a 1px ring 1px clear of the marker"
-// (index.html:279-280 and :302-303, quoted in full in GraphPanelFrame.cpp's marker rule).
-//
-// WHY 2.6 AND NOT 1.5. A literal reading - the ring's stroke 1px wide, its inner edge
-// 1px clear of the marker's own edge - puts the ring's centre at radius + 1.5, and at
-// that radius the dark SLEEVE the reference draws under the highlight ink (mock-graph.js
-// strokes 2.6px at this same radius, "the ring reads on any artwork") would reach
-// 0.2px INSIDE the marker's edge and paint the clear gap black. The reference's own
-// radius is `KEY_R + 2.6` (mock-graph.js:865-876) and it is taken as it stands: the
-// highlight stroke is 1px as the design says, its centre is 2.6px out, and the whole
-// band's inner edge - the sleeve's - then sits 1.3px clear of the marker, which is the
-// design's "1px clear" at the scale it means (the marker's own radius, not a hairline).
-//
-// Declared here rather than in the .cpp because tests/graph_panel_pixels.cpp has to
-// find the ring's pixels to read their ink, and a bar that moved would move every probe
-// with it (the same reason kDrawTextHalo and kValueLabelGap live here).
-constexpr float kKeyRingOffsetPx = 2.6f;
+// THE SELECTION RING'S OFFSET AND INK ARE NOT TOKENS OF THIS LAYER: the ring is the
+// TIMELINE's own (ctrl::time::kSelectRingOffset / kSelectRingAlpha in
+// ctrl/time/time_Renderer.h - the channel's raw hue at 0.85, 1px, centred that many
+// pixels past the marker's radius). The marker pass reads those two cells directly, so
+// the two views cannot drift; tests/graph_panel_pixels.cpp reads them too, to find the
+// ring's pixels and to name its ink.
 
 // The contrast outline and composite: ONE full-screen pass that rings panel ink
 // whose own colour is too close to the artwork underneath it, and then composites

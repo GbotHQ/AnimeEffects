@@ -767,8 +767,8 @@
         <translation>Eliminar claves</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1169"/>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="3031"/>
+        <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1172"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3196"/>
         <source>Make the segment after the key automatic</source>
         <translation>Hacer automático el segmento posterior a la clave</translation>
     </message>
@@ -1051,32 +1051,47 @@
         <translation>Cambiar configuración de animación</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="1063"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="1070"/>
         <source>align handles</source>
         <translation>Alinear manejadores</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2429"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2537"/>
         <source>move a key</source>
         <translation>mover una clave</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2705"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2857"/>
         <source>change a key easing</source>
         <translation>cambiar la interpolación de una clave</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2946"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3108"/>
         <source>remove a key</source>
         <translation>eliminar una clave</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="3113"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3278"/>
         <source>change key easing</source>
         <translation>Cambiar la interpolación de la clave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1481"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3472"/>
+        <source>incoming</source>
+        <translation>entrante</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3472"/>
+        <source>outgoing</source>
+        <translation>saliente</translation>
+    </message>
+    <message>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="3473"/>
+        <source>Change the %1 handle to %2</source>
+        <translation>Cambiar el tirador %1 a %2</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1520"/>
         <location filename="../../src/ctrl/TimeLineEditor.cpp" line="1132"/>
         <source>Change key(s) easing</source>
         <translation>Cambiar la interpolación de la(s) clave(s)</translation>
@@ -3185,12 +3200,12 @@ Tampoco se pudo abrir el codificador %2 (%3).</translation>
         <translation>Tono</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2294"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2402"/>
         <source>The animation graph stopped moving: the dragged key changed.</source>
         <translation>El gráfico de animación dejó de moverse: la clave arrastrada cambió.</translation>
     </message>
     <message>
-        <location filename="../../src/ctrl/GraphEditor.cpp" line="2468"/>
+        <location filename="../../src/ctrl/GraphEditor.cpp" line="2576"/>
         <source>The animation graph stopped editing: the dragged key changed.</source>
         <translation>El gráfico de animación dejó de editar: la clave arrastrada cambió.</translation>
     </message>
@@ -4469,7 +4484,7 @@ Comprobar generación de paletas FFmpeg ...</translation>
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2428"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2443"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1, %n clave seleccionada</numerusform>
@@ -4488,7 +4503,7 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation type="vanished">oculto</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2418"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2433"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>%n canal mostrado</numerusform>
@@ -4496,12 +4511,12 @@ Comprobar generación de paletas FFmpeg ...</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2436"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2451"/>
         <source>%1, focused: %2</source>
         <translation>%1, enfocado: %2</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2467"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2482"/>
         <source>%1, selected key: %2</source>
         <translation>%1, clave seleccionada: %2</translation>
     </message>
@@ -4521,22 +4536,22 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <translation type="vanished">muestra la lista de canales</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2498"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2513"/>
         <source>Fit graph</source>
         <translation>Ajustar gráfico</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2499"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2514"/>
         <source>double-click the plot</source>
         <translation>doble clic en el gráfico</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2515"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2530"/>
         <source>Key menu</source>
         <translation>Menú de la clave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2516"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2531"/>
         <source>right-click the key</source>
         <translation>clic derecho en la clave</translation>
     </message>
@@ -4725,6 +4740,24 @@ Comprobar generación de paletas FFmpeg ...</translation>
         <location filename="../../src/gui/KeyCommandMap.cpp" line="90"/>
         <source>Move one frame to the left</source>
         <translation>Mover un fotograma a la izquierda</translation>
+    </message>
+</context>
+<context>
+    <name>gui::MainDisplayWidget</name>
+    <message>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="371"/>
+        <source>Incoming handle</source>
+        <translation>Tirador entrante</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="371"/>
+        <source>Outgoing handle</source>
+        <translation>Tirador saliente</translation>
+    </message>
+    <message>
+        <location filename="../../src/gui/MainDisplayWidget.cpp" line="417"/>
+        <source>Fit graph</source>
+        <translation>Ajustar gráfica</translation>
     </message>
 </context>
 <context>
@@ -5903,22 +5936,22 @@ El registro está disponible a continuación.</translation>
 <context>
     <name>gui::TimeLineEditorWidget</name>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="188"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="193"/>
         <source>Copy key</source>
         <translation>Copiar clave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="191"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="196"/>
         <source>Paste key</source>
         <translation>Pegar clave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="194"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="199"/>
         <source>Delete key</source>
         <translation>Eliminar clave</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="197"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="202"/>
         <source>Copy key to clipboard</source>
         <translation>Copiar clave al portapapeles</translation>
     </message>
@@ -5991,12 +6024,12 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Todos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="202"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="207"/>
         <source>Select spacing between keys</source>
         <translation>Seleccionar espacio entre teclas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="544"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="555"/>
         <source>Clear playback window</source>
         <translation>Limpiar ventana de reproducción</translation>
     </message>
@@ -6005,12 +6038,12 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Cambiar la interpolación de la(s) clave(s)...</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="878"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="889"/>
         <source>Operation Error</source>
         <translation>Error de operación</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="878"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="889"/>
         <source>Failed to paste keys. 
 (If you want to paste across objects copy the key to the clipboard and right-click and paste to the node instead)</source>
         <translation>Error al pegar claves.
@@ -6021,37 +6054,37 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished">Error al pegar claves.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1131"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1143"/>
         <source>A minimum of two keys in different frames are needed.</source>
         <translation>Se necesita un mínimo de dos claves en diferentes fotogramas.</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1132"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1144"/>
         <source>Not enough targets</source>
         <translation>No hay suficientes objetivos</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1167"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1179"/>
         <source>Key spacing</source>
         <translation>Espacio de teclas</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1169"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1181"/>
         <source>Number of frames the selected keys should be spaced by:</source>
         <translation>Cantidad de fotogramas que las claves seleccionadas deben ser espaciadas por:</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1218"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1230"/>
         <source>Key conflict detected for key type </source>
         <translation>Conflicto de clave detectado para tipo de clave </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1219"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1231"/>
         <source> in node </source>
         <translation> en el nodo </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1219"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1231"/>
         <source> at frame </source>
         <translation> en fotograma </translation>
     </message>
@@ -6064,17 +6097,17 @@ El registro está disponible a continuación.</translation>
         <translation type="vanished"> está fuera del fotograma máximo del proyecto, ignorado intento de mover la tecla al fotograma </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1221"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1233"/>
         <source>Move error</source>
         <translation>Error al mover</translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1222"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1234"/>
         <source>Unable to move </source>
         <translation>No se puede mover </translation>
     </message>
     <message>
-        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1222"/>
+        <location filename="../../src/gui/TimeLineEditorWidget.cpp" line="1234"/>
         <source> key(s), due to the following reasons: </source>
         <translation> clave(s), debido a las siguientes razones: </translation>
     </message>
@@ -6392,42 +6425,42 @@ El registro está disponible a continuación.</translation>
         <translation>Cerrar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="872"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="874"/>
         <source>Make the segment after the selected key automatic</source>
         <translation>Hacer automático el segmento posterior a la clave seleccionada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="873"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="875"/>
         <source>%1 (%2)</source>
         <translation>%1 (%2)</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="874"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="876"/>
         <source>%1 - %2 handles</source>
         <translation>%1 - %2 tiradores</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="877"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="879"/>
         <source>Set the easing to %1</source>
         <translation>Establecer la aceleración en %1</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1026"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1028"/>
         <source>In</source>
         <translation>Entrada</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1027"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1029"/>
         <source>Out</source>
         <translation>Salida</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1071"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1073"/>
         <source>Copy</source>
         <translation>Copiar</translation>
     </message>
     <message>
-        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1074"/>
+        <location filename="../../src/gui/prop/EasingPickWidget.cpp" line="1076"/>
         <source>Paste</source>
         <translation>Pegar</translation>
     </message>

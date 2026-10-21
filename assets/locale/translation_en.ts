@@ -32,7 +32,7 @@
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2428"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2443"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1, %n key selected</numerusform>
@@ -43,7 +43,7 @@
 <context>
     <name>gui::ImGuiOverlay</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2418"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2433"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>1 channel shown</numerusform>

@@ -865,8 +865,10 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     // automatic handles apply to one SEGMENT (a tangent pair belongs to a
     // segment), so the action makes the segment AFTER each selected key automatic
     // - that key's type and outgoing side plus the next key's incoming side, in
-    // ONE undo step; a last key has no segment and writes nothing. A
-    // screen-reader user gets the same words the tooltip shows.
+    // ONE undo step. A LAST key (or the only key) has no segment after it YET,
+    // so it writes its OWN pair instead - type Custom and BOTH sides automatic -
+    // and the segments that appear when a neighbour is added derive on both
+    // sides. A screen-reader user gets the same words the tooltip shows.
     const QString tileLabel = util::Easing::getParamName(glyph);
     if (def.autoPreset) {
         const QString action = tr("Make the segment after the selected key automatic");
@@ -1325,6 +1327,39 @@ void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext)
     // canonical automatic-handle pair (see autoPreviewContext).
     mAuto = aContext;
     refreshTiles();
+}
+
+bool EasingPickWidget::setShownValue(
+    const util::Easing::Param& aParam, const util::Easing::AutoContext& aAutoContext
+) {
+    // A CLOSED POPUP HAS NOTHING TO KEEP IN STEP, and A GESTURE IN THE POPUP WINS: the
+    // value the user is dragging is the truth until the gesture ends, and the owner
+    // pushes the document's state again when it does (see isEditing). Both answers are
+    // "not adopted", so a caller can tell them from an adoption without inspecting
+    // this widget's state.
+    if (!this->isVisible() || isEditing())
+        return false;
+
+    // The same state it already holds: adopting it would be a refresh for a change that
+    // did not happen (every document notification reaches this).
+    if (mDraft == aParam && mAuto == aAutoContext)
+        return false;
+
+    // THE WHOLE SHOWN STATE, loaded the way a programmatic load is (see setValue) but
+    // WITHOUT closing a session: an external change is not the end of the user's edit,
+    // and this is not an edit of ours to commit. The session history describes the
+    // draft this replaced, so it goes with it. An externally re-read value is also
+    // already in the model (that is where it came from), so it is the baseline a
+    // close-time commit compares against - nothing is re-committed.
+    mAuto = aAutoContext;
+    mDraft = aParam;
+    mApplied = aParam;
+    mUndo.clear();
+    mRedo.clear();
+    // mForceBezierPanel is deliberately LEFT ALONE: the panel the user is looking at is
+    // their choice, and a graph edit must not jump the popup's tab under them.
+    refresh();
+    return true;
 }
 
 // ---- commit ---------------------------------------------------------------
