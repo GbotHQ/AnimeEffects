@@ -245,17 +245,23 @@ namespace graph {
         bars.hScrollable = horizontal.travel;
         bars.hContentPerPixel = horizontal.contentPerPixel;
 
-        // THE VERTICAL LANE FOLLOWS THE TIMELINE'S OWN VERTICAL BAR, which is
-        // AsNeeded: in the state where the tracks fit, its lane carries NO ink at all
-        // (measured: columns 876..893 stay the base surface). So a bar with no travel
-        // is DROPPED here - hidden, not drawn full - while the horizontal one above is
-        // the timeline's AlwaysOn bar and keeps its handle. The two policies are the
-        // reference's, measured per lane, not one rule applied twice.
+        // THE VERTICAL LANE IS ALWAYS DRAWN, like the horizontal one: the run is the
+        // handle over the union track, and a window that covers its content fills the
+        // lane exactly as the horizontal bar does there. There is no timeline vertical
+        // bar to mirror: TimeLineWidget builds a HORIZONTAL TimelineScrollBar only
+        // (its vertical position belongs to the object tree), so the timeline's empty
+        // right lane is an ABSENT bar, not a hidden one. The panel's value bar is its
+        // own, and a bar that vanished with the content in range is the defect this
+        // rule fixes.
+        // NOTHING IS GRABBABLE AT ZERO TRAVEL, which is the hit rule and not the
+        // drawing rule: vScrollable stays false, so a press or a wheel notch on the
+        // full run falls through (see GraphEditor's ownsCursor/updateWheel and
+        // beginScrollBarPress).
         const BarLayout vertical = timelineHandle(
             bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
             static_cast<double>(valueMax())
         );
-        bars.vThumb = vertical.travel ? vertical.thumb : QRect();
+        bars.vThumb = vertical.thumb;
         bars.vScrollable = vertical.travel;
         bars.vContentPerPixel = vertical.contentPerPixel;
         return bars;

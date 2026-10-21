@@ -235,18 +235,24 @@ int main(int argc, char** argv) {
     }
 
     // 6) PER-SIDE HANDLES: a Custom curve's two control points are derived by
-    //    their OWN HandleMode. These cases pin the derivation itself. Each
-    //    expected value is worked out by hand from the algorithm:
-    //      * Auto's OUTGOING side reads the PREVIOUS key: slope = py/px in the
-    //        segment's normalized space (the secant arriving at the key);
-    //      * Auto's INCOMING side reads the NEXT key: slope = (ny-1)/(nx-1)
-    //        (the secant leaving the key);
-    //      * a side with no such neighbour falls back to the segment's own chord
-    //        (the identity third);
-    //      * AutoClamped clamps the derived y into the value range the key and
-    //        its neighbours span.
-    //    Nothing here reads the OTHER side: that independence is what lets a
-    //    dragged side become Free while its partner keeps deriving.
+    //    their OWN HandleMode. These cases pin the derivation itself, which is
+    //    the reference's PER-KEY central difference (easing-demo.html,
+    //    computeAllTangents' default 'uniform' mode), normalized to the segment:
+    //      m = (next.y - prev.y) / (next.x - prev.x)
+    //    and the handle at each third is y = m/3 (outgoing) or 1 - m/3
+    //    (incoming). Each expected value below is worked out by hand:
+    //      * BOTH neighbours: the FROM key's central difference over prev and
+    //        TO, and the TO key's over FROM and next;
+    //      * a key with only ONE neighbour follows Blender's endpoint rule and
+    //        borrows the adjacent key's own third-point slope: an open FROM end
+    //        gets 3/2 - m_TO/2, an open TO end 3/2 - m_FROM/2;
+    //      * a two-key channel has no interior key to borrow from, so it is the
+    //        chord (m = 1, the identity thirds);
+    //      * AutoClamped intersects the key's slope with the bounds that keep
+    //        BOTH of its handles inside its three-key value range.
+    //    A side's mode decides only WHETHER it derives; the slope it uses is the
+    //    key's, shared with the other side, which is what makes a symmetric
+    //    neighbourhood draw a symmetric pair (the block after the table).
     {
         const float span = 10.0f; // the segment 0 -> 10, values 0 -> 1
 
@@ -277,24 +283,32 @@ int main(int argc, char** argv) {
             // Linear.
             {make(false, 0, 0, false, 0, 0), util::Easing::HandleMode_Auto,
              1.0f / 3.0f, 2.0f / 3.0f, "isolated segment"},
-            // Both neighbours, both sides Auto:
-            //   outgoing: slope = py/px = (-0.5)/(-1) = 0.5 -> y1 = 1/6
-            //   incoming: slope = (2-1)/(2.5-1) = 2/3 -> y2 = 1 - (2/3)/3
+            // Both neighbours, both sides Auto. prev at frame -10 is px = -1,
+            // next at 25 is nx = 2.5; py = -0.5, ny = 2.
+            //   outgoing (FROM): m = (1-(-0.5))/(1-(-1)) = 0.75 -> y1 = 0.25
+            //   incoming (TO):   m = (2-0)/(2.5-0) = 0.8 -> y2 = 1 - 0.8/3 = 11/15
             {make(true, -10.0f, -0.5f, true, 25.0f, 2.0f), util::Easing::HandleMode_Auto,
-             0.5f / 3.0f, 1.0f - (2.0f / 3.0f) / 3.0f, "both neighbours"},
-            // Only a next key: the outgoing side has no previous neighbour, so it
-            // is the identity third; the incoming side reads next (slope 2).
+             0.25f, 11.0f / 15.0f, "both neighbours"},
+            // Only a next key (nx = 2, ny = 3). TO's own slope is
+            // m_TO = (3-0)/(2-0) = 1.5. The open FROM end borrows it:
+            //   outgoing m = 3/2 - 1.5/2 = 0.75 -> y1 = 0.25
+            //   incoming m = 1.5 -> y2 = 1 - 1.5/3 = 0.5
             {make(false, 0, 0, true, 20.0f, 3.0f), util::Easing::HandleMode_Auto,
-             1.0f / 3.0f, 1.0f - 2.0f / 3.0f, "first key of the channel"},
-            // Only a previous key: outgoing reads prev (slope 2); incoming has no
-            // next neighbour and stays the identity third.
+             0.25f, 0.5f, "first key of the channel"},
+            // Only a previous key (px = -0.5, py = -1). FROM's slope is
+            // m_FROM = (1-(-1))/(1-(-0.5)) = 4/3.
+            //   outgoing m = 4/3 -> y1 = 4/9
+            //   incoming m = 3/2 - (4/3)/2 = 5/6 -> y2 = 1 - 5/18 = 13/18
             {make(true, -5.0f, -1.0f, false, 0, 0), util::Easing::HandleMode_Auto,
-             2.0f / 3.0f, 2.0f / 3.0f, "last key of the channel"},
-            // A near, high previous key: the raw outgoing slope is -20, so the
-            // handle would sit far ABOVE the segment (y = -6.67). AutoClamped
-            // holds it at the range floor, 0, while Auto leaves it there.
+             4.0f / 9.0f, 13.0f / 18.0f, "last key of the channel"},
+            // A near, high previous key: FROM's raw central slope is
+            // (1-2)/(1-(-0.1)) = -10/11. Auto's outgoing handle is
+            // y = -10/33; AutoClamped intersects the slope with the bounds of
+            // prev=2/from=0/to=1, which is [0, 0], so the extremum is flat and
+            // the open TO end (borrowing the clamped FROM slope 0) is
+            // 3/2 -> y2 = 0.5.
             {make(true, -1.0f, 2.0f, false, 0, 0), util::Easing::HandleMode_AutoClamped,
-             0.0f, 2.0f / 3.0f, "clamped start"},
+             0.0f, 0.5f, "clamped start"},
         };
 
         for (const HandleCase& c : cases) {
@@ -330,9 +344,72 @@ int main(int argc, char** argv) {
             XC_ASSERT(std::fabs(util::Easing::calculate(p, c.ctx, span, 0.0f, 1.0f, span) - 1.0f) <= 1e-6);
         }
 
+        // SYMMETRY. A neighbourhood mirrored about the segment's centre must
+        // produce a mirrored pair: y1 == 1 - y2, for BOTH Auto and AutoClamped.
+        // The mirror of prev (px, py) is (1 - px, 1 - py); with prev at frame
+        // -span that puts next at frame 2*span, value 1 - py. Each fixture below
+        // therefore has ONE central slope at both keys, m = (1 - py)/2, and the
+        // two handles are (1/3, m/3) and (2/3, 1 - m/3).
+        {
+            const float py[] = { -0.5f, 1.5f, 0.3f, 2.0f, -2.0f };
+            for (util::Easing::HandleMode mode :
+                 { util::Easing::HandleMode_Auto, util::Easing::HandleMode_AutoClamped }) {
+                for (float v : py) {
+                    const auto ctx = make(true, -span, v, true, 2.0f * span, 1.0f - v);
+                    util::Easing::Param p;
+                    p.type = util::Easing::Type_Custom;
+                    p.handleOut = mode;
+                    p.handleIn = mode;
+                    const QPointF c1 = util::Easing::controlPoint(p, mode, ctx, span, 0);
+                    const QPointF c2 = util::Easing::controlPoint(p, mode, ctx, span, 1);
+                    XC_MSG_ASSERT(std::fabs(c1.y() + c2.y() - 1.0) <= 1e-9,
+                                  "symmetry mode %d py %.3f: y1=%.9f y2=%.9f",
+                                  int(mode), double(v), c1.y(), c2.y());
+                }
+            }
+        }
+
+        // THE HAND-COMPUTED SYMMETRIC FIXTURES. The two neighbourhoods that
+        // mirror each other:
+        //   A: prev(-1, -0.5), next(2, 1.5) -> m = 0.75 at both keys
+        //   B: prev(-1,  1.5), next(2, -0.5) -> m = -0.25 at both keys
+        // Auto leaves them free, so B overshoots by construction (and mirrors):
+        //   A -> (1/3, 1/4) and (2/3, 3/4)
+        //   B -> (1/3, -1/12) and (2/3, 13/12)
+        // AutoClamped flattens B's local extremum: (1/3, 0) and (2/3, 1).
+        {
+            util::Easing::Param p;
+            p.type = util::Easing::Type_Custom;
+            p.handleOut = util::Easing::HandleMode_Auto;
+            const auto a = make(true, -span, -0.5f, true, 2.0f * span, 1.5f);
+            const auto b = make(true, -span, 1.5f, true, 2.0f * span, -0.5f);
+            const QPointF a1 = util::Easing::controlPoint(p, p.handleOut, a, span, 0);
+            const QPointF a2 = util::Easing::controlPoint(p, p.handleOut, a, span, 1);
+            const QPointF b1 = util::Easing::controlPoint(p, p.handleOut, b, span, 0);
+            const QPointF b2 = util::Easing::controlPoint(p, p.handleOut, b, span, 1);
+            XC_ASSERT(std::fabs(a1.y() - 0.25) <= 1e-9);
+            XC_ASSERT(std::fabs(a2.y() - 0.75) <= 1e-9);
+            XC_ASSERT(std::fabs(b1.y() - (-1.0 / 12.0)) <= 1e-9);
+            XC_ASSERT(std::fabs(b2.y() - (13.0 / 12.0)) <= 1e-9);
+            // The pair is a mirror, not two independent guesses.
+            XC_ASSERT(std::fabs(a1.y() + a2.y() - 1.0) <= 1e-9);
+            XC_ASSERT(std::fabs(b1.y() + b2.y() - 1.0) <= 1e-9);
+
+            p.handleOut = util::Easing::HandleMode_AutoClamped;
+            const QPointF ac1 = util::Easing::controlPoint(p, p.handleOut, a, span, 0);
+            const QPointF ac2 = util::Easing::controlPoint(p, p.handleOut, a, span, 1);
+            const QPointF bc1 = util::Easing::controlPoint(p, p.handleOut, b, span, 0);
+            const QPointF bc2 = util::Easing::controlPoint(p, p.handleOut, b, span, 1);
+            XC_ASSERT(std::fabs(ac1.y() - 0.25) <= 1e-9);
+            XC_ASSERT(std::fabs(ac2.y() - 0.75) <= 1e-9);
+            XC_ASSERT(std::fabs(bc1.y() - 0.0) <= 1e-9);
+            XC_ASSERT(std::fabs(bc2.y() - 1.0) <= 1e-9);
+            XC_ASSERT(std::fabs(bc1.y() + bc2.y() - 1.0) <= 1e-9);
+        }
+
         // THE CLAMP IS THE ONLY DIFFERENCE between Auto and AutoClamped: the same
-        // near, high previous key leaves Auto's outgoing control far above the
-        // segment (-6.667) while AutoClamped holds it at 0. A curve that
+        // near, high previous key leaves Auto's outgoing control below the
+        // segment (-10/33) while AutoClamped holds it at 0. A curve that
         // overshoots is exactly what a user picks Auto over AutoClamped for.
         {
             util::Easing::Param p;
@@ -341,7 +418,7 @@ int main(int argc, char** argv) {
             p.handleIn = util::Easing::HandleMode_Auto;
             const auto ctx = make(true, -1.0f, 2.0f, false, 0, 0);
             const QPointF c1 = util::Easing::controlPoint(p, ctx.inMode, ctx, span, 0);
-            XC_ASSERT(std::fabs(c1.y() - (-20.0 / 3.0)) <= 1e-5);
+            XC_ASSERT(std::fabs(c1.y() - (-10.0 / 33.0)) <= 1e-5);
             XC_ASSERT(c1.y() < 0.0f);
         }
 
@@ -499,9 +576,10 @@ int main(int argc, char** argv) {
     //    per-side refactor: the linear curve with the stored smoothstep bezier and
     //    two linked sides. It is not automatic, and its evaluation cannot read a
     //    neighbour, so an unedited key cannot change shape when a neighbour moves.
-    //    The application's only automatic DEFAULT - a migrated 0.14 Auto, or a
-    //    stored Auto default creating a key - is auto CLAMPED. The user's explicit
-    //    Auto preset is the unclamped mode and is named Auto (section 7).
+    //    The application's automatic DEFAULT - a migrated 0.14 Auto, or a
+    //    stored Auto default creating a key - is auto CLAMPED, and the explicit
+    //    Auto PRESET (picker tile / header button / graph action) writes that same
+    //    clamped pair. Unclamped Auto is only a deliberate per-side pick.
     {
         const util::Easing::Param fresh;
         XC_ASSERT(fresh.type == util::Easing::Type_Linear);
@@ -533,11 +611,12 @@ int main(int argc, char** argv) {
             XC_ASSERT(std::fabs(va - vb) <= 1e-9);
         }
 
-        // The application's DEFAULT automatic pair (a migrated 0.14 Auto, or a
-        // stored Auto default creating a key) is AutoClamped, not Auto: a near,
-        // high previous key would leave unclamped Auto far above the segment (the
-        // section above measures -20/3) while the clamped default stays at 0.
+        // The application's automatic pair - the default AND the explicit preset -
+        // is AutoClamped, not Auto: a near, high previous key would leave
+        // unclamped Auto far below the segment (the section above measures
+        // -10/33) while the clamped pair stays at 0.
         XC_ASSERT(util::Easing::kDefaultAutomaticHandleMode == util::Easing::HandleMode_AutoClamped);
+        XC_ASSERT(util::Easing::kAutoPresetHandleMode == util::Easing::HandleMode_AutoClamped);
         util::Easing::Param preset;
         preset.type = util::Easing::Type_Custom;
         preset.handleIn = util::Easing::kDefaultAutomaticHandleMode;

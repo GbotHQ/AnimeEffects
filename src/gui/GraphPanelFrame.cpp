@@ -392,10 +392,29 @@ void drawLabel(
         const float spare = ImMax(0.0f, float(aBox.width()) - size.x);
         x = float(aBox.left() + aBox.width()) - size.x - ImMin(float(aRightGapPx), spare);
     }
-    const float y = aVAlign == LabelVAlign::Top
+    // THE ORIGIN IS A WHOLE DEVICE PIXEL. Centring and right-alignment are float
+    // arithmetic on a measured advance, so they land on a fraction (the pill's
+    // `(width - advance) / 2` is the obvious one). ImGui truncates the origin before
+    // it rasterises (ImFont::RenderText's "align to be pixel perfect" IM_TRUNC), so
+    // such an origin was already floored - but the panel then depended on two float
+    // expressions agreeing with that truncation, and a fractional origin is exactly
+    // what makes a glyph's CELL and its INK disagree by a column whenever the
+    // measured advance changes. Snap once, here, to the pixel the run starts on; the
+    // per-glyph advances inside the run are the atlas' business (and the reason the
+    // panel's numbers are still not Qt's, see the file header).
+    const int snappedX = int(std::floor(x));
+    // THE ROW IS A WHOLE PIXEL FOR THE SAME REASON. Top alignment subtracts the
+    // font's ink bearing (already scaled) and centring halves a line-height
+    // difference; both can be fractional, and both are truncated by the same
+    // ImFont::RenderText call. Rounding the origin to the row it will rasterise on
+    // makes the inkTopInset contract below exact instead of "within the truncation".
+    const float rawY = aVAlign == LabelVAlign::Top
         ? float(aBox.top() + kRulerNumberInkTop) - inkTopInset(aFont, aFontSize, utf8.constData())
         : float(aBox.top()) + ImMax((float(aBox.height()) - size.y) * 0.5f, 0.0f);
-    addHaloedText(aDrawList, aFont, aFontSize, ImVec2(x, y), aColor, aHalo, utf8.constData());
+    const int snappedY = int(std::floor(rawY));
+    addHaloedText(
+        aDrawList, aFont, aFontSize, ImVec2(float(snappedX), float(snappedY)), aColor, aHalo, utf8.constData()
+    );
 }
 
 // THE MARKER RULE's ink tokens, and where each comes from.
@@ -1519,7 +1538,8 @@ void drawPanel(
         // otherwise each arm is rounded on its outer corners and SQUARE on the face
         // against its stem (the timeline overdraws the rounded slivers with the pill
         // colour, so the bracket joint reads continuous). The text sits on the ruler's
-        // number row, one row above the pill's top, centred on the pill.
+        // number row, one row above the pill's top, at the SAME column the timeline
+        // inks: the pill's left edge plus its padding (see the note in the lambda).
         const auto drawWindowPill = [&](const QRect& aPill, const QString& aText, bool aSquareLeft, bool aSquareRight) {
             if (aPill.isEmpty() || aText.isEmpty())
                 return;
@@ -1549,16 +1569,26 @@ void drawPanel(
                     rectMax(QRect(rightX, aPill.bottom() - r + 1, r, r)), toImU32(colors.windowEdge)
                 );
             }
+            // THE TEXT COLUMN IS THE TIMELINE'S, not a second centring. TimeRuler's
+            // drawPillText centres a pill it measured as `advance + 2*kPillPadding`
+            // with integer halves, and that reduces exactly to `left + kPillPadding`
+            // whether the advance is even or odd (the two cases are written out
+            // there). Centring again here on the DRAWING font's advance instead put
+            // the number somewhere else entirely whenever that advance differed from
+            // the font the model measured the pill with - 3px left on the gate's
+            // 30px pill. The number's box is therefore the pill inset by its padding
+            // and the run is LEFT-aligned in it: an integer origin, the column
+            // TimeRuler inks, whatever font rasterises it.
             const QRect numberBox(
-                aPill.left(), aModel.rulerBand.top() + gui::frameRuler::kNumberTop, aPill.width(),
-                gui::frameRuler::kNumberHeight
+                aPill.left() + gui::frameRuler::kPillPadding, aModel.rulerBand.top() + gui::frameRuler::kNumberTop,
+                aPill.width() - 2 * gui::frameRuler::kPillPadding, gui::frameRuler::kNumberHeight
             );
             // Top-aligned like every other ruler number: TimeRuler's window text uses
             // "the exact same rect convention as the ruler numbers (top-aligned at
             // kNumberTop), so the pill text lines up with them precisely"
             // (renderPlayWindow).
             drawLabel(
-                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Centre, toImU32(colors.windowText), halo,
+                aDrawList, font, fontSize, numberBox, aText, LabelAlign::Left, toImU32(colors.windowText), halo,
                 LabelVAlign::Top
             );
         };
@@ -2068,8 +2098,12 @@ void drawPanel(
             // left and let AA spread it one column wider: the glyph now starts on the
             // column TimeCursor's does.)
             const int textWidth = aModel.playheadPill.width() - 2 * gui::frameRuler::kPillPadding;
+            // The one pill text column, stated as the pill's own edge plus its
+            // padding (TimeRuler::drawPillText derives it; the window arms below use
+            // the same expression). `playheadX - textWidth / 2` is the same integer,
+            // because the model measured the pill as `textWidth + 2 * kPillPadding`.
             const QRect numberBox(
-                aModel.playheadX - textWidth / 2,
+                aModel.playheadPill.left() + gui::frameRuler::kPillPadding,
                 aModel.rulerBand.isEmpty() ? aModel.playheadPill.top()
                                            : aModel.rulerBand.top() + gui::frameRuler::kNumberTop,
                 textWidth, aModel.playheadPill.height()
@@ -2110,26 +2144,32 @@ void drawPanel(
         const QPoint hovered(int(io.MousePos.x), int(io.MousePos.y));
         const QPoint pressed(int(io.MouseClickedPos[0].x), int(io.MouseClickedPos[0].y));
         const bool buttonDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        // THE HOVER IDENTITY IS panelBarAt's, the same answer the host repaints on
+        // (GraphPanelWidget::updateHoverRepaint). The press is asked separately because
+        // a drag pans by the pointer's delta, so the pointer may have left the lane
+        // while the bar is still being dragged.
+        const PanelBar hoverBar = panelBarAt(aModel, hovered);
+        const PanelBar pressBar = buttonDown ? panelBarAt(aModel, pressed) : PanelBar::None;
         const ImDrawListFlags savedBarFlags = aDrawList.Flags;
         aDrawList.Flags = savedBarFlags & ~ImDrawListFlags_AntiAliasedLines;
         aDrawList.PushClipRect(rectMin(aModel.panel), rectMax(aModel.panel), true);
-        const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb, bool aHorizontal) {
+        const auto drawBar = [&](const QRect& aTrack, const QRect& aThumb, PanelBar aBar) {
             // AN EMPTY RUN DRAWS NOTHING, AND A FULL ONE DRAWS THE WHOLE LANE. The run
-            // is the model's (Scaler::scrollBars): the horizontal lane's slider is
-            // drawn even at zero travel - Qt's own slider fills the groove when the
-            // range is empty, and the timeline's bar does exactly that - while the
-            // vertical lane's is absent then (the timeline's vertical bar is AsNeeded
-            // and shows no ink when its content fits). The trough paints NOTHING in
-            // either case, so there is no full-length rail to mistake for a divider,
-            // and the TRACK's rect stays reserved in the layout so the plot does not
-            // move when content appears.
+            // is the model's (Scaler::scrollBars), and BOTH lanes publish the handle in
+            // every state: at zero travel the pill spans the whole lane, exactly as the
+            // timeline's AlwaysOn horizontal bar does, and a press on it is nobody's
+            // (the model's travel flag is false - see GraphEditor's press routing). The
+            // trough paints NOTHING in either case, so there is no full-length rail to
+            // mistake for a divider, and the TRACK's rect stays reserved in the layout
+            // so the plot does not move when content appears.
             if (aTrack.isEmpty() || aThumb.isEmpty())
                 return;
             // The pill: 4px centred in the lane, spanning the run. This is AppStyle's
             // own arithmetic (its pill's cap axis follows the orientation), restated
             // here because the lane and the run are the model's.
             const int pillThickness = ctrl::graph::Scaler::kScrollBarPillThickness;
-            const QRect pill = aHorizontal
+            const bool horizontal = aBar == PanelBar::Horizontal;
+            const QRect pill = horizontal
                 ? QRect(
                       aThumb.left(), aTrack.top() + (aTrack.height() - pillThickness) / 2, aThumb.width(),
                       pillThickness
@@ -2138,14 +2178,14 @@ void drawPanel(
                       aTrack.left() + (aTrack.width() - pillThickness) / 2, aThumb.top(), pillThickness,
                       aThumb.height()
                   );
-            const bool hot = aTrack.contains(hovered) || (buttonDown && aTrack.contains(pressed));
+            const bool hot = hoverBar == aBar || pressBar == aBar;
             aDrawList.AddRectFilled(
                 rectMin(pill), rectMax(pill), toImU32(hot ? colors.hover : colors.outline),
                 float(ctrl::graph::Scaler::kScrollBarPillRadius)
             );
         };
-        drawBar(aModel.hTrack, aModel.hThumb, true);
-        drawBar(aModel.vTrack, aModel.vThumb, false);
+        drawBar(aModel.hTrack, aModel.hThumb, PanelBar::Horizontal);
+        drawBar(aModel.vTrack, aModel.vThumb, PanelBar::Vertical);
         aDrawList.PopClipRect();
         aDrawList.Flags = savedBarFlags;
     }
@@ -2341,8 +2381,10 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
     // a QMenu - it is not in this tree, like the repository's own QMenus (see the
     // class comment) - so this line is how the state the menu changes stays
     // readable: choose an easing from it and the panel says so. The easing name is
-    // the timeline's own (util::Easing::getTypeName, the "EasingName" context), so
-    // the two agree in every translation.
+    // the PARAM's, util::Easing::getParamName - the same name the chip, the picker
+    // and the header show - so a key whose handles are the Auto pair reads "Auto"
+    // here instead of the Custom TYPE it is stored as. (getTypeName would say
+    // "Custom" for exactly the state the user called out.)
     //
     // AND THE MENU'S OWN ACTION IS PUBLISHED from the same selection, one item
     // below: a menu a screen reader cannot address still needs a route to OPEN it.
@@ -2358,7 +2400,7 @@ a11y::Model buildAccessibilityModel(const GraphPanelModel& aModel, ctrl::GraphEd
             key ? ctrl::graph::Curve::easingOf(*key, target.pos.type(), 0) : nullptr;
         if (easing) {
             const QString keyLabel = core::TimeLine::getTimeKeyName(target.pos.type()) + QStringLiteral(" ")
-                + util::Easing::getTypeName(easing->type);
+                + util::Easing::getParamName(*easing);
             summary = QCoreApplication::translate(
                           kTranslationContext, QT_TRANSLATE_NOOP("gui::ImGuiOverlay", "%1, selected key: %2")
             )

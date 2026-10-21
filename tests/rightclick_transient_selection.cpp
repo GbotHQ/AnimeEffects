@@ -604,7 +604,8 @@ int main(int argc, char** argv) {
 
         // A LEGACY payload (no per-component array) still pastes: its one easing is
         // broadcast, and its "Auto" name is the RETIRED Auto TYPE - both sides
-        // CLAMPED - not the explicit (unclamped) preset the new writer names "Auto".
+        // CLAMPED. (The preset's own clamped pair also writes "Auto" for a legacy
+        // reader; unclamped Auto remains a deliberate per-side pick.)
         QJsonObject legacy;
         legacy["Type"] = QStringLiteral("Move");
         legacy["Frame"] = 9;

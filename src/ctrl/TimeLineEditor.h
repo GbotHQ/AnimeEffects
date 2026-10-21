@@ -280,8 +280,8 @@ public:
     //   x1,y1,x2,y2 the stored cubic, so a Custom curve's shape survives a copy
     // A payload without eIn/eOut predates the per-side model. Its "Auto" name
     // meant the retired Auto TYPE - both sides CLAMPED
-    // (kDefaultAutomaticHandleMode), not the explicit Auto preset the current
-    // writer still names "Auto" for older readers. The per-component "eEasings"
+    // (kDefaultAutomaticHandleMode). The current writer names the clamped preset
+    // pair "Auto" too, so an older reader sees the same behaviour. The per-component "eEasings"
     // array is therefore what a reader trusts; the top-level fields are the
     // component-0 fallback for payloads that carry no array (and for old builds
     // reading a new clipboard).

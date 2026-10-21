@@ -56,12 +56,14 @@
 //   9 the polyline is published unclipped and unreduced - point for point the
 //     sampled curve mapped through the scaler, out-of-plot samples included, so
 //     the drawing layer's own clip is the only clip (the header's CURVES)
-//  10 tangent handles: one PanelHandle pair per segment that HAS one - a Custom
-//     segment's STORED pair (ghost == false) matching the editor's own grab
-//     mapping, ctrl::graph::handlePoint, and an Auto segment's DERIVED pair
-//     (ghost == true) whose x IS the third and two thirds of the segment's span
-//     and whose dot is the same mapping (ctrl::graph::handlePointAt) - and none on
-//     a segment whose easing is neither
+//  10 tangent handles: one PanelHandle per side that HAS one - a Custom
+//     segment's STORED side (ghost == false) matching the editor's own grab
+//     mapping, ctrl::graph::handlePoint, and a DERIVED side (ghost == true) whose
+//     x IS the third/two thirds of the segment's span and whose dot is the same
+//     mapping (ctrl::graph::handlePointAt). A key owns both of its tangents, so a
+//     TO key whose handleIn derives publishes its arriving side even when the
+//     segment's FROM param is still an analytic easing (one handle, not a pair);
+//     a segment with no handle of either kind publishes none
 //  11 the ruler band as a section ABOVE the plot (its own reserved rows, the
 //     numbers inside it, the playhead crossing from its pill column into the
 //     plot), the occluded top that can only hide it, and the live marquee
@@ -100,6 +102,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <QString>
+#include <QStringList>
 #include <QVector2D>
 #include <algorithm>
 #include <cmath>
@@ -384,6 +387,22 @@ int main(int argc, char** argv) {
     core::OpaKey* opa1 = new core::OpaKey();
     opa1->setOpacity(0.75f);
     setup.push(nodeB.timeLine()->createPusher(core::TimeKeyType_Opa, 30, opa1));
+
+    // C: a THREE-key Move channel whose outer keys are the ordinary Linear
+    // default. It is not an editor target until the Auto-publication block asks
+    // for it, so it cannot disturb any geometry measured below. The middle key
+    // is the one the Auto action selects.
+    core::TestNode nodeC;
+    nodeC.setName(QStringLiteral("C"));
+    core::MoveKey* moveC0 = new core::MoveKey();
+    moveC0->setPos(QVector2D(0.0f, 0.0f));
+    setup.push(nodeC.timeLine()->createPusher(core::TimeKeyType_Move, 0, moveC0));
+    core::MoveKey* moveC1 = new core::MoveKey();
+    moveC1->setPos(QVector2D(100.0f, 0.0f));
+    setup.push(nodeC.timeLine()->createPusher(core::TimeKeyType_Move, 10, moveC1));
+    core::MoveKey* moveC2 = new core::MoveKey();
+    moveC2->setPos(QVector2D(40.0f, 0.0f));
+    setup.push(nodeC.timeLine()->createPusher(core::TimeKeyType_Move, 20, moveC2));
 
     NullLogger logger;
     ctrl::GraphEditor editor(project, logger);
@@ -2992,12 +3011,11 @@ int main(int argc, char** argv) {
         CHECK(frames.max() > frames.min());
 
         // THE VALUE AXIS IS ZOOMED INTO THE KEYS on purpose: fitAll fits the value
-        // window TO the key extent, i.e. the window would equal its own content, the
-        // v-thumb would fill its track and Scaler::scrollBars would publish NO thumb
-        // (nothing to scroll - see its note). A quarter-to-three-quarters window is a
-        // real thumb, so the assertions below measure a bar that exists. The frame
-        // axis keeps fitAll's fit: its CONTENT is the project's frame range, which is
-        // wider than the keys' own span either way.
+        // window TO the key extent, i.e. the window would equal its own content and the
+        // v-thumb would fill its track (a full-length pill, nothing to scroll). A
+        // quarter-to-three-quarters window is a real thumb, so the assertions below
+        // measure a bar that travels. The frame axis keeps fitAll's fit: its CONTENT is
+        // the project's frame range, which is wider than the keys' own span either way.
         editor.scale().setValueWindow(
             valueLo + 0.25f * (valueHi - valueLo), valueLo + 0.75f * (valueHi - valueLo)
         );
@@ -3104,11 +3122,12 @@ int main(int argc, char** argv) {
         CHECK(barsModel.hThumb == expectedH);
         if (!expectedHTravel)
             CHECK(barsModel.hThumb == barsModel.hTrack);
-        CHECK(barsModel.vThumb == (expectedVTravel ? expectedV : QRect()));
-        if (expectedVTravel)
-            CHECK(!barsModel.vThumb.isEmpty());
-        else
-            CHECK(barsModel.vThumb.isEmpty());
+        // BOTH lanes publish the handle in every state: at zero travel the run IS the
+        // track (the panel draws a full-length pill and the lane ignores presses).
+        CHECK(barsModel.vThumb == expectedV);
+        if (!expectedVTravel)
+            CHECK(barsModel.vThumb == barsModel.vTrack);
+        CHECK(!barsModel.vThumb.isEmpty());
         CHECK(barsModel.hTrack.contains(barsModel.hThumb));
         CHECK(barsModel.vTrack.contains(barsModel.vThumb) || barsModel.vThumb.isEmpty());
         std::printf(
@@ -3173,27 +3192,27 @@ int main(int argc, char** argv) {
             atBottom.vThumb.top(), atBottom.vThumb.bottom(), atTop.vTrack.top(), atTop.vTrack.bottom()
         );
 
-        // A FULL-CONTENT WINDOW DRAWS A FULL-LENGTH HORIZONTAL SLIDER AND NO VERTICAL
-        // RUN. Qt's slider fills its groove when the range is empty, and that is what
-        // the timeline's AlwaysOn horizontal bar shows (measured at zero travel: 638 of
-        // its 638px lane); a bar that VANISHED there left the panel with no bars at all
-        // beside a timeline that always has one. The vertical lane follows the
-        // timeline's own vertical bar, which is AsNeeded and carries no ink when the
-        // tracks fit - so its run is empty. Neither lane can be panned, which is what
-        // hTravel()/vTravel() say. The TRACK is laid out either way, which is what
-        // keeps the plot's rect - and every frame coordinate - independent of content.
+        // A FULL-CONTENT WINDOW DRAWS A FULL-LENGTH SLIDER IN BOTH LANES. Qt's slider
+        // fills its groove when the range is empty, and that is what the timeline's
+        // AlwaysOn horizontal bar shows (measured at zero travel: 638 of its 638px
+        // lane); the vertical lane is the panel's own and must do the same - a vertical
+        // bar that VANISHED with the content in range left the user with one lane that
+        // disappears. Neither lane can be scrolled at zero travel, which is what
+        // hTravel()/vTravel() say (and the press/wheel rule reads). The TRACK is laid
+        // out either way, which is what keeps the plot's rect - and every frame
+        // coordinate - independent of content.
         editor.scale().fitFrameAxis(core::Frame(-500), core::Frame(500));
         editor.scale().setValueWindow(-1000.0f, 1000.0f);
         const gui::GraphPanelModel full = gui::buildGraphPanelModel(editor, viewport, palette);
         std::printf(
-            "[16] full-content window: hThumb %d px of a %d px lane  vThumb empty %d  tracks laid out %d/%d\n",
-            full.hThumb.width(), full.hTrack.width(), int(full.vThumb.isEmpty()), int(!full.hTrack.isEmpty()),
-            int(!full.vTrack.isEmpty())
+            "[16] full-content window: hThumb %d px of a %d px lane  vThumb %d px of a %d px lane  tracks laid "
+            "out %d/%d\n",
+            full.hThumb.width(), full.hTrack.width(), full.vThumb.height(), full.vTrack.height(),
+            int(!full.hTrack.isEmpty()), int(!full.vTrack.isEmpty())
         );
         CHECK(!full.hThumb.isEmpty());
         CHECK(full.hThumb == full.hTrack); // the slider fills its groove: nowhere to go
-        CHECK(full.vThumb.isEmpty());
-        CHECK(!full.hTrack.isEmpty());
+        CHECK(full.vThumb == full.vTrack); // the VERTICAL lane is never hidden in this state
         CHECK(!full.vTrack.isEmpty());
         CHECK(full.plot == barsModel.plot);
 
@@ -3365,6 +3384,96 @@ int main(int argc, char** argv) {
         // The editor is left as the blocks around this one expect it.
         editor.scale().setRect(panel);
         editor.fitAll();
+    }
+
+    // -------------------------------------------------------------------------
+    // THE AUTO PRESET AND A KEY'S TWO TANGENTS.
+    //
+    // (a) The preset the graph action writes is the CLAMPED pair - Custom with
+    // both sides kAutoPresetHandleMode - never unclamped Auto.
+    // (b) A key owns BOTH of its tangents. In a three-key channel with ordinary
+    // Linear outer keys, setting Auto on the MIDDLE key must publish a ghost for
+    // its OUTGOING side (the middle->last segment, whose FROM is the middle key's
+    // Custom param) AND for its INCOMING side (the first->middle segment, whose
+    // FROM is still Linear but whose TO key's handleIn is Auto). The incoming
+    // ghost used to be dropped by the segment-type gate, which is why the panel
+    // drew only one automatic tangent.
+    {
+        editor.setTargets({ &nodeC });
+        editor.fitAll();
+        const bool selected =
+            editor.selectMarker(nodeC, ctrl::graph::Channel(core::TimeKeyType_Move, 0), core::Frame(10));
+        const bool acted = selected && editor.setSelectedKeysAutoHandles();
+        const util::Easing::Param middle = moveC1->data().easing(0);
+        const bool preset = middle.type == util::Easing::Type_Custom
+            && middle.handleIn == util::Easing::kAutoPresetHandleMode
+            && middle.handleOut == util::Easing::kAutoPresetHandleMode
+            && middle.handleIn != util::Easing::HandleMode_Auto
+            && middle.handleOut != util::Easing::HandleMode_Auto;
+
+        const gui::GraphPanelModel autoModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        ctrl::graph::Scaler oracle = editor.scale();
+        oracle.setRect(ctrl::GraphEditor::panelRect(viewport));
+        ctrl::graph::Curve source(*nodeC.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Move, 0));
+        const ctrl::graph::Curve::Segment first = source.segment(0);  // C0 -> C1
+        const ctrl::graph::Curve::Segment second = source.segment(1); // C1 -> C2
+
+        const gui::PanelCurve* curve = nullptr;
+        for (const gui::PanelCurve& candidate : autoModel.curves) {
+            if (candidate.node == &nodeC
+                && candidate.channel == ctrl::graph::Channel(core::TimeKeyType_Move, 0)) {
+                curve = &candidate;
+                break;
+            }
+        }
+
+        QStringList kinds;
+        bool incomingGhost = false;
+        bool outgoingGhost = false;
+        bool noStoredIncomingOnLinear = true;
+        bool incomingDotOk = false;
+        bool outgoingDotOk = false;
+        const QPointF middleBase(
+            oracle.pixelXOfFrame(double(moveC1->frame())),
+            double(oracle.pixelY(source.valueOf(*moveC1)))
+        );
+        QPointF incomingDerived;
+        const bool incomingKnown = source.derivedArrivingHandle(first, incomingDerived);
+        QPointF outgoingPair[2];
+        const bool outgoingKnown = source.effectiveHandles(second, outgoingPair);
+        if (curve) {
+            for (const gui::PanelHandle& h : curve->handles) {
+                kinds << QStringLiteral("%1:%2:%3").arg(h.segment).arg(h.index)
+                             .arg(h.ghost ? QStringLiteral("ghost") : QStringLiteral("stored"));
+                if (h.segment == 0 && h.index == 1) {
+                    incomingGhost = h.ghost && h.base == middleBase;
+                    incomingDotOk = incomingKnown
+                        && h.dot == ctrl::graph::handlePointAt(oracle, first, incomingDerived);
+                }
+                if (h.segment == 0 && h.index == 0)
+                    noStoredIncomingOnLinear = false; // the Linear FROM has no outgoing pair
+                if (h.segment == 1 && h.index == 0) {
+                    outgoingGhost = h.ghost && h.base == middleBase;
+                    outgoingDotOk = outgoingKnown
+                        && h.dot == ctrl::graph::handlePointAt(oracle, second, outgoingPair[0]);
+                }
+            }
+        }
+        const bool bothPublished = curve && incomingGhost && outgoingGhost;
+        const bool ok = acted && preset && bothPublished && noStoredIncomingOnLinear
+            && incomingDotOk && outgoingDotOk;
+        std::printf("[10d] Auto middle key: selected=%d acted=%d preset=AutoClamped:%d  handles=[%s]  "
+                    "incoming ghost=%d outgoing ghost=%d dots=%d/%d -> %s\n",
+                    int(selected), int(acted), int(preset), qUtf8Printable(kinds.join(QLatin1Char(','))),
+                    int(incomingGhost), int(outgoingGhost), int(incomingDotOk), int(outgoingDotOk),
+                    ok ? "OK" : "FAIL");
+        CHECK(ok);
+
+        // Leave the editor as the blocks around this one expect it, and drop the
+        // action's entry from the project history (nodeC is a local fixture).
+        editor.clearSelection();
+        project.commandStack().undo();
+        editor.setTargets({ &nodeA, &nodeB });
     }
 
     // -------------------------------------------------------------------------

@@ -2502,9 +2502,10 @@ namespace ctrl {
         //     forces the two lengths equal, which is not what a smooth node
         //     means. The partner's own mode is untouched.
         //   * Free, derived (Auto/AutoClamped/Vector), or Alt held: the partner
-        //     is NOT touched at all. A derived partner keeps DERIVING from its
-        //     own outside neighbour - this is the whole point of the per-side
-        //     model, and the defect the retired whole-key Auto type had.
+        //     is NOT touched at all. A derived partner keeps DERIVING - Auto and
+        //     AutoClamped from the key's two neighbours (the reference's central
+        //     difference) - which is the whole point of the per-side model, and
+        //     the defect the retired whole-key Auto type had.
         //
         // THE DRAGGED SIDE ITSELF: a derived side cannot express a stored drag,
         // so it becomes Free (the stored value just written is the new truth). A
@@ -2957,17 +2958,16 @@ namespace ctrl {
 
     bool GraphEditor::setSelectedKeysAutoHandles() {
         // Automatic handles are per-side MODES, so the preset is a Custom curve
-        // with both sides deriving from their own neighbour. It is deliberately
-        // NOT the retired Type_Auto: no easing id is written. This is the Auto
-        // PRESET the user chose, so it writes HandleMode_Auto - Blender's
-        // Automatic, named Auto. (The application's DEFAULT automatic pair, used
-        // when a legacy Auto is migrated or a stored Auto default creates a key,
-        // is kDefaultAutomaticHandleMode, which clamps.)
+        // with both sides deriving. It is deliberately NOT the retired Type_Auto:
+        // no easing id is written. The preset is the CLAMPED pair - the shape the
+        // retired Auto type played and the one that cannot overshoot a local
+        // extremum; unclamped Auto is a deliberate per-side pick in the picker's
+        // mode combo (see Easing::kAutoPresetHandleMode).
         return assignSelectedKeysEasing([](const util::Easing::Param& aCurrent) {
             util::Easing::Param next = aCurrent;
             next.type = util::Easing::Type_Custom;
-            next.handleIn = util::Easing::HandleMode_Auto;
-            next.handleOut = util::Easing::HandleMode_Auto;
+            next.handleIn = util::Easing::kAutoPresetHandleMode;
+            next.handleOut = util::Easing::kAutoPresetHandleMode;
             return next;
         });
     }

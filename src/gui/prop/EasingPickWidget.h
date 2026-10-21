@@ -101,14 +101,16 @@ void paintEasingCurve(QPainter& aPainter, const QRectF& aRect,
 // THE canonical neighbour pair a catalog/glyph image of the Auto mode draws with.
 // A tile and the header's quick-easing button are pictures of the easing, not
 // previews of the selected keys (the picker hands them no document), and an
-// automatic pair with the real empty context collapses to the identity - the
-// straight line. This pair is one segment wide (the glyph's d = 1) with a
-// neighbour one segment away on each side, holding the segment's OWN end values,
-// so the real derivation produces the canonical flat-ended ease-in-out: outgoing
-// control point (1/3, 0) and incoming (2/3, 1). BOTH sides are HandleMode_Auto
-// (the arriving mode lives in the TO key). There is exactly ONE definition, so
-// the picker's Auto tile and the header's Auto button cannot paint two different
-// curves (they did: the old values were the retired CLAMPED pair's).
+// automatic pair with the real empty context collapses to the identities - the
+// straight line. This pair is one segment wide (the glyph's d = 1), symmetric,
+// and chosen so the central differences at BOTH ends of the drawn segment are
+// zero: the key before holds the segment's END value and the key after its START
+// value, so the real derivation produces the canonical flat-ended
+// ease-in-out - outgoing control point (1/3, 0), incoming (2/3, 1). Both sides
+// are kAutoPresetHandleMode (the arriving mode lives in the TO key), because the
+// preset is the CLAMPED automatic pair. There is exactly ONE definition, so the
+// picker's Auto tile and the header's Auto button cannot paint two different
+// curves.
 util::Easing::AutoContext autoPreviewContext();
 
 // ---------------------------------------------------------------------------
@@ -125,12 +127,13 @@ util::Easing::AutoContext autoPreviewContext();
 //                 tick of a continuous drag). The owner uses this to update
 //                 any live/derived view (the chip that opens the menu). It
 //                 does NOT commit to the model.
-//   applied(p)  — an edit is committed to the model (one undo step). Fires
-//                 immediately on a discrete edit (tile / seg / custom / bezier
-//                 spin / paste) and once when a continuous gesture ends
-//                 (blend slider release, bezier handle drop). Keeping commits
-//                 at gesture granularity avoids flooding the undo stack with a
-//                 per-tick command per drag.
+//   applied(p)  — an edit is committed to the model (one undo step). A
+//                 DISCRETE edit (tile / seg / custom / mode combo / typed
+//                 bezier / paste) fires it IMMEDIATELY, while the popup is
+//                 still open, so the document and every live view update at
+//                 once. A continuous DRAG (blend slider, bezier handle) is
+//                 still coalesced: it fires once on close, which keeps one
+//                 undo step per drag instead of one per tick.
 //   dismissed() — the user asked to dismiss the popup (the close ✕).
 //
 // The widget owns its sub-widgets; the geometry harness names each part with
@@ -176,12 +179,13 @@ public:
     void setRange(util::Easing::Range aRange);
     void setWeight(float aWeight);
     void setCustom();
-    // The Auto preset: Type_Custom with BOTH handle sides on HandleMode_Auto.
-    // Automatic handles are per-side modes now, so this writes modes (and the
-    // Custom curve that exposes them), never a retired easing type. This is what
-    // the catalog's Auto tile clicks. (The application's own DEFAULT automatic
-    // pair - a migrated 0.14 Auto / stored default - is clamped instead; see
-    // Easing::kDefaultAutomaticHandleMode.)
+    // The Auto preset: Type_Custom with BOTH handle sides on
+    // Easing::kAutoPresetHandleMode (AutoClamped). Automatic handles are per-side
+    // modes now, so this writes modes (and the Custom curve that exposes them),
+    // never a retired easing type. This is what the catalog's Auto tile clicks,
+    // and it is the CLAMPED behaviour the retired Auto type had: unclamped
+    // HandleMode_Auto overshoots by construction and stays a deliberate
+    // per-side choice in the mode combos.
     void setAutoHandlesPreset();
     // One side's handle mode (Blender's five). aIncoming selects the TO key's
     // arriving side (the param's handleIn); the other writes handleOut. The
@@ -190,9 +194,9 @@ public:
     void setHandleMode(bool aIncoming, util::Easing::HandleMode aMode);
 
     // Session undo/redo (per-step, driven by Ctrl+Z / Ctrl+Shift+Z inside the
-    // popup). The whole session still commits to the model as ONE undo step on
-    // close; these let the user walk back individual edits (e.g. a bezier
-    // handle drag) before then.
+    // popup). Discrete edits have already been committed (see applied); a drag's
+    // final value still commits on close. These walk the popup's own draft
+    // history so the user can step back individual edits before then.
     void undo();
     void redo();
 
@@ -288,10 +292,14 @@ private:
     bool freeEditedSides(const util::Easing::CubicBezier& aBefore);
     void applyAppearance();
 
+    // A discrete edit is committed to the model NOW (emit applied once). A drag
+    // does not call this; its final draft is committed by hideEvent, so one drag
+    // is one undo step.
+    void commitDiscrete();
+
     // Session undo/redo helpers. Each user gesture (a discrete click, or one
     // continuous drag) records ONE history entry so the popup can walk back
-    // individual edits; the whole session still commits to the model once, on
-    // close.
+    // individual edits.
     void pushState(const util::Easing::Param& aState); // push a draft to step back to
     void beginGesture();                               // snapshot draft for a drag
     void endGesture();                                 // coalesce a drag into one step

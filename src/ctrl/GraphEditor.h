@@ -318,8 +318,9 @@ public:
     // the plot's first row (the corner belongs to the horizontal bar) - flush with the
     // panel's bottom and right edges, no gap, no outer margin, no trough. The plot's
     // right and bottom INSET IS the lane (12px; see THE SCROLL BARS' LANES in
-    // graph_Scaler.h). An empty plot publishes no bars at all, and a bar with nothing
-    // to scroll is not published either.
+    // graph_Scaler.h). An empty plot publishes no bars at all; a bar with nothing to
+    // scroll is still published and DRAWN (a full-length pill), it simply cannot be
+    // grabbed - see the travel rule below.
     //
     // WHAT THEY LOOK LIKE. They are the application's own scroll bars: an invisible
     // 12px trough and a 4px, radius-2 pill across the slider's run in
@@ -335,10 +336,13 @@ public:
     // track-minus-one cap: the panel is compared with the timeline's bar, not a stock
     // QScrollBar. The content is the project's frame range on the frame axis and the
     // value extent of the shown channels' keys (shownValueExtent below) on the value
-    // axis. The horizontal handle is drawn even at zero travel (the timeline's
-    // AlwaysOn bar); the vertical one is hidden then (its bar is AsNeeded). It is a
-    // VIEW of the window, never a command: nothing here writes the document, and no
-    // gesture below pushes anything.
+    // axis. BOTH handles are drawn at zero travel, as full-length pills: the timeline
+    // has no vertical bar to inherit a hiding rule from (TimeLineWidget builds a
+    // horizontal bar only), and a lane that vanished with the content in range is the
+    // user-visible defect this rule fixes. Neither lane is grabbable then -
+    // hTravel()/vTravel() gate every press and wheel-notch route. It is a VIEW of the
+    // window, never a command: nothing here writes the document, and no gesture below
+    // pushes anything.
     //
     // THE DIRECTION. The pill moves WITH the content window: dragging the horizontal
     // pill RIGHT shows LATER frames, dragging the vertical pill UP shows HIGHER values
@@ -795,7 +799,7 @@ public:
 
     // THE AUTO PRESET. Automatic handles are per-side MODES now, not an easing
     // type: this writes Type_Custom (the curve the modes shape) with BOTH sides
-    // on HandleMode_Auto on every selected component.
+    // on kAutoPresetHandleMode (AutoClamped) on every selected component.
     // The picker's Auto tile and the header's quick-easing Auto button both land
     // here, so the two cannot write different things.
     bool setSelectedKeysAutoHandles();

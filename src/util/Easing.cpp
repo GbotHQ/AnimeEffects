@@ -1,6 +1,7 @@
 #include "Easing.h"
 #include <QtMath>
 #include <algorithm>
+#include <limits>
 #include "util/EasingName.h"
 #include "util/UnitBezier.h"
 
@@ -388,24 +389,34 @@ float Easing::calculate(
 // AutoContext use exactly that space, so the arithmetic is independent of the
 // channel's units (pixels, radians, 0..1 opacity).
 //
-// Auto reads the neighbour on ITS OWN outside:
-//   * the OUTGOING side (at the from key) reads `prev`, the key before the from
-//     key: its slope is the secant arriving at the key, (0 - py) / (0 - px),
-//     so the leaving tangent continues the incoming curve - the one-sided
-//     central difference that makes a key smooth;
-//   * the INCOMING side (at the to key) reads `next`, the key after the to key:
-//     its slope is (ny - 1) / (nx - 1), the secant leaving the key.
+// THE DERIVATION IS PER KEY, NOT PER SIDE (the reference implementation in
+// easing-demo.html, computeAllTangents' default 'uniform' mode): an interior key
+// has ONE slope, the central difference over BOTH of its neighbours,
 //
-// This is the whole answer to "when the key is auto and I drag any of the
-// handles, it changes both tangents to manual": the two sides read DIFFERENT
-// neighbours and are derived independently, so dragging one side (which writes
-// that side's mode Free) leaves the other side Auto and still deriving from its
-// own neighbour.
+//     m = (next.y - prev.y) / (next.x - prev.x)
 //
-// A side with no such neighbour falls back to the segment's own chord, i.e. its
-// identity third point, which is what a two-key channel (or an endpoint) has to
-// derive from. The handle x stays at the third (Blender's automatic handle), so
-// only y is ever derived.
+// and whichever of that key's two handles is in an Auto mode uses that slope at
+// its own third point. Sharing the slope is what makes a symmetric key produce a
+// symmetric pair: the outgoing handle at (1/3, 1 + m/3) and the incoming one at
+// (2/3, 1 - m/3) are mirror images about the segment's centre. (The old
+// one-sided form - outgoing from `prev`, incoming from `next` - produced two
+// unrelated slopes and could not promise that.)
+//
+// A key at the END of the channel has only one neighbour. It follows Blender's
+// endpoint rule instead: the slope from that endpoint toward the adjacent key's
+// own third-point handle, so the open end joins the neighbouring curve. For the
+// FROM endpoint the adjacent key is TO, whose slope is the central difference
+// over FROM and `next`; for the TO endpoint it is FROM, whose slope is the
+// central difference over `prev` and TO. A two-key channel has no interior key
+// to borrow from and is the chord (m = 1 in this space), i.e. the identity
+// thirds.
+//
+// Auto reads that slope unclamped. AutoClamped intersects the slope with the
+// bounds that keep BOTH of the key's handles inside the value range of the key
+// and its two neighbours (reference getBezierTangents), so a local extremum is
+// flat instead of overshooting. The endpoint itself is not clamped; it is
+// recomputed from the adjacent key's (already clamped) handle, which is what the
+// reference does after clamping the interior tangents.
 QPointF Easing::controlPoint(
     const Param& aFrom, const HandleMode aInMode, const AutoContext& aCtx, const float aSpan, const int aSide) {
     const bool outSide = (aSide == 0);
@@ -426,41 +437,86 @@ QPointF Easing::controlPoint(
         return outSide ? QPointF(1.0 / 3.0, 1.0 / 3.0) : QPointF(2.0 / 3.0, 2.0 / 3.0);
     }
 
-    // Auto / AutoClamped: the one-sided secant from this side's neighbour.
-    // The identity fallbacks are the thirds of the diagonal.
-    double y = outSide ? 1.0 / 3.0 : 2.0 / 3.0;
-    if (aSpan > 0.0f) {
-        if (outSide) {
-            if (aCtx.prev.valid) {
-                const double px = static_cast<double>(aCtx.prev.frame) / aSpan; // < 0
-                const double py = aCtx.prev.value;
-                const double slope = px != 0.0 ? py / px : 1.0;
-                y = slope / 3.0;
-                if (mode == HandleMode_AutoClamped) {
-                    // Keep the handle inside the value range the key and its
-                    // neighbours span. The segment's own end (y = 1) is one of
-                    // those values, so a monotone rise keeps its slope while a
-                    // local extremum is pulled flat.
-                    const double lo = std::min(std::min(py, 0.0), 1.0);
-                    const double hi = std::max(std::max(py, 0.0), 1.0);
-                    y = std::min(std::max(y, lo), hi);
-                }
-            }
-        } else {
-            if (aCtx.next.valid) {
-                const double nx = static_cast<double>(aCtx.next.frame) / aSpan; // > 1
-                const double ny = aCtx.next.value;
-                const double slope = nx != 1.0 ? (ny - 1.0) / (nx - 1.0) : 1.0;
-                y = 1.0 - slope / 3.0;
-                if (mode == HandleMode_AutoClamped) {
-                    const double lo = std::min(std::min(0.0, 1.0), ny);
-                    const double hi = std::max(std::max(0.0, 1.0), ny);
-                    y = std::min(std::max(y, lo), hi);
-                }
-            }
+    // Auto / AutoClamped: the central slope of the KEY this side belongs to.
+    // The FROM key is at (0,0) in this space, the TO key at (1,1); the
+    // neighbours are on either side of them.
+    const double span = static_cast<double>(aSpan);
+    const bool hasPrev = aCtx.prev.valid && span > 0.0;
+    const bool hasNext = aCtx.next.valid && span > 0.0;
+    const double px = hasPrev ? static_cast<double>(aCtx.prev.frame) / span : 0.0; // < 0
+    const double py = hasPrev ? static_cast<double>(aCtx.prev.value) : 0.0;
+    const double nx = hasNext ? static_cast<double>(aCtx.next.frame) / span : 1.0; // > 1
+    const double ny = hasNext ? static_cast<double>(aCtx.next.value) : 1.0;
+
+    // The reference's uniform central difference.
+    const auto central = [](double aX0, double aY0, double aX1, double aY1) {
+        const double dx = aX1 - aX0;
+        return dx == 0.0 ? 0.0 : (aY1 - aY0) / dx;
+    };
+    // Intersect a key's slope with the bounds keeping BOTH of its handles
+    // inside the value range of itself and its two neighbours (reference
+    // getBezierTangents). aXk is the key's own x (0 for FROM, 1 for TO).
+    const auto clampKeySlope = [](double aM, double aXl, double aYl, double aXk, double aYk,
+                                  double aXr, double aYr) {
+        const double minY = std::min(std::min(aYl, aYk), aYr);
+        const double maxY = std::max(std::max(aYl, aYk), aYr);
+        const double dxLeft = aXk - aXl;
+        const double dxRight = aXr - aXk;
+        double lo = -std::numeric_limits<double>::infinity();
+        double hi = std::numeric_limits<double>::infinity();
+        if (dxRight != 0.0) {
+            // Outgoing handle: yk + m * dxRight/3 in [minY, maxY].
+            lo = std::max(lo, (minY - aYk) / (dxRight / 3.0));
+            hi = std::min(hi, (maxY - aYk) / (dxRight / 3.0));
         }
+        if (dxLeft != 0.0) {
+            // Incoming handle: yk - m * dxLeft/3 in [minY, maxY].
+            lo = std::max(lo, -(maxY - aYk) / (dxLeft / 3.0));
+            hi = std::min(hi, -(minY - aYk) / (dxLeft / 3.0));
+        }
+        return std::min(std::max(aM, lo), hi);
+    };
+    // Blender's endpoint rule: the slope from the open endpoint toward the
+    // adjacent key's own third-point handle. With the adjacent key at distance
+    // 1 and slope m, that handle is at (2/3, 1 - m/3) for the FROM end and
+    // (1/3, m/3) for the TO end, giving 3/2 - m/2 in this space.
+    const auto endpointSlope = [](double aAdjacent) { return 1.5 - aAdjacent / 2.0; };
+
+    double slope = 0.0;
+    if (outSide) {
+        // The outgoing side belongs to the FROM key: central difference over
+        // its own two neighbours, prev and TO.
+        if (hasPrev) {
+            slope = central(px, py, 1.0, 1.0);
+            if (mode == HandleMode_AutoClamped)
+                slope = clampKeySlope(slope, px, py, 0.0, 0.0, 1.0, 1.0);
+        } else {
+            // FROM is the first key of the channel: borrow TO's slope. TO's
+            // slope is clamped if TO's incoming handle (the one this endpoint
+            // joins) is itself AutoClamped.
+            double adjacent = hasNext ? central(0.0, 0.0, nx, ny) : 1.0;
+            if (hasNext && aCtx.inMode == HandleMode_AutoClamped)
+                adjacent = clampKeySlope(adjacent, 0.0, 0.0, 1.0, 1.0, nx, ny);
+            slope = endpointSlope(adjacent);
+        }
+        return QPointF(1.0 / 3.0, slope / 3.0);
     }
-    return outSide ? QPointF(1.0 / 3.0, y) : QPointF(2.0 / 3.0, y);
+
+    // The arriving side belongs to the TO key: central difference over FROM
+    // and the key after TO.
+    if (hasNext) {
+        slope = central(0.0, 0.0, nx, ny);
+        if (mode == HandleMode_AutoClamped)
+            slope = clampKeySlope(slope, 0.0, 0.0, 1.0, 1.0, nx, ny);
+    } else {
+        // TO is the last key of the channel: borrow FROM's slope, clamped if
+        // FROM's outgoing handle (the one this endpoint joins) is AutoClamped.
+        double adjacent = hasPrev ? central(px, py, 1.0, 1.0) : 1.0;
+        if (hasPrev && aFrom.handleOut == HandleMode_AutoClamped)
+            adjacent = clampKeySlope(adjacent, px, py, 0.0, 0.0, 1.0, 1.0);
+        slope = endpointSlope(adjacent);
+    }
+    return QPointF(2.0 / 3.0, 1.0 - slope / 3.0);
 }
 
 //-------------------------------------------------------------------------------------------------

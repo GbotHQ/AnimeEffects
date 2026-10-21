@@ -97,15 +97,15 @@ struct PanelFocus {
 // 4px, radius-2 pill across the slider's run, in theme::Colors::outline at rest and
 // theme::Colors::hover while the pointer is on that bar or the bar is being dragged
 // (src/gui/AppStyle.cpp's CC_ScrollBar). THE RUN IS ALWAYS THE SLIDER: at zero travel
-// the horizontal lane paints a pill across its WHOLE width (Qt fills the groove when
-// the range is empty, and the timeline's AlwaysOn horizontal bar does the same), while
-// the vertical lane's run is empty then and paints nothing (the timeline's vertical bar
-// is AsNeeded, measured with no ink in its lane when the content fits). It
-// keeps no state - which
-// is what lets the overlay call it per frame and a headless pixel gate call it
-// once. It reads no font off the current context (the draw list carries its own),
-// but the marker hover (gui::panelKeyAt), the handle highlight and the
-// hovered-curve chip DO read
+// BOTH lanes paint a pill across their WHOLE length (the model publishes the handle
+// over the union track in every state), exactly as the timeline's AlwaysOn horizontal
+// bar does; a full-length run simply cannot be grabbed. The timeline has no vertical
+// bar to copy (TimeLineWidget builds a horizontal bar only), so this panel's value
+// bar never hides - see panelBarAt for the hover identity the two lanes share. It
+// keeps no state - which is what lets the overlay call it per frame and a headless
+// pixel gate call it once. It reads no font off the current context (the draw list
+// carries its own), but the marker hover (gui::panelKeyAt), the handle highlight and
+// the hovered-curve chip DO read
 // ImGui::GetIO().MousePos, so a caller must own a context: the overlay's frame and
 // the headless pixel gate both do.
 //
@@ -117,6 +117,27 @@ struct PanelFocus {
 void drawPanel(
     ImDrawList& aDrawList, const GraphPanelModel& aModel, const theme::Graph& aTheme, const PanelFocus& aFocus
 );
+
+// WHICH SCROLL-BAR LANE THE POINTER IS OVER. One answer for the three things that
+// must agree about it: the drawing layer's hot test (a lane's pill takes
+// theme::Colors::hover while the pointer is on it), the host's hover-repaint rule
+// (gui::GraphPanelWidget::updateHoverRepaint repaints when this answer CHANGES, so
+// entering a lane, leaving it, or crossing from one lane to the other is painted),
+// and a pixel gate that asserts the hover ink. Reading the model's published tracks
+// - not a second copy of the lane geometry - is what keeps them on one rect.
+//
+// The order is the model's own: the tracks are disjoint (the corner belongs to the
+// horizontal bar), so at most one can contain the point; Horizontal is asked first
+// only because its rect is the wider one.
+enum class PanelBar { None, Horizontal, Vertical };
+
+inline PanelBar panelBarAt(const GraphPanelModel& aModel, const QPoint& aPointer) {
+    if (!aModel.hTrack.isEmpty() && aModel.hTrack.contains(aPointer))
+        return PanelBar::Horizontal;
+    if (!aModel.vTrack.isEmpty() && aModel.vTrack.contains(aPointer))
+        return PanelBar::Vertical;
+    return PanelBar::None;
+}
 
 // Whether drawPanel draws the LABEL HALO: the same glyphs 16 more times, at the
 // eight compass offsets of radius 1 and radius 2, in theme::Graph::halo().

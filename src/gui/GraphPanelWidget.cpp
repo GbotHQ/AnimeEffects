@@ -54,9 +54,9 @@ GraphPanelWidget::GraphPanelWidget(GUIResources& aResources, QWidget* aParent):
     // take the keyboard the same way.
     this->setFocusPolicy(Qt::StrongFocus);
     // The panel's own hover states need moves with no button down: the hovered curve
-    // gets its chip, and the tangent handle nearest the pointer is the one drawn
-    // highlighted (both read ImGui::GetIO().MousePos, which this widget's bridge feeds
-    // from these moves).
+    // gets its chip, the tangent handle nearest the pointer is the one drawn
+    // highlighted, and the scroll-bar lane under the pointer paints its pill hot (all
+    // read ImGui::GetIO().MousePos, which this widget's bridge feeds from these moves).
     this->setMouseTracking(true);
 
     // The accessible factory goes in HERE, from the constructor, for the reason
@@ -293,9 +293,10 @@ void GraphPanelWidget::mouseMoveEvent(QMouseEvent* aEvent) {
 
     // AND THE HOVER'S OWN INK. routeCursor() repaints only when the editor's cursor pass
     // reports a change (a bare move answers false, GraphEditor's own rule), while the
-    // panel draws two things from the pointer alone: the marker under it and the nearest
-    // handle. A move that changed which of those is lit has to be painted, and a move
-    // that did not must not be (see updateHoverRepaint).
+    // panel draws three things from the pointer alone: the marker under it, the nearest
+    // handle, and the scroll-bar lane whose pill turns hover-coloured. A move that
+    // changed which of those is lit has to be painted, and a move that did not must not
+    // be (see updateHoverRepaint).
     this->updateHoverRepaint();
     aEvent->accept();
 }
@@ -742,16 +743,26 @@ QVector<PanelChannelRow> GraphPanelWidget::channelRows() const {
 //-------------------------------------------------------------------------------------------------
 void GraphPanelWidget::updateHoverRepaint() {
     // THE BOUNDED RULE: repaint when the target under the pointer CHANGES, and not on a
-    // move that keeps the same one. The panel's pointer-driven ink is exactly two marks
+    // move that keeps the same one. The panel's pointer-driven ink is three marks
     // (drawPanel reads io.MousePos, which this host feeds from mPointer): the key marker
-    // the pointer lights - gui::panelKeyAt, the same hit test the right-click uses - and
-    // the tangent handle nearest the pointer, under the SAME rule drawPanel highlights
+    // the pointer lights - gui::panelKeyAt, the same hit test the right-click uses - the
+    // tangent handle nearest the pointer, under the SAME rule drawPanel highlights
     // with: the nearest STORED/derived handle dot within ctrl::graph::kHandleHitRadius,
     // over the curves whose handles are drawn (the focused channel's, or every curve's
-    // while nothing is focused). Everything else the panel draws is the document's or a
-    // gesture's and has its own repaint; a move over empty space changes neither mark and
-    // therefore paints nothing.
+    // while nothing is focused) - and the scroll-bar lane whose pill takes
+    // theme::Colors::hover while the pointer is on it (gui::panelBarAt, the same answer
+    // drawPanel paints from). Everything else the panel draws is the document's or a
+    // gesture's and has its own repaint; a move over empty space changes none of the
+    // three and therefore paints nothing.
     HoverTarget now;
+
+    // The bar identity is read off the published frame's own tracks, so it needs no
+    // editor (an empty model has no tracks and answers None). It is asked FIRST and
+    // independently of the plot hits: the lanes are outside the plot, the very place
+    // where no key or handle can change, so without this a pointer entering a bar
+    // changed nothing the widget compared and the pill's hover colour never appeared
+    // until some other repaint happened to run.
+    now.bar = panelBarAt(mFrame.model, mPointer);
 
     ctrl::GraphEditor* editor = graphEditor();
     if (editor && mFrame.editor) {

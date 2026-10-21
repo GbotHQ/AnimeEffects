@@ -6,6 +6,7 @@
 #include "core/TimeFormat.h"
 #include "ctrl/TimeLineEditor.h"
 #include "gui/TimeLineEditorWidget.h"
+#include "gui/PillInk.h"
 #include "gui/theme/Colors.h"
 
 namespace gui {
@@ -424,24 +425,19 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
     const QRect pillL(x0 + 2, pillTop, wL, ctrl::TimeLineEditor::kNumberHeight);
     const QRect pillR(x1 - 1 - wR, pillTop, wR, ctrl::TimeLineEditor::kNumberHeight);
 
-    aPainter.setRenderHint(QPainter::Antialiasing, true);
+    // The pills, through the ONE rounded-pill rule the playhead uses too
+    // (gui::paintPill owns the radius and the antialiasing hint).
     aPainter.setPen(Qt::NoPen);
     aPainter.setBrush(c.windowEdge);
     if (pillL.right() >= pillR.left()) {
         const QString merged = sL + QString::fromUtf8("\u2013") + sR;
         const int w = fm.horizontalAdvance(merged) + ctrl::TimeLineEditor::kPillPadding * 2;
         const QRect pill((x0 + x1) / 2 - w / 2, pillTop, w, ctrl::TimeLineEditor::kNumberHeight);
-        aPainter.drawRoundedRect(
-            QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
-        );
+        paintPill(aPainter, pill, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
         drawPillText(aPainter, pill, merged, c.windowText, top);
     } else {
-        aPainter.drawRoundedRect(
-            QRectF(pillL), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
-        );
-        aPainter.drawRoundedRect(
-            QRectF(pillR), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
-        );
+        paintPill(aPainter, pillL, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
+        paintPill(aPainter, pillR, c.windowEdge, ctrl::TimeLineEditor::kPillRadius);
         // Square the inner corners (the faces against the stems) by
         // overdrawing the rounded slivers with the pill color, so the
         // bracket joint reads continuous. The cut pixels run to
@@ -463,11 +459,20 @@ void TimeRuler::renderPlayWindow(QPainter& aPainter, const QRect& aCameraRect, c
 void TimeRuler::drawPillText(QPainter& aPainter, const QRect& aPill, const QString& aText, const QColor& aColor, int aTop) {
     const QFontMetrics fm(aPainter.font());
     const int textWidth = fm.horizontalAdvance(aText);
+    // THE PILL'S TEXT COLUMN, stated as the integer it is. The pill is measured as
+    // `textWidth + 2 * kPillPadding`, so centring it with integer halves
+    // (`aPill.center().x() - textWidth / 2`) reduces to exactly `aPill.left() +
+    // kPillPadding` for an even AND an odd text width:
+    //   even: left + (textWidth + 10)/2 - textWidth/2 = left + 5;
+    //   odd:  left + (textWidth + 9)/2  - (textWidth-1)/2 = left + 5.
+    // Writing it that way makes the panel's pill (which has no QFontMetrics at draw
+    // time) able to reproduce the SAME column: GraphPanelFrame's window arms place
+    // their number at `pill.left() + kPillPadding` with LEFT alignment.
+    const int textLeft = aPill.left() + ctrl::TimeLineEditor::kPillPadding;
     // The exact same rect convention as the ruler numbers (top-aligned
     // at kNumberTop), so the pill text lines up with them precisely.
     const QRect numberRect(
-        aPill.center().x() - textWidth / 2, aTop + ctrl::TimeLineEditor::kNumberTop, textWidth,
-        ctrl::TimeLineEditor::kNumberHeight
+        textLeft, aTop + ctrl::TimeLineEditor::kNumberTop, textWidth, ctrl::TimeLineEditor::kNumberHeight
     );
     aPainter.setPen(QPen(aColor, 1));
     aPainter.drawText(numberRect, aText);

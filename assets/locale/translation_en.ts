@@ -21,7 +21,7 @@
 <context>
     <name>QCoreApplication</name>
     <message numerus="yes">
-        <location filename="../../src/gui/prop/prop_Items.cpp" line="354"/>
+        <location filename="../../src/gui/prop/prop_Items.cpp" line="368"/>
         <source>%n key(s)</source>
         <translation>
             <numerusform>%n key</numerusform>
@@ -32,7 +32,7 @@
 <context>
     <name>gui::GraphPanelFrame</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2219"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2366"/>
         <source>%1, %n key(s) selected</source>
         <translation>
             <numerusform>%1, %n key selected</numerusform>
@@ -43,7 +43,7 @@
 <context>
     <name>gui::ImGuiOverlay</name>
     <message numerus="yes">
-        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2209"/>
+        <location filename="../../src/gui/GraphPanelFrame.cpp" line="2356"/>
         <source>%n channel(s) shown</source>
         <translation>
             <numerusform>1 channel shown</numerusform>
@@ -61,9 +61,9 @@
 <context>
     <name>gui::TimeLineHeader</name>
     <message numerus="yes">
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="435"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="781"/>
-        <location filename="../../src/gui/TimeLineHeader.cpp" line="783"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="440"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="758"/>
+        <location filename="../../src/gui/TimeLineHeader.cpp" line="760"/>
         <source>%n channel(s)</source>
         <translation>
             <numerusform>%n channel</numerusform>

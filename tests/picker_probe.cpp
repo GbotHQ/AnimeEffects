@@ -9,6 +9,7 @@
 #include <QSet>
 #include <QToolButton>
 #include <QDoubleSpinBox>
+#include <QLabel>
 #include <QMouseEvent>
 #include <QRandomGenerator>
 #include <QDebug>
@@ -321,8 +322,8 @@ int main(int argc, char** argv) {
             const util::Easing::Param value = w.value();
             const int got = int(value.type);
             const bool preset = value.type == util::Easing::Type_Custom
-                && value.handleIn == util::Easing::HandleMode_Auto
-                && value.handleOut == util::Easing::HandleMode_Auto;
+                && value.handleIn == util::Easing::kAutoPresetHandleMode
+                && value.handleOut == util::Easing::kAutoPresetHandleMode;
             if (preset)
                 autoTileIndex = i;
             else
@@ -373,9 +374,16 @@ int main(int argc, char** argv) {
                 QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
                 checkedOnlyAuto = checkedOnlyAuto && tile && tile->isChecked() == (i == 3);
             }
+            const util::Easing::Param presetValue = w.value();
             checkedOnlyAuto = checkedOnlyAuto && presetName == autoTile->accessibleName()
-                && presetName == util::Easing::getHandleModeName(util::Easing::HandleMode_Auto)
-                && presetName != QLatin1String("Custom");
+                && presetName == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
+                && presetName != QLatin1String("Custom")
+                // THE PRESET IS THE CLAMPED PAIR, not the unclamped mode that used
+                // to be the default: both sides are AutoClamped and neither is Auto.
+                && presetValue.handleIn == util::Easing::kAutoPresetHandleMode
+                && presetValue.handleOut == util::Easing::kAutoPresetHandleMode
+                && presetValue.handleIn != util::Easing::HandleMode_Auto
+                && presetValue.handleOut != util::Easing::HandleMode_Auto;
         }
         fprintf(stderr, "#10b Auto preset: checked only tile-3=%d, label='%s' -> %s\n",
                 int(checkedOnlyAuto), qPrintable(presetName), verdict(checkedOnlyAuto));
@@ -391,8 +399,8 @@ int main(int argc, char** argv) {
             const util::Easing::AutoContext ctx = gui::prop::autoPreviewContext();
             util::Easing::Param preset;
             preset.type = util::Easing::Type_Custom;
-            preset.handleIn = util::Easing::HandleMode_Auto;
-            preset.handleOut = util::Easing::HandleMode_Auto;
+            preset.handleIn = util::Easing::kAutoPresetHandleMode;
+            preset.handleOut = util::Easing::kAutoPresetHandleMode;
             const QPointF out = util::Easing::controlPoint(preset, ctx.inMode, ctx, 1.0f, 0);
             const QPointF in = util::Easing::controlPoint(preset, ctx.inMode, ctx, 1.0f, 1);
             const bool shape = std::fabs(out.x() - 1.0 / 3.0) < 1e-6
@@ -413,7 +421,7 @@ int main(int argc, char** argv) {
     {
         const util::Easing::AutoContext base = gui::prop::autoPreviewContext();
         util::Easing::AutoContext nextMode = base;
-        nextMode.inMode = util::Easing::HandleMode_AutoClamped;
+        nextMode.inMode = util::Easing::HandleMode_Auto; // base is AutoClamped
         util::Easing::AutoContext nextValue = base;
         nextValue.next.value = 0.25f;
         util::Easing::AutoContext prevFrame = base;
@@ -428,32 +436,107 @@ int main(int argc, char** argv) {
                 verdict(differs && same));
     }
 
-    // ---- #11 the two handle-mode combos are ORDINARY FIELD CONTROLS ----
-    // They are a labelled field in the picker's own row structure (role bfield:
-    // 12px label above a 24px role=fi value, exactly like the bezier spins) and
-    // carry no stylesheet of their own. Their look is the app field rule the
-    // popover shares with the spins, not a bespoke combo style.
+    // ---- #11 the two handle-mode combos ARE the property panel's combo ----
+    // Not a field with a role of its own, and not configured by hand: their
+    // construction must MATCH prop::ComboItem's combo. The probe links the picker
+    // sources directly (not the gui application), so the item class itself cannot
+    // be linked in; instead the reference below is ComboItem's own constructor,
+    // statement for statement (src/gui/prop/prop_Items.cpp), polished by the very
+    // same class-level QComboBox rule the picker uses (we put the picker's sheet
+    // on its parent, which is what propertywidget.ssa does for the real ComboItem).
+    // Every construction property is then compared FIELD BY FIELD - size policy
+    // both axes, minimum/maximum size, font, dynamic properties, local
+    // stylesheet, window flags, focus policy, editability - not against
+    // hard-coded numbers. A geometry difference would be allowed by the design
+    // (the picker's column is narrower); a construction difference is not.
     {
         QComboBox* in = w.findChild<QComboBox*>("handle-in");
         QComboBox* out = w.findChild<QComboBox*>("handle-out");
         const QString css = w.styleSheet();
-        const bool plain = in && out
-            && in->styleSheet().isEmpty() && out->styleSheet().isEmpty()
-            && in->height() == 24 && out->height() == 24
-            && in->property("role").toString() == QLatin1String("fi")
-            && out->property("role").toString() == QLatin1String("fi")
-            && in->parentWidget() && out->parentWidget()
-            && in->parentWidget()->property("role").toString() == QLatin1String("bfield")
-            && out->parentWidget()->property("role").toString() == QLatin1String("bfield");
-        const bool appField = css.contains(QStringLiteral("QComboBox[role=\"fi\"]"))
-            && css.contains(QStringLiteral("QComboBox[role=\"fi\"]::down-arrow"))
+
+        // prop::ComboItem::ComboItem (prop_Items.cpp), exactly:
+        //   mBox = new QComboBox(aParent);
+        //   mBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        QWidget refParent;
+        refParent.setStyleSheet(css); // the same field rule the panel's combo gets
+        QComboBox* ref = new QComboBox(&refParent);
+        ref->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        refParent.show();
+        refParent.ensurePolished();
+        ref->ensurePolished();
+        app.processEvents();
+
+        bool plain = in && out && ref;
+        auto checkField = [&](const char* aWhat, bool aSame, const QString& aMine,
+                              const QString& aReference) {
+            if (aSame)
+                return;
+            plain = false;
+            fprintf(stderr, "  #11 MISMATCH %s: picker='%s' ComboItem='%s'\n",
+                    aWhat, qPrintable(aMine), qPrintable(aReference));
+        };
+        const auto compareOne = [&](const char* aWhat, const QComboBox* aMine) {
+            if (!aMine) {
+                plain = false;
+                fprintf(stderr, "  #11 MISMATCH %s: picker combo NOT FOUND\n", aWhat);
+                return;
+            }
+            checkField("class", QLatin1String(aMine->metaObject()->className())
+                                    == QLatin1String(ref->metaObject()->className()),
+                       QString::fromLatin1(aMine->metaObject()->className()),
+                       QString::fromLatin1(ref->metaObject()->className()));
+            checkField("sizePolicy", aMine->sizePolicy() == ref->sizePolicy(),
+                       QStringLiteral("h=%1 v=%2").arg(int(aMine->sizePolicy().horizontalPolicy()))
+                           .arg(int(aMine->sizePolicy().verticalPolicy())),
+                       QStringLiteral("h=%1 v=%2").arg(int(ref->sizePolicy().horizontalPolicy()))
+                           .arg(int(ref->sizePolicy().verticalPolicy())));
+            checkField("minimumSize", aMine->minimumSize() == ref->minimumSize(),
+                       QStringLiteral("%1x%2").arg(aMine->minimumWidth()).arg(aMine->minimumHeight()),
+                       QStringLiteral("%1x%2").arg(ref->minimumWidth()).arg(ref->minimumHeight()));
+            checkField("maximumSize", aMine->maximumSize() == ref->maximumSize(),
+                       QStringLiteral("%1x%2").arg(aMine->maximumWidth()).arg(aMine->maximumHeight()),
+                       QStringLiteral("%1x%2").arg(ref->maximumWidth()).arg(ref->maximumHeight()));
+            checkField("font", aMine->font() == ref->font(),
+                       QStringLiteral("%1 %2pt %3px w%4").arg(aMine->font().family())
+                           .arg(aMine->font().pointSizeF()).arg(aMine->font().pixelSize())
+                           .arg(aMine->font().weight()),
+                       QStringLiteral("%1 %2pt %3px w%4").arg(ref->font().family())
+                           .arg(ref->font().pointSizeF()).arg(ref->font().pixelSize())
+                           .arg(ref->font().weight()));
+            checkField("dynamicProperties", aMine->dynamicPropertyNames() == ref->dynamicPropertyNames(),
+                       QString::number(int(aMine->dynamicPropertyNames().size())),
+                       QString::number(int(ref->dynamicPropertyNames().size())));
+            checkField("styleSheet", aMine->styleSheet() == ref->styleSheet(),
+                       aMine->styleSheet(), ref->styleSheet());
+            checkField("windowFlags", aMine->windowFlags() == ref->windowFlags(),
+                       QString::number(int(aMine->windowFlags())),
+                       QString::number(int(ref->windowFlags())));
+            checkField("focusPolicy", aMine->focusPolicy() == ref->focusPolicy(),
+                       QString::number(int(aMine->focusPolicy())),
+                       QString::number(int(ref->focusPolicy())));
+            checkField("isEditable", aMine->isEditable() == ref->isEditable(),
+                       QString::number(int(aMine->isEditable())),
+                       QString::number(int(ref->isEditable())));
+            // No role attribute: the combo is identified by its CLASS, like
+            // ComboItem. (The reference has none either.)
+            checkField("role-property", aMine->property("role").isValid() == ref->property("role").isValid(),
+                       aMine->property("role").isValid() ? QStringLiteral("set") : QStringLiteral("absent"),
+                       ref->property("role").isValid() ? QStringLiteral("set") : QStringLiteral("absent"));
+        };
+        compareOne("handle-in", in);
+        compareOne("handle-out", out);
+
+        const bool appField = css.contains(QStringLiteral("QComboBox {"))
+            && css.contains(QStringLiteral("QComboBox::down-arrow"))
             && css.contains(QStringLiteral("caret-down.svg"))
+            && !css.contains(QStringLiteral("QComboBox[role="))
             && !css.contains(QStringLiteral("handle-in"))
             && !css.contains(QStringLiteral("handle-out"));
         fprintf(stderr,
-                "#11 handle-mode combos: plain field (no local stylesheet, bfield/fi, 24px)=%d, "
-                "app field rule (raised/border/caret, no id rules)=%d -> %s\n",
+                "#11 handle-mode combos vs prop::ComboItem's construction: every field equal=%d, "
+                "generic property-field rule (raised/border/caret, no role/id rules)=%d -> %s\n",
                 int(plain), int(appField), verdict(plain && appField));
+        delete ref;
     }
 
     // ---- #13 A DERIVED SIDE IS FREED BY EDITING ITS CONTROL POINT ----
@@ -539,8 +622,8 @@ int main(int argc, char** argv) {
     {
         util::Easing::Param preset;
         preset.type = util::Easing::Type_Custom;
-        preset.handleIn = util::Easing::HandleMode_Auto;
-        preset.handleOut = util::Easing::HandleMode_Auto;
+        preset.handleIn = util::Easing::kAutoPresetHandleMode;
+        preset.handleOut = util::Easing::kAutoPresetHandleMode;
         EasingPickWidget p{util::Easing::Param()};
         p.setValue(preset);
         p.show();
@@ -559,6 +642,99 @@ int main(int argc, char** argv) {
                 "#14 Auto preset routed to the catalog (tile checked)=%d, Custom still opens the "
                 "bezier panel without changing the pair=%d -> %s\n",
                 int(catalog), int(forced), verdict(catalog && forced));
+    }
+
+    // ---- #15 A DISCRETE MODE CHANGE APPLIES WHILE THE POPUP IS OPEN ----
+    // A tile / segment / mode-combo / typed-bezier / paste edit used to be held
+    // until the popup closed, so the document (and the graph behind it) did not
+    // move while the menu was up. Every discrete edit now emits applied at once;
+    // a continuous drag still folds into ONE commit when the popup closes.
+    {
+        util::Easing::Param draft;
+        draft.type = util::Easing::Type_Custom;
+        draft.handleIn = util::Easing::HandleMode_Aligned;
+        draft.handleOut = util::Easing::HandleMode_Aligned;
+
+        EasingPickWidget p{draft};
+        p.setValue(draft);
+        int applied = 0;
+        util::Easing::Param last;
+        QObject::connect(&p, &EasingPickWidget::applied,
+                         [&applied, &last](util::Easing::Param aParam) { ++applied; last = aParam; });
+        p.show();
+        app.processEvents();
+
+        p.setHandleMode(true, util::Easing::HandleMode_Auto);
+        app.processEvents();
+        const bool modeLive = applied == 1 && last.handleIn == util::Easing::HandleMode_Auto
+            && p.isVisible();
+        p.setHandleMode(false, util::Easing::HandleMode_AutoClamped);
+        app.processEvents();
+        const bool secondLive = applied == 2 && last.handleOut == util::Easing::HandleMode_AutoClamped;
+        p.hide();
+        app.processEvents();
+        const bool noDoubleCommit = applied == 2; // close does not re-send what was committed
+
+        // A DRAG is different: it reports live (changed) but commits once, on close.
+        EasingPickWidget drag{draft};
+        drag.setValue(draft);
+        int dragApplied = 0;
+        float dragWeight = -1.0f;
+        QObject::connect(&drag, &EasingPickWidget::applied,
+                         [&dragApplied, &dragWeight](util::Easing::Param aParam) {
+                             ++dragApplied;
+                             dragWeight = aParam.weight;
+                         });
+        drag.show();
+        app.processEvents();
+        drag.setWeight(0.5f);
+        app.processEvents();
+        const bool dragDeferred = dragApplied == 0;
+        drag.hide();
+        app.processEvents();
+        const bool dragOnClose = dragApplied == 1 && dragWeight == 0.5f;
+
+        const bool ok = modeLive && secondLive && noDoubleCommit && dragDeferred && dragOnClose;
+        fprintf(stderr,
+                "#15 live apply: mode while open=%d, second mode=%d, no re-commit on close=%d, "
+                "drag deferred=%d, drag one commit on close=%d -> %s\n",
+                int(modeLive), int(secondLive), int(noDoubleCommit), int(dragDeferred),
+                int(dragOnClose), verdict(ok));
+    }
+
+    // ---- #16 THE HEADER NAMES THE PARAM, NOT THE TYPE ----
+    // The picker's own title used to be the generic "Easing" (and the top of the
+    // chip area read the TYPE elsewhere); a Custom curve must be named by its two
+    // handle modes, exactly like the chip and every tile. Both-Auto reads "Auto",
+    // the preset reads "Auto Clamped" - never "Custom".
+    {
+        util::Easing::Param bothAuto;
+        bothAuto.type = util::Easing::Type_Custom;
+        bothAuto.handleIn = util::Easing::HandleMode_Auto;
+        bothAuto.handleOut = util::Easing::HandleMode_Auto;
+        EasingPickWidget p{util::Easing::Param()};
+        p.setValue(bothAuto);
+        p.show();
+        app.processEvents();
+        QLabel* title = p.findChild<QLabel*>(QStringLiteral("popover-title"));
+        const bool autoName = title
+            && title->text() == util::Easing::getParamName(bothAuto)
+            && title->text() == QLatin1String("Auto")
+            && title->text() != util::Easing::getTypeName(util::Easing::Type_Custom);
+
+        p.setAutoHandlesPreset();
+        app.processEvents();
+        QLabel* titlePreset = p.findChild<QLabel*>(QStringLiteral("popover-title"));
+        const bool presetName = titlePreset
+            && titlePreset->text() == util::Easing::getParamName(p.value())
+            && titlePreset->text() == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
+            && titlePreset->text() != util::Easing::getTypeName(util::Easing::Type_Custom);
+
+        fprintf(stderr,
+                "#16 picker title: both-Auto reads '%s' (not Custom)=%d, preset reads '%s'=%d -> %s\n",
+                title ? qPrintable(title->text()) : "<none>", int(autoName),
+                titlePreset ? qPrintable(titlePreset->text()) : "<none>", int(presetName),
+                verdict(autoName && presetName));
     }
 
     fprintf(stderr, "picker_probe: %d mismatch%s\n", gMismatches, gMismatches == 1 ? "" : "es");

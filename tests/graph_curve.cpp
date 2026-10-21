@@ -1337,16 +1337,17 @@ int sectionScaler() {
         CHECK(vHigh.vThumb.top() == vHigh.vTrack.top());
         CHECK(vHigh.vThumb.top() < vLow.vThumb.top());
 
-        // A bar with no travel: the vertical lane is AsNeeded (no ink), while the
-        // horizontal AlwaysOn bar fills its track. The TRACKS stay laid out either
-        // way, so the plot's rect does not move.
+        // A bar with no travel: BOTH lanes still draw the FULL-LENGTH pill (the run
+        // fills the track), and neither is scrollable, so a press on either is nobody's.
+        // The TRACKS stay laid out either way, so the plot's rect does not move.
         barScale.setValueWindow(-10.0f, 110.0f);
         const Scaler::ScrollBars whole = barScale.scrollBars(0.0, 40.0, 0.0f, 100.0f);
-        CHECK(whole.vThumb.isEmpty());
+        CHECK(whole.vThumb == whole.vTrack);
         CHECK(!whole.vTravel());
         CHECK(!whole.vTrack.isEmpty());
         const Scaler::ScrollBars none = barScale.scrollBars(0.0, 40.0, 0.0f, 0.0f); // no extent
-        CHECK(none.vThumb.isEmpty());
+        CHECK(none.vThumb == none.vTrack);
+        CHECK(!none.vTravel());
     }
     // The section boundary itself: the band's 22 rows sit immediately above the
     // plot, and the plot's first row is the graph's - the exact arithmetic a pixel
@@ -1490,11 +1491,12 @@ int sectionScaler() {
 // The oracle comparison is the one section 2 runs.
 //
 // The four-key channel below is the user's question made concrete: P - A - B -
-// C. A's OUTGOING side is Auto and reads P (the previous key); B's INCOMING side
-// is Auto and reads C (the next key). Changing P moves A's outgoing handle and
-// leaves B's incoming one untouched; changing C does the reverse. That is what
-// "an untouched Auto side keeps deriving while the other is dragged" means at
-// the curve level; the gesture itself is tests/graph_drag.cpp's section.
+// C. A's OUTGOING side and B's INCOMING side are Auto. The derivation is per
+// KEY (the reference's central difference): A's slope uses P and B, B's uses A
+// and C. Changing P moves A's outgoing handle and leaves B's incoming one
+// untouched; changing C does the reverse. That is what "an untouched Auto side
+// keeps deriving while the other is dragged" means at the curve level; the
+// gesture itself is tests/graph_drag.cpp's section.
 // ---------------------------------------------------------------------------
 int sectionAutoEasing() {
     using core::TimeKeyType;
@@ -1597,27 +1599,31 @@ int sectionAutoEasing() {
     const ctrl::graph::Curve::Segment bc = rotate.segment(2); // B -> C
 
     // Hand-worked control points of A -> B (values 0 -> 100, span 10):
-    //   outgoing at A reads P: px = -1, py = (-50-0)/100 = -0.5,
-    //     slope = py/px = 0.5 -> y1 = 0.5/3 = 1/6.
-    //   incoming at B reads C: next nx = 2, ny = (40-0)/100 = 0.4,
-    //     slope = (0.4-1)/(2-1) = -0.6 -> y2 = 1 - (-0.6)/3 = 1.2.
-    // (Auto is unclamped, so the 1.2 overshoot survives.)
+    //   outgoing at A: central difference over P(-10,-50) and B(10,100):
+    //     px = -1, py = -0.5 -> m = (1 - (-0.5)) / (1 - (-1)) = 0.75
+    //     -> y1 = 0.75/3 = 0.25.
+    //   incoming at B: central difference over A(0,0) and C(20,40):
+    //     nx = 2, ny = 0.4 -> m = (0.4 - 0) / (2 - 0) = 0.2
+    //     -> y2 = 1 - 0.2/3 = 14/15.
+    // (Auto is unclamped: A's 0.25 handle is the visible anticipation, and the
+    // incoming side approaches B from above the segment.)
     {
         QPointF pair[2];
         CHECK(rotate.effectiveHandles(ab, pair));
         CHECK(nearly(static_cast<float>(pair[0].x()), 1.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(pair[0].y()), 1.0f / 6.0f, 1e-5f));
+        CHECK(nearly(static_cast<float>(pair[0].y()), 0.25f, 1e-5f));
         CHECK(nearly(static_cast<float>(pair[1].x()), 2.0f / 3.0f, 1e-6f));
-        CHECK(nearly(static_cast<float>(pair[1].y()), 1.2f, 1e-5f));
+        CHECK(nearly(static_cast<float>(pair[1].y()), 14.0f / 15.0f, 1e-5f));
         // A context-free evaluation of a Custom param with no derived side reads
         // the stored pair; the derived form reads these controls.
         const float atHalf = rotate.sample(core::Frame(5));
         CHECK(!nearly(atHalf, 50.0f, 0.01f)); // the four-key channel is shaped
     }
 
-    // B -> C: B's outgoing is AutoClamped and reads A: change = 40-100 = -60,
-    // py = (0-100)/(-60) = 5/3, px = -1, slope = -5/3 -> y1 = -5/9, clamped into
-    // [0, 5/3] -> 0 (B is the local maximum, so the curve leaves it flat).
+    // B -> C: B's outgoing is AutoClamped. Its central difference, over A and C
+    // in this segment's unit (A = (-1, 5/3)), is
+    // m = (1 - 5/3) / (1 - (-1)) = -1/3 -> y1 = -1/9, clamped into [0, 5/3] -> 0
+    // (B is the local maximum, so the curve leaves it flat).
     // C's incoming side is stored (Aligned), so x2/y2 are the stored pair.
     {
         QPointF pair[2];
@@ -1628,9 +1634,9 @@ int sectionAutoEasing() {
     }
 
     // THE ACCEPTANCE PROPERTY. Change the PREVIOUS key's value (P): A's outgoing
-    // derived handle moves, B's incoming derived handle does not. Then change the
-    // NEXT key's value (C): the reverse. The two sides are independent because
-    // each reads its own outside neighbour.
+    // derived handle moves, B's incoming derived handle does not (A's central
+    // difference uses P, B's uses C). Then change the NEXT key's value (C): the
+    // reverse.
     {
         const auto controlsOf = [&]() -> QPair<QPointF, QPointF> {
             QPointF pair[2];

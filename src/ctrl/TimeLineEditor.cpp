@@ -536,13 +536,17 @@ static QVector2D objToVec(QJsonObject obj, const QString& varName) {
 // per-side Custom curve actually consists of.
 QJsonObject ctrl::TimeLineEditor::easingToJson(const util::Easing::Param& aParam) {
     QJsonObject easing;
-    const bool autoPreset = aParam.type == util::Easing::Type_Custom
-        && aParam.handleIn == util::Easing::HandleMode_Auto
-        && aParam.handleOut == util::Easing::HandleMode_Auto;
-    // "Auto" is written for the explicit PRESET so a build without the per-side
-    // model reads the closest thing it has; the modes below are what this build
-    // reads back (and what a retired-Auto legacy payload, which has no modes, is
+    // The automatic pair, whatever its clamp: the preset writes AutoClamped
+    // (Easing::kAutoPresetHandleMode) and a deliberate per-side pick can write
+    // unclamped Auto. A build without the per-side model has only the retired
+    // Auto TYPE, whose shape was the clamped one, so both write "Auto" - the
+    // closest thing that reader has. The modes below are what THIS build reads
+    // back (and what a retired-Auto legacy payload, which has no modes, is
     // disambiguated from).
+    const bool autoPreset = aParam.type == util::Easing::Type_Custom
+        && (aParam.handleIn == util::Easing::HandleMode_Auto
+            || aParam.handleIn == util::Easing::kAutoPresetHandleMode)
+        && aParam.handleIn == aParam.handleOut;
     easing["eType"] = autoPreset ? QStringLiteral("Auto") : util::Easing::getTypeName(aParam.type);
     easing["eRange"] = util::Easing::getRangeName(aParam.range);
     easing["eWeight"] = aParam.weight;
@@ -564,9 +568,9 @@ util::Easing::Param ctrl::TimeLineEditor::easingFromJson(const QJsonObject& aObj
 
     // A payload with modes describes them exactly (0.15+). A payload without
     // them predates the per-side model: "Auto" there was the retired Auto TYPE,
-    // which always CLAMPED - not the explicit (unclamped) preset the writer
-    // names "Auto" today. Every other legacy name kept its stored modes' default
-    // (Aligned), which is what that build wrote.
+    // which always CLAMPED - the same behaviour the preset writes now, so the
+    // name round-trips losslessly. Every other legacy name kept its stored modes'
+    // default (Aligned), which is what that build wrote.
     const bool hasModes = aObject.contains("eIn") && aObject.contains("eOut");
     if (hasModes) {
         const int in = aObject["eIn"].toInt();

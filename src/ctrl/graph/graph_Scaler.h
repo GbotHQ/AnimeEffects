@@ -235,13 +235,19 @@ public:
     //     a kScrollBarPillThickness pill centred in the lane across this run, and
     //     nothing else: the trough is invisible.
     //
-    // THE TWO LANES FOLLOW THE TIMELINE'S TWO BARS, measured per lane:
+    // THE TWO LANES ARE BOTH ALWAYSON IN THIS PANEL (the timeline has no vertical
+    // bar of its own; see the second bullet):
     //   * hThumb is ALWAYS the handle - when the window covers the union track it
     //     spans the whole track (the timeline's AlwaysOn bar). A full-length run
     //     cannot pan anything, and hTravel() says so.
-    //   * vThumb is EMPTY at zero travel: the timeline's vertical bar is AsNeeded and
-    //     shows no ink when the tracks fit (measured: its right lane stays base).
-    //     A value run that fills its track therefore means "the bar is hidden".
+    //   * vThumb is ALWAYS the handle too: a value window that covers its track
+    //     fills the vertical lane with the pill, exactly as the horizontal one does.
+    //     (The timeline has no vertical bar to copy: TimeLineWidget builds a
+    //     HORIZONTAL scroll bar only and its vertical position is the object tree, so
+    //     the timeline's empty right lane is an absent bar, not a hidden one. The
+    //     panel's value bar is its own, and a lane that disappears with the content in
+    //     range is the defect this rule fixes.) A full-length run still has NO travel,
+    //     so vScrollable stays false and the lane ignores presses and the wheel.
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).
@@ -287,8 +293,7 @@ public:
     // frames through framePpf()). A DEGENERATE content (lo == hi, i.e. no key at
     // all, or a project with no frame span) therefore has a track of just the
     // window: its handle fills the track exactly as a fully visible window does -
-    // the full handle of the horizontal lane and, after the AsNeeded rule, no run at
-    // all for the vertical one (see ScrollBars). The value axis is INVERTED along
+    // the full handle of BOTH lanes (see ScrollBars). The value axis is INVERTED along
     // its track - valueMax is at the track's top - which the layout accounts for, so
     // a window at high values draws its thumb at the top.
     ScrollBars scrollBars(

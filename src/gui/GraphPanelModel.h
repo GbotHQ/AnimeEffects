@@ -764,8 +764,9 @@ struct GraphPanelModel {
     // pageStep/content of the track, floored at QStyle::PM_ScrollBarSliderMin, offset =
     // the window's fraction of the travel over track-length), so a window that covers
     // the content (or a content with no extent at all - no key, or no frame span)
-    // fills its track and the model then publishes an empty run (nothing to scroll,
-    // nothing drawn, nothing hit). The four
+    // fills its track, and the run IS the track: the drawing layer paints a full-length
+    // pill in BOTH lanes then (the vertical bar does not hide), while the travel flags
+    // keep either full-length lane out of the press and wheel routes. The four
     // rects are EMPTY while the plot is empty: there is nowhere to lay a bar out, and
     // the drawing layer draws nothing for an empty rect.
     //

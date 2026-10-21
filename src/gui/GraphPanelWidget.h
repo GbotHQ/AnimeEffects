@@ -222,10 +222,11 @@ private:
     bool openKeyMenuAt(const QPoint& aPos);
     // THE HOVER REPAINT RULE (see updateHoverRepaint): one repaint whenever the target
     // under the pointer CHANGES, and none for a move that keeps the same target. The
-    // two things the panel draws from the pointer's position alone are the marker the
-    // pointer lights (gui::panelKeyAt) and the tangent handle it highlights (the
-    // nearest stored handle within ctrl::graph::kHandleHitRadius), so those two are
-    // what this compares.
+    // three things the panel draws from the pointer's position alone are the marker the
+    // pointer lights (gui::panelKeyAt), the tangent handle it highlights (the nearest
+    // stored handle within ctrl::graph::kHandleHitRadius), and the scroll-bar LANE
+    // under it (gui::panelBarAt - its pill turns theme::Colors::hover), so those three
+    // are what this compares.
     void updateHoverRepaint();
     // The viewport widget the application's menus live in (see the class comment):
     // MainDisplayWidget owns the channel list, and it is the handle on the timeline
@@ -273,10 +274,10 @@ private:
     // Starts outside the panel so no hover is painted before the pointer arrives.
     QPoint mPointer;
 
-    // THE HOVERED TARGET, in the panel's own two pointer-driven marks: the key under
-    // the pointer and the tangent handle nearest it. It is a VALUE, so the hover repaint
-    // rule is one compare - "did the target change?" - rather than a repaint per move
-    // (see updateHoverRepaint).
+    // THE HOVERED TARGET, in the panel's pointer-driven marks: the key under the
+    // pointer, the tangent handle nearest it, and the scroll-bar lane the pointer is
+    // on. It is a VALUE, so the hover repaint rule is one compare - "did the target
+    // change?" - rather than a repaint per move (see updateHoverRepaint).
     struct HoverTarget {
         // The key under the pointer (gui::panelKeyAt), false when none is that close.
         bool key = false;
@@ -287,9 +288,14 @@ private:
         // when none is within ctrl::graph::kHandleHitRadius.
         int handleCurve = -1;
         int handle = -1;
+        // The scroll-bar lane under the pointer (gui::panelBarAt): the drawing layer
+        // paints that lane's pill in theme::Colors::hover, so entering a lane, leaving
+        // it, or crossing from one lane to the other is a change that must repaint.
+        PanelBar bar = PanelBar::None;
 
         bool operator==(const HoverTarget& aRhs) const {
-            if (key != aRhs.key || handleCurve != aRhs.handleCurve || handle != aRhs.handle)
+            if (key != aRhs.key || handleCurve != aRhs.handleCurve || handle != aRhs.handle
+                || bar != aRhs.bar)
                 return false;
             return !key || (keyNode == aRhs.keyNode && keyChannel == aRhs.keyChannel && keyFrame == aRhs.keyFrame);
         }

@@ -88,6 +88,7 @@
 #include "core/TimeLine.h"
 #include "ctrl/TimeLineEditor.h"
 #include "cmnd/Stack.h"
+#include "gui/PillInk.h"
 #include "gui/theme/Colors.h"
 #include "gui/theme/TimeLine.h"
 
@@ -628,6 +629,65 @@ int main(int argc, char** argv) {
             probe.setIndex(fit.scaleIndex);
             CHECK(probe.pixelsPerFrame() * 200.0 + 2.0 * fitMargin <= 800.0 + 1e-9);
         }
+    }
+
+    // --- 6: THE PILL'S ROUNDED CORNER IS ANTIALIASED, IN BOTH TIMELINE PILLS.
+    //
+    // The playhead's frame pill (gui::TimeCursor) and the temporary playback
+    // window's label arms (gui::TimeRuler::renderPlayWindow) both end on a
+    // kPillRadius corner. They used to paint it differently: the window arms set
+    // QPainter::Antialiasing, the playhead did NOT (and a QWidget's painter starts
+    // with the hint off), so the playhead's corner was a hard staircase. Both now
+    // go through gui::paintPill, the one rounded-pill rule, and this is the pixel
+    // statement of it:
+    //
+    //   * an antialiased RADIUS leaves pixels in the corner box that are neither
+    //     the pill's ink nor the surface under it - the curve's partial coverage;
+    //   * a HARD corner (the same box filled as a rectangle) leaves none.
+    //
+    // The contrast case is drawn here too, so the metric itself is shown to
+    // distinguish the two and a regression to a bare drawRoundedRect/fillRect in
+    // either pill fails on the first count.
+    {
+        const QRect pill(6, 5, 30, 14);
+        const QColor pillInk = colors.accentBright;
+        const QColor surface = colors.base;
+        const int radius = ctrl::TimeLineEditor::kPillRadius;
+
+        QImage rounded(kWidth, 40, QImage::Format_RGB32);
+        rounded.fill(surface);
+        {
+            QPainter painter(&rounded);
+            gui::paintPill(painter, pill, pillInk, radius);
+        }
+
+        QImage hard(kWidth, 40, QImage::Format_RGB32);
+        hard.fill(surface);
+        {
+            QPainter painter(&hard);
+            painter.fillRect(pill, pillInk);
+        }
+
+        const auto blendPixels = [&](const QImage& aImage) {
+            int blends = 0;
+            const QRect corner(pill.left(), pill.top(), radius, radius);
+            for (int y = corner.top(); y <= corner.bottom(); ++y) {
+                for (int x = corner.left(); x <= corner.right(); ++x) {
+                    const Rgb c = pixelAt(aImage, x, y);
+                    if (chebyshev(c, rgbOf(pillInk)) > 2 && chebyshev(c, rgbOf(surface)) > 2)
+                        ++blends;
+                }
+            }
+            return blends;
+        };
+        const int roundedBlends = blendPixels(rounded);
+        const int hardBlends = blendPixels(hard);
+        std::printf(
+            "[6] pill corner: radius %d leaves %d blend pixel(s) of %d; a hard corner leaves %d\n", radius,
+            roundedBlends, radius * radius, hardBlends
+        );
+        CHECK(hardBlends == 0);   // the control: a hard corner has no partial coverage
+        CHECK(roundedBlends > 0); // the rule draws an antialiased radius
     }
 
     std::printf("timeline_visuals: all checks passed\n");

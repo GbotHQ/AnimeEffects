@@ -1197,6 +1197,67 @@ int main(int argc, char** argv) {
             CHECK(scale.framePpf() != plotPpfBefore);
         }
 
+        // (4b) A ZERO-TRAVEL LANE IS DRAWN BUT NOT GRABBABLE, on BOTH axes. The scaler
+        // publishes the full run (the panel paints a full-length pill - see
+        // tests/graph_panel_pixels.cpp), and hTravel()/vTravel() are false, so a press
+        // on either lane is nobody's and moves no window. This is the HIT rule the
+        // full-length drawing must not change: "the pill is visible" and "the pill can
+        // be dragged" are different questions, and only the second reads travel.
+        editor.scale().setRect(panel);
+        editor.clearFrameAxis(); // the frame axis is the panel's own: the window is the plot
+        editor.scale().fitFrameAxis(core::Frame(frames.min() - 100), core::Frame(frames.max() + 100));
+        editor.scale().setValueWindow(valueLo - 100.0f, valueHi + 100.0f);
+        {
+            const Scaler::ScrollBars fullLanes = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+            CHECK(fullLanes.hThumb == fullLanes.hTrack);
+            CHECK(fullLanes.vThumb == fullLanes.vTrack);
+            CHECK(!fullLanes.hTravel());
+            CHECK(!fullLanes.vTravel());
+
+            const double frameOriginFull = scale.pixelXOfFrame(0.0);
+            const float vMinFull = scale.valueMin();
+            const float vMaxFull = scale.valueMax();
+            // PROBE POINTS CLEAR OF THE CURVES' KEYS: the lane's left end (the plot
+            // starts well right of it) and the vertical lane's top row (above the fitted
+            // value extent), so the only candidate hit at either point is the bar.
+            const QPoint hLanePoint(fullLanes.hTrack.left() + 2, fullLanes.hTrack.center().y());
+            const QPoint vLanePoint(fullLanes.vTrack.center().x(), fullLanes.vTrack.top() + 1);
+            for (const QPoint& lanePoint : {hLanePoint, vLanePoint}) {
+                core::AbstractCursor fullCur;
+                {
+                    QMouseEvent down(
+                        QEvent::MouseButtonPress, lanePoint, lanePoint, lanePoint, Qt::LeftButton, Qt::LeftButton,
+                        Qt::NoModifier
+                    );
+                    CHECK(fullCur.setMousePress(&down, camera));
+                }
+                // NOBODY'S PRESS: a lane whose slider fills its groove has no bar
+                // gesture to start, and the lane is outside the plot, so nothing else
+                // claims it either.
+                CHECK(!editor.ownsCursor(camera, fullCur));
+                CHECK(editor.updateCursor(camera, fullCur));
+                CHECK(scale.pixelXOfFrame(0.0) == frameOriginFull);
+                CHECK(scale.valueMin() == vMinFull && scale.valueMax() == vMaxFull);
+                // The press armed no gesture, so its release is nobody's either.
+                CHECK(!sendRelease(editor, camera, fullCur, lanePoint));
+            }
+
+            // THE WHEEL IS NOT THE LANE'S EITHER: a notch over a full-length run
+            // must not scroll the window (there is no travel). The value under the
+            // pointer's own row is therefore unchanged - whether the notch is dropped
+            // or falls through to the panel's zoom (updateWheel's documented
+            // fall-through), it is never the bar's pan, which would move that value.
+            const float valueAtFullLane = scale.valueAtPixel(vLanePoint.y());
+            CHECK(editor.updateWheel(camera, vLanePoint, 120, Qt::ControlModifier, false));
+            CHECK(std::fabs(scale.valueAtPixel(vLanePoint.y()) - valueAtFullLane) < 1e-3f);
+            std::printf(
+                "[B] zero-travel lanes: hThumb %d px of %d, vThumb %d px of %d, travel %d/%d - presses on both "
+                "were nobody's and a notch did not scroll the lane\n",
+                fullLanes.hThumb.width(), fullLanes.hTrack.width(), fullLanes.vThumb.height(),
+                fullLanes.vTrack.height(), int(fullLanes.hTravel()), int(fullLanes.vTravel())
+            );
+        }
+
         // (5) NOTHING WAS PUSHED, and nothing was announced: the two windows moved and
         // the document did not notice.
         bool barUndo = true;

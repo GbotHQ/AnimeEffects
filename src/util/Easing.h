@@ -49,13 +49,14 @@ public:
     //                inference from the pixel angle);
     //   Vector       on the chord to the segment's other key, at the third
     //                points: the segment is a straight line (Blender's Vector);
-    //   Auto         DERIVED from that side's neighbour: the outgoing side of a
-    //                key reads the PREVIOUS key, the incoming side the NEXT one
-    //                (a one-sided secant, so each side keeps deriving while
-    //                the other is dragged);
-    //   AutoClamped  the same derivation, with the handle clamped into the
-    //                value range of the key and its two neighbours, so a local
-    //                extremum is flat instead of overshooting.
+    //   Auto         DERIVED per KEY from BOTH of that key's neighbours: one
+    //                central-difference slope shared by whichever of the two
+    //                handles is auto, so a symmetric key draws a symmetric pair
+    //                (the reference's default 'uniform' tangent mode);
+    //   AutoClamped  the same derivation, with the key's slope clamped so BOTH
+    //                of its handles stay inside the value range of the key and
+    //                its two neighbours, so a local extremum is flat instead of
+    //                overshooting.
     //
     // The ordering is serialization order (Blender's own enum order) and 0.14
     // did not have it; see FormatVersion.h.
@@ -86,15 +87,17 @@ public:
         }
     };
 
-    // The automatic handle mode the APPLICATION uses when it CREATES a default
-    // automatic easing: a stored Auto default written before 0.15, or a 0.14
-    // Type_Auto migrated into the per-side model. Both clamped unconditionally
-    // (that is what the retired type meant), so they become AutoClamped;
-    // unclamped Auto would change the shape and can overshoot. The explicit
-    // "Auto" PRESET a user picks - the picker's Auto tile and the header's Auto
-    // quick button - is a deliberate choice and writes HandleMode_Auto, so its
-    // user-facing name reads Auto (see getParamName).
+    // The automatic handle mode the APPLICATION uses for a DEFAULT automatic
+    // easing (a stored Auto default, or a 0.14 Type_Auto migrated into the
+    // per-side model), and for its explicit "Auto" PRESET (the picker's Auto
+    // tile, the header's Auto quick button, the graph's Auto action). It is
+    // AutoClamped: that is what the retired type meant, and the preset a user
+    // reaches for must not overshoot. Unclamped HandleMode_Auto stays available
+    // as a deliberate per-side choice in the picker's mode combo, where its
+    // name reads "Auto" (see getParamName).
     static constexpr HandleMode kDefaultAutomaticHandleMode = HandleMode_AutoClamped;
+    // The pair an explicit automatic preset writes on BOTH sides.
+    static constexpr HandleMode kAutoPresetHandleMode = kDefaultAutomaticHandleMode;
 
     struct Param {
         // THE PRE-REFACTOR DEFAULT, preserved: an unedited key is a LINEAR curve
@@ -178,14 +181,17 @@ public:
     //   * a stored mode (Free/Aligned) returns the stored (x,y) untouched;
     //   * Vector returns the chord's third point - (1/3,1/3) outgoing,
     //     (2/3,2/3) incoming - which is a straight segment;
-    //   * Auto derives the side's slope from ITS OWN outside neighbour: the
-    //     outgoing side reads `prev` (the secant arriving at the key), the
-    //     incoming side reads `next` (the secant leaving it). A side with no
-    //     such neighbour falls back to the segment's own chord, i.e. the
-    //     identity third point. The handle x stays at the third (Blender's
-    //     automatic handle), so only y is derived;
-    //   * AutoClamped clamps that y into the value range the key and its
-    //     neighbours span, which flattens a local extremum.
+    //   * Auto derives a slope per KEY, not per side: the key's central
+    //     difference over BOTH of its neighbours (the outgoing side uses the
+    //     FROM key's slope, the incoming side the TO key's), and only y is
+    //     derived - the handle x stays at the third (Blender's automatic
+    //     handle). A key with only one neighbour follows Blender's endpoint
+    //     rule and takes the adjacent key's own third-point slope; a two-key
+    //     channel (no interior key to borrow from) falls back to the chord, the
+    //     identity thirds;
+    //   * AutoClamped clamps the key's slope so both of that key's handles stay
+    //     inside the value range of the key and its two neighbours, which
+    //     flattens a local extremum.
     static QPointF controlPoint(
         const Param& aFrom, HandleMode aInMode, const AutoContext& aCtx, float aSpan, int aSide);
 

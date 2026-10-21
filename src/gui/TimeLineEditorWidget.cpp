@@ -1,7 +1,6 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
-#include <QPainterPath>
 #include <QFontMetrics>
 #include <QKeyEvent>
 #include <algorithm>
@@ -15,6 +14,7 @@
 #include "ctrl/graph/graph_Curve.h"
 #include "gui/TimeLineEditorWidget.h"
 #include "gui/MouseSetting.h"
+#include "gui/PillInk.h"
 #include "gui/obj/obj_Item.h"
 #include "gui/prop/prop_Items.h"
 #include "gui/prop/prop_KeyAccessor.h"
@@ -96,15 +96,22 @@ void TimeCursor::paintEvent(QPaintEvent* aEvent) {
         const int textWidth = fm.horizontalAdvance(mFrameText);
         const int pillWidth = textWidth + ctrl::TimeLineEditor::kPillPadding * 2;
         const QRect pill(mLineX - pillWidth / 2, pillTop, pillWidth, ctrl::TimeLineEditor::kNumberHeight);
-        QPainterPath path;
-        path.addRoundedRect(
-            QRectF(pill), ctrl::TimeLineEditor::kPillRadius, ctrl::TimeLineEditor::kPillRadius, Qt::AbsoluteSize
-        );
-        painter.fillPath(path, mBadgeColor);
+        // The window's label arms draw the SAME rounded pill through the same call
+        // (gui::paintPill). This used to fill a QPainterPath with no antialiasing
+        // hint set, and a QWidget's painter starts with the hint OFF, so the
+        // playhead had a hard, stair-stepped corner while the window pills (which
+        // set the hint themselves) were smooth. The rule now owns the hint.
+        gui::paintPill(painter, pill, mBadgeColor, ctrl::TimeLineEditor::kPillRadius);
         // Draw the number with the exact same rect and alignment as the ruler
-        // numbers (time_Renderer::renderHeader) so it sits in the same row.
+        // numbers (time_Renderer::renderHeader) so it sits in the same row, and on
+        // THE ONE PILL TEXT COLUMN: the pill was measured as `advance + 2 *
+        // kPillPadding`, so `mLineX - textWidth / 2` and `pill.left() + kPillPadding`
+        // are the same integer (TimeRuler::drawPillText derives it; the graph panel
+        // draws its window arms on it too). Stated as the pill's own edge so all
+        // three cannot drift into three spellings of one column.
         const QRect numberRect(
-            mLineX - textWidth / 2, ctrl::TimeLineEditor::kNumberTop, textWidth, ctrl::TimeLineEditor::kNumberHeight
+            pill.left() + ctrl::TimeLineEditor::kPillPadding, ctrl::TimeLineEditor::kNumberTop, textWidth,
+            ctrl::TimeLineEditor::kNumberHeight
         );
         painter.setPen(mNumberColor);
         painter.drawText(numberRect, mFrameText);
@@ -894,7 +901,9 @@ bool TimeLineEditorWidget::applyEasingToSelection(const util::Easing::Type aType
 
 bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
     // The Auto PRESET (the same pair the picker's Auto tile writes): Custom with
-    // BOTH sides on HandleMode_Auto, never the retired Auto type.
+    // BOTH sides on kAutoPresetHandleMode (AutoClamped), never the retired Auto
+    // type. The preset is the clamped behaviour; unclamped Auto is a deliberate
+    // per-side pick in the picker's mode combo.
     if (!mEditor)
         return false;
     return mEditor->assignSelectionEasing([](const util::Easing::Param& aCurrent) {
@@ -902,8 +911,8 @@ bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
         // and the two modes are the preset's.
         util::Easing::Param value = aCurrent;
         value.type = util::Easing::Type_Custom;
-        value.handleIn = util::Easing::HandleMode_Auto;
-        value.handleOut = util::Easing::HandleMode_Auto;
+        value.handleIn = util::Easing::kAutoPresetHandleMode;
+        value.handleOut = util::Easing::kAutoPresetHandleMode;
         return value;
     });
 }

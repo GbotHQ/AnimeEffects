@@ -182,13 +182,13 @@ public:
     QuickEaseButton(
         util::Easing::Type aType, bool aAutoPreset, QWidget* aParent
     ): QAbstractButton(aParent), mAutoPreset(aAutoPreset) {
-        // The Auto preset is a Custom curve with BOTH sides on HandleMode_Auto -
-        // Blender's automatic handles, the unclamped preset the picker's Auto tile
-        // writes - and the other three are plain types.
+        // The Auto preset is a Custom curve with BOTH sides on
+        // kAutoPresetHandleMode (AutoClamped) - the same pair the picker's Auto
+        // tile writes - and the other three are plain types.
         mParam.type = aAutoPreset ? util::Easing::Type_Custom : aType;
         if (aAutoPreset) {
-            mParam.handleIn = util::Easing::HandleMode_Auto;
-            mParam.handleOut = util::Easing::HandleMode_Auto;
+            mParam.handleIn = util::Easing::kAutoPresetHandleMode;
+            mParam.handleOut = util::Easing::kAutoPresetHandleMode;
         }
         mAuto = gui::prop::autoPreviewContext();
         // Keyboard reachable: Tab moves between the bar's buttons and Space (or
@@ -374,8 +374,8 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         util::Easing::Param quickParam;
         quickParam.type = quick.autoPreset ? util::Easing::Type_Custom : quick.type;
         if (quick.autoPreset) {
-            quickParam.handleIn = util::Easing::HandleMode_Auto;
-            quickParam.handleOut = util::Easing::HandleMode_Auto;
+            quickParam.handleIn = util::Easing::kAutoPresetHandleMode;
+            quickParam.handleOut = util::Easing::kAutoPresetHandleMode;
         }
         const QString name = util::Easing::getParamName(quickParam);
         // A glyph-only control has no text for assistive technology to read, so
@@ -639,8 +639,8 @@ void TimeLineHeader::refreshQuickEasings() {
             if (!ctrl::graph::Channel(pos.type(), 0).isInterpolated())
                 continue; // step-held (the image offset): its param is never played
             const bool preset = param->type == util::Easing::Type_Custom
-                && param->handleIn == util::Easing::HandleMode_Auto
-                && param->handleOut == util::Easing::HandleMode_Auto;
+                && param->handleIn == util::Easing::kAutoPresetHandleMode
+                && param->handleOut == util::Easing::kAutoPresetHandleMode;
             if (!votable) {
                 votable = true;
                 active = param->type;

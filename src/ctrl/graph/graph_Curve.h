@@ -96,6 +96,17 @@ public:
     // disagree about where a dot is.
     bool effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const;
 
+    // THE ARRIVING CONTROL POINT of the TO key's incoming side when that side is
+    // derived, EVEN IF the FROM key's param is not a Custom curve. A key owns
+    // both of its tangents: setting Auto on a key writes handleIn as well as
+    // handleOut, and the incoming side must be drawable while the segment before
+    // it is still an analytic easing (the segment itself then has no stored
+    // bezier pair, so effectiveHandles() declines and this answers the one side
+    // that does derive). False when the TO key's incoming mode is stored (or
+    // there is no TO param), which is when the previous segment's own pair - if
+    // it is Custom - is the authority instead.
+    bool derivedArrivingHandle(const Segment& aSegment, QPointF& aOut) const;
+
     // A segment's DERIVED pair, or empty when neither side derives one (both
     // modes stored, an analytic easing, the last key of a channel, or a type
     // that carries no easing). The pair is the EFFECTIVE one - a stored side is

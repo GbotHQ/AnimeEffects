@@ -418,6 +418,28 @@ bool Curve::effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const {
     return true;
 }
 
+bool Curve::derivedArrivingHandle(const Segment& aSegment, QPointF& aOut) const {
+    if (!mTimeLine || !aSegment.from || !aSegment.to)
+        return false;
+    if (!util::Easing::isDerived(aSegment.inMode))
+        return false;
+
+    const core::TimeKey* prev = nullptr;
+    const core::TimeKey* next = nullptr;
+    neighborsOf(*aSegment.from, *aSegment.to, prev, next);
+    util::Easing::AutoContext ctx = core::autoEasingContext(
+        *aSegment.from, *aSegment.to, mChannel.component(), prev, next);
+    // autoEasingContext already fills the TO key's incoming mode; assigning it
+    // again keeps the derivation tied to the segment the caller is drawing even
+    // if that context could not be built (a channel with no value change).
+    ctx.inMode = aSegment.inMode;
+    const float span = static_cast<float>(aSegment.to->frame() - aSegment.from->frame());
+    if (span <= 0.0f)
+        return false;
+    aOut = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 1);
+    return true;
+}
+
 QVector<QPointF> Curve::ghostHandles(const core::TimeKey& aFrom) const {
     QVector<QPointF> result;
     if (!mTimeLine) {

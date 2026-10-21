@@ -191,9 +191,14 @@ private:
 // one's local name).
 util::Easing::AutoContext autoPreviewContext() {
     util::Easing::AutoContext ctx;
-    ctx.prev = { true, -1.0f, 0.0f }; // one segment before, at the from key's value
-    ctx.next = { true, 2.0f, 1.0f };  // one segment after, at the to key's value
-    ctx.inMode = util::Easing::HandleMode_Auto;
+    // A symmetric neighbourhood whose CENTRAL differences are zero at both ends
+    // of the drawn segment: the keys before and after sit at the opposite end
+    // value, so the segment leaves and arrives flat. That is the canonical
+    // automatic ease-in-out, (1/3, 0) / (2/3, 1), produced by the real
+    // derivation rather than hardcoded.
+    ctx.prev = { true, -1.0f, 1.0f };
+    ctx.next = { true, 2.0f, 0.0f };
+    ctx.inMode = util::Easing::kAutoPresetHandleMode;
     return ctx;
 }
 
@@ -554,11 +559,12 @@ EasingPickWidget::EasingPickWidget(const util::Easing::Param& aInitial, QWidget*
     mAnimTimer->setInterval(16); // ~60fps
     connect(mAnimTimer, &QTimer::timeout, this, &EasingPickWidget::animStep);
 
-    // Session undo/redo (per-step inside the popup) + one commit on close.
-    // The popup records its own draft history; the model is only written once,
-    // in hideEvent, so the whole menu session is a single undo step. Continuous
-    // gestures (blend slider / bezier handle) are coalesced into one history
-    // entry so undo steps back a whole drag, not each tick. The blend slider's
+    // Session undo/redo (per-step inside the popup). A discrete edit commits
+    // immediately (commitDiscrete); a continuous gesture commits once, in
+    // hideEvent, so one drag is one undo step. The popup records its own draft
+    // history; continuous gestures (blend slider / bezier handle) are coalesced
+    // into one history entry so undo steps back a whole drag, not each tick.
+    // The blend slider's
     // gesture start/stop arrive through BlendControl callbacks (onPressed /
     // onReleased) wired in buildBlend.
     // The bezier editor mutates the draft while a tangent handle is dragged;
@@ -614,27 +620,37 @@ void EasingPickWidget::applyAppearance() {
     q += "QToolButton[easingRole=\"tile\"]:checked { background: " + rgba(c.accent, 0.22) + "; color: " + bright + "; }\n";
     q += "QPushButton[role=\"bact\"] { background: " + c.raised.name() + "; border: 0; border-radius: 4px; color: " + muted + "; font-size: 10px; padding: 5px; }\n";
     q += "QPushButton[role=\"bact\"]:hover { background: " + c.raisedHover.name() + "; color: " + text + "; }\n";
-    // The value column of a labelled field (.fi). A combo is a FIELD like every
-    // other value in the picker, so it carries the application's field standard
-    // (propertywidget.ssa: raised at rest, a geometry-reserving 1px border that
-    // only recolors on hover/focus, the caret-down drop-down) rather than
-    // whatever the platform style would paint for it. There is no per-widget
-    // stylesheet on either combo.
+    // The value column of a labelled field (.fi), for the BEZIER SPINS only.
+    // A combo is not given a field role of its own: the two per-side mode combos
+    // are built as ordinary QComboBox, exactly like the property panel's
+    // ComboItem, and styled by the app's OWN combo rule below. There is no
+    // per-widget stylesheet on either combo.
     const QString field =
         "QLabel[role=\"fl\"] { font-size: 9px; color: " + muted + "; }\n"
-        "QDoubleSpinBox[role=\"fi\"], QComboBox[role=\"fi\"] { background: " + c.raised.name()
+        "QDoubleSpinBox[role=\"fi\"] { background: " + c.raised.name()
         + "; border: 1px solid " + c.raised.name() + "; border-radius: 4px; color: " + text
         + "; font-size: 11px; padding: 3px 5px; }\n"
-        "QDoubleSpinBox[role=\"fi\"]:hover, QComboBox[role=\"fi\"]:hover { border-color: "
-        + c.hover.name() + "; }\n"
-        "QDoubleSpinBox[role=\"fi\"]:focus, QComboBox[role=\"fi\"]:focus { border-color: "
-        + c.focus.name() + "; }\n"
-        "QDoubleSpinBox[role=\"fi\"]:hover:pressed { background: " + c.recessed.name() + "; }\n"
-        "QComboBox[role=\"fi\"]::drop-down { subcontrol-origin: padding; subcontrol-position: right;"
-        " width: 1em; height: 1em; border: 0; background: transparent; }\n"
-        "QComboBox[role=\"fi\"]::down-arrow { image: url(" + theme::iconDir()
-        + "/caret-down.svg); width: 0.625em; height: 0.625em; }\n";
+        "QDoubleSpinBox[role=\"fi\"]:hover { border-color: " + c.hover.name() + "; }\n"
+        "QDoubleSpinBox[role=\"fi\"]:focus { border-color: " + c.focus.name() + "; }\n"
+        "QDoubleSpinBox[role=\"fi\"]:hover:pressed { background: " + c.recessed.name() + "; }\n";
     q += field;
+    // THE PROPERTY PANEL'S COMBO, verbatim in behaviour: propertywidget.ssa's
+    // shared field box (raised at rest, a geometry-reserving 1px border that only
+    // recolours on hover/focus) plus its caret-down drop-down. It is selected by
+    // the CLASS alone, so a QComboBox anywhere in this popover (there are exactly
+    // the two mode combos) is the same control the property rows use - no role
+    // attribute, no object name, no per-combo rule. The font is deliberately
+    // inherited (the app font), as it is in the property panel.
+    q += "QComboBox { background-color: " + c.raised.name()
+        + "; padding-top: 1px; padding-bottom: 1px; padding-left: 4px; padding-right: 4px;"
+        " border: 1px solid " + c.raised.name() + "; border-radius: 4px; color: " + text
+        + "; min-height: 1.25em; }\n";
+    q += "QComboBox:hover { border-color: " + c.hover.name() + "; }\n";
+    q += "QComboBox:focus { border-color: " + c.focus.name() + "; }\n";
+    q += "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: right;"
+        " width: 1em; height: 1em; border: 0; background: transparent; }\n";
+    q += "QComboBox::down-arrow { image: url(" + theme::iconDir()
+        + "/caret-down.svg); width: 0.625em; height: 0.625em; }\n";
     setStyleSheet(q);
 }
 
@@ -663,7 +679,10 @@ QWidget* EasingPickWidget::buildHeader() {
     QHBoxLayout* l = new QHBoxLayout(head);
     l->setContentsMargins(12, 0, 8, 0);
     l->setSpacing(6);
-    mTitle = new QLabel(tr("Easing"), head);
+    // The header names the DRAFT'S Param, not its interpolation type: a Custom
+    // curve is named by its two handle modes, so the Auto preset reads "Auto
+    // Clamped" here - never the type name "Custom". refresh() keeps it in step.
+    mTitle = new QLabel(util::Easing::getParamName(mDraft), head);
     mTitle->setObjectName("popover-title");
     mTitle->setStyleSheet("font-size:12px;font-weight:600;color:" + C().text.name());
     l->addWidget(mTitle);
@@ -813,8 +832,8 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     util::Easing::Param glyph = mkParam(def.type, mDraft.range, mDraft.weight);
     if (def.autoPreset) {
         glyph.type = util::Easing::Type_Custom;
-        glyph.handleIn = util::Easing::HandleMode_Auto;
-        glyph.handleOut = util::Easing::HandleMode_Auto;
+        glyph.handleIn = util::Easing::kAutoPresetHandleMode;
+        glyph.handleOut = util::Easing::kAutoPresetHandleMode;
     }
     g->setParam(glyph);
     // The Auto preset tile draws the canonical automatic-handle pair, not the
@@ -956,12 +975,13 @@ QWidget* EasingPickWidget::buildBezierPanel() {
     // independently - dragging one side is what frees it, and the other keeps
     // deriving.
     //
-    // Each is an ordinary labelled FIELD in the picker's own row geometry - the
-    // same bfield/.fl/.fi structure, 12px label and 24px value, 5px between the
-    // two columns as the x1/y1/x2/y2 row above - so it aligns with every other
-    // input in the panel. The combos carry NO local stylesheet and are painted
-    // by the app field rule in applyAppearance (the .ssa field standard), not by
-    // a bespoke look; their layout is the panel's, nothing more.
+    // Each is a labelled field in the picker's own row geometry - a role=bfield
+    // box with its role=fl label above a 24px value, 5px between the columns, as
+    // the x1/y1/x2/y2 row above - but the value control is the property panel's
+    // OWN control: a plain QComboBox with ComboItem's properties and no local
+    // stylesheet, selected by class by the QComboBox rule in applyAppearance
+    // (propertywidget.ssa's field standard). Nothing here styles a combo
+    // individually.
     {
         QWidget* modes = new QWidget(panel);
         modes->setObjectName("handle-modes");
@@ -986,11 +1006,16 @@ QWidget* EasingPickWidget::buildBezierPanel() {
             lab->setProperty("role", "fl");
             lab->setFixedHeight(12);
             f->addWidget(lab);
+            // The property panel's ComboItem, exactly: a plain QComboBox that
+            // fills the field column, no role property, no local stylesheet and
+            // NO fixed height (ComboItem sets none either - its 24px field box is
+            // the font + propertywidget.ssa field rule, which is shared here).
+            // The popover's own QComboBox rule (see applyAppearance) is that same
+            // propertywidget.ssa rule. The object name is only the harness's
+            // handle on the control; it is not a style or construction property.
             QComboBox* box = new QComboBox(field);
             box->setObjectName(QString::fromLatin1(def.name));
-            box->setProperty("role", "fi");
             box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            box->setFixedHeight(24);
             for (int m = 0; m < util::Easing::HandleMode_TERM; ++m) {
                 const auto mode = static_cast<util::Easing::HandleMode>(m);
                 box->addItem(util::Easing::getHandleModeName(mode), m);
@@ -1040,6 +1065,7 @@ QWidget* EasingPickWidget::buildBezierPanel() {
         pushState(old); // paste is a discrete edit
         renderBezier();
         emit changed(mDraft);
+        commitDiscrete(); // a discrete edit applies now, not on close
     });
     acts->addWidget(copy);
     acts->addWidget(paste);
@@ -1089,6 +1115,7 @@ void EasingPickWidget::onBezierSpin(int aIndex, double aValue) {
     // re-read the mode combos when a side was freed.
     renderBezier();
     emit changed(mDraft);
+    commitDiscrete(); // typed value is a discrete edit
 }
 
 // ---- interactions ----------------------------------------------------------
@@ -1101,6 +1128,7 @@ void EasingPickWidget::setType(util::Easing::Type aType) {
     pushState(old); // discrete edit: one undo step
     refresh();
     emit changed(mDraft);
+    commitDiscrete();
 }
 void EasingPickWidget::setRange(util::Easing::Range aRange) {
     const util::Easing::Param old = mDraft;
@@ -1112,6 +1140,7 @@ void EasingPickWidget::setRange(util::Easing::Range aRange) {
     pushState(old);
     refresh();
     emit changed(mDraft);
+    commitDiscrete();
 }
 void EasingPickWidget::setWeight(float aWeight) {
     const util::Easing::Param old = mDraft;
@@ -1119,7 +1148,8 @@ void EasingPickWidget::setWeight(float aWeight) {
     if (mDraft == old) return;
     refresh();
     // Blend is a continuous control: report the live value (chip / preview) but
-    // let endGesture() fold the whole drag into a single undo-history entry.
+    // do NOT commit; hideEvent writes the final draft once, so the whole drag is
+    // one undo step.
     emit changed(mDraft);
 }
 void EasingPickWidget::setCustom() {
@@ -1137,22 +1167,23 @@ void EasingPickWidget::setCustom() {
         pushState(old);
     refresh();
     renderBezier();
-    if (didChange)
+    if (didChange) {
         emit changed(mDraft);
+        commitDiscrete();
+    }
 }
 
 void EasingPickWidget::setAutoHandlesPreset() {
     const util::Easing::Param old = mDraft;
     // The preset is the handle MODES, not a type: a Custom curve (the only kind
-    // whose controls the modes shape) with both sides deriving from their own
-    // neighbour. This is the EXPLICIT Automatic preset the user picked, so it is
-    // Blender's unclamped Auto and reads Auto; the application's own default
-    // automatic pair (a migrated legacy type / stored default) is
-    // kDefaultAutomaticHandleMode, which clamps.
+    // whose controls the modes shape) with both sides deriving. It writes the
+    // CLAMPED automatic pair (kAutoPresetHandleMode, the retired Auto type's
+    // behaviour) - unclamped Auto overshoots by construction and is a deliberate
+    // per-side pick in the mode combos, not the preset.
     mForceBezierPanel = false; // the preset is a CATALOG state (its tile stays visible)
     mDraft.type = util::Easing::Type_Custom;
-    mDraft.handleIn = util::Easing::HandleMode_Auto;
-    mDraft.handleOut = util::Easing::HandleMode_Auto;
+    mDraft.handleIn = util::Easing::kAutoPresetHandleMode;
+    mDraft.handleOut = util::Easing::kAutoPresetHandleMode;
     if (mDraft == old) {
         // Already the preset: no model change, but the popover must SHOW the
         // catalog with the tile checked (a draft reached here from the bezier
@@ -1164,6 +1195,7 @@ void EasingPickWidget::setAutoHandlesPreset() {
     refresh();
     renderBezier();
     emit changed(mDraft);
+    commitDiscrete();
 }
 
 void EasingPickWidget::setHandleMode(bool aIncoming, util::Easing::HandleMode aMode) {
@@ -1181,6 +1213,7 @@ void EasingPickWidget::setHandleMode(bool aIncoming, util::Easing::HandleMode aM
     refresh();
     renderBezier();
     emit changed(mDraft);
+    commitDiscrete(); // a mode change applies at once, popup still open
 }
 void EasingPickWidget::setValue(const util::Easing::Param& aParam) {
     // Programmatic load (a new key's easing, or the open measurement dance):
@@ -1203,6 +1236,21 @@ void EasingPickWidget::setAutoContext(const util::Easing::AutoContext& aContext)
     // canonical automatic-handle pair (see autoPreviewContext).
     mAuto = aContext;
     refreshTiles();
+}
+
+// ---- commit ---------------------------------------------------------------
+void EasingPickWidget::commitDiscrete() {
+    // A DISCRETE edit (tile / segment / custom / mode combo / typed bezier /
+    // paste) is a finished change: commit it to the model now, so the keys and
+    // every view that reads them update while the popup is still open. A
+    // continuous drag does NOT come through here; it keeps the one-undo-on-close
+    // rule (hideEvent commits the final draft once). mApplied is the baseline, so
+    // an edit that wrote nothing (or a second commit of the same draft) emits
+    // nothing and close cannot re-commit it.
+    if (mDraft == mApplied)
+        return;
+    mApplied = mDraft;
+    emit applied(mDraft);
 }
 
 // ---- session undo/redo -----------------------------------------------------
@@ -1255,11 +1303,15 @@ void EasingPickWidget::refresh() {
     // the preset is current. The Custom segment click sets mForceBezierPanel, so
     // the bezier controls stay reachable on a preset without changing the pair.
     const bool autoPreset = mDraft.type == util::Easing::Type_Custom
-        && mDraft.handleIn == util::Easing::HandleMode_Auto
-        && mDraft.handleOut == util::Easing::HandleMode_Auto;
+        && mDraft.handleIn == util::Easing::kAutoPresetHandleMode
+        && mDraft.handleOut == util::Easing::kAutoPresetHandleMode;
     const bool inBezier =
         mDraft.type == util::Easing::Type_Custom && (mForceBezierPanel || !autoPreset);
     mAnimT = 0.0; // restart the motion preview on any change
+    // The header names the Param the same way the chip and every tile do (one
+    // vocabulary; a Custom curve by its handle pair, never "Custom").
+    if (mTitle)
+        mTitle->setText(util::Easing::getParamName(mDraft));
     refreshSeg();
     mNormalPanel->setVisible(!inBezier);
     mBezierPanel->setVisible(inBezier);
@@ -1300,8 +1352,8 @@ void EasingPickWidget::refreshTiles() {
         const TileDef& def = kTileOrder[i];
         const bool on = def.autoPreset
             ? (mDraft.type == util::Easing::Type_Custom
-               && mDraft.handleIn == util::Easing::HandleMode_Auto
-               && mDraft.handleOut == util::Easing::HandleMode_Auto)
+               && mDraft.handleIn == util::Easing::kAutoPresetHandleMode
+               && mDraft.handleOut == util::Easing::kAutoPresetHandleMode)
             : (mDraft.type == def.type);
         tile->setChecked(on);
         if (CurveGlyph* g = tile->findChild<CurveGlyph*>()) {
@@ -1313,8 +1365,8 @@ void EasingPickWidget::refreshTiles() {
             util::Easing::Param glyph = mkParam(def.type, mDraft.range, mDraft.weight);
             if (def.autoPreset) {
                 glyph.type = util::Easing::Type_Custom;
-                glyph.handleIn = util::Easing::HandleMode_Auto;
-                glyph.handleOut = util::Easing::HandleMode_Auto;
+                glyph.handleIn = util::Easing::kAutoPresetHandleMode;
+                glyph.handleOut = util::Easing::kAutoPresetHandleMode;
             }
             g->setParam(glyph);
             // The preset keeps its canonical catalog pair here too, so this
@@ -1449,10 +1501,11 @@ void EasingPickWidget::hideEvent(QHideEvent* aEvent) {
     // (openPopover re-establishes it at the end of the dance).
     mHasAnchor = false;
 
-    // Apply-on-close: the whole session commits to the model as ONE undo step
-    // here (not per edit), so fiddling in the menu collapses to a single
-    // "change easing" in the history. Only commit if the draft actually moved.
-    // hideEvent fires for both the ✕ and an outside-click dismiss of the popup.
+    // Apply-on-close, for the DRAG remnant: discrete edits already committed as
+    // they happened (commitDiscrete), so this normally writes only the final
+    // value of a blend-slider or bezier drag - one undo step for the whole
+    // gesture. Only commit if the draft actually moved. hideEvent fires for both
+    // the ✕ and an outside-click dismiss of the popup.
     if (mDraft != mApplied) {
         mApplied = mDraft;
         emit applied(mDraft);

@@ -199,8 +199,10 @@
 //         as src/gui/AppStyle.cpp's CC_ScrollBar - a 4px, radius-2 pill in
 //         theme::Colors::outline, an INVISIBLE trough - with no ink outside the pills,
 //         and the hovered bar's pill in theme::Colors::hover while the other bar's
-//         stays at rest. Read against the same model's empty-rects pass, so each
-//         claim is about the drawing layer and not the fixture.
+//         stays at rest (measured in BOTH directions). A zero-travel lane is still a
+//         full-length pill in EITHER direction: the vertical bar never hides. Read
+//         against the same model's empty-rects pass, so each claim is about the
+//         drawing layer and not the fixture.
 //
 // WHAT THIS FILE CANNOT SEE. The key menu is the APPLICATION'S OWN QMenu now
 // (gui::MainDisplayWidget::showGraphKeyMenu -> the timeline's key menu), a
@@ -2566,6 +2568,13 @@ bool checkRulerRows(
 // overlay (no ticks, labels or playhead), so every pixel read below is the overlay's.
 // The second pass is the same window collapsed to two adjacent frames: the arms must
 // be gone and ONE centred pill must be drawn instead.
+//
+// It also pins the two pill rules the user reported: the arm's TEXT COLUMN is the
+// timeline's (`pill.left() + kPillPadding`, not a second centring on the drawing
+// font's advance - the panel's old centring was 3px off on this pass), and the pill's
+// outer corner is an ANTIALIASED radius (the 3x3 corner box carries partial-coverage
+// pixels, where a hard filled corner has none). The timeline's own pill corners are
+// gated in tests/timeline_visuals.cpp through the same gui::paintPill rule.
 bool checkPlayWindowOverlay(
     const Rendered& aSplit, const gui::GraphPanelModel& aSplitModel, const Rendered& aMerged,
     const gui::GraphPanelModel& aMergedModel, const theme::Graph& aTheme, const theme::Colors& aColors
@@ -2636,9 +2645,152 @@ bool checkPlayWindowOverlay(
     );
     endTextInk = countText(aSplit.image, aSplitModel.playWindow.endPill, aColors.windowText, aColors.windowEdge);
 
+    // ---- THE TEXT COLUMN IS THE TIMELINE'S, ON THE PIXELS ----
+    //
+    // TimeRuler::drawPillText centres a pill it measured as
+    // `advance + 2 * kPillPadding` with INTEGER halves, and that reduces to exactly
+    // `pill.left() + kPillPadding` for every advance width (see the derivation at
+    // that function). The panel used to centre again, on the DRAWING font's advance,
+    // which is a different number: on this pass's 30px arm the gate's bitmap font
+    // measures "20" at 14px against the model's 20, so the old origin was
+    // 142 + (30-14)/2 = 150 while the timeline's is 142 + 5 = 147.
+    //
+    // The scan is the first column inside the arm that carries text ink (the same
+    // read countText uses). Its first inked column is the run's origin plus the
+    // first glyph's left bearing, which the atlas owns - so the assertion allows the
+    // 2px a bearing (plus the boundary column's zero-coverage edge) can add, and
+    // still fails an origin 3px off.
+    // The scan starts ON the rule's own column, not at the pill's left edge: the
+    // rounded corner's blend pixels sit in the first/last kPillRadius columns and a
+    // fill blended toward the dark band can read as "text" under this distance test.
+    // Starting at left + kPillPadding skips them and asks the only question that
+    // matters - does ink begin where the rule says, or later (the old centring)?
+    const auto firstTextColumn = [](const QImage& aImage, const QRect& aPill, const QColor& aText,
+                                    const QColor& aFill) {
+        for (int x = aPill.left() + gui::frameRuler::kPillPadding; x <= aPill.right(); ++x) {
+            for (int y = aPill.top(); y <= aPill.bottom(); ++y) {
+                const QColor c = pixelAt(aImage, x, y);
+                if (colourDistance(c, aText) < colourDistance(c, aFill) && colourDistance(c, aText) <= 48)
+                    return x;
+            }
+        }
+        return -1;
+    };
+    // The same read from the right: the run's LAST inked column. This one does not
+    // depend on the first glyph's left bearing at all, so it is the assertion that
+    // cannot be fooled by a wide bearing: the run ends at `origin + advance`, and the
+    // old centring moved that three columns right.
+    const auto lastTextColumn = [](const QImage& aImage, const QRect& aPill, const QColor& aText,
+                                   const QColor& aFill) {
+        for (int x = aPill.right() - gui::frameRuler::kPillPadding; x >= aPill.left(); --x) {
+            for (int y = aPill.top(); y <= aPill.bottom(); ++y) {
+                const QColor c = pixelAt(aImage, x, y);
+                if (colourDistance(c, aText) < colourDistance(c, aFill) && colourDistance(c, aText) <= 48)
+                    return x;
+            }
+        }
+        return -1;
+    };
+    REQUIRE(aSplit.font != nullptr, "the draw list carried no font: the text column cannot be described");
+    const int startExpected = aSplitModel.playWindow.startPill.left() + gui::frameRuler::kPillPadding;
+    const int endExpected = aSplitModel.playWindow.endPill.left() + gui::frameRuler::kPillPadding;
+    // THE ORIGIN THE OLD CENTRING PRODUCED, from the drawing font's own advance, so
+    // the failure message states both numbers rather than a rule.
+    const int startDrawnWidth = int(aSplit.font->CalcTextSizeA(
+        aSplit.fontSize, FLT_MAX, 0.0f, aSplitModel.playWindow.startText.toUtf8().constData()
+    ).x);
+    const int endDrawnWidth = int(aSplit.font->CalcTextSizeA(
+        aSplit.fontSize, FLT_MAX, 0.0f, aSplitModel.playWindow.endText.toUtf8().constData()
+    ).x);
+    const int startOldCentred = aSplitModel.playWindow.startPill.left()
+        + (aSplitModel.playWindow.startPill.width() - startDrawnWidth) / 2;
+    const int startFirstInk = firstTextColumn(
+        aSplit.image, aSplitModel.playWindow.startPill, aColors.windowText, aColors.windowEdge
+    );
+    const int endFirstInk = firstTextColumn(
+        aSplit.image, aSplitModel.playWindow.endPill, aColors.windowText, aColors.windowEdge
+    );
+    REQUIRE(
+        startFirstInk >= startExpected && startFirstInk <= startExpected + 2,
+        "the first label arm's text starts at column %d; the timeline's pill rule puts it on column %d (left +"
+        " kPillPadding) and only a glyph bearing may add to that (%d is the old re-centring on the drawing font)",
+        startFirstInk, startExpected, startOldCentred
+    );
+    REQUIRE(
+        endFirstInk >= endExpected && endFirstInk <= endExpected + 2,
+        "the second label arm's text starts at column %d; the timeline's pill rule puts it on column %d (left +"
+        " kPillPadding) and only a glyph bearing may add to that",
+        endFirstInk, endExpected
+    );
+    // ...and its LAST column, which is bearing-independent: a run laid out at
+    // `origin = left + kPillPadding` ends inside `origin + advance`, while the old
+    // centring ended `(oldOrigin - expected)` columns further right.
+    const int startLastInk = lastTextColumn(
+        aSplit.image, aSplitModel.playWindow.startPill, aColors.windowText, aColors.windowEdge
+    );
+    const int endLastInk = lastTextColumn(
+        aSplit.image, aSplitModel.playWindow.endPill, aColors.windowText, aColors.windowEdge
+    );
+    REQUIRE(
+        startLastInk >= startExpected && startLastInk <= startExpected + startDrawnWidth,
+        "the first label arm's text ends at column %d; the timeline's rule puts its origin on %d and its advance is"
+        " %dpx, so the run cannot end past %d (the old centring ended at %d)",
+        startLastInk, startExpected, startDrawnWidth, startExpected + startDrawnWidth,
+        startOldCentred + startDrawnWidth - 1
+    );
+    REQUIRE(
+        endLastInk >= endExpected && endLastInk <= endExpected + endDrawnWidth,
+        "the second label arm's text ends at column %d; the timeline's rule puts its origin on %d and its advance"
+        " is %dpx, so the run cannot end past %d",
+        endLastInk, endExpected, endDrawnWidth, endExpected + endDrawnWidth
+    );
+
+    // ---- THE CORNERS ARE AN ANTIALIASED RADIUS, IN THIS VIEW TOO ----
+    //
+    // The playback window's arms are rounded on their OUTER corners (the faces
+    // against the stems are squared by the overdraw above): the start arm's
+    // top-right and the end arm's top-left. On a rounded, antialiased fill the
+    // corner box carries pixels that are neither the pill's ink nor the washed band
+    // under it - the curve's partial coverage. A hard corner (a plain filled rect)
+    // has none: every pixel in the box is fill or background. The timeline's playhead
+    // pill is gated on the same rule in tests/timeline_visuals.cpp (gui::paintPill).
+    const auto cornerBlends = [](const QImage& aImage, const QRect& aCorner, const QColor& aFill,
+                                 const QColor& aBackground) {
+        int blends = 0;
+        for (int y = aCorner.top(); y <= aCorner.bottom(); ++y) {
+            for (int x = aCorner.left(); x <= aCorner.right(); ++x) {
+                const QColor c = pixelAt(aImage, x, y);
+                if (colourDistance(c, aFill) > kFillTol && colourDistance(c, aBackground) > kFillTol)
+                    ++blends;
+            }
+        }
+        return blends;
+    };
+    const int radius = gui::frameRuler::kPillRadius;
+    const QRect startRoundedCorner(
+        aSplitModel.playWindow.startPill.right() - radius + 1, aSplitModel.playWindow.startPill.top(), radius,
+        radius
+    );
+    const QRect endRoundedCorner(
+        aSplitModel.playWindow.endPill.left(), aSplitModel.playWindow.endPill.top(), radius, radius
+    );
+    const int startCornerBlends = cornerBlends(aSplit.image, startRoundedCorner, aColors.windowEdge, washed);
+    const int endCornerBlends = cornerBlends(aSplit.image, endRoundedCorner, aColors.windowEdge, washed);
+    REQUIRE(
+        startCornerBlends > 0, "the first arm's rounded corner painted no blend pixel (%d): the %dpx radius is"
+        " being filled as a hard corner",
+        startCornerBlends, radius
+    );
+    REQUIRE(
+        endCornerBlends > 0, "the second arm's rounded corner painted no blend pixel (%d): the %dpx radius is"
+        " being filled as a hard corner",
+        endCornerBlends, radius
+    );
+
     std::printf(
         "MEASURED play_window split: band=(%d,%d %dx%d) wash_rows=(%d,%d %dx%d) washed_px=%d"
-        " stems=%d/%d of %d/%d pills=%d/%d of %d/%d text_px=%d/%d\n",
+        " stems=%d/%d of %d/%d pills=%d/%d of %d/%d text_px=%d/%d"
+        " text_cols=%d..%d/%d..%d expected=%d/%d corner_blends=%d/%d\n",
         aSplitModel.playWindow.band.left(), aSplitModel.playWindow.band.top(),
         aSplitModel.playWindow.band.width(), aSplitModel.playWindow.band.height(), washRows.left(),
         washRows.top(), washRows.width(), washRows.height(), wash,
@@ -2646,7 +2798,8 @@ bool checkPlayWindowOverlay(
         aSplitModel.playWindow.endStem.width() * aSplitModel.playWindow.endStem.height(), startPillInk,
         endPillInk, aSplitModel.playWindow.startPill.width() * aSplitModel.playWindow.startPill.height(),
         aSplitModel.playWindow.endPill.width() * aSplitModel.playWindow.endPill.height(), startTextInk,
-        endTextInk
+        endTextInk, startFirstInk, startLastInk, endFirstInk, endLastInk, startExpected, endExpected,
+        startCornerBlends, endCornerBlends
     );
     REQUIRE(surface > 0, "the ruler band's own surface was not painted where the window does not reach");
     REQUIRE(wash > 0, "the translucent window band painted nothing on the ruler's band");
@@ -2687,6 +2840,19 @@ bool checkPlayWindowOverlay(
     );
     REQUIRE(mergedInk > 0, "the merged label pill painted no fill");
     REQUIRE(mergedTextInk > 0, "the merged label pill painted no text");
+
+    // The merged pill's text is on the same rule (left + kPillPadding), not the
+    // centre of the merged box: the two differ whenever the drawing font's advance
+    // differs from the font the model measured the pill with.
+    const int mergedExpected = aMergedModel.playWindow.mergedPill.left() + gui::frameRuler::kPillPadding;
+    const int mergedFirstInk = firstTextColumn(
+        aMerged.image, aMergedModel.playWindow.mergedPill, aColors.windowText, aColors.windowEdge
+    );
+    REQUIRE(
+        mergedFirstInk >= mergedExpected && mergedFirstInk <= mergedExpected + 2,
+        "the merged label's text starts at column %d; the timeline's pill rule puts it on column %d",
+        mergedFirstInk, mergedExpected
+    );
     return true;
 }
 
@@ -2980,12 +3146,13 @@ bool checkZeroRule(const Rendered& aWithRule, const Rendered& aWithoutRule, cons
 // two pills (grown by 1px for the fill's antialiased cap) every pixel of the two
 // frames must be identical, so a trough - or any other bar ink - is caught wherever
 // it falls, including over the playhead's column, which crosses the panel and
-// therefore the horizontal lane. The third pass moves io.MousePos onto the horizontal
-// bar: that bar's pill takes theme::Colors::hover while the vertical one stays
-// outline.
+// therefore the horizontal lane. Two further passes move io.MousePos onto each lane
+// in turn: that lane's pill takes theme::Colors::hover while the other stays outline,
+// which is both directions of the hover rule (and both transitions the host repaints
+// on - gui::panelBarAt is asserted here too).
 bool checkScrollBars(
-    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHovered,
-    const gui::GraphPanelModel& aModel
+    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHoveredH,
+    const Rendered& aHoveredV, const gui::GraphPanelModel& aModel
 ) {
     const theme::Colors& colors = theme::Colors::current();
     const QRect hTrack = aModel.hTrack;
@@ -3103,20 +3270,192 @@ bool checkScrollBars(
     );
     REQUIRE(stray == 0, "the bars painted %d pixels outside their pills: the trough is not invisible", stray);
 
-    // THE HOVERED PILL TAKES theme::Colors::hover, and the other bar does not.
-    const int hoveredHPill = toneCount(
-        aHovered.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.hover
-    );
-    const int restVPill = toneCount(aHovered.image, vPill, colors.outline);
+    // THE HOVERED PILL TAKES theme::Colors::hover, and the other bar does not - in
+    // BOTH directions. Each pass differs from the rest frame only in io.MousePos, so a
+    // colour change at a pill is the pointer's and nothing else.
+    const QRect hProbe(hPill.center().x(), hTrack.top(), 1, hTrack.height());
+    const QRect vProbe(vTrack.left(), vPill.center().y(), vTrack.width(), 1);
+    const int hoveredHPill = toneCount(aHoveredH.image, hProbe, colors.hover);
+    const int restVPill = toneCount(aHoveredH.image, vPill, colors.outline);
+    const int hoveredVPill = toneCount(aHoveredV.image, vProbe, colors.hover);
+    const int restHPill = toneCount(aHoveredV.image, hPill, colors.outline);
+    // ...and with the pointer OFF neither pill is hot, so the change above is the
+    // pointer's and not a constant.
+    const int restHoverH = toneCount(aWithBars.image, hPill, colors.hover);
+    const int restHoverV = toneCount(aWithBars.image, vPill, colors.hover);
+    const QColor hHotPixel = pixelAt(aHoveredH.image, hPill.center().x(), hPill.center().y());
+    const QColor vHotPixel = pixelAt(aHoveredV.image, vPill.center().x(), vPill.center().y());
     std::printf(
-        "MEASURED scroll_bars_hover hovered_h_pill_hover_px_at_centre=%d  rest_v_pill_outline_px=%d\n",
-        hoveredHPill, restVPill
+        "MEASURED scroll_bars_hover pointer_on_h: h_pill_hover_px_at_centre=%d rest_v_pill_outline_px=%d"
+        " (pointer off: h_pill_hover_px=%d)  pointer_on_v: v_pill_hover_px_at_centre=%d"
+        " rest_h_pill_outline_px=%d (pointer off: v_pill_hover_px=%d)  hot_rgb h=%s v=%s (token %s)\n",
+        hoveredHPill, restVPill, restHoverH, hoveredVPill, restHPill, restHoverV,
+        hex(hHotPixel).c_str(), hex(vHotPixel).c_str(), hex(colors.hover).c_str()
     );
     REQUIRE(
         hoveredHPill == ctrl::graph::Scaler::kScrollBarPillThickness,
-        "a pointer on the bar did not turn the whole pill hover-coloured (%d px thick)", hoveredHPill
+        "a pointer on the horizontal bar did not turn the whole pill hover-coloured (%d px thick)",
+        hoveredHPill
+    );
+    REQUIRE(
+        hoveredVPill == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "a pointer on the vertical bar did not turn the whole pill hover-coloured (%d px thick)",
+        hoveredVPill
     );
     REQUIRE(restVPill > 0, "the pointer on one bar changed the other bar's pill");
+    REQUIRE(restHPill > 0, "the pointer on the vertical bar changed the horizontal one's pill");
+    REQUIRE(restHoverH == 0 && restHoverV == 0, "a resting pill carries the hover token with no pointer on it");
+    // THE EXACT TOKEN, not a blend of it: the pill's centre is the fill's opaque
+    // interior, and AppStyle's CC_ScrollBar paints it in the hover colour itself.
+    REQUIRE(
+        hHotPixel == colors.hover && vHotPixel == colors.hover,
+        "a hovered pill's centre is %s (h) / %s (v), not the hover token %s", hex(hHotPixel).c_str(),
+        hex(vHotPixel).c_str(), hex(colors.hover).c_str()
+    );
+
+    // THE HOVER IDENTITY the host repaints on (gui::panelBarAt). The rule under test is
+    // "repaint when it CHANGES, not per move", so entering a lane, leaving it and
+    // crossing between the lanes are the three transitions that must differ, while two
+    // points inside one lane must compare equal.
+    const QPoint hOn = hTrack.center();
+    const QPoint vOn = vTrack.center();
+    const QPoint plotPoint = kPlot.center();
+    const QPoint hOther(hOn.x() + 3, hOn.y());
+    std::printf(
+        "MEASURED scroll_bars_hover_identity off=%d h=%d h_other=%d v=%d  changed(enter h)=%d changed(leave h)=%d"
+        " changed(h->v)=%d same_lane_changed=%d\n",
+        int(gui::panelBarAt(aModel, plotPoint)), int(gui::panelBarAt(aModel, hOn)),
+        int(gui::panelBarAt(aModel, hOther)), int(gui::panelBarAt(aModel, vOn)),
+        int(gui::panelBarAt(aModel, hOn) != gui::panelBarAt(aModel, plotPoint)),
+        int(gui::panelBarAt(aModel, plotPoint) != gui::panelBarAt(aModel, hOn)),
+        int(gui::panelBarAt(aModel, vOn) != gui::panelBarAt(aModel, hOn)),
+        int(gui::panelBarAt(aModel, hOther) != gui::panelBarAt(aModel, hOn))
+    );
+    REQUIRE(gui::panelBarAt(aModel, plotPoint) == gui::PanelBar::None, "the plot answers a bar");
+    REQUIRE(gui::panelBarAt(aModel, hOn) == gui::PanelBar::Horizontal, "the horizontal lane is not its own identity");
+    REQUIRE(gui::panelBarAt(aModel, vOn) == gui::PanelBar::Vertical, "the vertical lane is not its own identity");
+    REQUIRE(
+        gui::panelBarAt(aModel, hOther) == gui::panelBarAt(aModel, hOn),
+        "a move inside one lane changed the hover identity: every move would repaint"
+    );
+    REQUIRE(
+        gui::panelBarAt(aModel, hOn) != gui::panelBarAt(aModel, plotPoint)
+            && gui::panelBarAt(aModel, plotPoint) != gui::panelBarAt(aModel, hOn),
+        "entering/leaving a lane did not change the hover identity: the hover ink would never be painted"
+    );
+    REQUIRE(
+        gui::panelBarAt(aModel, vOn) != gui::panelBarAt(aModel, hOn),
+        "crossing between the two lanes did not change the hover identity"
+    );
+    return true;
+}
+
+// 31a: A LANE WITH NO TRAVEL IS STILL A DRAWN PILL, in BOTH directions. A model whose
+// runs equal their tracks (the state Scaler::scrollBars publishes when the window
+// covers its content) must paint a pill across the WHOLE lane in each bar, in the same
+// 4px outline ink, with the trough invisible - the vertical lane does not vanish. A
+// pointer on either full-length pill still turns it hover-coloured (hover is a drawing
+// fact, not a hit-test one: the lane is not scrollable, but it is visible). The
+// scrollability rule itself is the editor's and is gated in tests/graph_drag.cpp.
+bool checkFullLaneBars(
+    const Rendered& aWithBars, const Rendered& aWithoutBars, const Rendered& aHoveredH,
+    const Rendered& aHoveredV, const gui::GraphPanelModel& aModel
+) {
+    const theme::Colors& colors = theme::Colors::current();
+    const QRect hTrack = aModel.hTrack;
+    const QRect vTrack = aModel.vTrack;
+    const QRect hPill = scrollPill(hTrack, aModel.hThumb, true);
+    const QRect vPill = scrollPill(vTrack, aModel.vThumb, false);
+    REQUIRE(
+        !hTrack.isEmpty() && !vTrack.isEmpty(), "precondition: the fixture must publish two lanes"
+    );
+    REQUIRE(
+        aModel.hThumb == hTrack && aModel.vThumb == vTrack,
+        "precondition: the fixture is not the zero-travel state (h %dx%d of %dx%d, v %dx%d of %dx%d)",
+        aModel.hThumb.width(), aModel.hThumb.height(), hTrack.width(), hTrack.height(),
+        aModel.vThumb.width(), aModel.vThumb.height(), vTrack.width(), vTrack.height()
+    );
+    const int hPillInk = toneCount(aWithBars.image, hPill, colors.outline);
+    const int vPillInk = toneCount(aWithBars.image, vPill, colors.outline);
+    const int hThickness =
+        toneCount(aWithBars.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.outline);
+    const int vThickness =
+        toneCount(aWithBars.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.outline);
+    std::printf(
+        "MEASURED scroll_bars_zero_travel hPill(%d,%d %dx%d) ink=%d thick=%d  vPill(%d,%d %dx%d) ink=%d"
+        " thick=%d  (lanes %dx%d / %dx%d)\n",
+        hPill.left(), hPill.top(), hPill.width(), hPill.height(), hPillInk, hThickness, vPill.left(),
+        vPill.top(), vPill.width(), vPill.height(), vPillInk, vThickness, hTrack.width(), hTrack.height(),
+        vTrack.width(), vTrack.height()
+    );
+    REQUIRE(hPillInk > 0, "the zero-travel horizontal lane painted no pill");
+    REQUIRE(vPillInk > 0, "the zero-travel VERTICAL lane painted no pill: the bar hid itself");
+    REQUIRE(
+        hThickness == ctrl::graph::Scaler::kScrollBarPillThickness
+            && vThickness == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "a zero-travel pill is not the app's 4px (%d h / %d v)", hThickness, vThickness
+    );
+    // FULL LENGTH: the fill covers the lane but for the ROUNDED CAPS at the two ends
+    // (radius 2, i.e. a semicircle across the 4px bar) and their antialiased fringe, so
+    // the allowance is two cap widths per end - and a partial run is far below it.
+    const int cap = ctrl::graph::Scaler::kScrollBarPillRadius;
+    REQUIRE(
+        hPillInk >= (hPill.width() - 4 * cap) * ctrl::graph::Scaler::kScrollBarPillThickness,
+        "the horizontal zero-travel pill covers only %d px of a %d px lane", hPillInk, hPill.width()
+    );
+    REQUIRE(
+        vPillInk >= (vPill.height() - 4 * cap) * ctrl::graph::Scaler::kScrollBarPillThickness,
+        "the vertical zero-travel pill covers only %d px of a %d px lane", vPillInk, vPill.height()
+    );
+
+    // The trough is still invisible: outside the two pills the frame is the same as the
+    // no-bars frame.
+    int stray = 0;
+    const QRect hReach = grow(hPill, 1);
+    const QRect vReach = grow(vPill, 1);
+    for (int y = 0; y < aWithBars.image.height(); ++y) {
+        for (int x = 0; x < aWithBars.image.width(); ++x) {
+            if (hReach.contains(x, y) || vReach.contains(x, y))
+                continue;
+            if (pixelAt(aWithBars.image, x, y) != pixelAt(aWithoutBars.image, x, y))
+                ++stray;
+        }
+    }
+    REQUIRE(stray == 0, "a zero-travel lane painted %d px outside its pills", stray);
+
+    // HOVER STILL LIGHTS A FULL-LENGTH PILL - both lanes.
+    const int hHot =
+        toneCount(aHoveredH.image, QRect(hPill.center().x(), hTrack.top(), 1, hTrack.height()), colors.hover);
+    const int vHot =
+        toneCount(aHoveredV.image, QRect(vTrack.left(), vPill.center().y(), vTrack.width(), 1), colors.hover);
+    const int restVWhileHHot = toneCount(aHoveredH.image, vPill, colors.outline);
+    const int restHWhileVHot = toneCount(aHoveredV.image, hPill, colors.outline);
+    std::printf(
+        "MEASURED scroll_bars_zero_travel_hover h_hot_px=%d v_hot_px=%d rest_v_outline_px=%d"
+        " rest_h_outline_px=%d\n",
+        hHot, vHot, restVWhileHHot, restHWhileVHot
+    );
+    REQUIRE(
+        hHot == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "a pointer on the full-length horizontal pill painted %d hover px", hHot
+    );
+    REQUIRE(
+        vHot == ctrl::graph::Scaler::kScrollBarPillThickness,
+        "a pointer on the full-length vertical pill painted %d hover px", vHot
+    );
+    REQUIRE(
+        restVWhileHHot > 0 && restHWhileVHot > 0,
+        "hovering one full-length pill changed the other lane's ink (%d / %d outline px left)",
+        restVWhileHHot, restHWhileVHot
+    );
+
+    // ...and the host's hover identity answers for them too, so the repaint that shows
+    // this hover is scheduled even though the lane has no travel.
+    REQUIRE(
+        gui::panelBarAt(aModel, vTrack.center()) == gui::PanelBar::Vertical
+            && gui::panelBarAt(aModel, hTrack.center()) == gui::PanelBar::Horizontal,
+        "a full-length lane is not part of the hover identity: its hover would never repaint"
+    );
     return true;
 }
 
@@ -6520,23 +6859,49 @@ int main(int argc, char** argv) {
         std::printf("FAILED: the panel's 1px lines\n");
         return 1;
     }
-    // 31: THE SCROLL BARS, on the three passes that isolate them: the full model with
-    // the four rects published, the SAME model with them empty (the state an empty plot
-    // publishes), and a third that differs from the first only in io.MousePos (the
-    // pointer on the horizontal bar, so its thumb takes the hovered ink).
+    // 31: THE SCROLL BARS, on the passes that isolate them: the full model with the
+    // four rects published, the SAME model with them empty (the state an empty plot
+    // publishes), and hover passes that differ from the first only in io.MousePos - one
+    // on each lane, so each direction of the hover rule is measured. A further pair is
+    // the ZERO-TRAVEL state: both runs equal their tracks (the state the real scaler
+    // publishes when the window covers its content), which must still paint a
+    // full-length pill in BOTH lanes.
     gui::GraphPanelModel barModel = full;
     barModel.hTrack = kHScrollTrack;
     barModel.hThumb = kHScrollThumb;
     barModel.vTrack = kVScrollTrack;
     barModel.vThumb = kVScrollThumb;
     gui::GraphPanelModel noBarModel = full; // the four rects stay empty: nothing is drawn
+    gui::GraphPanelModel fullBarModel = barModel;
+    fullBarModel.hThumb = fullBarModel.hTrack;
+    fullBarModel.vThumb = fullBarModel.vTrack;
     const Rendered barsRendered = renderPass(barModel, palette, focus, "scroll_bars");
     const Rendered noBarsRendered = renderPass(noBarModel, palette, focus, "scroll_bars_absent");
-    const Rendered barsHoverRendered = renderPass(
-        barModel, palette, focus, "scroll_bars_hover", ImVec2(float(kHScrollThumb.center().x()), float(kHScrollTrack.center().y()))
+    const Rendered barsHoverHRendered = renderPass(
+        barModel, palette, focus, "scroll_bars_hover_h",
+        ImVec2(float(kHScrollThumb.center().x()), float(kHScrollTrack.center().y()))
     );
-    if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverRendered, barModel)) {
+    const Rendered barsHoverVRendered = renderPass(
+        barModel, palette, focus, "scroll_bars_hover_v",
+        ImVec2(float(kVScrollTrack.center().x()), float(kVScrollThumb.center().y()))
+    );
+    if (!checkScrollBars(barsRendered, noBarsRendered, barsHoverHRendered, barsHoverVRendered, barModel)) {
         std::printf("FAILED: the scroll bars\n");
+        return 1;
+    }
+    const Rendered fullLaneRendered = renderPass(fullBarModel, palette, focus, "scroll_bars_zero_travel");
+    const Rendered fullLaneHoverHRendered = renderPass(
+        fullBarModel, palette, focus, "scroll_bars_zero_travel_hover_h",
+        ImVec2(float(fullBarModel.hTrack.center().x()), float(fullBarModel.hTrack.center().y()))
+    );
+    const Rendered fullLaneHoverVRendered = renderPass(
+        fullBarModel, palette, focus, "scroll_bars_zero_travel_hover_v",
+        ImVec2(float(fullBarModel.vTrack.center().x()), float(fullBarModel.vTrack.center().y()))
+    );
+    if (!checkFullLaneBars(
+            fullLaneRendered, noBarsRendered, fullLaneHoverHRendered, fullLaneHoverVRendered, fullBarModel
+        )) {
+        std::printf("FAILED: the zero-travel scroll bars\n");
         return 1;
     }
     // 31b: THE RULER'S RULE, the opaque token both views draw on that row.

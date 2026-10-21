@@ -716,20 +716,50 @@ void buildCurves(
                 const ctrl::graph::Curve::Segment segment = curve.segment(s);
                 if (!segment.from || !segment.to)
                     continue;
-                if (segment.easing.type != util::Easing::Type_Custom)
-                    continue; // the analytic easings expose no handle to drag at all
+
+                // A key owns BOTH of its tangents, so setting Auto on a key makes
+                // its incoming side derived even when the segment BEFORE it is
+                // still an analytic easing: that segment has no stored bezier
+                // pair, but the TO key's handleIn is still a drawable ghost and
+                // dropping it was what showed "only one tangent as auto". The
+                // arriving side is the TO key's own mode (inMode); the outgoing
+                // side is only meaningful on a Custom FROM param.
+                const util::Easing::Param* toEasing = ctrl::graph::Curve::easingOf(
+                    *segment.to, row.channel.type(), row.channel.component());
+                const bool fromCustom = segment.easing.type == util::Easing::Type_Custom;
+                const bool arrivingDerived = toEasing
+                    && toEasing->type == util::Easing::Type_Custom
+                    && util::Easing::isDerived(toEasing->handleIn);
+                if (!fromCustom && !arrivingDerived)
+                    continue; // no handle of either kind on this segment
 
                 // The effective pair: a stored side is its stored control point,
                 // a derived side the one its neighbours produce. These are the dots
-                // the editor's own hit-test grabs through.
+                // the editor's own hit-test grabs through. A non-Custom FROM param
+                // has no pair (effectiveHandles declines); the arriving side is
+                // then derived on its own, from the same neighbours playback uses.
                 QPointF pair[2];
-                if (!curve.effectiveHandles(segment, pair))
+                const bool havePair = fromCustom && curve.effectiveHandles(segment, pair);
+                if (!havePair && (!arrivingDerived || !curve.derivedArrivingHandle(segment, pair[1])))
                     continue;
 
                 const core::TimeKey* owners[2] = { segment.from, segment.to };
                 const float ownerValues[2] = { segment.fromValue, segment.toValue };
                 for (int h = 0; h < 2; ++h) {
-                    const bool derived = ctrl::graph::Curve::derivesHandle(segment, h);
+                    // Side 0 exists only on a Custom FROM param; side 1 exists on
+                    // a Custom FROM param OR when the TO key derives it.
+                    if (h == 0 && !fromCustom)
+                        continue;
+                    if (h == 1 && !havePair && !arrivingDerived)
+                        continue;
+                    // The kind is what the pair actually is: on a Custom FROM
+                    // param that is derivesHandle's per-side answer (the pair came
+                    // from effectiveHandles); on a non-Custom one the only side
+                    // published is the arriving one, which is derived by
+                    // construction.
+                    const bool derived = fromCustom
+                        ? ctrl::graph::Curve::derivesHandle(segment, h)
+                        : true;
                     gui::PanelHandle handle;
                     handle.segment = s;
                     handle.index = h;

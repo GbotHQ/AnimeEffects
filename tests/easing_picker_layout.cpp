@@ -31,6 +31,8 @@
 #include <QJsonArray>
 #include <QDir>
 #include <QDebug>
+#include <QLabel>
+#include <QToolButton>
 #include <cmath>
 #include <cstdio>
 #include "gui/prop/EasingPickWidget.h"
@@ -180,8 +182,8 @@ int main(int argc, char** argv) {
             app.processEvents();
             const util::Easing::Param value = w.value();
             const bool preset = value.type == util::Easing::Type_Custom
-                && value.handleIn == util::Easing::HandleMode_Auto
-                && value.handleOut == util::Easing::HandleMode_Auto;
+                && value.handleIn == util::Easing::kAutoPresetHandleMode
+                && value.handleOut == util::Easing::kAutoPresetHandleMode;
             if (i < 3)
                 order = order && !preset && int(value.type) == int(util::Easing::typeAtDisplayIndex(i));
             else if (i == 3)
@@ -205,11 +207,18 @@ int main(int argc, char** argv) {
                 QToolButton* tile = w.findChild<QToolButton*>(QStringLiteral("tile-%1").arg(i));
                 checkedOnlyAuto = checkedOnlyAuto && tile && tile->isChecked() == (i == 3);
             }
+            // The preset is the CLAMPED automatic pair (the retired Auto type's
+            // behaviour), so its name is "Auto Clamped" - and the picker's own
+            // header must say that name, never the interpolation type "Custom".
             const QString shown = util::Easing::getParamName(w.value());
-            checkedOnlyAuto = checkedOnlyAuto && shown == QLatin1String("Auto")
-                && shown == autoTile->accessibleName();
-            fprintf(stderr, "Auto preset: checked only tile-3=%d, name='%s' -> %s\n",
-                    int(checkedOnlyAuto), qPrintable(shown), checkedOnlyAuto ? "OK" : "FAIL");
+            QLabel* title = w.findChild<QLabel*>(QStringLiteral("popover-title"));
+            checkedOnlyAuto = checkedOnlyAuto
+                && shown == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
+                && shown == autoTile->accessibleName()
+                && title && title->text() == shown;
+            fprintf(stderr, "Auto preset: checked only tile-3=%d, name='%s', title='%s' -> %s\n",
+                    int(checkedOnlyAuto), qPrintable(shown),
+                    title ? qPrintable(title->text()) : "<none>", checkedOnlyAuto ? "OK" : "FAIL");
         }
         if (!checkedOnlyAuto) {
             fprintf(stderr, "FAIL  the Auto preset's checked state/name is not the pair it writes\n");
@@ -284,9 +293,9 @@ int main(int argc, char** argv) {
                 const util::Easing::Param& p = g->param();
                 const util::Easing::AutoContext& ctx = g->autoContext();
                 canonical = p.type == util::Easing::Type_Custom
-                    && p.handleIn == util::Easing::HandleMode_Auto
-                    && p.handleOut == util::Easing::HandleMode_Auto
-                    && ctx.inMode == util::Easing::HandleMode_Auto;
+                    && p.handleIn == util::Easing::kAutoPresetHandleMode
+                    && p.handleOut == util::Easing::kAutoPresetHandleMode
+                    && ctx.inMode == util::Easing::kAutoPresetHandleMode;
                 const QPointF out = util::Easing::controlPoint(p, ctx.inMode, ctx, 1.0f, 0);
                 const QPointF in = util::Easing::controlPoint(p, ctx.inMode, ctx, 1.0f, 1);
                 canonical = canonical && std::fabs(out.x() - 1.0 / 3.0) < 1e-6
