@@ -5,6 +5,7 @@
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QOpenGLContext>
 #include <QTabletEvent>
 #include <QTouchEvent>
 #include <QWheelEvent>
@@ -139,6 +140,16 @@ void GraphPanelWidget::initializeGL() {
 
 //-------------------------------------------------------------------------------------------------
 void GraphPanelWidget::paintGL() {
+    // NO CONTEXT, NO GL. A widget whose context Qt has already released (teardown, or a
+    // frame still in flight while the page is being destroyed) must not reach the floor's
+    // own GL calls: there is no context for them to act on, and calling into the function
+    // table without one is the failure this guard exists to prevent. This is the paint
+    // path's half of the same bail the frame driver makes when no ImGui context is up
+    // (gui::panelContextReady in runPanelFrame).
+    QOpenGLContext* hostContext = this->context();
+    if (!hostContext || !hostContext->isValid())
+        return;
+
     // THE FLOOR FIRST, and always. The panel draws no background of its own (it is a
     // model and a draw list; there is no fill anywhere in drawPanel), so behind THIS panel
     // there is only what this widget paints, and it has to paint something:
@@ -149,6 +160,18 @@ void GraphPanelWidget::paintGL() {
     // chrome, menu floor", which is the reference's own _floor (mock-graph.js:
     // cssVar('--base')) - read per frame so a theme change needs no signal.
     //
+    // THE PANEL'S OWN ARRAY OBJECT, BEFORE ANY OTHER GL CALL. A reparent (the dock was
+    // undocked or re-docked) gives this widget a NEW context, and a core profile has no
+    // default array object there: the one the application's painter engine relies on was
+    // created in MainDisplayWidget's context and kept bound in THAT context. Nothing
+    // this page draws needs a foreign one - the ImGui backend and both passes bind their
+    // own - but the floor has to be this context's own too, so the binding is
+    // established here rather than inherited. This call also re-creates the panel's
+    // objects on the new context if they are still the old one's (their old names are
+    // left to the context that made them, so nothing is pending for the GL_CHECK_ERROR
+    // below).
+    bindPanelVertexArray(*this);
+
     // resetRenderState() is the application's own "known state before a pass": it turns
     // off the scissor box (a glClear is scissored, and the ImGui backend's last draw in
     // this shared context left one set), blending, depth and stencil. The backend sets

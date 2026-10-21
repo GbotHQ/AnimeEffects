@@ -883,6 +883,10 @@ int main(int argc, char** argv) {
     //     bar's does);
     //   * a press on the LANE beside the run pages the window by its own span toward
     //     the press, and then continues as that same drag;
+    //   * a FULL-LENGTH run (the window covers its content) is STILL GRABBABLE: the
+    //     timeline's full-width handle reaches beginScrollbarDrag too, so the press
+    //     starts a drag and a notch scrolls - the lane is not gated on "is there
+    //     travel";
     //   * and NONE of it pushes a command: a scroll bar moves a window, and the
     //     window is not the document.
     // The geometry is the scaler's own scrollBars(), computed with the two contents
@@ -1197,12 +1201,16 @@ int main(int argc, char** argv) {
             CHECK(scale.framePpf() != plotPpfBefore);
         }
 
-        // (4b) A ZERO-TRAVEL LANE IS DRAWN BUT NOT GRABBABLE, on BOTH axes. The scaler
-        // publishes the full run (the panel paints a full-length pill - see
-        // tests/graph_panel_pixels.cpp), and hTravel()/vTravel() are false, so a press
-        // on either lane is nobody's and moves no window. This is the HIT rule the
-        // full-length drawing must not change: "the pill is visible" and "the pill can
-        // be dragged" are different questions, and only the second reads travel.
+        // (4b) A FULL-LENGTH RUN IS STILL A RUN, on BOTH axes. The window covers its
+        // content, so the scaler publishes the full lane (the panel paints a
+        // full-length pill - see tests/graph_panel_pixels.cpp). The TIMELINE's bar is
+        // not inert in that state, so the panel's must not be either:
+        // TimeLineWidget::eventFilter tests handleRect (the full lane) and calls
+        // beginScrollbarDrag, whose ratio range/span = trackSpan/laneLength stays
+        // positive at range == pageStep, and its Wheel branch scrolls without asking
+        // how much travel the slider reports. So the hit question is "does the lane
+        // have a run" (hHasRun), and the honest answer is that NO artificial one-pixel
+        // travel is needed: the run is the whole track and is grabbable as published.
         editor.scale().setRect(panel);
         editor.clearFrameAxis(); // the frame axis is the panel's own: the window is the plot
         editor.scale().fitFrameAxis(core::Frame(frames.min() - 100), core::Frame(frames.max() + 100));
@@ -1211,50 +1219,130 @@ int main(int argc, char** argv) {
             const Scaler::ScrollBars fullLanes = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
             CHECK(fullLanes.hThumb == fullLanes.hTrack);
             CHECK(fullLanes.vThumb == fullLanes.vTrack);
-            CHECK(!fullLanes.hTravel());
-            CHECK(!fullLanes.vTravel());
-
-            const double frameOriginFull = scale.pixelXOfFrame(0.0);
-            const float vMinFull = scale.valueMin();
-            const float vMaxFull = scale.valueMax();
+            CHECK(fullLanes.hHasRun()); // a full run is a run, not a dead lane
+            CHECK(fullLanes.vHasRun());
+            // The drag ratio is the UNION track's, not zero (the timeline's
+            // beginScrollbarDrag anchor).
+            CHECK(fullLanes.hContentPerPixel > 0.0);
+            CHECK(fullLanes.vContentPerPixel > 0.0);
             // PROBE POINTS CLEAR OF THE CURVES' KEYS: the lane's left end (the plot
             // starts well right of it) and the vertical lane's top row (above the fitted
             // value extent), so the only candidate hit at either point is the bar.
             const QPoint hLanePoint(fullLanes.hTrack.left() + 2, fullLanes.hTrack.center().y());
             const QPoint vLanePoint(fullLanes.vTrack.center().x(), fullLanes.vTrack.top() + 1);
-            for (const QPoint& lanePoint : {hLanePoint, vLanePoint}) {
+
+            // (4b-1) A FULL-RUN DRAG MOVES THE WINDOW through the bar's own ratio. The
+            // pill cannot slide inside its lane (it already fills it), so the visible
+            // effect is the WINDOW moving under it - exactly what the timeline's
+            // full-width handle does with range/span = 1.0. The frame origin shifts by
+            // dx * contentPerPixel * ppf pixels, and the track follows the window, so
+            // the run stays full.
+            {
+                const double frameOriginFull = scale.pixelXOfFrame(0.0);
+                const double frameLeftFull = scale.frameAtPixel(double(plot.left()));
+                const float vMinFull = scale.valueMin();
+                const float vMaxFull = scale.valueMax();
                 core::AbstractCursor fullCur;
                 {
                     QMouseEvent down(
-                        QEvent::MouseButtonPress, lanePoint, lanePoint, lanePoint, Qt::LeftButton, Qt::LeftButton,
-                        Qt::NoModifier
+                        QEvent::MouseButtonPress, hLanePoint, hLanePoint, hLanePoint, Qt::LeftButton,
+                        Qt::LeftButton, Qt::NoModifier
                     );
                     CHECK(fullCur.setMousePress(&down, camera));
                 }
-                // NOBODY'S PRESS: a lane whose slider fills its groove has no bar
-                // gesture to start, and the lane is outside the plot, so nothing else
-                // claims it either.
-                CHECK(!editor.ownsCursor(camera, fullCur));
+                CHECK(editor.ownsCursor(camera, fullCur)); // the panel claims the full run
                 CHECK(editor.updateCursor(camera, fullCur));
-                CHECK(scale.pixelXOfFrame(0.0) == frameOriginFull);
-                CHECK(scale.valueMin() == vMinFull && scale.valueMax() == vMaxFull);
-                // The press armed no gesture, so its release is nobody's either.
-                CHECK(!sendRelease(editor, camera, fullCur, lanePoint));
+                const QPoint hDelta(30, 0);
+                CHECK(sendMove(editor, camera, fullCur, hLanePoint + hDelta));
+                CHECK(sendRelease(editor, camera, fullCur, hLanePoint + hDelta));
+                CHECK(
+                    std::fabs(
+                        (scale.pixelXOfFrame(0.0) - frameOriginFull)
+                        + 30.0 * fullLanes.hContentPerPixel * scale.framePpf()
+                    ) < 1e-9
+                );
+                CHECK(scale.frameAtPixel(double(plot.left())) > frameLeftFull); // the window advanced
+                CHECK(scale.valueMin() == vMinFull && scale.valueMax() == vMaxFull); // one axis only
+                const Scaler::ScrollBars afterFull = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+                CHECK(afterFull.hThumb == afterFull.hTrack); // the track followed the window
+                std::printf(
+                    "[B] full-run drag: pointer +%d px -> window %+.3f frames (%.2f content px), origin %+.2f px; "
+                    "the pill stayed full (%d of %d px)\n",
+                    hDelta.x(), 30.0 * fullLanes.hContentPerPixel,
+                    30.0 * fullLanes.hContentPerPixel * scale.framePpf(), scale.pixelXOfFrame(0.0) - frameOriginFull,
+                    afterFull.hThumb.width(), afterFull.hTrack.width()
+                );
             }
 
-            // THE WHEEL IS NOT THE LANE'S EITHER: a notch over a full-length run
-            // must not scroll the window (there is no travel). The value under the
-            // pointer's own row is therefore unchanged - whether the notch is dropped
-            // or falls through to the panel's zoom (updateWheel's documented
-            // fall-through), it is never the bar's pan, which would move that value.
-            const float valueAtFullLane = scale.valueAtPixel(vLanePoint.y());
-            CHECK(editor.updateWheel(camera, vLanePoint, 120, Qt::ControlModifier, false));
-            CHECK(std::fabs(scale.valueAtPixel(vLanePoint.y()) - valueAtFullLane) < 1e-3f);
+            // (4b-2) THE SAME ON THE VALUE AXIS: a full vertical run drags the value
+            // window by dy * contentPerPixel value units (the inverted lane's sign:
+            // dragging UP shows HIGHER values), the span is untouched, and the run
+            // stays full because the track follows the window.
+            {
+                const Scaler::ScrollBars vFull = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+                const float vMinFull = scale.valueMin();
+                const float vSpanFull = scale.valueMax() - scale.valueMin();
+                core::AbstractCursor vFullCur;
+                {
+                    QMouseEvent down(
+                        QEvent::MouseButtonPress, vLanePoint, vLanePoint, vLanePoint, Qt::LeftButton,
+                        Qt::LeftButton, Qt::NoModifier
+                    );
+                    CHECK(vFullCur.setMousePress(&down, camera));
+                }
+                CHECK(editor.ownsCursor(camera, vFullCur));
+                CHECK(editor.updateCursor(camera, vFullCur));
+                const QPoint vDelta(0, -24);
+                CHECK(sendMove(editor, camera, vFullCur, vLanePoint + vDelta));
+                CHECK(sendRelease(editor, camera, vFullCur, vLanePoint + vDelta));
+                CHECK(scale.valueMin() > vMinFull); // the window went UP the value axis
+                CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanFull) < 1e-3f); // a scroll
+                CHECK(
+                    std::fabs((scale.valueMin() - vMinFull) - 24.0 * vFull.vContentPerPixel) < 1e-3f
+                );
+                const Scaler::ScrollBars vAfter = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+                CHECK(vAfter.vThumb == vAfter.vTrack); // still full
+                std::printf(
+                    "[B] full-run value drag: pointer -24 px -> valueMin %+.3f (%.4f -> %.4f), span unchanged\n",
+                    24.0 * vFull.vContentPerPixel, vMinFull, scale.valueMin()
+                );
+            }
+
+            // (4b-3) THE WHEEL OVER A FULL RUN SCROLLS IT - the timeline's bar does,
+            // with no travel test in its eventFilter. One notch is wheelScrollLines x
+            // kScrollBarStepPixels content pixels; on the panel's own frame axis that is
+            // the origin moving right (earlier frames) by exactly that many pixels, and
+            // on the value axis the window rising by the same pixel count at the plot's
+            // height. Neither touches the scale.
+            const int lines = qMax(1, QApplication::wheelScrollLines());
+            const int perNotch = lines * Scaler::kScrollBarStepPixels;
+            {
+                const Scaler::ScrollBars wheelLanes = scale.scrollBars(frames.min(), frames.max(), valueLo, valueHi);
+                CHECK(wheelLanes.hHasRun());
+                const double originBeforeWheel = scale.pixelXOfFrame(0.0);
+                const double ppfBeforeWheel = scale.framePpf();
+                const float vMinBeforeWheel = scale.valueMin();
+                CHECK(editor.updateWheel(camera, hLanePoint, 120, Qt::NoModifier, false));
+                CHECK(std::fabs(scale.pixelXOfFrame(0.0) - originBeforeWheel - perNotch) < 1e-9);
+                CHECK(scale.framePpf() == ppfBeforeWheel); // a scroll, never a zoom
+                CHECK(scale.valueMin() == vMinBeforeWheel); // and not the other axis
+            }
+            {
+                const float vMinBeforeWheel = scale.valueMin();
+                const float vSpanBeforeWheel = scale.valueMax() - scale.valueMin();
+                const double ppfBeforeWheel = scale.framePpf();
+                const double expectedRise =
+                    double(perNotch) / double(plot.height()) * double(vSpanBeforeWheel);
+                CHECK(editor.updateWheel(camera, vLanePoint, 120, Qt::NoModifier, false));
+                CHECK(std::fabs((scale.valueMin() - vMinBeforeWheel) - expectedRise) < 1e-3);
+                CHECK(std::fabs((scale.valueMax() - scale.valueMin()) - vSpanBeforeWheel) < 1e-3f);
+                CHECK(scale.framePpf() == ppfBeforeWheel); // the frame axis did not move
+            }
             std::printf(
-                "[B] zero-travel lanes: hThumb %d px of %d, vThumb %d px of %d, travel %d/%d - presses on both "
-                "were nobody's and a notch did not scroll the lane\n",
+                "[B] full-length runs: hThumb %d px of %d, vThumb %d px of %d (zero travel) - the press started "
+                "a drag on both axes and a %d-line notch scrolled %d px, never zoomed\n",
                 fullLanes.hThumb.width(), fullLanes.hTrack.width(), fullLanes.vThumb.height(),
-                fullLanes.vTrack.height(), int(fullLanes.hTravel()), int(fullLanes.vTravel())
+                fullLanes.vTrack.height(), lines, perNotch
             );
         }
 
@@ -3553,6 +3641,72 @@ int main(int argc, char** argv) {
         CHECK(zoomCalls == 5); // a scroll bar is not a wheel
         CHECK(std::abs(leftEdgeFrame() - windowLeftFrame) <= 1.0);
 
+        // THE SAME BAR AT ZERO TRAVEL. The pushed window covers the project's whole
+        // frame range (1..600) and the trailing margin, so the panel publishes a
+        // FULL-LENGTH run - the state the user reported as dead. The timeline's bar
+        // responds there (handleRect is the full lane and beginScrollbarDrag's
+        // range/span is positive at range == pageStep), so this press must start a
+        // drag too, and the drag must move the timeline's window by exactly the
+        // content pixels the timeline's own ratio would: with the window spanning 900
+        // frames across the 800px panel, ppf = 8/9 and contentPerPixel = 9/8, so
+        // contentPerPixel * ppf == 1.0 and 30 lane px is 30 CONTENT px - the measured
+        // 1:1 of TimeLineWidget::beginScrollbarDrag's range == pageStep case.
+        editor.setFrameWindow(-100.0, 800.0);
+        {
+            const Scaler::ScrollBars fullSeamBars = editor.scale().scrollBars(
+                seamFrames.min(), seamFrames.max(), seamValueLo, seamValueHi
+            );
+            CHECK(fullSeamBars.hThumb == fullSeamBars.hTrack); // the full pill
+            CHECK(fullSeamBars.hHasRun());                     // and still a run
+            CHECK(std::fabs(fullSeamBars.hContentPerPixel * editor.scale().framePpf() - 1.0) < 1e-9);
+            const QPoint fullGrab(
+                fullSeamBars.hTrack.left() + 2, fullSeamBars.hTrack.center().y()
+            );
+            const double fullOriginBefore = editor.scale().pixelXOfFrame(0.0); // the panel's own X
+            const double scrolledBeforeFull = scrolledFrames;
+            const int callsBeforeFull = scrollCalls;
+            core::AbstractCursor fullBarCur;
+            {
+                QMouseEvent down(
+                    QEvent::MouseButtonPress, fullGrab, fullGrab, fullGrab, Qt::LeftButton, Qt::LeftButton,
+                    Qt::NoModifier
+                );
+                CHECK(fullBarCur.setMousePress(&down, camera));
+            }
+            CHECK(editor.ownsCursor(camera, fullBarCur)); // the full run is claimed, not fell through
+            CHECK(editor.updateCursor(camera, fullBarCur));
+            const QPoint fullDelta(30, 0);
+            CHECK(sendMove(editor, camera, fullBarCur, fullGrab + fullDelta));
+            CHECK(sendRelease(editor, camera, fullBarCur, fullGrab + fullDelta));
+            CHECK(scrollCalls == callsBeforeFull + 1); // the timeline's scroll delegate heard it
+            CHECK(std::fabs((scrolledFrames - scrolledBeforeFull) - 30.0 * fullSeamBars.hContentPerPixel) < 1e-9);
+            const double fullDragFrames = scrolledFrames - scrolledBeforeFull;
+            CHECK(editor.scale().pixelXOfFrame(0.0) == fullOriginBefore); // the panel's own X was not written
+            CHECK(zoomCalls == 5); // a bar is not a wheel
+
+            // ...and a notch over the full run scrolls it (the timeline's eventFilter
+            // Wheel branch never asks for travel): 3 lines x 24px of content px, which
+            // is 72/ppf frames handed to the delegate, and no zoom.
+            const double scrolledBeforeFullWheel = scrolledFrames;
+            const int callsBeforeFullWheel = scrollCalls;
+            const double fullPpf = editor.scale().framePpf();
+            const float fullValueMin = editor.scale().valueMin();
+            CHECK(editor.updateWheel(camera, fullGrab, 120, Qt::NoModifier, false));
+            CHECK(scrollCalls == callsBeforeFullWheel + 1);
+            CHECK(std::fabs((scrolledFrames - scrolledBeforeFullWheel) + 72.0 / fullPpf) < 1e-9);
+            CHECK(editor.scale().framePpf() == fullPpf); // never a zoom
+            CHECK(editor.scale().valueMin() == fullValueMin); // and not the value axis
+            std::printf(
+                "[T] full shared run: hThumb %d of %d px at zero travel; a +%d px drag scrolled %+.3f frames "
+                "(%.2f content px, ratio*ppf = %.6f), a notch scrolled %+.3f frames (72 content px)\n",
+                fullSeamBars.hThumb.width(), fullSeamBars.hTrack.width(), fullDelta.x(), fullDragFrames,
+                fullDragFrames * fullPpf, fullSeamBars.hContentPerPixel * fullPpf,
+                scrolledFrames - scrolledBeforeFullWheel
+            );
+        }
+        editor.setFrameWindow(pushedLo, pushedHi);
+        CHECK(std::fabs(editor.scale().framePpf() - sharedPpf) < 1e-9);
+
         std::printf(
             "[T] timeline seam: the panel writes the timeline's own selection (1 key selected in the panel "
             "is 1 in the timeline, focused), a pushed window of %.2f..%.2f maps across the panel at "
@@ -3563,7 +3717,9 @@ int main(int argc, char** argv) {
             "delegate with -40/framePpf (the pan moves the content right, i.e. earlier frames) and "
             "30 * content-per-lane-pixel frames (the pill drag advances the window 1:1) - all leaving the panel's "
             "own X exactly "
-            "where the timeline put it, while a Ctrl wheel moves only the value axis\n",
+            "where the timeline put it, while a Ctrl wheel moves only the value axis; and at ZERO travel (the "
+            "full-length run) a 30px press-drag still reaches that delegate with 30 * content-per-lane-pixel "
+            "frames and a notch with 72px of content, because a full run is still a run\n",
             pushedLo, pushedHi, sharedPpf, sharedPanel.width(), sharedPanel.height(), sharedPlot.width(),
             sharedPlot.height()
         );
@@ -3594,7 +3750,7 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().valueMin() == ownValueMinBefore); // and the value axis did not move at all
         CHECK(editor.scale().valueMax() == ownValueMaxBefore);
         CHECK(zoomCalls == 5);   // the ZOOM delegate heard nothing: this axis is the panel's own
-        CHECK(scrollCalls == 2); // and the scroll delegate did not either
+        CHECK(scrollCalls == 4); // and the scroll delegate did not either (pan, bar drag, full drag, full notch)
 
         // CTRL+SHIFT: BOTH axes on the panel's own axis too. The frame rate drops
         // further, the value window grows with it (both halves of one notch), the
@@ -3605,7 +3761,7 @@ int main(int argc, char** argv) {
         CHECK(editor.scale().valueMax() - editor.scale().valueMin() > ownValueSpanBefore); // and its value axis did
         CHECK(std::fabs(editor.scale().frameAtPixel(ownPlot.center().x()) - ownAnchorFrame) < 1e-9);
         CHECK(zoomCalls == 5);   // still no delegate: the panel owns this axis
-        CHECK(scrollCalls == 2);
+        CHECK(scrollCalls == 4);
 
         // The shared end must go before the timeline it points at does: a dangling
         // selection source is the one thing this seam can get catastrophically wrong.

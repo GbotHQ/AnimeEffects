@@ -318,9 +318,9 @@ public:
     // the plot's first row (the corner belongs to the horizontal bar) - flush with the
     // panel's bottom and right edges, no gap, no outer margin, no trough. The plot's
     // right and bottom INSET IS the lane (12px; see THE SCROLL BARS' LANES in
-    // graph_Scaler.h). An empty plot publishes no bars at all; a bar with nothing to
-    // scroll is still published and DRAWN (a full-length pill), it simply cannot be
-    // grabbed - see the travel rule below.
+    // graph_Scaler.h). An empty plot publishes no bars at all; a bar whose window
+    // covers its content is still published and DRAWN (a full-length pill), and it is
+    // still GRABBABLE - see the run rule below.
     //
     // WHAT THEY LOOK LIKE. They are the application's own scroll bars: an invisible
     // 12px trough and a 4px, radius-2 pill across the slider's run in
@@ -339,10 +339,18 @@ public:
     // axis. BOTH handles are drawn at zero travel, as full-length pills: the timeline
     // has no vertical bar to inherit a hiding rule from (TimeLineWidget builds a
     // horizontal bar only), and a lane that vanished with the content in range is the
-    // user-visible defect this rule fixes. Neither lane is grabbable then -
-    // hTravel()/vTravel() gate every press and wheel-notch route. It is a VIEW of the
-    // window, never a command: nothing here writes the document, and no gesture below
-    // pushes anything.
+    // user-visible defect this rule fixes. It is a VIEW of the window, never a
+    // command: nothing here writes the document, and no gesture below pushes
+    // anything.
+    //
+    // THE RUN RULE. A lane is grabbable while it has a RUN (hHasRun/vHasRun: a
+    // non-empty handle), NOT while the window is narrower than the track. The
+    // timeline's own bar is the reference: its eventFilter tests handleRect and
+    // calls beginScrollbarDrag, whose ratio is `range / span` =
+    // trackSpan / laneLength - positive even when the window covers the track, so a
+    // full-width handle still starts a drag and still scrolls on a wheel notch. A
+    // "full" pill is therefore live here for the same reason it is live there; only
+    // a degenerate layout (no handle at all) is nobody's.
     //
     // THE DIRECTION. The pill moves WITH the content window: dragging the horizontal
     // pill RIGHT shows LATER frames, dragging the vertical pill UP shows HIGHER values
@@ -797,11 +805,26 @@ public:
     // image channel rather than recording a change nothing can see.
     bool setSelectedKeysEasing(util::Easing::Type aType);
 
-    // THE AUTO PRESET. Automatic handles are per-side MODES now, not an easing
-    // type: this writes Type_Custom (the curve the modes shape) with BOTH sides
-    // on kAutoPresetHandleMode (AutoClamped) on every selected component.
-    // The picker's Auto tile and the header's quick-easing Auto button both land
-    // here, so the two cannot write different things.
+    // THE AUTO PRESET APPLIES TO SEGMENTS, not to the selected keys alone.
+    // Automatic handles are per-side MODES, not an easing type, and a tangent
+    // PAIR belongs to a segment: a key's OUTGOING side is the start tangent of the
+    // segment leaving it, its INCOMING side the end tangent of the segment
+    // arriving at it. So applying Auto to key K writes, in ONE undo step:
+    //   * K's own two sides (Type_Custom + kAutoPresetHandleMode on both);
+    //   * the PREVIOUS key's outgoing side AND TYPE - that param IS the arriving
+    //     segment's curve, so without the type change the incoming side would be
+    //     inert and the segment only half-automatic;
+    //   * the NEXT key's incoming side (its type is left alone: it shapes the
+    //     segment after it, which this action does not own).
+    // Both adjacent segments are therefore fully automatic, which is what the
+    // drawing publishes and what playback evaluates. A multi-key selection applies
+    // the same rule to every selected key, and a param two neighbours both name is
+    // written once. Only the type and the two modes are the preset's - range,
+    // weight and the stored cubic ride along untouched.
+    // The picker's Auto tile and the header's quick-easing Auto button write the
+    // same rule through the timeline editor
+    // (ctrl::TimeLineEditor::assignSelectionAutoHandles), so the surfaces cannot
+    // write different things.
     bool setSelectedKeysAutoHandles();
 
     // The half-width, in pixels, of the band around a curve the insert gesture
@@ -1007,11 +1030,12 @@ public:
     }
 
 private:
-    // The shared body of the two selection-easing actions. aNext maps one
-    // component's live param to the value the action would write; only the
-    // components it actually changes are collected, and the whole selection is
-    // one macro / one undo step. Returns false (and pushes NOTHING) when nothing
-    // would change.
+    // The shared body of the TYPE selection-easing action (setSelectedKeysEasing).
+    // aNext maps one component's live param to the value the action would write;
+    // only the components it actually changes are collected, and the whole
+    // selection is one macro / one undo step. Returns false (and pushes NOTHING)
+    // when nothing would change. The Auto preset does NOT go through this: it
+    // writes neighbour params too (see setSelectedKeysAutoHandles).
     bool assignSelectedKeysEasing(
         const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
 
@@ -1165,9 +1189,10 @@ private:
     // built entries, so a caller that already has them pays no second build.
     graph::Scaler::ScrollBars scrollBarsFor(const graph::Scaler& aScale, const QVector<Entry>& aItems) const;
 
-    // The press routing's own bar test: true when aPos is on a bar WITH TRAVEL and a
-    // gesture was armed for it. A press on the RUN (the slider's span) starts the drag
-    // where it is; a press on the LANE beside the run first moves the window ONE PAGE
+    // The press routing's own bar test: true when aPos is on a lane WITH A RUN and a
+    // gesture was armed for it (a full-length run counts - see THE RUN RULE). A press
+    // on the RUN (the slider's span) starts the drag where it is; a press on the LANE
+    // beside the run first moves the window ONE PAGE
     // toward it (a page = the visible window) and then continues as that same drag.
     // Sets mDragging (so ownsCursor keeps the cursor for every later move and the
     // release) and the axis, and pushes nothing.

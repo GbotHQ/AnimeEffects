@@ -186,6 +186,12 @@ public:
     // and it is the CLAMPED behaviour the retired Auto type had: unclamped
     // HandleMode_Auto overshoots by construction and stays a deliberate
     // per-side choice in the mode combos.
+    //
+    // This is the DRAFT only: it names the pair the preset stores. The ACTION
+    // applies to SEGMENTS, so the picking widget's commit routes these modes to
+    // the selection-level Auto action, which also writes the neighbour sides that
+    // make both adjacent segments fully automatic (see
+    // ctrl::TimeLineEditor::assignSelectionAutoHandles).
     void setAutoHandlesPreset();
     // One side's handle mode (Blender's five). aIncoming selects the TO key's
     // arriving side (the param's handleIn); the other writes handleOut. The

@@ -1281,7 +1281,7 @@ int sectionScaler() {
             CHECK(bars.vTrack.width() == Scaler::kScrollBarThickness);
             CHECK(bars.vTrack.bottom() + 1 == bars.hTrack.top()); // the corner is the horizontal bar's
             CHECK(bars.hThumb == QRect(0, bars.hTrack.top(), 294, bars.hTrack.height()));
-            CHECK(bars.hTravel());
+            CHECK(bars.hHasRun());
             CHECK(std::fabs(bars.hContentPerPixel - 102.0 / 600.0) < 1e-12);
             std::printf(
                 "[8] bars A: content 0..100 window 0..50 ppf 12 margin 2 -> union [0,102]; "
@@ -1302,15 +1302,18 @@ int sectionScaler() {
             CHECK(barScale.applyFrameWindow(10.0, 12.0));
             const Scaler::ScrollBars narrow = barScale.scrollBars(0.0, 100.0, -10.0f, 10.0f);
             CHECK(narrow.hThumb == QRect(60, narrow.hTrack.top(), 12, narrow.hTrack.height()));
-            CHECK(narrow.hTravel());
+            CHECK(narrow.hHasRun());
             std::printf("[8] bars C: window 10..12 -> hThumb x=60 w=12 (hand: 60..72)\n");
 
             // Case D: the window covers the union track (content 0..40, window -10..60)
-            // - the handle fills the lane and there is no travel.
+            // - the handle fills the lane. That is NOT a dead bar: the run still
+            // exists, and its drag ratio is the union track's (the timeline reaches
+            // beginScrollbarDrag with range == pageStep too).
             CHECK(barScale.applyFrameWindow(-10.0, 60.0));
             const Scaler::ScrollBars whole = barScale.scrollBars(0.0, 40.0, -10.0f, 10.0f);
             CHECK(whole.hThumb == whole.hTrack);
-            CHECK(!whole.hTravel());
+            CHECK(whole.hHasRun());
+            CHECK(std::fabs(whole.hContentPerPixel - 70.0 / 600.0) < 1e-12);
         }
 
         // THE VALUE AXIS IS INVERTED ALONG ITS TRACK. content 0..100, window 25..75
@@ -1322,7 +1325,7 @@ int sectionScaler() {
         CHECK(vMid.vThumb == QRect(
                   vMid.vTrack.left(), vMid.vTrack.top() + 91, vMid.vTrack.width(), 181
               ));
-        CHECK(vMid.vTravel());
+        CHECK(vMid.vHasRun());
         std::printf("[8] bars V: value window 25..75 of 0..100 -> vThumb y=+91 h=181 of 362 (hand: 91..272)\n");
 
         // A window at the content's LOW end sits at the BOTTOM of the inverted lane
@@ -1337,17 +1340,25 @@ int sectionScaler() {
         CHECK(vHigh.vThumb.top() == vHigh.vTrack.top());
         CHECK(vHigh.vThumb.top() < vLow.vThumb.top());
 
-        // A bar with no travel: BOTH lanes still draw the FULL-LENGTH pill (the run
-        // fills the track), and neither is scrollable, so a press on either is nobody's.
-        // The TRACKS stay laid out either way, so the plot's rect does not move.
+        // A window that covers its content: BOTH lanes draw the FULL-LENGTH pill (the
+        // run fills the track) and BOTH runs are still GRABBABLE - the timeline's own
+        // full-width handle is (its beginScrollbarDrag ratio is range/span, positive
+        // at range == pageStep). The drag ratio is the union track's, so the run can
+        // move the window even though the pill cannot slide within its lane. The
+        // TRACKS stay laid out either way, so the plot's rect does not move.
         barScale.setValueWindow(-10.0f, 110.0f);
         const Scaler::ScrollBars whole = barScale.scrollBars(0.0, 40.0, 0.0f, 100.0f);
         CHECK(whole.vThumb == whole.vTrack);
-        CHECK(!whole.vTravel());
+        CHECK(whole.vHasRun());
+        CHECK(std::fabs(whole.vContentPerPixel - 120.0 / 362.0) < 1e-12);
         CHECK(!whole.vTrack.isEmpty());
+        // A degenerate CONTENT (no key at all) is still a window-shaped track: the run
+        // exists (the window is its own track) and is grabbable, exactly as a content
+        // whose extent the window covers is.
         const Scaler::ScrollBars none = barScale.scrollBars(0.0, 40.0, 0.0f, 0.0f); // no extent
         CHECK(none.vThumb == none.vTrack);
-        CHECK(!none.vTravel());
+        CHECK(none.vHasRun());
+        CHECK(none.vContentPerPixel > 0.0);
     }
     // The section boundary itself: the band's 22 rows sit immediately above the
     // plot, and the plot's first row is the graph's - the exact arithmetic a pixel

@@ -139,6 +139,12 @@ public:
     // FFD key has one shared easing but no graph channel, and the graph's action
     // refuses it - the quick easings must not. FALSE when nothing was written
     // (no selection, only bone/mesh keys, or an edit that changes nothing).
+    //
+    // THE AUTO PRESET IS NOT A TYPE EDIT: it makes the SEGMENTS around each
+    // selected key automatic (the previous key's outgoing side, the key's two
+    // sides, the next key's incoming side - see
+    // ctrl::TimeLineEditor::assignSelectionAutoHandles), which is one undo step
+    // per batch and can write more than one param per selected key.
     bool applyEasingToSelection(util::Easing::Type aType);
     bool applyAutoHandlesToSelection();
     // The MoveCanvas key (space by default) is held: the ruler lets a

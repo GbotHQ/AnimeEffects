@@ -147,13 +147,13 @@ namespace graph {
     //
     // The track is the UNION of content and window: a window panned off the content
     // still lies inside its own track, so the handle is flush with the edge it pokes
-    // through. `travel` is the window's own question (is it narrower than the
-    // track?), and `contentPerPixel` is the ratio the drag anchors on: a pointer
-    // delta dx moves the window by dx * trackSpan/trackLength, which moves the
-    // handle's offset by exactly dx - the 1:1 drag the timeline has.
+    // through. `contentPerPixel` is the ratio the drag anchors on: a pointer delta dx
+    // moves the window by dx * trackSpan/trackLength, which moves the handle's offset
+    // by exactly dx - the 1:1 drag the timeline has. It is nonzero whenever a run
+    // exists, including a full-length run: the timeline's beginScrollbarDrag is
+    // anchored on `range / span`, which stays positive at range == pageStep.
     struct BarLayout {
         QRect thumb;
-        bool travel = false;
         double contentPerPixel = 0.0;
     };
 
@@ -194,7 +194,6 @@ namespace graph {
         out.thumb = aHorizontal
             ? QRect(aTrack.left() + start, aTrack.top(), thumbLength, aTrack.height())
             : QRect(aTrack.left(), aTrack.top() + start, aTrack.width(), thumbLength);
-        out.travel = trackSpan > pageSpan;
         out.contentPerPixel = trackSpan / double(trackLength);
         return out;
     }
@@ -242,7 +241,6 @@ namespace graph {
             frameAtPixel(frameWindow.left()), frameAtPixel(frameWindow.left() + frameWindow.width())
         );
         bars.hThumb = horizontal.thumb;
-        bars.hScrollable = horizontal.travel;
         bars.hContentPerPixel = horizontal.contentPerPixel;
 
         // THE VERTICAL LANE IS ALWAYS DRAWN, like the horizontal one: the run is the
@@ -253,16 +251,15 @@ namespace graph {
         // right lane is an ABSENT bar, not a hidden one. The panel's value bar is its
         // own, and a bar that vanished with the content in range is the defect this
         // rule fixes.
-        // NOTHING IS GRABBABLE AT ZERO TRAVEL, which is the hit rule and not the
-        // drawing rule: vScrollable stays false, so a press or a wheel notch on the
-        // full run falls through (see GraphEditor's ownsCursor/updateWheel and
-        // beginScrollBarPress).
+        // A full-length run is GRABBABLE: the run (vThumb) is non-empty, and the
+        // press/drag ratio is the union track's own (see hHasRun in the header).
+        // There is no travel flag here to make the full run inert - the timeline's
+        // full-width handle is not inert either.
         const BarLayout vertical = timelineHandle(
             bars.vTrack, false, true, aValueContentLo, aValueContentHi, static_cast<double>(valueMin()),
             static_cast<double>(valueMax())
         );
         bars.vThumb = vertical.thumb;
-        bars.vScrollable = vertical.travel;
         bars.vContentPerPixel = vertical.contentPerPixel;
         return bars;
     }

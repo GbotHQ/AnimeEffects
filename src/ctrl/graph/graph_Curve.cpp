@@ -282,8 +282,13 @@ float Curve::sampleOver(const core::TimeKey& aFrom, const core::TimeKey& aTo, fl
         // A Custom curve may DERIVE either side from the keys around the
         // segment. This is the same derivation playback runs (core::
         // autoEasingContext + HandleMode), so the drawn curve is the played one.
-        // A pair with both sides stored skips the neighbour walk entirely: the
-        // stored controls are the answer then, and they are the common case.
+        // The per-side decision is Curve::derivesHandle's (a Custom FROM param
+        // plus a derived mode on that side), and controlPoint applies exactly
+        // that predicate to each side - the model's ghost publication asks
+        // derivesHandle, so a published kind and the drawn/evaluated pair cannot
+        // disagree. A pair with both sides stored skips the neighbour walk
+        // entirely: the stored controls are the answer then, and they are the
+        // common case.
         const util::Easing::HandleMode inMode =
             toEasing ? toEasing->handleIn : util::Easing::HandleMode_Aligned;
         if (util::Easing::isDerived(easing->handleOut) || util::Easing::isDerived(inMode)) {
@@ -400,43 +405,32 @@ bool Curve::effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const {
         return false;
     }
 
+    // THE PER-SIDE DECISION COMES FROM derivesHandle, the same query the
+    // publication marks a dot with. A stored side is its document value; only a
+    // derived side consults controlPoint (which is also what playback's
+    // Easing::calculate does for that side), so the pair cannot claim a
+    // derivation the curve does not perform.
+    const bool outDerived = derivesHandle(aSegment, 0);
+    const bool inDerived = derivesHandle(aSegment, 1);
+
     // Only a derived side needs the neighbours; a stored pair is returned as-is
-    // by controlPoint() and costs no walk. Building the context only when it is
-    // read keeps the common (fully authored) path as cheap as it was.
+    // and costs no walk.
     util::Easing::AutoContext ctx;
-    if (util::Easing::isDerived(aSegment.easing.handleOut) || util::Easing::isDerived(aSegment.inMode)) {
+    if (outDerived || inDerived) {
         const core::TimeKey* prev = nullptr;
         const core::TimeKey* next = nullptr;
         neighborsOf(*aSegment.from, *aSegment.to, prev, next);
         ctx = core::autoEasingContext(
             *aSegment.from, *aSegment.to, mChannel.component(), prev, next);
+        ctx.inMode = aSegment.inMode;
     }
-    ctx.inMode = aSegment.inMode;
     const float span = static_cast<float>(aSegment.to->frame() - aSegment.from->frame());
-    aOut[0] = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 0);
-    aOut[1] = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 1);
-    return true;
-}
-
-bool Curve::derivedArrivingHandle(const Segment& aSegment, QPointF& aOut) const {
-    if (!mTimeLine || !aSegment.from || !aSegment.to)
-        return false;
-    if (!util::Easing::isDerived(aSegment.inMode))
-        return false;
-
-    const core::TimeKey* prev = nullptr;
-    const core::TimeKey* next = nullptr;
-    neighborsOf(*aSegment.from, *aSegment.to, prev, next);
-    util::Easing::AutoContext ctx = core::autoEasingContext(
-        *aSegment.from, *aSegment.to, mChannel.component(), prev, next);
-    // autoEasingContext already fills the TO key's incoming mode; assigning it
-    // again keeps the derivation tied to the segment the caller is drawing even
-    // if that context could not be built (a channel with no value change).
-    ctx.inMode = aSegment.inMode;
-    const float span = static_cast<float>(aSegment.to->frame() - aSegment.from->frame());
-    if (span <= 0.0f)
-        return false;
-    aOut = util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 1);
+    aOut[0] = outDerived
+        ? util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 0)
+        : handle(aSegment, 0);
+    aOut[1] = inDerived
+        ? util::Easing::controlPoint(aSegment.easing, aSegment.inMode, ctx, span, 1)
+        : handle(aSegment, 1);
     return true;
 }
 

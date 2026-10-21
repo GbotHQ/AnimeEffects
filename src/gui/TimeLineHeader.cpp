@@ -57,12 +57,13 @@ const int kQuickEaseGap = 2;
 // The Auto preview context the quick-easing Auto button draws with is the SAME
 // one the picker's Auto tile uses - gui::prop::autoPreviewContext() (defined in
 // EasingPickWidget.cpp) - so the two images cannot be two different curves. A
-// quick easing is a TYPE shortcut, so its button is a catalog image of the
-// easing, not a preview of the selected keys (whose neighbours differ per
-// selection): with the real, empty context Auto's derived handles collapse to the
-// identity and the button would read as Linear. The canonical pair makes the REAL
-// derivation shape the canonical ease-in-out, and with aAutoHandles it also shows
-// the control points.
+// quick easing is a catalog image of the easing (for the Auto preset, of the
+// automatic pair it applies to the segments around each selected key), not a
+// preview of the selected keys (whose neighbours differ per selection): with the
+// real, empty context Auto's derived handles collapse to the identity and the
+// button would read as Linear. The canonical pair makes the REAL derivation shape
+// the canonical ease-in-out, and with aAutoHandles it also shows the control
+// points.
 #ifdef AE_ENABLE_IMGUI
 // The tab strip: the mock's own numbers for a tab (.tl-tabs button - 11px text,
 // 3px/8px of padding, a 4px radius) and the bar it sits in (a 2px gap between the
@@ -330,11 +331,12 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
     this->addHairline(*lay);
 
     // THE FOUR QUICK EASINGS, TO THE LEFT OF THE CHIP: the picker's four common
-    // tiles as one click each, on the same selection the chip names. They are the
-    // TYPE shortcut - the range and the blend stay the key's own, exactly as the
-    // picker's tiles leave them - and they read back which of the four the
-    // selection agrees on. Added to the row BEFORE the chip's slot, so the local
-    // order is transport | quick easings | chip (the bar reads the type shortcut
+    // tiles as one click each, on the same selection the chip names. They are a
+    // SHORTCUT (three set the type; the Auto preset makes the segments around each
+    // selected key automatic), and the range and the blend stay the key's own,
+    // exactly as the picker's tiles leave them - and they read back which of the
+    // four the selection agrees on. Added to the row BEFORE the chip's slot, so the
+    // local order is transport | quick easings | chip (the bar reads the shortcut
     // first and then the control that names the selection).
     //
     // The four entries, in the picker catalog's own display head (its first tile
@@ -380,9 +382,20 @@ TimeLineHeader::TimeLineHeader(GUIResources& aResources, PlayBackWidget* aTransp
         const QString name = util::Easing::getParamName(quickParam);
         // A glyph-only control has no text for assistive technology to read, so
         // the easing's name IS its accessible text; the tooltip keeps naming the
-        // action for the pointer.
-        button->setAccessibleName(name);
-        button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
+        // action for the pointer. THE AUTO PRESET'S ACTION IS SEGMENTS, not a
+        // pair on one key: it makes both segments around every selected key
+        // automatic (the previous key's outgoing side, the key's two sides, the
+        // next key's incoming side - see
+        // ctrl::TimeLineEditor::assignSelectionAutoHandles), so both its
+        // accessible text and its tooltip say that.
+        if (quick.autoPreset) {
+            const QString action = tr("Make both segments around the selected keys automatic");
+            button->setAccessibleName(tr("%1 (%2)").arg(action, name));
+            button->setToolTip(tr("%1 - %2 handles").arg(action, name));
+        } else {
+            button->setAccessibleName(name);
+            button->setToolTip(tr("Set the selected keys' easing to %1").arg(name));
+        }
         button->setEnabled(false); // until a selection names a key that carries an easing
         quickLay->addWidget(button);
         mQuickEases.push_back({button, quick.type, quick.autoPreset});

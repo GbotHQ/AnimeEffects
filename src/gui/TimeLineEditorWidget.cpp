@@ -881,11 +881,11 @@ void TimeLineEditorWidget::onPasteKeyTriggered(bool) {
 
 // The header's quick-easing buttons, in the timeline's own currency: aNext maps
 // EVERY selected component's live param to the value to write (a TYPE writes its
-// type; the Auto preset writes the two handle modes). Pose and FFD answer their
-// one shared param at component 0, so they take the preset like any other key -
-// their easing shapes the interval playback plays. Image is offered too: it
-// stores a param (the chip reads it), and an edit to a step-held channel simply
-// does not change a played sample.
+// type; the Auto preset writes the segments around each key - see below). Pose
+// and FFD answer their one shared param at component 0, so they take the preset
+// like any other key - their easing shapes the interval playback plays. Image is
+// offered too: it stores a param (the chip reads it), and an edit to a step-held
+// channel simply does not change a played sample.
 bool TimeLineEditorWidget::applyEasingToSelection(const util::Easing::Type aType) {
     if (!mEditor)
         return false;
@@ -900,21 +900,15 @@ bool TimeLineEditorWidget::applyEasingToSelection(const util::Easing::Type aType
 }
 
 bool TimeLineEditorWidget::applyAutoHandlesToSelection() {
-    // The Auto PRESET (the same pair the picker's Auto tile writes): Custom with
-    // BOTH sides on kAutoPresetHandleMode (AutoClamped), never the retired Auto
-    // type. The preset is the clamped behaviour; unclamped Auto is a deliberate
-    // per-side pick in the picker's mode combo.
+    // The Auto PRESET makes the SEGMENTS around each selected key automatic (see
+    // ctrl::TimeLineEditor::assignSelectionAutoHandles): the key's two sides plus
+    // the neighbour side that completes each adjacent segment, in ONE undo step.
+    // The preset is the CLAMPED pair (kAutoPresetHandleMode), never the retired
+    // Auto type; unclamped Auto is a deliberate per-side pick in the picker's mode
+    // combo.
     if (!mEditor)
         return false;
-    return mEditor->assignSelectionEasing([](const util::Easing::Param& aCurrent) {
-        // Range, weight and the stored bezier ride along untouched; only the type
-        // and the two modes are the preset's.
-        util::Easing::Param value = aCurrent;
-        value.type = util::Easing::Type_Custom;
-        value.handleIn = util::Easing::kAutoPresetHandleMode;
-        value.handleOut = util::Easing::kAutoPresetHandleMode;
-        return value;
-    });
+    return mEditor->assignSelectionAutoHandles();
 }
 
 bool targetsAreSeparated(QList<core::TimeLineEvent::Target> &targets){
@@ -1313,10 +1307,23 @@ void TimeLineEditorWidget::setEasingItemHost(prop::EasingItem* aHost) {
     }
 
     // The one commit path: the control hands every edit the picker commits here,
-    // and this widget writes the keys the open named.
+    // and this widget writes the keys the open named. The AUTO PRESET is not a
+    // per-key type edit: it makes the segments around each selected key automatic
+    // (the key's two sides plus the neighbour side that completes each adjacent
+    // segment), so it takes the segment route. The predicate is the same one the
+    // picker's tile uses to show itself checked, so a manually-built mode pair
+    // that equals the preset behaves like the preset.
     mEasingHost->onEasingApplied = [this](util::Easing::Param aEasing) {
-        if (mEditor)
-            mEditor->assignSelectionEasing([aEasing](const util::Easing::Param&) { return aEasing; });
+        if (!mEditor)
+            return;
+        const bool autoPreset = aEasing.type == util::Easing::Type_Custom
+            && aEasing.handleIn == util::Easing::kAutoPresetHandleMode
+            && aEasing.handleOut == util::Easing::kAutoPresetHandleMode;
+        if (autoPreset) {
+            mEditor->assignSelectionAutoHandles();
+            return;
+        }
+        mEditor->assignSelectionEasing([aEasing](const util::Easing::Param&) { return aEasing; });
     };
     // The popover is gone, so a right-click's temporary selection ends with it:
     // those keys were lent for the open, and the open is over. Clearing the

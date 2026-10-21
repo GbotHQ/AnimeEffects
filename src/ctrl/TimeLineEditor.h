@@ -308,6 +308,60 @@ public:
     // history entry behind. TRUE when something was written.
     bool assignSelectionEasing(
         const std::function<util::Easing::Param(const util::Easing::Param&)>& aNext);
+
+    // THE AUTO PRESET APPLIES TO SEGMENTS, NOT KEYS.
+    //
+    // A tangent PAIR belongs to a segment, and a segment's curve is the FROM
+    // key's param: a key's OUTGOING side is the start tangent of the segment
+    // leaving it, its INCOMING side the end tangent of the segment arriving at
+    // it. Writing only the selected key's two modes therefore left the segment
+    // ARRIVING at it half-automatic (its FROM key was still an analytic or
+    // stored curve, so the incoming mode was never consulted), and the drawing
+    // published an "automatic" side that no drawn curve derived - the two halves
+    // of one defect. Applying Auto to a key makes BOTH adjacent segments fully
+    // automatic:
+    //   * the PREVIOUS key's outgoing side - the start tangent of prev -> K - and
+    //     its TYPE, because that segment's curve IS the previous key's param;
+    //   * K's BOTH sides;
+    //   * the NEXT key's incoming side - the end tangent of K -> next. That
+    //     key's type is left alone: it shapes the segment AFTER next, which this
+    //     action does not own.
+    // So a single-key Auto writes up to three params, in ONE macro and therefore
+    // ONE undo step. appendAutoPresetWrites merges a param named twice (two
+    // selected neighbours), so the multi-key case writes every param once.
+    bool assignSelectionAutoHandles();
+
+    // ONE param write produced by a selection-level easing action: the key's own
+    // param, the value to assign, and the key whose timeline must re-read (the
+    // notification is one per KEY, not per component).
+    struct EasingWrite {
+        util::Easing::Param* param = nullptr;
+        util::Easing::Param next;
+        core::ObjectNode* node = nullptr;
+        core::TimeKeyType type = core::TimeKeyType_TERM;
+        core::Frame frame{0};
+    };
+    // Appends the Auto preset's writes for ONE key and ONE easing component: the
+    // up-to-three params described on assignSelectionAutoHandles. An entry that
+    // is already present is MERGED, never appended twice, so a param two selected
+    // keys both name is written once with the union of the forced sides. Only the
+    // type and the two handle modes are the preset's; the stored cubic, range and
+    // weight ride along untouched.
+    static void appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectNode& aNode,
+                                       core::TimeKeyType aType, int aComponent,
+                                       core::Frame aFrame, QVector<EasingWrite>& aOut);
+
+    // THE ONE PUSH for a selection-level easing batch: filters out every param
+    // that would not change (a command whose exec and undo are the same value is
+    // a history entry for a change that did not happen), then pushes ONE macro
+    // carrying one cmnd::Assign per param and ONE TimeLineUtil::Notifier naming
+    // every key written. FALSE - and nothing pushed - when the batch is empty:
+    // cmnd::Stack counts an empty macro as an edit. Both this editor and the
+    // graph panel's selection action go through it, so their undo/notification
+    // shape cannot drift.
+    static bool pushEasingWrites(core::Project& aProject, const QVector<EasingWrite>& aWrites,
+                                 const QString& aName);
+
     // The "creation selects its output" rule. Call this after new keys are
     // created (a push/copy notification): the current selection is cleared and
     // replaced with exactly the created keys carried by aEvent. Gesture and

@@ -186,8 +186,20 @@ add_executable(pose_pull_crash pose_pull_crash.cpp
     # and graph_render_pixels compile it). Without this the target links the graph
     # editor's object and fails on theme::Graph::from / keyColor.
     ../src/gui/theme/Graph.cpp
+    # ctrl::TimeLineEditor is one TU that also references gui and theme symbols from code
+    # this tool never calls (the clipboard paste path, the FFD mesh lookup, the timeline
+    # renderer's theme). theme::TimeLine is a leaf and is linked; the rest is dropped by
+    # --gc-sections, which is why the function sections are on for this target only.
+    ../src/gui/theme/TimeLine.cpp
     ${CMAKE_SOURCE_DIR}/assets/assets.qrc)
 target_include_directories(pose_pull_crash PRIVATE ..)
+target_compile_options(pose_pull_crash PRIVATE -ffunction-sections -fdata-sections)
+target_link_options(pose_pull_crash PRIVATE -Wl,--gc-sections)
+# NOT part of the default build: this is the reproduction tool AGENTS.md describes, not a
+# gate, and its link depends on how much of the single ctrl::TimeLineEditor TU the linker
+# keeps - which pulls gui and theme symbols this tool never calls. Build it explicitly
+# (`ninja -C build pose_pull_crash:Debug`) when reproducing the pose-tool crash.
+set_target_properties(pose_pull_crash PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_compile_definitions(pose_pull_crash PRIVATE
     AE_MAJOR_VERSION=1
     AE_MINOR_VERSION=7
@@ -1042,7 +1054,8 @@ if(AE_ENABLE_IMGUI)
         ../src/gui/ImGuiInputBridge.cpp
         ../src/gui/ImGuiA11y.cpp
         ../src/gui/ImGuiQtFontLoader.cpp
-        ../src/gui/theme/Graph.cpp)
+        ../src/gui/theme/Graph.cpp
+        ../src/gui/theme/TimeLine.cpp)
     target_include_directories(graph_panel_pixels PRIVATE .. ../src)
     target_compile_definitions(graph_panel_pixels PRIVATE
         AE_MAJOR_VERSION=1
@@ -1108,7 +1121,10 @@ target_link_libraries(timeline_visuals PRIVATE
 # graph_drag does. See graph_panel_model.cpp.
 add_executable(graph_panel_model graph_panel_model.cpp
     ../src/gui/GraphPanelModel.cpp
-    ../src/gui/theme/Graph.cpp)
+    ../src/gui/theme/Graph.cpp
+    # The model now reaches the timeline renderer's theme through the shared easing
+    # rewrite path; theme::TimeLine is a leaf, so it is linked rather than stubbed.
+    ../src/gui/theme/TimeLine.cpp)
 target_include_directories(graph_panel_model PRIVATE ..)
 target_compile_definitions(graph_panel_model PRIVATE
     AE_MAJOR_VERSION=1

@@ -60,10 +60,15 @@
 //     segment's STORED side (ghost == false) matching the editor's own grab
 //     mapping, ctrl::graph::handlePoint, and a DERIVED side (ghost == true) whose
 //     x IS the third/two thirds of the segment's span and whose dot is the same
-//     mapping (ctrl::graph::handlePointAt). A key owns both of its tangents, so a
-//     TO key whose handleIn derives publishes its arriving side even when the
-//     segment's FROM param is still an analytic easing (one handle, not a pair);
-//     a segment with no handle of either kind publishes none
+//     mapping (ctrl::graph::handlePointAt). A segment's curve is its FROM key's
+//     param, so an analytic segment publishes nothing at all (a derived incoming
+//     mode on the TO key is inert there). The Auto preset applies to SEGMENTS:
+//     applying it to a key writes the previous key's outgoing side and type, the
+//     key's two sides and the next key's incoming side, so BOTH adjacent
+//     segments publish two ghosts - all in one undo step. The flags are gated
+//     against EVALUATION, not trusted: for every side of a Custom segment the
+//     stored control point is perturbed and the segment is re-evaluated, and a
+//     derived side must ignore it while a stored side moves.
 //  11 the ruler band as a section ABOVE the plot (its own reserved rows, the
 //     numbers inside it, the playhead crossing from its pill column into the
 //     plot), the occluded top that can only hide it, and the live marquee
@@ -114,6 +119,7 @@
 #include "XCAssert.h"
 #include "cmnd/Stack.h"
 #include "core/Animator.h"
+#include "core/AutoEasing.h"
 #include "core/Frame.h"
 #include "core/MoveKey.h"
 #include "core/ObjectNode.h"
@@ -124,6 +130,7 @@
 #include "core/TimeFormat.h"
 #include "core/TimeLine.h"
 #include "ctrl/GraphEditor.h"
+#include "ctrl/TimeLineEditor.h"
 #include "ctrl/UILogger.h"
 #include "ctrl/graph/graph_Channel.h"
 #include "ctrl/graph/graph_Curve.h"
@@ -3123,7 +3130,9 @@ int main(int argc, char** argv) {
         if (!expectedHTravel)
             CHECK(barsModel.hThumb == barsModel.hTrack);
         // BOTH lanes publish the handle in every state: at zero travel the run IS the
-        // track (the panel draws a full-length pill and the lane ignores presses).
+        // track (the panel draws a full-length pill), and that full run is still a
+        // grabbable bar - the timeline's full-width handle is (see THE RUN RULE in
+        // GraphEditor.h; the model only publishes the geometry).
         CHECK(barsModel.vThumb == expectedV);
         if (!expectedVTravel)
             CHECK(barsModel.vThumb == barsModel.vTrack);
@@ -3197,10 +3206,10 @@ int main(int argc, char** argv) {
         // AlwaysOn horizontal bar shows (measured at zero travel: 638 of its 638px
         // lane); the vertical lane is the panel's own and must do the same - a vertical
         // bar that VANISHED with the content in range left the user with one lane that
-        // disappears. Neither lane can be scrolled at zero travel, which is what
-        // hTravel()/vTravel() say (and the press/wheel rule reads). The TRACK is laid
-        // out either way, which is what keeps the plot's rect - and every frame
-        // coordinate - independent of content.
+        // disappears. Neither lane loses its RUN at zero travel: the model publishes
+        // the full pill and the editor still claims a press on it (hHasRun - THE RUN
+        // RULE in GraphEditor.h). The TRACK is laid out either way, which is what keeps
+        // the plot's rect - and every frame coordinate - independent of content.
         editor.scale().fitFrameAxis(core::Frame(-500), core::Frame(500));
         editor.scale().setValueWindow(-1000.0f, 1000.0f);
         const gui::GraphPanelModel full = gui::buildGraphPanelModel(editor, viewport, palette);
@@ -3387,36 +3396,69 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
-    // THE AUTO PRESET AND A KEY'S TWO TANGENTS.
+    // THE AUTO PRESET APPLIES TO SEGMENTS.
     //
-    // (a) The preset the graph action writes is the CLAMPED pair - Custom with
-    // both sides kAutoPresetHandleMode - never unclamped Auto.
-    // (b) A key owns BOTH of its tangents. In a three-key channel with ordinary
-    // Linear outer keys, setting Auto on the MIDDLE key must publish a ghost for
-    // its OUTGOING side (the middle->last segment, whose FROM is the middle key's
-    // Custom param) AND for its INCOMING side (the first->middle segment, whose
-    // FROM is still Linear but whose TO key's handleIn is Auto). The incoming
-    // ghost used to be dropped by the segment-type gate, which is why the panel
-    // drew only one automatic tangent.
+    // A tangent PAIR belongs to a segment, so a key's OUTGOING side is the start
+    // tangent of the segment leaving it and its INCOMING side the end tangent of
+    // the segment arriving at it. Applying Auto to the MIDDLE key of a three-key
+    // channel therefore writes THREE params in ONE undo step:
+    //   * the first key's outgoing side AND TYPE (its param IS the arriving
+    //     segment's curve; without the type change the mode would be inert),
+    //   * the middle key's both sides,
+    //   * the last key's incoming side (its type is left alone: it shapes the
+    //     segment after it, which the action does not own).
+    // Both adjacent segments are then fully automatic - which is what the model
+    // publishes (two ghosts on each) and what playback evaluates. The previous
+    // defect is the two halves stated by the user: only the selected key was
+    // written, so the arriving segment stayed half-automatic, while the drawing
+    // marked a side as automatic that no curve derived.
     {
         editor.setTargets({ &nodeC });
+        editor.clearFocus(); // no-focus ink: every row publishes its pairs
         editor.fitAll();
+
+        const util::Easing::Param firstBefore = moveC0->data().easing(0);
+        const util::Easing::Param middleBefore = moveC1->data().easing(0);
+        const util::Easing::Param lastBefore = moveC2->data().easing(0);
+
         const bool selected =
             editor.selectMarker(nodeC, ctrl::graph::Channel(core::TimeKeyType_Move, 0), core::Frame(10));
         const bool acted = selected && editor.setSelectedKeysAutoHandles();
+
+        const util::Easing::Param first = moveC0->data().easing(0);
         const util::Easing::Param middle = moveC1->data().easing(0);
+        const util::Easing::Param last = moveC2->data().easing(0);
         const bool preset = middle.type == util::Easing::Type_Custom
             && middle.handleIn == util::Easing::kAutoPresetHandleMode
             && middle.handleOut == util::Easing::kAutoPresetHandleMode
             && middle.handleIn != util::Easing::HandleMode_Auto
             && middle.handleOut != util::Easing::HandleMode_Auto;
+        // The ARRIVING segment's start tangent: the first key becomes a Custom
+        // curve whose outgoing side is automatic. Its incoming side and stored
+        // cubic are not the preset's.
+        const bool prevOutgoing = first.type == util::Easing::Type_Custom
+            && first.handleOut == util::Easing::kAutoPresetHandleMode
+            && first.handleIn == firstBefore.handleIn
+            && first.cubicBezier == firstBefore.cubicBezier
+            && first.range == firstBefore.range;
+        // The LEAVING segment's end tangent: the last key's incoming side only.
+        const bool nextIncoming = last.handleIn == util::Easing::kAutoPresetHandleMode
+            && last.type == lastBefore.type
+            && last.handleOut == lastBefore.handleOut
+            && last.cubicBezier == lastBefore.cubicBezier;
 
         const gui::GraphPanelModel autoModel = gui::buildGraphPanelModel(editor, viewport, palette);
         ctrl::graph::Scaler oracle = editor.scale();
         oracle.setRect(ctrl::GraphEditor::panelRect(viewport));
         ctrl::graph::Curve source(*nodeC.timeLine(), ctrl::graph::Channel(core::TimeKeyType_Move, 0));
-        const ctrl::graph::Curve::Segment first = source.segment(0);  // C0 -> C1
-        const ctrl::graph::Curve::Segment second = source.segment(1); // C1 -> C2
+        const ctrl::graph::Curve::Segment firstSeg = source.segment(0);  // C0 -> C1
+        const ctrl::graph::Curve::Segment secondSeg = source.segment(1); // C1 -> C2
+        // The semantics, stated directly: BOTH sides of BOTH adjacent segments
+        // derive (the arriving segment's start tangent is C0's outgoing side).
+        const bool automatic = ctrl::graph::Curve::derivesHandle(firstSeg, 0)
+            && ctrl::graph::Curve::derivesHandle(firstSeg, 1)
+            && ctrl::graph::Curve::derivesHandle(secondSeg, 0)
+            && ctrl::graph::Curve::derivesHandle(secondSeg, 1);
 
         const gui::PanelCurve* curve = nullptr;
         for (const gui::PanelCurve& candidate : autoModel.curves) {
@@ -3428,52 +3470,294 @@ int main(int argc, char** argv) {
         }
 
         QStringList kinds;
-        bool incomingGhost = false;
-        bool outgoingGhost = false;
-        bool noStoredIncomingOnLinear = true;
-        bool incomingDotOk = false;
-        bool outgoingDotOk = false;
-        const QPointF middleBase(
-            oracle.pixelXOfFrame(double(moveC1->frame())),
-            double(oracle.pixelY(source.valueOf(*moveC1)))
-        );
-        QPointF incomingDerived;
-        const bool incomingKnown = source.derivedArrivingHandle(first, incomingDerived);
-        QPointF outgoingPair[2];
-        const bool outgoingKnown = source.effectiveHandles(second, outgoingPair);
+        bool bothSegmentsGhosted = curve != nullptr && curve->handles.size() == 4;
+        bool dotsOk = curve != nullptr && curve->handles.size() == 4;
+        QPointF firstPair[2];
+        QPointF secondPair[2];
+        const bool pairs = source.effectiveHandles(firstSeg, firstPair)
+            && source.effectiveHandles(secondSeg, secondPair);
         if (curve) {
             for (const gui::PanelHandle& h : curve->handles) {
                 kinds << QStringLiteral("%1:%2:%3").arg(h.segment).arg(h.index)
                              .arg(h.ghost ? QStringLiteral("ghost") : QStringLiteral("stored"));
-                if (h.segment == 0 && h.index == 1) {
-                    incomingGhost = h.ghost && h.base == middleBase;
-                    incomingDotOk = incomingKnown
-                        && h.dot == ctrl::graph::handlePointAt(oracle, first, incomingDerived);
+                bothSegmentsGhosted = bothSegmentsGhosted && h.ghost;
+                if (h.segment == 0)
+                    dotsOk = dotsOk && h.dot == ctrl::graph::handlePointAt(oracle, firstSeg, firstPair[h.index]);
+                if (h.segment == 1)
+                    dotsOk = dotsOk && h.dot == ctrl::graph::handlePointAt(oracle, secondSeg, secondPair[h.index]);
+            }
+        }
+        const bool ok = acted && preset && prevOutgoing && nextIncoming && automatic && pairs
+            && bothSegmentsGhosted && dotsOk;
+        std::printf("[10d] Auto middle key: selected=%d acted=%d  own pair=AutoClamped:%d  "
+                    "prev outgoing=%d  next incoming=%d  both segments automatic=%d  handles=[%s]  "
+                    "both segments ghosted=%d  dots=%d -> %s\n",
+                    int(selected), int(acted), int(preset), int(prevOutgoing), int(nextIncoming),
+                    int(automatic), qUtf8Printable(kinds.join(QLatin1Char(','))),
+                    int(bothSegmentsGhosted), int(dotsOk), ok ? "OK" : "FAIL");
+        CHECK(ok);
+
+        // ONE UNDO, THREE PARAMS. The batch is one macro: a single undo must put
+        // every param back (an action that pushed one command per key would only
+        // revert the last write).
+        project.commandStack().undo();
+        const bool undone = moveC0->data().easing(0) == firstBefore
+            && moveC1->data().easing(0) == middleBefore
+            && moveC2->data().easing(0) == lastBefore;
+        std::printf("[10d] one undo restores all three params=%d\n", int(undone));
+        CHECK(undone);
+
+        // Leave the editor as the blocks around this one expect it (nodeC is a
+        // local fixture).
+        editor.clearSelection();
+        editor.setTargets({ &nodeA, &nodeB });
+    }
+
+    // -------------------------------------------------------------------------
+    // 10e. PUBLICATION AND EVALUATION AGREE, PER SIDE.
+    //
+    // `PanelHandle::ghost` is a claim about the DRAWN and PLAYED curve: this side's
+    // control point is DERIVED from the keys around the segment instead of being
+    // read from the document's stored cubic. Assert the claim behaviourally instead
+    // of trusting the flag: for every side of every Custom segment, evaluate the
+    // segment the way playback does (util::Easing::calculate over the segment's
+    // param and its core::autoEasingContext) and then change ONLY that side's
+    // STORED control point. A derived side never reads it, so the value is
+    // bit-identical; a stored side's value moves. The published flag must match
+    // that answer exactly, and every derived side must be published as a ghost.
+    //
+    // The fixture also holds the divergence the old publication had: the LAST
+    // segment's FROM key is still an analytic (Linear) curve while its TO key's
+    // incoming mode is AutoClamped. Evaluation of that segment is Linear and never
+    // calls controlPoint, so its TO side is not derived - and nothing may be
+    // published for it. (The old model published that arriving side as a ghost,
+    // which is why the panel drew an "automatic" handle on a curve that had none.)
+    {
+        core::TestNode nodeD;
+        nodeD.setName(QStringLiteral("D"));
+        const int dFrames[5] = { 0, 10, 20, 30, 40 };
+        const float dValues[5] = { 0.0f, 10.0f, 40.0f, 70.0f, 100.0f };
+        core::RotateKey* dKeys[5] = {};
+        for (int i = 0; i < 5; ++i) {
+            dKeys[i] = new core::RotateKey();
+            dKeys[i]->setRotate(dValues[i]);
+            setup.push(nodeD.timeLine()->createPusher(core::TimeKeyType_Rotate, dFrames[i], dKeys[i]));
+        }
+        // K0..K2 shape the segment leaving them; K2's incoming side is STORED
+        // (Aligned) so one published handle is of the other kind. K3 is analytic:
+        // its outgoing mode means nothing, and its arrival at K4 must not publish.
+        for (int i = 0; i < 3; ++i) {
+            dKeys[i]->data().easing(0).type = util::Easing::Type_Custom;
+            dKeys[i]->data().easing(0).handleOut = util::Easing::HandleMode_AutoClamped;
+        }
+        dKeys[0]->data().easing(0).handleIn = util::Easing::HandleMode_Aligned;
+        dKeys[1]->data().easing(0).handleIn = util::Easing::HandleMode_AutoClamped;
+        dKeys[2]->data().easing(0).handleIn = util::Easing::HandleMode_Aligned;
+        dKeys[3]->data().easing(0).type = util::Easing::Type_Linear;
+        dKeys[3]->data().easing(0).handleIn = util::Easing::HandleMode_AutoClamped;
+        dKeys[4]->data().easing(0).type = util::Easing::Type_Custom;
+        dKeys[4]->data().easing(0).handleIn = util::Easing::HandleMode_AutoClamped;
+
+        editor.setTargets({ &nodeD });
+        editor.clearSelection();
+        editor.clearFocus(); // no-focus ink: every row publishes its pairs
+        editor.fitAll();
+        const gui::GraphPanelModel gateModel = gui::buildGraphPanelModel(editor, viewport, palette);
+        ctrl::graph::Scaler gateScale = editor.scale();
+        gateScale.setRect(ctrl::GraphEditor::panelRect(viewport));
+
+        const ctrl::graph::Curve gateCurve(*nodeD.timeLine(),
+                                           ctrl::graph::Channel(core::TimeKeyType_Rotate, 0));
+        const core::TimeLine::MapType& dMap =
+            nodeD.timeLine()->map(core::TimeKeyType_Rotate);
+
+        int published = 0;
+        int badKind = 0;
+        int missing = 0;
+        int analyticPublished = 0;
+        int ghostDotOffMapping = 0;
+        int derivedSides = 0;
+        int storedSides = 0;
+
+        for (const gui::PanelCurve& modelCurve : gateModel.curves) {
+            if (modelCurve.node != &nodeD
+                || modelCurve.channel != ctrl::graph::Channel(core::TimeKeyType_Rotate, 0))
+                continue;
+
+            for (int s = 0; s < gateCurve.segmentCount(); ++s) {
+                const ctrl::graph::Curve::Segment seg = gateCurve.segment(s);
+                if (!seg.from || !seg.to)
+                    continue;
+
+                // Every published handle must belong to a Custom FROM param: an
+                // analytic segment's curve has no control point to draw or grab.
+                int onSegment = 0;
+                for (const gui::PanelHandle& handle : modelCurve.handles) {
+                    if (handle.segment == s)
+                        ++onSegment;
                 }
-                if (h.segment == 0 && h.index == 0)
-                    noStoredIncomingOnLinear = false; // the Linear FROM has no outgoing pair
-                if (h.segment == 1 && h.index == 0) {
-                    outgoingGhost = h.ghost && h.base == middleBase;
-                    outgoingDotOk = outgoingKnown
-                        && h.dot == ctrl::graph::handlePointAt(oracle, second, outgoingPair[0]);
+                published += onSegment;
+                if (seg.easing.type != util::Easing::Type_Custom) {
+                    analyticPublished += onSegment;
+                    continue; // nothing on an analytic segment can be a handle
+                }
+
+                for (const gui::PanelHandle& handle : modelCurve.handles) {
+                    if (handle.segment != s || !handle.ghost)
+                        continue;
+                    // The dot is the side's EFFECTIVE control point through the
+                    // editor's own mapping.
+                    QPointF pair[2];
+                    if (gateCurve.effectiveHandles(seg, pair)
+                        && handle.dot != ctrl::graph::handlePointAt(gateScale, seg, pair[handle.index]))
+                        ++ghostDotOffMapping;
+                }
+                if (onSegment != 2)
+                    ++missing; // every Custom segment has two sides
+
+                // The evaluation oracle, exactly as playback builds it.
+                const core::TimeKey* prev = nullptr;
+                const core::TimeKey* next = nullptr;
+                auto self = dMap.constFind(seg.from->frame());
+                if (self != dMap.constEnd()) {
+                    if (self != dMap.constBegin()) {
+                        auto before = self;
+                        --before;
+                        prev = before.value();
+                    }
+                    auto after = self;
+                    ++after;
+                    if (after != dMap.constEnd())
+                        next = after.value();
+                }
+                util::Easing::AutoContext ctx =
+                    core::autoEasingContext(*seg.from, *seg.to, 0, prev, next); // Rotate: one component
+                ctx.inMode = seg.inMode;
+                const float d = static_cast<float>(seg.to->frame() - seg.from->frame());
+                const float t = 0.5f * d;
+
+                for (int h = 0; h < 2; ++h) {
+                    const float base = util::Easing::calculate(seg.easing, ctx, t, 0.0f, 1.0f, d);
+                    util::Easing::Param perturbed = seg.easing;
+                    ctrl::graph::Curve::setHandle(perturbed, h, QPointF(0.05f, 0.93f));
+                    const float changed = util::Easing::calculate(perturbed, ctx, t, 0.0f, 1.0f, d);
+                    const bool derivedByEvaluation = (changed == base);
+                    if (derivedByEvaluation)
+                        ++derivedSides;
+                    else
+                        ++storedSides;
+
+                    const gui::PanelHandle* found = nullptr;
+                    for (const gui::PanelHandle& handle : modelCurve.handles) {
+                        if (handle.segment == s && handle.index == h)
+                            found = &handle;
+                    }
+                    if (!found) {
+                        ++missing;
+                        continue;
+                    }
+                    if (found->ghost != derivedByEvaluation)
+                        ++badKind;
                 }
             }
         }
-        const bool bothPublished = curve && incomingGhost && outgoingGhost;
-        const bool ok = acted && preset && bothPublished && noStoredIncomingOnLinear
-            && incomingDotOk && outgoingDotOk;
-        std::printf("[10d] Auto middle key: selected=%d acted=%d preset=AutoClamped:%d  handles=[%s]  "
-                    "incoming ghost=%d outgoing ghost=%d dots=%d/%d -> %s\n",
-                    int(selected), int(acted), int(preset), qUtf8Printable(kinds.join(QLatin1Char(','))),
-                    int(incomingGhost), int(outgoingGhost), int(incomingDotOk), int(outgoingDotOk),
-                    ok ? "OK" : "FAIL");
-        CHECK(ok);
+        std::printf("[10e] publication vs evaluation: published=%d derived sides=%d stored sides=%d  "
+                    "kind mismatches=%d  missing sides=%d  analytic published=%d  ghost dots off mapping=%d\n",
+                    published, derivedSides, storedSides, badKind, missing, analyticPublished,
+                    ghostDotOffMapping);
+        // 6 = three Custom segments (0,1,2) x two sides; the analytic K3 -> K4
+        // segment publishes nothing at all.
+        CHECK(published == 6);
+        CHECK(derivedSides == 5); // K2's incoming side is the one stored side
+        CHECK(storedSides == 1);
+        CHECK(badKind == 0);
+        CHECK(missing == 0);
+        CHECK(analyticPublished == 0);
+        CHECK(ghostDotOffMapping == 0);
 
-        // Leave the editor as the blocks around this one expect it, and drop the
-        // action's entry from the project history (nodeC is a local fixture).
         editor.clearSelection();
-        project.commandStack().undo();
         editor.setTargets({ &nodeA, &nodeB });
+    }
+
+    // -------------------------------------------------------------------------
+    // 10f. THE TIMELINE'S OWN SELECTION ROUTE WRITES THE SAME SEGMENT RULE.
+    //
+    // The quick easings and the picker's Auto tile commit through
+    // ctrl::TimeLineEditor::assignSelectionAutoHandles, not through the graph
+    // panel's action, so the rule must live in the shared appendAutoPresetWrites.
+    // One key selected on a three-key channel: three params, one undo.
+    {
+        core::TestNode nodeE;
+        nodeE.setName(QStringLiteral("E"));
+        const int eFrames[3] = { 0, 10, 20 };
+        const float eValues[3] = { 0.0f, 10.0f, 40.0f };
+        core::RotateKey* eKeys[3] = {};
+        for (int i = 0; i < 3; ++i) {
+            eKeys[i] = new core::RotateKey();
+            eKeys[i]->setRotate(eValues[i]);
+            setup.push(nodeE.timeLine()->createPusher(core::TimeKeyType_Rotate, eFrames[i], eKeys[i]));
+        }
+
+        ctrl::TimeLineEditor timeline;
+        timeline.setProject(&project);
+
+        const util::Easing::Param eFirstBefore = eKeys[0]->data().easing(0);
+        const util::Easing::Param eMiddleBefore = eKeys[1]->data().easing(0);
+        const util::Easing::Param eLastBefore = eKeys[2]->data().easing(0);
+
+        core::TimeLineEvent created;
+        created.setType(core::TimeLineEvent::Type_PushKey);
+        created.pushTarget(nodeE, core::TimeKeyType_Rotate, 10);
+        timeline.selectCreatedKeys(created);
+        const bool acted = timeline.assignSelectionAutoHandles();
+
+        const bool wrote = acted
+            && eKeys[0]->data().easing(0).type == util::Easing::Type_Custom
+            && eKeys[0]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[1]->data().easing(0).type == util::Easing::Type_Custom
+            && eKeys[1]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[1]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[2]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[2]->data().easing(0).type == eLastBefore.type;
+
+        project.commandStack().undo();
+        const bool undone = eKeys[0]->data().easing(0) == eFirstBefore
+            && eKeys[1]->data().easing(0) == eMiddleBefore
+            && eKeys[2]->data().easing(0) == eLastBefore;
+
+        std::printf("[10f] timeline Auto on one key: acted=%d  three params written=%d  one undo restores all=%d\n",
+                    int(acted), int(wrote), int(undone));
+        CHECK(acted);
+        CHECK(wrote);
+        CHECK(undone);
+
+        // TWO ADJACENT SELECTED KEYS: the shared key is named by both its own
+        // entry and the neighbour rule, and the merged write must keep BOTH sides
+        // automatic (a second, unmerged write would replace the param with one
+        // that only forces its outgoing side, silently dropping the incoming
+        // mode). One undo still restores everything.
+        core::TimeLineEvent adjacent;
+        adjacent.setType(core::TimeLineEvent::Type_PushKey);
+        adjacent.pushTarget(nodeE, core::TimeKeyType_Rotate, 0);
+        adjacent.pushTarget(nodeE, core::TimeKeyType_Rotate, 10);
+        timeline.selectCreatedKeys(adjacent);
+        const bool actedBoth = timeline.assignSelectionAutoHandles();
+        const bool sharedKept = actedBoth
+            && eKeys[0]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[0]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[1]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode
+            && eKeys[1]->data().easing(0).handleOut == util::Easing::kAutoPresetHandleMode
+            && eKeys[2]->data().easing(0).handleIn == util::Easing::kAutoPresetHandleMode;
+        project.commandStack().undo();
+        const bool bothUndone = eKeys[0]->data().easing(0) == eFirstBefore
+            && eKeys[1]->data().easing(0) == eMiddleBefore
+            && eKeys[2]->data().easing(0) == eLastBefore;
+        std::printf("[10f] timeline Auto on two adjacent keys: acted=%d  shared key keeps both sides=%d  "
+                    "one undo restores all=%d\n",
+                    int(actedBoth), int(sharedKept), int(bothUndone));
+        CHECK(actedBoth);
+        CHECK(sharedKept);
+        CHECK(bothUndone);
     }
 
     // -------------------------------------------------------------------------

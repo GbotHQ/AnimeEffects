@@ -772,13 +772,17 @@ namespace ctrl {
         // question "is this press on a bar" is the only one wanted here.
         if (aCursor.emitsLeftPressedEvent()) {
             const graph::Scaler::ScrollBars bars = scrollBarsFor(scale, entries);
-            // Only a bar WITH TRAVEL is the panel's. A lane whose slider fills its
-            // groove has nowhere to go - the panel still DRAWS that slider (the
-            // timeline's own horizontal bar does), but a press on it must do nothing
-            // rather than start a pan that cannot move; the lane itself is outside the
-            // plot, so the press falls through to nobody, which is exactly "nothing".
-            const bool onHorizontal = bars.hTravel() && bars.hTrack.contains(point);
-            const bool onVertical = bars.vTravel() && bars.vTrack.contains(point);
+            // A lane with a RUN is the panel's, whether or not the window covers its
+            // content: a full-length run is still grabbable, exactly as the
+            // timeline's full-width handle is (TimeLineWidget::eventFilter reaches
+            // beginScrollbarDrag from handleRect, and its `range / span` ratio stays
+            // positive at range == pageStep). Gating on "the window is narrower than
+            // the track" left the full lane inert here while the timeline's moved -
+            // the reported "the scroll bar does not work when it is full width".
+            // hHasRun is the layout's own answer (an empty handle is the only dead
+            // lane), so a degenerate track still claims nothing.
+            const bool onHorizontal = bars.hHasRun() && bars.hTrack.contains(point);
+            const bool onVertical = bars.vHasRun() && bars.vTrack.contains(point);
             if (onHorizontal || onVertical)
                 return true;
         }
@@ -1243,14 +1247,15 @@ namespace ctrl {
         // wheel (QApplication::wheelScrollLines() single steps per notch, accumulated
         // across events in mScrollBarWheelRemainder) - and NEVER zooms. Which lane is
         // under the pointer is asked of the same geometry the press routing and the
-        // model's drawing read (scrollBarsFor), and only a bar WITH TRAVEL counts: a
-        // full-length slider has nowhere to scroll, so a notch over its lane falls
-        // through to the zoom exactly as it did before the bar existed.
+        // model's drawing read (scrollBarsFor). A lane with a run counts whether or
+        // not the window covers its content: the timeline's full-width bar scrolls
+        // on a notch too (its eventFilter's Wheel branch never asks how much travel
+        // the slider reports), so a full run must not fall through to the zoom.
         {
             const QVector<Entry> entries = buildEntries();
             const graph::Scaler::ScrollBars bars = scrollBarsFor(mScale, entries);
-            const bool onHorizontal = bars.hTravel() && bars.hTrack.contains(aPos);
-            const bool onVertical = bars.vTravel() && bars.vTrack.contains(aPos);
+            const bool onHorizontal = bars.hHasRun() && bars.hTrack.contains(aPos);
+            const bool onVertical = bars.vHasRun() && bars.vTrack.contains(aPos);
             if (onHorizontal || onVertical) {
                 // The bar's own direction, in notches: wheel UP (a positive Qt delta)
                 // scrolls toward the lane's START - earlier frames on the horizontal
@@ -1692,13 +1697,17 @@ namespace ctrl {
         if (aBars.isEmpty())
             return false;
 
-        // A bar is GRABBABLE only while it has travel: a full-length slider (the
-        // window covering its content) is drawn - the timeline's horizontal bar shows
-        // one - but it has nowhere to go, so a press on it is nobody's gesture.
+        // A bar is GRABBABLE while it has a RUN: a full-length slider (the window
+        // covering its content) is a run like any other, and pressing it starts the
+        // drag exactly as the timeline's full-width handle does. TimeLineWidget::
+        // eventFilter reaches beginScrollbarDrag from handleRect without asking for
+        // travel, and its ratio `range / span` = trackSpan / laneLength is positive
+        // at range == pageStep. hHasRun is that precondition: only a lane the layout
+        // could not give a handle (a degenerate track) is nobody's.
         int axis = ScrollBar_None;
-        if (aBars.hTravel() && aBars.hTrack.contains(aPos))
+        if (aBars.hHasRun() && aBars.hTrack.contains(aPos))
             axis = ScrollBar_Horizontal;
-        else if (aBars.vTravel() && aBars.vTrack.contains(aPos))
+        else if (aBars.vHasRun() && aBars.vTrack.contains(aPos))
             axis = ScrollBar_Vertical;
         if (axis == ScrollBar_None)
             return false;
@@ -2957,19 +2966,56 @@ namespace ctrl {
     }
 
     bool GraphEditor::setSelectedKeysAutoHandles() {
-        // Automatic handles are per-side MODES, so the preset is a Custom curve
-        // with both sides deriving. It is deliberately NOT the retired Type_Auto:
-        // no easing id is written. The preset is the CLAMPED pair - the shape the
-        // retired Auto type played and the one that cannot overshoot a local
-        // extremum; unclamped Auto is a deliberate per-side pick in the picker's
-        // mode combo (see Easing::kAutoPresetHandleMode).
-        return assignSelectedKeysEasing([](const util::Easing::Param& aCurrent) {
-            util::Easing::Param next = aCurrent;
-            next.type = util::Easing::Type_Custom;
-            next.handleIn = util::Easing::kAutoPresetHandleMode;
-            next.handleOut = util::Easing::kAutoPresetHandleMode;
-            return next;
-        });
+        if (!mProject)
+            return false;
+
+        // AUTOMATIC HANDLES APPLY TO SEGMENTS (see ctrl::TimeLineEditor's
+        // assignSelectionAutoHandles for the rule and its reasoning). A tangent
+        // pair belongs to the segment, so a key's outgoing side is the start
+        // tangent of the segment leaving it and its incoming side the end tangent
+        // of the segment arriving at it. Writing only the selected keys left the
+        // segment ARRIVING at each of them half-automatic and published a ghost no
+        // curve derived - the two halves of one defect.
+        //
+        // appendAutoPresetWrites therefore contributes, per selected key: the
+        // previous key's outgoing side AND type (its param IS the arriving
+        // segment's curve), the key's both sides, and the next key's incoming side.
+        // The preset is still the CLAMPED pair (kAutoPresetHandleMode), never the
+        // retired Type_Auto.
+        QVector<TimeLineEditor::EasingWrite> writes;
+        for (const time::Selection::Item& item : mSelection->items()) {
+            core::TimeLineEvent::Target target = item.target;
+            core::TimeLine* line = target.pos.line();
+            if (!line || !target.node)
+                continue; // a hand-made target with no owner: nothing to address
+
+            const core::TimeKeyType type = target.pos.type();
+            core::TimeKey* key = line->timeKey(type, target.pos.index());
+            if (!key)
+                continue; // a stale selection names a frame that holds nothing
+
+            // The image offset is step-held: playback never consults its param, so
+            // an edit to it changes no drawn sample and no played value (the same
+            // rule setSelectedKeysEasing applies).
+            if (!graph::Channel(type, 0).isInterpolated())
+                continue;
+
+            const int componentCount = graph::Channel::componentCount(type);
+            const bool wholeKey = (item.component == time::Selection::kKeyLevel);
+            if (!wholeKey && (item.component < 0 || componentCount <= item.component))
+                continue;
+
+            for (int component = 0; component < componentCount; ++component) {
+                if (!wholeKey && component != item.component)
+                    continue;
+                TimeLineEditor::appendAutoPresetWrites(
+                    *line, *target.node, type, component, core::Frame(key->frame()), writes);
+            }
+        }
+        // ONE macro and ONE undo step for every param the preset touches, including
+        // the neighbour sides of a multi-key selection (deduplicated by param).
+        return TimeLineEditor::pushEasingWrites(
+            *mProject, writes, CmndName::tr("Make segments automatic"));
     }
 
     bool GraphEditor::assignSelectedKeysEasing(
@@ -2977,24 +3023,18 @@ namespace ctrl {
         if (!mProject)
             return false;
 
-        // WHAT CAN BE WRITTEN, collected BEFORE the macro is opened. The header
-        // says why this has to happen first: cmnd::Stack appends a macro even
-        // when it holds no command, and counts it as an edit, so an action that
-        // opened the macro and then found nothing to write would leave an empty
-        // undo step behind - the defect removeSelectedKey's own guard avoids.
+        // WHAT CAN BE WRITTEN, collected BEFORE the batch is pushed.
+        // TimeLineEditor::pushEasingWrites drops every param that would not change
+        // and pushes NOTHING when nothing is left: cmnd::Stack appends a macro even
+        // when it holds no command and counts it as an edit, so an action that
+        // pushed the batch first would leave an empty undo step behind - the defect
+        // removeSelectedKey's own guard avoids.
         //
         // ONE EDIT PER COMPONENT, not per key: a selection may name one marker
         // (Move X) or a whole key, which covers every component it owns. Each
         // component writes ITS OWN param, so choosing an easing for Move X does
         // not re-shape Move Y.
-        struct Edit {
-            util::Easing::Param* easing;
-            util::Easing::Param next;
-            core::ObjectNode* node;
-            core::TimeKeyType type;
-            int frame;
-        };
-        QVector<Edit> edits;
+        QVector<TimeLineEditor::EasingWrite> writes;
 
         for (const time::Selection::Item& item : mSelection->items()) {
             // The mutable target: the action writes the keys through the map the
@@ -3038,59 +3078,26 @@ namespace ctrl {
                 if (!easing)
                     continue;
 
-                // Only a component whose param actually CHANGES is written:
-                // pushing a command whose exec and undo are the same value
-                // would be a history entry for a change that did not happen.
-                const util::Easing::Param next = aNext(*easing);
-                if (next == *easing)
-                    continue;
-
-                edits.append(Edit{easing, next, target.node, type, key->frame()});
+                TimeLineEditor::EasingWrite write;
+                write.param = easing;
+                write.next = aNext(*easing); // the action's own value; range, weight
+                                             // and bezier ride along unless it rewrites them
+                write.node = target.node;
+                write.type = type;
+                write.frame = core::Frame(key->frame()); // the key's frame NOW
+                writes.append(write);
             }
         }
 
-        if (edits.isEmpty())
-            return false;
-
-        {
-            // ONE macro and ONE notifier for the whole selection - the timeline's
-            // own route (TimeLineUtil::assignKeyEasing: a cmnd::Assign of the key's
-            // util::Easing::Param, a TimeLineUtil::Notifier, and a
-            // core::TimeLineEvent stating Type_ChangeKeyValue), batched so the
-            // selection is ONE undo step. The per-key helper cannot be reused for
-            // that: it opens a macro of its own, and cmnd::Stack::beginMacro
-            // asserts on a nested one.
-            cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("change key easing"));
-
-            auto* notifier = new TimeLineUtil::Notifier(*mProject);
-            notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
-            macro.grabListener(notifier);
-
-            for (const Edit& edit : edits) {
-                // The action's own new value: the component's live param mapped
-                // through aNext (its range, weight and bezier controls ride
-                // along untouched unless the action rewrites them).
-
-                // The frame the key is at NOW rather than the one the selection
-                // names: they are the same for a live key (the lookup above went
-                // through the same frame), and the key's own is the one the
-                // document answers with. One notification per KEY: several
-                // components of one key are one change to its timeline.
-                bool named = false;
-                for (const core::TimeLineEvent::Target& pushed : notifier->event().targets()) {
-                    if (pushed.node == edit.node && pushed.pos.type() == edit.type
-                        && pushed.pos.index() == edit.frame) {
-                        named = true;
-                        break;
-                    }
-                }
-                if (!named) {
-                    notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
-                }
-                mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.easing, edit.next));
-            }
-        }
-        return true;
+        // ONE macro and ONE notifier for the whole selection - the timeline's own
+        // route (TimeLineUtil::assignKeyEasing: a cmnd::Assign of the key's
+        // util::Easing::Param, a TimeLineUtil::Notifier, and a
+        // core::TimeLineEvent stating Type_ChangeKeyValue), batched so the
+        // selection is ONE undo step. The per-key helper cannot be reused for
+        // that: it opens a macro of its own, and cmnd::Stack::beginMacro
+        // asserts on a nested one.
+        return TimeLineEditor::pushEasingWrites(
+            *mProject, writes, CmndName::tr("change key easing"));
     }
 
     //-------------------------------------------------------------------------------------------------

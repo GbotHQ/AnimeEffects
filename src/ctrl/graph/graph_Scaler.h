@@ -238,16 +238,26 @@ public:
     // THE TWO LANES ARE BOTH ALWAYSON IN THIS PANEL (the timeline has no vertical
     // bar of its own; see the second bullet):
     //   * hThumb is ALWAYS the handle - when the window covers the union track it
-    //     spans the whole track (the timeline's AlwaysOn bar). A full-length run
-    //     cannot pan anything, and hTravel() says so.
+    //     spans the whole track (the timeline's AlwaysOn bar).
     //   * vThumb is ALWAYS the handle too: a value window that covers its track
     //     fills the vertical lane with the pill, exactly as the horizontal one does.
     //     (The timeline has no vertical bar to copy: TimeLineWidget builds a
     //     HORIZONTAL scroll bar only and its vertical position is the object tree, so
     //     the timeline's empty right lane is an absent bar, not a hidden one. The
     //     panel's value bar is its own, and a lane that disappears with the content in
-    //     range is the defect this rule fixes.) A full-length run still has NO travel,
-    //     so vScrollable stays false and the lane ignores presses and the wheel.
+    //     range is the defect this rule fixes.)
+    //
+    // A FULL-LENGTH RUN IS STILL A RUN. "There is nothing to travel" is NOT the
+    // question a press asks: the timeline's own bar is grabbable at exactly this
+    // state. TimeLineWidget::eventFilter checks TimelineScrollBar::handleRect (the
+    // full lane) and calls beginScrollbarDrag, whose ratio is
+    // `range / span` = trackSpan / laneLength - nonzero whenever the track has a
+    // span, even when range == pageStep. A drag then moves the window by
+    // dx * trackSpan/laneLength and the track re-unions around it; a wheel notch
+    // scrolls by wheelScrollLines * kVerticalStep. So the grabbable question is
+    // "does this lane have a RUN" (hHasRun/vHasRun), not "is the window narrower
+    // than the track". This is the timeline's own precondition: its handleRect is
+    // empty only when the track has no span at all.
     // Every rect is EMPTY on an empty plot (there is nowhere to lay a bar out).
     // They are CONTENT-free: what the window and the content are is the caller's
     // (see scrollBars).
@@ -256,27 +266,24 @@ public:
         QRect hThumb;
         QRect vTrack;
         QRect vThumb;
-        // Whether the bar has any TRAVEL, i.e. whether the window is narrower than
-        // the union track. This is NOT "the run is shorter than the track": a bar
-        // can be shorter for other reasons only in degenerate layouts, and the
-        // timeline's own drag/page rules ask the travel question directly.
-        bool hScrollable = false;
-        bool vScrollable = false;
         // CONTENT UNITS PER LANE PIXEL for the grabbed axis. The timeline anchors its
         // thumb drag on this ratio at press (beginScrollbarDrag), which is what makes
         // the pill follow the pointer 1:1: a pointer delta dx moves the WINDOW by
         // dx * trackSpan/trackLength, so the handle's offset moves by exactly dx.
+        // Nonzero exactly when the lane has a run.
         double hContentPerPixel = 0.0;
         double vContentPerPixel = 0.0;
 
         // True when there is no bar to draw and nothing to hit (an empty plot).
         bool isEmpty() const { return hTrack.isEmpty() && vTrack.isEmpty(); }
 
-        // WHETHER THE RUN CAN MOVE - see the fields above. The horizontal slider is
-        // drawn at zero travel too (see the lane note), and panning it could only
-        // be a no-op.
-        bool hTravel() const { return hScrollable; }
-        bool vTravel() const { return vScrollable; }
+        // WHETHER THE LANE HAS A RUN TO GRAB - the press/drag precondition, and the
+        // timeline's own (handleRect is empty only on a zero-span track). This is
+        // deliberately not "the window is narrower than the track": at zero travel
+        // the run IS the whole track, and a press on it still starts the drag
+        // (beginScrollbarDrag is reached with a full-width handle too).
+        bool hHasRun() const { return !hThumb.isEmpty(); }
+        bool vHasRun() const { return !vThumb.isEmpty(); }
     };
 
     // The bars for THIS scaler's plot rect. The horizontal bar scrolls the FRAME

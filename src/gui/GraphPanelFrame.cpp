@@ -712,6 +712,15 @@ void shutdown() {
     gOutline = nullptr;
 }
 
+void abandon() {
+    // NOT ONE GL CALL, and the wrapper is LEAKED on purpose: its destructor would delete
+    // the program and the quad by name, and on a context that never owned them that is a
+    // wrong operation (glDeleteProgram: GL_INVALID_VALUE, measured - coredump 76726) and
+    // not a harmless no-op. Their context is gone, so the names are already the driver's;
+    // a fresh pass is built on the new context by the next init().
+    gOutline = nullptr;
+}
+
 void copyBackdrop(GLuint aSourceFbo, GLuint aDestinationFbo, const QSize& aPixelSize) {
     if (aPixelSize.isEmpty())
         return;
@@ -1186,6 +1195,12 @@ bool init() {
 
 void shutdown() {
     delete gStroke;
+    gStroke = nullptr;
+}
+
+void abandon() {
+    // See outline::abandon: no GL call, the wrapper is leaked, and init() builds a fresh
+    // pass on the context that is current.
     gStroke = nullptr;
 }
 
@@ -2478,9 +2493,37 @@ int gPanelContextHolders = 0;
 // rebindPanelObjects() below, which runPanelFrame calls before it touches anything GL.
 QPointer<QOpenGLContext> gPanelOwnerContext;
 
+// THE PANEL'S OWN VERTEX ARRAY OBJECT, on the context the objects belong to. A core
+// profile has no default array object: every draw needs one bound, and the one the
+// application keeps bound for its painter pass belongs to MainDisplayWidget's context
+// (its initializeGL creates it and leaves it bound) - a name that means NOTHING here
+// once this widget has a context of its own, which is what a reparent after undocking
+// gives it (another window, therefore another share group: buffers, textures and
+// programs are shared inside a group, vertex-array objects never are). The panel
+// therefore owns one of its own and binds it for the whole of a paint (see
+// bindPanelVertexArray), so nothing it runs can inherit a binding from a context the
+// widget is no longer drawing on. Created and destroyed with the objects above.
+std::unique_ptr<gl::VertexArrayObject> gPanelDefaultVao;
+
 // Creates the ImGui context, its GL3 backend and the font atlas on aHost's CURRENT
 // context, and records that context as the one the objects belong to.
 bool createPanelContextOn(QOpenGLWidget& aHost) {
+    // THE HOST'S CONTEXT MUST BE CURRENT BEFORE THE BACKEND TOUCHES GL. Measured crash
+    // (coredump 55276): the dock was undocked mid-session, Qt reparented this
+    // QOpenGLWidget, initializeGL ran again - and died inside
+    // ImGui_ImplOpenGL3_Init -> sscanf(s=0x0), because the backend read
+    // glGetString(GL_VERSION), got null (no current context), and glibc's sscanf did a
+    // strlen(nullptr). Qt makes the context current for a first initializeGL, but a
+    // reparent's re-initialisation is not guaranteed to arrive with this widget's
+    // context bound, so bind it here and refuse to initialise on a context that cannot
+    // report a version.
+    QOpenGLContext* hostContext = aHost.context();
+    if (!hostContext || !hostContext->isValid())
+        return false;
+    aHost.makeCurrent();
+    if (!hostContext->functions()->glGetString(GL_VERSION))
+        return false;
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -2539,20 +2582,71 @@ bool createPanelContextOn(QOpenGLWidget& aHost) {
         return false;
     }
 
+    // THE PANEL'S OWN ARRAY OBJECT, made on THIS context and left bound (exactly what
+    // MainDisplayWidget::initializeGL does for the application's painter pass, and for
+    // the same reason). Nothing this widget draws needs a foreign one: the ImGui backend
+    // generates and binds its own around every RenderDrawData, and both GL passes bind
+    // the array object they created. It is the FLOOR, so a GL call in the paint that
+    // assumes an array object - Qt's or the application's - cannot silently inherit one
+    // from a context this widget has left. See gPanelDefaultVao.
+    gPanelDefaultVao.reset(new gl::VertexArrayObject());
+    gPanelDefaultVao->bind();
+
     gPanelOwnerContext = aHost.context();
     return true;
 }
 
-// Drops every GL object the panel owns - the two passes and the ImGui context with its
-// backend and atlas - on the context that is CURRENT. The caller guarantees one: this is
-// only ever called from a paint/initialize path, or from a teardown that made the host's
-// context current first.
-void destroyPanelObjects() {
-    stroke::shutdown();
-    outline::shutdown();
-    if (ImGui::GetCurrentContext()) {
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui::DestroyContext();
+// Drops the panel's GL objects. WHICH CONTEXT OWNS THE NAMES DECIDES WHAT IS DONE:
+//
+//   * the objects were made on the context that is CURRENT here - every delete is valid,
+//     so the passes, the panel's array object and the ImGui backend are shut down
+//     normally. This is the destructor path (the widget still has its context) and every
+//     teardown of objects on the context that made them;
+//   * they were made on another context, or on one that no longer exists (a reparent
+//     destroys the widget's old QOpenGLContext) - NOTHING IS DELETED. Deleting a name
+//     this context never owned is the wrong operation, not a harmless one: measured on
+//     Mesa, glDeleteProgram answered GL_INVALID_VALUE (1281) for the ImGui backend's
+//     program and the application aborted in the next paint's resetRenderState. Those
+//     names died with their context, so the wrappers are deliberately abandoned (see
+//     stroke::abandon / outline::abandon) and only ImGui's CPU-side context is dropped.
+//     This is the reparent path - undock, re-dock, a screen change - and it is what a
+//     small, once-per-reparent wrapper leak buys: no GL call is made against a context
+//     that never owned the names.
+//
+// aContextCurrent says whether there is a current context at all; with none, the second
+// path is the only one possible.
+void destroyPanelObjects(bool aContextCurrent) {
+    const bool ownContext =
+        aContextCurrent && gPanelOwnerContext && gPanelOwnerContext == QOpenGLContext::currentContext();
+
+    if (ownContext) {
+        stroke::shutdown();
+        outline::shutdown();
+        gPanelDefaultVao.reset();
+        if (ImGui::GetCurrentContext()) {
+            ImGui_ImplOpenGL3_Shutdown();
+            ImGui::DestroyContext();
+        }
+    } else {
+        // One small wrapper per reparent at worst, never per frame: its GL names are gone
+        // with the context that made them, and there is no context left on which freeing
+        // them would be valid.
+        stroke::abandon();
+        outline::abandon();
+        gPanelDefaultVao.release();
+        if (ImGui::GetCurrentContext()) {
+            // CPU state only: the backend's device objects are part of the same gone
+            // context, and its own shutdown would delete them on this one. Detach it
+            // first - ImGui::Shutdown() refuses to run with a renderer backend still
+            // attached (assertion measured: "Forgot to shutdown Renderer backend?"), and
+            // the detach is what makes this the CPU-only path. The backend's own data and
+            // its texture ids belong to a context that no longer exists.
+            ImGuiIO& io = ImGui::GetIO();
+            io.BackendRendererName = nullptr;
+            io.BackendRendererUserData = nullptr;
+            io.BackendFlags &= ~(ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures);
+            ImGui::DestroyContext();
+        }
     }
     gPanelOwnerContext.clear();
 }
@@ -2562,20 +2656,37 @@ void destroyPanelObjects() {
 // gPanelOwnerContext for the measured failure this replaces). Idempotent, and a no-op on
 // every frame of a single host, because a host's context does not change under it.
 bool rebindPanelObjects(QOpenGLWidget& aHost) {
-    if (gPanelContextHolders <= 0 || gPanelOwnerContext == aHost.context())
+    if (gPanelContextHolders <= 0)
         return true;
 
-    if (gPanelOwnerContext) {
-        // A real change of context (or a second host on its own context). Said out loud
-        // because it means the objects are being built twice in one session - correct,
-        // but worth a line in a log when a host is added. A failed creation below leaves
-        // gPanelOwnerContext null, so the retry on the next frame does not repeat this.
+    // Nothing to rebind onto: a widget whose context Qt has already released cannot be
+    // made current, and every call below would act on no context at all.
+    QOpenGLContext* hostContext = aHost.context();
+    if (!hostContext || !hostContext->isValid())
+        return false;
+    if (gPanelOwnerContext == hostContext)
+        return true;
+
+    // The teardown below deletes GL objects, so the NEW host's context has to be current
+    // for it exactly as the creation does (see createPanelContextOn's guard).
+    aHost.makeCurrent();
+
+    // Whatever an ImGui context here means, it was built on ANOTHER context (the owner is
+    // different) or on one that no longer exists (the QPointer is null, because Qt
+    // destroys a widget's context when it is reparented). Both are a real change of
+    // context: drop what is there and build it again HERE.
+    if (ImGui::GetCurrentContext()) {
+        // Said out loud because it means the objects are being built twice in one session
+        // - correct, but worth a line in a log when a host is added. A failed creation
+        // below leaves gPanelOwnerContext null, so the retry on the next frame does not
+        // repeat this.
         qWarning(
             "gui: the panel is being drawn with a different OpenGL context than the one its ImGui "
-            "context, backend and GL passes were created on; re-creating them on this context "
-            "(vertex-array objects are not shared between contexts, even in one window)."
+            "context, backend and GL passes were created on (that one is gone or not this one); "
+            "re-creating them on this context (vertex-array objects are not shared between "
+            "contexts, even in one window)."
         );
-        destroyPanelObjects();
+        destroyPanelObjects(true);
     }
     return createPanelContextOn(aHost);
 }
@@ -2612,15 +2723,36 @@ void releasePanelContext(QOpenGLWidget& aHost) {
     // down after its context has gone leaves those few objects to the driver rather than
     // calling into a dead context - the rule this unit always had.
     QOpenGLWidget* widget = &aHost;
-    const bool madeCurrent = widget->context() && widget->context()->isValid();
+    QOpenGLContext* widgetContext = widget->context();
+    const bool madeCurrent = widgetContext && widgetContext->isValid();
+    // Whether the teardown is a foreign one (the objects were made on another context,
+    // which a reparent destroys) is decided by destroyPanelObjects itself, from the
+    // context that is current there.
     if (madeCurrent)
         widget->makeCurrent();
-    destroyPanelObjects();
+    destroyPanelObjects(madeCurrent);
     if (madeCurrent)
         widget->doneCurrent();
 }
 
 bool panelContextReady() { return gPanelContextHolders > 0 && ImGui::GetCurrentContext() != nullptr; }
+
+bool bindPanelVertexArray(QOpenGLWidget& aHost) {
+    // No context on the host: there is nothing to bind into, and nothing below may be
+    // attempted (the frame path bails the same way when no ImGui context is up).
+    QOpenGLContext* hostContext = aHost.context();
+    if (!hostContext || !hostContext->isValid() || !panelContextReady())
+        return false;
+
+    // A reparent hands this widget a new context, and the array object is a context
+    // object like everything else the panel owns: build the panel's objects on THIS
+    // context first (the same guard runPanelFrame goes through), then bind the one that
+    // was just made here.
+    if (!rebindPanelObjects(aHost) || !gPanelDefaultVao)
+        return false;
+    gPanelDefaultVao->bind();
+    return true;
+}
 
 ImDrawData* runPanelFrame(
     QOpenGLWidget& aHost, GraphPanelHost aHostStyle, ctrl::GraphEditor* aEditor, bool aVisible,

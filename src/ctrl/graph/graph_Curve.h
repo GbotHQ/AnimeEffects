@@ -90,22 +90,21 @@ public:
     // THE PAIR THE SEGMENT IS DRAWN AND GRABBED WITH, per side: a Free/Aligned
     // side is its stored control point, a derived side (Vector/Auto/
     // AutoClamped) is the one util::Easing::controlPoint derives from the
-    // neighbours. False when the segment exposes no handles at all (an analytic
-    // easing, or a null segment). This is the ONE mapping the drawing layer, the
-    // editor's hit-test and a drag's starting point all use, so they cannot
-    // disagree about where a dot is.
+    // neighbours. The per-side decision is derivesHandle (publication's query),
+    // and controlPoint is what playback's Easing::calculate runs for that side,
+    // so the two sides cannot be classified one way and evaluated another. False
+    // when the segment exposes no handles at all (an analytic easing, or a null
+    // segment). This is the ONE mapping the drawing layer, the editor's hit-test
+    // and a drag's starting point all use, so they cannot disagree about where a
+    // dot is.
+    //
+    // FALSE IS ALSO THE ANSWER FOR A DERIVED INCOMING MODE ON AN ANALYTIC SEGMENT,
+    // and the panel must publish nothing for it: a segment's curve is its FROM
+    // key's param, so an analytic FROM never calls controlPoint and the TO key's
+    // handleIn is inert for this segment. (A key still OWNS both tangents - the
+    // incoming one becomes live the moment the segment's FROM is Custom, which is
+    // what the Auto preset now arranges by also writing the previous key.)
     bool effectiveHandles(const Segment& aSegment, QPointF aOut[2]) const;
-
-    // THE ARRIVING CONTROL POINT of the TO key's incoming side when that side is
-    // derived, EVEN IF the FROM key's param is not a Custom curve. A key owns
-    // both of its tangents: setting Auto on a key writes handleIn as well as
-    // handleOut, and the incoming side must be drawable while the segment before
-    // it is still an analytic easing (the segment itself then has no stored
-    // bezier pair, so effectiveHandles() declines and this answers the one side
-    // that does derive). False when the TO key's incoming mode is stored (or
-    // there is no TO param), which is when the previous segment's own pair - if
-    // it is Custom - is the authority instead.
-    bool derivedArrivingHandle(const Segment& aSegment, QPointF& aOut) const;
 
     // A segment's DERIVED pair, or empty when neither side derives one (both
     // modes stored, an analytic easing, the last key of a channel, or a type

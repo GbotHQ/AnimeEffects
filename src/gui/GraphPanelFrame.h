@@ -282,8 +282,14 @@ struct Params {
 // Idempotent (safe to call per frame) and false when the context cannot compile
 // it - the caller must then draw without it rather than draw nothing.
 bool init();
-// Releases the program and the quad, with the context current.
+// Releases the program and the quad, with the context that made them current.
 void shutdown();
+// Drops the pass WITHOUT calling GL, for a teardown on a context that does not own its
+// names (a reparent destroyed the context they were made on). The wrapper is deliberately
+// LEAKED: its destructor deletes the program by name, and on a context that never owned
+// it that is a wrong operation (GL_INVALID_VALUE, measured), not a no-op. See
+// destroyPanelObjects in GraphPanelFrame.cpp.
+void abandon();
 
 // Copies the framebuffer aSourceFbo (aPixelSize pixels) into aDestinationFbo with
 // glBlitFramebuffer: a GPU copy, never a readback. The widget's own framebuffer is
@@ -391,8 +397,12 @@ constexpr float kFilterPx = 1.0f;
 // GL context. Idempotent (safe to call per frame) and false when the context cannot
 // compile the programs - drawPanel then strokes with ImDrawList::AddPolyline.
 bool init();
-// Releases the programs, the vertex array and the scratch, with a context current.
+// Releases the programs, the vertex array and the scratch, with the context that made
+// them current.
 void shutdown();
+// Drops the pass WITHOUT calling GL, for a teardown on a context that does not own its
+// names (see outline::abandon and destroyPanelObjects in GraphPanelFrame.cpp).
+void abandon();
 // Whether init() has built the pass, i.e. whether drawPanel will insert it. The gate
 // uses this to render the SAME model through both stroke geometries in one run.
 bool isReady();
@@ -436,8 +446,17 @@ void drawListCallback(const ImDrawList* aDrawList, const ImDrawCmd* aCommand);
 // the stroke pass's VAO in its own context and GL_CHECK_ERROR() aborted on 1282).
 // acquirePanelContext() therefore records the QOpenGLContext the ImGui context, the
 // backend and both GL passes were created against, and runPanelFrame() re-creates them
-// whenever a frame arrives with a different one. One host means this never fires in the
-// application; it is the guard that keeps a second host from reintroducing that crash.
+// whenever a frame arrives with a different one. That is not only the second-host guard
+// it started as: Qt DESTROYS and re-creates a QOpenGLWidget's context when the widget is
+// reparented into another window, which is exactly what undocking the Animation dock
+// does - so a drag of the dock runs this path, and the objects are built again on the new
+// context. The old names are NOT deleted there (glDeleteProgram answers 1281 for a name
+// the current context never owned - measured): they died with their context, so the
+// wrappers are abandoned rather than destroyed, and nothing is left pending for the next
+// paint's resetRenderState. The panel also owns its own vertex array object, created and
+// bound on the new context before the first GL call of the paint
+// (bindPanelVertexArray): a core profile has no default array object, and the one
+// MainDisplayWidget keeps bound is not valid here once this widget is in another window.
 //
 // WHAT THE HOST STILL OWNS ITSELF: the widget it draws into (io.DisplaySize and
 // io.DisplayFramebufferScale come from ITS size and ratio, which is what puts the frame
@@ -490,6 +509,15 @@ bool acquirePanelContext(QOpenGLWidget& aHost);
 void releasePanelContext(QOpenGLWidget& aHost);
 // Whether the context is up, i.e. whether a frame can be run at all.
 bool panelContextReady();
+
+// BINDS THE PANEL'S OWN VERTEX ARRAY OBJECT on aHost's context, building the panel's
+// objects on that context first if they belong to another one (a reparent gives the
+// widget a new context; see the section note above). Call at the TOP of a paint, before
+// the first GL call of the frame: a core profile has no default array object, and the
+// one the application keeps bound is MainDisplayWidget's - a name that is not valid in
+// this widget's context once it is in another window. False when no context is up (the
+// caller may still paint its floor; nothing it does needs an array object).
+bool bindPanelVertexArray(QOpenGLWidget& aHost);
 
 // ONE FRAME of the panel, for aHost. This is the whole per-frame body: the io setup,
 // the backend's NewFrame, ImGui::NewFrame (in that order - the backend's own NewFrame

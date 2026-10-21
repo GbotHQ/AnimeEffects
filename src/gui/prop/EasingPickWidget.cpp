@@ -57,10 +57,14 @@ constexpr double kVMIN = -0.35, kVMAX = 1.35;
 // head is the three non-curve entries - Linear, Floor, Round - plus the AUTO
 // PRESET, which is not a type any more: it draws a Custom curve with BOTH sides
 // Auto (Blender's automatic handles) and clicking it writes those modes. The
-// hairline separator closes that head; the analytic family then follows in the
-// table's order. The type entries are asserted equal to the display table's
-// non-Custom entries position by position by tests/picker_probe.cpp #10; the
-// preset is the one entry that is a MODE pair rather than a Type.
+// ACTION is segment-level: automatic handles apply to the two segments around
+// each selected key, so the host that owns the keys also writes the neighbour
+// side that completes each segment (see
+// ctrl::TimeLineEditor::assignSelectionAutoHandles). The hairline separator
+// closes that head; the analytic family then follows in the table's order. The
+// type entries are asserted equal to the display table's non-Custom entries
+// position by position by tests/picker_probe.cpp #10; the preset is the one
+// entry that is a MODE pair rather than a Type.
 struct TileDef {
     util::Easing::Type type;
     bool autoPreset;
@@ -850,9 +854,22 @@ QToolButton* EasingPickWidget::makeTileAt(int aIndex, util::Easing::Type aType, 
     // easing name, and the mode preset is named by its two handle sides ("Auto
     // Clamped" for the clamped pair this tile creates). A glyph-only button has
     // no text, so this is also its accessible text.
+    //
+    // THE PRESET'S NAME SAYS WHAT THE CLICK DOES, not only the pair it stores:
+    // automatic handles apply to SEGMENTS (a tangent pair belongs to a segment),
+    // so the action makes both segments around each selected key automatic - the
+    // previous key's outgoing side, the key's two sides and the next key's
+    // incoming side, in ONE undo step. A screen-reader user gets the same words
+    // the tooltip shows.
     const QString tileLabel = util::Easing::getParamName(glyph);
-    tile->setAccessibleName(tileLabel);
-    tile->setToolTip(tr("Set the easing to %1").arg(tileLabel));
+    if (def.autoPreset) {
+        const QString action = tr("Make both adjacent segments automatic");
+        tile->setAccessibleName(tr("%1 (%2)").arg(action, tileLabel));
+        tile->setToolTip(tr("%1 - %2 handles").arg(action, tileLabel));
+    } else {
+        tile->setAccessibleName(tileLabel);
+        tile->setToolTip(tr("Set the easing to %1").arg(tileLabel));
+    }
     connect(tile, &QToolButton::clicked, this, [this, def] {
         if (def.autoPreset)
             this->setAutoHandlesPreset();
@@ -1185,10 +1202,15 @@ void EasingPickWidget::setAutoHandlesPreset() {
     mDraft.handleIn = util::Easing::kAutoPresetHandleMode;
     mDraft.handleOut = util::Easing::kAutoPresetHandleMode;
     if (mDraft == old) {
-        // Already the preset: no model change, but the popover must SHOW the
-        // catalog with the tile checked (a draft reached here from the bezier
-        // panel by the combos would otherwise stay on the bezier panel).
+        // Already the preset: the popover must SHOW the catalog with the tile
+        // checked (a draft reached here from the bezier panel by the combos would
+        // otherwise stay on the bezier panel). The ACTION is still committed: the
+        // preset makes the SEGMENTS around the keys automatic, so a key that is
+        // already the pair may still have a half-automatic neighbour (exactly what
+        // an edit made before the segment rule existed leaves behind). The host
+        // writes nothing when the whole rule is already satisfied.
         refresh();
+        emit applied(mDraft);
         return;
     }
     pushState(old);

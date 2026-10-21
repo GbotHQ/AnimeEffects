@@ -375,7 +375,13 @@ int main(int argc, char** argv) {
                 checkedOnlyAuto = checkedOnlyAuto && tile && tile->isChecked() == (i == 3);
             }
             const util::Easing::Param presetValue = w.value();
-            checkedOnlyAuto = checkedOnlyAuto && presetName == autoTile->accessibleName()
+            // The tile is glyph-only, so its accessible text is the ACTION it
+            // performs: automatic handles apply to SEGMENTS, so it says both
+            // adjacent segments are made automatic, and still names the pair it
+            // writes ("Auto Clamped").
+            const QString accessible = autoTile->accessibleName();
+            checkedOnlyAuto = checkedOnlyAuto && accessible.contains(presetName)
+                && accessible.contains(QLatin1String("segments automatic"))
                 && presetName == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
                 && presetName != QLatin1String("Custom")
                 // THE PRESET IS THE CLAMPED PAIR, not the unclamped mode that used

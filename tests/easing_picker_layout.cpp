@@ -212,9 +212,14 @@ int main(int argc, char** argv) {
             // header must say that name, never the interpolation type "Custom".
             const QString shown = util::Easing::getParamName(w.value());
             QLabel* title = w.findChild<QLabel*>(QStringLiteral("popover-title"));
+            // The glyph-only tile's accessible text is the ACTION (automatic
+            // handles apply to segments) plus the pair it writes; the picker's
+            // TITLE still names only the parameter.
+            const QString accessible = autoTile->accessibleName();
             checkedOnlyAuto = checkedOnlyAuto
                 && shown == util::Easing::getHandleModeName(util::Easing::kAutoPresetHandleMode)
-                && shown == autoTile->accessibleName()
+                && accessible.contains(shown)
+                && accessible.contains(QLatin1String("segments automatic"))
                 && title && title->text() == shown;
             fprintf(stderr, "Auto preset: checked only tile-3=%d, name='%s', title='%s' -> %s\n",
                     int(checkedOnlyAuto), qPrintable(shown),

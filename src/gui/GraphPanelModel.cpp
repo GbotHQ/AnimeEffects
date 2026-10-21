@@ -687,12 +687,12 @@ void buildCurves(
         // handle 0 leaving `from` and 1 arriving at `to`. The base is the key the
         // handle belongs to, so the drawn stem starts on the key it moves, and the
         // dot is the mapping the editor's own hit-test grabs through - a Custom
-        // segment's STORED pair (handlePoint) or an Auto segment's DERIVED one
-        // (handlePointAt over ghostHandles, the same function handlePoint calls), so
-        // a stored pair and a derived one cannot drift apart. `ghost` carries which
-        // kind it is: the derived pair is not in the document, and the drawing layer
-        // draws it as a smaller, solid dot of the channel's reduced-chroma hue (a
-        // drag on it converts the key to Custom).
+        // segment's STORED pair (handlePoint) or a DERIVED one (handlePointAt over
+        // effectiveHandles, the same function handlePoint calls), so a stored pair
+        // and a derived one cannot drift apart. `ghost` carries which kind it is:
+        // the derived pair is not in the document, and the drawing layer draws it
+        // as a smaller, solid dot of the channel's reduced-chroma hue (a drag on it
+        // converts the key to Custom).
         //
         // THE KIND IS PER SIDE, never per segment. A Custom segment may derive one
         // side and store the other (the whole point of the per-side modes), so the
@@ -701,6 +701,15 @@ void buildCurves(
         // its stored handle. Curve::derivesHandle is that per-side rule, and
         // effectiveHandles is the pair for both kinds (a stored side comes back
         // exactly as stored), so one mapping still serves every dot.
+        //
+        // THE SEGMENT'S CURVE IS THE FROM KEY'S PARAM, and that is the whole
+        // existence test: a side is a handle only when evaluation of THIS segment
+        // can read it. An analytic FROM param has no control points at all - its
+        // `to` key's derived incoming mode is inert, because playback/drawing never
+        // calls controlPoint for that segment - so publishing it would claim a
+        // tangent no curve derives (the defect that showed an "automatic" handle on
+        // a side whose curve was still Linear). The Auto preset now makes the whole
+        // adjacent segment Custom, so a real automatic side always passes this gate.
         //
         // Published whether or not the pair lies inside the plot: the drawing layer
         // clips, and a handle off the plot's edge is still one the user can grab.
@@ -716,50 +725,24 @@ void buildCurves(
                 const ctrl::graph::Curve::Segment segment = curve.segment(s);
                 if (!segment.from || !segment.to)
                     continue;
-
-                // A key owns BOTH of its tangents, so setting Auto on a key makes
-                // its incoming side derived even when the segment BEFORE it is
-                // still an analytic easing: that segment has no stored bezier
-                // pair, but the TO key's handleIn is still a drawable ghost and
-                // dropping it was what showed "only one tangent as auto". The
-                // arriving side is the TO key's own mode (inMode); the outgoing
-                // side is only meaningful on a Custom FROM param.
-                const util::Easing::Param* toEasing = ctrl::graph::Curve::easingOf(
-                    *segment.to, row.channel.type(), row.channel.component());
-                const bool fromCustom = segment.easing.type == util::Easing::Type_Custom;
-                const bool arrivingDerived = toEasing
-                    && toEasing->type == util::Easing::Type_Custom
-                    && util::Easing::isDerived(toEasing->handleIn);
-                if (!fromCustom && !arrivingDerived)
-                    continue; // no handle of either kind on this segment
+                if (segment.easing.type != util::Easing::Type_Custom)
+                    continue; // an analytic segment has no tangent to publish
 
                 // The effective pair: a stored side is its stored control point,
                 // a derived side the one its neighbours produce. These are the dots
-                // the editor's own hit-test grabs through. A non-Custom FROM param
-                // has no pair (effectiveHandles declines); the arriving side is
-                // then derived on its own, from the same neighbours playback uses.
+                // the editor's own hit-test grabs through.
                 QPointF pair[2];
-                const bool havePair = fromCustom && curve.effectiveHandles(segment, pair);
-                if (!havePair && (!arrivingDerived || !curve.derivedArrivingHandle(segment, pair[1])))
+                if (!curve.effectiveHandles(segment, pair))
                     continue;
 
                 const core::TimeKey* owners[2] = { segment.from, segment.to };
                 const float ownerValues[2] = { segment.fromValue, segment.toValue };
                 for (int h = 0; h < 2; ++h) {
-                    // Side 0 exists only on a Custom FROM param; side 1 exists on
-                    // a Custom FROM param OR when the TO key derives it.
-                    if (h == 0 && !fromCustom)
-                        continue;
-                    if (h == 1 && !havePair && !arrivingDerived)
-                        continue;
-                    // The kind is what the pair actually is: on a Custom FROM
-                    // param that is derivesHandle's per-side answer (the pair came
-                    // from effectiveHandles); on a non-Custom one the only side
-                    // published is the arriving one, which is derived by
-                    // construction.
-                    const bool derived = fromCustom
-                        ? ctrl::graph::Curve::derivesHandle(segment, h)
-                        : true;
+                    // The kind is exactly what evaluation does for this side, from
+                    // the one derivation query. A `true` here is a side that really
+                    // derives (the pair holds its derived control point); a `false`
+                    // is the document's stored one.
+                    const bool derived = ctrl::graph::Curve::derivesHandle(segment, h);
                     gui::PanelHandle handle;
                     handle.segment = s;
                     handle.index = h;

@@ -1085,18 +1085,11 @@ bool TimeLineEditor::assignSelectionEasing(
     if (!mProject)
         return false;
 
-    // WHAT CAN BE WRITTEN, collected BEFORE the macro is opened: cmnd::Stack
-    // appends a macro even when it holds no command and counts it as an edit, so an
-    // edit that found nothing to write must not open one (the same guard the graph
-    // panel's own selection-easing action carries).
-    struct Edit {
-        util::Easing::Param* param;
-        util::Easing::Param next;
-        core::ObjectNode* node;
-        core::TimeKeyType type;
-        int frame;
-    };
-    QVector<Edit> edits;
+    // WHAT CAN BE WRITTEN, collected before the batch is pushed: pushEasingWrites
+    // drops a param that would not change, and pushes NOTHING when nothing is left
+    // (cmnd::Stack appends a macro even when it holds no command and counts it as
+    // an edit - the same guard the graph panel's own action carries).
+    QVector<EasingWrite> writes;
     // The live selection, the only set that names a COMPONENT: a timeline gesture
     // selects whole keys (kKeyLevel), a graph-panel press selects one marker. A
     // whole-key entry edits every component the type stores; a marker edits ONLY
@@ -1127,43 +1120,184 @@ bool TimeLineEditor::assignSelectionEasing(
             util::Easing::Param* param = core::keyEasingOf(*key, pos.type(), component);
             if (!param)
                 continue;
-            const util::Easing::Param next = aNext(*param);
-            if (next == *param)
-                continue; // nothing would change: no history entry for a non-change
-            edits.push_back({param, next, target.node, pos.type(), key->frame()});
+            EasingWrite write;
+            write.param = param;
+            write.next = aNext(*param);
+            write.node = target.node;
+            write.type = pos.type();
+            write.frame = core::Frame(key->frame());
+            writes.append(write);
         }
     }
-    if (edits.isEmpty())
+    return pushEasingWrites(*mProject, writes, CmndName::tr("Change key(s) easing"));
+}
+
+bool TimeLineEditor::assignSelectionAutoHandles() {
+    if (!mProject)
         return false;
 
-    // ONE macro and ONE notifier for the whole selection, so a multi-key edit is
-    // ONE entry in the history - the picker commits a whole session at once, and
-    // the keys it was opened for must not need one undo per key. The shape is the
-    // graph panel's own selection-easing action
-    // (ctrl::GraphEditor::setSelectedKeysEasing), and the command per key is the
-    // one the timeline's per-key route pushes (TimeLineUtil::assignKeyEasing: a
-    // cmnd::Assign of the key's util::Easing::Param plus a Type_ChangeKeyValue
-    // notifier). That per-key helper CANNOT be called in this loop: it opens a
-    // macro of its own, and cmnd::Stack::beginMacro asserts on a nested one.
-    cmnd::ScopedMacro macro(mProject->commandStack(), CmndName::tr("Change key(s) easing"));
-    auto* notifier = new TimeLineUtil::Notifier(*mProject);
-    notifier->event().setType(TimeLineEvent::Type_ChangeKeyValue);
+    // The Auto preset writes SEGMENTS (see the header): every selected key
+    // contributes its own two sides and the two neighbour sides that complete its
+    // adjacent segments. appendAutoPresetWrites merges a param named twice, so a
+    // multi-key selection writes each param once.
+    QVector<EasingWrite> writes;
+    for (const time::Selection::Item& item : mSelection.items()) {
+        core::TimeLineEvent::Target target = item.target;
+        core::TimeKeyPos pos = target.pos;
+        core::TimeKey* key = pos.key();
+        if (!key || !target.node)
+            continue; // a stale selection names a key that is not in the document
+
+        const int stored = core::easingStorageCount(pos.type());
+        const bool wholeKey = (item.component == time::Selection::kKeyLevel);
+        if (!wholeKey && (item.component < 0 || stored <= item.component))
+            continue;
+
+        for (int component = 0; component < stored; ++component) {
+            if (!wholeKey && component != item.component)
+                continue;
+            if (!core::keyEasingOf(*key, pos.type(), component))
+                continue; // Bone/Mesh: no easing at all
+            appendAutoPresetWrites(*pos.line(), *target.node, pos.type(), component,
+                                   core::Frame(key->frame()), writes);
+        }
+    }
+    // The action's name is the SEMANTIC, not the type: it makes the segments
+    // around each selected key automatic (the history entry says so too).
+    return pushEasingWrites(*mProject, writes, CmndName::tr("Make segments automatic"));
+}
+
+void TimeLineEditor::appendAutoPresetWrites(core::TimeLine& aLine, core::ObjectNode& aNode,
+                                            const core::TimeKeyType aType, const int aComponent,
+                                            const core::Frame aFrame,
+                                            QVector<EasingWrite>& aOut) {
+    // The tail of the write set is the key's neighbours in ITS OWN map: the
+    // segment ARRIVING at this key starts at the previous key, and the one LEAVING
+    // it ends at the next key. Same type, same component - one curve per component,
+    // so the neighbour's mode for the SAME component is the one that shapes the
+    // segment.
+    const core::TimeLine::MapType& map = aLine.map(aType);
+    auto self = map.constFind(aFrame.get());
+    if (self == map.constEnd() || !self.value())
+        return;
+
+    core::TimeKey* prev = nullptr;
+    core::TimeKey* next = nullptr;
+    if (self != map.constBegin()) {
+        auto before = self;
+        --before;
+        prev = before.value();
+    }
+    auto after = self;
+    ++after;
+    if (after != map.constEnd())
+        next = after.value();
+
+    // The forced fields: aType makes the segment's curve a Custom one (without it
+    // the OUTGOING mode on the previous key would be inert), aIn/aOut are the two
+    // automatic sides. A param already in aOut is MERGED, so an entry is never
+    // written twice and two selected neighbours agree rather than append twice.
+    const auto write = [&aOut, &aNode, &aType, aComponent](
+                           core::TimeKey* aKey, const bool aForceType, const bool aForceIn,
+                           const bool aForceOut) {
+        if (!aKey)
+            return;
+        util::Easing::Param* param = core::keyEasingOf(*aKey, aType, aComponent);
+        if (!param)
+            return;
+
+        for (EasingWrite& existing : aOut) {
+            if (existing.param != param)
+                continue;
+            if (aForceType)
+                existing.next.type = util::Easing::Type_Custom;
+            if (aForceIn)
+                existing.next.handleIn = util::Easing::kAutoPresetHandleMode;
+            if (aForceOut)
+                existing.next.handleOut = util::Easing::kAutoPresetHandleMode;
+            return;
+        }
+
+        EasingWrite entry;
+        entry.param = param;
+        entry.next = *param;
+        entry.node = &aNode;
+        entry.type = aType;
+        entry.frame = core::Frame(aKey->frame());
+        if (aForceType)
+            entry.next.type = util::Easing::Type_Custom;
+        if (aForceIn)
+            entry.next.handleIn = util::Easing::kAutoPresetHandleMode;
+        if (aForceOut)
+            entry.next.handleOut = util::Easing::kAutoPresetHandleMode;
+        aOut.append(entry);
+    };
+
+    // prev -> this: the previous key's OUTGOING side is this segment's start
+    // tangent, and the segment's curve is that key's param.
+    write(prev, true, false, true);
+    // this: both of its own sides (the end tangent of prev -> this, the start
+    // tangent of this -> next).
+    write(self.value(), true, true, true);
+    // this -> next: the next key's INCOMING side is the end tangent. Its type is
+    // not touched - it shapes the NEXT segment.
+    write(next, false, true, false);
+}
+
+bool TimeLineEditor::pushEasingWrites(core::Project& aProject,
+                                      const QVector<EasingWrite>& aWrites,
+                                      const QString& aName) {
+    // Only a param that actually CHANGES is written: pushing a command whose exec
+    // and undo are the same value is a history entry for a change that did not
+    // happen. A param named twice (a stale/duplicated selection entry) is written
+    // once; the merged Auto batch is already unique by construction.
+    QVector<EasingWrite> changed;
+    changed.reserve(aWrites.size());
+    for (const EasingWrite& edit : aWrites) {
+        if (!edit.param || !edit.node)
+            continue;
+        if (edit.next == *edit.param)
+            continue;
+        bool duplicate = false;
+        for (const EasingWrite& kept : changed) {
+            if (kept.param == edit.param) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+            changed.append(edit);
+    }
+    if (changed.isEmpty())
+        return false;
+
+    // ONE macro and ONE notifier for the whole batch, so a multi-key (and, for the
+    // Auto preset, multi-param) edit is ONE entry in the history. The command per
+    // param is the one the timeline's per-key route pushes
+    // (TimeLineUtil::assignKeyEasing: a cmnd::Assign of the key's
+    // util::Easing::Param plus a Type_ChangeKeyValue notifier). That per-key helper
+    // CANNOT be called in this loop: it opens a macro of its own, and
+    // cmnd::Stack::beginMacro asserts on a nested one.
+    cmnd::ScopedMacro macro(aProject.commandStack(), aName);
+    auto* notifier = new TimeLineUtil::Notifier(aProject);
+    notifier->event().setType(core::TimeLineEvent::Type_ChangeKeyValue);
     macro.grabListener(notifier);
-    for (const Edit& edit : edits) {
+    for (const EasingWrite& edit : changed) {
         // One notification per KEY: the components of one key are one change to
         // its timeline.
         bool named = false;
         for (const TimeLineEvent::Target& pushed : notifier->event().targets()) {
             if (pushed.node == edit.node && pushed.pos.type() == edit.type
-                && pushed.pos.index() == edit.frame) {
+                && pushed.pos.index() == edit.frame.get()) {
                 named = true;
                 break;
             }
         }
         if (!named) {
-            notifier->event().pushTarget(*edit.node, edit.type, edit.frame);
+            notifier->event().pushTarget(*edit.node, edit.type, edit.frame.get());
         }
-        mProject->commandStack().push(new cmnd::Assign<util::Easing::Param>(edit.param, edit.next));
+        aProject.commandStack().push(
+            new cmnd::Assign<util::Easing::Param>(edit.param, edit.next));
     }
     return true;
 }
